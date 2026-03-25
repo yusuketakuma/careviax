@@ -1,0 +1,137 @@
+{
+  "session_id": "86E78A15-BB1E-4AFE-B033-25FA45C4482E",
+  "parent_session_id": null,
+  "state": "stopped",
+  "state_version": 1,
+  "started_at": "2026-03-25T14:24:09Z",
+  "updated_at": "2026-03-25T14:55:14Z",
+  "resume_token": "37A4A087-41E6-45CE-8919-78012F3915D6",
+  "event_seq": 48,
+  "last_event_id": "event-000048",
+  "fork_count": 0,
+  "orchestration": {
+    "max_state_retries": 3,
+    "retry_backoff_seconds": 10
+  },
+  "cwd": "/Users/yusuke/workspace/careviax",
+  "project_name": "careviax",
+  "prompt_seq": 12,
+  "git": {
+    "branch": "HEAD",
+    "uncommitted_changes": 3,
+    "last_commit": "none"
+  },
+  "plans": {
+    "exists": true,
+    "last_modified": 1774448989,
+    "wip_tasks": 0,
+    "todo_tasks": 30,
+    "pending_tasks": 0,
+    "completed_tasks": 0
+  },
+  "changes_this_session": [
+    {
+      "file": "Plans.md",
+      "action": "Edit",
+      "timestamp": "2026-03-25T14:38:00Z",
+      "important": true
+    },
+    {
+      "file": "Plans.md",
+      "action": "Edit",
+      "timestamp": "2026-03-25T14:38:14Z",
+      "important": true
+    },
+    {
+      "file": "Plans.md",
+      "action": "Edit",
+      "timestamp": "2026-03-25T14:42:03Z",
+      "important": true
+    },
+    {
+      "file": "Plans.md",
+      "action": "Edit",
+      "timestamp": "2026-03-25T14:42:14Z",
+      "important": true
+    },
+    {
+      "file": "Plans.md",
+      "action": "Edit",
+      "timestamp": "2026-03-25T14:42:50Z",
+      "important": true
+    },
+    {
+      "file": "Plans.md",
+      "action": "Edit",
+      "timestamp": "2026-03-25T14:42:59Z",
+      "important": true
+    },
+    {
+      "file": "Plans.md",
+      "action": "Edit",
+      "timestamp": "2026-03-25T14:43:18Z",
+      "important": true
+    },
+    {
+      "file": "Plans.md",
+      "action": "Edit",
+      "timestamp": "2026-03-25T14:43:39Z",
+      "important": true
+    },
+    {
+      "file": "Plans.md",
+      "action": "Edit",
+      "timestamp": "2026-03-25T14:43:48Z",
+      "important": true
+    },
+    {
+      "file": "Plans.md",
+      "action": "Edit",
+      "timestamp": "2026-03-25T14:46:35Z",
+      "important": true
+    },
+    {
+      "file": "Plans.md",
+      "action": "Edit",
+      "timestamp": "2026-03-25T14:47:21Z",
+      "important": true
+    },
+    {
+      "file": "Plans.md",
+      "action": "Edit",
+      "timestamp": "2026-03-25T14:47:34Z",
+      "important": true
+    },
+    {
+      "file": "Plans.md",
+      "action": "Edit",
+      "timestamp": "2026-03-25T14:47:48Z",
+      "important": true
+    },
+    {
+      "file": "Plans.md",
+      "action": "Edit",
+      "timestamp": "2026-03-25T14:48:06Z",
+      "important": true
+    },
+    {
+      "file": "Plans.md",
+      "action": "Edit",
+      "timestamp": "2026-03-25T14:48:51Z",
+      "important": true
+    },
+    {
+      "file": "pnpm-workspace.yaml",
+      "action": "Edit",
+      "timestamp": "2026-03-25T14:54:32Z",
+      "important": false
+    }
+  ],
+  "resumed_at": "2026-03-25T14:31:45Z",
+  "intent": "semantic",
+  "last_message_length": 421,
+  "last_message_hash": "9efc425cbdfd3c6c",
+  "ended_at": "2026-03-25T14:36:13Z",
+  "duration_minutes": 552,
+  "memory_logged": true
+}

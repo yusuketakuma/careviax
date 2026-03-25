@@ -1,0 +1,40 @@
+{
+  "session_id": "49D74D15-E26C-4631-9C98-936312F1F08F",
+  "parent_session_id": null,
+  "state": "stopped",
+  "state_version": 1,
+  "started_at": "2026-03-25T10:55:39Z",
+  "updated_at": "2026-03-25T10:56:45Z",
+  "resume_token": "E2406AB7-D25D-4E50-8E8B-C3C0C6A72AB5",
+  "event_seq": 3,
+  "last_event_id": "event-000003",
+  "fork_count": 0,
+  "orchestration": {
+    "max_state_retries": 3,
+    "retry_backoff_seconds": 10
+  },
+  "cwd": "/Users/yusuke/workspace/careviax",
+  "project_name": "careviax",
+  "prompt_seq": 1,
+  "git": {
+    "branch": "(no git)",
+    "uncommitted_changes": 0,
+    "last_commit": "none"
+  },
+  "plans": {
+    "exists": false,
+    "last_modified": 0,
+    "wip_tasks": 0,
+    "todo_tasks": 0,
+    "pending_tasks": 0,
+    "completed_tasks": 0
+  },
+  "changes_this_session": [],
+  "resumed_at": "2026-03-25T10:56:02Z",
+  "intent": "literal",
+  "ended_at": "2026-03-25T10:56:45Z",
+  "duration_minutes": 541,
+  "memory_logged": true,
+  "last_message_length": 328,
+  "last_message_hash": "f3039d771cbbd515"
+}

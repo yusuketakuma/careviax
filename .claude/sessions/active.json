@@ -1,0 +1,20 @@
+{
+  "49D74D15-E26C-4631-9C98-936312F1F08F": {
+    "short_id": "49D74D15-E26",
+    "last_seen": 1774436162,
+    "pid": "8275",
+    "status": "active"
+  },
+  "session-1774448650": {
+    "short_id": "session-1774",
+    "last_seen": 1774448650,
+    "pid": "15113",
+    "status": "active"
+  },
+  "86E78A15-BB1E-4AFE-B033-25FA45C4482E": {
+    "short_id": "86E78A15-BB1",
+    "last_seen": 1774449106,
+    "pid": "17768",
+    "status": "active"
+  }
+}

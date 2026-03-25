@@ -1,0 +1,27 @@
+{
+  "version": "1.0",
+  "updatedAt": "2026-03-25T14:51:13.312Z",
+  "skills": {},
+  "commands": {
+    "harness-review": {
+      "count": 3,
+      "lastUsed": "2026-03-25T13:35:02.788Z"
+    },
+    "harness-setup": {
+      "count": 2,
+      "lastUsed": "2026-03-25T14:49:34.657Z"
+    },
+    "breezing": {
+      "count": 4,
+      "lastUsed": "2026-03-25T14:51:13.312Z"
+    }
+  },
+  "agents": {},
+  "hooks": {
+    "session-init": {
+      "triggered": 4,
+      "blocked": 0,
+      "lastTriggered": "2026-03-25T14:31:45.955Z"
+    }
+  }
+}
