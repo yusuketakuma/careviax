@@ -1,0 +1,184 @@
+enum CaseStatus {
+  referral_received // 紹介受領
+  assessment // アセスメント中
+  active // 稼働中
+  on_hold // 保留
+  discharged // 退院/終了
+  terminated // 解約
+}
+
+enum ConsentType {
+  visit_medication_management // 訪問薬剤管理
+  personal_info_handling // 個人情報取扱
+  external_sharing // 外部共有
+  photo_capture // 写真撮影
+}
+
+enum ConsentMethod {
+  paper_scan // 紙署名スキャン
+  digital // デジタル
+}
+
+enum ContactRelation {
+  self
+  spouse
+  child
+  parent
+  sibling
+  care_manager
+  physician
+  nurse
+  facility_staff
+  other
+}
+
+model Patient {
+  id                       String   @id @default(cuid())
+  org_id                   String
+  name                     String
+  name_kana                String
+  birth_date               DateTime @db.Date
+  gender                   String // male/female/other
+  phone                    String?
+  medical_insurance_number String?
+  care_insurance_number    String?
+  billing_support_flag     Boolean  @default(false) // 請求支援フラグ
+  allergy_info             Json? // アレルギー情報
+  notes                    String?
+  created_at               DateTime @default(now())
+  updated_at               DateTime @updatedAt
+
+  residences          Residence[]
+  cases               CareCase[]
+  contacts            ContactParty[]
+  consents            ConsentRecord[]
+  medication_profiles MedicationProfile[]
+
+  @@index([org_id])
+  @@index([name_kana])
+}
+
+model Residence {
+  id          String   @id @default(cuid())
+  org_id      String
+  patient_id  String
+  patient     Patient  @relation(fields: [patient_id], references: [id])
+  address     String
+  building_id String? // 施設/建物ID（施設患者の場合）
+  unit_name   String? // 部屋番号等
+  lat         Float?
+  lng         Float?
+  is_primary  Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@index([org_id])
+  @@index([patient_id])
+}
+
+model CareCase {
+  id                    String     @id @default(cuid())
+  org_id                String
+  patient_id            String
+  patient               Patient    @relation(fields: [patient_id], references: [id])
+  status                CaseStatus @default(referral_received)
+  referral_source       String? // 紹介元
+  referral_date         DateTime?
+  start_date            DateTime?
+  end_date              DateTime?
+  end_reason            String?
+  primary_pharmacist_id String?
+  notes                 String?
+  created_at            DateTime   @default(now())
+  updated_at            DateTime   @updatedAt
+
+  care_team_links   CareTeamLink[]
+  management_plans  ManagementPlan[]
+  medication_cycles MedicationCycle[]
+  // visit_schedules は visit.prisma で定義予定
+  // visit_schedules  VisitSchedule[]
+
+  @@index([org_id])
+  @@index([patient_id])
+  @@index([status])
+}
+
+model ContactParty {
+  id                String          @id @default(cuid())
+  org_id            String
+  patient_id        String
+  patient           Patient         @relation(fields: [patient_id], references: [id])
+  name              String
+  relation          ContactRelation
+  phone             String?
+  email             String?
+  fax               String?
+  organization_name String? // 所属組織名
+  is_emergency_contact Boolean     @default(false)
+  notes             String?
+  created_at        DateTime        @default(now())
+  updated_at        DateTime        @updatedAt
+
+  @@index([org_id])
+  @@index([patient_id])
+}
+
+model CareTeamLink {
+  id                String   @id @default(cuid())
+  org_id            String
+  case_id           String
+  case_             CareCase @relation(fields: [case_id], references: [id])
+  role              String // physician/nurse/care_manager/pharmacist/other
+  name              String
+  organization_name String?
+  phone             String?
+  email             String?
+  fax               String?
+  is_primary        Boolean  @default(false)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  @@index([org_id])
+  @@index([case_id])
+}
+
+model ConsentRecord {
+  id                 String        @id @default(cuid())
+  org_id             String
+  patient_id         String
+  patient            Patient       @relation(fields: [patient_id], references: [id])
+  case_id            String?
+  consent_type       ConsentType
+  method             ConsentMethod
+  obtained_date      DateTime
+  expiry_date        DateTime?
+  revoked_date       DateTime?
+  document_url       String? // S3のスキャン文書URL
+  is_active          Boolean       @default(true)
+  access_restricted  Boolean       @default(false) // 撤回後の閲覧制限フラグ
+  created_at         DateTime      @default(now())
+  updated_at         DateTime      @updatedAt
+
+  @@index([org_id])
+  @@index([patient_id])
+}
+
+model ManagementPlan {
+  id               String   @id @default(cuid())
+  org_id           String
+  case_id          String
+  case_            CareCase @relation(fields: [case_id], references: [id])
+  version          Int      @default(1)
+  content          Json // 計画書内容
+  created_by       String // User ID
+  approved_at      DateTime?
+  next_review_date DateTime?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  @@index([org_id])
+  @@index([case_id])
+}
+
+// MedicationProfile は medication.prisma で定義予定（未実装時はコメントアウト）
+// model MedicationProfile は他ファイルで定義

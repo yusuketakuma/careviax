@@ -1,0 +1,166 @@
+enum PayerBasis {
+  medical
+  care
+  self_pay
+  non_billable
+}
+
+enum NotificationType {
+  urgent
+  business
+  reminder
+  system
+}
+
+enum SettingScope {
+  system
+  organization
+  site
+  user
+}
+
+model BillingCandidate {
+  id               String   @id @default(cuid())
+  org_id           String
+  patient_id       String
+  cycle_id         String?
+  billing_month    DateTime @db.Date // YYYY-MM-01
+  billing_code     String
+  billing_name     String
+  points           Int?
+  status           String   @default("candidate") // candidate/confirmed/excluded/exported
+  exclusion_reason String?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  @@index([org_id])
+  @@index([billing_month])
+  @@index([status])
+}
+
+model BillingEvidence {
+  id                        String     @id @default(cuid())
+  org_id                    String
+  visit_record_id           String
+  payer_basis               PayerBasis
+  claimable                 Boolean    @default(false)
+  exclusion_reason          String?
+  order_ref                 String?
+  consent_ref               String?
+  management_plan_ref       String?
+  report_delivery_ref       String?
+  visit_record_ref          String?
+  monthly_count_snapshot    Int?
+  same_month_exclusion_flags Json?
+  validation_notes          String?
+  created_at                DateTime   @default(now())
+  updated_at                DateTime   @updatedAt
+
+  @@index([org_id])
+  @@index([visit_record_id])
+}
+
+model Notification {
+  id         String           @id @default(cuid())
+  org_id     String
+  user_id    String
+  type       NotificationType
+  title      String
+  message    String
+  link       String?
+  is_read    Boolean          @default(false)
+  read_at    DateTime?
+  created_at DateTime         @default(now())
+  updated_at DateTime         @updatedAt
+
+  @@index([org_id])
+  @@index([user_id])
+  @@index([is_read])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  org_id      String
+  actor_id    String // User ID
+  action      String
+  target_type String
+  target_id   String
+  changes     Json?
+  ip_address  String?
+  user_agent  String?
+  created_at  DateTime @default(now())
+
+  @@index([org_id])
+  @@index([actor_id])
+  @@index([target_type])
+  @@index([created_at])
+}
+
+model IntegrationJob {
+  id          String    @id @default(cuid())
+  org_id      String?
+  job_type    String
+  status      String    @default("pending") // pending/running/completed/failed
+  input       Json?
+  output      Json?
+  error_log   String?
+  started_at  DateTime?
+  completed_at DateTime?
+  retry_count Int       @default(0)
+  max_retries Int       @default(3)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+
+  @@index([job_type])
+  @@index([status])
+}
+
+model Template {
+  id            String   @id @default(cuid())
+  org_id        String
+  name          String
+  template_type String // care_report/tracing_report/management_plan/medication_calendar
+  content       Json
+  is_default    Boolean  @default(false)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@index([org_id])
+  @@index([template_type])
+}
+
+model Setting {
+  id         String       @id @default(cuid())
+  scope      SettingScope
+  scope_id   String? // org_id or site_id or user_id
+  key        String
+  value      Json
+  created_at DateTime     @default(now())
+  updated_at DateTime     @updatedAt
+
+  @@unique([scope, scope_id, key])
+}
+
+model LabelDictionary {
+  id         String   @id @default(cuid())
+  key        String   @unique
+  label_ja   String
+  label_en   String?
+  category   String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model SourceOfTruthMatrix {
+  id                 String   @id @default(cuid())
+  org_id             String
+  entity_type        String // patient/prescription/dispense/carry_items/report_delivery/billing
+  source_of_truth    String // careviax/external
+  sync_direction     String? // push/pull/bidirectional
+  external_system    String?
+  recovery_procedure String?
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  @@unique([org_id, entity_type])
+}

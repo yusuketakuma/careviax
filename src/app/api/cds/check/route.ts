@@ -1,0 +1,35 @@
+import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { success, validationError, notFound } from '@/lib/api/response';
+import { prisma } from '@/lib/db/client';
+import { checkDispenseAlerts } from '@/server/cds/checker';
+import { z } from 'zod';
+
+const cdsCheckSchema = z.object({
+  cycleId: z.string().min(1),
+  patientId: z.string().min(1),
+});
+
+export const POST = withAuth(async (req: AuthenticatedRequest) => {
+  const body = await req.json().catch(() => null);
+  if (!body) return validationError('リクエストボディが不正です');
+
+  const parsed = cdsCheckSchema.safeParse(body);
+  if (!parsed.success) {
+    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  }
+
+  const { cycleId, patientId } = parsed.data;
+
+  // Verify the cycle belongs to this org
+  const cycle = await prisma.medicationCycle.findFirst({
+    where: { id: cycleId, org_id: req.orgId },
+    select: { id: true, patient_id: true },
+  });
+
+  if (!cycle) return notFound('指定されたサイクルが見つかりません');
+
+  // Use the patientId from the cycle for security (prevent cross-patient access)
+  const alerts = await checkDispenseAlerts(req.orgId, cycleId, cycle.patient_id);
+
+  return success({ alerts });
+});

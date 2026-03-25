@@ -39,3 +39,21 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Prisma generated
+prisma/generated/
+
+# Playwright
+test-results/
+playwright-report/
+
+# Claude Code internal state
+.claude/state/
+.claude/sessions/
+.claude/memory/session-log.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

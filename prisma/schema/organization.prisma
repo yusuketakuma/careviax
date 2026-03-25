@@ -1,0 +1,150 @@
+enum MemberRole {
+  owner
+  admin
+  pharmacist
+  pharmacist_trainee
+  clerk
+  driver
+  external_viewer
+}
+
+model Organization {
+  id               String  @id @default(cuid())
+  name             String
+  corporate_number String? @unique // 法人番号
+  address          String?
+  phone            String?
+  email            String?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  sites       PharmacySite[]
+  memberships Membership[]
+}
+
+model PharmacySite {
+  id      String       @id @default(cuid())
+  org_id  String
+  org     Organization @relation(fields: [org_id], references: [id])
+  name    String
+  address String
+  phone   String?
+  fax     String?
+  lat     Float?
+  lng     Float?
+  // 届出フラグ
+  is_health_support_pharmacy Boolean @default(false) // 健康サポート薬局
+  is_regional_support        Boolean @default(false) // 地域連携薬局
+  is_specialized_pharmacy    Boolean @default(false) // 専門医療機関連携薬局
+  // 体制加算区分
+  dispensing_fee_category String? // 調剤基本料区分
+  created_at              DateTime @default(now())
+  updated_at              DateTime @updatedAt
+
+  memberships          Membership[]
+  pharmacist_shifts    PharmacistShift[]
+  facility_standards   FacilityStandardRegistration[]
+  drug_stocks          PharmacyDrugStock[]
+
+  @@index([org_id])
+}
+
+model User {
+  id          String   @id @default(cuid())
+  org_id      String
+  cognito_sub String   @unique // Cognito User Pool の sub
+  email       String   @unique
+  name        String
+  name_kana   String?
+  phone       String?
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  memberships  Membership[]
+  credentials  PharmacistCredential[]
+  shifts       PharmacistShift[]
+
+  @@index([org_id])
+  @@index([cognito_sub])
+}
+
+model Membership {
+  id                 String        @id @default(cuid())
+  org_id             String
+  org                Organization  @relation(fields: [org_id], references: [id])
+  user_id            String
+  user               User          @relation(fields: [user_id], references: [id])
+  site_id            String?
+  site               PharmacySite? @relation(fields: [site_id], references: [id])
+  role               MemberRole
+  can_dispense       Boolean @default(false)
+  can_audit_dispense Boolean @default(false)
+  can_set            Boolean @default(false)
+  can_audit_set      Boolean @default(false)
+  is_active          Boolean  @default(true)
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  @@unique([user_id, org_id, site_id])
+  @@index([org_id])
+}
+
+model FacilityStandardRegistration {
+  id                   String       @id @default(cuid())
+  org_id               String
+  site_id              String
+  site                 PharmacySite @relation(fields: [site_id], references: [id])
+  standard_type        String // 届出種別
+  filed_date           DateTime // 届出日
+  effective_date       DateTime? // 有効日
+  expiry_date          DateTime? // 有効期限
+  renewal_alert_date   DateTime? // 更新期限アラート日
+  requirements_status  Json? // 要件達成状態
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  @@index([org_id])
+  @@index([site_id])
+}
+
+model PharmacistCredential {
+  id                   String   @id @default(cuid())
+  org_id               String
+  user_id              String
+  user                 User     @relation(fields: [user_id], references: [id])
+  certification_type   String // 研修認定証タイプ
+  certification_number String?
+  issued_date          DateTime?
+  expiry_date          DateTime?
+  tenure_years         Float? // 在籍継続年数
+  weekly_work_hours    Float? // 週勤務時間実績
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  @@index([org_id])
+  @@index([user_id])
+}
+
+model PharmacistShift {
+  id             String       @id @default(cuid())
+  org_id         String
+  site_id        String
+  site           PharmacySite @relation(fields: [site_id], references: [id])
+  user_id        String
+  user           User         @relation(fields: [user_id], references: [id])
+  date           DateTime     @db.Date
+  available      Boolean      @default(true)
+  available_from DateTime?    @db.Time()
+  available_to   DateTime?    @db.Time()
+  note           String?
+  created_at     DateTime     @default(now())
+  updated_at     DateTime     @updatedAt
+
+  @@unique([user_id, date])
+  @@index([org_id])
+  @@index([site_id, date])
+}
+
+// PharmacyDrugStock は drug.prisma で定義予定（未実装時はコメントアウト）
+// model PharmacyDrugStock は他ファイルで定義

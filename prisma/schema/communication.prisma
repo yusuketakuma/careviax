@@ -1,0 +1,213 @@
+enum CommunicationChannel {
+  email
+  fax
+  phone
+  in_person
+  postal
+  ses
+}
+
+enum ReportStatus {
+  draft
+  sent
+  failed
+  confirmed
+  response_waiting
+}
+
+enum ReportType {
+  physician_report
+  care_manager_report
+  facility_handoff
+  nurse_share
+  family_share
+  internal_record
+}
+
+enum RequestStatus {
+  draft
+  sent
+  received
+  in_progress
+  responded
+  closed
+  escalated
+  cancelled
+  expired
+}
+
+enum TracingReportStatus {
+  draft
+  sent
+  received
+  acknowledged
+}
+
+model CommunicationEvent {
+  id                  String               @id @default(cuid())
+  org_id              String
+  patient_id          String?
+  case_id             String?
+  event_type          String // schedule_change/physician_report/care_manager_report/tracing_report/delivery_failure/resend
+  channel             CommunicationChannel
+  direction           String // outbound/inbound
+  counterpart_name    String?
+  counterpart_contact String?
+  subject             String?
+  content             String?
+  occurred_at         DateTime             @default(now())
+  created_at          DateTime             @default(now())
+  updated_at          DateTime             @updatedAt
+
+  @@index([org_id])
+  @@index([patient_id])
+  @@index([event_type])
+}
+
+model CommunicationRequest {
+  id            String        @id @default(cuid())
+  org_id        String
+  patient_id    String?
+  case_id       String?
+  request_type  String
+  status        RequestStatus @default(draft)
+  subject       String
+  content       String
+  requested_by  String // User ID
+  requested_at  DateTime      @default(now())
+  due_date      DateTime?
+  created_at    DateTime      @default(now())
+  updated_at    DateTime      @updatedAt
+
+  responses CommunicationResponse[]
+
+  @@index([org_id])
+  @@index([status])
+}
+
+model CommunicationResponse {
+  id             String               @id @default(cuid())
+  org_id         String
+  request_id     String
+  request        CommunicationRequest @relation(fields: [request_id], references: [id])
+  responder_name String
+  content        String
+  responded_at   DateTime
+  created_at     DateTime             @default(now())
+  updated_at     DateTime             @updatedAt
+
+  @@index([org_id])
+  @@index([request_id])
+}
+
+model CareReport {
+  id               String       @id @default(cuid())
+  org_id           String
+  visit_record_id  String?
+  patient_id       String
+  case_id          String?
+  report_type      ReportType
+  status           ReportStatus @default(draft)
+  content          Json
+  template_id      String?
+  pdf_url          String? // S3
+  created_by       String // User ID
+  created_at       DateTime     @default(now())
+  updated_at       DateTime     @updatedAt
+
+  delivery_records DeliveryRecord[]
+
+  @@index([org_id])
+  @@index([patient_id])
+  @@index([status])
+}
+
+model DeliveryRecord {
+  id                String               @id @default(cuid())
+  org_id            String
+  report_id         String
+  report            CareReport           @relation(fields: [report_id], references: [id])
+  channel           CommunicationChannel
+  recipient_name    String
+  recipient_contact String
+  status            ReportStatus         @default(draft)
+  sent_at           DateTime?
+  confirmed_at      DateTime?
+  failure_reason    String?
+  retry_count       Int                  @default(0)
+  created_at        DateTime             @default(now())
+  updated_at        DateTime             @updatedAt
+
+  @@index([org_id])
+  @@index([status])
+}
+
+model ConferenceNote {
+  id              String    @id @default(cuid())
+  org_id          String
+  case_id         String?
+  title           String
+  content         String
+  participants    Json // [{name, role}]
+  conference_date DateTime
+  action_items    Json? // Task 変換用
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  @@index([org_id])
+  @@index([case_id])
+}
+
+model EscalationRule {
+  id           String   @id @default(cuid())
+  org_id       String
+  trigger_type String
+  condition    Json
+  action       String
+  notify_role  String?
+  is_active    Boolean  @default(true)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@index([org_id])
+}
+
+model ExternalAccessGrant {
+  id                   String    @id @default(cuid())
+  org_id               String
+  patient_id           String
+  token_hash           String    @unique
+  expires_at           DateTime
+  otp_hash             String?
+  granted_to_name      String
+  granted_to_contact   String?
+  scope                Json // アクセス可能な情報の範囲
+  accessed_at          DateTime?
+  revoked_at           DateTime?
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
+
+  @@index([org_id])
+  @@index([token_hash])
+}
+
+model TracingReport {
+  id                  String              @id @default(cuid())
+  org_id              String
+  patient_id          String
+  case_id             String?
+  issue_id            String?
+  issue               MedicationIssue?    @relation(fields: [issue_id], references: [id])
+  content             Json
+  status              TracingReportStatus @default(draft)
+  sent_to_physician   String?
+  sent_at             DateTime?
+  acknowledged_at     DateTime?
+  pdf_url             String?
+  created_at          DateTime            @default(now())
+  updated_at          DateTime            @updatedAt
+
+  @@index([org_id])
+  @@index([patient_id])
+  @@index([status])
+}

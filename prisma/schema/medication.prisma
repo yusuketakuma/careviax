@@ -1,0 +1,155 @@
+enum IssueStatus {
+  open
+  in_progress
+  resolved
+  dismissed
+}
+
+enum IssuePriority {
+  critical
+  high
+  medium
+  low
+}
+
+enum InterventionType {
+  dose_adjustment
+  drug_change
+  side_effect_management
+  adherence_support
+  prescriber_consultation
+  patient_education
+  other
+}
+
+enum TaskStatus {
+  pending
+  in_progress
+  completed
+  cancelled
+}
+
+enum TaskPriority {
+  urgent
+  high
+  normal
+  low
+}
+
+model MedicationProfile {
+  id             String    @id @default(cuid())
+  org_id         String
+  patient_id     String
+  patient        Patient   @relation(fields: [patient_id], references: [id])
+  drug_master_id String?
+  drug_name      String
+  dose           String?
+  frequency      String?
+  start_date     DateTime?
+  end_date       DateTime?
+  prescriber     String?
+  is_current     Boolean   @default(true)
+  source         String? // qr_scan/manual/prescription
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+
+  @@index([org_id])
+  @@index([patient_id])
+}
+
+model ResidualMedication {
+  id                      String  @id @default(cuid())
+  org_id                  String
+  visit_record_id         String
+  drug_name               String
+  drug_code               String?
+  prescribed_quantity     Float?
+  remaining_quantity      Float
+  remaining_days          Int?
+  excess_days             Int? // 余剰日数
+  is_reduction_target     Boolean @default(false) // 減数調剤対象
+  is_prohibited_reduction Boolean @default(false) // 減数調剤禁止（麻薬/抗がん剤）
+  created_at              DateTime @default(now())
+  updated_at              DateTime @updatedAt
+
+  @@index([org_id])
+  @@index([visit_record_id])
+}
+
+model MedicationIssue {
+  id            String        @id @default(cuid())
+  org_id        String
+  patient_id    String
+  case_id       String?
+  title         String
+  description   String
+  status        IssueStatus   @default(open)
+  priority      IssuePriority @default(medium)
+  category      String? // adherence/side_effect/interaction/duplicate/other
+  identified_by String // User ID
+  identified_at DateTime      @default(now())
+  resolved_by   String?
+  resolved_at   DateTime?
+  created_at    DateTime      @default(now())
+  updated_at    DateTime      @updatedAt
+
+  interventions   Intervention[]
+  tracing_reports TracingReport[]
+
+  @@index([org_id])
+  @@index([patient_id])
+  @@index([status])
+}
+
+model Intervention {
+  id           String           @id @default(cuid())
+  org_id       String
+  issue_id     String?
+  issue        MedicationIssue? @relation(fields: [issue_id], references: [id])
+  patient_id   String
+  type         InterventionType
+  description  String
+  outcome      String?
+  performed_by String // User ID
+  performed_at DateTime
+  created_at   DateTime         @default(now())
+  updated_at   DateTime         @updatedAt
+
+  @@index([org_id])
+  @@index([patient_id])
+}
+
+model Task {
+  id                  String       @id @default(cuid())
+  org_id              String
+  title               String
+  description         String?
+  status              TaskStatus   @default(pending)
+  priority            TaskPriority @default(normal)
+  assigned_to         String? // User ID
+  due_date            DateTime?
+  related_entity_type String? // patient/case/cycle/visit
+  related_entity_id   String?
+  created_at          DateTime     @default(now())
+  updated_at          DateTime     @updatedAt
+
+  @@index([org_id])
+  @@index([status])
+  @@index([assigned_to])
+}
+
+model FirstVisitDocument {
+  id               String    @id @default(cuid())
+  org_id           String
+  patient_id       String
+  case_id          String
+  emergency_contacts Json
+  document_url     String? // S3
+  delivered_at     DateTime?
+  delivered_to     String?
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
+  @@index([org_id])
+  @@index([patient_id])
+}

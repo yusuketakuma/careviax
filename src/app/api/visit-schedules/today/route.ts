@@ -1,0 +1,37 @@
+import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { success } from '@/lib/api/response';
+import { prisma } from '@/lib/db/client';
+
+export const GET = withAuth(async (req: AuthenticatedRequest) => {
+  const { searchParams } = new URL(req.url);
+  const pharmacistId = searchParams.get('pharmacist_id');
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const schedules = await prisma.visitSchedule.findMany({
+    where: {
+      org_id: req.orgId,
+      scheduled_date: {
+        gte: today,
+        lt: tomorrow,
+      },
+      schedule_status: {
+        notIn: ['cancelled'],
+      },
+      ...(pharmacistId ? { pharmacist_id: pharmacistId } : {}),
+    },
+    orderBy: [
+      { route_order: 'asc' },
+      { time_window_start: 'asc' },
+    ],
+    include: {
+      visit_record: { select: { id: true, outcome_status: true } },
+      preparation: { select: { id: true, prepared_at: true, carry_items_confirmed: true } },
+    },
+  });
+
+  return success({ data: schedules });
+});

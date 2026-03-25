@@ -1,0 +1,272 @@
+enum PrescriptionSourceType {
+  paper
+  fax
+  e_prescription
+  facility_batch
+  refill
+}
+
+enum MedicationCycleStatus {
+  intake_received
+  structuring
+  inquiry_pending
+  inquiry_resolved
+  ready_to_dispense
+  dispensing
+  dispensed
+  audit_pending
+  audited
+  setting
+  set_audited
+  visit_ready
+  visit_completed
+  reported
+  on_hold
+  cancelled
+}
+
+enum DispenseAuditResult {
+  approved
+  rejected
+  hold
+  emergency_approved
+}
+
+enum SetAuditResult {
+  approved
+  partial_approved
+  rejected
+}
+
+model MedicationCycle {
+  id                  String                @id @default(cuid())
+  org_id              String
+  case_id             String
+  case_               CareCase              @relation(fields: [case_id], references: [id])
+  patient_id          String
+  overall_status      MedicationCycleStatus
+  visit_sub_status    String? // 派生状態
+  readiness_sub_status String?
+  reporting_sub_status String?
+  exception_status    String? // no_show/hospitalized/refused_receipt/awaiting_reply/report_failed/carry_items_partial
+  version             Int                   @default(1) // 楽観的ロック
+  created_at          DateTime              @default(now())
+  updated_at          DateTime              @updatedAt
+
+  prescription_intakes PrescriptionIntake[]
+  inquiries            InquiryRecord[]
+  dispense_tasks       DispenseTask[]
+  set_plans            SetPlan[]
+  workflow_exceptions  WorkflowException[]
+  visit_schedules      VisitSchedule[]
+
+  @@index([org_id])
+  @@index([case_id])
+  @@index([overall_status])
+}
+
+model PrescriptionIntake {
+  id                        String                  @id @default(cuid())
+  org_id                    String
+  cycle_id                  String
+  cycle                     MedicationCycle         @relation(fields: [cycle_id], references: [id])
+  source_type               PrescriptionSourceType
+  prescribed_date           DateTime
+  prescriber_name           String?
+  prescriber_institution    String?
+  original_document_url     String? // S3
+  refill_remaining_count    Int?
+  refill_next_dispense_date DateTime?
+  split_dispense_total      Int?
+  split_dispense_current    Int?
+  prescription_expiry_date  DateTime?
+  created_at                DateTime                @default(now())
+  updated_at                DateTime                @updatedAt
+
+  lines PrescriptionLine[]
+
+  @@index([org_id])
+  @@index([cycle_id])
+}
+
+model PrescriptionLine {
+  id                           String             @id @default(cuid())
+  org_id                       String
+  intake_id                    String
+  intake                       PrescriptionIntake @relation(fields: [intake_id], references: [id])
+  line_number                  Int
+  drug_name                    String
+  drug_code                    String? // YJコード
+  dosage_form                  String?
+  dose                         String
+  frequency                    String // 用法
+  days                         Int // 投与日数
+  quantity                     Float?
+  unit                         String?
+  is_generic                   Boolean            @default(false)
+  is_generic_name_prescription Boolean            @default(false)
+  packaging_instructions       String?
+  notes                        String?
+  created_at                   DateTime           @default(now())
+  updated_at                   DateTime           @updatedAt
+
+  inquiry_records InquiryRecord[]
+  dispense_results DispenseResult[]
+  set_batches     SetBatch[]
+
+  @@index([org_id])
+  @@index([intake_id])
+}
+
+model InquiryRecord {
+  id              String          @id @default(cuid())
+  org_id          String
+  cycle_id        String
+  cycle           MedicationCycle @relation(fields: [cycle_id], references: [id])
+  line_id         String?
+  line            PrescriptionLine? @relation(fields: [line_id], references: [id])
+  reason          String // 用量疑義/相互作用/禁忌/重複/その他
+  inquiry_to_physician String
+  inquiry_content String
+  result          String? // changed/unchanged/pending
+  change_detail   String?
+  inquired_at     DateTime
+  resolved_at     DateTime?
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
+
+  @@index([org_id])
+  @@index([cycle_id])
+}
+
+model DispenseTask {
+  id          String          @id @default(cuid())
+  org_id      String
+  cycle_id    String
+  cycle       MedicationCycle @relation(fields: [cycle_id], references: [id])
+  assigned_to String? // User ID
+  priority    String          @default("normal") // emergency/urgent/normal
+  due_date    DateTime?
+  status      String          @default("pending") // pending/in_progress/completed
+  created_at  DateTime        @default(now())
+  updated_at  DateTime        @updatedAt
+
+  results DispenseResult[]
+  audits  DispenseAudit[]
+
+  @@index([org_id])
+  @@index([status])
+}
+
+model DispenseResult {
+  id                String       @id @default(cuid())
+  org_id            String
+  task_id           String
+  task              DispenseTask @relation(fields: [task_id], references: [id])
+  line_id           String
+  line              PrescriptionLine @relation(fields: [line_id], references: [id])
+  actual_drug_name  String
+  actual_drug_code  String?
+  actual_quantity   Float
+  actual_unit       String?
+  discrepancy_reason String?
+  carry_type        String // carry/facility_deposit/deferred
+  special_notes     String? // 冷所/麻薬/半割等
+  dispensed_by      String // User ID
+  dispensed_at      DateTime
+  created_at        DateTime     @default(now())
+  updated_at        DateTime     @updatedAt
+
+  @@index([org_id])
+  @@index([task_id])
+}
+
+model DispenseAudit {
+  id            String             @id @default(cuid())
+  org_id        String
+  task_id       String
+  task          DispenseTask       @relation(fields: [task_id], references: [id])
+  result        DispenseAuditResult
+  reject_reason String?
+  reject_detail String?
+  audited_by    String // User ID
+  audited_at    DateTime
+  created_at    DateTime           @default(now())
+  updated_at    DateTime           @updatedAt
+
+  @@index([org_id])
+  @@index([task_id])
+}
+
+model SetPlan {
+  id                   String          @id @default(cuid())
+  org_id               String
+  cycle_id             String
+  cycle                MedicationCycle @relation(fields: [cycle_id], references: [id])
+  target_period_start  DateTime
+  target_period_end    DateTime
+  set_method           String // facility_calendar/four_times_daily/bedtime_only/custom
+  notes                String?
+  created_at           DateTime        @default(now())
+  updated_at           DateTime        @updatedAt
+
+  batches    SetBatch[]
+  audits     SetAudit[]
+
+  @@index([org_id])
+  @@index([cycle_id])
+}
+
+model SetBatch {
+  id         String          @id @default(cuid())
+  org_id     String
+  plan_id    String
+  plan       SetPlan         @relation(fields: [plan_id], references: [id])
+  line_id    String
+  line       PrescriptionLine @relation(fields: [line_id], references: [id])
+  slot       String // morning/noon/evening/bedtime/prn
+  day_number Int
+  quantity   Float
+  carry_type String // carry/facility_deposit/deferred
+  version    Int             @default(1) // 楽観的ロック
+  created_at DateTime        @default(now())
+  updated_at DateTime        @updatedAt
+
+  @@index([org_id])
+  @@index([plan_id])
+}
+
+model SetAudit {
+  id             String       @id @default(cuid())
+  org_id         String
+  plan_id        String
+  plan           SetPlan      @relation(fields: [plan_id], references: [id])
+  result         SetAuditResult
+  approved_scope Json? // 部分承認の範囲
+  reject_reason  String?
+  audited_by     String // User ID
+  audited_at     DateTime
+  created_at     DateTime     @default(now())
+  updated_at     DateTime     @updatedAt
+
+  @@index([org_id])
+  @@index([plan_id])
+}
+
+model WorkflowException {
+  id             String          @id @default(cuid())
+  org_id         String
+  cycle_id       String?
+  cycle          MedicationCycle? @relation(fields: [cycle_id], references: [id])
+  exception_type String
+  description    String
+  severity       String // critical/warning/info
+  status         String          @default("open") // open/resolved/dismissed
+  resolved_by    String?
+  resolved_at    DateTime?
+  created_at     DateTime        @default(now())
+  updated_at     DateTime        @updatedAt
+
+  @@index([org_id])
+  @@index([status])
+}

@@ -1,0 +1,139 @@
+enum VisitType {
+  initial
+  regular
+  temporary
+  revisit
+  delivery_only
+  emergency
+  physician_co_visit
+}
+
+enum ScheduleStatus {
+  planned
+  in_preparation
+  ready
+  departed
+  in_progress
+  completed
+  cancelled
+  postponed
+  rescheduled
+  no_show
+}
+
+enum VisitOutcome {
+  completed
+  revisit_needed
+  postponed
+  cancelled
+  delivery_only
+  completed_with_issue
+}
+
+model VisitSchedule {
+  id                            String           @id @default(cuid())
+  org_id                        String
+  cycle_id                      String?
+  cycle                         MedicationCycle? @relation(fields: [cycle_id], references: [id])
+  case_id                       String
+  visit_type                    VisitType
+  schedule_status               ScheduleStatus   @default(planned)
+  scheduled_date                DateTime         @db.Date
+  time_window_start             DateTime?        @db.Time()
+  time_window_end               DateTime?        @db.Time()
+  pharmacist_id                 String // User ID
+  route_order                   Int?
+  carry_items                   Json? // 持参薬情報
+  carry_items_status            String? // ready/partial/blocked
+  pre_visit_checklist_completed Boolean          @default(false)
+  recurrence_rule               String? // RRULE
+  recurrence_parent_id          String? // 繰返しの親スケジュールID
+  facility_batch_id             String?
+  facility_batch                FacilityVisitBatch? @relation(fields: [facility_batch_id], references: [id])
+  time_constraint_start         DateTime?        @db.Time()
+  time_constraint_end           DateTime?        @db.Time()
+  medication_start_date         DateTime?        @db.Date
+  medication_end_date           DateTime?        @db.Date
+  visit_deadline_date           DateTime?        @db.Date
+  version                       Int              @default(1)
+  created_at                    DateTime         @default(now())
+  updated_at                    DateTime         @updatedAt
+
+  visit_record  VisitRecord?
+  preparation   VisitPreparation?
+
+  @@index([org_id])
+  @@index([scheduled_date])
+  @@index([pharmacist_id])
+  @@index([schedule_status])
+  @@index([case_id])
+}
+
+model FacilityVisitBatch {
+  id                    String   @id @default(cuid())
+  org_id                String
+  facility_id           String // 施設ID
+  scheduled_date        DateTime @db.Date
+  pharmacist_id         String
+  patient_ids           Json // String[]
+  estimated_duration    Int? // 分
+  route_from_pharmacy   Json? // ルート情報
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
+
+  visit_schedules VisitSchedule[]
+
+  @@index([org_id])
+  @@index([scheduled_date])
+}
+
+model VisitRecord {
+  id                        String         @id @default(cuid())
+  org_id                    String
+  schedule_id               String         @unique
+  schedule                  VisitSchedule  @relation(fields: [schedule_id], references: [id])
+  patient_id                String
+  pharmacist_id             String
+  visit_date                DateTime
+  outcome_status            VisitOutcome
+  soap_subjective           String? // S
+  soap_objective            String? // O
+  soap_assessment           String? // A
+  soap_plan                 String? // P
+  receipt_person_name       String? // 受領者名
+  receipt_person_relation   String? // 続柄
+  receipt_at                DateTime?
+  next_visit_suggestion_date DateTime?     @db.Date
+  cancellation_reason       String?
+  postpone_reason           String?
+  revisit_reason            String?
+  attachments               Json? // S3 URLs
+  version                   Int            @default(1)
+  created_at                DateTime       @default(now())
+  updated_at                DateTime       @updatedAt
+
+  @@index([org_id])
+  @@index([patient_id])
+  @@index([visit_date])
+  @@index([schedule_id])
+}
+
+model VisitPreparation {
+  id                         String        @id @default(cuid())
+  org_id                     String
+  schedule_id                String        @unique
+  schedule                   VisitSchedule @relation(fields: [schedule_id], references: [id])
+  checklist                  Json
+  medication_changes_reviewed Boolean      @default(false)
+  carry_items_confirmed       Boolean      @default(false)
+  previous_issues_reviewed    Boolean      @default(false)
+  route_confirmed             Boolean      @default(false)
+  offline_synced              Boolean      @default(false)
+  prepared_by                String // User ID
+  prepared_at                DateTime?
+  created_at                 DateTime      @default(now())
+  updated_at                 DateTime      @updatedAt
+
+  @@index([org_id])
+  @@index([schedule_id])
+}

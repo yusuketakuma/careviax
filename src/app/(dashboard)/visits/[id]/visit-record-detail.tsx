@@ -1,0 +1,376 @@
+'use client';
+
+import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
+import { format, parseISO } from 'date-fns';
+import { ja } from 'date-fns/locale';
+import {
+  MessageSquare,
+  Eye,
+  Brain,
+  ClipboardList,
+  User,
+  CalendarCheck,
+  FileDown,
+  Pencil,
+  Clock,
+} from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useOrgId } from '@/lib/hooks/use-org-id';
+
+type ResidualMedication = {
+  id: string;
+  drug_name: string;
+  drug_code: string | null;
+  prescribed_quantity: number | null;
+  remaining_quantity: number;
+  excess_days: number | null;
+  is_prohibited_reduction: boolean;
+  is_reduction_target: boolean;
+};
+
+type VisitRecordFull = {
+  id: string;
+  schedule_id: string;
+  patient_id: string;
+  pharmacist_id: string;
+  visit_date: string;
+  outcome_status: string;
+  soap_subjective: string | null;
+  soap_objective: string | null;
+  soap_assessment: string | null;
+  soap_plan: string | null;
+  receipt_person_name: string | null;
+  receipt_person_relation: string | null;
+  receipt_at: string | null;
+  next_visit_suggestion_date: string | null;
+  cancellation_reason: string | null;
+  postpone_reason: string | null;
+  revisit_reason: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  schedule: {
+    visit_type: string;
+    scheduled_date: string;
+  } | null;
+};
+
+const outcomeLabel: Record<string, string> = {
+  completed: '完了',
+  revisit_needed: '再訪必要',
+  postponed: '延期',
+  cancelled: 'キャンセル',
+  delivery_only: '投薬のみ',
+  completed_with_issue: '完了（課題あり）',
+};
+
+const outcomeVariant: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
+  completed: 'default',
+  revisit_needed: 'secondary',
+  postponed: 'outline',
+  cancelled: 'destructive',
+  delivery_only: 'secondary',
+  completed_with_issue: 'outline',
+};
+
+const relationLabel: Record<string, string> = {
+  self: '本人',
+  spouse: '配偶者',
+  child: '子',
+  parent: '親',
+  sibling: '兄弟姉妹',
+  other_family: 'その他家族',
+  caregiver: '介護者',
+  facility_staff: '施設職員',
+  other: 'その他',
+};
+
+function SoapSection({
+  icon: Icon,
+  label,
+  colorClass,
+  content,
+}: {
+  icon: React.ElementType;
+  label: string;
+  colorClass: string;
+  content: string | null;
+}) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <Icon className={`size-4 ${colorClass}`} aria-hidden="true" />
+          {label}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {content ? (
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{content}</p>
+        ) : (
+          <p className="text-sm text-muted-foreground">記録なし</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function VisitRecordDetail({ recordId }: { recordId: string }) {
+  const orgId = useOrgId();
+
+  const { data: record, isLoading } = useQuery<VisitRecordFull>({
+    queryKey: ['visit-record', recordId, orgId],
+    queryFn: async () => {
+      const res = await fetch(`/api/visit-records/${recordId}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('訪問記録の取得に失敗しました');
+      return res.json();
+    },
+    enabled: !!orgId && !!recordId,
+  });
+
+  // Residual medications query
+  const { data: residuals } = useQuery<ResidualMedication[]>({
+    queryKey: ['residual-medications', recordId, orgId],
+    queryFn: async () => {
+      const res = await fetch(`/api/residual-medications?visit_record_id=${recordId}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) return [];
+      const json = await res.json();
+      return json.data ?? [];
+    },
+    enabled: !!orgId && !!recordId,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <p className="text-sm text-muted-foreground">読み込み中...</p>
+      </div>
+    );
+  }
+
+  if (!record) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <p className="text-sm text-muted-foreground">訪問記録が見つかりません</p>
+      </div>
+    );
+  }
+
+  const visitDateFormatted = format(parseISO(record.visit_date), 'yyyy年MM月dd日', { locale: ja });
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">{visitDateFormatted} 訪問記録</h1>
+          <div className="mt-1 flex items-center gap-2">
+            <Badge variant={outcomeVariant[record.outcome_status] ?? 'outline'}>
+              {outcomeLabel[record.outcome_status] ?? record.outcome_status}
+            </Badge>
+            {record.schedule && (
+              <span className="text-sm text-muted-foreground">
+                {record.schedule.visit_type}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="gap-1" disabled aria-label="PDF出力（未実装）">
+            <FileDown className="size-3.5" aria-hidden="true" />
+            PDF出力
+          </Button>
+          <Link href={`/visits/${recordId}/edit`}>
+            <Button variant="outline" size="sm" className="gap-1">
+              <Pencil className="size-3.5" aria-hidden="true" />
+              編集
+            </Button>
+          </Link>
+        </div>
+      </div>
+
+      {/* Audit info (e-document authenticity) */}
+      <div className="flex flex-wrap items-center gap-4 rounded-lg border border-border bg-muted/30 px-4 py-2.5 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1">
+          <Clock className="size-3" aria-hidden="true" />
+          作成: {format(parseISO(record.created_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
+        </span>
+        <span className="flex items-center gap-1">
+          <Clock className="size-3" aria-hidden="true" />
+          最終更新: {format(parseISO(record.updated_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
+        </span>
+        <span>バージョン: v{record.version}</span>
+        <span>記録者ID: {record.pharmacist_id}</span>
+      </div>
+
+      {/* Reason fields */}
+      {record.cancellation_reason && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+          <p className="text-xs font-medium text-destructive">キャンセル理由</p>
+          <p className="mt-1 text-sm">{record.cancellation_reason}</p>
+        </div>
+      )}
+      {record.postpone_reason && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
+          <p className="text-xs font-medium text-amber-700">延期理由</p>
+          <p className="mt-1 text-sm">{record.postpone_reason}</p>
+        </div>
+      )}
+      {record.revisit_reason && (
+        <div className="rounded-lg border border-blue-300 bg-blue-50 p-3">
+          <p className="text-xs font-medium text-blue-700">再訪理由</p>
+          <p className="mt-1 text-sm">{record.revisit_reason}</p>
+        </div>
+      )}
+
+      {/* SOAP — 2-column on tablet */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="space-y-4">
+          <SoapSection
+            icon={MessageSquare}
+            label="S — 主観情報"
+            colorClass="text-blue-500"
+            content={record.soap_subjective}
+          />
+          <SoapSection
+            icon={Eye}
+            label="O — 客観情報"
+            colorClass="text-green-500"
+            content={record.soap_objective}
+          />
+        </div>
+        <div className="space-y-4">
+          <SoapSection
+            icon={Brain}
+            label="A — 薬学的評価"
+            colorClass="text-purple-500"
+            content={record.soap_assessment}
+          />
+          <SoapSection
+            icon={ClipboardList}
+            label="P — 計画・介入"
+            colorClass="text-orange-500"
+            content={record.soap_plan}
+          />
+        </div>
+      </div>
+
+      {/* Receipt record */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <User className="size-4 text-muted-foreground" aria-hidden="true" />
+            受領記録
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {record.receipt_person_name ? (
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm md:grid-cols-3">
+              <div>
+                <dt className="text-xs text-muted-foreground">受領者名</dt>
+                <dd className="mt-0.5 font-medium">{record.receipt_person_name}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">続柄</dt>
+                <dd className="mt-0.5">
+                  {record.receipt_person_relation
+                    ? (relationLabel[record.receipt_person_relation] ?? record.receipt_person_relation)
+                    : '—'}
+                </dd>
+              </div>
+              {record.receipt_at && (
+                <div>
+                  <dt className="text-xs text-muted-foreground">受領日時</dt>
+                  <dd className="mt-0.5">
+                    {format(parseISO(record.receipt_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
+                  </dd>
+                </div>
+              )}
+            </dl>
+          ) : (
+            <p className="text-sm text-muted-foreground">受領記録なし</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Next visit suggestion */}
+      {record.next_visit_suggestion_date && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <CalendarCheck className="size-4 text-muted-foreground" aria-hidden="true" />
+              次回訪問提案
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm font-medium">
+              {format(parseISO(record.next_visit_suggestion_date), 'yyyy年MM月dd日', { locale: ja })}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Residual medications */}
+      {residuals && residuals.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">残薬記録</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-auto rounded-md border border-border">
+              <table className="w-full text-sm">
+                <caption className="sr-only">残薬一覧</caption>
+                <thead className="bg-muted/60">
+                  <tr className="border-b border-border">
+                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">薬剤名</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">処方量</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">残数</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">余剰日数</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">区分</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {residuals.map((med, i) => (
+                    <tr
+                      key={med.id}
+                      className={`border-b border-border last:border-0 ${i % 2 === 1 ? 'bg-muted/20' : ''}`}
+                    >
+                      <td className="px-3 py-2">{med.drug_name}</td>
+                      <td className="px-3 py-2 text-right text-muted-foreground">
+                        {med.prescribed_quantity ?? '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right">{med.remaining_quantity}</td>
+                      <td className="px-3 py-2 text-right">
+                        {med.excess_days !== null ? `${med.excess_days}日` : '—'}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap gap-1">
+                          {med.is_prohibited_reduction && (
+                            <Badge variant="destructive" className="text-xs">減数禁止</Badge>
+                          )}
+                          {med.is_reduction_target && !med.is_prohibited_reduction && (
+                            <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">
+                              減数対象
+                            </Badge>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
