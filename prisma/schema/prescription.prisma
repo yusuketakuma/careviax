@@ -97,7 +97,7 @@ model PrescriptionLine {
   line_number                  Int
   drug_name                    String
   drug_code                    String? // YJコード
-  dosage_form                  String?
+  dosage_form                  String? // 錠剤/散剤/液剤/軟膏/貼付剤/坐剤/注射剤/吸入剤/点眼剤/点鼻剤 等
   dose                         String
   frequency                    String // 用法
   days                         Int // 投与日数
@@ -107,6 +107,11 @@ model PrescriptionLine {
   is_generic_name_prescription Boolean            @default(false)
   packaging_instructions       String?
   notes                        String?
+  // 剤形分類・調剤方法
+  route                        String?  // internal(内服)/external(外用)/injection(注射)/other
+  dispensing_method             String?  // standard(通常)/unit_dose(一包化)/crushed(粉砕)/other
+  start_date                   DateTime? @db.Date // 服用開始日
+  end_date                     DateTime? @db.Date // 服用終了日（start_date + days で自動計算可能）
   created_at                   DateTime           @default(now())
   updated_at                   DateTime           @updatedAt
 

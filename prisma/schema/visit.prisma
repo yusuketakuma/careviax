@@ -107,6 +107,7 @@ model VisitRecord {
   cancellation_reason       String?
   postpone_reason           String?
   revisit_reason            String?
+  structured_soap            Json? // StructuredSoap (構造化SOAP、薬学的評価シート7項目含む)
   attachments               Json? // S3 URLs
   version                   Int            @default(1)
   created_at                DateTime       @default(now())

@@ -4,6 +4,9 @@ import { success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { createVisitRecordSchema } from '@/lib/validations/visit-record';
 import { prisma } from '@/lib/db/client';
+import { buildAllSoapTexts } from '@/lib/utils/soap-text-builder';
+import type { StructuredSoap } from '@/types/structured-soap';
+import type { Prisma } from '@prisma/client';
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const { searchParams } = new URL(req.url);
@@ -81,11 +84,17 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     patient_id,
     visit_date,
     next_visit_suggestion_date,
+    structured_soap,
     ...rest
   } = parsed.data;
 
+  // Auto-generate SOAP text from structured data
+  let soapTextOverrides = {};
+  if (structured_soap) {
+    soapTextOverrides = buildAllSoapTexts(structured_soap as StructuredSoap);
+  }
+
   const result = await withOrgContext(req.orgId, async (tx) => {
-    // Verify schedule belongs to this org
     const schedule = await tx.visitSchedule.findFirst({
       where: { id: schedule_id, org_id: req.orgId },
       select: { id: true, schedule_status: true, recurrence_rule: true },
@@ -94,7 +103,6 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       return null;
     }
 
-    // Create visit record
     const record = await tx.visitRecord.create({
       data: {
         org_id: req.orgId,
@@ -106,6 +114,8 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
           ? new Date(next_visit_suggestion_date)
           : undefined,
         ...rest,
+        ...soapTextOverrides,
+        structured_soap: structured_soap as Prisma.InputJsonValue ?? undefined,
       },
     });
 

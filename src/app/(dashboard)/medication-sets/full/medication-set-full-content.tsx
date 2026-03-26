@@ -1,29 +1,40 @@
 'use client';
 
-import { useState } from 'react';
-import { Package, Printer, ChevronDown } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
+import { Package, Printer, Loader2 } from 'lucide-react';
+import { useOrgId } from '@/lib/hooks/use-org-id';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 
 // --- Types ---
 
-type SetMethod = 'facility_calendar' | 'four_times_daily' | 'bedtime_only' | 'custom';
+type SetBatch = {
+  id: string;
+  plan_id: string;
+  line_id: string;
+  slot: string;
+  day_number: number;
+  quantity: number;
+  carry_type: string;
+  version: number;
+  line: {
+    id: string;
+    drug_name: string;
+    dose: string;
+    frequency: string;
+    unit: string | null;
+  };
+};
 
-type TimeSlot = 'morning' | 'noon' | 'evening' | 'bedtime';
+type TimeSlot = 'morning' | 'noon' | 'evening' | 'bedtime' | 'prn';
 
 type DrugEntry = {
   drugName: string;
   quantity: string;
-  isCold?: boolean;
   isNarcotic?: boolean;
+  isCold?: boolean;
 };
 
 type SlotCell = {
@@ -38,18 +49,14 @@ type PrnDrug = DrugEntry & {
 
 // --- Constants ---
 
-const SET_METHOD_OPTIONS: { value: SetMethod; label: string; description: string }[] = [
-  { value: 'facility_calendar', label: '施設カレンダー', description: '施設の服薬カレンダーに準拠' },
-  { value: 'four_times_daily', label: '1日4回', description: '朝・昼・夕・眠前の4回' },
-  { value: 'bedtime_only', label: '眠前のみ', description: '就寝前1回のみ' },
-  { value: 'custom', label: 'カスタム', description: '任意のスロットを設定' },
-];
+const SLOT_ORDER: TimeSlot[] = ['morning', 'noon', 'evening', 'bedtime', 'prn'];
 
 const SLOT_LABELS: Record<TimeSlot, string> = {
   morning: '朝',
   noon: '昼',
   evening: '夕',
   bedtime: '眠前',
+  prn: '頓用',
 };
 
 const SLOT_COLORS: Record<TimeSlot, string> = {
@@ -57,43 +64,66 @@ const SLOT_COLORS: Record<TimeSlot, string> = {
   noon: 'bg-blue-50 text-blue-800 border-blue-200',
   evening: 'bg-orange-50 text-orange-800 border-orange-200',
   bedtime: 'bg-purple-50 text-purple-800 border-purple-200',
+  prn: 'bg-gray-50 text-gray-700 border-gray-200',
 };
 
-const DAYS = [1, 2, 3, 4, 5, 6, 7];
+// --- Helpers ---
 
-// --- Sample data (placeholder) ---
+function batchesToSlotGrid(batches: SetBatch[]): {
+  grid: SlotCell[];
+  prn: PrnDrug[];
+  days: number[];
+  usedSlots: TimeSlot[];
+} {
+  const regularBatches = batches.filter((b) => b.slot !== 'prn');
+  const prnBatches = batches.filter((b) => b.slot === 'prn');
 
-const SAMPLE_GRID: SlotCell[] = [
-  { slot: 'morning', day: 1, drugs: [{ drugName: 'アムロジピン錠5mg', quantity: '1錠' }, { drugName: 'ロスバスタチン錠2.5mg', quantity: '1錠' }] },
-  { slot: 'noon', day: 1, drugs: [{ drugName: 'メトホルミン錠250mg', quantity: '1錠' }] },
-  { slot: 'evening', day: 1, drugs: [{ drugName: 'アムロジピン錠5mg', quantity: '1錠' }] },
-  { slot: 'bedtime', day: 1, drugs: [{ drugName: 'ゾルピデム酒石酸塩錠5mg', quantity: '0.5錠' }] },
-  { slot: 'morning', day: 2, drugs: [{ drugName: 'アムロジピン錠5mg', quantity: '1錠' }] },
-];
+  const daySet = new Set<number>();
+  for (const b of regularBatches) daySet.add(b.day_number);
+  const days = Array.from(daySet).sort((a, z) => a - z);
 
-const SAMPLE_PRN: PrnDrug[] = [
-  { drugName: '酸化マグネシウム錠330mg', quantity: '1-2錠', condition: '便秘時' },
-  { drugName: 'ロキソプロフェンNa錠60mg', quantity: '1錠', condition: '疼痛時（1日3回まで）', isNarcotic: false },
-  { drugName: '塩酸モルヒネ錠10mg', quantity: '1錠', condition: '突出痛時', isNarcotic: true },
-];
+  const slotCellMap = new Map<string, SlotCell>();
+  for (const b of regularBatches) {
+    const key = `${b.slot}-${b.day_number}`;
+    const drug: DrugEntry = {
+      drugName: b.line.drug_name,
+      quantity: `${b.quantity}${b.line.unit ?? ''}`,
+    };
+    if (slotCellMap.has(key)) {
+      slotCellMap.get(key)!.drugs.push(drug);
+    } else {
+      slotCellMap.set(key, {
+        slot: b.slot as TimeSlot,
+        day: b.day_number,
+        drugs: [drug],
+      });
+    }
+  }
 
-// --- Helper ---
+  const grid = Array.from(slotCellMap.values());
+
+  const usedSlotSet = new Set<TimeSlot>();
+  for (const c of grid) usedSlotSet.add(c.slot);
+  const usedSlots = SLOT_ORDER.filter((s) => usedSlotSet.has(s));
+
+  // PRN drugs — deduplicated by drug name
+  const prnMap = new Map<string, PrnDrug>();
+  for (const b of prnBatches) {
+    if (!prnMap.has(b.line.drug_name)) {
+      prnMap.set(b.line.drug_name, {
+        drugName: b.line.drug_name,
+        quantity: `${b.quantity}${b.line.unit ?? ''}`,
+        condition: b.line.frequency,
+      });
+    }
+  }
+  const prn = Array.from(prnMap.values());
+
+  return { grid, prn, days, usedSlots };
+}
 
 function getCell(grid: SlotCell[], slot: TimeSlot, day: number): DrugEntry[] {
   return grid.find((c) => c.slot === slot && c.day === day)?.drugs ?? [];
-}
-
-function slotsForMethod(method: SetMethod): TimeSlot[] {
-  switch (method) {
-    case 'four_times_daily':
-      return ['morning', 'noon', 'evening', 'bedtime'];
-    case 'bedtime_only':
-      return ['bedtime'];
-    case 'facility_calendar':
-    case 'custom':
-    default:
-      return ['morning', 'noon', 'evening', 'bedtime'];
-  }
 }
 
 // --- Components ---
@@ -117,31 +147,50 @@ function DrugBadge({ drug }: { drug: DrugEntry }) {
   );
 }
 
-function SlotGrid({ method, grid }: { method: SetMethod; grid: SlotCell[] }) {
-  const slots = slotsForMethod(method);
+function SlotGrid({
+  grid,
+  days,
+  usedSlots,
+}: {
+  grid: SlotCell[];
+  days: number[];
+  usedSlots: TimeSlot[];
+}) {
+  if (usedSlots.length === 0 || days.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">表示するデータがありません。</p>
+    );
+  }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full border-collapse text-sm" role="grid" aria-label="服薬スロットグリッド">
+    <div className="overflow-x-auto print:overflow-visible">
+      <table
+        className="min-w-full border-collapse text-sm print:text-xs"
+        role="grid"
+        aria-label="服薬スロットグリッド"
+      >
         <thead>
           <tr>
             <th className="border border-border bg-muted px-3 py-2 text-left text-xs font-medium text-muted-foreground">
               スロット
             </th>
-            {DAYS.map((d) => (
-              <th key={d} className="border border-border bg-muted px-3 py-2 text-center text-xs font-medium text-muted-foreground">
+            {days.map((d) => (
+              <th
+                key={d}
+                className="border border-border bg-muted px-3 py-2 text-center text-xs font-medium text-muted-foreground"
+              >
                 {d}日目
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {slots.map((slot) => (
+          {usedSlots.map((slot) => (
             <tr key={slot}>
               <td className={`border border-border px-3 py-2 font-medium text-xs ${SLOT_COLORS[slot]}`}>
                 {SLOT_LABELS[slot]}
               </td>
-              {DAYS.map((day) => {
+              {days.map((day) => {
                 const drugs = getCell(grid, slot, day);
                 return (
                   <td
@@ -172,7 +221,7 @@ function SlotGrid({ method, grid }: { method: SetMethod; grid: SlotCell[] }) {
 
 function PrnSection({ drugs }: { drugs: PrnDrug[] }) {
   return (
-    <Card>
+    <Card className="print:break-inside-avoid">
       <CardHeader>
         <CardTitle className="text-base">頓用薬</CardTitle>
       </CardHeader>
@@ -204,14 +253,20 @@ function CarryPackChecklist({ grid, prn }: { grid: SlotCell[]; prn: PrnDrug[] })
   const uniqueDrugs = Array.from(new Map(allDrugs.map((d) => [d.drugName, d])).values());
 
   return (
-    <Card>
+    <Card className="print:break-inside-avoid">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-base">
             <Package className="size-4" aria-hidden="true" />
             持参パック確認チェックリスト
           </CardTitle>
-          <Button size="sm" variant="outline" aria-label="印刷">
+          <Button
+            size="sm"
+            variant="outline"
+            aria-label="印刷"
+            onClick={() => window.print()}
+            className="print:hidden"
+          >
             <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
             印刷
           </Button>
@@ -230,7 +285,7 @@ function CarryPackChecklist({ grid, prn }: { grid: SlotCell[]; prn: PrnDrug[] })
                 <input
                   type="checkbox"
                   id={`carry-${i}`}
-                  className="h-4 w-4 rounded border-border"
+                  className="h-4 w-4 rounded border-border print:border-gray-400"
                   aria-label={`${drug.drugName} 確認`}
                 />
                 <label htmlFor={`carry-${i}`} className="flex items-center gap-2 text-sm cursor-pointer">
@@ -250,7 +305,7 @@ function CarryPackChecklist({ grid, prn }: { grid: SlotCell[]; prn: PrnDrug[] })
             ))}
           </ul>
         )}
-        <div className="mt-4 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
+        <div className="mt-4 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800 print:border-gray-300 print:bg-transparent print:text-gray-800">
           注意: 冷所保管薬は保冷バッグを使用してください。麻薬は薬局の鍵保管帳簿に記録してから持参してください。
         </div>
       </CardContent>
@@ -261,61 +316,85 @@ function CarryPackChecklist({ grid, prn }: { grid: SlotCell[]; prn: PrnDrug[] })
 // --- Main ---
 
 export function MedicationSetFullContent() {
-  const [method, setMethod] = useState<SetMethod>('four_times_daily');
+  const searchParams = useSearchParams();
+  const planId = searchParams.get('plan_id');
+  const orgId = useOrgId();
 
-  const selectedOption = SET_METHOD_OPTIONS.find((o) => o.value === method);
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['set-batches', planId],
+    queryFn: async () => {
+      if (!planId) return [];
+      const res = await fetch(`/api/set-batches?plan_id=${planId}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('セットバッチの取得に失敗しました');
+      const json = await res.json() as { data: SetBatch[] };
+      return json.data;
+    },
+    enabled: Boolean(planId),
+  });
+
+  if (!planId) {
+    return (
+      <div className="rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800">
+        URLパラメータ <code>plan_id</code> が指定されていません。
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden="true" />
+        <span className="ml-2 text-sm text-muted-foreground">読み込み中...</span>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        セットバッチの取得に失敗しました。ページを再読み込みしてください。
+      </div>
+    );
+  }
+
+  const batches = data ?? [];
+  const { grid, prn, days, usedSlots } = batchesToSlotGrid(batches);
 
   return (
-    <div className="space-y-6">
-      {/* Set method selector */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">セット方式</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="w-full sm:w-64">
-              <Select
-                value={method}
-                onValueChange={(v) => setMethod((v ?? 'four_times_daily') as SetMethod)}
-              >
-                <SelectTrigger aria-label="セット方式を選択">
-                  <SelectValue placeholder="方式を選択" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SET_METHOD_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {selectedOption && (
-              <p className="text-sm text-muted-foreground">{selectedOption.description}</p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+    <>
+      {/* Print styles */}
+      <style>{`
+        @media print {
+          nav, header, aside, [data-sidebar], .print\\:hidden { display: none !important; }
+          body { font-size: 12px; }
+          .print\\:break-inside-avoid { break-inside: avoid; }
+        }
+      `}</style>
 
-      {/* Slot grid */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            スロットグリッド
-            <ChevronDown className="size-4 text-muted-foreground" aria-hidden="true" />
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <SlotGrid method={method} grid={SAMPLE_GRID} />
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        {/* Plan meta */}
+        <p className="text-xs text-muted-foreground">
+          セットプラン ID: {planId} / バッチ件数: {batches.length}件
+        </p>
 
-      {/* PRN section */}
-      <PrnSection drugs={SAMPLE_PRN} />
+        {/* Slot grid */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">スロットグリッド</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SlotGrid grid={grid} days={days} usedSlots={usedSlots} />
+          </CardContent>
+        </Card>
 
-      {/* Carry pack checklist */}
-      <CarryPackChecklist grid={SAMPLE_GRID} prn={SAMPLE_PRN} />
-    </div>
+        {/* PRN section */}
+        <PrnSection drugs={prn} />
+
+        {/* Carry pack checklist */}
+        <CarryPackChecklist grid={grid} prn={prn} />
+      </div>
+    </>
   );
 }

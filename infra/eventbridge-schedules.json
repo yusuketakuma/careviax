@@ -1,0 +1,58 @@
+{
+  "description": "CareViaX Job Scheduler — Amazon EventBridge Schedules",
+  "region": "ap-northeast-1",
+  "schedules": [
+    {
+      "name": "careviax-daily-morning",
+      "description": "Daily morning jobs: medication deadline check, refill prescriptions, prescription expiry",
+      "scheduleExpression": "cron(0 21 * * ? *)",
+      "scheduleExpressionTimezone": "UTC",
+      "comment": "6:00 AM JST = 21:00 UTC (previous day)",
+      "target": {
+        "type": "HTTP",
+        "method": "POST",
+        "url": "${APP_URL}/api/jobs/daily",
+        "headers": {
+          "x-api-key": "${JOB_API_KEY}",
+          "Content-Type": "application/json"
+        }
+      },
+      "retryPolicy": {
+        "maximumRetryAttempts": 2,
+        "maximumEventAgeInSeconds": 3600
+      },
+      "state": "ENABLED"
+    },
+    {
+      "name": "careviax-evening",
+      "description": "Evening job: medication record reminder for pharmacists",
+      "scheduleExpression": "cron(0 9 * * ? *)",
+      "scheduleExpressionTimezone": "UTC",
+      "comment": "18:00 JST = 09:00 UTC",
+      "target": {
+        "type": "HTTP",
+        "method": "POST",
+        "url": "${APP_URL}/api/jobs/evening",
+        "headers": {
+          "x-api-key": "${JOB_API_KEY}",
+          "Content-Type": "application/json"
+        }
+      },
+      "retryPolicy": {
+        "maximumRetryAttempts": 2,
+        "maximumEventAgeInSeconds": 3600
+      },
+      "state": "ENABLED"
+    }
+  ],
+  "setup": {
+    "steps": [
+      "1. Create an EventBridge Scheduler schedule group: careviax-jobs",
+      "2. Set JOB_API_KEY in AWS Secrets Manager and reference in the schedule",
+      "3. Create IAM role with eventbridge-scheduler:CreateSchedule permissions",
+      "4. Deploy via AWS CDK or CLI:",
+      "   aws scheduler create-schedule --name careviax-daily-morning --schedule-expression 'cron(0 21 * * ? *)' --target '{...}' --flexible-time-window '{\"Mode\":\"OFF\"}'",
+      "5. Verify: aws scheduler get-schedule --name careviax-daily-morning"
+    ]
+  }
+}

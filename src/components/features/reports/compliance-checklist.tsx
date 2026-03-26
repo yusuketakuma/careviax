@@ -1,0 +1,180 @@
+'use client';
+
+import { CheckCircle2, AlertCircle } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { PhysicianReportContent, CareManagerReportContent } from '@/types/care-report-content';
+
+type CheckItem = {
+  key: string;
+  label: string;
+  passed: boolean;
+};
+
+function derivePhysicianChecks(content: PhysicianReportContent): CheckItem[] {
+  return [
+    {
+      key: 'prescriptions',
+      label: '処方内容が記載されている',
+      passed: content.prescriptions.length > 0,
+    },
+    {
+      key: 'medication_status',
+      label: '服薬状況が記載されている',
+      passed:
+        !!content.medication_management.compliance_summary?.trim() &&
+        content.medication_management.adherence_score > 0,
+    },
+    {
+      key: 'adverse_events',
+      label: '有害事象の確認が記載されている',
+      passed: content.adverse_events.has_events !== undefined,
+    },
+    {
+      key: 'functional_assessment',
+      label: '薬学的機能評価が記載されている',
+      passed: !!(
+        content.functional_assessment.sleep ||
+        content.functional_assessment.cognition ||
+        content.functional_assessment.diet_oral
+      ),
+    },
+    {
+      key: 'assessment',
+      label: '薬学的評価（assessment）が記載されている',
+      passed: !!content.assessment?.trim(),
+    },
+    {
+      key: 'plan',
+      label: '介入計画（plan）が記載されている',
+      passed: !!content.plan?.trim(),
+    },
+    {
+      key: 'physician_communication',
+      label: '処方医への連絡事項が記載されている',
+      passed: !!content.physician_communication?.trim(),
+    },
+  ];
+}
+
+function deriveCareManagerChecks(content: CareManagerReportContent): CheckItem[] {
+  return [
+    {
+      key: 'medication_summary',
+      label: '服薬管理状況が記載されている',
+      passed:
+        !!content.medication_management_summary.compliance_summary?.trim() &&
+        content.medication_management_summary.total_drugs > 0,
+    },
+    {
+      key: 'functional_impact',
+      label: '生活機能への影響が記載されている',
+      passed: !!(
+        content.functional_impact.sleep_impact ||
+        content.functional_impact.cognition_impact ||
+        content.functional_impact.diet_impact
+      ),
+    },
+    {
+      key: 'residual_status',
+      label: '残薬状況が記載されている',
+      passed: !!content.residual_status.summary?.trim(),
+    },
+    {
+      key: 'care_coordination',
+      label: '介護連携事項が記載されている',
+      passed: !!(
+        content.care_service_coordination.medication_assistance ||
+        content.care_service_coordination.unit_dose_packaging ||
+        content.care_service_coordination.calendar_recommendation ||
+        content.care_service_coordination.other_items?.trim()
+      ),
+    },
+    {
+      key: 'next_plan',
+      label: '今後の計画が記載されている',
+      passed:
+        !!content.next_visit_plan.date ||
+        content.next_visit_plan.followup_items.length > 0,
+    },
+  ];
+}
+
+type Props = {
+  reportType: string;
+  content: PhysicianReportContent | CareManagerReportContent;
+  warnings?: string[];
+};
+
+export function ComplianceChecklist({ reportType, content, warnings = [] }: Props) {
+  const checks =
+    reportType === 'physician_report'
+      ? derivePhysicianChecks(content as PhysicianReportContent)
+      : deriveCareManagerChecks(content as CareManagerReportContent);
+
+  const passedCount = checks.filter((c) => c.passed).length;
+  const totalCount = checks.length;
+  const allPassed = passedCount === totalCount && warnings.length === 0;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center justify-between text-sm font-semibold">
+          <span>算定要件チェック</span>
+          <span
+            className={`text-xs font-normal tabular-nums ${
+              allPassed ? 'text-green-600' : 'text-amber-600'
+            }`}
+          >
+            {passedCount}/{totalCount} 充足
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ul className="space-y-2">
+          {checks.map((item) => (
+            <li key={item.key} className="flex items-start gap-2 text-xs">
+              {item.passed ? (
+                <CheckCircle2
+                  className="mt-0.5 size-3.5 shrink-0 text-green-600"
+                  aria-label="充足"
+                />
+              ) : (
+                <AlertCircle
+                  className="mt-0.5 size-3.5 shrink-0 text-amber-500"
+                  aria-label="未入力/不足"
+                />
+              )}
+              <span className={item.passed ? 'text-foreground' : 'font-medium text-amber-700'}>
+                {item.label}
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        {/* API warnings from auto-generation */}
+        {warnings.length > 0 && (
+          <div className="mt-3 border-t border-border pt-3">
+            <p className="mb-2 text-xs font-medium text-amber-700">自動生成時の警告</p>
+            <ul className="space-y-1">
+              {warnings.map((w, i) => (
+                <li key={i} className="flex items-start gap-2 text-xs">
+                  <AlertCircle
+                    className="mt-0.5 size-3.5 shrink-0 text-amber-500"
+                    aria-hidden="true"
+                  />
+                  <span className="text-amber-700">{w}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {allPassed && (
+          <p className="mt-3 text-center text-xs font-medium text-green-600">
+            全項目充足 — 算定要件を満たしています
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

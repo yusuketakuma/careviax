@@ -14,6 +14,10 @@ export const prescriptionLineSchema = z.object({
   is_generic_name_prescription: z.boolean().default(false),
   packaging_instructions: z.string().optional(),
   notes: z.string().optional(),
+  route: z.enum(['internal', 'external', 'injection', 'other']).optional(),
+  dispensing_method: z.enum(['standard', 'unit_dose', 'crushed', 'other']).optional(),
+  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）').optional(),
+  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）').optional(),
 });
 
 export const createPrescriptionIntakeSchema = z.object({

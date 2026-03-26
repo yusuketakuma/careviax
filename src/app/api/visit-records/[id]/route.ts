@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { auth } from '@/lib/auth/config';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict, forbidden } from '@/lib/api/response';
@@ -77,7 +78,7 @@ export async function PATCH(
           ? { next_visit_suggestion_date: new Date(next_visit_suggestion_date) }
           : {}),
         version: { increment: 1 },
-      },
+      } as Prisma.VisitRecordUncheckedUpdateInput,
     });
   });
 

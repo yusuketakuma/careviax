@@ -1,7 +1,9 @@
 'use client';
 
+import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
@@ -14,7 +16,9 @@ import {
   FileDown,
   Pencil,
   Clock,
+  FileText,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -120,6 +124,51 @@ function SoapSection({
 
 export function VisitRecordDetail({ recordId }: { recordId: string }) {
   const orgId = useOrgId();
+  const router = useRouter();
+  const [showReportMenu, setShowReportMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close menu on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowReportMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const generateReportMutation = useMutation({
+    mutationFn: async (report_type?: string) => {
+      const body: Record<string, string> = { visit_record_id: recordId };
+      if (report_type) body.report_type = report_type;
+      const res = await fetch('/api/care-reports/generate-from-visit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.message ?? '報告書の生成に失敗しました');
+      }
+      return res.json() as Promise<{ data: Array<{ id: string }> }>;
+    },
+    onSuccess: (result) => {
+      toast.success('報告書を生成しました');
+      setShowReportMenu(false);
+      const firstId = result.data?.[0]?.id;
+      if (firstId) router.push(`/reports/${firstId}`);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+      setShowReportMenu(false);
+    },
+  });
+
+  function handleGenerateReport(report_type?: string) {
+    generateReportMutation.mutate(report_type);
+  }
 
   const { data: record, isLoading } = useQuery<VisitRecordFull>({
     queryKey: ['visit-record', recordId, orgId],
@@ -188,6 +237,51 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
             <FileDown className="size-3.5" aria-hidden="true" />
             PDF出力
           </Button>
+
+          {/* Report generation dropdown */}
+          <div className="relative" ref={menuRef}>
+            <Button
+              size="sm"
+              className="gap-1"
+              onClick={() => setShowReportMenu((v) => !v)}
+              disabled={generateReportMutation.isPending}
+              aria-haspopup="menu"
+              aria-expanded={showReportMenu}
+            >
+              <FileText className="size-3.5" aria-hidden="true" />
+              {generateReportMutation.isPending ? '生成中...' : '報告書生成'}
+            </Button>
+            {showReportMenu && (
+              <div
+                role="menu"
+                className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-border bg-popover shadow-md"
+              >
+                <button
+                  role="menuitem"
+                  className="w-full px-3 py-2.5 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-none"
+                  onClick={() => handleGenerateReport('physician_report')}
+                >
+                  医師向け報告書を作成
+                </button>
+                <button
+                  role="menuitem"
+                  className="w-full px-3 py-2.5 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-none"
+                  onClick={() => handleGenerateReport('care_manager_report')}
+                >
+                  ケアマネ向け情報提供書を作成
+                </button>
+                <div className="border-t border-border" />
+                <button
+                  role="menuitem"
+                  className="w-full px-3 py-2.5 text-left text-sm font-medium text-primary hover:bg-accent focus:bg-accent focus:outline-none"
+                  onClick={() => handleGenerateReport()}
+                >
+                  自動判定（保険種別に応じて生成）
+                </button>
+              </div>
+            )}
+          </div>
+
           <Link href={`/visits/${recordId}/edit`}>
             <Button variant="outline" size="sm" className="gap-1">
               <Pencil className="size-3.5" aria-hidden="true" />

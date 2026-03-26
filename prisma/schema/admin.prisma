@@ -19,6 +19,39 @@ enum SettingScope {
   user
 }
 
+model NotificationRule {
+  id          String   @id @default(cuid())
+  org_id      String
+  event_type  String
+  channel     String   // in_app/email
+  recipients  Json
+  enabled     Boolean  @default(true)
+  conditions  Json?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@index([org_id])
+  @@index([event_type])
+  @@index([enabled])
+}
+
+model BillingRule {
+  id          String   @id @default(cuid())
+  org_id      String
+  rule_type   String   // addition/reduction
+  name        String
+  code        String?
+  conditions  Json?
+  amount      Int      @default(0)
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@index([org_id])
+  @@index([rule_type])
+  @@index([is_active])
+}
+
 model BillingCandidate {
   id               String   @id @default(cuid())
   org_id           String

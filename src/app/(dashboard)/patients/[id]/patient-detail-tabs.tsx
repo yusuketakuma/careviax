@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loading } from '@/components/ui/loading';
 import { EmptyState } from '@/components/ui/empty-state';
 import { CasesTab } from './cases-tab';
+import { PrescriptionHistoryContent } from './prescriptions/prescription-history-content';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { FileQuestion } from 'lucide-react';
 
@@ -98,6 +99,7 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
         <TabsList variant="line" className="mb-4 w-full overflow-x-auto">
           <TabsTrigger value="basic">基本情報</TabsTrigger>
           <TabsTrigger value="cases">ケース</TabsTrigger>
+          <TabsTrigger value="prescriptions">処方履歴</TabsTrigger>
           <TabsTrigger value="medications">薬剤</TabsTrigger>
           <TabsTrigger value="visits">訪問</TabsTrigger>
           <TabsTrigger value="communications">連携</TabsTrigger>
@@ -150,6 +152,11 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
         {/* ケースタブ */}
         <TabsContent value="cases">
           <CasesTab patient={patient} orgId={orgId} />
+        </TabsContent>
+
+        {/* 処方履歴タブ */}
+        <TabsContent value="prescriptions">
+          <PrescriptionHistoryContent />
         </TabsContent>
 
         {/* プレースホルダータブ群 */}

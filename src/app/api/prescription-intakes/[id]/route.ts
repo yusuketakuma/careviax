@@ -34,6 +34,13 @@ export async function GET(
           overall_status: true,
           patient_id: true,
           case_id: true,
+          case_: {
+            select: {
+              patient: {
+                select: { id: true, name: true, name_kana: true, birth_date: true, gender: true },
+              },
+            },
+          },
         },
       },
     },

@@ -10,6 +10,8 @@ type Permission = {
   canAdmin: boolean;
 };
 
+export type PermissionKey = keyof Permission;
+
 // Role-based permission matrix aligned with the 8-step pharmacy workflow
 const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
   owner: {

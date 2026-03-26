@@ -1,0 +1,407 @@
+'use client';
+
+import { useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { format } from 'date-fns';
+import { ja } from 'date-fns/locale';
+import { ArrowLeft, Send, FileText, Clock, Pencil, Printer } from 'lucide-react';
+import Link from 'next/link';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Loading } from '@/components/ui/loading';
+import { useOrgId } from '@/lib/hooks/use-org-id';
+import { REPORT_TYPE_LABELS, REPORT_STATUS_CONFIG, CHANNEL_LABELS } from '@/lib/constants/status-labels';
+import { PhysicianReportView } from '@/components/features/reports/physician-report-view';
+import { CareManagerReportView } from '@/components/features/reports/care-manager-report-view';
+import { ReportEditForm } from '@/components/features/reports/report-edit-form';
+import { ComplianceChecklist } from '@/components/features/reports/compliance-checklist';
+import type { PhysicianReportContent, CareManagerReportContent } from '@/types/care-report-content';
+
+// --- Types ---
+
+type DeliveryRecord = {
+  id: string;
+  channel: string;
+  recipient_name: string;
+  recipient_contact: string;
+  status: string;
+  sent_at: string | null;
+  created_at: string;
+};
+
+type CareReport = {
+  id: string;
+  patient_id: string;
+  report_type: string;
+  status: string;
+  content: PhysicianReportContent | CareManagerReportContent;
+  pdf_url: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  delivery_records: DeliveryRecord[];
+};
+
+type SendFormData = {
+  channel: string;
+  recipient_name: string;
+  recipient_contact: string;
+};
+
+// --- Main ---
+
+export default function ReportDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+
+  const [sendDialogOpen, setSendDialogOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [sendForm, setSendForm] = useState<SendFormData>({
+    channel: 'email',
+    recipient_name: '',
+    recipient_contact: '',
+  });
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['care-report', id, orgId],
+    queryFn: async () => {
+      const res = await fetch(`/api/care-reports/${id}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('報告書の取得に失敗しました');
+      return res.json() as Promise<{ data: CareReport }>;
+    },
+    enabled: !!orgId && !!id,
+  });
+
+  const report = data?.data;
+
+  const sendMutation = useMutation({
+    mutationFn: async (formData: SendFormData) => {
+      const res = await fetch(`/api/care-reports/${id}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify(formData),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error((err as { message?: string } | null)?.message ?? '送付に失敗しました');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success('報告書を送付しました');
+      setSendDialogOpen(false);
+      setSendForm({ channel: 'email', recipient_name: '', recipient_contact: '' });
+      queryClient.invalidateQueries({ queryKey: ['care-report', id, orgId] });
+      queryClient.invalidateQueries({ queryKey: ['care-reports'] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  function handleSend() {
+    if (!sendForm.recipient_name.trim()) {
+      toast.error('送付先氏名は必須です');
+      return;
+    }
+    sendMutation.mutate(sendForm);
+  }
+
+  if (isLoading) {
+    return (
+      <div className="p-6">
+        <Loading />
+      </div>
+    );
+  }
+
+  if (!report) {
+    return (
+      <div className="p-6">
+        <p className="text-sm text-muted-foreground">報告書が見つかりません</p>
+      </div>
+    );
+  }
+
+  const statusCfg = REPORT_STATUS_CONFIG[report.status];
+  const isPhysician = report.report_type === 'physician_report';
+  const isCareManager = report.report_type === 'care_manager_report';
+  const hasContentView = isPhysician || isCareManager;
+
+  const warnings =
+    (report.content as { warnings?: string[] }).warnings ?? [];
+
+  return (
+    <div className="p-4 md:p-6">
+      {/* Header */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.back()}
+            aria-label="戻る"
+          >
+            <ArrowLeft className="size-4" />
+          </Button>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-foreground">
+              {REPORT_TYPE_LABELS[report.report_type] ?? report.report_type}
+            </h1>
+            <p className="text-xs text-muted-foreground">
+              作成日: {format(new Date(report.created_at), 'yyyy年M月d日', { locale: ja })}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {statusCfg && <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>}
+          {hasContentView && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditMode((v) => !v)}
+            >
+              <Pencil className="mr-1.5 size-3.5" aria-hidden="true" />
+              {editMode ? '表示に戻る' : '編集'}
+            </Button>
+          )}
+          <Link href={`/reports/${id}/print`}>
+            <Button variant="outline" size="sm">
+              <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
+              印刷
+            </Button>
+          </Link>
+          <Button size="sm" onClick={() => setSendDialogOpen(true)}>
+            <Send className="mr-1.5 size-3.5" aria-hidden="true" />
+            送付
+          </Button>
+        </div>
+      </div>
+
+      {/* Main + Sidebar layout */}
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+        {/* Main content area */}
+        <div className="min-w-0 flex-1 space-y-6">
+          {/* Report meta */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <FileText className="size-4" aria-hidden="true" />
+                報告書情報
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
+                <div className="space-y-1">
+                  <dt className="text-xs font-medium text-muted-foreground">患者ID</dt>
+                  <dd className="font-mono text-xs">{report.patient_id}</dd>
+                </div>
+                <div className="space-y-1">
+                  <dt className="text-xs font-medium text-muted-foreground">報告書タイプ</dt>
+                  <dd>{REPORT_TYPE_LABELS[report.report_type] ?? report.report_type}</dd>
+                </div>
+                <div className="space-y-1">
+                  <dt className="text-xs font-medium text-muted-foreground">ステータス</dt>
+                  <dd>
+                    {statusCfg ? (
+                      <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>
+                    ) : (
+                      report.status
+                    )}
+                  </dd>
+                </div>
+                <div className="space-y-1">
+                  <dt className="text-xs font-medium text-muted-foreground">作成日時</dt>
+                  <dd className="tabular-nums">
+                    {format(new Date(report.created_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
+                  </dd>
+                </div>
+                <div className="space-y-1">
+                  <dt className="text-xs font-medium text-muted-foreground">更新日時</dt>
+                  <dd className="tabular-nums">
+                    {format(new Date(report.updated_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
+                  </dd>
+                </div>
+              </dl>
+            </CardContent>
+          </Card>
+
+          {/* Report content view or edit form */}
+          {hasContentView && (
+            <>
+              {editMode ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">報告書を編集</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ReportEditForm
+                      reportId={id}
+                      reportType={report.report_type}
+                      content={report.content}
+                      onSaved={() => setEditMode(false)}
+                    />
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  {isPhysician && (
+                    <PhysicianReportView
+                      content={report.content as PhysicianReportContent}
+                    />
+                  )}
+                  {isCareManager && (
+                    <CareManagerReportView
+                      content={report.content as CareManagerReportContent}
+                    />
+                  )}
+                </>
+              )}
+            </>
+          )}
+
+          {/* Delivery history */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Clock className="size-4" aria-hidden="true" />
+                送付履歴
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {report.delivery_records.length === 0 ? (
+                <p className="text-sm text-muted-foreground">送付履歴がありません</p>
+              ) : (
+                <div className="space-y-3">
+                  {report.delivery_records.map((rec) => (
+                    <div
+                      key={rec.id}
+                      className="flex items-start justify-between rounded-md border border-border px-4 py-3 text-sm"
+                    >
+                      <div className="space-y-0.5">
+                        <p className="font-medium">{rec.recipient_name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {CHANNEL_LABELS[rec.channel] ?? rec.channel}
+                          {rec.recipient_contact ? ` — ${rec.recipient_contact}` : ''}
+                        </p>
+                      </div>
+                      <div className="text-right text-xs text-muted-foreground">
+                        {rec.sent_at
+                          ? format(new Date(rec.sent_at), 'yyyy/MM/dd HH:mm', { locale: ja })
+                          : '—'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Sidebar: compliance checklist (desktop = right column, mobile = below) */}
+        {hasContentView && (
+          <div className="w-full lg:w-72 lg:shrink-0">
+            <ComplianceChecklist
+              reportType={report.report_type}
+              content={report.content}
+              warnings={warnings}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Send dialog */}
+      <Dialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>報告書を送付</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="send-channel">送付チャネル</Label>
+              <Select
+                value={sendForm.channel}
+                onValueChange={(v) => setSendForm((prev) => ({ ...prev, channel: v ?? prev.channel }))}
+              >
+                <SelectTrigger id="send-channel">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(CHANNEL_LABELS).map(([key, label]) => (
+                    <SelectItem key={key} value={key}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="send-recipient-name">
+                送付先氏名 <span className="text-destructive" aria-hidden="true">*</span>
+              </Label>
+              <Input
+                id="send-recipient-name"
+                value={sendForm.recipient_name}
+                onChange={(e) =>
+                  setSendForm((prev) => ({ ...prev, recipient_name: e.target.value }))
+                }
+                placeholder="例: 山田 太郎 先生"
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="send-recipient-contact">送付先連絡先</Label>
+              <Input
+                id="send-recipient-contact"
+                value={sendForm.recipient_contact}
+                onChange={(e) =>
+                  setSendForm((prev) => ({ ...prev, recipient_contact: e.target.value }))
+                }
+                placeholder="メールアドレスまたはFAX番号"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setSendDialogOpen(false)}
+              disabled={sendMutation.isPending}
+            >
+              キャンセル
+            </Button>
+            <Button onClick={handleSend} disabled={sendMutation.isPending}>
+              <Send className="mr-1.5 size-3.5" aria-hidden="true" />
+              {sendMutation.isPending ? '送付中...' : '送付する'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

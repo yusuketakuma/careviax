@@ -60,3 +60,24 @@ export const updateMedicationIssueSchema = z.object({
 });
 
 export type UpdateMedicationIssueInput = z.infer<typeof updateMedicationIssueSchema>;
+
+// ────────────────────────────────────────────────────────────────────────────
+// MedicationCycle
+// ────────────────────────────────────────────────────────────────────────────
+
+export const createMedicationCycleSchema = z.object({
+  case_id: z.string().min(1, 'ケースIDは必須です'),
+  patient_id: z.string().min(1, '患者IDは必須です'),
+});
+
+export type CreateMedicationCycleInput = z.infer<typeof createMedicationCycleSchema>;
+
+// ────────────────────────────────────────────────────────────────────────────
+// WorkflowException
+// ────────────────────────────────────────────────────────────────────────────
+
+export const resolveWorkflowExceptionSchema = z.object({
+  status: z.enum(['resolved', 'dismissed']),
+});
+
+export type ResolveWorkflowExceptionInput = z.infer<typeof resolveWorkflowExceptionSchema>;
