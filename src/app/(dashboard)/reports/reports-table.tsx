@@ -61,12 +61,11 @@ export function ReportsTable() {
     enabled: !!orgId,
   });
 
-  const allReports = data?.data ?? [];
-
   const reports = useMemo(() => {
+    const allReports = data?.data ?? [];
     if (reportTypeFilter === ALL_VALUE) return allReports;
     return allReports.filter((r) => r.report_type === reportTypeFilter);
-  }, [allReports, reportTypeFilter]);
+  }, [data, reportTypeFilter]);
 
   const columns = useMemo<ColumnDef<CareReport>[]>(
     () => [

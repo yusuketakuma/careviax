@@ -1,24 +1,21 @@
 import { NextRequest } from 'next/server';
-import { auth } from '@/lib/auth/config';
+import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, forbidden } from '@/lib/api/response';
+import { success, validationError, notFound } from '@/lib/api/response';
+import { validateOrgReferences } from '@/lib/api/org-reference';
 import { updateCaseSchema } from '@/lib/validations/case';
 import { prisma } from '@/lib/db/client';
-
-async function getAuthContext(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return null;
-  const orgId = req.headers.get('x-org-id');
-  if (!orgId) return null;
-  return { userId: session.user.id, orgId };
-}
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const ctx = await getAuthContext(req);
-  if (!ctx) return forbidden('認証が必要です');
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: 'ケース更新の権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const ctx = authResult.ctx;
 
   const { id } = await params;
 
@@ -35,7 +32,25 @@ export async function PATCH(
   });
   if (!existing) return notFound('ケースが見つかりません');
 
+  const normalizedPrimaryPharmacistId =
+    parsed.data.primary_pharmacist_id === ''
+      ? null
+      : parsed.data.primary_pharmacist_id;
+  const normalizedBackupPharmacistId =
+    parsed.data.backup_pharmacist_id === ''
+      ? null
+      : parsed.data.backup_pharmacist_id;
   const { start_date, end_date, ...rest } = parsed.data;
+
+  const refResult = await validateOrgReferences(ctx.orgId, {
+    ...(normalizedPrimaryPharmacistId
+      ? { pharmacist_id: normalizedPrimaryPharmacistId }
+      : {}),
+    ...(normalizedBackupPharmacistId
+      ? { pharmacist_id: normalizedBackupPharmacistId }
+      : {}),
+  });
+  if (!refResult.ok) return refResult.response;
 
   const careCase = await withOrgContext(ctx.orgId, async (tx) => {
     return tx.careCase.update({
@@ -43,6 +58,12 @@ export async function PATCH(
       data: {
         ...(start_date ? { start_date: new Date(start_date) } : {}),
         ...(end_date ? { end_date: new Date(end_date) } : {}),
+        ...(normalizedPrimaryPharmacistId !== undefined
+          ? { primary_pharmacist_id: normalizedPrimaryPharmacistId }
+          : {}),
+        ...(normalizedBackupPharmacistId !== undefined
+          ? { backup_pharmacist_id: normalizedBackupPharmacistId }
+          : {}),
         ...rest,
       },
     });

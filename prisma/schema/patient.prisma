@@ -19,6 +19,13 @@ enum ConsentMethod {
   digital // デジタル
 }
 
+enum ManagementPlanStatus {
+  draft
+  approved
+  superseded
+  archived
+}
+
 enum ContactRelation {
   self
   spouse
@@ -30,6 +37,11 @@ enum ContactRelation {
   nurse
   facility_staff
   other
+}
+
+enum PatientConditionType {
+  disease
+  problem
 }
 
 model Patient {
@@ -51,7 +63,9 @@ model Patient {
   residences          Residence[]
   cases               CareCase[]
   contacts            ContactParty[]
+  conditions          PatientCondition[]
   consents            ConsentRecord[]
+  scheduling_preference PatientSchedulePreference?
   medication_profiles MedicationProfile[]
 
   @@index([org_id])
@@ -68,6 +82,10 @@ model Residence {
   unit_name   String? // 部屋番号等
   lat         Float?
   lng         Float?
+  geocode_status   String?
+  geocode_source   String?
+  geocode_accuracy String?
+  geocoded_at      DateTime?
   is_primary  Boolean  @default(true)
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
@@ -88,6 +106,8 @@ model CareCase {
   end_date              DateTime?
   end_reason            String?
   primary_pharmacist_id String?
+  backup_pharmacist_id  String?
+  required_visit_support Json?
   notes                 String?
   created_at            DateTime   @default(now())
   updated_at            DateTime   @updatedAt
@@ -95,8 +115,8 @@ model CareCase {
   care_team_links   CareTeamLink[]
   management_plans  ManagementPlan[]
   medication_cycles MedicationCycle[]
-  // visit_schedules は visit.prisma で定義予定
-  // visit_schedules  VisitSchedule[]
+  visit_schedules   VisitSchedule[]
+  visit_schedule_proposals VisitScheduleProposal[]
 
   @@index([org_id])
   @@index([patient_id])
@@ -114,6 +134,9 @@ model ContactParty {
   email             String?
   fax               String?
   organization_name String? // 所属組織名
+  department        String?
+  address           String?
+  is_primary        Boolean         @default(false)
   is_emergency_contact Boolean     @default(false)
   notes             String?
   created_at        DateTime        @default(now())
@@ -131,15 +154,37 @@ model CareTeamLink {
   role              String // physician/nurse/care_manager/pharmacist/other
   name              String
   organization_name String?
+  department        String?
   phone             String?
   email             String?
   fax               String?
+  address           String?
   is_primary        Boolean  @default(false)
+  notes             String?
   created_at        DateTime @default(now())
   updated_at        DateTime @updatedAt
 
   @@index([org_id])
   @@index([case_id])
+}
+
+model PatientCondition {
+  id             String               @id @default(cuid())
+  org_id         String
+  patient_id     String
+  patient        Patient              @relation(fields: [patient_id], references: [id])
+  condition_type PatientConditionType
+  name           String
+  is_primary     Boolean              @default(false)
+  is_active      Boolean              @default(true)
+  noted_at       DateTime?            @db.Date
+  notes          String?
+  created_at     DateTime             @default(now())
+  updated_at     DateTime             @updatedAt
+
+  @@index([org_id])
+  @@index([patient_id])
+  @@index([condition_type])
 }
 
 model ConsentRecord {
@@ -168,16 +213,49 @@ model ManagementPlan {
   org_id           String
   case_id          String
   case_            CareCase @relation(fields: [case_id], references: [id])
+  status           ManagementPlanStatus @default(draft)
   version          Int      @default(1)
+  title            String   @default("訪問薬剤管理指導計画書")
+  summary          String?
   content          Json // 計画書内容
   created_by       String // User ID
+  approved_by      String?
   approved_at      DateTime?
+  reviewed_by      String?
+  reviewed_at      DateTime?
+  effective_from   DateTime? @db.Date
   next_review_date DateTime?
+  source_plan_id   String?
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
 
   @@index([org_id])
   @@index([case_id])
+  @@index([status])
+  @@unique([case_id, version])
+}
+
+model PatientSchedulePreference {
+  id                      String   @id @default(cuid())
+  org_id                  String
+  patient_id              String   @unique
+  patient                 Patient  @relation(fields: [patient_id], references: [id])
+  preferred_weekdays      Json?
+  preferred_time_from     DateTime? @db.Time()
+  preferred_time_to       DateTime? @db.Time()
+  phone_contact_from      DateTime? @db.Time()
+  phone_contact_to        DateTime? @db.Time()
+  facility_time_from      DateTime? @db.Time()
+  facility_time_to        DateTime? @db.Time()
+  family_presence_required Boolean @default(false)
+  visit_buffer_minutes    Int?
+  preferred_contact_name  String?
+  preferred_contact_phone String?
+  notes                   String?
+  created_at              DateTime @default(now())
+  updated_at              DateTime @updatedAt
+
+  @@index([org_id])
 }
 
 // MedicationProfile は medication.prisma で定義予定（未実装時はコメントアウト）

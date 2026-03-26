@@ -9,7 +9,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const where = {
     org_id: req.orgId,
     ...(billingMonth ? { billing_month: new Date(billingMonth) } : {}),
-    status: 'confirmed',
+    status: { in: ['confirmed', 'exported'] },
   };
 
   const candidates = await withOrgContext(req.orgId, (tx) =>
@@ -56,4 +56,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       'Content-Disposition': `attachment; filename="${filename}"`,
     },
   });
+}, {
+  permission: 'canReport',
+  message: '請求候補のエクスポート権限がありません',
 });

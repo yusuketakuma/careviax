@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { Controller, useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -67,7 +67,7 @@ const lineResultSchema = z.object({
   actual_drug_name: z.string().min(1, '実薬剤名は必須です'),
   actual_drug_code: z.string().optional(),
   actual_quantity: z.coerce
-    .number({ invalid_type_error: '数量を入力してください' })
+    .number({ error: '数量を入力してください' })
     .positive('正の数を入力してください'),
   actual_unit: z.string().optional(),
   discrepancy_reason: z.string().optional(),
@@ -79,7 +79,8 @@ const formSchema = z.object({
   lines: z.array(lineResultSchema),
 });
 
-type FormValues = z.infer<typeof formSchema>;
+type FormInput = z.input<typeof formSchema>;
+type FormOutput = z.output<typeof formSchema>;
 
 const carryTypeOptions = [
   { value: 'carry', label: '持参' },
@@ -125,7 +126,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
 
   const intake = task?.cycle.prescription_intakes[0];
 
-  const form = useForm<FormValues>({
+  const form = useForm<FormInput, unknown, FormOutput>({
     resolver: zodResolver(formSchema),
     defaultValues: { lines: [] },
     values: intake
@@ -147,7 +148,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
   const { fields } = useFieldArray({ control: form.control, name: 'lines' });
 
   const mutation = useMutation({
-    mutationFn: async (values: FormValues) => {
+    mutationFn: async (values: FormOutput) => {
       const res = await fetch('/api/dispense-results', {
         method: 'POST',
         headers: {
@@ -297,28 +298,27 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                     >
                       持参区分 <span className="text-destructive">*</span>
                     </Label>
-                    <Select
-                      value={form.watch(`lines.${index}.carry_type`)}
-                      onValueChange={(v) => {
-                        if (v) {
-                          form.setValue(
-                            `lines.${index}.carry_type`,
-                            v as 'carry' | 'facility_deposit' | 'deferred'
-                          );
-                        }
-                      }}
-                    >
-                      <SelectTrigger id={`lines.${index}.carry_type`} className="h-8 text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {carryTypeOptions.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Controller
+                      control={form.control}
+                      name={`lines.${index}.carry_type`}
+                      render={({ field }) => (
+                        <Select
+                          value={field.value}
+                          onValueChange={field.onChange}
+                        >
+                          <SelectTrigger id={`lines.${index}.carry_type`} className="h-8 text-sm">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {carryTypeOptions.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
                   </div>
                 </div>
 

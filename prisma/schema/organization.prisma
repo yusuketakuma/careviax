@@ -8,6 +8,19 @@ enum MemberRole {
   external_viewer
 }
 
+enum HolidayType {
+  public_holiday
+  site_closure
+  org_event
+}
+
+enum UserAccountStatus {
+  invited
+  active
+  suspended
+  retired
+}
+
 model Organization {
   id               String  @id @default(cuid())
   name             String
@@ -43,30 +56,51 @@ model PharmacySite {
 
   memberships          Membership[]
   pharmacist_shifts    PharmacistShift[]
+  pharmacist_shift_templates PharmacistShiftTemplate[]
   facility_standards   FacilityStandardRegistration[]
   drug_stocks          PharmacyDrugStock[]
+  visit_schedules      VisitSchedule[]
+  visit_schedule_proposals VisitScheduleProposal[]
+  business_holidays    BusinessHoliday[]
 
   @@index([org_id])
 }
 
 model User {
-  id          String   @id @default(cuid())
-  org_id      String
-  cognito_sub String   @unique // Cognito User Pool の sub
-  email       String   @unique
-  name        String
-  name_kana   String?
-  phone       String?
-  is_active   Boolean  @default(true)
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  id                  String            @id @default(cuid())
+  org_id              String
+  cognito_sub         String            @unique // Cognito User Pool の sub
+  cognito_username    String?           @unique
+  email               String            @unique
+  name                String
+  name_kana           String?
+  phone               String?
+  default_site_id     String?
+  max_daily_visits    Int?
+  max_weekly_visits   Int?
+  max_travel_minutes  Int?
+  visit_specialties   Json?
+  coverage_area       Json?
+  can_accept_emergency Boolean          @default(true)
+  is_active           Boolean           @default(true)
+  account_status      UserAccountStatus @default(invited)
+  invited_at          DateTime?
+  invited_by          String?
+  last_invited_at     DateTime?
+  activated_at        DateTime?
+  deactivated_at      DateTime?
+  deactivation_reason String?
+  created_at          DateTime          @default(now())
+  updated_at          DateTime          @updatedAt
 
   memberships  Membership[]
   credentials  PharmacistCredential[]
   shifts       PharmacistShift[]
+  shift_templates PharmacistShiftTemplate[]
 
   @@index([org_id])
   @@index([cognito_sub])
+  @@index([account_status])
 }
 
 model Membership {
@@ -143,6 +177,41 @@ model PharmacistShift {
 
   @@unique([user_id, date])
   @@index([org_id])
+  @@index([site_id, date])
+}
+
+model PharmacistShiftTemplate {
+  id             String       @id @default(cuid())
+  org_id         String
+  site_id        String
+  site           PharmacySite @relation(fields: [site_id], references: [id])
+  user_id        String
+  user           User         @relation(fields: [user_id], references: [id])
+  weekday        Int
+  available      Boolean      @default(true)
+  available_from DateTime?    @db.Time()
+  available_to   DateTime?    @db.Time()
+  note           String?
+  created_at     DateTime     @default(now())
+  updated_at     DateTime     @updatedAt
+
+  @@unique([user_id, weekday])
+  @@index([org_id, weekday])
+}
+
+model BusinessHoliday {
+  id           String       @id @default(cuid())
+  org_id       String
+  site_id      String?
+  site         PharmacySite? @relation(fields: [site_id], references: [id])
+  date         DateTime     @db.Date
+  name         String
+  holiday_type HolidayType
+  is_closed    Boolean      @default(true)
+  created_at   DateTime     @default(now())
+  updated_at   DateTime     @updatedAt
+
+  @@index([org_id, date])
   @@index([site_id, date])
 }
 

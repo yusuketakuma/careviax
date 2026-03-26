@@ -72,8 +72,10 @@ import { GET as auditLogsGet } from '../audit-logs/route';
 import { GET as auditLogsExportGet } from '../audit-logs/export/route';
 import { GET as billingCandidatesGet } from '../billing-candidates/route';
 import { GET as billingCandidatesExportGet } from '../billing-candidates/export/route';
+import { GET as businessHolidaysGet } from '../business-holidays/route';
 import { GET as careReportsGet } from '../care-reports/route';
 import { GET as careReportGet } from '../care-reports/[id]/route';
+import { GET as casesGet } from '../cases/route';
 import { GET as communicationEventsGet } from '../communication-events/route';
 import { GET as communicationRequestsGet } from '../communication-requests/route';
 import { GET as conferenceNotesGet } from '../conference-notes/route';
@@ -87,8 +89,10 @@ import { GET as medicationIssuesGet } from '../medication-issues/route';
 import { GET as medicationProfilesGet } from '../medication-profiles/route';
 import { GET as patientsGet } from '../patients/route';
 import { GET as patientGet } from '../patients/[id]/route';
+import { GET as pharmacistsGet } from '../pharmacists/route';
 import { GET as pharmacistShiftsGet } from '../pharmacist-shifts/route';
 import { GET as pharmacistShiftsAvailableGet } from '../pharmacist-shifts/available/route';
+import { GET as pharmacySitesGet } from '../pharmacy-sites/route';
 import { GET as prescriptionIntakesGet } from '../prescription-intakes/route';
 import { GET as prescriptionIntakeGet } from '../prescription-intakes/[id]/route';
 import { GET as residualMedicationsGet } from '../residual-medications/route';
@@ -96,6 +100,7 @@ import { GET as setPlansGet } from '../set-plans/route';
 import { GET as tracingReportsGet } from '../tracing-reports/route';
 import { GET as visitRecordsGet } from '../visit-records/route';
 import { GET as visitRecordGet } from '../visit-records/[id]/route';
+import { GET as visitScheduleProposalsGet } from '../visit-schedule-proposals/route';
 import { GET as visitSchedulesGet } from '../visit-schedules/route';
 import { GET as visitScheduleGet } from '../visit-schedules/[id]/route';
 import { GET as visitSchedulesTodayGet } from '../visit-schedules/today/route';
@@ -131,12 +136,20 @@ const routes: Array<{ name: string; handler: Handler }> = [
     handler: () => billingCandidatesExportGet(createRequest('http://localhost/api/billing-candidates/export', { 'x-org-id': 'org_1' })),
   },
   {
+    name: 'business-holidays GET',
+    handler: () => businessHolidaysGet(createRequest('http://localhost/api/business-holidays', { 'x-org-id': 'org_1' })),
+  },
+  {
     name: 'care-reports GET',
     handler: () => careReportsGet(createRequest('http://localhost/api/care-reports', { 'x-org-id': 'org_1' })),
   },
   {
     name: 'care-reports/[id] GET',
     handler: () => careReportGet(createRequest('http://localhost/api/care-reports/report_1', { 'x-org-id': 'org_1' }), { params: Promise.resolve({ id: 'report_1' }) }),
+  },
+  {
+    name: 'cases GET',
+    handler: () => casesGet(createRequest('http://localhost/api/cases', { 'x-org-id': 'org_1' })),
   },
   {
     name: 'communication-events GET',
@@ -191,12 +204,20 @@ const routes: Array<{ name: string; handler: Handler }> = [
     handler: () => patientGet(createRequest('http://localhost/api/patients/patient_1', { 'x-org-id': 'org_1' }), { params: Promise.resolve({ id: 'patient_1' }) }),
   },
   {
+    name: 'pharmacists GET',
+    handler: () => pharmacistsGet(createRequest('http://localhost/api/pharmacists', { 'x-org-id': 'org_1' })),
+  },
+  {
     name: 'pharmacist-shifts GET',
     handler: () => pharmacistShiftsGet(createRequest('http://localhost/api/pharmacist-shifts', { 'x-org-id': 'org_1' })),
   },
   {
     name: 'pharmacist-shifts/available GET',
     handler: () => pharmacistShiftsAvailableGet(createRequest('http://localhost/api/pharmacist-shifts/available?date=2026-03-26', { 'x-org-id': 'org_1' })),
+  },
+  {
+    name: 'pharmacy-sites GET',
+    handler: () => pharmacySitesGet(createRequest('http://localhost/api/pharmacy-sites', { 'x-org-id': 'org_1' })),
   },
   {
     name: 'prescription-intakes GET',
@@ -225,6 +246,10 @@ const routes: Array<{ name: string; handler: Handler }> = [
   {
     name: 'visit-records/[id] GET',
     handler: () => visitRecordGet(createRequest('http://localhost/api/visit-records/record_1', { 'x-org-id': 'org_1' }), { params: Promise.resolve({ id: 'record_1' }) }),
+  },
+  {
+    name: 'visit-schedule-proposals GET',
+    handler: () => visitScheduleProposalsGet(createRequest('http://localhost/api/visit-schedule-proposals', { 'x-org-id': 'org_1' })),
   },
   {
     name: 'visit-schedules GET',

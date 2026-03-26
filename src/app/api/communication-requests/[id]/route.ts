@@ -1,4 +1,4 @@
-import { auth } from '@/lib/auth/config';
+import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, forbidden } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
@@ -32,21 +32,12 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return Response.json(
-      { code: 'AUTH_UNAUTHENTICATED', message: '認証が必要です' },
-      { status: 401 }
-    );
-  }
-
-  const orgId = req.headers.get('x-org-id');
-  if (!orgId) {
-    return Response.json(
-      { code: 'AUTH_NO_ORG', message: '組織IDが必要です' },
-      { status: 400 }
-    );
-  }
+  const authResult = await requireAuthContext(req, {
+    permission: 'canReport',
+    message: '連携依頼の更新権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const orgId = authResult.ctx.orgId;
 
   const { id } = await params;
 

@@ -99,6 +99,9 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   });
 
   return success({ data: sorted });
+}, {
+  permission: 'canAuditDispense',
+  message: '調剤鑑査の閲覧権限がありません',
 });
 
 const createDispenseAuditSchema = z.object({
@@ -178,4 +181,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   if (!auditResult) return notFound('指定された調剤タスクが見つかりません');
 
   return success(auditResult, 201);
+}, {
+  permission: 'canAuditDispense',
+  message: '調剤鑑査の作成権限がありません',
 });

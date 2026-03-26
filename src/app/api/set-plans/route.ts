@@ -14,7 +14,7 @@ const createSetPlanSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）'),
   set_method: z.enum(
     ['facility_calendar', 'four_times_daily', 'bedtime_only', 'custom'],
-    { errorMap: () => ({ message: 'セット方式を選択してください' }) }
+    { error: 'セット方式を選択してください' }
   ),
   notes: z.string().optional(),
 });
@@ -68,6 +68,9 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   });
 
   return success({ data: plans });
+}, {
+  permission: 'canSet',
+  message: 'セット計画の閲覧権限がありません',
 });
 
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
@@ -120,4 +123,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   });
 
   return success({ data: result }, 201);
+}, {
+  permission: 'canSet',
+  message: 'セット計画の作成権限がありません',
 });

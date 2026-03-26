@@ -36,71 +36,111 @@ model NotificationRule {
 }
 
 model BillingRule {
-  id          String   @id @default(cuid())
-  org_id      String
-  rule_type   String   // addition/reduction
-  name        String
-  code        String?
-  conditions  Json?
-  amount      Int      @default(0)
-  is_active   Boolean  @default(true)
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  id                    String      @id @default(cuid())
+  org_id                String
+  ssot_key              String?
+  billing_scope         String      @default("custom") // home_care_ssot/custom_override
+  rule_type             String      // base/addition/regional_addition/reduction
+  service_type          String      @default("generic") // medical_home_visit/care_home_management
+  payer_basis           PayerBasis?
+  provider_scope        String?     // pharmacy/hospital_clinic
+  selection_mode        String      @default("manual") // auto/manual
+  calculation_unit      String      @default("point") // point/unit/percent
+  display_order         Int         @default(0)
+  name                  String
+  code                  String?
+  conditions            Json?
+  evidence_requirements Json?
+  source_url            String?
+  source_note           String?
+  amount                Int         @default(0)
+  effective_from        DateTime?   @db.Date
+  effective_to          DateTime?   @db.Date
+  is_system             Boolean     @default(false)
+  is_active             Boolean     @default(true)
+  created_at            DateTime    @default(now())
+  updated_at            DateTime    @updatedAt
 
   @@index([org_id])
   @@index([rule_type])
+  @@index([billing_scope])
+  @@index([service_type])
   @@index([is_active])
+  @@unique([org_id, ssot_key])
 }
 
 model BillingCandidate {
-  id               String   @id @default(cuid())
-  org_id           String
-  patient_id       String
-  cycle_id         String?
-  billing_month    DateTime @db.Date // YYYY-MM-01
-  billing_code     String
-  billing_name     String
-  points           Int?
-  status           String   @default("candidate") // candidate/confirmed/excluded/exported
-  exclusion_reason String?
-  created_at       DateTime @default(now())
-  updated_at       DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  org_id              String
+  patient_id          String
+  cycle_id            String?
+  evidence_id         String?
+  rule_id             String?
+  dedupe_key          String?
+  billing_month       DateTime @db.Date // YYYY-MM-01
+  billing_code        String
+  billing_name        String
+  points              Int?
+  quantity            Int      @default(1)
+  calculation_breakdown Json?
+  source_snapshot     Json?
+  status              String   @default("candidate") // candidate/confirmed/excluded/exported
+  exclusion_reason    String?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
 
   @@index([org_id])
   @@index([billing_month])
   @@index([status])
+  @@unique([org_id, dedupe_key])
 }
 
 model BillingEvidence {
-  id                        String     @id @default(cuid())
-  org_id                    String
-  visit_record_id           String
-  payer_basis               PayerBasis
-  claimable                 Boolean    @default(false)
-  exclusion_reason          String?
-  order_ref                 String?
-  consent_ref               String?
-  management_plan_ref       String?
-  report_delivery_ref       String?
-  visit_record_ref          String?
-  monthly_count_snapshot    Int?
+  id                         String     @id @default(cuid())
+  org_id                     String
+  visit_record_id            String
+  patient_id                 String?
+  cycle_id                   String?
+  billing_month              DateTime?  @db.Date
+  payer_basis                PayerBasis
+  billing_service_type       String?    // medical_home_visit/care_home_management
+  provider_scope             String?    // pharmacy/hospital_clinic
+  claimable                  Boolean    @default(false)
+  exclusion_reason           String?
+  order_ref                  String?
+  consent_ref                String?
+  management_plan_ref        String?
+  report_delivery_ref        String?
+  visit_record_ref           String?
+  building_patient_count     Int?
+  monthly_count_snapshot     Int?
+  weekly_count_snapshot      Int?
+  applied_rule_keys          Json?
+  recommended_rule_keys      Json?
+  calculation_context        Json?
   same_month_exclusion_flags Json?
-  validation_notes          String?
-  created_at                DateTime   @default(now())
-  updated_at                DateTime   @updatedAt
+  validation_notes           String?
+  created_at                 DateTime   @default(now())
+  updated_at                 DateTime   @updatedAt
 
   @@index([org_id])
   @@index([visit_record_id])
+  @@index([billing_month])
+  @@index([cycle_id])
+  @@unique([org_id, visit_record_id])
 }
 
 model Notification {
   id         String           @id @default(cuid())
   org_id     String
   user_id    String
+  event_type String?
   type       NotificationType
   title      String
   message    String
   link       String?
+  metadata   Json?
+  dedupe_key String?
   is_read    Boolean          @default(false)
   read_at    DateTime?
   created_at DateTime         @default(now())
@@ -109,6 +149,8 @@ model Notification {
   @@index([org_id])
   @@index([user_id])
   @@index([is_read])
+  @@index([event_type])
+  @@unique([org_id, user_id, dedupe_key])
 }
 
 model AuditLog {
@@ -133,10 +175,13 @@ model IntegrationJob {
   id          String    @id @default(cuid())
   org_id      String?
   job_type    String
+  dedupe_key  String?
   status      String    @default("pending") // pending/running/completed/failed
   input       Json?
   output      Json?
   error_log   String?
+  run_at      DateTime?
+  locked_at   DateTime?
   started_at  DateTime?
   completed_at DateTime?
   retry_count Int       @default(0)
@@ -146,6 +191,8 @@ model IntegrationJob {
 
   @@index([job_type])
   @@index([status])
+  @@index([run_at])
+  @@unique([job_type, org_id, dedupe_key])
 }
 
 model Template {

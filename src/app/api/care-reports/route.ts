@@ -17,7 +17,7 @@ const createCareReportSchema = z.object({
     'family_share',
     'internal_record',
   ]),
-  content: z.record(z.unknown()).default({}).transform((v) => v as import('@prisma/client').Prisma.InputJsonValue),
+  content: z.record(z.string(), z.unknown()).default({}).transform((v) => v as import('@prisma/client').Prisma.InputJsonValue),
   template_id: z.string().optional(),
 });
 
@@ -81,6 +81,9 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
   return success({ data, hasMore, nextCursor });
+}, {
+  permission: 'canReport',
+  message: '報告書の閲覧権限がありません',
 });
 
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
@@ -103,4 +106,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   });
 
   return success({ data: report }, 201);
+}, {
+  permission: 'canReport',
+  message: '報告書の作成権限がありません',
 });

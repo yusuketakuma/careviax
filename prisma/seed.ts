@@ -1,6 +1,14 @@
+import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error('DATABASE_URL is required to run prisma seed');
+}
+
+const adapter = new PrismaPg({ connectionString });
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
   // 組織
@@ -27,9 +35,12 @@ async function main() {
     data: {
       org_id: org.id,
       cognito_sub: 'demo-cognito-sub-001',
+      cognito_username: 'demo@careviax.example.com',
       email: 'demo@careviax.example.com',
       name: '山田 太郎',
       name_kana: 'ヤマダ タロウ',
+      account_status: 'active',
+      activated_at: new Date(),
     },
   });
 

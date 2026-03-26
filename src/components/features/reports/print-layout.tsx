@@ -63,7 +63,6 @@ export function PrintLayout({ pharmacyName, children }: PrintLayoutProps) {
   return (
     <div className="print-layout">
       {/* Inject print styles */}
-      {/* eslint-disable-next-line react/no-danger */}
       <style dangerouslySetInnerHTML={{ __html: PRINT_STYLES }} />
 
       {/* Print-only header */}

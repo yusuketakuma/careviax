@@ -27,11 +27,19 @@ export const scheduleStatusValues = [
 
 export type ScheduleStatus = (typeof scheduleStatusValues)[number];
 
+export const visitPriorityValues = [
+  'normal',
+  'urgent',
+  'emergency',
+] as const;
+
+export type VisitPriority = (typeof visitPriorityValues)[number];
+
 export const createVisitScheduleSchema = z.object({
   case_id: z.string().min(1, 'ケースIDは必須です'),
-  visit_type: z.enum(visitTypeValues, {
-    errorMap: () => ({ message: '訪問タイプを選択してください' }),
-  }),
+  site_id: z.string().optional(),
+  visit_type: z.enum(visitTypeValues, { error: '訪問タイプを選択してください' }),
+  priority: z.enum(visitPriorityValues).optional(),
   scheduled_date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）'),

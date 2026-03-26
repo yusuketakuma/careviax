@@ -2,22 +2,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
-const { authMock, getMembershipMock } = vi.hoisted(() => ({
+const { authMock, membershipFindFirstMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
-  getMembershipMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
 }));
 
 vi.mock('../config', () => ({
   auth: authMock,
 }));
 
-vi.mock('../context', async () => {
-  const actual = await vi.importActual<typeof import('../context')>('../context');
-  return {
-    ...actual,
-    getMembership: getMembershipMock,
-  };
-});
+vi.mock('@/lib/db/client', () => ({
+  prisma: {
+    membership: {
+      findFirst: membershipFindFirstMock,
+    },
+  },
+}));
 
 import { withAuth } from '../middleware';
 
@@ -40,6 +40,7 @@ describe('withAuth', () => {
 
     const response = await handler(createRequest('org_1'));
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(401);
   });
 
@@ -49,22 +50,24 @@ describe('withAuth', () => {
 
     const response = await handler(createRequest());
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
   });
 
   it('returns 403 when membership is missing', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    getMembershipMock.mockResolvedValue(null);
+    membershipFindFirstMock.mockResolvedValue(null);
     const handler = withAuth(async () => NextResponse.json({ ok: true }));
 
     const response = await handler(createRequest('org_1'));
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
   });
 
   it('returns 403 when role lacks permission', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    getMembershipMock.mockResolvedValue({ role: 'driver' });
+    membershipFindFirstMock.mockResolvedValue({ role: 'driver' });
     const handler = withAuth(async () => NextResponse.json({ ok: true }), {
       permission: 'canVisit',
       message: '権限がありません',
@@ -72,12 +75,13 @@ describe('withAuth', () => {
 
     const response = await handler(createRequest('org_1'));
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
   });
 
   it('passes authenticated request to handler when permission check succeeds', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    getMembershipMock.mockResolvedValue({ role: 'admin' });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
     const handler = withAuth(
       async (req) =>
         NextResponse.json({
@@ -92,6 +96,7 @@ describe('withAuth', () => {
 
     const response = await handler(createRequest('org_1'));
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       userId: 'user_1',

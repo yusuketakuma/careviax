@@ -15,7 +15,7 @@ const updateRuleSchema = z.object({
     })
     .optional(),
   enabled: z.boolean().optional(),
-  conditions: z.record(z.unknown()).optional(),
+  conditions: z.record(z.string(), z.unknown()).optional(),
 });
 
 export async function GET(

@@ -1,21 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withAuth, AuthenticatedRequest } from '@/lib/auth/middleware';
 import { prisma } from '@/lib/db';
-import { forbidden, validationError } from '@/lib/api/response';
+import { validationError } from '@/lib/api/response';
 
 const querySchema = z.object({
   format: z.enum(['csv', 'json']).default('csv'),
   from: z.string().datetime({ offset: true }).optional(),
   to: z.string().datetime({ offset: true }).optional(),
 });
-
-async function getMembership(userId: string, orgId: string) {
-  return prisma.membership.findFirst({
-    where: { user_id: userId, org_id: orgId, is_active: true },
-    select: { role: true },
-  });
-}
 
 function toCsvRow(values: unknown[]): string {
   return values
@@ -27,11 +20,6 @@ function toCsvRow(values: unknown[]): string {
 }
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
-  const membership = await getMembership(req.userId, req.orgId);
-  if (!membership || !['owner', 'admin'].includes(membership.role)) {
-    return forbidden('監査ログのエクスポートには管理者権限が必要です') as NextResponse;
-  }
-
   const searchParams = req.nextUrl.searchParams;
   const parsed = querySchema.safeParse({
     format: searchParams.get('format') ?? undefined,
@@ -111,4 +99,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       'Content-Disposition': `attachment; filename="audit-logs-${Date.now()}.csv"`,
     },
   });
+}, {
+  permission: 'canAdmin',
+  message: '監査ログのエクスポートには管理者権限が必要です',
 });

@@ -9,7 +9,7 @@ const createTracingReportSchema = z.object({
   patient_id: z.string().min(1, '患者IDは必須です'),
   case_id: z.string().optional(),
   issue_id: z.string().optional(),
-  content: z.record(z.unknown()).default({}),
+  content: z.record(z.string(), z.unknown()).default({}),
   sent_to_physician: z.string().optional(),
 });
 
@@ -61,6 +61,9 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
   return success({ data, hasMore, nextCursor });
+}, {
+  permission: 'canReport',
+  message: 'トレーシングレポートの閲覧権限がありません',
 });
 
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
@@ -87,4 +90,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   });
 
   return success({ data: report }, 201);
+}, {
+  permission: 'canReport',
+  message: 'トレーシングレポートの作成権限がありません',
 });

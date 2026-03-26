@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Copy, Link2, Clock, ShieldAlert, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -60,29 +59,34 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
 
   const generateMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/patients/${patientId}/external-access-grants`, {
+      const res = await fetch('/api/external-access', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
         body: JSON.stringify({
+          patient_id: patientId,
           granted_to_name: grantedToName,
           granted_to_contact: grantedToContact || null,
-          scope: Array.from(selectedScope),
-          expires_in_hours: parseInt(expiryHours, 10),
+          scope: Object.fromEntries(
+            SCOPE_ITEMS.map((item) => [item.key, selectedScope.has(item.key)])
+          ),
+          expires_hours: parseInt(expiryHours, 10),
         }),
       });
-      if (res.status === 404) {
-        // API not yet implemented: generate a placeholder
-        const expiresAt = new Date(Date.now() + parseInt(expiryHours, 10) * 60 * 60 * 1000);
-        return {
-          data: {
-            shareUrl: `${window.location.origin}/shared/${patientId}?token=SAMPLE_TOKEN`,
-            otp: Math.floor(100000 + Math.random() * 900000).toString(),
-            expiresAt: expiresAt.toISOString(),
-          },
-        };
-      }
       if (!res.ok) throw new Error('共有リンクの生成に失敗しました');
-      return res.json() as Promise<{ data: GeneratedGrant }>;
+      const payload = (await res.json()) as {
+        data: {
+          token: string;
+          otp: string;
+          expires_at: string;
+        };
+      };
+      return {
+        data: {
+          shareUrl: `${window.location.origin}/shared/${payload.data.token}`,
+          otp: payload.data.otp,
+          expiresAt: payload.data.expires_at,
+        },
+      } satisfies { data: GeneratedGrant };
     },
     onSuccess: (result) => {
       setGenerated(result.data);

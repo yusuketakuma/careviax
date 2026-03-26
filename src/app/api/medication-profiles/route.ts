@@ -48,6 +48,9 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
   return success({ data, hasMore, nextCursor });
+}, {
+  permission: 'canVisit',
+  message: '薬剤プロファイルの閲覧権限がありません',
 });
 
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
@@ -74,4 +77,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   });
 
   return success({ data: profile }, 201);
+}, {
+  permission: 'canVisit',
+  message: '薬剤プロファイルの作成権限がありません',
 });

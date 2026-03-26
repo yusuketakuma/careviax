@@ -1,5 +1,5 @@
-import { type ZodType, type ZodTypeDef } from 'zod';
-import { type NextResponse, NextResponse as NR } from 'next/server';
+import { type ZodType } from 'zod';
+import { type NextResponse } from 'next/server';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { validationError } from '@/lib/api/response';
 import {
@@ -7,8 +7,7 @@ import {
   type OrgReferenceData,
   type OrgReferenceInput,
 } from '@/lib/api/org-reference';
-import { type PermissionKey, hasPermission } from '@/lib/auth/permissions';
-import { prisma } from '@/lib/db/client';
+import { type PermissionKey } from '@/lib/auth/permissions';
 
 type ReferenceSelectors<TBody> = {
   [K in keyof OrgReferenceInput]?: (body: TBody) => OrgReferenceInput[K];
@@ -17,7 +16,7 @@ type ReferenceSelectors<TBody> = {
 type WithValidatedBodyOptions<TBody> = {
   permission: PermissionKey;
   message: string;
-  bodySchema: ZodType<TBody, ZodTypeDef, unknown>;
+  bodySchema: ZodType<TBody>;
   references?: ReferenceSelectors<TBody>;
 };
 
@@ -47,20 +46,6 @@ export function withValidatedBody<TBody>(
   ) => Promise<NextResponse>
 ) {
   return withAuth(async (req: AuthenticatedRequest) => {
-    // Permission check via membership role
-    if (options.permission) {
-      const membership = await prisma.membership.findFirst({
-        where: { user_id: req.userId, org_id: req.orgId, is_active: true },
-        select: { role: true },
-      });
-      if (!membership || !hasPermission(membership.role, options.permission)) {
-        return NR.json(
-          { code: 'AUTH_FORBIDDEN', message: options.message ?? '権限がありません' },
-          { status: 403 }
-        );
-      }
-    }
-
     const body = await req.json().catch(() => null);
     if (!body) return validationError('リクエストボディが不正です');
 
@@ -74,7 +59,7 @@ export function withValidatedBody<TBody>(
       const resolvedReferences = Object.fromEntries(
         Object.entries(options.references).map(([key, resolver]) => [
           key,
-          resolver(parsed.data),
+          resolver(parsed.data as TBody),
         ])
       ) as OrgReferenceInput;
 
@@ -84,8 +69,11 @@ export function withValidatedBody<TBody>(
     }
 
     return handler(req, {
-      body: parsed.data,
+      body: parsed.data as TBody,
       references,
     });
+  }, {
+    permission: options.permission,
+    message: options.message,
   });
 }

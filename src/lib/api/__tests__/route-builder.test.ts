@@ -80,6 +80,7 @@ describe('withValidatedBody', () => {
       createRequest({ patient_id: 'patient_1', note: 'x' }, { 'x-org-id': 'org_1' })
     );
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(401);
   });
 
@@ -91,6 +92,7 @@ describe('withValidatedBody', () => {
       createRequest({ patient_id: 'patient_1', note: 'x' }, { 'x-org-id': 'org_1' })
     );
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
   });
 
@@ -102,6 +104,7 @@ describe('withValidatedBody', () => {
       createRequest({ patient_id: '', note: '' }, { 'x-org-id': 'org_1' })
     );
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
   });
 
@@ -114,6 +117,7 @@ describe('withValidatedBody', () => {
       createRequest({ patient_id: 'patient_1', note: 'x' }, { 'x-org-id': 'org_1' })
     );
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
   });
 
@@ -125,8 +129,9 @@ describe('withValidatedBody', () => {
       createRequest({ patient_id: 'patient_1', note: 'x' }, { 'x-org-id': 'org_1' })
     );
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json() as Promise<Record<string, unknown>>).resolves.toEqual({
       patientId: 'patient_1',
       note: 'x',
       resolvedPatientId: 'patient_1',

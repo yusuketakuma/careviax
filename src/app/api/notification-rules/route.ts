@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, forbidden } from '@/lib/api/response';
+import { success, validationError } from '@/lib/api/response';
 
 const createRuleSchema = z.object({
   event_type: z.string().min(1),
@@ -13,7 +13,7 @@ const createRuleSchema = z.object({
     user_ids: z.array(z.string()).optional(),
   }),
   enabled: z.boolean().default(true),
-  conditions: z.record(z.unknown()).optional(),
+  conditions: z.record(z.string(), z.unknown()).optional(),
 });
 
 export async function GET(req: NextRequest) {

@@ -22,7 +22,7 @@ export default function SchedulesPage() {
           </p>
         </div>
         <Link
-          href="/schedules/new"
+          href="/schedules#planner"
           className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <CalendarPlus className="size-4" aria-hidden="true" />

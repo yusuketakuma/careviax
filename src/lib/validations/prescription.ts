@@ -23,7 +23,7 @@ export const prescriptionLineSchema = z.object({
 export const createPrescriptionIntakeSchema = z.object({
   cycle_id: z.string().min(1, 'サイクルIDは必須です'),
   source_type: z.enum(['paper', 'fax', 'e_prescription', 'facility_batch', 'refill'], {
-    errorMap: () => ({ message: 'ソースタイプを選択してください' }),
+    error: 'ソースタイプを選択してください',
   }),
   prescribed_date: z
     .string()

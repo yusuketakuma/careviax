@@ -8,6 +8,14 @@ const {
   checkRefillPrescriptionsMock,
   checkPrescriptionExpiryMock,
   checkUnrecordedVisitsMock,
+  runDailyOperationsMock,
+  runEveningOperationsMock,
+  generateVisitDemandsMock,
+  checkManagementPlanReviewsMock,
+  checkCallbackFollowupsMock,
+  checkResidenceGeocodeQualityMock,
+  checkPreparationBacklogMock,
+  generateBillingEvidenceDailyMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -15,6 +23,14 @@ const {
   checkRefillPrescriptionsMock: vi.fn(),
   checkPrescriptionExpiryMock: vi.fn(),
   checkUnrecordedVisitsMock: vi.fn(),
+  runDailyOperationsMock: vi.fn(),
+  runEveningOperationsMock: vi.fn(),
+  generateVisitDemandsMock: vi.fn(),
+  checkManagementPlanReviewsMock: vi.fn(),
+  checkCallbackFollowupsMock: vi.fn(),
+  checkResidenceGeocodeQualityMock: vi.fn(),
+  checkPreparationBacklogMock: vi.fn(),
+  generateBillingEvidenceDailyMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -30,10 +46,18 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 vi.mock('@/server/jobs', () => ({
+  runDailyOperations: runDailyOperationsMock,
+  runEveningOperations: runEveningOperationsMock,
   checkMedicationDeadlines: checkMedicationDeadlinesMock,
   checkRefillPrescriptions: checkRefillPrescriptionsMock,
   checkPrescriptionExpiry: checkPrescriptionExpiryMock,
   checkUnrecordedVisits: checkUnrecordedVisitsMock,
+  generateVisitDemands: generateVisitDemandsMock,
+  checkManagementPlanReviews: checkManagementPlanReviewsMock,
+  checkCallbackFollowups: checkCallbackFollowupsMock,
+  checkResidenceGeocodeQuality: checkResidenceGeocodeQualityMock,
+  checkPreparationBacklog: checkPreparationBacklogMock,
+  generateBillingEvidenceDaily: generateBillingEvidenceDailyMock,
 }));
 
 import { POST } from './route';
@@ -56,6 +80,8 @@ describe('/api/jobs/[jobType] POST', () => {
     checkRefillPrescriptionsMock.mockResolvedValue({ processedCount: 0 });
     checkPrescriptionExpiryMock.mockResolvedValue({ processedCount: 0 });
     checkUnrecordedVisitsMock.mockResolvedValue({ processedCount: 0 });
+    runDailyOperationsMock.mockResolvedValue({ processedCount: 3 });
+    runEveningOperationsMock.mockResolvedValue({ processedCount: 0 });
   });
 
   afterAll(() => {

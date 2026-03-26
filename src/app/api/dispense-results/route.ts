@@ -1,7 +1,6 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
-import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
 
 const dispenseResultLineSchema = z.object({
@@ -117,4 +116,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   if (!result) return notFound('指定された調剤タスクが見つかりません');
 
   return success(result, 201);
+}, {
+  permission: 'canDispense',
+  message: '調剤結果の登録権限がありません',
 });

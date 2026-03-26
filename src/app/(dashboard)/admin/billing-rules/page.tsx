@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Pencil, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { type ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '@/components/ui/data-table';
@@ -41,18 +41,41 @@ import {
 type BillingRule = {
   id: string;
   org_id: string;
-  rule_type: 'addition' | 'reduction';
+  billing_scope: string;
+  rule_type: 'base' | 'addition' | 'regional_addition' | 'reduction';
+  service_type: string;
+  payer_basis: string | null;
+  provider_scope: string | null;
+  selection_mode: string;
+  calculation_unit: string;
   name: string;
   code: string | null;
   conditions: Record<string, unknown>;
+  evidence_requirements: Record<string, unknown>;
   amount: number | null;
+  source_url: string | null;
+  source_note: string | null;
+  is_system: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;
 };
 
+type BillingRulesResponse = {
+  data: BillingRule[];
+  source: {
+    source_of_truth: string;
+    sync_direction: string | null;
+    recovery_procedure: string | null;
+  } | null;
+  summary: {
+    ssot_rule_count: number;
+    custom_rule_count: number;
+  };
+};
+
 type RuleFormData = {
-  rule_type: 'addition' | 'reduction';
+  rule_type: 'addition' | 'regional_addition' | 'reduction';
   name: string;
   code: string;
   conditions: string;
@@ -71,9 +94,22 @@ const DEFAULT_FORM: RuleFormData = {
 
 // --- API helpers ---
 
-async function fetchBillingRules(): Promise<{ data: BillingRule[] }> {
+async function fetchBillingRules(): Promise<BillingRulesResponse> {
   const res = await fetch('/api/billing-rules');
   if (!res.ok) throw new Error('Failed to fetch billing rules');
+  return res.json();
+}
+
+async function syncBillingSsot(): Promise<{ message: string }> {
+  const res = await fetch('/api/billing-rules', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'seed_home_care_ssot' }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ?? 'Failed to sync billing SSOT');
+  }
   return res.json();
 }
 
@@ -132,8 +168,15 @@ function formDataToPayload(form: RuleFormData) {
 }
 
 function ruleToFormData(rule: BillingRule): RuleFormData {
+  const editableRuleType: RuleFormData['rule_type'] =
+    rule.rule_type === 'reduction'
+      ? 'reduction'
+      : rule.rule_type === 'regional_addition'
+        ? 'regional_addition'
+        : 'addition';
+
   return {
-    rule_type: rule.rule_type,
+    rule_type: editableRuleType,
     name: rule.name,
     code: rule.code ?? '',
     conditions: JSON.stringify(rule.conditions, null, 2),
@@ -204,6 +247,7 @@ function RuleFormDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="addition">加算</SelectItem>
+                <SelectItem value="regional_addition">地域加算</SelectItem>
                 <SelectItem value="reduction">減算</SelectItem>
               </SelectContent>
             </Select>
@@ -302,8 +346,17 @@ export default function BillingRulesPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['billing-rules'],
-    queryFn: fetchBillingRules,
+    queryFn: fetchBillingRules as () => Promise<BillingRulesResponse>,
     staleTime: 30_000,
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: syncBillingSsot,
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ['billing-rules'] });
+      toast.success(result.message);
+    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const createMutation = useMutation({
@@ -339,21 +392,42 @@ export default function BillingRulesPage() {
 
   const columns: ColumnDef<BillingRule>[] = [
     {
+      accessorKey: 'billing_scope',
+      header: 'SSOT',
+      cell: ({ row }) =>
+        row.original.billing_scope === 'home_care_ssot' ? (
+          <Badge variant="secondary" className="gap-1 text-emerald-700">
+            <ShieldCheck className="h-3 w-3" />
+            公式
+          </Badge>
+        ) : (
+          <Badge variant="outline">任意</Badge>
+        ),
+    },
+    {
       accessorKey: 'name',
       header: 'ルール名',
       cell: ({ row }) => (
-        <span className="font-medium text-foreground">{row.original.name}</span>
+        <div className="space-y-1">
+          <span className="font-medium text-foreground">{row.original.name}</span>
+          <p className="text-xs text-muted-foreground">
+            {row.original.service_type} / {row.original.payer_basis ?? '—'} / {row.original.provider_scope ?? '—'}
+          </p>
+        </div>
       ),
     },
     {
       accessorKey: 'rule_type',
       header: '種別',
-      cell: ({ row }) =>
-        row.original.rule_type === 'addition' ? (
-          <Badge variant="default">加算</Badge>
-        ) : (
-          <Badge variant="outline">減算</Badge>
-        ),
+      cell: ({ row }) => {
+        const labels: Record<BillingRule['rule_type'], string> = {
+          base: '基本',
+          addition: '加算',
+          regional_addition: '地域加算',
+          reduction: '減算',
+        };
+        return <Badge variant="outline">{labels[row.original.rule_type]}</Badge>;
+      },
     },
     {
       accessorKey: 'code',
@@ -362,9 +436,9 @@ export default function BillingRulesPage() {
     },
     {
       accessorKey: 'amount',
-      header: '点数',
+      header: '算定値',
       cell: ({ row }) =>
-        row.original.amount !== null ? `${row.original.amount}点` : '-',
+        row.original.amount !== null ? `${row.original.amount}${row.original.calculation_unit === 'unit' ? '単位' : row.original.calculation_unit === 'percent' ? '%' : '点'}` : '-',
     },
     {
       accessorKey: 'is_active',
@@ -385,6 +459,7 @@ export default function BillingRulesPage() {
             variant="ghost"
             size="icon"
             aria-label="編集"
+            disabled={row.original.is_system}
             onClick={() => setEditTarget(row.original)}
           >
             <Pencil className="h-4 w-4" />
@@ -393,6 +468,7 @@ export default function BillingRulesPage() {
             variant="ghost"
             size="icon"
             aria-label="削除"
+            disabled={row.original.is_system}
             onClick={() => setDeleteTarget(row.original)}
           >
             <Trash2 className="h-4 w-4 text-destructive" />
@@ -410,13 +486,28 @@ export default function BillingRulesPage() {
             算定ルール設定
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            加算・減算の算定ルールを管理します
+            薬剤師居宅療養管理指導と在宅患者訪問薬剤管理指導の算定 SSOT を管理します
           </p>
+          <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <Badge variant="secondary">公式 {data?.summary.ssot_rule_count ?? 0}</Badge>
+            <Badge variant="outline">任意 {data?.summary.custom_rule_count ?? 0}</Badge>
+            {data?.source && <span>{data.source.source_of_truth} / {data.source.sync_direction ?? 'push'}</span>}
+          </div>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          新規追加
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" />
+            {syncMutation.isPending ? '同期中...' : '公式SSOT同期'}
+          </Button>
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            任意ルール追加
+          </Button>
+        </div>
       </div>
 
       <DataTable

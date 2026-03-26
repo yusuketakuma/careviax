@@ -18,7 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 const referralFormSchema = z.object({
   // Referral-specific fields
   referral_type: z.enum(['physician', 'care_manager', 'facility', 'family'], {
-    errorMap: () => ({ message: '依頼種別を選択してください' }),
+    error: '依頼種別を選択してください',
   }),
   referral_source: z.string().optional(),
   referral_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です').optional().or(z.literal('')).transform(v => v === '' ? undefined : v),
@@ -31,7 +31,8 @@ const referralFormSchema = z.object({
   // Patient fields (from createPatientSchema)
 }).merge(createPatientSchema);
 
-type ReferralFormInput = z.infer<typeof referralFormSchema>;
+type ReferralFormValues = z.input<typeof referralFormSchema>;
+type ReferralFormSubmit = z.output<typeof referralFormSchema>;
 
 const referralTypeLabel: Record<string, string> = {
   physician: '医師指示書',
@@ -45,13 +46,7 @@ export function ReferralForm() {
   const orgId = useOrgId();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const {
-    register,
-    handleSubmit,
-    watch,
-    setValue,
-    formState: { errors },
-  } = useForm<ReferralFormInput>({
+  const form = useForm<ReferralFormValues, unknown, ReferralFormSubmit>({
     resolver: zodResolver(referralFormSchema),
     defaultValues: {
       doc_physician_order: false,
@@ -60,8 +55,14 @@ export function ReferralForm() {
       doc_care_insurance: false,
     },
   });
-
-  async function onSubmit(data: ReferralFormInput) {
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    formState: { errors },
+  } = form;
+  async function onSubmit(data: ReferralFormSubmit) {
     setIsSubmitting(true);
     try {
       // 1. Create patient

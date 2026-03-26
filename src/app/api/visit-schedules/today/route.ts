@@ -19,7 +19,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         lt: tomorrow,
       },
       schedule_status: {
-        notIn: ['cancelled'],
+        notIn: ['cancelled', 'rescheduled'],
       },
       ...(pharmacistId ? { pharmacist_id: pharmacistId } : {}),
     },
@@ -30,8 +30,20 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     include: {
       visit_record: { select: { id: true, outcome_status: true } },
       preparation: { select: { id: true, prepared_at: true, carry_items_confirmed: true } },
+      override_request: {
+        select: {
+          id: true,
+          status: true,
+          requested_at: true,
+          approved_at: true,
+          impact_summary: true,
+        },
+      },
     },
   });
 
   return success({ data: schedules });
+}, {
+  permission: 'canVisit',
+  message: '本日の訪問予定の閲覧権限がありません',
 });

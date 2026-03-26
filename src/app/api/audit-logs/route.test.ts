@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const { authMock, getMembershipMock, findManyMock, countMock } = vi.hoisted(() => ({
+const { authMock, membershipFindFirstMock, findManyMock, countMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
-  getMembershipMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
   findManyMock: vi.fn(),
   countMock: vi.fn(),
 }));
@@ -12,8 +12,12 @@ vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
 }));
 
-vi.mock('@/lib/auth/context', () => ({
-  getMembership: getMembershipMock,
+vi.mock('@/lib/db/client', () => ({
+  prisma: {
+    membership: {
+      findFirst: membershipFindFirstMock,
+    },
+  },
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -56,7 +60,7 @@ describe('/api/audit-logs GET', () => {
 
   it('returns 403 when the role lacks permission', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    getMembershipMock.mockResolvedValue({ role: 'pharmacist' });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
 
     const response = (await GET(
       createRequest({ 'x-org-id': 'org_1' })
@@ -70,7 +74,7 @@ describe('/api/audit-logs GET', () => {
 
   it('returns 200 when the role has permission', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    getMembershipMock.mockResolvedValue({ role: 'admin' });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 
     const response = (await GET(
       createRequest({ 'x-org-id': 'org_1' })

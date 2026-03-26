@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -10,6 +10,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { caseStatusTransitions, type CaseStatus } from '@/lib/validations/case';
 import { ClipboardList, Plus } from 'lucide-react';
 
@@ -34,6 +41,7 @@ const caseStatusVariant: Record<CaseStatus, 'default' | 'secondary' | 'outline' 
 type CaseRow = {
   id: string;
   status: string;
+  primary_pharmacist_id: string | null;
   referral_source: string | null;
   referral_date: string | null;
   start_date: string | null;
@@ -67,6 +75,28 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
     to: CaseStatus;
   } | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [assignmentDrafts, setAssignmentDrafts] = useState<Record<string, string>>({});
+  const [savingCaseId, setSavingCaseId] = useState<string | null>(null);
+
+  const { data: pharmacistsData } = useQuery({
+    queryKey: ['pharmacists', orgId, 'case-assignment'],
+    queryFn: async () => {
+      const res = await fetch('/api/pharmacists', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('薬剤師一覧の取得に失敗しました');
+      return res.json() as Promise<{
+        data: Array<{
+          id: string;
+          name: string;
+          site_name: string | null;
+        }>;
+      }>;
+    },
+    enabled: !!orgId,
+  });
+
+  const pharmacists = pharmacistsData?.data ?? [];
 
   async function handleTransition() {
     if (!transition) return;
@@ -110,6 +140,35 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
     toast.success('新しいケースを作成しました');
     await queryClient.invalidateQueries({ queryKey: ['patient', patient.id] });
     setIsCreating(false);
+  }
+
+  async function handleAssignPrimaryPharmacist(caseId: string) {
+    const value = assignmentDrafts[caseId];
+    const primaryPharmacistId = value === '__unassigned__' ? '' : value;
+
+    setSavingCaseId(caseId);
+    const res = await fetch(`/api/cases/${caseId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-org-id': orgId,
+      },
+      body: JSON.stringify({ primary_pharmacist_id: primaryPharmacistId }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.message ?? '担当薬剤師の更新に失敗しました');
+      setSavingCaseId(null);
+      return;
+    }
+
+    toast.success('担当薬剤師を更新しました');
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['patient', patient.id] }),
+      queryClient.invalidateQueries({ queryKey: ['cases', 'schedule-planner', orgId] }),
+    ]);
+    setSavingCaseId(null);
   }
 
   return (
@@ -173,6 +232,54 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
                     {c.notes}
                   </p>
                 )}
+
+                <div className="rounded-md border bg-muted/20 p-3">
+                  <p className="text-xs font-medium text-muted-foreground">担当薬剤師</p>
+                  {pharmacists.length === 0 ? (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      薬剤師が未登録のため割当できません
+                    </p>
+                  ) : (
+                    <>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Select
+                          value={assignmentDrafts[c.id] ?? c.primary_pharmacist_id ?? '__unassigned__'}
+                          onValueChange={(value) =>
+                            value
+                              ? setAssignmentDrafts((current) => ({
+                                  ...current,
+                                  [c.id]: value,
+                                }))
+                              : undefined
+                          }
+                        >
+                          <SelectTrigger className="min-w-[220px]">
+                            <SelectValue placeholder="担当薬剤師を選択" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__unassigned__">未設定</SelectItem>
+                            {pharmacists.map((pharmacist) => (
+                              <SelectItem key={pharmacist.id} value={pharmacist.id}>
+                                {pharmacist.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleAssignPrimaryPharmacist(c.id)}
+                          disabled={savingCaseId === c.id}
+                        >
+                          {savingCaseId === c.id ? '保存中...' : '保存'}
+                        </Button>
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        訪問候補生成ではこの薬剤師を優先し、不在時のみ代替薬剤師へエスカレーションします。
+                      </p>
+                    </>
+                  )}
+                </div>
 
                 {/* ケアチームリンク */}
                 {c.care_team_links.length > 0 && (

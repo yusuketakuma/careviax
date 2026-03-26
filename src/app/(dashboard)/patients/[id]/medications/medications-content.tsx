@@ -9,8 +9,6 @@ import { Plus, QrCode } from 'lucide-react';
 import Link from 'next/link';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useOrgId } from '@/lib/hooks/use-org-id';

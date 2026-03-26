@@ -1,24 +1,20 @@
 import { NextRequest } from 'next/server';
-import { auth } from '@/lib/auth/config';
+import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, forbidden } from '@/lib/api/response';
+import { success, validationError, notFound } from '@/lib/api/response';
 import { updatePrescriptionIntakeSchema } from '@/lib/validations/prescription';
 import { prisma } from '@/lib/db/client';
-
-async function getAuthContext(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return null;
-  const orgId = req.headers.get('x-org-id');
-  if (!orgId) return null;
-  return { userId: session.user.id, orgId };
-}
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const ctx = await getAuthContext(req);
-  if (!ctx) return forbidden('認証が必要です');
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: '処方受付の閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const ctx = authResult.ctx;
 
   const { id } = await params;
 
@@ -55,8 +51,12 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const ctx = await getAuthContext(req);
-  if (!ctx) return forbidden('認証が必要です');
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: '処方受付の更新権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const ctx = authResult.ctx;
 
   const { id } = await params;
 

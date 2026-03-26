@@ -18,7 +18,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const { cycleId, patientId } = parsed.data;
+  const { cycleId } = parsed.data;
 
   // Verify the cycle belongs to this org
   const cycle = await prisma.medicationCycle.findFirst({
@@ -32,4 +32,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   const alerts = await checkDispenseAlerts(req.orgId, cycleId, cycle.patient_id);
 
   return success({ alerts });
+}, {
+  permission: 'canVisit',
+  message: 'CDS チェックの実行権限がありません',
 });

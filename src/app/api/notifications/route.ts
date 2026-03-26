@@ -1,6 +1,7 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { getMembership, isAdmin } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError } from '@/lib/api/response';
+import { success, validationError, forbidden } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
@@ -8,6 +9,13 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const { cursor, limit } = parsePaginationParams(searchParams);
 
   const userId = searchParams.get('user_id') ?? req.userId;
+  if (userId !== req.userId) {
+    const membership = await getMembership(req.userId, req.orgId);
+    if (!membership || !isAdmin(membership.role)) {
+      return forbidden('他ユーザーの通知閲覧には管理者権限が必要です');
+    }
+  }
+
   const isReadParam = searchParams.get('is_read');
   const isRead = isReadParam === 'true' ? true : isReadParam === 'false' ? false : undefined;
 

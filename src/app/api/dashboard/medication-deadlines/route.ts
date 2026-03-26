@@ -48,4 +48,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     critical: { count: critical.length, items: critical },
     warning: { count: warning.length, items: warning },
   });
+}, {
+  permission: 'canViewDashboard',
+  message: 'ダッシュボードの閲覧権限がありません',
 });

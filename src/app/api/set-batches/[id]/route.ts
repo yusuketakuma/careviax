@@ -2,21 +2,17 @@ import { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import type { AuthContext, AuthRouteContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
 
 const updateSetBatchSchema = z.object({
   quantity: z.number().positive('数量は正の数です').optional(),
   carry_type: z
-    .enum(['carry', 'facility_deposit', 'deferred'], {
-      errorMap: () => ({ message: '持参区分を選択してください' }),
-    })
+    .enum(['carry', 'facility_deposit', 'deferred'], { error: '持参区分を選択してください' })
     .optional(),
   slot: z
-    .enum(['morning', 'noon', 'evening', 'bedtime', 'prn'], {
-      errorMap: () => ({ message: 'スロットを選択してください' }),
-    })
+    .enum(['morning', 'noon', 'evening', 'bedtime', 'prn'], { error: 'スロットを選択してください' })
     .optional(),
   version: z.number().int().min(1, 'バージョンは1以上の整数です'),
 });

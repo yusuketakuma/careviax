@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withAuth, AuthenticatedRequest } from '@/lib/auth/middleware';
 import { prisma } from '@/lib/db';
-import { success, validationError, forbidden } from '@/lib/api/response';
+import { success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 
 const querySchema = z.object({
@@ -15,19 +15,7 @@ const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 
-async function getMembership(userId: string, orgId: string) {
-  return prisma.membership.findFirst({
-    where: { user_id: userId, org_id: orgId, is_active: true },
-    select: { role: true },
-  });
-}
-
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
-  const membership = await getMembership(req.userId, req.orgId);
-  if (!membership || !['owner', 'admin'].includes(membership.role)) {
-    return forbidden('監査ログの閲覧には管理者権限が必要です') as NextResponse;
-  }
-
   const searchParams = req.nextUrl.searchParams;
   const parsed = querySchema.safeParse({
     actor: searchParams.get('actor') ?? undefined,
@@ -74,6 +62,8 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const hasMore = logs.length > limit;
   const data = hasMore ? logs.slice(0, limit) : logs;
   const nextCursor = hasMore ? data[data.length - 1].id : undefined;
-
   return success({ data, nextCursor, hasMore, totalCount }) as NextResponse;
+}, {
+  permission: 'canAdmin',
+  message: '監査ログの閲覧には管理者権限が必要です',
 });

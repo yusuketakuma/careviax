@@ -40,5 +40,32 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     orderBy: { user: { name_kana: 'asc' } },
   });
 
-  return success({ data: shifts });
+  const holidays = await prisma.businessHoliday.findMany({
+    where: {
+      org_id: req.orgId,
+      date: targetDate,
+      is_closed: true,
+      OR: [
+        { site_id: null },
+        { site_id: { in: [...new Set(shifts.map((shift) => shift.site_id))] } },
+      ],
+    },
+    select: {
+      site_id: true,
+    },
+  });
+  const blockedSiteIds = new Set(
+    holidays
+      .map((holiday) => holiday.site_id)
+      .filter((siteId): siteId is string => siteId != null)
+  );
+  const hasOrgWideClosure = holidays.some((holiday) => holiday.site_id == null);
+  const availableShifts = hasOrgWideClosure
+    ? []
+    : shifts.filter((shift) => !blockedSiteIds.has(shift.site_id));
+
+  return success({ data: availableShifts });
+}, {
+  permission: 'canVisit',
+  message: 'シフト空き状況の閲覧権限がありません',
 });

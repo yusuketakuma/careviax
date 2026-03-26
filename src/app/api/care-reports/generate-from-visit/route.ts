@@ -36,4 +36,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   }
 
   return success({ data: result.reports }, 201);
+}, {
+  permission: 'canReport',
+  message: '報告書生成の権限がありません',
 });

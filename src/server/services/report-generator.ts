@@ -135,6 +135,19 @@ export async function generateReportsFromVisit(
     }
   }
 
+  const existingReports = await prisma.careReport.findMany({
+    where: {
+      org_id: orgId,
+      visit_record_id: visitRecordId,
+      report_type: { in: typesToGenerate },
+    },
+    select: { id: true, report_type: true },
+  });
+  const existingByType = new Map(
+    existingReports.map((report) => [report.report_type as ReportType, report])
+  );
+  const missingTypes = typesToGenerate.filter((type) => !existingByType.has(type));
+
   // ─── 9. structured_soap を型アサート ──────────────────────────────────────
   // DB の Json フィールドから StructuredSoap を取得する。
   // 未入力の場合はデフォルト値でフォールバック。
@@ -184,9 +197,11 @@ export async function generateReportsFromVisit(
   }
 
   // Create all reports in a single transaction
-  const createdReports = await withOrgContext(orgId, async (tx) => {
-    return Promise.all(
-      typesToGenerate.map((type) =>
+  const createdReports = missingTypes.length === 0
+    ? []
+    : await withOrgContext(orgId, async (tx) => {
+        return Promise.all(
+          missingTypes.map((type) =>
         tx.careReport.create({
           data: {
             org_id: orgId,
@@ -201,8 +216,12 @@ export async function generateReportsFromVisit(
           select: { id: true, report_type: true },
         })
       )
-    );
-  });
+        );
+      });
 
-  return { reports: createdReports.map((r) => ({ id: r.id, report_type: r.report_type })) };
+  const reports = typesToGenerate
+    .map((type) => existingByType.get(type) ?? createdReports.find((report) => report.report_type === type))
+    .filter((report): report is { id: string; report_type: ReportType } => report != null);
+
+  return { reports: reports.map((report) => ({ id: report.id, report_type: report.report_type })) };
 }

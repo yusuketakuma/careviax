@@ -91,7 +91,6 @@ export function MedicationSetsContent() {
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showAuditDialog, setShowAuditDialog] = useState(false);
-  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
 
   const [createForm, setCreateForm] = useState<CreatePlanForm>({
     cycle_id: '',
@@ -246,7 +245,6 @@ export function MedicationSetsContent() {
               variant="outline"
               disabled={hasAudit}
               onClick={() => {
-                setSelectedPlanId(row.original.id);
                 setAuditForm({
                   plan_id: row.original.id,
                   result: 'approved',

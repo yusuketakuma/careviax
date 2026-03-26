@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Pill, AlertTriangle, Shield } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -73,7 +73,7 @@ export function DrugSuggest({
     staleTime: 30_000,
   });
 
-  const suggestions = data ?? [];
+  const suggestions = useMemo(() => data ?? [], [data]);
 
   const handleSelect = useCallback(
     (drug: DrugMasterHit) => {

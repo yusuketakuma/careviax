@@ -1,15 +1,14 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
-import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
 
 const createSetAuditSchema = z.object({
   plan_id: z.string().min(1, 'セットプランIDは必須です'),
   result: z.enum(['approved', 'partial_approved', 'rejected'], {
-    errorMap: () => ({ message: '鑑査結果を選択してください' }),
+    error: '鑑査結果を選択してください',
   }),
-  approved_scope: z.record(z.unknown()).optional(),
+  approved_scope: z.record(z.string(), z.unknown()).optional(),
   reject_reason: z.string().optional(),
   audited_at: z.string().datetime().optional(),
 });
@@ -104,4 +103,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   if (!auditResult) return notFound('指定されたセットプランが見つかりません');
 
   return success({ data: auditResult }, 201);
+}, {
+  permission: 'canAuditSet',
+  message: 'セット鑑査の実行権限がありません',
 });

@@ -5,7 +5,7 @@ import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 
 export const GET = withAuthContext(
-  async (req: NextRequest, _ctx) => {
+  async (req: NextRequest) => {
     const { searchParams } = new URL(req.url);
     const { limit, cursor } = parsePaginationParams(searchParams);
     const offset = cursor ? parseInt(cursor, 10) : 0;

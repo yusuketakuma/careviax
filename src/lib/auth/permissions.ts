@@ -1,4 +1,5 @@
 import { MemberRole } from '@prisma/client';
+import { forbidden } from '@/lib/api/response';
 
 type Permission = {
   canDispense: boolean;
@@ -7,6 +8,7 @@ type Permission = {
   canAuditSet: boolean;
   canVisit: boolean;
   canReport: boolean;
+  canViewDashboard: boolean;
   canAdmin: boolean;
 };
 
@@ -21,6 +23,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuditSet: true,
     canVisit: true,
     canReport: true,
+    canViewDashboard: true,
     canAdmin: true,
   },
   admin: {
@@ -30,6 +33,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuditSet: true,
     canVisit: true,
     canReport: true,
+    canViewDashboard: true,
     canAdmin: true,
   },
   pharmacist: {
@@ -39,6 +43,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuditSet: true,
     canVisit: true,
     canReport: true,
+    canViewDashboard: true,
     canAdmin: false,
   },
   pharmacist_trainee: {
@@ -48,6 +53,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuditSet: false,
     canVisit: true,
     canReport: true,
+    canViewDashboard: true,
     canAdmin: false,
   },
   clerk: {
@@ -57,6 +63,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuditSet: false,
     canVisit: false,
     canReport: true,
+    canViewDashboard: true,
     canAdmin: false,
   },
   driver: {
@@ -66,6 +73,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuditSet: false,
     canVisit: false,
     canReport: false,
+    canViewDashboard: false,
     canAdmin: false,
   },
   external_viewer: {
@@ -75,15 +83,24 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuditSet: false,
     canVisit: false,
     canReport: false,
+    canViewDashboard: false,
     canAdmin: false,
   },
 };
 
-export function hasPermission(role: MemberRole, permission: keyof Permission): boolean {
+export function hasPermission(role: MemberRole, permission: PermissionKey): boolean {
   return ROLE_PERMISSIONS[role]?.[permission] ?? false;
 }
 
-export function requirePermission(role: MemberRole, permission: keyof Permission): void {
+export function forbiddenIfMissingPermission(
+  role: MemberRole,
+  permission: PermissionKey,
+  message = '権限がありません'
+) {
+  return hasPermission(role, permission) ? null : forbidden(message);
+}
+
+export function requirePermission(role: MemberRole, permission: PermissionKey): void {
   if (!hasPermission(role, permission)) {
     throw new Error(`Permission denied: ${permission} for role ${role}`);
   }

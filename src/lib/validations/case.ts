@@ -32,6 +32,7 @@ export const updateCaseSchema = z.object({
   referral_source: z.string().optional(),
   notes: z.string().optional(),
   primary_pharmacist_id: z.string().optional(),
+  backup_pharmacist_id: z.string().optional(),
   start_date: z.string().optional(),
   end_date: z.string().optional(),
   end_reason: z.string().optional(),

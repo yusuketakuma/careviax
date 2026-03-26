@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const { authMock, membershipFindFirstMock } = vi.hoisted(() => ({
+const { authMock, membershipFindFirstMock, withOrgContextMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -28,6 +29,10 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
 import { POST as casesPost } from '../cases/route';
 import { POST as patientsPost } from '../patients/route';
 import { POST as medicationProfilesPost } from '../medication-profiles/route';
@@ -49,9 +54,15 @@ import { POST as dispenseResultsPost } from '../dispense-results/route';
 import { POST as inquiryRecordsPost } from '../inquiry-records/route';
 import { POST as residualMedicationsPost } from '../residual-medications/route';
 import { POST as billingCandidatesPost } from '../billing-candidates/route';
+import { POST as billingCandidatesClosePost } from '../billing-candidates/close/route';
+import { POST as businessHolidaysPost } from '../business-holidays/route';
 import { POST as cdsCheckPost } from '../cds/check/route';
+import { POST as pharmacistsPost } from '../pharmacists/route';
+import { POST as visitScheduleProposalsPost } from '../visit-schedule-proposals/route';
+import { POST as visitSchedulesReschedulePost } from '../visit-schedules/[id]/reschedule/route';
 
-type Handler = (req: NextRequest) => Promise<Response>;
+type Handler = (req: NextRequest) => Promise<Response | undefined>;
+type RouteEntry = { name: string; handler: Handler; successBody?: unknown };
 
 function createRequest(headers?: Record<string, string>, body: unknown = {}) {
   return {
@@ -62,7 +73,7 @@ function createRequest(headers?: Record<string, string>, body: unknown = {}) {
   } as unknown as NextRequest;
 }
 
-const routes: Array<{ name: string; handler: Handler }> = [
+const routes: RouteEntry[] = [
   { name: 'cases POST', handler: casesPost },
   { name: 'patients POST', handler: patientsPost },
   { name: 'medication-profiles POST', handler: medicationProfilesPost },
@@ -84,12 +95,40 @@ const routes: Array<{ name: string; handler: Handler }> = [
   { name: 'inquiry-records POST', handler: inquiryRecordsPost },
   { name: 'residual-medications POST', handler: residualMedicationsPost },
   { name: 'billing-candidates POST', handler: billingCandidatesPost },
+  {
+    name: 'billing-candidates/close POST',
+    handler: (req) => billingCandidatesClosePost(req),
+    successBody: { billing_month: '2026-03-01' },
+  },
+  { name: 'business-holidays POST', handler: businessHolidaysPost },
   { name: 'cds/check POST', handler: cdsCheckPost },
+  { name: 'pharmacists POST', handler: pharmacistsPost },
+  { name: 'visit-schedule-proposals POST', handler: visitScheduleProposalsPost },
+  {
+    name: 'visit-schedules/[id]/reschedule POST',
+    handler: (req) =>
+      visitSchedulesReschedulePost(req, {
+        params: Promise.resolve({ id: 'schedule_1' }),
+      }),
+  },
 ];
 
 describe('protected POST routes auth/body matrix', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Provide a minimal transaction stub for the billing close flow.
+    // Other routes in this matrix either do not reach the transaction layer
+    // with the invalid-body case or rely on their own mocks.
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        billingCandidate: {
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        auditLog: {
+          create: vi.fn().mockResolvedValue({}),
+        },
+      })
+    );
   });
 
   for (const route of routes) {
@@ -100,6 +139,7 @@ describe('protected POST routes auth/body matrix', () => {
         createRequest({ 'x-org-id': 'org_1' }, {})
       );
 
+      if (!response) throw new Error('response is required');
       expect(response.status).toBe(401);
     });
 
@@ -111,6 +151,7 @@ describe('protected POST routes auth/body matrix', () => {
         createRequest({ 'x-org-id': 'org_1' }, {})
       );
 
+      if (!response) throw new Error('response is required');
       expect(response.status).toBe(403);
     });
 
@@ -122,7 +163,22 @@ describe('protected POST routes auth/body matrix', () => {
         createRequest({ 'x-org-id': 'org_1' }, {})
       );
 
+      if (!response) throw new Error('response is required');
       expect(response.status).toBe(400);
     });
+
+    if (route.successBody) {
+      it(`${route.name} returns 200 when role has permission`, async () => {
+        authMock.mockResolvedValue({ user: { id: 'user_1' } });
+        membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+        const response = await route.handler(
+          createRequest({ 'x-org-id': 'org_1' }, route.successBody ?? {})
+        );
+
+        if (!response) throw new Error('response is required');
+        expect(response.status).toBe(200);
+      });
+    }
   }
 });

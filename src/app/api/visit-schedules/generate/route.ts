@@ -157,14 +157,42 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   }
 
   const schedules = await withOrgContext(req.orgId, async (tx) => {
+    const careCase = await tx.careCase.findFirst({
+      where: {
+        id: case_id,
+        org_id: req.orgId,
+      },
+      select: {
+        primary_pharmacist_id: true,
+      },
+    });
+
     const created = await Promise.all(
-      candidateDates.map((date) =>
-        tx.visitSchedule.create({
+      candidateDates.map(async (date) => {
+        const shift = await prisma.pharmacistShift.findFirst({
+          where: {
+            org_id: req.orgId,
+            user_id: pharmacist_id,
+            date,
+          },
+          select: {
+            site_id: true,
+          },
+        });
+
+        return tx.visitSchedule.create({
           data: {
             org_id: req.orgId,
             case_id,
             visit_type,
+            priority: 'normal',
             pharmacist_id,
+            site_id: shift?.site_id ?? null,
+            assignment_mode:
+              careCase?.primary_pharmacist_id &&
+              careCase.primary_pharmacist_id === pharmacist_id
+                ? 'primary'
+                : 'fallback',
             scheduled_date: date,
             recurrence_rule,
             ...(time_window_start
@@ -173,12 +201,17 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
             ...(time_window_end
               ? { time_window_end: new Date(`1970-01-01T${time_window_end}`) }
               : {}),
+            confirmed_at: new Date(),
+            confirmed_by: req.userId,
           },
         })
-      )
+      })
     );
     return created;
   });
 
   return success({ data: schedules, count: schedules.length }, 201);
+}, {
+  permission: 'canVisit',
+  message: '訪問予定の自動生成権限がありません',
 });

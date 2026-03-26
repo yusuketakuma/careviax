@@ -59,6 +59,9 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
   return success({ data, hasMore, nextCursor });
+}, {
+  permission: 'canReport',
+  message: '連携イベントの閲覧権限がありません',
 });
 
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
@@ -83,4 +86,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   });
 
   return success({ data: event }, 201);
+}, {
+  permission: 'canReport',
+  message: '連携イベントの作成権限がありません',
 });

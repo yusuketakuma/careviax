@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { MemberRole } from '@prisma/client';
 import { hasPermission, type PermissionKey } from './permissions';
+import { resolveLocalUserByIdentity } from './user-resolution';
 
 export type AuthContext = {
   userId: string;
@@ -28,18 +29,26 @@ type RequireApiKeyOrAuthContextOptions = RequireAuthContextOptions & {
 
 export async function getAuthContext(request: NextRequest): Promise<AuthContext | null> {
   const session = await auth();
-  if (!session?.user?.id) return null;
+  const userId =
+    session?.user?.id ??
+    (
+      await resolveLocalUserByIdentity({
+        cognitoSub: session?.user?.cognitoSub,
+        email: session?.user?.email,
+      })
+    )?.id;
+  if (!userId) return null;
 
   const orgId = request.headers.get('x-org-id');
   if (!orgId) return null;
 
   const membership = await prisma.membership.findFirst({
-    where: { user_id: session.user.id, org_id: orgId, is_active: true },
+    where: { user_id: userId, org_id: orgId, is_active: true },
     select: { role: true },
   });
   if (!membership) return null;
 
-  return { userId: session.user.id, orgId, role: membership.role };
+  return { userId, orgId, role: membership.role };
 }
 
 export async function getMembership(userId: string, orgId: string) {
@@ -61,7 +70,15 @@ export async function requireAuthContext(
   | { ctx?: never; response: NextResponse }
 > {
   const session = await auth();
-  if (!session?.user?.id) {
+  const resolvedUser =
+    session?.user?.id
+      ? { id: session.user.id }
+      : await resolveLocalUserByIdentity({
+          cognitoSub: session?.user?.cognitoSub,
+          email: session?.user?.email,
+        });
+
+  if (!resolvedUser?.id) {
     return {
       response: NextResponse.json(
         { code: 'AUTH_UNAUTHENTICATED', message: '認証が必要です' },
@@ -80,7 +97,7 @@ export async function requireAuthContext(
     };
   }
 
-  const membership = await getMembership(session.user.id, orgId);
+  const membership = await getMembership(resolvedUser.id, orgId);
   if (!membership) {
     return {
       response: NextResponse.json(
@@ -100,7 +117,7 @@ export async function requireAuthContext(
   const userAgent = request.headers.get('user-agent') ?? undefined;
 
   const ctx: AuthContext = {
-    userId: session.user.id,
+    userId: resolvedUser.id,
     orgId,
     role: membership.role,
     ipAddress,

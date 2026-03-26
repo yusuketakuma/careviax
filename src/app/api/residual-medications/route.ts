@@ -17,6 +17,9 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   });
 
   return success({ data: records });
+}, {
+  permission: 'canVisit',
+  message: '残薬情報の閲覧権限がありません',
 });
 
 const createResidualMedicationSchema = z.object({
@@ -87,4 +90,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   if (!result) return notFound('指定された訪問記録が見つかりません');
 
   return success(result, 201);
+}, {
+  permission: 'canVisit',
+  message: '残薬情報の作成権限がありません',
 });

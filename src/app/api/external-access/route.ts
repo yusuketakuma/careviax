@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createHash, randomInt } from 'crypto';
 import { withAuthContext } from '@/lib/auth/context';
+import { validateOrgReferences } from '@/lib/api/org-reference';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
@@ -10,16 +11,20 @@ const createGrantSchema = z.object({
   patient_id: z.string().min(1),
   granted_to_name: z.string().min(1, '共有先氏名は必須です'),
   granted_to_contact: z.string().optional(),
-  scope: z.record(z.boolean()),
+  scope: z.record(z.string(), z.boolean()),
   expires_hours: z.number().int().min(1).max(720).default(72),
 });
 
 export const GET = withAuthContext(
-  async (_req: NextRequest, ctx) => {
+  async (req: NextRequest, ctx) => {
+    const { searchParams } = new URL(req.url);
+    const patientId = searchParams.get('patient_id') ?? undefined;
+
     const grants = await prisma.externalAccessGrant.findMany({
       where: {
         org_id: ctx.orgId,
         revoked_at: null,
+        ...(patientId ? { patient_id: patientId } : {}),
       },
       orderBy: { created_at: 'desc' },
       select: {
@@ -35,7 +40,80 @@ export const GET = withAuthContext(
       },
     });
 
-    return success({ data: grants });
+    const patientMap =
+      grants.length === 0
+        ? new Map<string, { name: string; name_kana: string }>()
+        : new Map(
+            (
+              await prisma.patient.findMany({
+                where: {
+                  org_id: ctx.orgId,
+                  id: { in: [...new Set(grants.map((grant) => grant.patient_id))] },
+                },
+                select: {
+                  id: true,
+                  name: true,
+                  name_kana: true,
+                },
+              })
+            ).map((patient) => [
+              patient.id,
+              { name: patient.name, name_kana: patient.name_kana },
+            ])
+          );
+
+    const reportSummary = new Map<
+      string,
+      { total: number; open: number; latest_at: Date | null }
+    >();
+    if (grants.length > 0) {
+      const reports = await prisma.patientSelfReport.findMany({
+        where: {
+          org_id: ctx.orgId,
+          external_access_grant_id: { in: grants.map((grant) => grant.id) },
+        },
+        select: {
+          external_access_grant_id: true,
+          status: true,
+          created_at: true,
+        },
+      });
+      for (const report of reports) {
+        const key = report.external_access_grant_id;
+        if (!key) continue;
+        const current = reportSummary.get(key) ?? {
+          total: 0,
+          open: 0,
+          latest_at: null,
+        };
+        current.total += 1;
+        if (report.status !== 'resolved' && report.status !== 'dismissed') {
+          current.open += 1;
+        }
+        if (!current.latest_at || report.created_at > current.latest_at) {
+          current.latest_at = report.created_at;
+        }
+        reportSummary.set(key, current);
+      }
+    }
+
+    return success({
+      data: grants.map((grant) => {
+        const patient = patientMap.get(grant.patient_id);
+        return {
+          ...grant,
+          patient: {
+            name: patient?.name ?? '不明な患者',
+            name_kana: patient?.name_kana ?? null,
+          },
+          self_report_summary: reportSummary.get(grant.id) ?? {
+            total: 0,
+            open: 0,
+            latest_at: null,
+          },
+        };
+      }),
+    });
   },
   {
     permission: 'canReport',
@@ -56,6 +134,9 @@ export const POST = withAuthContext(
     const { patient_id, granted_to_name, granted_to_contact, scope, expires_hours } =
       parsed.data;
 
+    const refResult = await validateOrgReferences(ctx.orgId, { patient_id });
+    if (!refResult.ok) return refResult.response;
+
     // Generate raw token and OTP — only hashes are persisted
     const rawToken = crypto.randomUUID();
     const tokenHash = createHash('sha256').update(rawToken).digest('hex');
@@ -74,7 +155,7 @@ export const POST = withAuthContext(
           otp_hash: otpHash,
           granted_to_name,
           granted_to_contact: granted_to_contact ?? null,
-          scope,
+          scope: scope as import('@prisma/client').Prisma.InputJsonValue,
           expires_at: expiresAt,
         },
         select: {

@@ -55,6 +55,9 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
   return success({ data, hasMore, nextCursor });
+}, {
+  permission: 'canVisit',
+  message: '処方受付の閲覧権限がありません',
 });
 
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
@@ -132,4 +135,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   }
 
   return success(result, 201);
+}, {
+  permission: 'canVisit',
+  message: '処方受付の作成権限がありません',
 });

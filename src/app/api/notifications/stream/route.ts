@@ -1,21 +1,15 @@
-import { auth } from '@/lib/auth/config';
+import { NextRequest } from 'next/server';
+import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export async function GET(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return new Response('Unauthorized', { status: 401 });
-  }
+export async function GET(req: NextRequest) {
+  const authResult = await requireAuthContext(req);
+  if ('response' in authResult) return authResult.response;
 
-  const orgId = req.headers.get('x-org-id');
-  if (!orgId) {
-    return new Response('Missing x-org-id', { status: 400 });
-  }
-
-  const userId = session.user.id;
+  const { orgId, userId } = authResult.ctx;
   const encoder = new TextEncoder();
   let lastCheckAt = new Date();
 

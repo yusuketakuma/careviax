@@ -10,12 +10,12 @@ const createSetBatchSchema = z.object({
   plan_id: z.string().min(1, 'セットプランIDは必須です'),
   line_id: z.string().min(1, '処方ラインIDは必須です'),
   slot: z.enum(['morning', 'noon', 'evening', 'bedtime', 'prn'], {
-    errorMap: () => ({ message: 'スロットを選択してください' }),
+    error: 'スロットを選択してください',
   }),
   day_number: z.number().int().min(1, '日数は1以上の整数です'),
   quantity: z.number().positive('数量は正の数です'),
   carry_type: z.enum(['carry', 'facility_deposit', 'deferred'], {
-    errorMap: () => ({ message: '持参区分を選択してください' }),
+    error: '持参区分を選択してください',
   }),
 });
 

@@ -62,6 +62,11 @@ CREATE POLICY tenant_isolation ON "ManagementPlan"
   USING (org_id = current_setting('app.current_org_id', true))
   WITH CHECK (org_id = current_setting('app.current_org_id', true));
 
+ALTER TABLE "PatientSchedulePreference" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "PatientSchedulePreference"
+  USING (org_id = current_setting('app.current_org_id', true))
+  WITH CHECK (org_id = current_setting('app.current_org_id', true));
+
 -- ─── Prescription / Workflow Domain ─────────────────────────────────────────
 
 ALTER TABLE "MedicationCycle" ENABLE ROW LEVEL SECURITY;
@@ -183,6 +188,16 @@ CREATE POLICY tenant_isolation ON "ExternalAccessGrant"
   USING (org_id = current_setting('app.current_org_id', true))
   WITH CHECK (org_id = current_setting('app.current_org_id', true));
 
+ALTER TABLE "PatientSelfReport" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "PatientSelfReport"
+  USING (org_id = current_setting('app.current_org_id', true))
+  WITH CHECK (org_id = current_setting('app.current_org_id', true));
+
+ALTER TABLE "CommunityActivity" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "CommunityActivity"
+  USING (org_id = current_setting('app.current_org_id', true))
+  WITH CHECK (org_id = current_setting('app.current_org_id', true));
+
 ALTER TABLE "TracingReport" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON "TracingReport"
   USING (org_id = current_setting('app.current_org_id', true))
@@ -244,6 +259,11 @@ CREATE POLICY tenant_isolation ON "PharmacistCredential"
 
 ALTER TABLE "PharmacistShift" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON "PharmacistShift"
+  USING (org_id = current_setting('app.current_org_id', true))
+  WITH CHECK (org_id = current_setting('app.current_org_id', true));
+
+ALTER TABLE "PharmacistShiftTemplate" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "PharmacistShiftTemplate"
   USING (org_id = current_setting('app.current_org_id', true))
   WITH CHECK (org_id = current_setting('app.current_org_id', true));
 
@@ -310,6 +330,7 @@ ALTER TABLE "ContactParty" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "CareTeamLink" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "ConsentRecord" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "ManagementPlan" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "PatientSchedulePreference" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "MedicationCycle" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PrescriptionIntake" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PrescriptionLine" FORCE ROW LEVEL SECURITY;
@@ -345,6 +366,7 @@ ALTER TABLE "Membership" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "FacilityStandardRegistration" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PharmacistCredential" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PharmacistShift" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "PharmacistShiftTemplate" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "BillingCandidate" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "BillingEvidence" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "Notification" FORCE ROW LEVEL SECURITY;

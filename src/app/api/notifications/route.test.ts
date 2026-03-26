@@ -4,12 +4,14 @@ import type { NextRequest } from 'next/server';
 const {
   authMock,
   getMembershipMock,
+  membershipFindFirstMock,
   findManyMock,
   updateManyMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   getMembershipMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
   findManyMock: vi.fn(),
   updateManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -28,6 +30,14 @@ vi.mock('@/lib/auth/context', async () => {
     getMembership: getMembershipMock,
   };
 });
+
+vi.mock('@/lib/db/client', () => ({
+  prisma: {
+    membership: {
+      findFirst: membershipFindFirstMock,
+    },
+  },
+}));
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
@@ -66,11 +76,13 @@ describe('/api/notifications GET', () => {
       createRequest('http://localhost/api/notifications', { 'x-org-id': 'org_1' })
     );
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(401);
   });
 
   it('returns 403 when a non-admin requests another user notifications', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
     getMembershipMock.mockResolvedValue({ role: 'pharmacist' });
 
     const response = await GET(
@@ -80,6 +92,7 @@ describe('/api/notifications GET', () => {
       )
     );
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({
       code: 'AUTH_FORBIDDEN',
@@ -88,6 +101,7 @@ describe('/api/notifications GET', () => {
 
   it('returns 200 when an admin requests another user notifications', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
     getMembershipMock.mockResolvedValue({ role: 'admin' });
 
     const response = await GET(
@@ -97,6 +111,7 @@ describe('/api/notifications GET', () => {
       )
     );
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(findManyMock).toHaveBeenCalledOnce();
   });

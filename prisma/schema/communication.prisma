@@ -43,6 +43,14 @@ enum TracingReportStatus {
   acknowledged
 }
 
+enum SelfReportStatus {
+  submitted
+  triaged
+  converted_to_task
+  resolved
+  dismissed
+}
+
 model CommunicationEvent {
   id                  String               @id @default(cuid())
   org_id              String
@@ -210,4 +218,49 @@ model TracingReport {
   @@index([org_id])
   @@index([patient_id])
   @@index([status])
+}
+
+model PatientSelfReport {
+  id                     String           @id @default(cuid())
+  org_id                 String
+  patient_id             String
+  external_access_grant_id String?
+  reported_by_name       String
+  relation               String?
+  category               String
+  subject                String
+  content                String
+  requested_callback     Boolean          @default(false)
+  preferred_contact_time String?
+  status                 SelfReportStatus @default(submitted)
+  triaged_by             String?
+  triaged_at             DateTime?
+  created_at             DateTime         @default(now())
+  updated_at             DateTime         @updatedAt
+
+  @@index([org_id])
+  @@index([patient_id])
+  @@index([status])
+}
+
+model CommunityActivity {
+  id                String   @id @default(cuid())
+  org_id            String
+  activity_type     String
+  title             String
+  description       String?
+  partner_name      String?
+  activity_date     DateTime
+  target_population String?
+  attendee_count    Int?
+  referrals_generated Int?
+  follow_up_required Boolean @default(false)
+  outcome_summary   String?
+  created_by        String
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  @@index([org_id])
+  @@index([activity_type])
+  @@index([activity_date])
 }

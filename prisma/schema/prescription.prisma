@@ -59,6 +59,7 @@ model MedicationCycle {
   set_plans            SetPlan[]
   workflow_exceptions  WorkflowException[]
   visit_schedules      VisitSchedule[]
+  visit_schedule_proposals VisitScheduleProposal[]
 
   @@index([org_id])
   @@index([case_id])

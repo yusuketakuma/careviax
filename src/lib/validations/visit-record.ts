@@ -16,7 +16,7 @@ export const createVisitRecordSchema = z.object({
   soap_objective: z.string().optional(),
   soap_assessment: z.string().optional(),
   soap_plan: z.string().optional(),
-  structured_soap: z.record(z.unknown()).optional(),
+  structured_soap: z.record(z.string(), z.unknown()).optional(),
   receipt_person_name: z.string().optional(),
   receipt_person_relation: z.string().optional(),
   next_visit_suggestion_date: z.string().optional(),

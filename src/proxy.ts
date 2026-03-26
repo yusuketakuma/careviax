@@ -38,7 +38,7 @@ function isValidOrigin(request: NextRequest): boolean {
   return false;
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   // Only process API routes
   if (!request.nextUrl.pathname.startsWith('/api')) {
     return NextResponse.next();

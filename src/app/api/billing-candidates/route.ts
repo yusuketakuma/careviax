@@ -2,6 +2,28 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
+import { prisma } from '@/lib/db/client';
+import {
+  getBillingCandidateWorkbenchSummary,
+  generateBillingCandidatesForMonth,
+  upsertBillingEvidenceForVisit,
+} from '@/server/services/billing-evidence';
+
+function readWorkflowState(sourceSnapshot: unknown) {
+  if (
+    typeof sourceSnapshot !== 'object' ||
+    sourceSnapshot === null ||
+    Array.isArray(sourceSnapshot) ||
+    !('billing_close' in sourceSnapshot)
+  ) {
+    return null;
+  }
+  const workflow = (sourceSnapshot as Record<string, unknown>).billing_close;
+  if (typeof workflow !== 'object' || workflow === null || Array.isArray(workflow)) {
+    return null;
+  }
+  return workflow;
+}
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const { searchParams } = new URL(req.url);
@@ -9,29 +31,44 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
 
   const billingMonth = searchParams.get('billing_month');
   const status = searchParams.get('status') ?? undefined;
+  const billingMonthDate = billingMonth ? new Date(billingMonth) : null;
+  if (billingMonthDate && isNaN(billingMonthDate.getTime())) {
+    return validationError('billing_month の形式が不正です（YYYY-MM-DD）');
+  }
 
-  const where = {
-    org_id: req.orgId,
-    ...(billingMonth
-      ? { billing_month: new Date(billingMonth) }
-      : {}),
-    ...(status ? { status } : {}),
-  };
-
-  const candidates = await withOrgContext(req.orgId, (tx) =>
-    tx.billingCandidate.findMany({
-      where,
+  const result = await withOrgContext(req.orgId, async (tx) => {
+    const candidates = await tx.billingCandidate.findMany({
+      where: {
+        org_id: req.orgId,
+        ...(billingMonthDate ? { billing_month: billingMonthDate } : {}),
+        ...(status ? { status } : {}),
+      },
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }],
-    })
-  );
+    });
+    const summary = billingMonthDate
+      ? await getBillingCandidateWorkbenchSummary(tx, {
+          orgId: req.orgId,
+          billingMonth: billingMonthDate,
+        })
+      : null;
+    return { candidates, summary };
+  });
+
+  const candidates = result.candidates.map((candidate) => ({
+    ...candidate,
+    workflow_state: readWorkflowState(candidate.source_snapshot),
+  }));
 
   const hasMore = candidates.length > limit;
   const data = hasMore ? candidates.slice(0, limit) : candidates;
   const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
-  return success({ data, hasMore, nextCursor });
+  return success({ data, hasMore, nextCursor, summary: result.summary });
+}, {
+  permission: 'canReport',
+  message: '請求候補の閲覧権限がありません',
 });
 
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
@@ -46,28 +83,48 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     return validationError('billing_month の形式が不正です（YYYY-MM-DD）');
   }
 
-  // Placeholder: In production, this would run the billing rule engine
-  // to extract claimable billing codes for all active cases in the org.
-  const created = await withOrgContext(req.orgId, async (tx) => {
-    // Check for existing candidates for this month
-    const existing = await tx.billingCandidate.count({
-      where: { org_id: req.orgId, billing_month: targetMonth },
-    });
-    if (existing > 0) {
-      return { already_exists: true, count: existing };
-    }
-    return { already_exists: false, count: 0 };
+  const monthStart = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), 1);
+  const monthEnd = new Date(targetMonth.getFullYear(), targetMonth.getMonth() + 1, 0, 23, 59, 59, 999);
+
+  const visitRecords = await prisma.visitRecord.findMany({
+    where: {
+      org_id: req.orgId,
+      visit_date: {
+        gte: monthStart,
+        lte: monthEnd,
+      },
+    },
+    select: {
+      id: true,
+    },
   });
 
-  if (created.already_exists) {
-    return success({
-      message: `${billing_month} の請求候補は既に生成済みです（${created.count}件）`,
-      generated: 0,
+  const created = await withOrgContext(req.orgId, async (tx) => {
+    for (const visitRecord of visitRecords) {
+      await upsertBillingEvidenceForVisit(tx, {
+        orgId: req.orgId,
+        visitRecordId: visitRecord.id,
+      });
+    }
+
+    const candidates = await generateBillingCandidatesForMonth(tx, {
+      orgId: req.orgId,
+      billingMonth: monthStart,
     });
-  }
+
+    return {
+      generated: candidates.length,
+      confirmed: candidates.filter((candidate) => candidate.status === 'confirmed').length,
+      review_required: candidates.filter((candidate) => candidate.status === 'candidate').length,
+      excluded: candidates.filter((candidate) => candidate.status === 'excluded').length,
+    };
+  });
 
   return success({
     message: `${billing_month} の請求候補を生成しました`,
-    generated: 0,
+    ...created,
   });
+}, {
+  permission: 'canReport',
+  message: '請求候補の作成権限がありません',
 });

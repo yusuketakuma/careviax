@@ -77,4 +77,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   });
 
   return success({ data: sorted });
+}, {
+  permission: 'canDispense',
+  message: '調剤キューの閲覧権限がありません',
 });

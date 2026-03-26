@@ -17,6 +17,19 @@ const {
     patient_id: 'patient_1',
     case_id: 'case_1',
     role: 'admin',
+    proposal_status: 'proposed',
+    proposed_pharmacist_id: 'user_1',
+    proposed_date: new Date('2026-03-26T00:00:00.000Z'),
+    time_window_start: new Date('1970-01-01T09:00:00.000Z'),
+    time_window_end: new Date('1970-01-01T10:00:00.000Z'),
+    visit_type: 'regular',
+    priority: 'normal',
+    assignment_mode: 'primary',
+    route_order: 1,
+    medication_end_date: null,
+    visit_deadline_date: null,
+    escalation_reason: null,
+    finalized_schedule_id: null,
   });
 
   const createModel = () => ({
@@ -74,13 +87,16 @@ import { PATCH as communicationRequestPatch } from '../communication-requests/[i
 import { PATCH as inquiryRecordPatch } from '../inquiry-records/[id]/route';
 import { PATCH as medicationCycleTransitionPatch } from '../medication-cycles/[id]/transition/route';
 import { PATCH as medicationIssuePatch } from '../medication-issues/[id]/route';
+import { PATCH as billingCandidatePatch } from '../billing-candidates/[id]/route';
 import { PATCH as notificationsPatch } from '../notifications/route';
 import { PATCH as patientPatch } from '../patients/[id]/route';
 import { PATCH as prescriptionIntakePatch } from '../prescription-intakes/[id]/route';
 import { PATCH as visitRecordPatch } from '../visit-records/[id]/route';
+import { PATCH as visitScheduleProposalPatch } from '../visit-schedule-proposals/[id]/route';
 import { PATCH as visitSchedulePatch, DELETE as visitScheduleDelete } from '../visit-schedules/[id]/route';
 
 type Handler = () => Promise<Response | undefined>;
+type RouteEntry = { name: string; handler: Handler; successBody?: unknown };
 
 function createRequest(
   url: string,
@@ -96,7 +112,7 @@ function createRequest(
   } as unknown as NextRequest;
 }
 
-const permissionRoutes: Array<{ name: string; handler: Handler }> = [
+const permissionRoutes: RouteEntry[] = [
   {
     name: 'cases/[id] PATCH',
     handler: () => casePatch(createRequest('http://localhost/api/cases/case_1', { 'x-org-id': 'org_1' }, {}), { params: Promise.resolve({ id: 'case_1' }) }),
@@ -108,6 +124,15 @@ const permissionRoutes: Array<{ name: string; handler: Handler }> = [
   {
     name: 'care-reports/[id] PATCH',
     handler: () => careReportPatch(createRequest('http://localhost/api/care-reports/report_1', { 'x-org-id': 'org_1' }, {}), { params: Promise.resolve({ id: 'report_1' }) }),
+  },
+  {
+    name: 'billing-candidates/[id] PATCH',
+    handler: () =>
+      billingCandidatePatch(
+        createRequest('http://localhost/api/billing-candidates/candidate_1', { 'x-org-id': 'org_1' }, { action: 'confirm' }),
+        { params: Promise.resolve({ id: 'candidate_1' }) }
+      ),
+    successBody: { action: 'confirm' },
   },
   {
     name: 'communication-requests/[id] PATCH',
@@ -136,6 +161,10 @@ const permissionRoutes: Array<{ name: string; handler: Handler }> = [
   {
     name: 'visit-records/[id] PATCH',
     handler: () => visitRecordPatch(createRequest('http://localhost/api/visit-records/record_1', { 'x-org-id': 'org_1' }, { version: 1 }), { params: Promise.resolve({ id: 'record_1' }) }),
+  },
+  {
+    name: 'visit-schedule-proposals/[id] PATCH',
+    handler: () => visitScheduleProposalPatch(createRequest('http://localhost/api/visit-schedule-proposals/proposal_1', { 'x-org-id': 'org_1' }, { action: 'approve' }), { params: Promise.resolve({ id: 'proposal_1' }) }),
   },
   {
     name: 'visit-schedules/[id] PATCH',
@@ -196,6 +225,7 @@ describe('protected PATCH/DELETE routes auth matrix', () => {
       createRequest('http://localhost/api/notifications', { 'x-org-id': 'org_1' }, { all: true })
     );
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(401);
   });
 
@@ -207,6 +237,7 @@ describe('protected PATCH/DELETE routes auth matrix', () => {
       createRequest('http://localhost/api/notifications', { 'x-org-id': 'org_1' }, { all: true })
     );
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
   });
 });

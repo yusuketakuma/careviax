@@ -52,3 +52,13 @@ export async function checkUnrecordedVisits() {
     return { processedCount: unrecorded.length };
   });
 }
+
+export async function runEveningOperations() {
+  return runJob('evening', async () => {
+    const result = await checkUnrecordedVisits();
+    return {
+      processedCount: result.processedCount,
+      errors: result.errors,
+    };
+  });
+}

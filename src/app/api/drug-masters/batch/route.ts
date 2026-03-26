@@ -9,7 +9,7 @@ const batchSchema = z.object({
 });
 
 export const POST = withAuthContext(
-  async (req: NextRequest, _ctx) => {
+  async (req: NextRequest) => {
     const body = await req.json().catch(() => null);
     if (!body) return validationError('リクエストボディが不正です');
 

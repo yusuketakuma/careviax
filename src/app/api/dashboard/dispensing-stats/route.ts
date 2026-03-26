@@ -71,4 +71,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     completedToday,
     completedLast7Days,
   });
+}, {
+  permission: 'canViewDashboard',
+  message: 'ダッシュボードの閲覧権限がありません',
 });

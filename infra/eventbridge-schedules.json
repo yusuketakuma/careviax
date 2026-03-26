@@ -4,7 +4,7 @@
   "schedules": [
     {
       "name": "careviax-daily-morning",
-      "description": "Daily morning jobs: medication deadline check, refill prescriptions, prescription expiry",
+      "description": "Daily morning jobs: demand generation, evidence refresh, planning reminders",
       "scheduleExpression": "cron(0 21 * * ? *)",
       "scheduleExpressionTimezone": "UTC",
       "comment": "6:00 AM JST = 21:00 UTC (previous day)",
@@ -41,6 +41,27 @@
       "retryPolicy": {
         "maximumRetryAttempts": 2,
         "maximumEventAgeInSeconds": 3600
+      },
+      "state": "ENABLED"
+    },
+    {
+      "name": "careviax-callback-followup",
+      "description": "Hourly callback follow-up task refresh for pending patient contact",
+      "scheduleExpression": "cron(0 * * * ? *)",
+      "scheduleExpressionTimezone": "UTC",
+      "comment": "Every hour UTC / hourly callback SLA refresh",
+      "target": {
+        "type": "HTTP",
+        "method": "POST",
+        "url": "${APP_URL}/api/jobs/daily-callback-followups",
+        "headers": {
+          "x-api-key": "${JOB_API_KEY}",
+          "Content-Type": "application/json"
+        }
+      },
+      "retryPolicy": {
+        "maximumRetryAttempts": 2,
+        "maximumEventAgeInSeconds": 1800
       },
       "state": "ENABLED"
     }

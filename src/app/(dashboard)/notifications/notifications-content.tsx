@@ -4,13 +4,13 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Bell, BellOff, CheckCheck, ExternalLink, AlertTriangle, Info, Clock, Cpu } from 'lucide-react';
+import { Bell, BellOff, CheckCheck, ExternalLink, AlertTriangle, Clock, Cpu } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 // --- Types ---

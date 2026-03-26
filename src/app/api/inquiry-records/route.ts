@@ -39,6 +39,9 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   });
 
   return success({ data: records });
+}, {
+  permission: 'canVisit',
+  message: '問い合わせ記録の閲覧権限がありません',
 });
 
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
@@ -84,4 +87,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   }
 
   return success(result, 201);
+}, {
+  permission: 'canVisit',
+  message: '問い合わせ記録の作成権限がありません',
 });

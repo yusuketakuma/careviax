@@ -15,7 +15,7 @@ export default function BillingPage() {
           請求支援ダッシュボード
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          算定根拠・送付状況の確認（Phase 2 で詳細実装予定）
+          算定根拠・月次締め・要確認候補を SSOT ベースで整理します。
         </p>
       </div>
 

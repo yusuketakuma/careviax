@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useForm, FormProvider } from 'react-hook-form';
+import { useForm, FormProvider, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -118,8 +118,18 @@ export function VisitRecordForm({ scheduleId }: { scheduleId: string }) {
     },
   });
 
-  const outcomeStatus = form.watch('outcome_status');
-  const visitDate = form.watch('visit_date');
+  const outcomeStatus = useWatch({
+    control: form.control,
+    name: 'outcome_status',
+  });
+  const visitDate = useWatch({
+    control: form.control,
+    name: 'visit_date',
+  }) ?? today;
+  const receiptPersonRelation = useWatch({
+    control: form.control,
+    name: 'receipt_person_relation',
+  }) ?? '';
 
   // Create visit record mutation
   const createRecord = useMutation({
@@ -379,7 +389,7 @@ export function VisitRecordForm({ scheduleId }: { scheduleId: string }) {
                 <div className="space-y-1.5">
                   <Label htmlFor="receipt_person_relation">続柄</Label>
                   <Select
-                    value={form.watch('receipt_person_relation') ?? ''}
+                    value={receiptPersonRelation}
                     onValueChange={(v) => form.setValue('receipt_person_relation', v ?? undefined)}
                   >
                     <SelectTrigger id="receipt_person_relation" className="w-full">

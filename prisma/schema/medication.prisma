@@ -122,20 +122,28 @@ model Intervention {
 model Task {
   id                  String       @id @default(cuid())
   org_id              String
+  task_type           String       @default("general")
   title               String
   description         String?
   status              TaskStatus   @default(pending)
   priority            TaskPriority @default(normal)
   assigned_to         String? // User ID
   due_date            DateTime?
+  sla_due_at          DateTime?
+  completed_at        DateTime?
+  dedupe_key          String?
   related_entity_type String? // patient/case/cycle/visit
   related_entity_id   String?
+  metadata            Json?
   created_at          DateTime     @default(now())
   updated_at          DateTime     @updatedAt
 
   @@index([org_id])
   @@index([status])
   @@index([assigned_to])
+  @@index([task_type, status])
+  @@index([sla_due_at])
+  @@unique([org_id, dedupe_key])
 }
 
 model FirstVisitDocument {

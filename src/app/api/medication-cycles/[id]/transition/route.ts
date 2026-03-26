@@ -1,17 +1,9 @@
 import { NextRequest } from 'next/server';
-import { auth } from '@/lib/auth/config';
+import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, forbidden, conflict } from '@/lib/api/response';
+import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
-
-async function getAuthContext(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return null;
-  const orgId = req.headers.get('x-org-id');
-  if (!orgId) return null;
-  return { userId: session.user.id, orgId };
-}
 
 type CycleStatus =
   | 'intake_received'
@@ -61,8 +53,12 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const ctx = await getAuthContext(req);
-  if (!ctx) return forbidden('認証が必要です');
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: '処方サイクル更新の権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const ctx = authResult.ctx;
 
   const { id } = await params;
 

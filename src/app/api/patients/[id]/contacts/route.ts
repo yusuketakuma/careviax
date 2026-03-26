@@ -1,0 +1,102 @@
+import { NextRequest } from 'next/server';
+import { requireAuthContext } from '@/lib/auth/context';
+import { prisma } from '@/lib/db/client';
+import { withOrgContext } from '@/lib/db/rls';
+import { notFound, success, validationError } from '@/lib/api/response';
+import { updatePatientContactsSchema } from '@/lib/validations/patient';
+
+async function assertPatient(orgId: string, id: string) {
+  const patient = await prisma.patient.findFirst({
+    where: { id, org_id: orgId },
+    select: { id: true },
+  });
+  if (!patient) throw new Error('PATIENT_NOT_FOUND');
+}
+
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: '患者情報の閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const ctx = authResult.ctx;
+  const { id } = await params;
+
+  try {
+    await assertPatient(ctx.orgId, id);
+  } catch {
+    return notFound('患者が見つかりません');
+  }
+
+  const contacts = await prisma.contactParty.findMany({
+    where: {
+      org_id: ctx.orgId,
+      patient_id: id,
+    },
+    orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+  });
+
+  return success({ data: contacts });
+}
+
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: '患者情報の更新権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const ctx = authResult.ctx;
+  const { id } = await params;
+
+  const body = await req.json().catch(() => null);
+  if (!body) return validationError('リクエストボディが不正です');
+
+  const parsed = updatePatientContactsSchema.safeParse(body);
+  if (!parsed.success) {
+    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  }
+
+  try {
+    await assertPatient(ctx.orgId, id);
+  } catch {
+    return notFound('患者が見つかりません');
+  }
+
+  const data = await withOrgContext(ctx.orgId, async (tx) => {
+    await tx.contactParty.deleteMany({
+      where: { org_id: ctx.orgId, patient_id: id },
+    });
+    if (parsed.data.contacts.length === 0) return [];
+
+    await tx.contactParty.createMany({
+      data: parsed.data.contacts.map((contact) => ({
+        org_id: ctx.orgId,
+        patient_id: id,
+        name: contact.name,
+        relation: contact.relation,
+        phone: contact.phone || null,
+        email: contact.email || null,
+        fax: contact.fax || null,
+        organization_name: contact.organization_name || null,
+        department: contact.department || null,
+        address: contact.address || null,
+        is_primary: contact.is_primary,
+        is_emergency_contact: contact.is_emergency_contact,
+        notes: contact.notes || null,
+      })),
+    });
+
+    return tx.contactParty.findMany({
+      where: { org_id: ctx.orgId, patient_id: id },
+      orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+    });
+  });
+
+  return success({ data });
+}
