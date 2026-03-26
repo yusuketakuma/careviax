@@ -1,11 +1,11 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Car, CheckSquare, MessageSquare, Calendar, TrendingUp, TrendingDown } from 'lucide-react';
+import type { ElementType } from 'react';
+import { Calendar, Car, CheckSquare, MessageSquare, TrendingDown, TrendingUp } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-
-// --- Types ---
+import { useOrgId } from '@/lib/hooks/use-org-id';
 
 interface DashboardToday {
   visits: {
@@ -16,39 +16,72 @@ interface DashboardToday {
     ready: number;
     cancelled: number;
   };
+  tasks: {
+    open: number;
+  };
+  today_visits: Array<{
+    id: string;
+    patient_name: string;
+    address: string;
+    scheduled_time: string | null;
+    status: string;
+    route_order: number | null;
+    confirmed: boolean;
+    preparation_ready: boolean;
+    carry_items_status: string | null;
+  }>;
+  reports_backlog: Array<{
+    id: string;
+    patient_name: string;
+    report_type: string;
+    status: string;
+    created_at: string;
+    delivery_pending_count: number;
+  }>;
+  medication_deadlines: Array<{
+    id: string;
+    patient_name: string;
+    due_at: string;
+    days_left: number;
+    source_type: string;
+  }>;
+  communication_queue: {
+    summary: {
+      pending_count: number;
+      overdue_count: number;
+      self_reports: number;
+      callback_followups: number;
+      open_requests: number;
+      delivery_backlog: number;
+      expiring_external_shares: number;
+    };
+    items: Array<{
+      id: string;
+      title: string;
+      summary: string;
+      channel: string;
+      status: string;
+      priority: 'urgent' | 'high' | 'normal';
+      patient_name: string | null;
+    }>;
+  };
+  role_focus: {
+    role: string;
+    items: Array<{
+      label: string;
+      count: number;
+      action_href: string;
+    }>;
+  };
 }
 
-interface VisitItem {
-  id: string;
-  patientName: string;
-  address: string;
-  scheduledTime: string | null;
-  status: string;
-}
-
-interface ReportItem {
-  id: string;
-  patientName: string;
-  visitDate: string;
-  reportType: string;
-}
-
-interface MedicationDeadlineItem {
-  id: string;
-  patientName: string;
-  endDate: string;
-  daysLeft: number;
-}
-
-// --- Fetchers ---
-
-async function fetchTodayStats(): Promise<DashboardToday> {
-  const res = await fetch('/api/dashboard/today');
+async function fetchTodayStats(orgId: string): Promise<DashboardToday> {
+  const res = await fetch('/api/dashboard/today', {
+    headers: { 'x-org-id': orgId },
+  });
   if (!res.ok) throw new Error('Failed to fetch today stats');
   return res.json();
 }
-
-// --- Summary Cards ---
 
 function SummaryCard({
   title,
@@ -59,7 +92,7 @@ function SummaryCard({
 }: {
   title: string;
   value: string | number;
-  icon: React.ElementType;
+  icon: ElementType;
   description: string;
   trend?: 'up' | 'down' | null;
 }) {
@@ -85,8 +118,6 @@ function SummaryCard({
   );
 }
 
-// --- Status Badge ---
-
 function VisitStatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
     planned: { label: '予定', variant: 'outline' },
@@ -101,34 +132,28 @@ function VisitStatusBadge({ status }: { status: string }) {
   return <Badge variant={config.variant}>{config.label}</Badge>;
 }
 
-// --- Section: Today's Visits ---
-
-function TodayVisitsSection() {
-  // Placeholder list — replaced by real API when visits list endpoint is available
-  const visits: VisitItem[] = [];
-
+function TodayVisitsSection({ visits }: { visits: DashboardToday['today_visits'] }) {
   return (
     <section aria-labelledby="today-visits-heading">
-      <h2
-        id="today-visits-heading"
-        className="mb-3 text-base font-semibold text-foreground"
-      >
+      <h2 id="today-visits-heading" className="mb-3 text-base font-semibold text-foreground">
         本日の訪問（上位5件）
       </h2>
       {visits.length === 0 ? (
         <p className="text-sm text-muted-foreground">本日の訪問予定はありません。</p>
       ) : (
         <ul className="divide-y divide-border rounded-lg border" role="list">
-          {visits.map((v) => (
-            <li key={v.id} className="flex items-center justify-between px-4 py-3">
+          {visits.map((visit) => (
+            <li key={visit.id} className="flex items-center justify-between px-4 py-3">
               <div>
-                <p className="text-sm font-medium text-foreground">{v.patientName}</p>
-                <p className="text-xs text-muted-foreground">{v.address}</p>
-                {v.scheduledTime && (
-                  <p className="text-xs text-muted-foreground">{v.scheduledTime}</p>
-                )}
+                <p className="text-sm font-medium text-foreground">{visit.patient_name}</p>
+                <p className="text-xs text-muted-foreground">{visit.address}</p>
+                <p className="text-xs text-muted-foreground">
+                  {visit.route_order ? `ルート ${visit.route_order} / ` : ''}
+                  {visit.confirmed ? '確定済み' : '未確定'}
+                  {visit.carry_items_status ? ` / 持参物 ${visit.carry_items_status}` : ''}
+                </p>
               </div>
-              <VisitStatusBadge status={v.status} />
+              <VisitStatusBadge status={visit.status} />
             </li>
           ))}
         </ul>
@@ -137,65 +162,30 @@ function TodayVisitsSection() {
   );
 }
 
-// --- Section: Unsent Reports ---
-
-function UnsentReportsSection() {
-  const reports: ReportItem[] = [];
-
+function ReportsBacklogSection({
+  reports,
+}: {
+  reports: DashboardToday['reports_backlog'];
+}) {
   return (
     <section aria-labelledby="unsent-reports-heading">
-      <h2
-        id="unsent-reports-heading"
-        className="mb-3 text-base font-semibold text-foreground"
-      >
-        未送付報告書（上位5件）
+      <h2 id="unsent-reports-heading" className="mb-3 text-base font-semibold text-foreground">
+        報告送達・下書き待ち
       </h2>
       {reports.length === 0 ? (
         <p className="text-sm text-muted-foreground">未送付の報告書はありません。</p>
       ) : (
         <ul className="divide-y divide-border rounded-lg border" role="list">
-          {reports.map((r) => (
-            <li key={r.id} className="flex items-center justify-between px-4 py-3">
+          {reports.map((report) => (
+            <li key={report.id} className="flex items-center justify-between px-4 py-3">
               <div>
-                <p className="text-sm font-medium text-foreground">{r.patientName}</p>
+                <p className="text-sm font-medium text-foreground">{report.patient_name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {r.reportType} — {r.visitDate}
+                  {report.report_type} / {report.status}
                 </p>
               </div>
-              <Badge variant="destructive">未送付</Badge>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-// --- Section: Medication Records Pending ---
-
-function MedicationRecordsPendingSection() {
-  const items: MedicationDeadlineItem[] = [];
-
-  return (
-    <section aria-labelledby="med-records-heading">
-      <h2
-        id="med-records-heading"
-        className="mb-3 text-base font-semibold text-foreground"
-      >
-        薬歴未記入（上位5件）
-      </h2>
-      {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">未記入の薬歴はありません。</p>
-      ) : (
-        <ul className="divide-y divide-border rounded-lg border" role="list">
-          {items.map((item) => (
-            <li key={item.id} className="flex items-center justify-between px-4 py-3">
-              <div>
-                <p className="text-sm font-medium text-foreground">{item.patientName}</p>
-                <p className="text-xs text-muted-foreground">服用終了: {item.endDate}</p>
-              </div>
-              <Badge variant={item.daysLeft <= 3 ? 'destructive' : 'outline'}>
-                残{item.daysLeft}日
+              <Badge variant={report.delivery_pending_count > 0 ? 'destructive' : 'outline'}>
+                {report.delivery_pending_count > 0 ? `送達待ち ${report.delivery_pending_count}` : '下書き'}
               </Badge>
             </li>
           ))}
@@ -205,18 +195,93 @@ function MedicationRecordsPendingSection() {
   );
 }
 
-// --- Main Component ---
+function MedicationDeadlinesSection({
+  items,
+}: {
+  items: DashboardToday['medication_deadlines'];
+}) {
+  return (
+    <section aria-labelledby="med-records-heading">
+      <h2 id="med-records-heading" className="mb-3 text-base font-semibold text-foreground">
+        服薬・処方期限接近
+      </h2>
+      {items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">直近の期限接近はありません。</p>
+      ) : (
+        <ul className="divide-y divide-border rounded-lg border" role="list">
+          {items.map((item) => (
+            <li key={item.id} className="flex items-center justify-between px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">{item.patient_name}</p>
+                <p className="text-xs text-muted-foreground">{item.source_type}</p>
+              </div>
+              <Badge variant={item.days_left <= 3 ? 'destructive' : 'outline'}>
+                残{item.days_left}日
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function CommunicationQueueSection({
+  queue,
+  roleFocus,
+}: {
+  queue: DashboardToday['communication_queue'];
+  roleFocus: DashboardToday['role_focus'];
+}) {
+  return (
+    <section aria-labelledby="communication-queue-heading">
+      <h2 id="communication-queue-heading" className="mb-3 text-base font-semibold text-foreground">
+        本日の受信箱
+      </h2>
+      <div className="space-y-3 rounded-lg border p-4">
+        <div className="flex flex-wrap gap-2 text-xs">
+          {roleFocus.items.map((item) => (
+            <Badge key={item.label} variant="outline">
+              {item.label} {item.count}
+            </Badge>
+          ))}
+        </div>
+        {queue.items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">未処理の連絡はありません。</p>
+        ) : (
+          <div className="space-y-3">
+            {queue.items.slice(0, 4).map((item) => (
+              <div key={item.id} className="rounded-md border border-border px-3 py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium text-foreground">{item.title}</p>
+                  <Badge variant={item.priority === 'urgent' ? 'destructive' : 'outline'}>
+                    {item.channel}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{item.summary}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
 
 export function DashboardContent() {
+  const orgId = useOrgId();
   const { data, isLoading, isError } = useQuery<DashboardToday>({
-    queryKey: ['dashboard', 'today'],
-    queryFn: fetchTodayStats,
+    queryKey: ['dashboard', 'today', orgId],
+    queryFn: () => fetchTodayStats(orgId),
     staleTime: 60_000,
     retry: false,
+    enabled: !!orgId,
   });
 
   const visitTotal = data?.visits.total ?? 0;
-  const visitPending = data?.visits.pending ?? 0;
+  const visitPending = data?.tasks.open ?? 0;
+  const communicationPending = data?.communication_queue.summary.pending_count ?? 0;
+  const deadlines = data?.medication_deadlines.length ?? 0;
 
   const summaryCards = [
     {
@@ -230,39 +295,54 @@ export function DashboardContent() {
       title: '未完了タスク',
       value: isLoading ? '...' : isError ? '-' : `${visitPending}件`,
       icon: CheckSquare,
-      description: '対応が必要なタスク',
+      description: '本日処理したい業務タスク',
       trend: visitPending > 0 ? ('up' as const) : null,
     },
     {
-      title: '返信待ち',
-      value: '0件',
+      title: '連絡待ち',
+      value: isLoading ? '...' : isError ? '-' : `${communicationPending}件`,
       icon: MessageSquare,
-      description: '未読メッセージ・返信待ち',
-      trend: null,
+      description: '自己申告・再架電・多職種依頼',
+      trend: communicationPending > 0 ? ('up' as const) : null,
     },
     {
-      title: '服用最終日接近',
-      value: '0件',
+      title: '期限接近',
+      value: isLoading ? '...' : isError ? '-' : `${deadlines}件`,
       icon: Calendar,
-      description: '7日以内に服用終了の患者',
+      description: '7日以内の服薬・処方期限',
       trend: null,
     },
   ] as const;
 
   return (
-    <div className="p-6 space-y-8">
-      {/* Summary Cards */}
+    <div className="space-y-8 p-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {summaryCards.map((card) => (
           <SummaryCard key={card.title} {...card} />
         ))}
       </div>
 
-      {/* Lower sections */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        <TodayVisitsSection />
-        <UnsentReportsSection />
-        <MedicationRecordsPendingSection />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <TodayVisitsSection visits={data?.today_visits ?? []} />
+        <CommunicationQueueSection
+          queue={
+            data?.communication_queue ?? {
+              summary: {
+                pending_count: 0,
+                overdue_count: 0,
+                self_reports: 0,
+                callback_followups: 0,
+                open_requests: 0,
+                delivery_backlog: 0,
+                expiring_external_shares: 0,
+              },
+              items: [],
+            }
+          }
+          roleFocus={data?.role_focus ?? { role: 'pharmacist', items: [] }}
+        />
+        <ReportsBacklogSection reports={data?.reports_backlog ?? []} />
+        <MedicationDeadlinesSection items={data?.medication_deadlines ?? []} />
       </div>
     </div>
   );
