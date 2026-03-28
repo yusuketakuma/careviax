@@ -1,8 +1,10 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
 import Link from 'next/link';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, FileText, Printer } from 'lucide-react';
 import { Loading } from '@/components/ui/loading';
+import { buttonVariants } from '@/components/ui/button';
+import { PatientVisitBriefSection } from '@/components/visit-brief/patient-visit-brief-section';
 import { MedicationsContent } from './medications-content';
 
 export const metadata: Metadata = {
@@ -30,11 +32,39 @@ export default async function MedicationsPage({
         <p className="mt-1 text-sm text-muted-foreground">
           服薬中薬剤・残薬記録を管理します
         </p>
+        <div className="mt-4 flex gap-2 print:hidden">
+          <Link
+            href={`/api/patients/${id}/medications/pdf`}
+            target="_blank"
+            rel="noreferrer"
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
+            <FileText className="mr-1.5 size-4" aria-hidden="true" />
+            PDFを開く
+          </Link>
+          <Link
+            href={`/patients/${id}/medications/print`}
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
+            <Printer className="mr-1.5 size-4" aria-hidden="true" />
+            印刷ビュー
+          </Link>
+        </div>
       </div>
 
-      <Suspense fallback={<Loading />}>
-        <MedicationsContent patientId={id} />
-      </Suspense>
+      <div className="space-y-6">
+        <Suspense fallback={<Loading />}>
+          <PatientVisitBriefSection
+            patientId={id}
+            title="服薬管理サマリー"
+            description="処方薬、調剤方法、直近共有を1画面で確認できます。"
+          />
+        </Suspense>
+
+        <Suspense fallback={<Loading />}>
+          <MedicationsContent patientId={id} />
+        </Suspense>
+      </div>
     </div>
   );
 }

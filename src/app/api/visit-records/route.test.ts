@@ -8,12 +8,26 @@ const {
   visitScheduleFindFirstMock,
   careCaseFindFirstMock,
   visitRecordCreateMock,
+  visitRecordFindFirstMock,
   visitScheduleUpdateMock,
   consentRecordFindFirstMock,
   medicationCycleFindFirstMock,
   medicationCycleUpdateMock,
   workflowExceptionFindFirstMock,
   workflowExceptionCreateMock,
+  medicationIssueFindFirstMock,
+  medicationIssueCreateMock,
+  tracingReportFindFirstMock,
+  tracingReportCreateMock,
+  communicationRequestFindFirstMock,
+  communicationRequestCreateMock,
+  residualMedicationFindManyMock,
+  residualMedicationDeleteManyMock,
+  residualMedicationCreateMock,
+  contactPartyFindManyMock,
+  firstVisitDocumentFindFirstMock,
+  firstVisitDocumentCreateMock,
+  firstVisitDocumentUpdateMock,
   taskUpsertMock,
   billingEvidenceUpsertMock,
 } = vi.hoisted(() => ({
@@ -23,12 +37,26 @@ const {
   visitScheduleFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   visitRecordCreateMock: vi.fn(),
+  visitRecordFindFirstMock: vi.fn(),
   visitScheduleUpdateMock: vi.fn(),
   consentRecordFindFirstMock: vi.fn(),
   medicationCycleFindFirstMock: vi.fn(),
   medicationCycleUpdateMock: vi.fn(),
   workflowExceptionFindFirstMock: vi.fn(),
   workflowExceptionCreateMock: vi.fn(),
+  medicationIssueFindFirstMock: vi.fn(),
+  medicationIssueCreateMock: vi.fn(),
+  tracingReportFindFirstMock: vi.fn(),
+  tracingReportCreateMock: vi.fn(),
+  communicationRequestFindFirstMock: vi.fn(),
+  communicationRequestCreateMock: vi.fn(),
+  residualMedicationFindManyMock: vi.fn(),
+  residualMedicationDeleteManyMock: vi.fn(),
+  residualMedicationCreateMock: vi.fn(),
+  contactPartyFindManyMock: vi.fn(),
+  firstVisitDocumentFindFirstMock: vi.fn(),
+  firstVisitDocumentCreateMock: vi.fn(),
+  firstVisitDocumentUpdateMock: vi.fn(),
   taskUpsertMock: vi.fn(),
   billingEvidenceUpsertMock: vi.fn(),
 }));
@@ -77,11 +105,26 @@ describe('/api/visit-records POST', () => {
       schedule_status: 'ready',
       recurrence_rule: null,
       cycle_id: 'cycle_1',
+      visit_type: 'regular',
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      time_window_start: null,
+      time_window_end: null,
+      medication_end_date: null,
+      visit_deadline_date: null,
     });
     careCaseFindFirstMock.mockResolvedValue({
       patient_id: 'patient_1',
     });
     visitRecordCreateMock.mockResolvedValue({ id: 'record_1' });
+    visitRecordFindFirstMock.mockResolvedValue(null);
+    residualMedicationFindManyMock.mockResolvedValue([]);
+    residualMedicationDeleteManyMock.mockResolvedValue({ count: 0 });
+    residualMedicationCreateMock.mockResolvedValue({ id: 'residual_1' });
+    contactPartyFindManyMock.mockResolvedValue([]);
+    firstVisitDocumentFindFirstMock.mockResolvedValue(null);
+    firstVisitDocumentCreateMock.mockResolvedValue({ id: 'first_visit_1' });
+    firstVisitDocumentUpdateMock.mockResolvedValue({ id: 'first_visit_1' });
     visitScheduleUpdateMock.mockResolvedValue({ id: 'schedule_1' });
     consentRecordFindFirstMock.mockResolvedValue({ id: 'consent_1' });
     medicationCycleFindFirstMock.mockResolvedValue({
@@ -91,6 +134,12 @@ describe('/api/visit-records POST', () => {
     medicationCycleUpdateMock.mockResolvedValue({ id: 'cycle_1' });
     workflowExceptionFindFirstMock.mockResolvedValue(null);
     workflowExceptionCreateMock.mockResolvedValue({ id: 'exception_1' });
+    medicationIssueFindFirstMock.mockResolvedValue(null);
+    medicationIssueCreateMock.mockResolvedValue({ id: 'issue_1' });
+    tracingReportFindFirstMock.mockResolvedValue(null);
+    tracingReportCreateMock.mockResolvedValue({ id: 'tracing_1' });
+    communicationRequestFindFirstMock.mockResolvedValue(null);
+    communicationRequestCreateMock.mockResolvedValue({ id: 'request_1' });
     taskUpsertMock.mockResolvedValue({ id: 'task_1' });
     billingEvidenceUpsertMock.mockResolvedValue({ id: 'evidence_1' });
 
@@ -105,6 +154,15 @@ describe('/api/visit-records POST', () => {
         },
         visitRecord: {
           create: visitRecordCreateMock,
+          findFirst: visitRecordFindFirstMock,
+        },
+        residualMedication: {
+          findMany: residualMedicationFindManyMock,
+          deleteMany: residualMedicationDeleteManyMock,
+          create: residualMedicationCreateMock,
+        },
+        contactParty: {
+          findMany: contactPartyFindManyMock,
         },
         consentRecord: {
           findFirst: consentRecordFindFirstMock,
@@ -116,6 +174,23 @@ describe('/api/visit-records POST', () => {
         workflowException: {
           findFirst: workflowExceptionFindFirstMock,
           create: workflowExceptionCreateMock,
+        },
+        medicationIssue: {
+          findFirst: medicationIssueFindFirstMock,
+          create: medicationIssueCreateMock,
+        },
+        tracingReport: {
+          findFirst: tracingReportFindFirstMock,
+          create: tracingReportCreateMock,
+        },
+        communicationRequest: {
+          findFirst: communicationRequestFindFirstMock,
+          create: communicationRequestCreateMock,
+        },
+        firstVisitDocument: {
+          findFirst: firstVisitDocumentFindFirstMock,
+          create: firstVisitDocumentCreateMock,
+          update: firstVisitDocumentUpdateMock,
         },
         task: {
           upsert: taskUpsertMock,
@@ -176,5 +251,194 @@ describe('/api/visit-records POST', () => {
     expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
     expect(medicationCycleUpdateMock).not.toHaveBeenCalled();
     expect(workflowExceptionCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('auto-suggests the next visit date from recurrence rule when none is provided', async () => {
+    visitScheduleFindFirstMock.mockResolvedValue({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      schedule_status: 'ready',
+      recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=WE',
+      cycle_id: 'cycle_1',
+      visit_type: 'regular',
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      time_window_start: null,
+      time_window_end: null,
+      medication_end_date: new Date('2026-04-30T00:00:00.000Z'),
+      visit_deadline_date: null,
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+        },
+        { 'x-org-id': 'org_1' }
+      )
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(visitRecordCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          next_visit_suggestion_date: new Date('2026-04-01T00:00:00.000Z'),
+        }),
+      })
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      suggestedSchedule: {
+        suggested_date: '2026-04-01',
+        auto_generated: true,
+        interval_days: 6,
+      },
+    });
+  });
+
+  it('creates tracing follow-up work for reduction targets and raises an exception for prohibited reductions', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          residual_medications: [
+            {
+              drug_name: 'アムロジピン錠5mg',
+              drug_code: '2149001',
+              remaining_quantity: 30,
+              prescribed_daily_dose: 2,
+              is_prohibited_reduction: false,
+            },
+            {
+              drug_name: 'オキシコドン徐放錠',
+              drug_code: '8114001',
+              remaining_quantity: 14,
+              prescribed_daily_dose: 1,
+              is_prohibited_reduction: true,
+            },
+          ],
+        },
+        { 'x-org-id': 'org_1' }
+      )
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(medicationIssueCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        title: 'アムロジピン錠5mg の残薬調整',
+        category: 'adherence',
+      }),
+      select: { id: true },
+    });
+    expect(tracingReportCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        patient_id: 'patient_1',
+        issue_id: 'issue_1',
+        status: 'draft',
+      }),
+      select: { id: true },
+    });
+    expect(communicationRequestCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        request_type: 'tracing_report',
+        related_entity_type: 'tracing_report',
+        recipient_role: 'physician',
+        status: 'draft',
+      }),
+    });
+    expect(workflowExceptionCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        exception_type: 'reduction_prohibited_drug',
+        severity: 'critical',
+      }),
+    });
+    expect(taskUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          task_type: 'tracing_report_followup',
+        }),
+      })
+    );
+    expect(taskUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          task_type: 'residual_reduction_review',
+        }),
+      })
+    );
+  });
+
+  it('creates a first-visit document with delivery record for completed initial visits', async () => {
+    visitScheduleFindFirstMock.mockResolvedValue({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      schedule_status: 'ready',
+      recurrence_rule: null,
+      cycle_id: 'cycle_1',
+      visit_type: 'initial',
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      time_window_start: null,
+      time_window_end: null,
+      medication_end_date: null,
+      visit_deadline_date: null,
+    });
+    contactPartyFindManyMock.mockResolvedValue([
+      {
+        id: 'contact_1',
+        name: '長男 山田',
+        relation: 'child',
+        phone: '090-0000-1111',
+        email: null,
+        fax: null,
+        organization_name: null,
+        department: null,
+        is_primary: true,
+        is_emergency_contact: true,
+      },
+    ]);
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          receipt_person_name: '長男 山田',
+          receipt_at: '2026-03-26T10:30',
+        },
+        { 'x-org-id': 'org_1' }
+      )
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(firstVisitDocumentCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        document_url: '/api/visit-records/record_1/pdf',
+        delivered_at: new Date('2026-03-26T10:30'),
+        delivered_to: '長男 山田',
+        emergency_contacts: [
+          expect.objectContaining({
+            id: 'contact_1',
+            name: '長男 山田',
+            relation: 'child',
+            phone: '090-0000-1111',
+          }),
+        ],
+      }),
+    });
+    expect(firstVisitDocumentUpdateMock).not.toHaveBeenCalled();
   });
 });

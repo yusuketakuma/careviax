@@ -59,6 +59,9 @@ export const POST = withAuthContext(
       select: { id: true, status: true },
     });
     if (!existingRequest) return notFound('依頼が見つかりません');
+    if (['closed', 'cancelled', 'expired'].includes(existingRequest.status)) {
+      return validationError('完了・取消・期限切れの依頼には返信を追加できません');
+    }
 
     const result = await withOrgContext(ctx.orgId, async (tx) => {
       const response = await tx.communicationResponse.create({

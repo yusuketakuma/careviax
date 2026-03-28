@@ -23,3 +23,15 @@ export const upsertVisitConstraintsSchema = z.object({
   geocode_source: z.string().optional(),
   geocode_accuracy: z.string().optional(),
 });
+
+export const upsertFacilityVisitDaysSchema = z.object({
+  facility_label: z.string().trim().min(1, '施設ラベルは必須です'),
+  schedule_ids: z.array(z.string().trim().min(1)).min(1, '対象訪問予定が必要です'),
+  preferred_weekdays: z.array(z.number().int().min(0).max(6)).max(7).default([]),
+  preferred_time_from: z.union([timeStringSchema, z.null()]).optional(),
+  preferred_time_to: z.union([timeStringSchema, z.null()]).optional(),
+  facility_time_from: z.union([timeStringSchema, z.null()]).optional(),
+  facility_time_to: z.union([timeStringSchema, z.null()]).optional(),
+  visit_buffer_minutes: z.number().int().min(0).max(240).nullable().optional(),
+  notes: z.string().nullable().optional(),
+});

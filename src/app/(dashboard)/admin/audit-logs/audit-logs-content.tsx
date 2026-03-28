@@ -59,6 +59,11 @@ const ACTION_LABEL_MAP: Record<string, string> = {
   reject: '差戻し',
 };
 
+const ACTION_OPTIONS = [
+  { value: '', label: 'すべて' },
+  ...Object.entries(ACTION_LABEL_MAP).map(([value, label]) => ({ value, label })),
+];
+
 // --- Sample data ---
 
 const SAMPLE_LOGS: AuditLog[] = [
@@ -88,6 +93,7 @@ export function AuditLogsContent() {
   const orgId = useOrgId();
   const [actorFilter, setActorFilter] = useState('');
   const [targetTypeFilter, setTargetTypeFilter] = useState('');
+  const [actionFilter, setActionFilter] = useState('');
   const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
   const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
 
@@ -95,12 +101,13 @@ export function AuditLogsContent() {
     limit: '100',
     ...(actorFilter ? { actor: actorFilter } : {}),
     ...(targetTypeFilter ? { target_type: targetTypeFilter } : {}),
+    ...(actionFilter ? { action: actionFilter } : {}),
     ...(dateFrom ? { date_from: dateFrom } : {}),
     ...(dateTo ? { date_to: dateTo } : {}),
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['audit-logs', orgId, actorFilter, targetTypeFilter, dateFrom, dateTo],
+    queryKey: ['audit-logs', orgId, actorFilter, targetTypeFilter, actionFilter, dateFrom, dateTo],
     queryFn: async () => {
       const res = await fetch(`/api/audit-logs?${queryParams}`, {
         headers: { 'x-org-id': orgId },
@@ -176,8 +183,39 @@ export function AuditLogsContent() {
     []
   );
 
-  function handleExport() {
-    toast.success('監査ログのCSVエクスポートを開始しました（Phase 2 実装予定）');
+  async function handleExport(format: 'csv' | 'json') {
+    try {
+      const exportParams = new URLSearchParams(queryParams);
+      exportParams.set('format', format);
+      const response = await fetch(`/api/audit-logs/export?${exportParams.toString()}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(payload?.message ?? '監査ログのエクスポートに失敗しました');
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const disposition = response.headers.get('content-disposition');
+      const fallbackName = `audit-logs.${format}`;
+      const filename =
+        disposition?.match(/filename="([^"]+)"/)?.[1] ??
+        disposition?.match(/filename=([^;]+)/)?.[1]?.trim() ??
+        fallbackName;
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+      toast.success(`監査ログを${format.toUpperCase()}形式で出力しました`);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : '監査ログのエクスポートに失敗しました';
+      toast.error(message);
+    }
   }
 
   return (
@@ -191,7 +229,7 @@ export function AuditLogsContent() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <div className="space-y-1.5">
               <Label htmlFor="actor-filter">操作者</Label>
               <div className="relative">
@@ -200,7 +238,7 @@ export function AuditLogsContent() {
                   id="actor-filter"
                   value={actorFilter}
                   onChange={(e) => setActorFilter(e.target.value)}
-                  placeholder="名前で検索"
+                  placeholder="ユーザーIDで検索"
                   className="pl-8"
                 />
               </div>
@@ -217,6 +255,21 @@ export function AuditLogsContent() {
                 <SelectContent>
                   {TARGET_TYPE_OPTIONS.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="action-filter">操作</Label>
+              <Select value={actionFilter} onValueChange={(value) => setActionFilter(value ?? '')}>
+                <SelectTrigger id="action-filter">
+                  <SelectValue placeholder="すべて" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACTION_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value || 'all'} value={opt.value}>
                       {opt.label}
                     </SelectItem>
                   ))}
@@ -248,10 +301,16 @@ export function AuditLogsContent() {
       {/* Export + count */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">{logs.length}件</p>
-        <Button size="sm" variant="outline" onClick={handleExport}>
-          <Download className="mr-1.5 size-3.5" aria-hidden="true" />
-          CSV出力
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => void handleExport('json')}>
+            <Download className="mr-1.5 size-3.5" aria-hidden="true" />
+            JSON出力
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => void handleExport('csv')}>
+            <Download className="mr-1.5 size-3.5" aria-hidden="true" />
+            CSV出力
+          </Button>
+        </div>
       </div>
 
       {/* Table */}

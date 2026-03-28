@@ -1,4 +1,5 @@
-import { addDays } from 'date-fns';
+import { addDays, addYears } from 'date-fns';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { withOrgContext } from '@/lib/db/rls';
 import { runJob } from './runner';
@@ -10,7 +11,51 @@ import {
 } from '@/server/services/management-plans';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
-import { upsertBillingEvidenceForVisit } from '@/server/services/billing-evidence';
+import {
+  evaluateInitialHomeVisitAssessmentRequirement,
+  upsertBillingEvidenceForVisit,
+} from '@/server/services/billing-evidence';
+
+const DOSAGE_SUPPORT_KEYWORDS = [
+  '飲みにく',
+  '飲めない',
+  'むせ',
+  '嚥下',
+  '粉砕',
+  '一包化',
+  '剤形',
+  '貼付',
+  '服用しづら',
+] as const;
+
+type GeneratedTaskSpec = {
+  orgId: string;
+  taskType: string;
+  dedupeKey: string;
+  title: string;
+  description: string;
+  priority: 'urgent' | 'high' | 'normal' | 'low';
+  assignedTo?: string | null;
+  dueDate?: Date | null;
+  slaDueAt?: Date | null;
+  relatedEntityType?: string | null;
+  relatedEntityId?: string | null;
+  metadata?: Prisma.InputJsonValue | null;
+};
+
+function startOfDay(value = new Date()) {
+  const next = new Date(value);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function hasAnyKeyword(values: Array<string | null | undefined>, keywords: readonly string[]) {
+  const text = values
+    .filter((value): value is string => Boolean(value))
+    .join(' ')
+    .toLowerCase();
+  return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+}
 
 function buildVisitDemandTaskKey(cycleId: string) {
   return `visit-demand:${cycleId}`;
@@ -50,6 +95,131 @@ function buildCarryItemReviewTaskKey(scheduleId: string) {
 
 function buildEmergencyCoverageGapTaskKey(dateKey: string, siteId: string | null) {
   return `emergency-coverage-gap:${dateKey}:${siteId ?? 'org'}`;
+}
+
+function buildEmergencyContactReviewTaskKey(caseId: string) {
+  return `emergency-contact-review:${caseId}`;
+}
+
+function buildDosageSupportTaskKey(reportId: string) {
+  return `dosage-support:${reportId}`;
+}
+
+function buildInquiryWorkbenchTaskKey(inquiryId: string) {
+  return `inquiry-workbench:${inquiryId}`;
+}
+
+function buildFacilityBatchTrackerTaskKey(groupId: string) {
+  return `facility-batch-tracker:${groupId}`;
+}
+
+function buildMobileVisitModeTaskKey(scheduleId: string) {
+  return `mobile-visit-mode:${scheduleId}`;
+}
+
+function buildVisitRecordRetentionTaskKey(recordId: string) {
+  return `visit-record-retention:${recordId}`;
+}
+
+function buildPrescriptionOriginalRetentionTaskKey(intakeId: string) {
+  return `prescription-original-retention:${intakeId}`;
+}
+
+function buildFaxOriginalFollowupTaskKey(intakeId: string) {
+  return `fax-original-followup:${intakeId}`;
+}
+
+function buildInitialAssessmentTaskKey(scheduleId: string) {
+  return `initial-home-visit-assessment:${scheduleId}`;
+}
+
+async function syncGeneratedOperationalTasks(
+  taskSpecs: GeneratedTaskSpec[],
+  managedTaskTypes: string[]
+) {
+  const taskTypes = Array.from(new Set(managedTaskTypes));
+  const existingTasks =
+    taskTypes.length === 0
+      ? []
+      : await prisma.task.findMany({
+          where: {
+            task_type: { in: taskTypes },
+            status: { in: ['pending', 'in_progress'] },
+          },
+          select: {
+            org_id: true,
+            task_type: true,
+            dedupe_key: true,
+          },
+        });
+
+  const specsByOrg = new Map<string, GeneratedTaskSpec[]>();
+  const activeByBucket = new Map<string, Set<string>>();
+
+  for (const spec of taskSpecs) {
+    const orgSpecs = specsByOrg.get(spec.orgId) ?? [];
+    orgSpecs.push(spec);
+    specsByOrg.set(spec.orgId, orgSpecs);
+
+    const bucketKey = `${spec.orgId}:${spec.taskType}`;
+    const activeKeys = activeByBucket.get(bucketKey) ?? new Set<string>();
+    activeKeys.add(spec.dedupeKey);
+    activeByBucket.set(bucketKey, activeKeys);
+  }
+
+  for (const [orgId, specs] of specsByOrg) {
+    await withOrgContext(orgId, async (tx) => {
+      for (const spec of specs) {
+        await upsertOperationalTask(tx, {
+          orgId: spec.orgId,
+          taskType: spec.taskType,
+          title: spec.title,
+          description: spec.description,
+          priority: spec.priority,
+          assignedTo: spec.assignedTo ?? null,
+          dueDate: spec.dueDate ?? null,
+          slaDueAt: spec.slaDueAt ?? null,
+          relatedEntityType: spec.relatedEntityType ?? null,
+          relatedEntityId: spec.relatedEntityId ?? null,
+          dedupeKey: spec.dedupeKey,
+          metadata: spec.metadata ?? null,
+        });
+      }
+    });
+  }
+
+  const staleKeysByOrg = new Map<string, Map<string, string[]>>();
+  for (const task of existingTasks) {
+    if (!task.dedupe_key) continue;
+    const bucketKey = `${task.org_id}:${task.task_type}`;
+    const activeKeys = activeByBucket.get(bucketKey);
+    if (activeKeys?.has(task.dedupe_key)) continue;
+
+    const orgBuckets = staleKeysByOrg.get(task.org_id) ?? new Map<string, string[]>();
+    const staleKeys = orgBuckets.get(task.task_type) ?? [];
+    staleKeys.push(task.dedupe_key);
+    orgBuckets.set(task.task_type, staleKeys);
+    staleKeysByOrg.set(task.org_id, orgBuckets);
+  }
+
+  for (const [orgId, bucketMap] of staleKeysByOrg) {
+    await withOrgContext(orgId, async (tx) => {
+      for (const [taskType, dedupeKeys] of bucketMap) {
+        await tx.task.updateMany({
+          where: {
+            org_id: orgId,
+            task_type: taskType,
+            status: { in: ['pending', 'in_progress'] },
+            dedupe_key: { in: dedupeKeys },
+          },
+          data: {
+            status: 'completed',
+            completed_at: new Date(),
+          },
+        });
+      }
+    });
+  }
 }
 
 /**
@@ -289,9 +459,347 @@ export async function checkPrescriptionExpiry() {
       where: {
         prescription_expiry_date: { lte: tomorrow },
       },
+      include: {
+        cycle: {
+          include: {
+            case_: true,
+          },
+        },
+      },
     });
 
+    for (const intake of expiring) {
+      if (!intake.cycle?.case_) continue;
+      const orgId = intake.cycle.case_.org_id;
+
+      // Notify the case pharmacist
+      const caseRecord = intake.cycle.case_;
+      if (caseRecord.primary_pharmacist_id) {
+        await prisma.notification.create({
+          data: {
+            org_id: orgId,
+            user_id: caseRecord.primary_pharmacist_id,
+            type: 'urgent',
+            title: '処方箋有効期限切れ間近',
+            message: `処方箋の有効期限が ${intake.prescription_expiry_date?.toISOString().slice(0, 10) ?? '不明'} です。早急に対応してください。`,
+            link: `/patients/${caseRecord.patient_id}`,
+            dedupe_key: `prescription-expiry:${intake.id}`,
+          },
+        });
+      }
+    }
+
     return { processedCount: expiring.length };
+  });
+}
+
+export async function checkVisitRecordRetention() {
+  return runJob('visit_record_retention_check', async () => {
+    const now = startOfDay(new Date());
+    const in30Days = startOfDay(addDays(now, 30));
+    const expiringFrom = startOfDay(addYears(now, -5));
+    const expiringTo = startOfDay(addYears(in30Days, -5));
+
+    const expiring = await prisma.visitRecord.findMany({
+      where: {
+        visit_date: {
+          gte: expiringFrom,
+          lte: expiringTo,
+        },
+      },
+      select: {
+        id: true,
+        org_id: true,
+        patient_id: true,
+        visit_date: true,
+      },
+    });
+
+    if (expiring.length === 0) {
+      return { processedCount: 0 };
+    }
+
+    const orgIds = Array.from(new Set(expiring.map((record) => record.org_id)));
+    const patientIds = Array.from(new Set(expiring.map((record) => record.patient_id)));
+    const [admins, patients] = await Promise.all([
+      prisma.membership.findMany({
+        where: {
+          org_id: { in: orgIds },
+          role: { in: ['admin', 'owner'] },
+          is_active: true,
+        },
+        select: {
+          org_id: true,
+          user_id: true,
+        },
+      }),
+      prisma.patient.findMany({
+        where: {
+          org_id: { in: orgIds },
+          id: { in: patientIds },
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+      }),
+    ]);
+
+    const adminsByOrg = new Map<string, string[]>();
+    for (const admin of admins) {
+      const bucket = adminsByOrg.get(admin.org_id) ?? [];
+      bucket.push(admin.user_id);
+      adminsByOrg.set(admin.org_id, bucket);
+    }
+    const patientById = new Map(patients.map((patient) => [patient.id, patient.name]));
+
+    const taskSpecs: GeneratedTaskSpec[] = [];
+    let notificationCount = 0;
+
+    for (const record of expiring) {
+      const retentionUntil = startOfDay(addYears(record.visit_date, 5));
+      const daysUntilExpiry = Math.ceil(
+        (retentionUntil.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      const priority = daysUntilExpiry <= 7 ? 'urgent' as const : 'high' as const;
+      const thresholdLabel = daysUntilExpiry <= 7 ? '7日以内' : '30日以内';
+      const patientName = patientById.get(record.patient_id) ?? record.patient_id;
+
+      for (const adminId of adminsByOrg.get(record.org_id) ?? []) {
+        await prisma.notification.create({
+          data: {
+            org_id: record.org_id,
+            user_id: adminId,
+            type: priority === 'urgent' ? 'urgent' : 'business',
+            title: '薬歴の保存期限',
+            message: `${patientName} さんの訪問記録が${thresholdLabel}に保存期限を迎えます。保全状況を確認してください。`,
+            link: `/visits/${record.id}`,
+            dedupe_key: `visit-record-retention:${record.id}:${adminId}:${priority}`,
+          },
+        });
+        notificationCount += 1;
+      }
+
+      taskSpecs.push({
+        orgId: record.org_id,
+        taskType: 'visit_record_retention',
+        dedupeKey: buildVisitRecordRetentionTaskKey(record.id),
+        title: `薬歴保存期限確認: ${patientName}`,
+        description: `訪問記録が ${retentionUntil.toISOString().slice(0, 10)} に5年保存期限を迎えます。PDF出力・保全状況を確認してください。`,
+        priority,
+        dueDate: retentionUntil,
+        relatedEntityType: 'visit_record',
+        relatedEntityId: record.id,
+        metadata: {
+          patient_id: record.patient_id,
+          retention_until: retentionUntil.toISOString(),
+        } satisfies Prisma.InputJsonValue,
+      });
+    }
+
+    if (taskSpecs.length > 0) {
+      await syncGeneratedOperationalTasks(taskSpecs, ['visit_record_retention']);
+    }
+
+    return { processedCount: notificationCount };
+  });
+}
+
+export async function checkPrescriptionOriginalRetention() {
+  return runJob('prescription_original_retention_check', async () => {
+    const now = startOfDay(new Date());
+    const in30Days = startOfDay(addDays(now, 30));
+    const expiringFrom = startOfDay(addYears(now, -5));
+    const expiringTo = startOfDay(addYears(in30Days, -5));
+    const faxFollowupThreshold = startOfDay(addDays(now, -3));
+
+    const expiring = await prisma.prescriptionIntake.findMany({
+      where: {
+        source_type: { in: ['paper', 'fax'] },
+        NOT: { original_document_url: null },
+        prescribed_date: {
+          gte: expiringFrom,
+          lte: expiringTo,
+        },
+      },
+      include: {
+        cycle: {
+          include: {
+            case_: {
+              select: {
+                patient_id: true,
+                primary_pharmacist_id: true,
+                patient: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const overdueFaxOriginals = await prisma.prescriptionIntake.findMany({
+      where: {
+        source_type: 'fax',
+        original_collected_at: null,
+        created_at: {
+          lt: faxFollowupThreshold,
+        },
+      },
+      include: {
+        cycle: {
+          include: {
+            case_: {
+              select: {
+                patient_id: true,
+                primary_pharmacist_id: true,
+                patient: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (expiring.length === 0 && overdueFaxOriginals.length === 0) {
+      await syncGeneratedOperationalTasks([], ['prescription_original_retention', 'fax_original_followup']);
+      return { processedCount: 0 };
+    }
+
+    const orgIds = Array.from(
+      new Set([...expiring, ...overdueFaxOriginals].map((intake) => intake.org_id))
+    );
+    const admins = await prisma.membership.findMany({
+      where: {
+        org_id: { in: orgIds },
+        role: { in: ['admin', 'owner'] },
+        is_active: true,
+      },
+      select: {
+        org_id: true,
+        user_id: true,
+      },
+    });
+    const adminsByOrg = new Map<string, string[]>();
+    for (const admin of admins) {
+      const bucket = adminsByOrg.get(admin.org_id) ?? [];
+      bucket.push(admin.user_id);
+      adminsByOrg.set(admin.org_id, bucket);
+    }
+
+    const taskSpecs: GeneratedTaskSpec[] = [];
+    let notificationCount = 0;
+
+    for (const intake of expiring) {
+      const retentionUntil = startOfDay(addYears(intake.prescribed_date, 5));
+      const daysUntilExpiry = Math.ceil(
+        (retentionUntil.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      const priority = daysUntilExpiry <= 7 ? 'urgent' as const : 'high' as const;
+      const thresholdLabel = daysUntilExpiry <= 7 ? '7日以内' : '30日以内';
+      const patientName = intake.cycle?.case_?.patient.name ?? intake.cycle?.case_?.patient_id ?? '患者不明';
+      const notificationTargets = new Set<string>(adminsByOrg.get(intake.org_id) ?? []);
+      if (intake.cycle?.case_?.primary_pharmacist_id) {
+        notificationTargets.add(intake.cycle.case_.primary_pharmacist_id);
+      }
+
+      for (const userId of notificationTargets) {
+        await prisma.notification.create({
+          data: {
+            org_id: intake.org_id,
+            user_id: userId,
+            type: priority === 'urgent' ? 'urgent' : 'business',
+            title: '処方箋原本スキャンの保存期限',
+            message: `${patientName} さんの原本スキャンが${thresholdLabel}に5年保存期限を迎えます。保全状況を確認してください。`,
+            link: '/workflow',
+            dedupe_key: `prescription-original-retention:${intake.id}:${userId}:${priority}`,
+          },
+        });
+        notificationCount += 1;
+      }
+
+      taskSpecs.push({
+        orgId: intake.org_id,
+        taskType: 'prescription_original_retention',
+        dedupeKey: buildPrescriptionOriginalRetentionTaskKey(intake.id),
+        title: `処方箋原本保存期限確認: ${patientName}`,
+        description: `原本スキャンが ${retentionUntil.toISOString().slice(0, 10)} に5年保存期限を迎えます。Object Lock と保全状況を確認してください。`,
+        priority,
+        assignedTo: intake.cycle?.case_?.primary_pharmacist_id ?? null,
+        dueDate: retentionUntil,
+        relatedEntityType: 'prescription_intake',
+        relatedEntityId: intake.id,
+        metadata: {
+          patient_id: intake.cycle?.case_?.patient_id ?? null,
+          source_type: intake.source_type,
+          retention_until: retentionUntil.toISOString(),
+        } satisfies Prisma.InputJsonValue,
+      });
+    }
+
+    for (const intake of overdueFaxOriginals) {
+      const patientName = intake.cycle?.case_?.patient.name ?? intake.cycle?.case_?.patient_id ?? '患者不明';
+      const notificationTargets = new Set<string>(adminsByOrg.get(intake.org_id) ?? []);
+      if (intake.cycle?.case_?.primary_pharmacist_id) {
+        notificationTargets.add(intake.cycle.case_.primary_pharmacist_id);
+      }
+      const overdueDays = Math.max(
+        1,
+        Math.ceil((now.getTime() - startOfDay(intake.created_at).getTime()) / (1000 * 60 * 60 * 24))
+      );
+      const priority = overdueDays >= 5 ? 'urgent' as const : 'high' as const;
+      const dueDate = startOfDay(addDays(intake.created_at, 3));
+      const patientId = intake.cycle?.case_?.patient_id ?? intake.cycle?.patient_id ?? null;
+
+      for (const userId of notificationTargets) {
+        await prisma.notification.create({
+          data: {
+            org_id: intake.org_id,
+            user_id: userId,
+            type: priority === 'urgent' ? 'urgent' : 'business',
+            title: 'FAX処方箋の原本未回収',
+            message: `${patientName} さんの FAX 処方箋は受付から${overdueDays}日経過しています。訪問時の原本回収を確認してください。`,
+            link: patientId ? `/patients/${patientId}/prescriptions` : '/workflow',
+            dedupe_key: `fax-original-followup:${intake.id}:${userId}:${priority}`,
+          },
+        });
+        notificationCount += 1;
+      }
+
+      taskSpecs.push({
+        orgId: intake.org_id,
+        taskType: 'fax_original_followup',
+        dedupeKey: buildFaxOriginalFollowupTaskKey(intake.id),
+        title: `FAX原本回収確認: ${patientName}`,
+        description: `FAX受付から${overdueDays}日経過しています。訪問時に原本を回収し、回収日時を記録してください。`,
+        priority,
+        assignedTo: intake.cycle?.case_?.primary_pharmacist_id ?? null,
+        dueDate,
+        slaDueAt: dueDate,
+        relatedEntityType: 'prescription_intake',
+        relatedEntityId: intake.id,
+        metadata: {
+          patient_id: patientId,
+          patient_name: patientName,
+          action_href: patientId ? `/patients/${patientId}/prescriptions` : '/workflow',
+          action_label: '原本回収を記録',
+          fax_received_at: intake.created_at.toISOString(),
+          overdue_days: overdueDays,
+        } satisfies Prisma.InputJsonValue,
+      });
+    }
+
+    if (taskSpecs.length > 0) {
+      await syncGeneratedOperationalTasks(taskSpecs, ['prescription_original_retention', 'fax_original_followup']);
+    }
+
+    return { processedCount: notificationCount };
   });
 }
 
@@ -647,6 +1155,102 @@ export async function checkPreparationBacklog() {
   });
 }
 
+export async function checkInitialHomeVisitAssessmentBacklog() {
+  return runJob('initial_home_visit_assessment_check', async () => {
+    const tomorrow = addDays(startOfDay(), 1);
+    const dayAfterTomorrow = addDays(tomorrow, 1);
+
+    const schedules = await prisma.visitSchedule.findMany({
+      where: {
+        scheduled_date: {
+          gte: tomorrow,
+          lt: dayAfterTomorrow,
+        },
+        schedule_status: { in: ['planned', 'in_preparation', 'ready'] },
+      },
+      select: {
+        id: true,
+        org_id: true,
+        scheduled_date: true,
+        pharmacist_id: true,
+        case_: {
+          select: {
+            patient_id: true,
+            patient: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const taskSpecs: GeneratedTaskSpec[] = [];
+    let notificationCount = 0;
+
+    for (const schedule of schedules) {
+      const patientId = schedule.case_.patient_id;
+      const patientName = schedule.case_.patient.name;
+      const requirement = await withOrgContext(schedule.org_id, (tx) =>
+        evaluateInitialHomeVisitAssessmentRequirement(tx, {
+          orgId: schedule.org_id,
+          patientId,
+          targetDate: schedule.scheduled_date,
+        })
+      );
+
+      if (!requirement.required || requirement.satisfied) continue;
+
+      const dedupeKey = buildInitialAssessmentTaskKey(schedule.id);
+      taskSpecs.push({
+        orgId: schedule.org_id,
+        taskType: 'initial_home_visit_assessment',
+        dedupeKey,
+        title: '初回算定月の事前訪問要件を確認してください',
+        description:
+          requirement.reason ??
+          '初回訪問前日までの患家訪問・環境聴取記録が不足しています。',
+        priority: 'high',
+        assignedTo: schedule.pharmacist_id,
+        dueDate: schedule.scheduled_date,
+        slaDueAt: schedule.scheduled_date,
+        relatedEntityType: 'visit_schedule',
+        relatedEntityId: schedule.id,
+        metadata: {
+          patient_id: patientId,
+          patient_name: patientName,
+          schedule_id: schedule.id,
+          action_href: `/patients/${patientId}`,
+          action_label: '患者記録を確認',
+        } as Prisma.InputJsonValue,
+      });
+
+      await withOrgContext(schedule.org_id, (tx) =>
+        dispatchNotificationEvent(tx, {
+          orgId: schedule.org_id,
+          eventType: 'billing_initial_assessment_due',
+          type: 'urgent',
+          title: '初回算定月の事前訪問要件が未確認です',
+          message: `${patientName}さんの初回訪問前日までの患家訪問・環境聴取記録を確認してください。`,
+          link: `/patients/${patientId}`,
+          explicitUserIds: [schedule.pharmacist_id],
+          dedupeKey,
+          metadata: {
+            patient_id: patientId,
+            schedule_id: schedule.id,
+          } as Prisma.InputJsonValue,
+        })
+      );
+      notificationCount += 1;
+    }
+
+    await syncGeneratedOperationalTasks(taskSpecs, ['initial_home_visit_assessment']);
+
+    return { processedCount: taskSpecs.length + notificationCount };
+  });
+}
+
 export async function generateBillingEvidenceDaily() {
   return runJob('billing_evidence_generation', async () => {
     const existingEvidence = await prisma.billingEvidence.findMany({
@@ -993,6 +1597,570 @@ export async function checkEmergencyCoverageGaps() {
   });
 }
 
+export async function syncVisitSupportFeatureTasks() {
+  return runJob('visit_support_feature_task_sync', async () => {
+    const today = startOfDay();
+    const sevenDaysFromNow = addDays(today, 7);
+    const twoDaysFromNow = addDays(today, 2);
+
+    const [activeCases, firstVisitDocs, openSelfReports, unresolvedInquiries, upcomingSchedules] =
+      await Promise.all([
+        prisma.careCase.findMany({
+          where: {
+            status: { in: ['assessment', 'active', 'on_hold'] },
+          },
+          select: {
+            id: true,
+            org_id: true,
+            patient_id: true,
+            primary_pharmacist_id: true,
+            patient: {
+              select: {
+                name: true,
+                contacts: {
+                  select: {
+                    relation: true,
+                    is_emergency_contact: true,
+                  },
+                },
+              },
+            },
+          },
+        }),
+        prisma.firstVisitDocument.findMany({
+          select: {
+            case_id: true,
+          },
+        }),
+        prisma.patientSelfReport.findMany({
+          where: {
+            status: { in: ['submitted', 'triaged', 'converted_to_task'] },
+          },
+          select: {
+            id: true,
+            org_id: true,
+            patient_id: true,
+            subject: true,
+            category: true,
+            content: true,
+            created_at: true,
+          },
+        }),
+        prisma.inquiryRecord.findMany({
+          where: {
+            OR: [{ result: null }, { result: 'pending' }],
+          },
+          select: {
+            id: true,
+            org_id: true,
+            reason: true,
+            created_at: true,
+            cycle: {
+              select: {
+                id: true,
+                case_: {
+                  select: {
+                    id: true,
+                    patient_id: true,
+                    primary_pharmacist_id: true,
+                    patient: {
+                      select: {
+                        name: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        }),
+        prisma.visitSchedule.findMany({
+          where: {
+            scheduled_date: {
+              gte: today,
+              lte: sevenDaysFromNow,
+            },
+            schedule_status: { in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'] },
+          },
+          select: {
+            id: true,
+            org_id: true,
+            pharmacist_id: true,
+            site_id: true,
+            scheduled_date: true,
+            priority: true,
+            schedule_status: true,
+            preparation: {
+              select: {
+                offline_synced: true,
+              },
+            },
+            case_: {
+              select: {
+                id: true,
+                patient_id: true,
+                patient: {
+                  select: {
+                    name: true,
+                    residences: {
+                      where: { is_primary: true },
+                      take: 1,
+                      select: {
+                        building_id: true,
+                        address: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        }),
+      ]);
+
+    const firstVisitCaseIds = new Set(firstVisitDocs.map((item) => item.case_id));
+    const patientCaseMap = new Map(
+      activeCases.map((careCase) => [careCase.patient_id, careCase])
+    );
+    const taskSpecs: GeneratedTaskSpec[] = [];
+
+    for (const careCase of activeCases) {
+      const hasEmergencyContact = careCase.patient.contacts.some(
+        (contact) => contact.is_emergency_contact || contact.relation === 'facility_staff'
+      );
+      const hasFirstVisitDoc = firstVisitCaseIds.has(careCase.id);
+      if (hasEmergencyContact && hasFirstVisitDoc) continue;
+
+      const dueAt = addDays(today, 1);
+      const missingItems = [
+        !hasEmergencyContact ? '緊急連絡先' : null,
+        !hasFirstVisitDoc ? '初回文書' : null,
+      ].filter((value): value is string => Boolean(value));
+
+      taskSpecs.push({
+        orgId: careCase.org_id,
+        taskType: 'emergency_contact_review',
+        dedupeKey: buildEmergencyContactReviewTaskKey(careCase.id),
+        title: `${careCase.patient.name} の緊急連絡先・初回文書確認`,
+        description: `${missingItems.join(' / ')} が不足しています。`,
+        priority: 'high',
+        assignedTo: careCase.primary_pharmacist_id ?? null,
+        dueDate: dueAt,
+        slaDueAt: dueAt,
+        relatedEntityType: 'case',
+        relatedEntityId: careCase.id,
+        metadata: {
+          case_id: careCase.id,
+          patient_id: careCase.patient_id,
+          patient_name: careCase.patient.name,
+          missing_items: missingItems,
+        },
+      });
+    }
+
+    for (const report of openSelfReports) {
+      if (
+        !hasAnyKeyword(
+          [report.category, report.subject, report.content],
+          DOSAGE_SUPPORT_KEYWORDS
+        )
+      ) {
+        continue;
+      }
+
+      const careCase = patientCaseMap.get(report.patient_id);
+      const dueAt = addDays(new Date(report.created_at), 1);
+
+      taskSpecs.push({
+        orgId: report.org_id,
+        taskType: 'dosage_form_support',
+        dedupeKey: buildDosageSupportTaskKey(report.id),
+        title: `${careCase?.patient.name ?? '患者'} の剤形・服用支援確認`,
+        description: `${report.subject} に対して剤形調整や一包化の検討が必要です。`,
+        priority: 'high',
+        assignedTo: careCase?.primary_pharmacist_id ?? null,
+        dueDate: dueAt,
+        slaDueAt: dueAt,
+        relatedEntityType: 'patient_self_report',
+        relatedEntityId: report.id,
+        metadata: {
+          patient_id: report.patient_id,
+          case_id: careCase?.id ?? null,
+          patient_name: careCase?.patient.name ?? null,
+          report_subject: report.subject,
+        },
+      });
+    }
+
+    for (const inquiry of unresolvedInquiries) {
+      const careCase = inquiry.cycle?.case_;
+      if (!careCase) continue;
+
+      const dueAt = addDays(new Date(inquiry.created_at), 1);
+      taskSpecs.push({
+        orgId: inquiry.org_id,
+        taskType: 'inquiry_workbench',
+        dedupeKey: buildInquiryWorkbenchTaskKey(inquiry.id),
+        title: `${careCase.patient.name} の疑義照会確認`,
+        description: inquiry.reason || '未解決の疑義照会または処方提案があります。',
+        priority: 'high',
+        assignedTo: careCase.primary_pharmacist_id ?? null,
+        dueDate: dueAt,
+        slaDueAt: dueAt,
+        relatedEntityType: 'inquiry_record',
+        relatedEntityId: inquiry.id,
+        metadata: {
+          cycle_id: inquiry.cycle.id,
+          case_id: careCase.id,
+          patient_id: careCase.patient_id,
+          patient_name: careCase.patient.name,
+        },
+      });
+    }
+
+    const facilityGroups = new Map<
+      string,
+      {
+        orgId: string;
+        dateKey: string;
+        pharmacistId: string;
+        groupLabel: string;
+        patientNames: string[];
+        dueDate: Date;
+      }
+    >();
+
+    for (const schedule of upcomingSchedules) {
+      const residence = schedule.case_.patient.residences[0] ?? null;
+      const locationKey = residence?.building_id ?? residence?.address ?? null;
+      if (!locationKey) continue;
+
+      const dateKey = schedule.scheduled_date.toISOString().slice(0, 10);
+      const groupId = [
+        dateKey,
+        schedule.site_id ?? 'site:none',
+        schedule.pharmacist_id,
+        locationKey,
+      ].join(':');
+      const existing = facilityGroups.get(groupId);
+      if (existing) {
+        existing.patientNames.push(schedule.case_.patient.name);
+        continue;
+      }
+
+      facilityGroups.set(groupId, {
+        orgId: schedule.org_id,
+        dateKey,
+        pharmacistId: schedule.pharmacist_id,
+        groupLabel: locationKey,
+        patientNames: [schedule.case_.patient.name],
+        dueDate: schedule.scheduled_date,
+      });
+    }
+
+    for (const [groupId, group] of facilityGroups) {
+      if (group.patientNames.length <= 1) continue;
+      taskSpecs.push({
+        orgId: group.orgId,
+        taskType: 'facility_batch_tracker',
+        dedupeKey: buildFacilityBatchTrackerTaskKey(groupId),
+        title: `${group.dateKey} の施設訪問バッチ確認`,
+        description: `${group.patientNames.join('、')} を同一ルートで束ねられる可能性があります。`,
+        priority: group.patientNames.length >= 3 ? 'high' : 'normal',
+        assignedTo: group.pharmacistId,
+        dueDate: group.dueDate,
+        slaDueAt: group.dueDate,
+        relatedEntityType: 'visit_schedule_group',
+        relatedEntityId: groupId,
+        metadata: {
+          facility_label: group.groupLabel,
+          patient_names: group.patientNames,
+          patient_count: group.patientNames.length,
+        },
+      });
+    }
+
+    for (const schedule of upcomingSchedules) {
+      const needsOfflineSync =
+        schedule.scheduled_date <= twoDaysFromNow && !schedule.preparation?.offline_synced;
+      if (!needsOfflineSync) continue;
+
+      taskSpecs.push({
+        orgId: schedule.org_id,
+        taskType: 'mobile_visit_mode',
+        dedupeKey: buildMobileVisitModeTaskKey(schedule.id),
+        title: `${schedule.case_.patient.name} のオフライン同期確認`,
+        description: '訪問前に端末同期とモバイル準備を完了してください。',
+        priority:
+          schedule.priority === 'emergency' || schedule.priority === 'urgent'
+            ? 'urgent'
+            : 'high',
+        assignedTo: schedule.pharmacist_id,
+        dueDate: schedule.scheduled_date,
+        slaDueAt: schedule.scheduled_date,
+        relatedEntityType: 'visit_schedule',
+        relatedEntityId: schedule.id,
+        metadata: {
+          patient_id: schedule.case_.patient_id,
+          case_id: schedule.case_.id,
+          patient_name: schedule.case_.patient.name,
+          schedule_status: schedule.schedule_status,
+        },
+      });
+    }
+
+    await syncGeneratedOperationalTasks(taskSpecs, [
+      'emergency_contact_review',
+      'dosage_form_support',
+      'inquiry_workbench',
+      'facility_batch_tracker',
+      'mobile_visit_mode',
+    ]);
+
+    return { processedCount: taskSpecs.length };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Facility standard registration expiry check
+// ---------------------------------------------------------------------------
+function buildFacilityStandardExpiryTaskKey(registrationId: string) {
+  return `facility-standard-expiry:${registrationId}`;
+}
+
+export async function checkFacilityStandardExpiry() {
+  return runJob('facility_standard_expiry_check', async () => {
+    const now = new Date();
+    const in60Days = addDays(now, 60);
+
+    const expiring = await prisma.facilityStandardRegistration.findMany({
+      where: {
+        expiry_date: { lte: in60Days, gte: now },
+      },
+      include: {
+        site: true,
+      },
+    });
+
+    const thresholds = [
+      { days: 7, priority: 'urgent' as const, label: '7日以内' },
+      { days: 30, priority: 'high' as const, label: '30日以内' },
+      { days: 60, priority: 'normal' as const, label: '60日以内' },
+    ];
+
+    const taskSpecs: GeneratedTaskSpec[] = [];
+    let notificationCount = 0;
+
+    for (const reg of expiring) {
+      if (!reg.expiry_date) continue;
+      const daysUntilExpiry = Math.ceil(
+        (reg.expiry_date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+      );
+
+      const threshold = thresholds.find((t) => daysUntilExpiry <= t.days);
+      if (!threshold) continue;
+
+      // Find admin users for the org to notify
+      const adminMemberships = await prisma.membership.findMany({
+        where: { org_id: reg.org_id, role: { in: ['admin', 'owner'] }, is_active: true },
+        select: { user_id: true },
+      });
+      const admins = adminMemberships.map((m) => ({ id: m.user_id }));
+
+      for (const admin of admins) {
+        await prisma.notification.create({
+          data: {
+            org_id: reg.org_id,
+            user_id: admin.id,
+            type: threshold.priority === 'urgent' ? 'urgent' : 'business',
+            title: '施設基準の有効期限',
+            message: `${reg.standard_type}（${reg.site?.name ?? '不明'}）の有効期限が${threshold.label}に迫っています。`,
+            link: '/admin/facility-standards',
+            dedupe_key: `facility-std-expiry:${reg.id}:${threshold.days}`,
+          },
+        });
+        notificationCount++;
+      }
+
+      taskSpecs.push({
+        orgId: reg.org_id,
+        taskType: 'facility_standard_expiry',
+        dedupeKey: buildFacilityStandardExpiryTaskKey(reg.id),
+        title: `施設基準更新: ${reg.standard_type}`,
+        description: `${reg.site?.name ?? '不明'} の ${reg.standard_type} が ${reg.expiry_date.toISOString().slice(0, 10)} に期限切れ`,
+        priority: threshold.priority,
+        dueDate: reg.expiry_date,
+        relatedEntityType: 'facility_standard_registration',
+        relatedEntityId: reg.id,
+      });
+    }
+
+    if (taskSpecs.length > 0) {
+      await syncGeneratedOperationalTasks(taskSpecs, ['facility_standard_expiry']);
+    }
+
+    return { processedCount: notificationCount };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Pharmacist credential expiry check
+// ---------------------------------------------------------------------------
+export async function checkCredentialExpiry() {
+  return runJob('credential_expiry_check', async () => {
+    const now = new Date();
+    const in90Days = addDays(now, 90);
+
+    const expiring = await prisma.pharmacistCredential.findMany({
+      where: {
+        expiry_date: { lte: in90Days, gte: now },
+      },
+      include: {
+        user: { select: { id: true, org_id: true, name: true } },
+      },
+    });
+
+    const thresholds = [
+      { days: 30, priority: 'urgent' as const, label: '30日以内' },
+      { days: 90, priority: 'high' as const, label: '90日以内' },
+    ];
+
+    let notificationCount = 0;
+
+    for (const cred of expiring) {
+      if (!cred.expiry_date) continue;
+      const daysUntilExpiry = Math.ceil(
+        (cred.expiry_date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+      );
+
+      const threshold = thresholds.find((t) => daysUntilExpiry <= t.days);
+      if (!threshold) continue;
+
+      // Notify the pharmacist themselves
+      await prisma.notification.create({
+        data: {
+          org_id: cred.org_id,
+          user_id: cred.user_id,
+          type: threshold.priority === 'urgent' ? 'urgent' : 'reminder',
+          title: '資格・認定の有効期限',
+          message: `${cred.certification_type} の有効期限が${threshold.label}に迫っています。更新手続きを行ってください。`,
+          link: '/settings/credentials',
+          dedupe_key: `credential-expiry:${cred.id}:${threshold.days}`,
+        },
+      });
+      notificationCount++;
+
+      // Also notify admins
+      const adminMemberships = await prisma.membership.findMany({
+        where: { org_id: cred.org_id, role: { in: ['admin', 'owner'] }, is_active: true },
+        select: { user_id: true },
+      });
+      const admins = adminMemberships.map((m) => ({ id: m.user_id }));
+
+      for (const admin of admins) {
+        if (admin.id === cred.user_id) continue; // skip if admin is the pharmacist
+        await prisma.notification.create({
+          data: {
+            org_id: cred.org_id,
+            user_id: admin.id,
+            type: 'business',
+            title: '薬剤師資格の有効期限',
+            message: `${cred.user?.name ?? '薬剤師'} の ${cred.certification_type} が${threshold.label}に期限切れ。`,
+            link: '/admin/staff',
+            dedupe_key: `credential-expiry-admin:${cred.id}:${admin.id}:${threshold.days}`,
+          },
+        });
+        notificationCount++;
+      }
+    }
+
+    return { processedCount: notificationCount };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Consent record expiry check
+// ---------------------------------------------------------------------------
+function buildConsentExpiryTaskKey(consentId: string) {
+  return `consent-expiry:${consentId}`;
+}
+
+export async function checkConsentExpiry() {
+  return runJob('consent_expiry_check', async () => {
+    const now = new Date();
+    const in30Days = addDays(now, 30);
+
+    const expiring = await prisma.consentRecord.findMany({
+      where: {
+        is_active: true,
+        expiry_date: { lte: in30Days, gte: now },
+      },
+      include: {
+        patient: { select: { id: true, name: true } },
+      },
+    });
+
+    const taskSpecs: GeneratedTaskSpec[] = [];
+    let notificationCount = 0;
+
+    for (const consent of expiring) {
+      if (!consent.expiry_date) continue;
+      const daysUntilExpiry = Math.ceil(
+        (consent.expiry_date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+      );
+
+      const priority = daysUntilExpiry <= 7 ? 'urgent' as const : 'high' as const;
+      const patientName = consent.patient?.name ?? '不明';
+
+      // Find the primary pharmacist from the patient's active case
+      const activeCase = consent.case_id
+        ? await prisma.careCase.findFirst({
+            where: { id: consent.case_id, status: { notIn: ['discharged', 'terminated'] } },
+            select: { primary_pharmacist_id: true },
+          })
+        : await prisma.careCase.findFirst({
+            where: { patient_id: consent.patient_id, status: { notIn: ['discharged', 'terminated'] } },
+            select: { primary_pharmacist_id: true },
+          });
+
+      const pharmacistId = activeCase?.primary_pharmacist_id;
+      if (pharmacistId) {
+        await prisma.notification.create({
+          data: {
+            org_id: consent.org_id,
+            user_id: pharmacistId,
+            type: priority === 'urgent' ? 'urgent' : 'business',
+            title: '同意書の有効期限',
+            message: `${patientName} さんの ${consent.consent_type} 同意が ${consent.expiry_date.toISOString().slice(0, 10)} に期限切れ。再取得が必要です。`,
+            link: `/patients/${consent.patient_id}`,
+            dedupe_key: `consent-expiry:${consent.id}:${daysUntilExpiry <= 7 ? '7' : '30'}`,
+          },
+        });
+        notificationCount++;
+      }
+
+      taskSpecs.push({
+        orgId: consent.org_id,
+        taskType: 'consent_expiry',
+        dedupeKey: buildConsentExpiryTaskKey(consent.id),
+        title: `同意書更新: ${patientName}`,
+        description: `${consent.consent_type} の同意が ${consent.expiry_date.toISOString().slice(0, 10)} に期限切れ`,
+        priority,
+        assignedTo: pharmacistId,
+        dueDate: consent.expiry_date,
+        relatedEntityType: 'consent_record',
+        relatedEntityId: consent.id,
+      });
+    }
+
+    if (taskSpecs.length > 0) {
+      await syncGeneratedOperationalTasks(taskSpecs, ['consent_expiry']);
+    }
+
+    return { processedCount: notificationCount };
+  });
+}
+
 export async function runDailyOperations() {
   return runJob('daily', async () => {
     const results = await Promise.all([
@@ -1000,17 +2168,24 @@ export async function runDailyOperations() {
       checkRefillPrescriptions(),
       checkIntakeToVisitLinkage(),
       checkPrescriptionExpiry(),
+      checkVisitRecordRetention(),
+      checkPrescriptionOriginalRetention(),
       generateVisitDemands(),
       checkManagementPlanReviews(),
       checkCallbackFollowups(),
       checkResidenceGeocodeQuality(),
       checkPreparationBacklog(),
+      checkInitialHomeVisitAssessmentBacklog(),
       generateBillingEvidenceDaily(),
       checkSelfReportFollowups(),
       checkCommunityFollowups(),
       checkReportDeliveryBacklog(),
       checkCarryItemReadiness(),
       checkEmergencyCoverageGaps(),
+      syncVisitSupportFeatureTasks(),
+      checkFacilityStandardExpiry(),
+      checkCredentialExpiry(),
+      checkConsentExpiry(),
     ]);
 
     return {

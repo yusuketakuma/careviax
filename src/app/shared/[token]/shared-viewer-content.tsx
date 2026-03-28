@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
   CalendarClock,
@@ -11,6 +11,7 @@ import {
   Lock,
   Pill,
   ShieldCheck,
+  Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -26,7 +27,6 @@ type ExternalPayload = {
     name: string;
     birth_date: string | null;
     gender: string | null;
-    phone?: string | null;
   };
   allergy_info?: string | null;
   medication_profiles?: Array<{
@@ -51,6 +51,25 @@ type ExternalPayload = {
     status: string;
     created_at: string;
   }>;
+  self_report_history?: Array<{
+    id: string;
+    reported_by_name: string;
+    relation: string | null;
+    category: string;
+    subject: string;
+    content: string;
+    requested_callback: boolean;
+    preferred_contact_time: string | null;
+    status: string;
+    created_at: string;
+    triaged_at: string | null;
+  }>;
+  shared_summary?: {
+    headline: string;
+    bullets: string[];
+    key_medications: string[];
+    next_visit_date: string | null;
+  };
   scope: Record<string, boolean>;
   expires_at: string;
 };
@@ -219,12 +238,6 @@ export function SharedViewerContent({
                     <p>{data.patient.gender ?? '未登録'}</p>
                   </div>
                 </div>
-                {data.patient.phone ? (
-                  <div>
-                    <p className="text-xs text-muted-foreground">連絡先</p>
-                    <p>{data.patient.phone}</p>
-                  </div>
-                ) : null}
                 {data.allergy_info ? (
                   <div>
                     <p className="text-xs text-muted-foreground">アレルギー情報</p>
@@ -254,6 +267,81 @@ export function SharedViewerContent({
               </CardContent>
             </Card>
           </div>
+
+          {data.shared_summary ? (
+            <Card className="border-sky-200 bg-sky-50/60">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Sparkles className="size-4 text-sky-700" aria-hidden="true" />
+                  共有サマリー
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <p className="font-medium text-sky-950">{data.shared_summary.headline}</p>
+                {data.shared_summary.bullets.length > 0 ? (
+                  <ul className="space-y-1 text-sky-900">
+                    {data.shared_summary.bullets.map((item) => (
+                      <li key={item}>- {item}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  {data.shared_summary.key_medications.map((item) => (
+                    <Badge key={item} variant="secondary" className="bg-white/80 text-sky-900">
+                      {item}
+                    </Badge>
+                  ))}
+                  {data.shared_summary.next_visit_date ? (
+                    <Badge variant="outline" className="border-sky-300 bg-white/80 text-sky-900">
+                      次回訪問 {format(new Date(data.shared_summary.next_visit_date), 'M月d日(E)', { locale: ja })}
+                    </Badge>
+                  ) : null}
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {(data.self_report_history?.length ?? 0) > 0 ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <HeartHandshake className="size-4 text-emerald-600" aria-hidden="true" />
+                  過去の自己申告
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {data.self_report_history?.map((report) => (
+                  <div key={report.id} className="rounded-lg border border-border/70 bg-background px-3 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-foreground">{report.subject}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {report.reported_by_name}
+                          {report.relation ? ` (${report.relation})` : ''} / {report.category}
+                        </p>
+                      </div>
+                      <Badge variant="outline">{report.status}</Badge>
+                    </div>
+                    <p className="mt-2 whitespace-pre-line text-xs leading-5 text-muted-foreground">
+                      {report.content}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+                      <span>
+                        受付{' '}
+                        {format(parseISO(report.created_at), 'yyyy年M月d日 HH:mm', {
+                          locale: ja,
+                        })}
+                      </span>
+                      {report.preferred_contact_time ? (
+                        <span>希望連絡帯 {report.preferred_contact_time}</span>
+                      ) : null}
+                      {report.requested_callback ? <span>折返し希望</span> : null}
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          ) : null}
 
           {data.medication_profiles && data.medication_profiles.length > 0 ? (
             <Card>

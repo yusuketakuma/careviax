@@ -14,8 +14,20 @@ const JOB_DEFINITIONS = [
   { job_type: 'daily-geocode-review', schedule_hint: '毎朝', endpoint: '/api/jobs/daily-geocode-review' },
   { job_type: 'daily-preparation-check', schedule_hint: '毎朝', endpoint: '/api/jobs/daily-preparation-check' },
   { job_type: 'daily-billing-evidence', schedule_hint: '毎朝', endpoint: '/api/jobs/daily-billing-evidence' },
+  { job_type: 'daily-visit-support-sync', schedule_hint: '毎朝', endpoint: '/api/jobs/daily-visit-support-sync' },
+  { job_type: 'daily-facility-standard-expiry', schedule_hint: '毎朝', endpoint: '/api/jobs/daily-facility-standard-expiry' },
+  { job_type: 'daily-credential-expiry', schedule_hint: '毎朝', endpoint: '/api/jobs/daily-credential-expiry' },
+  { job_type: 'daily-consent-expiry', schedule_hint: '毎朝', endpoint: '/api/jobs/daily-consent-expiry' },
+  { job_type: 'daily-visit-record-retention', schedule_hint: '毎朝', endpoint: '/api/jobs/daily-visit-record-retention' },
+  { job_type: 'daily-prescription-original-retention', schedule_hint: '毎朝', endpoint: '/api/jobs/daily-prescription-original-retention' },
+  { job_type: 'drug-master-refresh', schedule_hint: '毎月', endpoint: '/api/jobs/drug-master-refresh' },
+  { job_type: 'drug-reference-refresh', schedule_hint: '毎月', endpoint: '/api/jobs/drug-reference-refresh' },
+  { job_type: 'pmda-package-insert-refresh', schedule_hint: '毎日', endpoint: '/api/jobs/pmda-package-insert-refresh' },
+  { job_type: 'medication-history-bulk-export-drain', schedule_hint: '15分毎 + 要求時', endpoint: '/api/jobs/medication-history-bulk-export-drain' },
   { job_type: 'evening', schedule_hint: '毎夕', endpoint: '/api/jobs/evening' },
   { job_type: 'evening-unrecorded-visits', schedule_hint: '毎夕', endpoint: '/api/jobs/evening-unrecorded-visits' },
+  { job_type: 'next-day', schedule_hint: '翌営業日朝', endpoint: '/api/jobs/next-day' },
+  { job_type: 'monthly', schedule_hint: '毎月初', endpoint: '/api/jobs/monthly' },
 ];
 
 export async function GET(req: NextRequest) {

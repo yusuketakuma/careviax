@@ -3,11 +3,10 @@ import { z } from 'zod';
 import { withAuth, AuthenticatedRequest } from '@/lib/auth/middleware';
 import { prisma } from '@/lib/db';
 import { validationError } from '@/lib/api/response';
+import { parseAuditLogFilters } from '@/lib/api/audit-log-filters';
 
 const querySchema = z.object({
   format: z.enum(['csv', 'json']).default('csv'),
-  from: z.string().datetime({ offset: true }).optional(),
-  to: z.string().datetime({ offset: true }).optional(),
 });
 
 function toCsvRow(values: unknown[]): string {
@@ -31,15 +30,23 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     return validationError('クエリパラメータが不正です', parsed.error.flatten()) as NextResponse;
   }
 
-  const { format, from, to } = parsed.data;
+  const filters = parseAuditLogFilters(searchParams);
+  if ('error' in filters) {
+    return validationError(filters.error) as NextResponse;
+  }
+
+  const { format } = parsed.data;
 
   const where = {
     org_id: req.orgId,
-    ...((from ?? to)
+    ...(filters.actor ? { actor_id: filters.actor } : {}),
+    ...(filters.targetType ? { target_type: filters.targetType } : {}),
+    ...(filters.action ? { action: filters.action } : {}),
+    ...((filters.from ?? filters.to)
       ? {
           created_at: {
-            ...(from ? { gte: new Date(from) } : {}),
-            ...(to ? { lte: new Date(to) } : {}),
+            ...(filters.from ? { gte: filters.from } : {}),
+            ...(filters.to ? { lte: filters.to } : {}),
           },
         }
       : {}),

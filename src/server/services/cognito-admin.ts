@@ -3,6 +3,7 @@ import {
   AdminDisableUserCommand,
   AdminEnableUserCommand,
   AdminGetUserCommand,
+  AdminSetUserMFAPreferenceCommand,
   AdminUpdateUserAttributesCommand,
   CognitoIdentityProviderClient,
   type AttributeType,
@@ -142,6 +143,20 @@ export async function enableCognitoUser(username: string) {
     new AdminEnableUserCommand({
       UserPoolId: userPoolId,
       Username: normalizeCognitoUsername(username),
+    })
+  );
+}
+
+export async function disableCognitoTotpForUser(username: string) {
+  const { userPoolId } = getRequiredCognitoConfig();
+  await getClient().send(
+    new AdminSetUserMFAPreferenceCommand({
+      UserPoolId: userPoolId,
+      Username: normalizeCognitoUsername(username),
+      SoftwareTokenMfaSettings: {
+        Enabled: false,
+        PreferredMfa: false,
+      },
     })
   );
 }

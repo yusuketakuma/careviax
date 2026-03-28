@@ -4,28 +4,43 @@ import { useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { Loader2, Wand2, Save } from 'lucide-react';
+import { AlertTriangle, Loader2, Save, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 // --- Types ---
 
 type PrescriptionLine = {
   id: string;
+  line_number: number;
   drug_name: string;
+  drug_code: string | null;
   dose: string;
   frequency: string;
   days: number;
   unit: string | null;
+  dosage_form: string | null;
+  packaging_instructions: string | null;
+  notes: string | null;
 };
 
 type PrescriptionIntake = {
   id: string;
   prescribed_date: string;
   prescriber_name: string | null;
+  updated_at: string;
   lines: PrescriptionLine[];
 };
 
@@ -36,9 +51,29 @@ type SetPlan = {
   target_period_end: string;
   set_method: string;
   notes: string | null;
+  updated_at: string;
   cycle: {
+    id: string;
+    overall_status: string;
+    patient_id: string;
+    inquiries: Array<{ id: string }>;
+    case_: {
+      id: string;
+      patient: {
+        id: string;
+        name: string;
+        name_kana: string;
+      };
+    };
     prescription_intakes: PrescriptionIntake[];
   };
+  audits: Array<{
+    id: string;
+    result: string;
+    approved_scope: Record<string, unknown> | null;
+    reject_reason: string | null;
+    audited_at: string;
+  }>;
 };
 
 type SetBatch = {
@@ -50,12 +85,17 @@ type SetBatch = {
   quantity: number;
   carry_type: string;
   version: number;
+  updated_at: string;
   line: {
     id: string;
     drug_name: string;
+    drug_code: string | null;
+    dosage_form: string | null;
     dose: string;
     frequency: string;
     unit: string | null;
+    packaging_instructions: string | null;
+    notes: string | null;
   };
 };
 
@@ -64,7 +104,16 @@ type CellKey = `${number}-${string}-${string}`; // day-slot-lineId
 type DraftEdit = {
   batchId: string;
   quantity: number;
+  slot: string;
+  carryType: string;
   version: number;
+};
+
+type PlanForm = {
+  target_period_start: string;
+  target_period_end: string;
+  set_method: string;
+  notes: string;
 };
 
 // --- Constants ---
@@ -86,6 +135,19 @@ const SLOT_COLORS: Record<Slot, string> = {
   evening: 'bg-orange-50 text-orange-800 border-orange-200',
   bedtime: 'bg-purple-50 text-purple-800 border-purple-200',
   prn: 'bg-gray-50 text-gray-700 border-gray-200',
+};
+
+const SET_METHOD_LABELS: Record<string, string> = {
+  facility_calendar: '施設カレンダー',
+  four_times_daily: '1日4回',
+  bedtime_only: '眠前のみ',
+  custom: 'カスタム',
+};
+
+const CARRY_TYPE_LABELS: Record<string, string> = {
+  carry: '持参',
+  facility_deposit: '施設預け',
+  deferred: '後送',
 };
 
 // --- Helpers ---
@@ -150,12 +212,16 @@ function SlotGridPanel({
   plan,
   batches,
   drafts,
-  onQuantityChange,
+  onDraftChange,
 }: {
   plan: SetPlan;
   batches: SetBatch[];
   drafts: Map<CellKey, DraftEdit>;
-  onQuantityChange: (key: CellKey, batchId: string, version: number, quantity: number) => void;
+  onDraftChange: (
+    key: CellKey,
+    batch: SetBatch,
+    patch: Partial<Pick<DraftEdit, 'quantity' | 'slot' | 'carryType'>>
+  ) => void;
 }) {
   const days = buildDayRange(plan.target_period_start, plan.target_period_end);
   const usedSlots = getSlotsUsed(batches);
@@ -233,6 +299,8 @@ function SlotGridPanel({
                   const batch = batchIndex.get(cellKey);
                   const draft = drafts.get(cellKey);
                   const displayQty = draft?.quantity ?? batch?.quantity ?? 0;
+                  const displaySlot = draft?.slot ?? batch?.slot ?? slot;
+                  const displayCarryType = draft?.carryType ?? batch?.carry_type ?? 'carry';
 
                   return (
                     <td
@@ -240,21 +308,58 @@ function SlotGridPanel({
                       className="border border-border px-1 py-1 text-center align-middle"
                     >
                       {batch ? (
-                        <Input
-                          type="number"
-                          min={0}
-                          step={0.5}
-                          value={displayQty}
-                          onChange={(e) => {
-                            if (!batch) return;
-                            const val = parseFloat(e.target.value);
-                            if (!isNaN(val) && val >= 0) {
-                              onQuantityChange(cellKey, batch.id, batch.version, val);
-                            }
-                          }}
-                          className="h-7 w-16 text-center text-xs"
-                          aria-label={`${day}日目 ${SLOT_LABELS[slot]} ${line.drug_name} 数量`}
-                        />
+                        <div className="space-y-1">
+                          <Input
+                            type="number"
+                            min={0}
+                            step={0.5}
+                            value={displayQty}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              if (!isNaN(val) && val >= 0) {
+                                onDraftChange(cellKey, batch, { quantity: val });
+                              }
+                            }}
+                            className="h-7 w-16 text-center text-xs"
+                            aria-label={`${day}日目 ${SLOT_LABELS[slot]} ${line.drug_name} 数量`}
+                          />
+                          <Select
+                            value={displaySlot}
+                            onValueChange={(value) => {
+                              if (!value) return;
+                              onDraftChange(cellKey, batch, { slot: value });
+                            }}
+                          >
+                            <SelectTrigger className="h-7 w-full text-[10px]">
+                              <SelectValue placeholder="時間帯" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {SLOT_ORDER.map((slotOption) => (
+                                <SelectItem key={slotOption} value={slotOption}>
+                                  {SLOT_LABELS[slotOption]}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={displayCarryType}
+                            onValueChange={(value) => {
+                              if (!value) return;
+                              onDraftChange(cellKey, batch, { carryType: value });
+                            }}
+                          >
+                            <SelectTrigger className="h-7 w-full text-[10px]">
+                              <SelectValue placeholder="持参区分" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(CARRY_TYPE_LABELS).map(([value, label]) => (
+                                <SelectItem key={value} value={value}>
+                                  {label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
@@ -278,20 +383,19 @@ export function SetPlanEditContent() {
   const orgId = useOrgId();
 
   const [drafts, setDrafts] = useState<Map<CellKey, DraftEdit>>(new Map());
+  const [planForm, setPlanForm] = useState<PlanForm | null>(null);
 
   const { data: plan, isLoading: planLoading } = useQuery({
     queryKey: ['set-plan', planId],
     queryFn: async () => {
-      const res = await fetch(`/api/set-plans?cycle_id=`, {
+      const res = await fetch(`/api/set-plans/${planId}`, {
         headers: { 'x-org-id': orgId },
       });
-      // Fetch the specific plan — use set-plans listing and filter client-side
-      // In a real implementation, a dedicated GET /api/set-plans/[planId] endpoint would be preferred
       if (!res.ok) throw new Error('セットプランの取得に失敗しました');
-      const json = await res.json() as { data: Array<SetPlan & { id: string }> };
-      return json.data.find((p) => p.id === planId) ?? null;
+      const json = await res.json() as { data: SetPlan };
+      return json.data;
     },
-    enabled: Boolean(planId),
+    enabled: Boolean(planId && orgId),
   });
 
   const { data: batches = [], isLoading: batchesLoading } = useQuery({
@@ -305,6 +409,32 @@ export function SetPlanEditContent() {
       return json.data;
     },
     enabled: Boolean(planId),
+  });
+
+  const planUpdateMutation = useMutation({
+    mutationFn: async (form: PlanForm) => {
+      const res = await fetch(`/api/set-plans/${planId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { message?: string };
+        throw new Error(err.message ?? 'セットプランの更新に失敗しました');
+      }
+      return res.json() as Promise<{ data: SetPlan }>;
+    },
+    onSuccess: ({ data: updatedPlan }) => {
+      queryClient.setQueryData(['set-plan', planId], updatedPlan);
+      setPlanForm({
+        target_period_start: updatedPlan.target_period_start.slice(0, 10),
+        target_period_end: updatedPlan.target_period_end.slice(0, 10),
+        set_method: updatedPlan.set_method,
+        notes: updatedPlan.notes ?? '',
+      });
+      toast.success('セット計画を更新しました');
+    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const generateMutation = useMutation({
@@ -329,13 +459,21 @@ export function SetPlanEditContent() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (editList: Array<{ id: string; quantity: number; version: number }>) => {
+    mutationFn: async (
+      editList: Array<{
+        id: string;
+        quantity: number;
+        slot: string;
+        carry_type: string;
+        version: number;
+      }>
+    ) => {
       const results = await Promise.allSettled(
-        editList.map(({ id, quantity, version }) =>
+        editList.map(({ id, quantity, version, ...rest }) =>
           fetch(`/api/set-batches/${id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
-            body: JSON.stringify({ quantity, version }),
+            body: JSON.stringify({ quantity, version, ...rest }),
           }).then((r) => {
             if (!r.ok) throw new Error(`バッチ ${id} の更新に失敗しました`);
             return r.json();
@@ -358,10 +496,20 @@ export function SetPlanEditContent() {
   });
 
   const handleQuantityChange = useCallback(
-    (key: CellKey, batchId: string, version: number, quantity: number) => {
+    (key: CellKey, batch: SetBatch, patch: Partial<Pick<DraftEdit, 'quantity' | 'slot' | 'carryType'>>) => {
       setDrafts((prev) => {
         const next = new Map(prev);
-        next.set(key, { batchId, quantity, version });
+        const current = next.get(key) ?? {
+          batchId: batch.id,
+          quantity: batch.quantity,
+          slot: batch.slot,
+          carryType: batch.carry_type,
+          version: batch.version,
+        };
+        next.set(key, {
+          ...current,
+          ...patch,
+        });
         return next;
       });
     },
@@ -373,9 +521,11 @@ export function SetPlanEditContent() {
       toast.info('変更はありません');
       return;
     }
-    const editList = Array.from(drafts.values()).map(({ batchId, quantity, version }) => ({
+    const editList = Array.from(drafts.values()).map(({ batchId, quantity, slot, carryType, version }) => ({
       id: batchId,
       quantity,
+      slot,
+      carry_type: carryType,
       version,
     }));
     saveMutation.mutate(editList);
@@ -392,6 +542,45 @@ export function SetPlanEditContent() {
 
   const isLoading = planLoading || batchesLoading;
   const intakes = plan?.cycle?.prescription_intakes ?? [];
+  const resolvedPlanForm: PlanForm =
+    planForm ??
+    (plan
+      ? {
+          target_period_start: plan.target_period_start.slice(0, 10),
+          target_period_end: plan.target_period_end.slice(0, 10),
+          set_method: plan.set_method,
+          notes: plan.notes ?? '',
+        }
+      : {
+          target_period_start: '',
+          target_period_end: '',
+          set_method: 'facility_calendar',
+          notes: '',
+        });
+  const hasPendingInquiry = (plan?.cycle.inquiries.length ?? 0) > 0;
+  const latestIntakeUpdatedAt = intakes.reduce<string | null>((latest, intake) => {
+    if (!latest || intake.updated_at > latest) return intake.updated_at;
+    return latest;
+  }, null);
+  const latestBatchUpdatedAt = batches.reduce<string | null>((latest, batch) => {
+    if (!latest || batch.updated_at > latest) return batch.updated_at;
+    return latest;
+  }, null);
+  const requiresRegeneration =
+    latestIntakeUpdatedAt != null &&
+    latestBatchUpdatedAt != null &&
+    latestIntakeUpdatedAt > latestBatchUpdatedAt;
+  const hasBlockedCycle = plan != null && !['audited', 'setting', 'set_audited'].includes(plan.cycle.overall_status);
+  const carryCounts = batches.reduce<Record<string, number>>((acc, batch) => {
+    acc[batch.carry_type] = (acc[batch.carry_type] ?? 0) + 1;
+    return acc;
+  }, {});
+  const planDirty =
+    plan != null &&
+    (resolvedPlanForm.target_period_start !== plan.target_period_start.slice(0, 10) ||
+      resolvedPlanForm.target_period_end !== plan.target_period_end.slice(0, 10) ||
+      resolvedPlanForm.set_method !== plan.set_method ||
+      resolvedPlanForm.notes !== (plan.notes ?? ''));
 
   if (isLoading) {
     return (
@@ -416,8 +605,8 @@ export function SetPlanEditContent() {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs text-muted-foreground">
-            対象期間: {plan.target_period_start.slice(0, 10)} 〜 {plan.target_period_end.slice(0, 10)}
-            {' / '}方式: {plan.set_method}
+            患者: {plan.cycle.case_.patient.name} / 対象期間: {plan.target_period_start.slice(0, 10)} 〜 {plan.target_period_end.slice(0, 10)}
+            {' / '}方式: {SET_METHOD_LABELS[plan.set_method] ?? plan.set_method}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -446,8 +635,124 @@ export function SetPlanEditContent() {
             )}
             保存 {drafts.size > 0 ? `(${drafts.size}件)` : ''}
           </Button>
+          <a
+            href={`/medication-sets/full?plan_id=${plan.id}`}
+            className="inline-flex h-7 items-center rounded-[min(var(--radius-md),12px)] border border-border bg-background px-2.5 text-[0.8rem] font-medium text-foreground hover:bg-muted"
+          >
+            持参パック表示
+          </a>
         </div>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-semibold">セット計画</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 lg:grid-cols-[1fr_1fr_1.3fr]">
+          <div className="space-y-1.5">
+            <Label htmlFor="set-period-start">対象期間開始</Label>
+            <Input
+              id="set-period-start"
+              type="date"
+              value={resolvedPlanForm.target_period_start}
+              onChange={(event) =>
+                setPlanForm((current) => ({
+                  ...(current ?? resolvedPlanForm),
+                  target_period_start: event.target.value,
+                }))
+              }
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="set-period-end">対象期間終了</Label>
+            <Input
+              id="set-period-end"
+              type="date"
+              value={resolvedPlanForm.target_period_end}
+              onChange={(event) =>
+                setPlanForm((current) => ({
+                  ...(current ?? resolvedPlanForm),
+                  target_period_end: event.target.value,
+                }))
+              }
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="set-method">セット方式</Label>
+            <Select
+              value={resolvedPlanForm.set_method}
+              onValueChange={(value) => {
+                if (!value) return;
+                setPlanForm((current) => ({
+                  ...(current ?? resolvedPlanForm),
+                  set_method: value,
+                }));
+              }}
+            >
+              <SelectTrigger id="set-method">
+                <SelectValue placeholder="セット方式を選択" />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(SET_METHOD_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5 lg:col-span-3">
+            <Label htmlFor="set-notes">備考</Label>
+            <Textarea
+              id="set-notes"
+              rows={2}
+              value={resolvedPlanForm.notes}
+              onChange={(event) =>
+                setPlanForm((current) => ({
+                  ...(current ?? resolvedPlanForm),
+                  notes: event.target.value,
+                }))
+              }
+              placeholder="施設カレンダーや患者事情、セット時の注意事項を記録"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2 lg:col-span-3">
+            <Badge variant="outline">cycle {plan.cycle.id}</Badge>
+            <Badge variant="outline">状態 {plan.cycle.overall_status}</Badge>
+            <Badge variant="outline">持参 {carryCounts.carry ?? 0}</Badge>
+            <Badge variant="outline">施設預け {carryCounts.facility_deposit ?? 0}</Badge>
+            <Badge variant="outline">後送 {carryCounts.deferred ?? 0}</Badge>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => planUpdateMutation.mutate(resolvedPlanForm)}
+              disabled={!planDirty || planUpdateMutation.isPending}
+            >
+              計画を更新
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {(hasBlockedCycle || hasPendingInquiry || requiresRegeneration) && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <div className="space-y-1">
+              <p className="font-medium">セット前の再確認が必要です</p>
+              {hasBlockedCycle ? (
+                <p>鑑査未承認のサイクル状態のため、セット生成は再確認後に行ってください。</p>
+              ) : null}
+              {hasPendingInquiry ? (
+                <p>未解決の疑義照会があります。確定後にセット内容を再確認してください。</p>
+              ) : null}
+              {requiresRegeneration ? (
+                <p>処方変更がセット生成後に発生しています。影響セットを確認して再生成してください。</p>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Two-panel layout */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[280px_1fr]">
@@ -464,7 +769,7 @@ export function SetPlanEditContent() {
               plan={plan}
               batches={batches}
               drafts={drafts}
-              onQuantityChange={handleQuantityChange}
+              onDraftChange={handleQuantityChange}
             />
           </CardContent>
         </Card>

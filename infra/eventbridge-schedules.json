@@ -45,6 +45,27 @@
       "state": "ENABLED"
     },
     {
+      "name": "careviax-next-day",
+      "description": "Next-business-day job: remind pharmacists about unsent care reports",
+      "scheduleExpression": "cron(0 0 * * ? *)",
+      "scheduleExpressionTimezone": "UTC",
+      "comment": "09:00 JST = 00:00 UTC",
+      "target": {
+        "type": "HTTP",
+        "method": "POST",
+        "url": "${APP_URL}/api/jobs/next-day",
+        "headers": {
+          "x-api-key": "${JOB_API_KEY}",
+          "Content-Type": "application/json"
+        }
+      },
+      "retryPolicy": {
+        "maximumRetryAttempts": 2,
+        "maximumEventAgeInSeconds": 3600
+      },
+      "state": "ENABLED"
+    },
+    {
       "name": "careviax-callback-followup",
       "description": "Hourly callback follow-up task refresh for pending patient contact",
       "scheduleExpression": "cron(0 * * * ? *)",
@@ -61,6 +82,111 @@
       },
       "retryPolicy": {
         "maximumRetryAttempts": 2,
+        "maximumEventAgeInSeconds": 1800
+      },
+      "state": "ENABLED"
+    },
+    {
+      "name": "careviax-monthly-operations",
+      "description": "Monthly aggregation jobs: visit report and management metrics snapshot",
+      "scheduleExpression": "cron(0 22 1 * ? *)",
+      "scheduleExpressionTimezone": "UTC",
+      "comment": "07:00 JST on the 2nd day boundary for previous-month aggregation = 22:00 UTC on the 1st",
+      "target": {
+        "type": "HTTP",
+        "method": "POST",
+        "url": "${APP_URL}/api/jobs/monthly",
+        "headers": {
+          "x-api-key": "${JOB_API_KEY}",
+          "Content-Type": "application/json"
+        }
+      },
+      "retryPolicy": {
+        "maximumRetryAttempts": 2,
+        "maximumEventAgeInSeconds": 21600
+      },
+      "state": "ENABLED"
+    },
+    {
+      "name": "careviax-drug-master-refresh",
+      "description": "Monthly SSK drug master refresh with ZIP diff check before full upsert",
+      "scheduleExpression": "cron(0 6 1 * ? *)",
+      "scheduleExpressionTimezone": "Asia/Tokyo",
+      "comment": "Run on the 1st of every month at 06:00 JST; importer skips when the latest SSK ZIP has not changed",
+      "target": {
+        "type": "HTTP",
+        "method": "POST",
+        "url": "${APP_URL}/api/jobs/drug-master-refresh",
+        "headers": {
+          "x-api-key": "${JOB_API_KEY}",
+          "Content-Type": "application/json"
+        }
+      },
+      "retryPolicy": {
+        "maximumRetryAttempts": 2,
+        "maximumEventAgeInSeconds": 21600
+      },
+      "state": "ENABLED"
+    },
+    {
+      "name": "careviax-drug-reference-refresh",
+      "description": "Monthly MHLW price / generic-name / generic-flag reference refresh",
+      "scheduleExpression": "cron(30 6 1 * ? *)",
+      "scheduleExpressionTimezone": "Asia/Tokyo",
+      "comment": "Run on the 1st of every month at 06:30 JST after the base SSK refresh",
+      "target": {
+        "type": "HTTP",
+        "method": "POST",
+        "url": "${APP_URL}/api/jobs/drug-reference-refresh",
+        "headers": {
+          "x-api-key": "${JOB_API_KEY}",
+          "Content-Type": "application/json"
+        }
+      },
+      "retryPolicy": {
+        "maximumRetryAttempts": 2,
+        "maximumEventAgeInSeconds": 21600
+      },
+      "state": "ENABLED"
+    },
+    {
+      "name": "careviax-pmda-package-insert-refresh",
+      "description": "Daily PMDA package-insert delta refresh using a pre-downloaded or mirrored ZIP URL",
+      "scheduleExpression": "cron(0 5 * * ? *)",
+      "scheduleExpressionTimezone": "Asia/Tokyo",
+      "comment": "Run every day at 05:00 JST; requires PMDA_PACKAGE_INSERT_DELTA_URL or an equivalent mirrored ZIP",
+      "target": {
+        "type": "HTTP",
+        "method": "POST",
+        "url": "${APP_URL}/api/jobs/pmda-package-insert-refresh",
+        "headers": {
+          "x-api-key": "${JOB_API_KEY}",
+          "Content-Type": "application/json"
+        }
+      },
+      "retryPolicy": {
+        "maximumRetryAttempts": 2,
+        "maximumEventAgeInSeconds": 21600
+      },
+      "state": "ENABLED"
+    },
+    {
+      "name": "careviax-medication-history-bulk-export-drain",
+      "description": "Drain queued medication-history ZIP exports for inspection-ready bundles",
+      "scheduleExpression": "cron(0/15 * * * ? *)",
+      "scheduleExpressionTimezone": "UTC",
+      "comment": "Every 15 minutes UTC to pick up queued bulk export jobs without overlapping request-time work",
+      "target": {
+        "type": "HTTP",
+        "method": "POST",
+        "url": "${APP_URL}/api/jobs/medication-history-bulk-export-drain",
+        "headers": {
+          "x-api-key": "${JOB_API_KEY}",
+          "Content-Type": "application/json"
+        }
+      },
+      "retryPolicy": {
+        "maximumRetryAttempts": 1,
         "maximumEventAgeInSeconds": 1800
       },
       "state": "ENABLED"

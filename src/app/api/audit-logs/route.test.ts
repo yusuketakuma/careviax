@@ -17,11 +17,6 @@ vi.mock('@/lib/db/client', () => ({
     membership: {
       findFirst: membershipFindFirstMock,
     },
-  },
-}));
-
-vi.mock('@/lib/db', () => ({
-  prisma: {
     auditLog: {
       findMany: findManyMock,
       count: countMock,
@@ -31,8 +26,11 @@ vi.mock('@/lib/db', () => ({
 
 import { GET } from './route';
 
-function createRequest(headers?: Record<string, string>) {
-  const url = new URL('http://localhost/api/audit-logs?limit=10');
+function createRequest(
+  headers?: Record<string, string>,
+  search = 'limit=10'
+) {
+  const url = new URL(`http://localhost/api/audit-logs?${search}`);
   return {
     headers: {
       get: (key: string) => headers?.[key] ?? null,
@@ -83,5 +81,33 @@ describe('/api/audit-logs GET', () => {
     expect(response.status).toBe(200);
     expect(findManyMock).toHaveBeenCalledOnce();
     expect(countMock).toHaveBeenCalledOnce();
+  });
+
+  it('supports UI filter parameter names and inclusive date ranges', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = (await GET(
+      createRequest(
+        { 'x-org-id': 'org_1' },
+        'actor=user_99&target_type=visit_record&action=export&date_from=2026-03-01&date_to=2026-03-31'
+      )
+    )) as Response;
+
+    expect(response.status).toBe(200);
+    expect(findManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          actor_id: 'user_99',
+          target_type: 'visit_record',
+          action: 'export',
+          created_at: {
+            gte: new Date('2026-03-01T00:00:00.000Z'),
+            lte: new Date('2026-03-31T23:59:59.999Z'),
+          },
+        }),
+      })
+    );
   });
 });

@@ -1,0 +1,66 @@
+{
+  "description": "CloudWatch alarms for CareViaX production baseline.",
+  "alarms": [
+    {
+      "name": "careviax-api-health-down",
+      "metric": "HealthStatusDown",
+      "namespace": "CareViaX/Application",
+      "comparisonOperator": "GreaterThanOrEqualToThreshold",
+      "threshold": 1,
+      "evaluationPeriods": 1,
+      "periodSeconds": 60,
+      "statistic": "Maximum",
+      "dimensions": {
+        "route": "/api/health"
+      },
+      "alarmDescription": "Triggered when /api/health returns down."
+    },
+    {
+      "name": "careviax-api-5xx-rate",
+      "metric": "5XXError",
+      "namespace": "AWS/ApplicationELB",
+      "comparisonOperator": "GreaterThanThreshold",
+      "threshold": 5,
+      "evaluationPeriods": 3,
+      "periodSeconds": 60,
+      "statistic": "Sum",
+      "alarmDescription": "Triggered when ALB returns repeated 5xx responses."
+    },
+    {
+      "name": "careviax-rds-cpu-high",
+      "metric": "CPUUtilization",
+      "namespace": "AWS/RDS",
+      "comparisonOperator": "GreaterThanThreshold",
+      "threshold": 80,
+      "evaluationPeriods": 3,
+      "periodSeconds": 300,
+      "statistic": "Average",
+      "alarmDescription": "RDS CPU has been above 80 percent for 15 minutes."
+    },
+    {
+      "name": "careviax-rds-free-storage-low",
+      "metric": "FreeStorageSpace",
+      "namespace": "AWS/RDS",
+      "comparisonOperator": "LessThanThreshold",
+      "threshold": 10737418240,
+      "evaluationPeriods": 1,
+      "periodSeconds": 300,
+      "statistic": "Average",
+      "alarmDescription": "RDS free storage under 10 GiB."
+    },
+    {
+      "name": "careviax-audit-archive-lifecycle-warning",
+      "metric": "BackupMonitorWarning",
+      "namespace": "CareViaX/Operations",
+      "comparisonOperator": "GreaterThanOrEqualToThreshold",
+      "threshold": 1,
+      "evaluationPeriods": 1,
+      "periodSeconds": 300,
+      "statistic": "Maximum",
+      "dimensions": {
+        "check": "auditArchive"
+      },
+      "alarmDescription": "Audit archive lifecycle policy is missing or misconfigured."
+    }
+  ]
+}

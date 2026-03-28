@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, parseISO } from 'date-fns';
@@ -10,11 +11,15 @@ import { AlertTriangle } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useKeyboardShortcuts, type ShortcutDefinition } from '@/components/features/keyboard/use-keyboard-shortcuts';
 
 type AuditTaskRow = {
   id: string;
   priority: string;
+  due_date: string | null;
   updated_at: string;
+  facility_label: string | null;
+  is_overdue: boolean;
   cycle: {
     id: string;
     patient_id: string;
@@ -66,6 +71,15 @@ const columns: ColumnDef<AuditTaskRow>[] = [
     },
   },
   {
+    id: 'facility',
+    header: '施設/訪問先',
+    cell: ({ row }) => (
+      <span className="text-sm text-muted-foreground">
+        {row.original.facility_label ?? '自宅訪問'}
+      </span>
+    ),
+  },
+  {
     id: 'patient_name',
     header: '患者名',
     cell: ({ row }) => {
@@ -105,6 +119,22 @@ const columns: ColumnDef<AuditTaskRow>[] = [
     },
   },
   {
+    accessorKey: 'due_date',
+    header: '期限',
+    cell: ({ row }) => {
+      if (!row.original.due_date) {
+        return <span className="text-xs text-muted-foreground">—</span>;
+      }
+
+      return (
+        <span className={row.original.is_overdue ? 'text-sm font-medium text-destructive' : 'text-sm text-muted-foreground'}>
+          {format(parseISO(row.original.due_date), 'MM/dd HH:mm', { locale: ja })}
+          {row.original.is_overdue && ' / 期限超過'}
+        </span>
+      );
+    },
+  },
+  {
     id: 'dispense_count',
     header: '調剤品目数',
     cell: ({ row }) => (
@@ -115,7 +145,7 @@ const columns: ColumnDef<AuditTaskRow>[] = [
     accessorKey: 'updated_at',
     header: '調剤完了',
     cell: ({ row }) => (
-      <span className="text-sm text-muted-foreground">
+      <span className={row.original.is_overdue ? 'text-sm font-medium text-destructive' : 'text-sm text-muted-foreground'}>
         {format(parseISO(row.original.updated_at), 'MM/dd HH:mm', { locale: ja })}
       </span>
     ),
@@ -124,6 +154,8 @@ const columns: ColumnDef<AuditTaskRow>[] = [
 
 export function AuditingQueue() {
   const orgId = useOrgId();
+  const router = useRouter();
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
   const { data, isLoading } = useQuery({
     queryKey: ['dispense-audits', orgId],
@@ -140,12 +172,49 @@ export function AuditingQueue() {
 
   const tasks = useMemo(() => data?.data ?? [], [data]);
 
+  const handleMoveUp = useCallback(() => {
+    setSelectedIndex((prev) => Math.max(0, prev - 1));
+  }, []);
+
+  const handleMoveDown = useCallback(() => {
+    setSelectedIndex((prev) => Math.min(Math.max(0, tasks.length - 1), prev + 1));
+  }, [tasks.length]);
+
+  const handleSelect = useCallback(() => {
+    const task = tasks[selectedIndex];
+    if (task) router.push(`/auditing/${task.id}`);
+  }, [tasks, selectedIndex, router]);
+
+  const shortcuts: ShortcutDefinition[] = useMemo(
+    () => [
+      { key: 'ArrowUp', handler: handleMoveUp, description: '前の行へ移動', scope: 'auditing' },
+      { key: 'ArrowDown', handler: handleMoveDown, description: '次の行へ移動', scope: 'auditing' },
+      { key: 'Enter', handler: handleSelect, description: '選択した行を開く', scope: 'auditing' },
+      { key: 'a', handler: () => {
+        const task = tasks[selectedIndex];
+        if (task) router.push(`/auditing/${task.id}?action=approve`);
+      }, description: '承認', scope: 'auditing' },
+      { key: 'r', handler: () => {
+        const task = tasks[selectedIndex];
+        if (task) router.push(`/auditing/${task.id}?action=reject`);
+      }, description: '差戻し', scope: 'auditing' },
+      { key: ' ', handler: () => {
+        // Space toggles check items — placeholder for future checklist
+      }, description: 'チェック項目トグル', scope: 'auditing' },
+    ],
+    [handleMoveUp, handleMoveDown, handleSelect, tasks, selectedIndex, router],
+  );
+
+  useKeyboardShortcuts(shortcuts);
+
   return (
     <DataTable
       columns={columns}
       data={tasks}
       isLoading={isLoading}
       caption="鑑査待ち一覧"
+      selectedRowIndex={selectedIndex}
+      onRowClick={(index) => setSelectedIndex(index)}
     />
   );
 }

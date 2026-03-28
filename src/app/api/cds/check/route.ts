@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 const cdsCheckSchema = z.object({
   cycleId: z.string().min(1),
-  patientId: z.string().min(1),
+  patientId: z.string().min(1).optional(),
 });
 
 export const POST = withAuth(async (req: AuthenticatedRequest) => {

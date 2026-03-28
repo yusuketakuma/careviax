@@ -2,29 +2,130 @@ import { NextResponse } from 'next/server';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 
+function csvCell(value: string | number | null | undefined) {
+  if (value == null) return '';
+  return `"${String(value).replace(/"/g, '""')}"`;
+}
+
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const { searchParams } = new URL(req.url);
   const billingMonth = searchParams.get('billing_month');
 
-  const where = {
-    org_id: req.orgId,
-    ...(billingMonth ? { billing_month: new Date(billingMonth) } : {}),
-    status: { in: ['confirmed', 'exported'] },
-  };
-
-  const candidates = await withOrgContext(req.orgId, (tx) =>
-    tx.billingCandidate.findMany({
-      where,
+  const candidates = await withOrgContext(req.orgId, async (tx) => {
+    const records = await tx.billingCandidate.findMany({
+      where: {
+        org_id: req.orgId,
+        ...(billingMonth ? { billing_month: new Date(billingMonth) } : {}),
+        status: { in: ['confirmed', 'exported'] },
+      },
       orderBy: [{ billing_month: 'desc' }, { billing_code: 'asc' }],
-    })
-  );
+      select: {
+        id: true,
+        patient_id: true,
+        cycle_id: true,
+        billing_month: true,
+        billing_code: true,
+        billing_name: true,
+        points: true,
+        status: true,
+      },
+    });
+
+    const patientIds = Array.from(new Set(records.map((candidate) => candidate.patient_id)));
+    const cycleIds = Array.from(
+      new Set(
+        records
+          .map((candidate) => candidate.cycle_id)
+          .filter((value): value is string => typeof value === 'string' && value.length > 0)
+      )
+    );
+
+    const [patients, residences, intakes] = await Promise.all([
+      patientIds.length === 0
+        ? []
+        : tx.patient.findMany({
+            where: {
+              org_id: req.orgId,
+              id: { in: patientIds },
+            },
+            select: {
+              id: true,
+              name: true,
+            },
+          }),
+      patientIds.length === 0
+        ? []
+        : tx.residence.findMany({
+            where: {
+              org_id: req.orgId,
+              patient_id: { in: patientIds },
+              is_primary: true,
+            },
+            select: {
+              patient_id: true,
+              building_id: true,
+              unit_name: true,
+            },
+          }),
+      cycleIds.length === 0
+        ? []
+        : tx.prescriptionIntake.findMany({
+            where: {
+              org_id: req.orgId,
+              cycle_id: { in: cycleIds },
+            },
+            orderBy: [{ cycle_id: 'asc' }, { prescribed_date: 'desc' }, { created_at: 'desc' }],
+            select: {
+              cycle_id: true,
+              lines: {
+                select: {
+                  drug_code: true,
+                },
+              },
+            },
+          }),
+    ]);
+
+    const patientById = new Map(patients.map((patient) => [patient.id, patient]));
+    const residenceByPatientId = new Map(
+      residences.map((residence) => [residence.patient_id, residence])
+    );
+    const yjCodesByCycleId = new Map<string, string[]>();
+    for (const intake of intakes) {
+      if (yjCodesByCycleId.has(intake.cycle_id)) continue;
+      const yjCodes = Array.from(
+        new Set(
+          intake.lines
+            .map((line) => line.drug_code?.trim() ?? '')
+            .filter((code) => code.length > 0)
+        )
+      ).sort((left, right) => left.localeCompare(right, 'ja'));
+      yjCodesByCycleId.set(intake.cycle_id, yjCodes);
+    }
+
+    return records.map((candidate) => {
+      const patient = patientById.get(candidate.patient_id) ?? null;
+      const residence = residenceByPatientId.get(candidate.patient_id) ?? null;
+      return {
+        ...candidate,
+        patient_name: patient?.name ?? '',
+        building_id: residence?.building_id ?? '',
+        unit_name: residence?.unit_name ?? '',
+        yj_codes: candidate.cycle_id ? yjCodesByCycleId.get(candidate.cycle_id) ?? [] : [],
+      };
+    });
+  });
 
   const header = [
     'id',
     'patient_id',
+    'patient_name',
+    'building_id',
+    'unit_name',
     'billing_month',
     'billing_code',
     'billing_name',
+    'yj_codes',
     'points',
     'status',
   ].join(',');
@@ -34,13 +135,17 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       ? c.billing_month.toISOString().slice(0, 7)
       : String(c.billing_month);
     return [
-      c.id,
-      c.patient_id,
-      month,
-      c.billing_code,
-      `"${c.billing_name.replace(/"/g, '""')}"`,
-      c.points ?? '',
-      c.status,
+      csvCell(c.id),
+      csvCell(c.patient_id),
+      csvCell(c.patient_name),
+      csvCell(c.building_id),
+      csvCell(c.unit_name),
+      csvCell(month),
+      csvCell(c.billing_code),
+      csvCell(c.billing_name),
+      csvCell(c.yj_codes.join('|')),
+      csvCell(c.points ?? ''),
+      csvCell(c.status),
     ].join(',');
   });
 

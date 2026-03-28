@@ -100,7 +100,7 @@ export async function PATCH(
             : {}),
         },
       });
-    });
+    }, { requestContext: ctx });
 
     return success({ data: updated });
   }
@@ -118,7 +118,7 @@ export async function PATCH(
           status: 'archived',
         },
       });
-    });
+    }, { requestContext: ctx });
 
     return success({ data: archived });
   }
@@ -171,7 +171,7 @@ export async function PATCH(
     }
 
     return updated;
-  });
+  }, { requestContext: ctx });
 
   return success({ data: approved });
 }

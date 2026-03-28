@@ -6,6 +6,7 @@ export type OfflineVisitDraft = {
   scheduleId: string;
   patientId: string;
   pharmacistId: string;
+  visitDate?: string;
   soapSubjective?: string;
   soapObjective?: string;
   soapAssessment?: string;
@@ -13,8 +14,16 @@ export type OfflineVisitDraft = {
   outcomeStatus?: string;
   receiptPersonName?: string;
   receiptPersonRelation?: string;
+  receiptAt?: string;
+  nextVisitSuggestionDate?: string;
+  cancellationReason?: string;
+  postponeReason?: string;
+  revisitReason?: string;
+  visitGeoLog?: string;
   /** JSON.stringify(StructuredSoap) — 暗号化対応可 */
   structuredSoap?: string;
+  /** JSON.stringify(Form residual medications) */
+  residualMedications?: string;
   /** ウィザードの現在ステップ */
   currentStep?: number;
   createdAt: Date;
@@ -39,15 +48,28 @@ export type OfflineSyncQueue = {
   id?: number;
   entityType: 'visit_record' | 'residual_medication';
   payload: string; // encrypted JSON
+  scope_id?: string;
   createdAt: Date;
   retryCount: number;
   lastError?: string;
+  conflict_state?: 'server_conflict';
+  conflict_payload?: string;
+};
+
+export type OfflineVisitBriefCache = {
+  id?: number;
+  scheduleId: string;
+  patientId: string;
+  scheduledDate: string;
+  payload: string;
+  updatedAt: Date;
 };
 
 class CareViaXOfflineDB extends Dexie {
   visitDrafts!: Table<OfflineVisitDraft, number>;
   residualDrafts!: Table<OfflineResidualDraft, number>;
   syncQueue!: Table<OfflineSyncQueue, number>;
+  visitBriefCache!: Table<OfflineVisitBriefCache, number>;
 
   constructor() {
     super('CareViaXOffline');
@@ -73,6 +95,20 @@ class CareViaXOfflineDB extends Dexie {
             if (draft.currentStep === undefined) draft.currentStep = 0;
           });
       });
+
+    this.version(3).stores({
+      visitDrafts: '++id, scheduleId, patientId, synced',
+      residualDrafts: '++id, patientId, synced',
+      syncQueue: '++id, entityType, scope_id, createdAt, conflict_state',
+      visitBriefCache: '++id, scheduleId, scheduledDate, patientId, updatedAt',
+    });
+
+    this.version(4).stores({
+      visitDrafts: '++id, scheduleId, patientId, synced',
+      residualDrafts: '++id, patientId, synced',
+      syncQueue: '++id, entityType, scope_id, retryCount, createdAt, conflict_state',
+      visitBriefCache: '++id, scheduleId, scheduledDate, patientId, updatedAt',
+    });
   }
 }
 

@@ -14,15 +14,18 @@ import {
   User,
   CalendarCheck,
   FileDown,
-  Pencil,
   Clock,
   FileText,
+  FileImage,
+  Paperclip,
+  MapPin,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import type { VisitGeoLog } from '@/lib/visit-location';
 
 type ResidualMedication = {
   id: string;
@@ -56,9 +59,28 @@ type VisitRecordFull = {
   version: number;
   created_at: string;
   updated_at: string;
+  pharmacist_name: string | null;
+  last_modified_by_id: string | null;
+  last_modified_by_name: string | null;
+  attachments: Array<{
+    file_id: string;
+    file_name: string;
+    mime_type: string;
+    size_bytes: number;
+    uploaded_at: string | null;
+    kind: 'photo' | 'attachment';
+  }>;
+  visit_geo_log: VisitGeoLog | null;
   schedule: {
+    id: string;
+    case_id: string;
+    site_id: string | null;
+    pharmacist_id: string;
     visit_type: string;
     scheduled_date: string;
+    recurrence_rule: string | null;
+    time_window_start: string | null;
+    time_window_end: string | null;
   } | null;
 };
 
@@ -122,6 +144,32 @@ function SoapSection({
   );
 }
 
+function formatFileSize(sizeBytes: number) {
+  if (sizeBytes >= 1024 * 1024) {
+    return `${(sizeBytes / (1024 * 1024)).toFixed(1)}MB`;
+  }
+
+  if (sizeBytes >= 1024) {
+    return `${Math.round(sizeBytes / 1024)}KB`;
+  }
+
+  return `${sizeBytes}B`;
+}
+
+function formatTimeWindow(value: string | null) {
+  if (!value) return undefined;
+
+  try {
+    return format(parseISO(value), 'HH:mm', { locale: ja });
+  } catch {
+    return undefined;
+  }
+}
+
+function formatGeoCoordinate(value: number) {
+  return value.toFixed(5);
+}
+
 export function VisitRecordDetail({ recordId }: { recordId: string }) {
   const orgId = useOrgId();
   const router = useRouter();
@@ -169,6 +217,42 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
   function handleGenerateReport(report_type?: string) {
     generateReportMutation.mutate(report_type);
   }
+
+  const createNextVisitMutation = useMutation({
+    mutationFn: async (payload: {
+      case_id: string;
+      site_id?: string;
+      visit_type: string;
+      scheduled_date: string;
+      pharmacist_id: string;
+      time_window_start?: string;
+      time_window_end?: string;
+      recurrence_rule?: string;
+    }) => {
+      const response = await fetch('/api/visit-schedules', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(json?.message ?? '次回訪問予定の作成に失敗しました');
+      }
+
+      return json as { id: string };
+    },
+    onSuccess: (schedule) => {
+      toast.success('次回訪問予定を作成しました');
+      router.push(`/schedules?selected=${schedule.id}`);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
 
   const { data: record, isLoading } = useQuery<VisitRecordFull>({
     queryKey: ['visit-record', recordId, orgId],
@@ -233,10 +317,16 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="gap-1" disabled aria-label="PDF出力（未実装）">
+          <Link
+            href={`/api/visit-records/${recordId}/pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={buttonVariants({ variant: 'outline', size: 'sm', className: 'gap-1' })}
+            aria-label="訪問記録 PDF を開く"
+          >
             <FileDown className="size-3.5" aria-hidden="true" />
             PDF出力
-          </Button>
+          </Link>
 
           {/* Report generation dropdown */}
           <div className="relative" ref={menuRef}>
@@ -282,12 +372,6 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
             )}
           </div>
 
-          <Link href={`/visits/${recordId}/edit`}>
-            <Button variant="outline" size="sm" className="gap-1">
-              <Pencil className="size-3.5" aria-hidden="true" />
-              編集
-            </Button>
-          </Link>
         </div>
       </div>
 
@@ -302,7 +386,10 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
           最終更新: {format(parseISO(record.updated_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
         </span>
         <span>バージョン: v{record.version}</span>
-        <span>記録者ID: {record.pharmacist_id}</span>
+        <span>記録者: {record.pharmacist_name ?? record.pharmacist_id}</span>
+        <span>
+          最終更新者: {record.last_modified_by_name ?? record.last_modified_by_id ?? record.pharmacist_name ?? record.pharmacist_id}
+        </span>
       </div>
 
       {/* Reason fields */}
@@ -395,6 +482,66 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
         </CardContent>
       </Card>
 
+      {record.visit_geo_log?.enabled && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <MapPin className="size-4 text-muted-foreground" aria-hidden="true" />
+              訪問位置情報
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg border border-border/70 px-3 py-3">
+                <p className="text-xs text-muted-foreground">開始位置</p>
+                {record.visit_geo_log.start ? (
+                  <>
+                    <p className="mt-1 text-sm font-medium">
+                      {formatGeoCoordinate(record.visit_geo_log.start.latitude)},{' '}
+                      {formatGeoCoordinate(record.visit_geo_log.start.longitude)}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {format(parseISO(record.visit_geo_log.start.captured_at), 'yyyy/MM/dd HH:mm', {
+                        locale: ja,
+                      })}
+                      {record.visit_geo_log.start.accuracy_meters != null
+                        ? ` / 精度 ±${record.visit_geo_log.start.accuracy_meters}m`
+                        : ''}
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-1 text-sm text-muted-foreground">未記録</p>
+                )}
+              </div>
+              <div className="rounded-lg border border-border/70 px-3 py-3">
+                <p className="text-xs text-muted-foreground">終了位置</p>
+                {record.visit_geo_log.end ? (
+                  <>
+                    <p className="mt-1 text-sm font-medium">
+                      {formatGeoCoordinate(record.visit_geo_log.end.latitude)},{' '}
+                      {formatGeoCoordinate(record.visit_geo_log.end.longitude)}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {format(parseISO(record.visit_geo_log.end.captured_at), 'yyyy/MM/dd HH:mm', {
+                        locale: ja,
+                      })}
+                      {record.visit_geo_log.end.accuracy_meters != null
+                        ? ` / 精度 ±${record.visit_geo_log.end.accuracy_meters}m`
+                        : ''}
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-1 text-sm text-muted-foreground">未記録</p>
+                )}
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              権限状態: {record.visit_geo_log.permission}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Next visit suggestion */}
       {record.next_visit_suggestion_date && (
         <Card>
@@ -404,13 +551,107 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
               次回訪問提案
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <p className="text-sm font-medium">
-              {format(parseISO(record.next_visit_suggestion_date), 'yyyy年MM月dd日', { locale: ja })}
+              {format(parseISO(record.next_visit_suggestion_date), 'yyyy年MM月dd日', {
+                locale: ja,
+              })}
             </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                className="gap-1"
+                disabled={!record.schedule || createNextVisitMutation.isPending}
+                onClick={() => {
+                  if (!record.schedule || !record.next_visit_suggestion_date) return;
+
+                  createNextVisitMutation.mutate({
+                    case_id: record.schedule.case_id,
+                    site_id: record.schedule.site_id ?? undefined,
+                    visit_type: record.schedule.visit_type,
+                    scheduled_date: record.next_visit_suggestion_date,
+                    pharmacist_id: record.schedule.pharmacist_id,
+                    time_window_start:
+                      formatTimeWindow(record.schedule.time_window_start) ?? undefined,
+                    time_window_end:
+                      formatTimeWindow(record.schedule.time_window_end) ?? undefined,
+                    recurrence_rule: record.schedule.recurrence_rule ?? undefined,
+                  });
+                }}
+              >
+                <CalendarCheck className="size-3.5" aria-hidden="true" />
+                {createNextVisitMutation.isPending ? '作成中...' : '提案日で予定作成'}
+              </Button>
+              <Link
+                href="/schedules"
+                className={buttonVariants({ variant: 'outline', size: 'sm' })}
+              >
+                手動調整
+              </Link>
+            </div>
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <Paperclip className="size-4 text-muted-foreground" aria-hidden="true" />
+            写真・添付
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {record.attachments.length > 0 ? (
+            <ul className="space-y-2">
+              {record.attachments.map((attachment) => {
+                const Icon = attachment.kind === 'photo' ? FileImage : FileText;
+
+                return (
+                  <li
+                    key={attachment.file_id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
+                  >
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+                        <span className="truncate text-sm font-medium text-foreground">
+                          {attachment.file_name}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                        <span>{attachment.mime_type}</span>
+                        <span>{formatFileSize(attachment.size_bytes)}</span>
+                        {attachment.uploaded_at ? (
+                          <span>
+                            {format(parseISO(attachment.uploaded_at), 'yyyy/MM/dd HH:mm', {
+                              locale: ja,
+                            })}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <Link
+                      href={`/api/files/${attachment.file_id}/download`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={buttonVariants({
+                        variant: 'outline',
+                        size: 'sm',
+                        className: 'gap-1',
+                      })}
+                    >
+                      <FileDown className="size-3.5" aria-hidden="true" />
+                      開く
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">添付ファイルはありません</p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Residual medications */}
       {residuals && residuals.length > 0 && (

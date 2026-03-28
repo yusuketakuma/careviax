@@ -1,10 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const { getRequestAuthContextMock } = vi.hoisted(() => ({
+  getRequestAuthContextMock: vi.fn(),
+}));
+
 // Mock the prisma client before importing the module under test
 vi.mock('../client', () => {
-  const mockExecuteRawUnsafe = vi.fn().mockResolvedValue(undefined);
+  const mockExecuteRaw = vi.fn().mockResolvedValue(undefined);
   const mockTransaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-    const mockTx = { $executeRawUnsafe: mockExecuteRawUnsafe };
+    const mockTx = { $executeRaw: mockExecuteRaw };
     return fn(mockTx);
   });
 
@@ -12,9 +16,13 @@ vi.mock('../client', () => {
     prisma: {
       $transaction: mockTransaction,
     },
-    mockExecuteRawUnsafe,
+    mockExecuteRaw,
   };
 });
+
+vi.mock('@/lib/auth/request-context', () => ({
+  getRequestAuthContext: getRequestAuthContextMock,
+}));
 
 import { withOrgContext } from '../rls';
 import * as clientModule from '../client';
@@ -22,12 +30,13 @@ import * as clientModule from '../client';
 // Access the mock via module cast
 const mockClient = clientModule as unknown as {
   prisma: { $transaction: ReturnType<typeof vi.fn> };
-  mockExecuteRawUnsafe: ReturnType<typeof vi.fn>;
+  mockExecuteRaw: ReturnType<typeof vi.fn>;
 };
 
 describe('withOrgContext', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getRequestAuthContextMock.mockReturnValue(undefined);
   });
 
   describe('orgId validation', () => {
@@ -76,12 +85,42 @@ describe('withOrgContext', () => {
       expect(mockClient.prisma.$transaction).toHaveBeenCalledOnce();
     });
 
-    it('calls $executeRawUnsafe with the correct SET LOCAL statement', async () => {
+    it('sets org and request metadata via set_config', async () => {
       const validCuid = 'clh4dz2xq0000qzrm8n9j3k1p';
       await withOrgContext(validCuid, async () => null);
-      expect(mockClient.mockExecuteRawUnsafe).toHaveBeenCalledWith(
-        `SET LOCAL app.current_org_id = '${validCuid}'`
-      );
+      expect(mockClient.mockExecuteRaw).toHaveBeenCalledTimes(5);
+      expect(
+        mockClient.mockExecuteRaw.mock.calls.map(([query]) => query.values)
+      ).toEqual([
+        ['app.current_org_id', validCuid],
+        ['app.current_actor_id', ''],
+        ['app.current_member_role', ''],
+        ['app.current_ip_address', ''],
+        ['app.current_user_agent', ''],
+      ]);
+    });
+
+    it('propagates actor, role, and request metadata from auth context', async () => {
+      const validCuid = 'clh4dz2xq0000qzrm8n9j3k1p';
+      getRequestAuthContextMock.mockReturnValue({
+        userId: 'user_1',
+        orgId: validCuid,
+        role: 'admin',
+        ipAddress: '203.0.113.10',
+        userAgent: 'Vitest Browser',
+      });
+
+      await withOrgContext(validCuid, async () => null);
+
+      expect(
+        mockClient.mockExecuteRaw.mock.calls.map(([query]) => query.values)
+      ).toEqual([
+        ['app.current_org_id', validCuid],
+        ['app.current_actor_id', 'user_1'],
+        ['app.current_member_role', 'admin'],
+        ['app.current_ip_address', '203.0.113.10'],
+        ['app.current_user_agent', 'Vitest Browser'],
+      ]);
     });
 
     it('returns the value from the callback function', async () => {

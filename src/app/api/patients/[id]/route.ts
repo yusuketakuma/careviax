@@ -4,8 +4,55 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { updatePatientSchema } from '@/lib/validations/patient';
 import { prisma } from '@/lib/db/client';
+import type { Prisma } from '@prisma/client';
 import { listCommunicationQueue } from '@/server/services/communication-queue';
+import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
+import { getPatientHomeCareFeatureSummary } from '@/server/services/home-care-ops';
 import { getPatientRiskSummary } from '@/server/services/patient-risk';
+import { getPatientVisitBrief } from '@/server/services/visit-brief';
+
+type FirstVisitDocumentContact = {
+  id?: string;
+  name: string;
+  relation: string | null;
+  phone: string | null;
+  email: string | null;
+  fax: string | null;
+  organization_name: string | null;
+  department: string | null;
+  is_primary: boolean;
+  is_emergency_contact: boolean;
+};
+
+function normalizeFirstVisitDocumentContacts(
+  value: Prisma.JsonValue | null | undefined
+): FirstVisitDocumentContact[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+
+    const record = item as Record<string, unknown>;
+    const name = typeof record.name === 'string' ? record.name : null;
+    if (!name) return [];
+
+    return [
+      {
+        id: typeof record.id === 'string' ? record.id : undefined,
+        name,
+        relation: typeof record.relation === 'string' ? record.relation : null,
+        phone: typeof record.phone === 'string' ? record.phone : null,
+        email: typeof record.email === 'string' ? record.email : null,
+        fax: typeof record.fax === 'string' ? record.fax : null,
+        organization_name:
+          typeof record.organization_name === 'string' ? record.organization_name : null,
+        department: typeof record.department === 'string' ? record.department : null,
+        is_primary: record.is_primary === true,
+        is_emergency_contact: record.is_emergency_contact === true,
+      },
+    ];
+  });
+}
 
 export async function GET(
   req: NextRequest,
@@ -52,10 +99,14 @@ export async function GET(
     externalShares,
     openTasks,
     medicationIssues,
+    inquiryRecords,
     billingEvidence,
+    billingEvidenceBlockers,
     billingCandidates,
     communicationQueue,
     riskSummary,
+    visitBrief,
+    firstVisitDocuments,
   ] = await Promise.all([
     prisma.medicationProfile.findMany({
       where: {
@@ -175,9 +226,12 @@ export async function GET(
         id: true,
         subject: true,
         category: true,
+        content: true,
+        relation: true,
         status: true,
         reported_by_name: true,
         requested_callback: true,
+        preferred_contact_time: true,
         created_at: true,
       },
     }),
@@ -256,6 +310,27 @@ export async function GET(
         identified_at: true,
       },
     }),
+    prisma.inquiryRecord.findMany({
+      where: {
+        org_id: ctx.orgId,
+        cycle: {
+          patient_id: id,
+        },
+      },
+      orderBy: [{ resolved_at: 'desc' }, { inquired_at: 'desc' }, { created_at: 'desc' }],
+      take: 8,
+      select: {
+        id: true,
+        reason: true,
+        inquiry_to_physician: true,
+        inquiry_content: true,
+        result: true,
+        change_detail: true,
+        inquired_at: true,
+        resolved_at: true,
+        created_at: true,
+      },
+    }),
     prisma.billingEvidence.findMany({
       where: {
         org_id: ctx.orgId,
@@ -270,6 +345,11 @@ export async function GET(
         exclusion_reason: true,
         validation_notes: true,
       },
+    }),
+    listBillingEvidenceBlockers(prisma, {
+      orgId: ctx.orgId,
+      patientId: id,
+      limit: 6,
     }),
     prisma.billingCandidate.findMany({
       where: {
@@ -297,7 +377,36 @@ export async function GET(
       orgId: ctx.orgId,
       patientId: id,
     }),
+    getPatientVisitBrief(prisma, {
+      orgId: ctx.orgId,
+      patientId: id,
+      context: 'patient',
+    }),
+    caseIds.length === 0
+      ? Promise.resolve([])
+      : prisma.firstVisitDocument.findMany({
+          where: {
+            org_id: ctx.orgId,
+            patient_id: id,
+            case_id: { in: caseIds },
+          },
+          orderBy: [{ created_at: 'desc' }],
+          select: {
+            id: true,
+            case_id: true,
+            emergency_contacts: true,
+            document_url: true,
+            delivered_at: true,
+            delivered_to: true,
+            created_at: true,
+            updated_at: true,
+          },
+        }),
   ]);
+  const homeCareFeatureSummary = await getPatientHomeCareFeatureSummary(prisma, {
+    orgId: ctx.orgId,
+    patientId: id,
+  });
 
   const timeline_events = [
     ...visitSchedules.map((item) => ({
@@ -364,6 +473,25 @@ export async function GET(
       summary: `${item.priority}${item.category ? ` / ${item.category}` : ''}`,
       href: '/patients',
     })),
+    ...inquiryRecords.map((item) => {
+      const inquiryStatus =
+        item.result === 'changed'
+          ? '変更あり'
+          : item.result === 'unchanged'
+            ? '変更なし'
+            : '回答待ち';
+      const counterpart = item.inquiry_to_physician ? ` / ${item.inquiry_to_physician}` : '';
+      const detail = item.change_detail ?? item.inquiry_content ?? null;
+
+      return {
+        id: `inquiry:${item.id}`,
+        event_type: 'inquiry',
+        occurred_at: item.resolved_at ?? item.inquired_at ?? item.created_at,
+        title: `疑義照会 ${inquiryStatus}`,
+        summary: `${item.reason}${counterpart}${detail ? ` / ${detail}` : ''}`,
+        href: '/workflow',
+      };
+    }),
   ]
     .sort((left, right) => right.occurred_at.getTime() - left.occurred_at.getTime())
     .slice(0, 24);
@@ -380,8 +508,18 @@ export async function GET(
     medication_issues: medicationIssues,
     communication_queue: communicationQueue,
     risk_summary: riskSummary,
+    home_care_feature_summary: homeCareFeatureSummary,
+    visit_brief: visitBrief,
+    first_visit_documents: firstVisitDocuments.map((item) => ({
+      ...item,
+      emergency_contacts: normalizeFirstVisitDocumentContacts(item.emergency_contacts),
+    })),
     billing_summary: {
-      evidence: billingEvidence,
+      evidence: billingEvidence.map((item) => ({
+        ...item,
+        blockers:
+          billingEvidenceBlockers.find((blocker) => blocker.id === item.id)?.blockers ?? [],
+      })),
       candidates: billingCandidates,
       claimable_count: billingEvidence.filter((item) => item.claimable).length,
       blocked_count: billingEvidence.filter((item) => !item.claimable).length,
@@ -500,7 +638,7 @@ export async function PATCH(
     }
 
     return updated;
-  });
+  }, { requestContext: ctx });
 
   return success(patient);
 }

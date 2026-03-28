@@ -3,6 +3,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
+import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { z } from 'zod';
 
 const createDispenseTaskSchema = z.object({
@@ -78,7 +79,21 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   // Verify cycle exists and belongs to org
   const cycle = await prisma.medicationCycle.findFirst({
     where: { id: cycle_id, org_id: req.orgId },
-    select: { id: true, overall_status: true },
+    select: {
+      id: true,
+      patient_id: true,
+      overall_status: true,
+      case_: {
+        select: {
+          primary_pharmacist_id: true,
+          patient: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+    },
   });
   if (!cycle) return notFound('サイクルが見つかりません');
 
@@ -103,6 +118,49 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       await tx.medicationCycle.update({
         where: { id: cycle_id },
         data: { overall_status: 'dispensing' },
+      });
+    }
+
+    if (priority === 'emergency') {
+      const fallbackRecipients = await tx.membership.findMany({
+        where: {
+          org_id: req.orgId,
+          is_active: true,
+          role: { in: ['admin', 'pharmacist'] as never[] },
+          user: {
+            is_active: true,
+          },
+        },
+        select: {
+          user_id: true,
+        },
+      });
+
+      const explicitUserIds = Array.from(
+        new Set(
+          [
+            assigned_to ?? null,
+            cycle.case_?.primary_pharmacist_id ?? null,
+            ...fallbackRecipients.map((member) => member.user_id),
+          ].filter((value): value is string => Boolean(value))
+        )
+      );
+
+      await dispatchNotificationEvent(tx, {
+        orgId: req.orgId,
+        eventType: 'dispense_task_emergency_created',
+        type: 'urgent',
+        title: '緊急の調剤対応が追加されました',
+        message: `${task.cycle.case_.patient.name} の緊急調剤タスクを確認してください${due_date ? `（期限 ${due_date.slice(0, 10)}）` : ''}`,
+        link: `/dispensing/${task.id}`,
+        metadata: {
+          task_id: task.id,
+          cycle_id,
+          patient_id: task.cycle.patient_id,
+          priority,
+        },
+        explicitUserIds,
+        dedupeKey: `dispense-task-emergency:${task.id}`,
       });
     }
 

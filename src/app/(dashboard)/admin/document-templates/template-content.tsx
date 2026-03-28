@@ -1,0 +1,389 @@
+'use client';
+
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { type ColumnDef } from '@tanstack/react-table';
+import { format, parseISO } from 'date-fns';
+import { ja } from 'date-fns/locale';
+import { FileText, Pencil, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { DataTable } from '@/components/ui/data-table';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useOrgId } from '@/lib/hooks/use-org-id';
+
+type TemplateType =
+  | 'care_report'
+  | 'tracing_report'
+  | 'management_plan'
+  | 'medication_calendar';
+
+type DocumentTemplateRow = {
+  id: string;
+  name: string;
+  template_type: TemplateType;
+  content: Record<string, unknown>;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+const TEMPLATE_TYPE_LABELS: Record<TemplateType, string> = {
+  care_report: '報告書',
+  tracing_report: 'トレーシング',
+  management_plan: '計画書',
+  medication_calendar: '服薬カレンダー',
+};
+
+const DEFAULT_TEMPLATE_CONTENT: Record<TemplateType, Record<string, unknown>> = {
+  care_report: {
+    sections: ['summary', 'assessment', 'plan'],
+    footer: '訪問記録から自動差込',
+  },
+  tracing_report: {
+    sections: ['issue', 'intervention', 'followup'],
+    footer: '服薬情報提供書',
+  },
+  management_plan: {
+    sections: ['goals', 'support_plan', 'review_points'],
+  },
+  medication_calendar: {
+    layout: 'weekly',
+    show_dose_icons: true,
+  },
+};
+
+export function DocumentTemplateContent() {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  const [filterType, setFilterType] = useState<'all' | TemplateType>('all');
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [form, setForm] = useState<{
+    name: string;
+    templateType: TemplateType;
+    isDefault: boolean;
+    contentText: string;
+  }>({
+    name: '',
+    templateType: 'care_report',
+    isDefault: false,
+    contentText: JSON.stringify(DEFAULT_TEMPLATE_CONTENT.care_report, null, 2),
+  });
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['document-templates', orgId, filterType],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (filterType !== 'all') {
+        params.set('template_type', filterType);
+      }
+
+      const suffix = params.toString();
+      const res = await fetch(
+        `/api/templates${suffix ? `?${suffix}` : ''}`,
+        { headers: { 'x-org-id': orgId } }
+      );
+      if (!res.ok) throw new Error('文書テンプレートの取得に失敗しました');
+      return res.json() as Promise<{ data: DocumentTemplateRow[] }>;
+    },
+    enabled: !!orgId,
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      let parsedContent: Record<string, unknown>;
+      try {
+        parsedContent = JSON.parse(form.contentText) as Record<string, unknown>;
+      } catch {
+        throw new Error('テンプレート本文は JSON 形式で入力してください');
+      }
+
+      const payload = {
+        name: form.name.trim(),
+        template_type: form.templateType,
+        is_default: form.isDefault,
+        content: parsedContent,
+      };
+      const url = editingTemplateId ? `/api/templates/${editingTemplateId}` : '/api/templates';
+      const method = editingTemplateId ? 'PATCH' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message ?? 'テンプレートの保存に失敗しました');
+      }
+      return res.json();
+    },
+    onSuccess: async () => {
+      toast.success(editingTemplateId ? 'テンプレートを更新しました' : 'テンプレートを登録しました');
+      resetForm();
+      await queryClient.invalidateQueries({ queryKey: ['document-templates', orgId] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'テンプレートの保存に失敗しました');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (templateId: string) => {
+      const res = await fetch(`/api/templates/${templateId}`, {
+        method: 'DELETE',
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message ?? 'テンプレートの削除に失敗しました');
+      }
+      return res.json();
+    },
+    onSuccess: async () => {
+      toast.success('テンプレートを削除しました');
+      resetForm();
+      await queryClient.invalidateQueries({ queryKey: ['document-templates', orgId] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'テンプレートの削除に失敗しました');
+    },
+  });
+
+  function resetForm() {
+    setEditingTemplateId(null);
+    setForm({
+      name: '',
+      templateType: 'care_report',
+      isDefault: false,
+      contentText: JSON.stringify(DEFAULT_TEMPLATE_CONTENT.care_report, null, 2),
+    });
+  }
+
+  function loadTemplate(template: DocumentTemplateRow) {
+    setEditingTemplateId(template.id);
+    setForm({
+      name: template.name,
+      templateType: template.template_type,
+      isDefault: template.is_default,
+      contentText: JSON.stringify(template.content, null, 2),
+    });
+  }
+
+  const columns: ColumnDef<DocumentTemplateRow>[] = [
+    {
+      accessorKey: 'name',
+      header: 'テンプレート名',
+      cell: ({ row }) => (
+        <div>
+          <p className="text-sm font-medium">{row.original.name}</p>
+          <p className="text-xs text-muted-foreground">
+            {TEMPLATE_TYPE_LABELS[row.original.template_type]}
+          </p>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'is_default',
+      header: '既定',
+      cell: ({ row }) =>
+        row.original.is_default ? <Badge>既定</Badge> : <Badge variant="outline">任意</Badge>,
+    },
+    {
+      accessorKey: 'updated_at',
+      header: '更新日',
+      cell: ({ row }) => (
+        <span className="text-sm tabular-nums">
+          {format(parseISO(row.original.updated_at), 'M/d HH:mm', { locale: ja })}
+        </span>
+      ),
+    },
+    {
+      id: 'actions',
+      header: '操作',
+      cell: ({ row }) => (
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => loadTemplate(row.original)}>
+            <Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+            編集
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => deleteMutation.mutate(row.original.id)}
+            disabled={deleteMutation.isPending}
+          >
+            <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+            削除
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <div className="space-y-6 p-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">文書テンプレート管理</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          報告書やトレーシングレポートのテンプレートを管理します。
+        </p>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <FileText className="h-4 w-4 text-blue-600" aria-hidden="true" />
+              {editingTemplateId ? 'テンプレートを編集' : 'テンプレートを登録'}
+            </CardTitle>
+            <CardDescription>
+              JSON 形式でブロック構成や固定文言を管理します。
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="template-name">テンプレート名</Label>
+              <Input
+                id="template-name"
+                value={form.name}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, name: event.target.value }))
+                }
+                placeholder="主治医報告 基本"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="template-type">種別</Label>
+              <Select
+                value={form.templateType}
+                onValueChange={(value) => {
+                  if (!value) return;
+                  setForm((current) => ({
+                    ...current,
+                    templateType: value,
+                    contentText:
+                      current.name.trim().length === 0 && !editingTemplateId
+                        ? JSON.stringify(DEFAULT_TEMPLATE_CONTENT[value], null, 2)
+                        : current.contentText,
+                  }));
+                }}
+              >
+                <SelectTrigger id="template-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(TEMPLATE_TYPE_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+              <div>
+                <p className="text-sm font-medium">既定テンプレート</p>
+                <p className="text-xs text-muted-foreground">
+                  同種別の既定は 1 件だけ保持します
+                </p>
+              </div>
+              <Switch
+                checked={form.isDefault}
+                onCheckedChange={(checked) =>
+                  setForm((current) => ({ ...current, isDefault: checked }))
+                }
+                aria-label="既定テンプレートにする"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="template-content">テンプレート本文(JSON)</Label>
+              <Textarea
+                id="template-content"
+                rows={14}
+                value={form.contentText}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, contentText: event.target.value }))
+                }
+                className="font-mono text-xs"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                onClick={() => saveMutation.mutate()}
+                disabled={saveMutation.isPending || form.name.trim().length === 0}
+              >
+                {saveMutation.isPending
+                  ? '保存中...'
+                  : editingTemplateId
+                    ? '更新する'
+                    : '登録する'}
+              </Button>
+              {editingTemplateId ? (
+                <Button variant="outline" onClick={resetForm}>
+                  キャンセル
+                </Button>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">登録済みテンプレート</CardTitle>
+            <CardDescription>
+              主要文書ごとの既定テンプレートと更新状況を確認できます。
+            </CardDescription>
+            <div className="flex flex-wrap gap-2 pt-2">
+              <Button
+                size="sm"
+                variant={filterType === 'all' ? 'default' : 'outline'}
+                onClick={() => setFilterType('all')}
+              >
+                すべて
+              </Button>
+              {Object.entries(TEMPLATE_TYPE_LABELS).map(([value, label]) => (
+                <Button
+                  key={value}
+                  size="sm"
+                  variant={filterType === value ? 'default' : 'outline'}
+                  onClick={() => setFilterType(value as TemplateType)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <DataTable
+              columns={columns}
+              data={data?.data ?? []}
+              isLoading={isLoading}
+              caption="文書テンプレート一覧"
+              emptyMessage="文書テンプレートはまだありません"
+            />
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}

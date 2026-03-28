@@ -5,6 +5,10 @@ import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
+import {
+  isOperationalMemberRole,
+  membershipFlagsForRole,
+} from '@/lib/auth/member-roles';
 import { updatePharmacistSchema } from '@/lib/validations/pharmacist';
 import {
   disableCognitoUser,
@@ -12,15 +16,6 @@ import {
   resendCognitoInvite,
   updateCognitoUserProfile,
 } from '@/server/services/cognito-admin';
-
-function membershipFlagsForRole(role: 'pharmacist' | 'pharmacist_trainee' | 'admin') {
-  return {
-    can_dispense: true,
-    can_set: true,
-    can_audit_dispense: role === 'admin',
-    can_audit_set: role === 'admin',
-  };
-}
 
 export async function PATCH(
   req: NextRequest,
@@ -71,6 +66,8 @@ export async function PATCH(
     });
     if (!refResult.ok) return refResult.response;
 
+    const isOperational = isOperationalMemberRole(data.role);
+
     try {
       await updateCognitoUserProfile({
         username: pharmacist.cognito_username ?? pharmacist.email,
@@ -93,19 +90,19 @@ export async function PATCH(
           name: data.name,
           name_kana: data.name_kana,
           phone: data.phone ?? null,
-          max_daily_visits: data.max_daily_visits ?? null,
-          max_weekly_visits: data.max_weekly_visits ?? null,
-          max_travel_minutes: data.max_travel_minutes ?? null,
-          can_accept_emergency: data.can_accept_emergency,
-          visit_specialties: data.visit_specialties as Prisma.InputJsonValue,
-          coverage_area: data.coverage_area as Prisma.InputJsonValue,
+          max_daily_visits: isOperational ? (data.max_daily_visits ?? null) : null,
+          max_weekly_visits: isOperational ? (data.max_weekly_visits ?? null) : null,
+          max_travel_minutes: isOperational ? (data.max_travel_minutes ?? null) : null,
+          can_accept_emergency: isOperational ? data.can_accept_emergency : false,
+          visit_specialties: (isOperational ? data.visit_specialties : []) as Prisma.InputJsonValue,
+          coverage_area: (isOperational ? data.coverage_area : []) as Prisma.InputJsonValue,
         },
       });
 
       await tx.membership.update({
         where: { id: membership.id },
         data: {
-          site_id: data.site_id,
+          site_id: data.site_id ?? null,
           role: data.role,
           ...membershipFlagsForRole(data.role),
         },

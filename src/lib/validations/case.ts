@@ -36,6 +36,7 @@ export const updateCaseSchema = z.object({
   start_date: z.string().optional(),
   end_date: z.string().optional(),
   end_reason: z.string().optional(),
+  required_visit_support: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const caseTransitionSchema = z.object({

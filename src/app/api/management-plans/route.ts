@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
         source_plan_id: parsed.data.source_plan_id ?? null,
       },
     });
-  });
+  }, { requestContext: ctx });
 
   return success({ data: plan }, 201);
 }

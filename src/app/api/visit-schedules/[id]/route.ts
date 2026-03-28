@@ -71,6 +71,7 @@ export async function GET(
   return success({
     ...schedule,
     patient_id: careCase.patient_id,
+    cycle_id: schedule.cycle_id,
   });
 }
 
@@ -181,7 +182,7 @@ export async function PATCH(
         version: { increment: 1 },
       },
     });
-  });
+  }, { requestContext: ctx });
 
   return success(schedule);
 }
@@ -209,7 +210,7 @@ export async function DELETE(
       where: { id },
       data: { schedule_status: 'cancelled' },
     });
-  });
+  }, { requestContext: ctx });
 
   return success(schedule);
 }

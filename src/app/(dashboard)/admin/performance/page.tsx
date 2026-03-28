@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Route,
   ShieldAlert,
+  Timer,
   TrendingUp,
   Users,
 } from 'lucide-react';
@@ -90,6 +91,37 @@ type Proposal = {
       name: string;
     };
   };
+};
+
+type RuntimePerformanceSnapshot = {
+  scope: 'current-process';
+  target_ms: number;
+  collected_since: string;
+  summary: {
+    route_count: number;
+    total_requests: number;
+    slow_requests: number;
+    error_requests: number;
+    slow_request_rate: number;
+    overall_p50_ms: number;
+    overall_p95_ms: number;
+    routes_over_target: number;
+  };
+  routes: Array<{
+    route: string;
+    method: string;
+    request_count: number;
+    error_count: number;
+    slow_count: number;
+    slow_rate: number;
+    average_ms: number;
+    p50_ms: number;
+    p95_ms: number;
+    max_ms: number;
+    last_seen_at: string | null;
+    last_status: number | null;
+    target_met: boolean;
+  }>;
 };
 
 function kpiToneClass(value: number, target: number, reverse = false) {
@@ -188,9 +220,23 @@ export default function PerformancePage() {
     refetchInterval: 30_000,
   });
 
+  const runtimeQuery = useQuery({
+    queryKey: ['admin-performance-runtime', orgId],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/performance-metrics?top=6', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('API 応答指標の取得に失敗しました');
+      return res.json() as Promise<{ data: RuntimePerformanceSnapshot }>;
+    },
+    enabled: !!orgId,
+    refetchInterval: 30_000,
+  });
+
   const workflow = workflowQuery.data?.data;
   const schedules = useMemo(() => schedulesQuery.data?.data ?? [], [schedulesQuery.data]);
   const proposals = useMemo(() => proposalsQuery.data?.data ?? [], [proposalsQuery.data]);
+  const runtime = runtimeQuery.data?.data;
 
   const performance = useMemo(() => {
     const lockedSchedules = schedules.filter((schedule) => Boolean(schedule.confirmed_at)).length;
@@ -268,7 +314,7 @@ export default function PerformancePage() {
               <span className="font-medium text-slate-900">30秒ごと</span>
             </div>
             <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-              API 応答時間の代替ではなく、運用ボトルネックと処理密度の可視化です。
+              業務KPIに加えて、auth 配下 API の current-process latency snapshot も並べて確認します。
             </div>
           </div>
         </CardContent>
@@ -331,6 +377,39 @@ export default function PerformancePage() {
           description="訪問後の後続作業"
           icon={AlertTriangle}
           tone={kpiToneClass(workflow?.outcome_metrics.awaiting_reports ?? 0, 0, true)}
+        />
+      </section>
+
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <KpiCard
+          title="API P95"
+          value={runtime?.summary.overall_p95_ms ?? 0}
+          description="current-process の横断 P95"
+          unit="ms"
+          icon={Timer}
+          tone={kpiToneClass(runtime?.summary.overall_p95_ms ?? 0, runtime?.target_ms ?? 500, true)}
+        />
+        <KpiCard
+          title="API P50"
+          value={runtime?.summary.overall_p50_ms ?? 0}
+          description="current-process の横断 P50"
+          unit="ms"
+          icon={TrendingUp}
+        />
+        <KpiCard
+          title="閾値超過率"
+          value={runtime?.summary.slow_request_rate ?? 0}
+          description={`>${runtime?.target_ms ?? 500}ms の割合`}
+          unit="%"
+          icon={AlertTriangle}
+          tone={kpiToneClass(runtime?.summary.slow_request_rate ?? 0, 5, true)}
+        />
+        <KpiCard
+          title="閾値超過 route"
+          value={runtime?.summary.routes_over_target ?? 0}
+          description="P95 が目標を超える endpoint"
+          icon={ShieldAlert}
+          tone={kpiToneClass(runtime?.summary.routes_over_target ?? 0, 0, true)}
         />
       </section>
 
@@ -460,10 +539,112 @@ export default function PerformancePage() {
                   void workflowQuery.refetch();
                   void schedulesQuery.refetch();
                   void proposalsQuery.refetch();
+                  void runtimeQuery.refetch();
                 }}
               >
                 <RefreshCw className="mr-2 size-4" aria-hidden="true" />
                 更新
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">API latency snapshot</CardTitle>
+            <CardDescription>
+              current-process のみを集計します。複数ノード環境の合算ではありません。
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">収集開始</span>
+                <span className="font-medium text-foreground">
+                  {runtime?.collected_since
+                    ? format(new Date(runtime.collected_since), 'M/d HH:mm', { locale: ja })
+                    : '未計測'}
+                </span>
+              </div>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-muted-foreground">サンプル総数</span>
+                <span className="font-medium text-foreground">
+                  {runtime?.summary.total_requests ?? 0}
+                </span>
+              </div>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-muted-foreground">記録 route 数</span>
+                <span className="font-medium text-foreground">
+                  {runtime?.summary.route_count ?? 0}
+                </span>
+              </div>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-muted-foreground">5xx 件数</span>
+                <span className="font-medium text-foreground">
+                  {runtime?.summary.error_requests ?? 0}
+                </span>
+              </div>
+            </div>
+            {(runtime?.summary.total_requests ?? 0) === 0 ? (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+                まだ API サンプルがありません。通常画面を操作すると current-process の計測が蓄積されます。
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Slow endpoints</CardTitle>
+            <CardDescription>現時点で P95 が高い route を上から確認します</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {(runtime?.routes.length ?? 0) === 0 ? (
+              <p className="text-sm text-muted-foreground">表示できる API latency sample はまだありません</p>
+            ) : (
+              runtime?.routes.map((route) => (
+                <div
+                  key={`${route.method}-${route.route}`}
+                  className="space-y-2 rounded-2xl border border-border/70 bg-muted/20 px-4 py-3"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">{route.method}</Badge>
+                        <Badge variant={route.target_met ? 'secondary' : 'destructive'}>
+                          {route.target_met ? 'target in' : 'over target'}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 break-all text-sm font-semibold text-foreground">
+                        {route.route}
+                      </p>
+                    </div>
+                    <div className="text-right text-xs text-muted-foreground">
+                      <p>P95 {route.p95_ms}ms</p>
+                      <p>max {route.max_ms}ms</p>
+                    </div>
+                  </div>
+                  <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
+                    <div>件数 {route.request_count}</div>
+                    <div>平均 {route.average_ms}ms</div>
+                    <div>超過率 {route.slow_rate}%</div>
+                    <div>5xx {route.error_count}</div>
+                  </div>
+                </div>
+              ))
+            )}
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  void runtimeQuery.refetch();
+                }}
+              >
+                <RefreshCw className="mr-2 size-4" aria-hidden="true" />
+                Runtime再計測
               </Button>
             </div>
           </CardContent>

@@ -34,6 +34,18 @@ type BillingCandidate = {
     billing_scope?: string;
     selection_mode?: string;
     source_note?: string;
+    ruleset_version?: string;
+    source_type?: string;
+    source_entity_id?: string;
+    billing_fee_type?: string;
+    duplicate_interaction_fee_type?: string;
+    billing_assignment?: {
+      building_id?: string | null;
+      unit_name?: string | null;
+      assignment_scope?: 'building' | 'unit' | 'patient';
+      building_patient_count?: number | null;
+      unit_patient_count?: number | null;
+    } | null;
     billing_close?: {
       review_state?: 'pending' | 'reviewed';
       resolution_state?: 'unresolved' | 'confirmed' | 'excluded';
@@ -42,6 +54,24 @@ type BillingCandidate = {
       closed_at?: string | null;
       closed_by?: string | null;
       note?: string | null;
+    } | null;
+    validation_layers?: {
+      evidence?: {
+        label?: string;
+        state?: 'passed' | 'manual_review' | 'blocked';
+        message?: string;
+      } | null;
+      rule_engine?: {
+        label?: string;
+        state?: 'passed' | 'manual_review' | 'blocked';
+        message?: string;
+        version?: string;
+      } | null;
+      close_review?: {
+        label?: string;
+        state?: 'passed' | 'manual_review' | 'blocked';
+        message?: string;
+      } | null;
     } | null;
   } | null;
   workflow_state?: {
@@ -54,6 +84,10 @@ type BillingCandidate = {
     note?: string | null;
   } | null;
 };
+
+type CandidateValidationLayers = NonNullable<
+  NonNullable<BillingCandidate['source_snapshot']>['validation_layers']
+>;
 
 type BillingCandidateSummary = {
   total: number;
@@ -85,7 +119,33 @@ const STATUS_CONFIG: Record<string, { label: string; icon: React.ElementType; cl
 const VALIDATION_OK = ['confirmed', 'exported'];
 const VALIDATION_NG = ['excluded'];
 
-function ValidationBadge({ status }: { status: string }) {
+function ValidationBadge({
+  status,
+  layers,
+}: {
+  status: string;
+  layers?: CandidateValidationLayers | null;
+}) {
+  const layerStates = layers
+    ? [layers.evidence?.state, layers.rule_engine?.state, layers.close_review?.state].filter(
+        (value): value is 'passed' | 'manual_review' | 'blocked' => value != null
+      )
+    : [];
+
+  if (layerStates.includes('blocked')) {
+    return (
+      <span className="flex items-center gap-1 text-xs text-red-700" aria-label="バリデーションNG">
+        <XCircle className="size-3.5" aria-hidden="true" /> NG
+      </span>
+    );
+  }
+  if (layerStates.includes('manual_review')) {
+    return (
+      <span className="flex items-center gap-1 text-xs text-yellow-700" aria-label="要確認">
+        <AlertTriangle className="size-3.5" aria-hidden="true" /> 要確認
+      </span>
+    );
+  }
   if (VALIDATION_OK.includes(status)) {
     return (
       <span className="flex items-center gap-1 text-xs text-green-700" aria-label="バリデーションOK">
@@ -140,6 +200,7 @@ function candidateWorkflow(candidate: BillingCandidate) {
 export function BillingCandidatesContent() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
+  const [isExporting, setIsExporting] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -256,6 +317,10 @@ export function BillingCandidatesContent() {
       {
         accessorKey: 'billing_code',
         header: '請求コード',
+        meta: {
+          label: '請求コード',
+          mobileLabel: 'コード',
+        },
         cell: ({ row }) => (
           <span className="font-mono text-xs">{row.original.billing_code}</span>
         ),
@@ -263,6 +328,10 @@ export function BillingCandidatesContent() {
       {
         accessorKey: 'billing_name',
         header: '算定名称',
+        meta: {
+          label: '算定名称',
+          mobileLabel: '名称',
+        },
         cell: ({ row }) => (
           <span className="text-sm">{row.original.billing_name}</span>
         ),
@@ -270,6 +339,10 @@ export function BillingCandidatesContent() {
       {
         accessorKey: 'points',
         header: '算定値',
+        meta: {
+          label: '算定値',
+          mobileLabel: '値',
+        },
         cell: ({ row }) => (
           <span className="text-sm tabular-nums">
             {row.original.points != null
@@ -287,6 +360,11 @@ export function BillingCandidatesContent() {
       {
         id: 'ssot',
         header: 'SSOT',
+        meta: {
+          label: 'SSOT',
+          tabletHidden: true,
+          mobileHidden: true,
+        },
         cell: ({ row }) => (
           <div className="space-y-1 text-xs">
             <Badge variant="outline">
@@ -301,6 +379,9 @@ export function BillingCandidatesContent() {
       {
         accessorKey: 'status',
         header: '状態',
+        meta: {
+          label: '状態',
+        },
         cell: ({ row }) => {
           const cfg = STATUS_CONFIG[row.original.status];
           if (!cfg) return <span className="text-xs text-muted-foreground">{row.original.status}</span>;
@@ -316,16 +397,38 @@ export function BillingCandidatesContent() {
       {
         id: 'workflow',
         header: 'レビュー / 締め',
+        meta: {
+          label: 'レビュー / 締め',
+          tabletHidden: true,
+        },
         cell: ({ row }) => <WorkflowBadge workflow={candidateWorkflow(row.original)} />,
       },
       {
         id: 'validation',
         header: 'バリデーション',
-        cell: ({ row }) => <ValidationBadge status={row.original.status} />,
+        meta: {
+          label: 'バリデーション',
+          mobileHidden: true,
+        },
+        cell: ({ row }) => (
+          <ValidationBadge
+            status={row.original.status}
+            layers={row.original.source_snapshot?.validation_layers ?? null}
+          />
+        ),
       },
       {
         accessorKey: 'exclusion_reason',
         header: '除外理由',
+        meta: {
+          label: '除外理由',
+          tabletHidden: true,
+          mobileHidden: true,
+          exportValue: (candidate: BillingCandidate) =>
+            candidate.exclusion_reason ??
+            candidate.source_snapshot?.source_note ??
+            '',
+        },
         cell: ({ row }) => (
           <div className="space-y-1 text-xs text-muted-foreground">
             <span>{row.original.exclusion_reason ?? '—'}</span>
@@ -338,6 +441,10 @@ export function BillingCandidatesContent() {
       {
         id: 'actions',
         header: '操作',
+        meta: {
+          label: '操作',
+          mobileHidden: true,
+        },
         cell: ({ row }) => {
           const status = row.original.status;
           const workflow = candidateWorkflow(row.original);
@@ -395,15 +502,35 @@ export function BillingCandidatesContent() {
     [reviewMutation]
   );
 
-  function handleExport() {
-    const url = `/api/billing-candidates/export?billing_month=${billingMonthStr}`;
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `billing_${billingMonthStr}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('CSVエクスポートを開始しました');
+  async function handleExport() {
+    if (!orgId) return;
+
+    setIsExporting(true);
+    try {
+      const response = await fetch(`/api/billing-candidates/export?billing_month=${billingMonthStr}`, {
+        headers: { 'x-org-id': orgId },
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error(error?.message ?? 'CSVエクスポートに失敗しました');
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `billing_${billingMonthStr}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+      toast.success('CSVをダウンロードしました');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'CSVエクスポートに失敗しました');
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   const okCount = candidates.filter((c) => VALIDATION_OK.includes(c.status)).length;
@@ -426,11 +553,11 @@ export function BillingCandidatesContent() {
         </Card>
         <Card size="sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">レビュー待ち</CardTitle>
+            <CardTitle className="text-xs font-medium text-muted-foreground">レビュー待ち / 根拠不足</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold tabular-nums">{closeBlocked}</p>
-            <p className="text-xs text-muted-foreground">未確認の候補</p>
+            <p className="text-xs text-muted-foreground">未確認候補と請求根拠不足</p>
           </CardContent>
         </Card>
         <Card size="sm">
@@ -508,9 +635,9 @@ export function BillingCandidatesContent() {
           >
             {closeMutation.isPending ? '締め処理中...' : '月次締め'}
           </Button>
-          <Button size="sm" variant="outline" onClick={handleExport} disabled={candidates.length === 0}>
+          <Button size="sm" variant="outline" onClick={() => void handleExport()} disabled={candidates.length === 0 || isExporting}>
             <Download className="mr-1.5 size-3.5" aria-hidden="true" />
-            CSV出力
+            {isExporting ? '出力中...' : 'CSV出力'}
           </Button>
         </div>
       </div>
@@ -534,6 +661,141 @@ export function BillingCandidatesContent() {
         data={candidates}
         isLoading={isLoading}
         caption="月次請求候補一覧"
+        enableRowSelection
+        toolbar={{
+          enableGlobalFilter: true,
+          globalFilterPlaceholder: '請求コード・算定名称で絞り込み',
+          enableColumnVisibility: true,
+          enableExport: true,
+          enablePrint: true,
+          exportFileName: `billing-candidates-${billingMonthStr}.csv`,
+          filterFields: [
+            {
+              columnId: 'billing_code',
+              label: '請求コード',
+              placeholder: '請求コードで絞り込み',
+            },
+            {
+              columnId: 'status',
+              label: '状態',
+              placeholder: '状態で絞り込み',
+            },
+          ],
+        }}
+        renderExpandedRow={(row) => {
+          const candidate = row.original;
+          const workflow = candidateWorkflow(candidate);
+          return (
+            <div className="grid gap-4 text-sm text-foreground md:grid-cols-2">
+              <div className="space-y-2">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    患者ID
+                  </p>
+                  <p className="font-mono text-xs">{candidate.patient_id}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    建物 / ユニット割当
+                  </p>
+                  <p>
+                    {candidate.source_snapshot?.billing_assignment?.building_id ?? '建物未設定'}
+                    {candidate.source_snapshot?.billing_assignment?.unit_name
+                      ? ` / ${candidate.source_snapshot.billing_assignment.unit_name}`
+                      : ''}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {candidate.source_snapshot?.billing_assignment?.assignment_scope === 'building'
+                      ? `単一建物判定 (${candidate.source_snapshot.billing_assignment.building_patient_count ?? '—'}人)`
+                      : candidate.source_snapshot?.billing_assignment?.assignment_scope === 'unit'
+                        ? `ユニット判定 (${candidate.source_snapshot.billing_assignment.unit_patient_count ?? '—'}人)`
+                        : '患者単位判定'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    除外理由
+                  </p>
+                  <p>{candidate.exclusion_reason ?? '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    ソースメモ
+                  </p>
+                  <p>{candidate.source_snapshot?.source_note ?? '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    ルールセット
+                  </p>
+                  <p>{candidate.source_snapshot?.ruleset_version ?? '—'}</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    レビュー状態
+                  </p>
+                  <p>
+                    {workflow?.review_state === 'reviewed' ? 'レビュー済み' : '未レビュー'} /{' '}
+                    {workflow?.resolution_state === 'confirmed'
+                      ? '確定'
+                      : workflow?.resolution_state === 'excluded'
+                        ? '除外'
+                        : '未解決'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    計算内訳
+                  </p>
+                  <pre className="overflow-x-auto rounded-md bg-muted/40 p-3 text-xs leading-5 text-foreground">
+                    {JSON.stringify(candidate.calculation_breakdown ?? {}, null, 2)}
+                  </pre>
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    3層バリデーション
+                  </p>
+                  <div className="space-y-2 rounded-md bg-muted/40 p-3 text-xs">
+                    {candidate.source_snapshot?.validation_layers ? (
+                      <>
+                        {(['evidence', 'rule_engine', 'close_review'] as const).map((key) => {
+                          const layer = candidate.source_snapshot?.validation_layers?.[key];
+                          if (!layer) return null;
+                          const layerVersion =
+                            key === 'rule_engine'
+                              ? candidate.source_snapshot?.validation_layers?.rule_engine?.version
+                              : undefined;
+
+                          return (
+                            <div key={key}>
+                              <p className="font-medium text-foreground">
+                                {layer.label ?? key}
+                                {key === 'rule_engine' && layerVersion ? ` / ${layerVersion}` : ''}
+                              </p>
+                              <p className="text-muted-foreground">
+                                {layer.state === 'passed'
+                                  ? 'OK'
+                                  : layer.state === 'blocked'
+                                    ? 'ブロック'
+                                    : '要確認'}
+                                {' · '}
+                                {layer.message ?? '—'}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </>
+                    ) : (
+                      <p className="text-muted-foreground">バリデーション情報なし</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        }}
       />
 
       {!isLoading && candidates.length === 0 && (

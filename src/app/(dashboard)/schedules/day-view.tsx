@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   addDays,
@@ -14,19 +15,25 @@ import {
 import { ja } from 'date-fns/locale';
 import {
   AlertTriangle,
+  Building2,
   CalendarClock,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  CloudOff,
   PhoneCall,
+  PlayCircle,
   RefreshCw,
   Route,
   Shuffle,
+  Navigation,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { HomeCareFeatureHighlights } from '@/components/home-care/home-care-feature-board';
+import { VisitBriefCard } from '@/components/visit-brief/visit-brief-card';
 import {
   Card,
   CardContent,
@@ -54,6 +61,22 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import {
+  formatOfflineCacheUpdatedAt,
+  isOfflineCacheFresh,
+  OFFLINE_CACHE_TTL_HOURS,
+} from '@/lib/offline/cache-policy';
+import { decryptOfflinePayload, encryptOfflinePayload } from '@/lib/offline/crypto';
+import { offlineDb } from '@/lib/stores/offline-db';
+import { useOfflineStore } from '@/lib/stores/offline-store';
+import {
+  discardSyncQueueItem,
+  overwriteVisitRecordConflict,
+  processSyncQueue,
+  setupAutoSync,
+} from '@/lib/stores/sync-engine';
+import { VisitCardMobile } from '@/components/features/visits/visit-card-mobile';
+import { VisitRouteMap } from '@/components/features/visits/visit-route-map';
 import { ScheduleMetricCard } from './schedule-metric-card';
 import {
   addressOfPatient,
@@ -64,6 +87,7 @@ import {
   PRIORITY_LABELS,
   priorityBadgeClass,
   readImpactCount,
+  readImpactedPatientNames,
   PROPOSAL_STATUS_LABELS,
   SCHEDULE_STATUS_LABELS,
   SCHEDULING_TASK_TYPES,
@@ -85,7 +109,161 @@ import {
   VISIT_TYPE_LABELS,
 } from './day-view.shared';
 
+type CachedVisitBriefCard = {
+  scheduleId: string;
+  patientId: string;
+  patientName: string;
+  scheduledDate: string;
+  timeWindowStart: string | null;
+  timeWindowEnd: string | null;
+  priority: VisitPriority;
+  facilityLabel: string | null;
+  siteName: string | null;
+  headline: string;
+  mustCheckToday: string[];
+  sourceRefs: string[];
+  generatedAt: string;
+  provider: 'rule' | 'openai';
+  isFallback: boolean;
+};
+
+type FacilityTrackerGroup = {
+  key: string;
+  batchId: string | null;
+  label: string;
+  siteName: string | null;
+  patientNames: string[];
+  scheduleIds: string[];
+  patients: Array<{
+    scheduleId: string;
+    patientName: string;
+    unitName: string | null;
+    routeOrder: number | null;
+  }>;
+  preparedCount: number;
+  carryPendingCount: number;
+  incompleteCount: number;
+  routeOrders: number[];
+};
+
+type RouteTravelMode = 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
+
+type VisitRoutePlan = {
+  status: 'ok' | 'unavailable';
+  note: string | null;
+  travelMode: RouteTravelMode;
+  origin: {
+    lat: number;
+    lng: number;
+    label: string;
+  } | null;
+  encodedPath: string | null;
+  orderedScheduleIds: string[];
+  totalDistanceMeters: number | null;
+  totalDurationSeconds: number | null;
+  stopSummaries: Array<{
+    scheduleId: string;
+    optimizedOrder: number;
+    arrivalOffsetSeconds: number | null;
+    distanceFromPreviousMeters: number | null;
+    durationFromPreviousSeconds: number | null;
+  }>;
+};
+
+const FACILITY_VISIT_DAY_WEEKDAY_OPTIONS = [
+  { value: 1, label: '月' },
+  { value: 2, label: '火' },
+  { value: 3, label: '水' },
+  { value: 4, label: '木' },
+  { value: 5, label: '金' },
+  { value: 6, label: '土' },
+  { value: 0, label: '日' },
+];
+
+const GANTT_SLOT_MINUTES = 30;
+const GANTT_DEFAULT_START_MINUTES = 8 * 60;
+const GANTT_DEFAULT_END_MINUTES = 18 * 60;
+const GANTT_ROW_HEIGHT = 44;
+const ROUTE_TRAVEL_MODE_LABELS: Record<RouteTravelMode, string> = {
+  DRIVE: '車',
+  BICYCLE: '自転車',
+  WALK: '徒歩',
+  TWO_WHEELER: 'バイク',
+};
+
+function minutesFromTimestamp(value: string | null, fallback: number) {
+  if (!value) return fallback;
+  const parsed = parseISO(value);
+  return parsed.getHours() * 60 + parsed.getMinutes();
+}
+
+function roundDownToSlot(value: number) {
+  return Math.floor(value / GANTT_SLOT_MINUTES) * GANTT_SLOT_MINUTES;
+}
+
+function roundUpToSlot(value: number) {
+  return Math.ceil(value / GANTT_SLOT_MINUTES) * GANTT_SLOT_MINUTES;
+}
+
+function buildOrderedFacilityScheduleIds(
+  group: FacilityTrackerGroup,
+  routeDraft: Record<string, string>
+) {
+  return [...group.patients]
+    .sort((left, right) => {
+      const leftOrder = Number.parseInt(routeDraft[left.scheduleId] ?? '', 10);
+      const rightOrder = Number.parseInt(routeDraft[right.scheduleId] ?? '', 10);
+      const resolvedLeft = Number.isNaN(leftOrder) ? Number.MAX_SAFE_INTEGER : leftOrder;
+      const resolvedRight = Number.isNaN(rightOrder) ? Number.MAX_SAFE_INTEGER : rightOrder;
+      if (resolvedLeft !== resolvedRight) return resolvedLeft - resolvedRight;
+
+      const leftUnit = left.unitName ?? '';
+      const rightUnit = right.unitName ?? '';
+      return leftUnit.localeCompare(rightUnit, 'ja', {
+        numeric: true,
+        sensitivity: 'base',
+      });
+    })
+    .map((patient) => patient.scheduleId);
+}
+
+function formatMinutesLabel(value: number) {
+  const hours = Math.floor(value / 60);
+  const minutes = value % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function formatDistanceLabel(value: number | null) {
+  if (value == null) return '距離未取得';
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}km`;
+  return `${value}m`;
+}
+
+function formatDurationLabel(value: number | null) {
+  if (value == null) return '時間未取得';
+  const hours = Math.floor(value / 3600);
+  const minutes = Math.round((value % 3600) / 60);
+  if (hours > 0) return `${hours}時間${minutes}分`;
+  return `${minutes}分`;
+}
+
+function formatEtaLabel(
+  baseDate: string,
+  departureTime: string | null,
+  offsetSeconds: number | null,
+  fallbackTime: string | null,
+) {
+  if (offsetSeconds == null) return fallbackTime ? timeLabel(fallbackTime, null) : null;
+  const normalizedDepartureTime = departureTime
+    ? format(parseISO(departureTime), 'HH:mm:ss')
+    : '09:00:00';
+  const base = parseISO(`${baseDate}T${normalizedDepartureTime}`);
+  const shifted = new Date(base.getTime() + offsetSeconds * 1000);
+  return format(shifted, 'HH:mm');
+}
+
 export function ScheduleDayView() {
+  const router = useRouter();
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState(() =>
@@ -103,6 +281,20 @@ export function ScheduleDayView() {
   const [rescheduleTarget, setRescheduleTarget] = useState<VisitSchedule | null>(null);
   const [rescheduleForm, setRescheduleForm] = useState({
     reason: '',
+    reason_code: 'other' as
+      | 'emergency_insert'
+      | 'pharmacist_unavailable'
+      | 'patient_request'
+      | 'facility_request'
+      | 'weather'
+      | 'other',
+    communication_channel: 'phone' as
+      | 'phone'
+      | 'fax'
+      | 'email'
+      | 'collaboration'
+      | 'in_person',
+    communication_result: 'pending' as 'pending' | 'sent' | 'verbal_notified',
     start_date: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
     priority: 'normal' as VisitPriority,
   });
@@ -115,6 +307,7 @@ export function ScheduleDayView() {
     callback_due_at: '',
   });
   const [preparationTarget, setPreparationTarget] = useState<VisitSchedule | null>(null);
+  const [departureWarningTarget, setDepartureWarningTarget] = useState<VisitSchedule | null>(null);
   const [preparationDetails, setPreparationDetails] = useState<{
     preparation: VisitPreparation | null;
     pack: VisitPreparationPack | null;
@@ -127,7 +320,83 @@ export function ScheduleDayView() {
     route_confirmed: false,
     offline_synced: false,
   });
+  const [facilityFilter, setFacilityFilter] = useState<string | null>(null);
+  const [facilityRouteOverrides, setFacilityRouteOverrides] = useState<
+    Record<string, Record<string, string>>
+  >({});
+  const [draggingFacilityPatient, setDraggingFacilityPatient] = useState<{
+    groupKey: string;
+    scheduleId: string;
+  } | null>(null);
+  const [facilityVisitDayTarget, setFacilityVisitDayTarget] = useState<{
+    key: string;
+    label: string;
+    scheduleIds: string[];
+    patientNames: string[];
+  } | null>(null);
+  const [facilityVisitDayForm, setFacilityVisitDayForm] = useState({
+    preferred_weekdays: [] as number[],
+    preferred_time_from: '',
+    preferred_time_to: '',
+    facility_time_from: '',
+    facility_time_to: '',
+    visit_buffer_minutes: '',
+    notes: '',
+  });
+  const [cachedVisitBriefs, setCachedVisitBriefs] = useState<CachedVisitBriefCard[]>([]);
+  const [cachedVisitBriefUpdatedAt, setCachedVisitBriefUpdatedAt] = useState<string | null>(null);
+  const [mobileVisitSurface, setMobileVisitSurface] = useState<'list' | 'map'>('list');
+  const [selectedRoutePharmacistId, setSelectedRoutePharmacistId] = useState('');
+  const [routeTravelMode, setRouteTravelMode] = useState<RouteTravelMode>('DRIVE');
   const preparationRequestIdRef = useRef<string | null>(null);
+  const isOffline = useOfflineStore((state) => state.isOffline);
+  const pendingSyncCount = useOfflineStore((state) => state.pendingSyncCount);
+  const syncConflicts = useOfflineStore((state) => state.syncConflicts);
+  const syncOnlineStatus = useOfflineStore((state) => state.syncOnlineStatus);
+  const refreshSyncState = useOfflineStore((state) => state.refreshSyncState);
+
+  function getDepartureCarryWarning(schedule: VisitSchedule | null) {
+    if (!schedule) return null;
+
+    if (schedule.carry_items_status === 'blocked') {
+      return {
+        title: '持参薬が未確定のままです',
+        description:
+          'この訪問は持参物が blocked です。代替手配または持参物の確定を行わないまま出発すると、訪問先で投薬継続が止まる可能性があります。',
+      };
+    }
+
+    if (schedule.carry_items_status === 'partial') {
+      return {
+        title: '持参物の一部が未確定です',
+        description:
+          'この訪問は持参物が partial です。未確定分を確認しないまま出発すると、現地で一部対応のみになる可能性があります。',
+      };
+    }
+
+    return null;
+  }
+
+  function handleVisitStart(schedule: VisitSchedule) {
+    if (getDepartureCarryWarning(schedule)) {
+      setDepartureWarningTarget(schedule);
+      return;
+    }
+
+    router.push(`/visits/${schedule.id}/record`);
+  }
+
+  function handleVisitComplete(schedule: VisitSchedule) {
+    router.push(`/visits/${schedule.id}/record`);
+  }
+
+  function buildDirectionsUrl(address: string) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
+  }
+
+  function buildMapEmbedUrl(address: string) {
+    return `https://www.google.com/maps?q=${encodeURIComponent(address)}&z=15&output=embed`;
+  }
 
   const selectedDay = useMemo(() => parseISO(selectedDate), [selectedDate]);
   const weekStart = useMemo(
@@ -307,6 +576,42 @@ export function ScheduleDayView() {
     };
   }, [proposals, schedules]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    syncOnlineStatus();
+    window.addEventListener('online', syncOnlineStatus);
+    window.addEventListener('offline', syncOnlineStatus);
+
+    return () => {
+      window.removeEventListener('online', syncOnlineStatus);
+      window.removeEventListener('offline', syncOnlineStatus);
+    };
+  }, [syncOnlineStatus]);
+
+  useEffect(() => {
+    if (!orgId || typeof window === 'undefined') return;
+
+    const teardown = setupAutoSync({
+      orgId,
+      endpoints: {
+        visit_record: '/api/visit-records',
+      },
+    });
+    const initialTimer = window.setTimeout(() => {
+      void refreshSyncState();
+    }, 0);
+    const timer = window.setInterval(() => {
+      void refreshSyncState();
+    }, 5000);
+
+    return () => {
+      teardown();
+      window.clearTimeout(initialTimer);
+      window.clearInterval(timer);
+    };
+  }, [orgId, refreshSyncState]);
+
   function splitTrace(reason: string) {
     return reason
       .split(' / ')
@@ -383,13 +688,573 @@ export function ScheduleDayView() {
       const rightTime = right.time_window_start ?? '';
       return leftTime.localeCompare(rightTime);
     });
+  const facilityTracker = useMemo(() => {
+    const groups = new Map<string, FacilityTrackerGroup>();
+
+    for (const schedule of selectedDateSchedules) {
+      const facilityLabel =
+        schedule.facility_hint?.label ?? schedule.case_.patient.residences[0]?.address ?? null;
+      if (!facilityLabel) continue;
+
+      const key = [
+        schedule.site?.id ?? 'site:none',
+        schedule.facility_batch_id ?? 'batch:none',
+        facilityLabel,
+      ].join(':');
+
+      const existing = groups.get(key) ?? {
+        key,
+        batchId: schedule.facility_batch_id,
+        label: facilityLabel,
+        siteName: schedule.site?.name ?? null,
+        patientNames: [],
+        scheduleIds: [],
+        patients: [],
+        preparedCount: 0,
+        carryPendingCount: 0,
+        incompleteCount: 0,
+        routeOrders: [],
+      };
+
+      existing.batchId = existing.batchId ?? schedule.facility_batch_id;
+      existing.patientNames.push(schedule.case_.patient.name);
+      existing.scheduleIds.push(schedule.id);
+      existing.patients.push({
+        scheduleId: schedule.id,
+        patientName: schedule.case_.patient.name,
+        unitName: schedule.case_.patient.residences[0]?.unit_name ?? null,
+        routeOrder: schedule.route_order,
+      });
+      if (schedule.preparation?.prepared_at) existing.preparedCount += 1;
+      if (!schedule.preparation?.carry_items_confirmed) existing.carryPendingCount += 1;
+      if (!['completed', 'cancelled'].includes(schedule.schedule_status)) {
+        existing.incompleteCount += 1;
+      }
+      if (schedule.route_order != null) existing.routeOrders.push(schedule.route_order);
+
+      groups.set(key, existing);
+    }
+
+    return Array.from(groups.values())
+      .filter((group) => group.patientNames.length > 1)
+      .sort((left, right) => left.label.localeCompare(right.label, 'ja'));
+  }, [selectedDateSchedules]);
+  const facilityRouteDefaults = useMemo(
+    () =>
+      Object.fromEntries(
+        facilityTracker.map((group) => [
+          group.key,
+          Object.fromEntries(
+            group.patients.map((patient, index) => [
+              patient.scheduleId,
+              String(patient.routeOrder ?? index + 1),
+            ])
+          ),
+        ])
+      ) as Record<string, Record<string, string>>,
+    [facilityTracker]
+  );
+  const activeFacilityFilter =
+    facilityFilter && facilityTracker.some((group) => group.key === facilityFilter)
+      ? facilityFilter
+      : null;
+
+  function reorderFacilityPatients(
+    group: FacilityTrackerGroup,
+    draggedScheduleId: string,
+    targetScheduleId: string
+  ) {
+    const routeDraft = {
+      ...(facilityRouteDefaults[group.key] ?? {}),
+      ...(facilityRouteOverrides[group.key] ?? {}),
+    };
+    const orderedScheduleIds = buildOrderedFacilityScheduleIds(group, routeDraft);
+    const draggedIndex = orderedScheduleIds.indexOf(draggedScheduleId);
+    const targetIndex = orderedScheduleIds.indexOf(targetScheduleId);
+    if (draggedIndex === -1 || targetIndex === -1 || draggedIndex === targetIndex) {
+      return;
+    }
+
+    const nextOrdered = [...orderedScheduleIds];
+    const [moved] = nextOrdered.splice(draggedIndex, 1);
+    nextOrdered.splice(targetIndex, 0, moved);
+
+    setFacilityRouteOverrides((prev) => ({
+      ...prev,
+      [group.key]: Object.fromEntries(
+        nextOrdered.map((scheduleId, index) => [scheduleId, String(index + 1)])
+      ),
+    }));
+  }
+
+  const visibleSchedules = useMemo(() => {
+    if (!activeFacilityFilter) return selectedDateSchedules;
+    return selectedDateSchedules.filter((schedule) => {
+      const facilityLabel =
+        schedule.facility_hint?.label ?? schedule.case_.patient.residences[0]?.address ?? null;
+      const key = [
+        schedule.site?.id ?? 'site:none',
+        schedule.facility_batch_id ?? 'batch:none',
+        facilityLabel ?? 'facility:none',
+      ].join(':');
+      return key === activeFacilityFilter;
+    });
+  }, [activeFacilityFilter, selectedDateSchedules]);
+  const cachedVisitBriefByScheduleId = useMemo(
+    () => new Map(cachedVisitBriefs.map((item) => [item.scheduleId, item])),
+    [cachedVisitBriefs]
+  );
+  const mobileVisitSchedules = useMemo(
+    () =>
+      [...visibleSchedules].sort((left, right) => {
+        if (left.route_order != null || right.route_order != null) {
+          if (left.route_order == null) return 1;
+          if (right.route_order == null) return -1;
+          if (left.route_order !== right.route_order) {
+            return left.route_order - right.route_order;
+          }
+        }
+
+        const leftTime = left.time_window_start ?? '';
+        const rightTime = right.time_window_start ?? '';
+        return leftTime.localeCompare(rightTime);
+      }),
+    [visibleSchedules]
+  );
+  const routePharmacistOptions = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          visibleSchedules.map((schedule) => [
+            schedule.pharmacist_id,
+            {
+              id: schedule.pharmacist_id,
+              name:
+                pharmacistNameById.get(schedule.pharmacist_id) ?? '薬剤師未登録',
+              siteName: schedule.site?.name ?? null,
+            },
+          ]),
+        ).values(),
+      ),
+    [pharmacistNameById, visibleSchedules],
+  );
+  const resolvedRoutePharmacistId =
+    routePharmacistOptions.some((option) => option.id === selectedRoutePharmacistId)
+      ? selectedRoutePharmacistId
+      : routePharmacistOptions[0]?.id ?? '';
+  const routeMapSchedules = useMemo(
+    () =>
+      visibleSchedules.filter(
+        (schedule) => schedule.pharmacist_id === resolvedRoutePharmacistId,
+      ),
+    [resolvedRoutePharmacistId, visibleSchedules],
+  );
+  const currentOrderedRouteScheduleIds = useMemo(
+    () =>
+      [...routeMapSchedules]
+        .sort((left, right) => {
+          if (left.route_order != null || right.route_order != null) {
+            if (left.route_order == null) return 1;
+            if (right.route_order == null) return -1;
+            if (left.route_order !== right.route_order) {
+              return left.route_order - right.route_order;
+            }
+          }
+          const leftTime = left.time_window_start ?? '';
+          const rightTime = right.time_window_start ?? '';
+          return leftTime.localeCompare(rightTime);
+        })
+        .map((schedule) => schedule.id),
+    [routeMapSchedules],
+  );
+  const routeDepartureTime =
+    routeMapSchedules
+      .map((schedule) => schedule.time_window_start)
+      .find((value): value is string => Boolean(value)) ?? null;
+  const { data: routePlanData, isFetching: routePlanLoading } = useQuery({
+    queryKey: [
+      'visit-route-plan',
+      orgId,
+      selectedDate,
+      resolvedRoutePharmacistId,
+      routeTravelMode,
+      currentOrderedRouteScheduleIds.join(','),
+    ],
+    queryFn: async () => {
+      const res = await fetch('/api/visit-routes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          schedule_ids: currentOrderedRouteScheduleIds,
+          travel_mode: routeTravelMode,
+        }),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message ?? 'ルート最適化の取得に失敗しました');
+      }
+      return (res.json() as Promise<{ data: VisitRoutePlan }>).then((payload) => payload.data);
+    },
+    enabled:
+      !!orgId &&
+      !!resolvedRoutePharmacistId &&
+      currentOrderedRouteScheduleIds.length > 0,
+  });
+  const routePlanByScheduleId = useMemo(
+    () =>
+      new Map(
+        (routePlanData?.stopSummaries ?? []).map((item) => [item.scheduleId, item]),
+      ),
+    [routePlanData],
+  );
+  const routeMapPoints = useMemo(() => {
+    const schedulesById = new Map(routeMapSchedules.map((schedule) => [schedule.id, schedule]));
+    const orderedIds =
+      routePlanData?.orderedScheduleIds.length && routePlanData.status === 'ok'
+        ? routePlanData.orderedScheduleIds
+        : currentOrderedRouteScheduleIds;
+
+    return orderedIds
+      .map((scheduleId, index) => {
+        const schedule = schedulesById.get(scheduleId);
+        const residence = schedule?.case_.patient.residences[0];
+        if (!schedule || residence?.lat == null || residence.lng == null) return null;
+        return {
+          scheduleId,
+          patientName: schedule.case_.patient.name,
+          address: residence.address,
+          lat: residence.lat,
+          lng: residence.lng,
+          orderLabel: String(index + 1),
+          status: schedule.schedule_status,
+          priority: schedule.priority,
+          etaLabel: formatEtaLabel(
+            selectedDate,
+            routeDepartureTime,
+            routePlanByScheduleId.get(scheduleId)?.arrivalOffsetSeconds ?? null,
+            schedule.time_window_start,
+          ),
+        };
+      })
+      .filter(
+        (
+          point,
+        ): point is NonNullable<typeof point> => point !== null,
+      );
+  }, [
+    currentOrderedRouteScheduleIds,
+    routeMapSchedules,
+    routeDepartureTime,
+    routePlanByScheduleId,
+    routePlanData,
+    selectedDate,
+  ]);
+  const routeMapSite = useMemo(() => {
+    const site = routeMapSchedules[0]?.site;
+    if (!site || site.lat == null || site.lng == null) return null;
+    return {
+      name: site.name,
+      lat: site.lat,
+      lng: site.lng,
+    };
+  }, [routeMapSchedules]);
+  const routeOptimizationDirty =
+    routePlanData?.status === 'ok' &&
+    routePlanData.orderedScheduleIds.join(',') !== currentOrderedRouteScheduleIds.join(',');
+  const ganttWindow = useMemo(() => {
+    if (visibleSchedules.length === 0) {
+      return {
+        startMinutes: GANTT_DEFAULT_START_MINUTES,
+        endMinutes: GANTT_DEFAULT_END_MINUTES,
+      };
+    }
+
+    let earliest = GANTT_DEFAULT_END_MINUTES;
+    let latest = GANTT_DEFAULT_START_MINUTES;
+
+    for (const schedule of visibleSchedules) {
+      const startMinutes = minutesFromTimestamp(
+        schedule.time_window_start,
+        GANTT_DEFAULT_START_MINUTES
+      );
+      const endMinutes = minutesFromTimestamp(
+        schedule.time_window_end,
+        startMinutes + 60
+      );
+      earliest = Math.min(earliest, startMinutes);
+      latest = Math.max(latest, endMinutes);
+    }
+
+    return {
+      startMinutes: Math.max(
+        6 * 60,
+        roundDownToSlot(earliest - GANTT_SLOT_MINUTES)
+      ),
+      endMinutes: Math.min(
+        22 * 60,
+        roundUpToSlot(latest + GANTT_SLOT_MINUTES)
+      ),
+    };
+  }, [visibleSchedules]);
+  const ganttSlots = useMemo(() => {
+    const slots: number[] = [];
+    for (
+      let minutes = ganttWindow.startMinutes;
+      minutes < ganttWindow.endMinutes;
+      minutes += GANTT_SLOT_MINUTES
+    ) {
+      slots.push(minutes);
+    }
+    return slots;
+  }, [ganttWindow.endMinutes, ganttWindow.startMinutes]);
+  const ganttHeight = ganttSlots.length * GANTT_ROW_HEIGHT;
+  const ganttColumns = useMemo(() => {
+    const columns = new Map<
+      string,
+      {
+        pharmacistId: string;
+        pharmacistName: string;
+        siteName: string | null;
+        schedules: Array<
+          VisitSchedule & {
+            blockStartMinutes: number;
+            blockEndMinutes: number;
+          }
+        >;
+      }
+    >();
+
+    for (const schedule of visibleSchedules) {
+      const existing = columns.get(schedule.pharmacist_id) ?? {
+        pharmacistId: schedule.pharmacist_id,
+        pharmacistName:
+          pharmacistNameById.get(schedule.pharmacist_id) ?? '薬剤師未登録',
+        siteName: schedule.site?.name ?? null,
+        schedules: [],
+      };
+
+      const blockStartMinutes = minutesFromTimestamp(
+        schedule.time_window_start,
+        ganttWindow.startMinutes
+      );
+      const blockEndMinutes = Math.max(
+        blockStartMinutes + GANTT_SLOT_MINUTES,
+        minutesFromTimestamp(
+          schedule.time_window_end,
+          blockStartMinutes + GANTT_SLOT_MINUTES * 2
+        )
+      );
+
+      existing.schedules.push({
+        ...schedule,
+        blockStartMinutes,
+        blockEndMinutes,
+      });
+      columns.set(schedule.pharmacist_id, existing);
+    }
+
+    return Array.from(columns.values())
+      .map((column) => ({
+        ...column,
+        schedules: column.schedules.sort((left, right) => {
+          if (left.route_order != null || right.route_order != null) {
+            if (left.route_order == null) return 1;
+            if (right.route_order == null) return -1;
+            if (left.route_order !== right.route_order) {
+              return left.route_order - right.route_order;
+            }
+          }
+          return left.blockStartMinutes - right.blockStartMinutes;
+        }),
+      }))
+      .sort((left, right) =>
+        left.pharmacistName.localeCompare(right.pharmacistName, 'ja')
+      );
+  }, [ganttWindow.startMinutes, pharmacistNameById, visibleSchedules]);
+
+  function ganttBlockClass(
+    schedule: VisitSchedule & {
+      blockStartMinutes: number;
+      blockEndMinutes: number;
+    }
+  ) {
+    if (schedule.priority === 'emergency') {
+      return 'border-rose-300 bg-rose-50 text-rose-900 shadow-rose-100';
+    }
+    if (schedule.schedule_status === 'completed') {
+      return 'border-emerald-300 bg-emerald-50 text-emerald-900 shadow-emerald-100';
+    }
+    if (schedule.schedule_status === 'in_progress') {
+      return 'border-sky-300 bg-sky-50 text-sky-900 shadow-sky-100';
+    }
+    if (schedule.schedule_status === 'departed') {
+      return 'border-indigo-300 bg-indigo-50 text-indigo-900 shadow-indigo-100';
+    }
+    if (schedule.preparation?.prepared_at) {
+      return 'border-cyan-300 bg-cyan-50 text-cyan-900 shadow-cyan-100';
+    }
+    return 'border-amber-300 bg-amber-50 text-amber-950 shadow-amber-100';
+  }
+
+  useEffect(() => {
+    let active = true;
+    void offlineDb.visitBriefCache
+      .where('scheduledDate')
+      .equals(selectedDate)
+      .toArray()
+      .then(async (rows) => {
+        if (!active) return;
+        const freshRows = rows.filter((row) => isOfflineCacheFresh(row.updatedAt));
+        const staleRows = rows.filter((row) => !isOfflineCacheFresh(row.updatedAt));
+
+        await Promise.all(staleRows.map((row) => row.id && offlineDb.visitBriefCache.delete(row.id)));
+
+        const decoded = await Promise.all(
+          freshRows.map(async (row) => {
+            const payload = await decryptOfflinePayload(row.payload);
+            if (!payload) return null;
+            try {
+              return {
+                row,
+                payload: JSON.parse(payload) as CachedVisitBriefCard,
+              };
+            } catch {
+              return null;
+            }
+          })
+        );
+
+        const usableRows = decoded.filter(
+          (
+            item
+          ): item is { row: import('@/lib/stores/offline-db').OfflineVisitBriefCache; payload: CachedVisitBriefCard } =>
+            item !== null
+        );
+        setCachedVisitBriefs(
+          usableRows
+            .map((item) => item.payload)
+            .sort((left, right) =>
+              (left.timeWindowStart ?? '').localeCompare(right.timeWindowStart ?? '')
+            )
+        );
+        const latestUpdatedAt = usableRows.reduce<Date | null>(
+          (latest, item) =>
+            !latest || item.row.updatedAt > latest ? item.row.updatedAt : latest,
+          null
+        );
+        setCachedVisitBriefUpdatedAt(formatOfflineCacheUpdatedAt(latestUpdatedAt));
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedDate]);
+
+  useEffect(() => {
+    if (!orgId || selectedDateSchedules.length === 0) return;
+
+    let cancelled = false;
+    void Promise.all(
+      selectedDateSchedules.map(async (schedule) => {
+        const res = await fetch(`/api/visit-preparations/${schedule.id}/brief`, {
+          headers: { 'x-org-id': orgId },
+        });
+        if (!res.ok) return null;
+        const payload = (await res.json()) as {
+          data: {
+            ai_summary: {
+              headline: string;
+              must_check_today: string[];
+              source_refs: string[];
+              generated_at: string;
+              provider: 'rule' | 'openai';
+              is_fallback: boolean;
+            };
+          };
+        };
+        const snapshot: CachedVisitBriefCard = {
+          scheduleId: schedule.id,
+          patientId: schedule.case_.patient.id,
+          patientName: schedule.case_.patient.name,
+          scheduledDate: selectedDate,
+          timeWindowStart: schedule.time_window_start,
+          timeWindowEnd: schedule.time_window_end,
+          priority: schedule.priority,
+          facilityLabel:
+            schedule.facility_hint?.label ??
+            schedule.case_.patient.residences[0]?.address ??
+            null,
+          siteName: schedule.site?.name ?? null,
+          headline: payload.data.ai_summary.headline,
+          mustCheckToday: payload.data.ai_summary.must_check_today,
+          sourceRefs: payload.data.ai_summary.source_refs,
+          generatedAt: payload.data.ai_summary.generated_at,
+          provider: payload.data.ai_summary.provider,
+          isFallback: payload.data.ai_summary.is_fallback,
+        };
+
+        await offlineDb.visitBriefCache
+          .where('scheduleId')
+          .equals(schedule.id)
+          .delete();
+        await offlineDb.visitBriefCache.add({
+          scheduleId: schedule.id,
+          patientId: schedule.case_.patient.id,
+          scheduledDate: selectedDate,
+          payload: await encryptOfflinePayload(JSON.stringify(snapshot)),
+          updatedAt: new Date(),
+        });
+
+        return snapshot;
+      })
+    ).then((items) => {
+      if (cancelled) return;
+      const filtered = items.filter((item): item is CachedVisitBriefCard => Boolean(item));
+      if (filtered.length > 0) {
+        setCachedVisitBriefs(
+          filtered.sort((left, right) =>
+            (left.timeWindowStart ?? '').localeCompare(right.timeWindowStart ?? '')
+          )
+        );
+        setCachedVisitBriefUpdatedAt(new Date().toISOString());
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, selectedDate, selectedDateSchedules]);
 
   function openRescheduleDialog(schedule: VisitSchedule) {
     setRescheduleTarget(schedule);
     setRescheduleForm({
       reason: '',
+      reason_code: 'other',
+      communication_channel: 'phone',
+      communication_result: 'pending',
       start_date: format(addDays(parseISO(schedule.scheduled_date), 1), 'yyyy-MM-dd'),
       priority: schedule.priority,
+    });
+  }
+
+  function openFacilityVisitDayDialog(group: FacilityTrackerGroup) {
+    setFacilityVisitDayTarget({
+      key: group.key,
+      label: group.label,
+      scheduleIds: group.scheduleIds,
+      patientNames: group.patientNames,
+    });
+    setFacilityVisitDayForm({
+      preferred_weekdays: [],
+      preferred_time_from: '',
+      preferred_time_to: '',
+      facility_time_from: '',
+      facility_time_to: '',
+      visit_buffer_minutes: '',
+      notes: '',
     });
   }
 
@@ -704,6 +1569,106 @@ export function ScheduleDayView() {
     },
   });
 
+  const facilityBatchMutation = useMutation({
+    mutationFn: async ({
+      groupKey,
+      carryItemsConfirmed,
+    }: {
+      groupKey: string;
+      carryItemsConfirmed: boolean;
+    }) => {
+      const group = facilityTracker.find((candidate) => candidate.key === groupKey);
+      if (!group) {
+        throw new Error('施設グループが見つかりません');
+      }
+
+      const routeDraft = {
+        ...(facilityRouteDefaults[group.key] ?? {}),
+        ...(facilityRouteOverrides[group.key] ?? {}),
+      };
+      const orderedScheduleIds = buildOrderedFacilityScheduleIds(group, routeDraft);
+
+      const res = await fetch('/api/facility-visit-batches', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          schedule_ids: group.scheduleIds,
+          ordered_schedule_ids: orderedScheduleIds,
+          carry_items_confirmed: carryItemsConfirmed,
+        }),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message ?? '施設一括訪問の保存に失敗しました');
+      }
+      return res.json();
+    },
+    onSuccess: async (_data, variables) => {
+      toast.success(
+        variables.carryItemsConfirmed
+          ? '施設バッチの順序と持参確認を保存しました'
+          : '施設バッチの順序を保存しました'
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-workflow', orgId] }),
+      ]);
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : '施設一括訪問の保存に失敗しました'
+      );
+    },
+  });
+
+  const facilityVisitDayMutation = useMutation({
+    mutationFn: async () => {
+      if (!facilityVisitDayTarget) {
+        throw new Error('施設グループが選択されていません');
+      }
+
+      const res = await fetch('/api/facility-visit-batches/visit-days', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          facility_label: facilityVisitDayTarget.label,
+          schedule_ids: facilityVisitDayTarget.scheduleIds,
+          preferred_weekdays: facilityVisitDayForm.preferred_weekdays,
+          preferred_time_from: facilityVisitDayForm.preferred_time_from || null,
+          preferred_time_to: facilityVisitDayForm.preferred_time_to || null,
+          facility_time_from: facilityVisitDayForm.facility_time_from || null,
+          facility_time_to: facilityVisitDayForm.facility_time_to || null,
+          visit_buffer_minutes: facilityVisitDayForm.visit_buffer_minutes
+            ? Number(facilityVisitDayForm.visit_buffer_minutes)
+            : null,
+          notes: facilityVisitDayForm.notes || null,
+        }),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message ?? '施設訪問日の保存に失敗しました');
+      }
+      return res.json();
+    },
+    onSuccess: async () => {
+      toast.success('施設単位の定期訪問日を保存しました');
+      setFacilityVisitDayTarget(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['visit-schedule-proposals', orgId] }),
+      ]);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '施設訪問日の保存に失敗しました');
+    },
+  });
+
   const rescheduleMutation = useMutation({
     mutationFn: async () => {
       if (!rescheduleTarget) throw new Error('リスケ対象が選択されていません');
@@ -732,6 +1697,102 @@ export function ScheduleDayView() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'リスケ候補の生成に失敗しました');
+    },
+  });
+
+  const manualSyncMutation = useMutation({
+    mutationFn: async () => {
+      return processSyncQueue({
+        orgId,
+        endpoints: {
+          visit_record: '/api/visit-records',
+        },
+      });
+    },
+    onSuccess: async (result) => {
+      await refreshSyncState();
+      toast.success(`同期完了 ${result.synced} 件 / 失敗 ${result.failed} 件`);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '同期に失敗しました');
+    },
+  });
+
+  const applyOptimizedRouteMutation = useMutation({
+    mutationFn: async () => {
+      if (!routePlanData || routePlanData.status !== 'ok') {
+        throw new Error('反映できる最適ルートがありません');
+      }
+
+      await Promise.all(
+        routePlanData.orderedScheduleIds.map(async (scheduleId, index) => {
+          const res = await fetch(`/api/visit-schedules/${scheduleId}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-org-id': orgId,
+            },
+            body: JSON.stringify({
+              route_order: index + 1,
+            }),
+          });
+          if (!res.ok) {
+            const error = await res.json().catch(() => ({}));
+            throw new Error(
+              error.message ?? `訪問順の更新に失敗しました (${scheduleId})`,
+            );
+          }
+        }),
+      );
+    },
+    onSuccess: async () => {
+      toast.success('Google Routes API の順序を route_order に反映しました');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['visit-route-plan', orgId] }),
+      ]);
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : '最適順序の反映に失敗しました',
+      );
+    },
+  });
+
+  const overwriteConflictMutation = useMutation({
+    mutationFn: async (itemId: number) => {
+      const result = await overwriteVisitRecordConflict(
+        {
+          orgId,
+          endpoints: {
+            visit_record: '/api/visit-records',
+          },
+        },
+        itemId
+      );
+      if (!result.ok) throw new Error(result.message);
+      return result;
+    },
+    onSuccess: async () => {
+      await refreshSyncState();
+      await queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] });
+      toast.success('サーバー版へ上書き保存しました');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '上書き保存に失敗しました');
+    },
+  });
+
+  const discardConflictMutation = useMutation({
+    mutationFn: async (itemId: number) => {
+      await discardSyncQueueItem(itemId);
+    },
+    onSuccess: async () => {
+      await refreshSyncState();
+      toast.success('ローカル下書きを破棄しました');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '競合下書きの破棄に失敗しました');
     },
   });
 
@@ -897,6 +1958,342 @@ export function ScheduleDayView() {
           </div>
         </CardHeader>
       </Card>
+
+      <section className="space-y-3 md:hidden" aria-labelledby="mobile-visit-list-heading">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2
+              id="mobile-visit-list-heading"
+              className="text-base font-semibold text-foreground"
+            >
+              本日の訪問リスト
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              右スワイプで開始、訪問中は左スワイプで記録画面へ進みます
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">{mobileVisitSchedules.length}件</Badge>
+            <div className="inline-flex rounded-lg border border-border bg-background p-1">
+              <button
+                type="button"
+                className={[
+                  'rounded-md px-2.5 py-1 text-xs transition',
+                  mobileVisitSurface === 'list'
+                    ? 'bg-slate-900 text-white'
+                    : 'text-muted-foreground',
+                ].join(' ')}
+                onClick={() => setMobileVisitSurface('list')}
+              >
+                リスト
+              </button>
+              <button
+                type="button"
+                className={[
+                  'rounded-md px-2.5 py-1 text-xs transition',
+                  mobileVisitSurface === 'map'
+                    ? 'bg-slate-900 text-white'
+                    : 'text-muted-foreground',
+                ].join(' ')}
+                onClick={() => setMobileVisitSurface('map')}
+              >
+                地図
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {mobileVisitSchedules.length === 0 ? (
+          <Card>
+            <CardContent className="py-10 text-center text-sm text-muted-foreground">
+              {format(selectedDay, 'M月d日(E)', { locale: ja })} の訪問予定はありません
+            </CardContent>
+          </Card>
+        ) : mobileVisitSurface === 'map' ? (
+          <Card>
+            <CardHeader className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">
+                  {ROUTE_TRAVEL_MODE_LABELS[routeTravelMode]}
+                </Badge>
+                {routePlanData?.totalDistanceMeters != null ? (
+                  <Badge variant="outline">
+                    {formatDistanceLabel(routePlanData.totalDistanceMeters)}
+                  </Badge>
+                ) : null}
+                {routePlanData?.totalDurationSeconds != null ? (
+                  <Badge variant="outline">
+                    {formatDurationLabel(routePlanData.totalDurationSeconds)}
+                  </Badge>
+                ) : null}
+              </div>
+              <div className="grid gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="mobile-route-pharmacist">地図対象の薬剤師</Label>
+                  <Select
+                    value={resolvedRoutePharmacistId}
+                    onValueChange={(value) => setSelectedRoutePharmacistId(value ?? '')}
+                  >
+                    <SelectTrigger id="mobile-route-pharmacist" className="w-full">
+                      <SelectValue placeholder="薬剤師を選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {routePharmacistOptions.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.name}
+                          {option.siteName ? ` / ${option.siteName}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="mobile-route-travel-mode">移動手段</Label>
+                  <Select
+                    value={routeTravelMode}
+                    onValueChange={(value) => setRouteTravelMode(value as RouteTravelMode)}
+                  >
+                    <SelectTrigger id="mobile-route-travel-mode" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(ROUTE_TRAVEL_MODE_LABELS).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <VisitRouteMap
+                points={routeMapPoints}
+                encodedPath={routePlanData?.encodedPath ?? null}
+                site={routeMapSite}
+                note={routePlanData?.note ?? null}
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={
+                    routePlanLoading ||
+                    applyOptimizedRouteMutation.isPending ||
+                    !routeOptimizationDirty
+                  }
+                  onClick={() => applyOptimizedRouteMutation.mutate()}
+                >
+                  {applyOptimizedRouteMutation.isPending
+                    ? '反映中...'
+                    : '最適順を route_order に反映'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          mobileVisitSchedules.map((schedule) => {
+            const brief = cachedVisitBriefByScheduleId.get(schedule.id);
+            return (
+              <VisitCardMobile
+                key={schedule.id}
+                id={schedule.id}
+                patientName={schedule.case_.patient.name}
+                address={addressOfPatient(schedule)}
+                lat={schedule.case_.patient.residences[0]?.lat ?? undefined}
+                lng={schedule.case_.patient.residences[0]?.lng ?? undefined}
+                routeOrder={schedule.route_order}
+                scheduledTimeStart={timeLabel(schedule.time_window_start, null)}
+                scheduledTimeEnd={
+                  schedule.time_window_end
+                    ? format(parseISO(schedule.time_window_end), 'HH:mm')
+                    : undefined
+                }
+                status={schedule.schedule_status}
+                carryItemsStatus={schedule.carry_items_status}
+                mustCheckToday={brief?.mustCheckToday ?? []}
+                onStartVisit={() => handleVisitStart(schedule)}
+                onCompleteVisit={() => handleVisitComplete(schedule)}
+              />
+            );
+          })
+        )}
+      </section>
+
+      {(isOffline || pendingSyncCount > 0 || cachedVisitBriefs.length > 0) && (
+        <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <CloudOff className="size-4 text-amber-600" aria-hidden="true" />
+                モバイル訪問モード
+              </CardTitle>
+              <CardDescription>
+                オフライン時は read-only キャッシュだけを使い、朝の事前同期状況もここで確認します
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex flex-wrap gap-2 text-xs">
+                <Badge
+                  variant="outline"
+                  className={
+                    isOffline
+                      ? 'border-amber-200 bg-amber-50 text-amber-700'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  }
+                >
+                  {isOffline ? 'オフライン' : 'オンライン'}
+                </Badge>
+                <Badge variant="outline">同期待ち {pendingSyncCount} 件</Badge>
+                <Badge variant="outline">競合 {syncConflicts.length} 件</Badge>
+                <Badge variant="outline">読取専用 TTL {OFFLINE_CACHE_TTL_HOURS}h</Badge>
+              </div>
+              <div className="rounded-xl border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                <p className="font-medium text-foreground">朝の事前同期</p>
+                <p className="mt-1">
+                  当日訪問予定の軽量 brief を端末へ保持し、患者サマリー / 前回課題 / 持参チェック対象を read-only で参照できます。
+                </p>
+                <p className="mt-1">
+                  最終同期:{' '}
+                  {cachedVisitBriefUpdatedAt
+                    ? format(parseISO(cachedVisitBriefUpdatedAt), 'M/d HH:mm', { locale: ja })
+                    : '未実施'}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => manualSyncMutation.mutate()}
+                  disabled={manualSyncMutation.isPending || pendingSyncCount === 0}
+                >
+                  {manualSyncMutation.isPending ? '同期中...' : '今すぐ同期'}
+                </Button>
+                {syncConflicts.length > 0 && (
+                  <span className="text-xs text-amber-700">
+                    409 競合は下のカードで解決します
+                  </span>
+                )}
+              </div>
+              {syncConflicts.length > 0 ? (
+                <div className="space-y-3">
+                  {syncConflicts.map((item) => (
+                    <div
+                      key={item.id}
+                      className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium">訪問記録の競合</p>
+                          <p className="mt-1 text-xs text-amber-800/90">
+                            schedule {item.scope_id ?? '不明'} / {item.lastError ?? '競合あり'}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => overwriteConflictMutation.mutate(item.id!)}
+                            disabled={overwriteConflictMutation.isPending}
+                          >
+                            上書き
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => discardConflictMutation.mutate(item.id!)}
+                            disabled={discardConflictMutation.isPending}
+                          >
+                            破棄
+                          </Button>
+                          {item.scope_id && (
+                            <Link
+                              href={`/visits/${item.scope_id}/record`}
+                              className="inline-flex h-8 items-center rounded-lg border border-amber-300 px-3 text-sm hover:bg-white/60"
+                            >
+                              再編集
+                            </Link>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                        <div className="rounded-lg border border-white/70 bg-white/70 px-3 py-2">
+                          <p className="text-xs font-medium text-amber-900">ローカル下書き</p>
+                          <p className="mt-1 text-xs text-amber-800/90">
+                            結果 {String(item.conflict?.local.outcome_status ?? '未設定')}
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-amber-800/90">
+                            {String(item.conflict?.local.soap_plan ?? 'P未入力')}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border border-white/70 bg-white/70 px-3 py-2">
+                          <p className="text-xs font-medium text-amber-900">サーバー版</p>
+                          <p className="mt-1 text-xs text-amber-800/90">
+                            結果 {item.conflict?.server?.outcome_status ?? '未設定'}
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-amber-800/90">
+                            {item.conflict?.server?.soap_plan ?? 'P未入力'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  競合している下書きはありません。
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">軽量訪問ブリーフ</CardTitle>
+              <CardDescription>
+                重要情報だけを端末へ AES-GCM で暗号化して保存し、オフライン時は read-only で表示します
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {cachedVisitBriefs.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  この日の軽量 brief キャッシュはまだありません。
+                </p>
+              ) : (
+                cachedVisitBriefs.map((item) => (
+                  <div key={item.scheduleId} className="rounded-xl border border-border px-4 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-foreground">{item.patientName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {timeLabel(item.timeWindowStart, item.timeWindowEnd)}
+                          {item.siteName ? ` / ${item.siteName}` : ''}
+                          {item.facilityLabel ? ` / ${item.facilityLabel}` : ''}
+                        </p>
+                      </div>
+                      <Badge variant={item.provider === 'openai' ? 'default' : 'outline'}>
+                        {item.provider === 'openai' && !item.isFallback ? 'AI' : 'rule'}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-sm font-medium text-slate-900">{item.headline}</p>
+                    {item.mustCheckToday.length > 0 && (
+                      <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                        {item.mustCheckToday.slice(0, 3).map((check) => (
+                          <li key={check}>- {check}</li>
+                        ))}
+                      </ul>
+                    )}
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      生成 {format(parseISO(item.generatedAt), 'M/d HH:mm', { locale: ja })} / 根拠{' '}
+                      {item.sourceRefs.join(' / ')}
+                    </p>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
         <div className="space-y-6">
@@ -1395,6 +2792,9 @@ export function ScheduleDayView() {
                 const impactCount = readImpactCount(
                   proposal.reschedule_source_schedule?.override_request?.impact_summary
                 );
+                const impactedPatientNames = readImpactedPatientNames(
+                  proposal.reschedule_source_schedule?.override_request?.impact_summary
+                );
 
                 return (
                   <Card key={proposal.id} className="overflow-hidden">
@@ -1508,6 +2908,11 @@ export function ScheduleDayView() {
                         {proposal.escalation_reason && (
                           <p className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-orange-800">
                             {proposal.escalation_reason}
+                          </p>
+                        )}
+                        {impactedPatientNames.length > 0 && (
+                          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+                            影響予定: {impactedPatientNames.join('、')}
                           </p>
                         )}
                       </div>
@@ -1646,20 +3051,440 @@ export function ScheduleDayView() {
           </TabsContent>
 
           <TabsContent value="confirmed" className="space-y-4">
+            {facilityTracker.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Building2 className="size-4 text-sky-600" aria-hidden="true" />
+                    施設一括訪問トラッカー
+                  </CardTitle>
+                  <CardDescription>
+                    同日・同施設の訪問を束ねて、未準備と未完了を施設単位で確認します
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant={activeFacilityFilter === null ? 'default' : 'outline'}
+                      onClick={() => setFacilityFilter(null)}
+                    >
+                      全件表示
+                    </Button>
+                    {facilityTracker.map((group) => (
+                      <Button
+                        key={group.key}
+                        size="sm"
+                        variant={activeFacilityFilter === group.key ? 'default' : 'outline'}
+                        onClick={() => setFacilityFilter(group.key)}
+                      >
+                        {group.label}
+                      </Button>
+                    ))}
+                  </div>
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    {facilityTracker.map((group) => (
+                      <div
+                        key={group.key}
+                        className={[
+                          'rounded-xl border px-4 py-3 text-sm transition',
+                          activeFacilityFilter === group.key
+                            ? 'border-sky-300 bg-sky-50'
+                            : 'border-border bg-background',
+                        ].join(' ')}
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-foreground">{group.label}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {group.siteName ?? '拠点未設定'} / 対象 {group.patientNames.length} 名
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline">
+                              ルート順 {group.routeOrders.length > 0 ? group.routeOrders.join(', ') : '未設定'}
+                            </Badge>
+                            {group.batchId ? <Badge variant="secondary">保存済み</Badge> : null}
+                          </div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                          <Badge variant="outline">準備完了 {group.preparedCount} 名</Badge>
+                          <Badge variant="outline">持参物未確認 {group.carryPendingCount} 名</Badge>
+                          <Badge
+                            variant="outline"
+                            className={
+                              group.incompleteCount > 0
+                                ? 'border-amber-200 bg-amber-50 text-amber-700'
+                                : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            }
+                          >
+                            未完了 {group.incompleteCount} 名
+                          </Badge>
+                        </div>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          行をドラッグして順序を並べ替えるか、番号入力で微調整できます。
+                        </p>
+                        <div className="mt-3 space-y-2">
+                          {group.patients.map((patient, index) => (
+                            <div
+                              key={patient.scheduleId}
+                              draggable
+                              onDragStart={() =>
+                                setDraggingFacilityPatient({
+                                  groupKey: group.key,
+                                  scheduleId: patient.scheduleId,
+                                })
+                              }
+                              onDragEnd={() => setDraggingFacilityPatient(null)}
+                              onDragOver={(event) => event.preventDefault()}
+                              onDrop={(event) => {
+                                event.preventDefault();
+                                if (
+                                  draggingFacilityPatient?.groupKey !== group.key ||
+                                  !draggingFacilityPatient?.scheduleId
+                                ) {
+                                  return;
+                                }
+                                reorderFacilityPatients(
+                                  group,
+                                  draggingFacilityPatient.scheduleId,
+                                  patient.scheduleId
+                                );
+                                setDraggingFacilityPatient(null);
+                              }}
+                              className={[
+                                'flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2',
+                                draggingFacilityPatient?.scheduleId === patient.scheduleId
+                                  ? 'border-sky-300 bg-sky-50'
+                                  : '',
+                              ].join(' ')}
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium text-foreground">{patient.patientName}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {patient.unitName ? `部屋 ${patient.unitName}` : '部屋番号未設定'}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Label
+                                  htmlFor={`facility-route-${group.key}-${patient.scheduleId}`}
+                                  className="text-xs text-muted-foreground"
+                                >
+                                  順序
+                                </Label>
+                                <Input
+                                  id={`facility-route-${group.key}-${patient.scheduleId}`}
+                                  type="number"
+                                  min={1}
+                                  value={
+                                    facilityRouteOverrides[group.key]?.[patient.scheduleId] ??
+                                    facilityRouteDefaults[group.key]?.[patient.scheduleId] ??
+                                    String(patient.routeOrder ?? index + 1)
+                                  }
+                                  onChange={(event) =>
+                                    setFacilityRouteOverrides((prev) => ({
+                                      ...prev,
+                                      [group.key]: {
+                                        ...(prev[group.key] ?? {}),
+                                        [patient.scheduleId]: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  className="h-8 w-20"
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openFacilityVisitDayDialog(group)}
+                          >
+                            定期訪問日を設定
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              facilityBatchMutation.mutate({
+                                groupKey: group.key,
+                                carryItemsConfirmed: false,
+                              })
+                            }
+                            disabled={facilityBatchMutation.isPending}
+                          >
+                            施設バッチを保存
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              facilityBatchMutation.mutate({
+                                groupKey: group.key,
+                                carryItemsConfirmed: true,
+                              })
+                            }
+                            disabled={facilityBatchMutation.isPending}
+                          >
+                            持参確認を一括反映
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {visibleSchedules.length > 0 && ganttColumns.length > 0 && (
+              <Card className="hidden md:block">
+                <CardHeader>
+                  <CardTitle className="text-base">日次ルートマップ</CardTitle>
+                  <CardDescription>
+                    薬局から訪問先までの経路を可視化し、Google Routes API の順序を route_order へ反映できます
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="desktop-route-pharmacist">対象の薬剤師</Label>
+                      <Select
+                        value={resolvedRoutePharmacistId}
+                        onValueChange={(value) => setSelectedRoutePharmacistId(value ?? '')}
+                      >
+                        <SelectTrigger id="desktop-route-pharmacist" className="w-full">
+                          <SelectValue placeholder="薬剤師を選択" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {routePharmacistOptions.map((option) => (
+                            <SelectItem key={option.id} value={option.id}>
+                              {option.name}
+                              {option.siteName ? ` / ${option.siteName}` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="desktop-route-travel-mode">移動手段</Label>
+                      <Select
+                        value={routeTravelMode}
+                        onValueChange={(value) => setRouteTravelMode(value as RouteTravelMode)}
+                      >
+                        <SelectTrigger id="desktop-route-travel-mode" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(ROUTE_TRAVEL_MODE_LABELS).map(([value, label]) => (
+                            <SelectItem key={value} value={value}>
+                              {label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-end">
+                      <Button
+                        variant="outline"
+                        disabled={
+                          routePlanLoading ||
+                          applyOptimizedRouteMutation.isPending ||
+                          !routeOptimizationDirty
+                        }
+                        onClick={() => applyOptimizedRouteMutation.mutate()}
+                      >
+                        {applyOptimizedRouteMutation.isPending
+                          ? '反映中...'
+                          : '最適順を反映'}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <Badge variant="outline">
+                      {ROUTE_TRAVEL_MODE_LABELS[routeTravelMode]}
+                    </Badge>
+                    <Badge variant="outline">
+                      対象 {routeMapSchedules.length} 件
+                    </Badge>
+                    {routePlanData?.totalDistanceMeters != null ? (
+                      <Badge variant="outline">
+                        距離 {formatDistanceLabel(routePlanData.totalDistanceMeters)}
+                      </Badge>
+                    ) : null}
+                    {routePlanData?.totalDurationSeconds != null ? (
+                      <Badge variant="outline">
+                        移動 {formatDurationLabel(routePlanData.totalDurationSeconds)}
+                      </Badge>
+                    ) : null}
+                    {routeMapSite ? (
+                      <Badge variant="outline">起点 {routeMapSite.name}</Badge>
+                    ) : null}
+                  </div>
+                  <VisitRouteMap
+                    points={routeMapPoints}
+                    encodedPath={routePlanData?.encodedPath ?? null}
+                    site={routeMapSite}
+                    note={routePlanData?.note ?? null}
+                  />
+                </CardContent>
+              </Card>
+            )}
+            {visibleSchedules.length > 0 && ganttColumns.length > 0 && (
+              <Card className="hidden md:block">
+                <CardHeader>
+                  <CardTitle className="text-base">タブレット日次ガント</CardTitle>
+                  <CardDescription>
+                    縦軸=時間、横軸=薬剤師。横向きで当日の訪問密度と準備状況を俯瞰できます
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <Badge variant="outline">時間帯 {formatMinutesLabel(ganttWindow.startMinutes)} - {formatMinutesLabel(ganttWindow.endMinutes)}</Badge>
+                    <Badge variant="outline">薬剤師 {ganttColumns.length} 名</Badge>
+                    <Badge variant="outline">確定訪問 {visibleSchedules.length} 件</Badge>
+                    <Badge variant="outline">横向き推奨</Badge>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <div
+                      className="grid min-w-[720px] gap-3"
+                      style={{
+                        gridTemplateColumns: `72px repeat(${ganttColumns.length}, minmax(220px, 1fr))`,
+                      }}
+                    >
+                      <div className="rounded-xl border border-dashed border-border bg-muted/20 p-3 text-xs text-muted-foreground">
+                        時間
+                      </div>
+                      {ganttColumns.map((column) => (
+                        <div
+                          key={column.pharmacistId}
+                          className="rounded-xl border border-border bg-muted/20 p-3"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-medium text-foreground">
+                                {column.pharmacistName}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {column.siteName ?? '拠点未設定'}
+                              </p>
+                            </div>
+                            <Badge variant="outline">{column.schedules.length}件</Badge>
+                          </div>
+                        </div>
+                      ))}
+
+                      <div
+                        className="relative rounded-xl border border-border bg-muted/10"
+                        style={{ height: `${ganttHeight}px` }}
+                      >
+                        {ganttSlots.map((slot) => (
+                          <div
+                            key={slot}
+                            className="absolute inset-x-0 border-t border-dashed border-border/70 px-2 pt-1 text-[11px] text-muted-foreground"
+                            style={{
+                              top: `${((slot - ganttWindow.startMinutes) / GANTT_SLOT_MINUTES) * GANTT_ROW_HEIGHT}px`,
+                              height: `${GANTT_ROW_HEIGHT}px`,
+                            }}
+                          >
+                            {formatMinutesLabel(slot)}
+                          </div>
+                        ))}
+                      </div>
+                      {ganttColumns.map((column) => (
+                        <div
+                          key={`${column.pharmacistId}-timeline`}
+                          className="relative rounded-xl border border-border bg-background"
+                          style={{ height: `${ganttHeight}px` }}
+                        >
+                          {ganttSlots.map((slot) => (
+                            <div
+                              key={`${column.pharmacistId}-${slot}`}
+                              className="absolute inset-x-0 border-t border-dashed border-border/70"
+                              style={{
+                                top: `${((slot - ganttWindow.startMinutes) / GANTT_SLOT_MINUTES) * GANTT_ROW_HEIGHT}px`,
+                                height: `${GANTT_ROW_HEIGHT}px`,
+                              }}
+                            />
+                          ))}
+                          {column.schedules.map((schedule) => {
+                            const top =
+                              ((schedule.blockStartMinutes - ganttWindow.startMinutes) /
+                                GANTT_SLOT_MINUTES) *
+                              GANTT_ROW_HEIGHT;
+                            const height = Math.max(
+                              ((schedule.blockEndMinutes - schedule.blockStartMinutes) /
+                                GANTT_SLOT_MINUTES) *
+                                GANTT_ROW_HEIGHT -
+                                8,
+                              42
+                            );
+
+                            return (
+                              <div
+                                key={schedule.id}
+                                className={[
+                                  'absolute inset-x-2 rounded-2xl border px-3 py-2 shadow-sm',
+                                  ganttBlockClass(schedule),
+                                ].join(' ')}
+                                style={{
+                                  top: `${top + 4}px`,
+                                  height: `${height}px`,
+                                }}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm font-medium">
+                                      {schedule.case_.patient.name}
+                                    </p>
+                                    <p className="text-[11px] opacity-80">
+                                      {timeLabel(
+                                        schedule.time_window_start,
+                                        schedule.time_window_end
+                                      )}
+                                    </p>
+                                  </div>
+                                  <Badge variant="outline" className="shrink-0 bg-white/70">
+                                    #{schedule.route_order ?? '-'}
+                                  </Badge>
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                  <Badge variant="outline" className="bg-white/70">
+                                    {SCHEDULE_STATUS_LABELS[schedule.schedule_status]}
+                                  </Badge>
+                                  <Badge variant="outline" className="bg-white/70">
+                                    {schedule.preparation?.prepared_at ? '準備完了' : '準備未了'}
+                                  </Badge>
+                                </div>
+                                <p className="mt-2 line-clamp-2 text-[11px] opacity-80">
+                                  {addressOfPatient(schedule)}
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
             {schedulesLoading ? (
               <Card>
                 <CardContent className="py-12 text-center text-sm text-muted-foreground">
                   確定予定を読み込んでいます...
                 </CardContent>
               </Card>
-            ) : selectedDateSchedules.length === 0 ? (
+            ) : visibleSchedules.length === 0 ? (
               <Card>
                 <CardContent className="py-12 text-center text-sm text-muted-foreground">
-                  {format(selectedDay, 'M月d日(E)', { locale: ja })} の確定予定はありません
+                  {activeFacilityFilter
+                    ? '絞り込み条件に一致する訪問はありません'
+                    : `${format(selectedDay, 'M月d日(E)', { locale: ja })} の確定予定はありません`}
                 </CardContent>
               </Card>
             ) : (
-              selectedDateSchedules.map((schedule) => (
+              visibleSchedules.map((schedule) => (
                 <Card key={schedule.id} className="overflow-hidden">
                   <CardContent className="space-y-4 py-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1799,6 +3624,16 @@ export function ScheduleDayView() {
                                   件
                                 </p>
                               )}
+                            {readImpactedPatientNames(
+                              schedule.override_request.impact_summary
+                            ).length > 0 && (
+                              <p className="mt-1 text-xs text-amber-800/80">
+                                影響患者:{' '}
+                                {readImpactedPatientNames(
+                                  schedule.override_request.impact_summary
+                                ).join('、')}
+                              </p>
+                            )}
                           </div>
                           <Button
                             size="sm"
@@ -1875,6 +3710,27 @@ export function ScheduleDayView() {
 
                     {['completed', 'cancelled', 'rescheduled'].includes(schedule.schedule_status) ? null : (
                       <div className="flex flex-wrap gap-2 border-t pt-4">
+                        {['ready', 'departed'].includes(schedule.schedule_status) && (
+                          <Button
+                            size="sm"
+                            className="gap-1.5"
+                            variant={getDepartureCarryWarning(schedule) ? 'destructive' : 'default'}
+                            onClick={() => handleVisitStart(schedule)}
+                          >
+                            <PlayCircle className="size-4" aria-hidden="true" />
+                            {getDepartureCarryWarning(schedule)
+                              ? '警告を確認して訪問開始'
+                              : '訪問開始'}
+                          </Button>
+                        )}
+                        {schedule.schedule_status === 'in_progress' && (
+                          <Link href={`/visits/${schedule.id}/record`}>
+                            <Button size="sm" variant="default" className="gap-1.5 bg-emerald-600 hover:bg-emerald-700">
+                              <CheckCircle2 className="size-4" aria-hidden="true" />
+                              訪問完了
+                            </Button>
+                          </Link>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
@@ -1944,6 +3800,85 @@ export function ScheduleDayView() {
                 placeholder="例: 緊急訪問が割り込んだため、担当薬剤師の当日訪問を再配置"
                 rows={4}
               />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="reschedule-reason-code">理由コード</Label>
+                <Select
+                  value={rescheduleForm.reason_code}
+                  onValueChange={(value) =>
+                    setRescheduleForm((current) => ({
+                      ...current,
+                      reason_code: (value as typeof current.reason_code | null) ?? current.reason_code,
+                    }))
+                  }
+                >
+                  <SelectTrigger id="reschedule-reason-code" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="emergency_insert">緊急訪問の割込み</SelectItem>
+                    <SelectItem value="pharmacist_unavailable">担当薬剤師不在</SelectItem>
+                    <SelectItem value="patient_request">患者都合</SelectItem>
+                    <SelectItem value="facility_request">施設都合</SelectItem>
+                    <SelectItem value="weather">天候・交通事情</SelectItem>
+                    <SelectItem value="other">その他</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="reschedule-channel">連絡チャネル</Label>
+                <Select
+                  value={rescheduleForm.communication_channel}
+                  onValueChange={(value) =>
+                    setRescheduleForm((current) => ({
+                      ...current,
+                      communication_channel:
+                        (value as typeof current.communication_channel | null) ??
+                        current.communication_channel,
+                    }))
+                  }
+                >
+                  <SelectTrigger id="reschedule-channel" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="phone">電話</SelectItem>
+                    <SelectItem value="fax">FAX</SelectItem>
+                    <SelectItem value="email">メール</SelectItem>
+                    <SelectItem value="collaboration">連携ポータル</SelectItem>
+                    <SelectItem value="in_person">口頭</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="reschedule-result">連絡結果</Label>
+              <Select
+                value={rescheduleForm.communication_result}
+                onValueChange={(value) =>
+                  setRescheduleForm((current) => ({
+                    ...current,
+                    communication_result:
+                      (value as typeof current.communication_result | null) ??
+                      current.communication_result,
+                  }))
+                }
+              >
+                <SelectTrigger id="reschedule-result" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pending">これから連絡する</SelectItem>
+                  <SelectItem value="sent">連絡依頼を送信済み</SelectItem>
+                  <SelectItem value="verbal_notified">口頭で周知済み</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                家族・施設・看護・ケアマネの登録先がある場合は、自動で連携依頼キューに起票します。
+              </p>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
@@ -2154,6 +4089,169 @@ export function ScheduleDayView() {
       </Dialog>
 
       <Dialog
+        open={facilityVisitDayTarget !== null}
+        onOpenChange={(open) => !open && setFacilityVisitDayTarget(null)}
+      >
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>施設単位の定期訪問日を設定</DialogTitle>
+            <DialogDescription>
+              同一施設患者の訪問曜日と受入時間帯をまとめて保存し、RRULE 生成時の共通条件として使います。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+              {facilityVisitDayTarget && (
+                <>
+                  <p className="font-medium text-foreground">{facilityVisitDayTarget.label}</p>
+                  <p className="text-muted-foreground">
+                    対象患者: {facilityVisitDayTarget.patientNames.join('、')}
+                  </p>
+                </>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>定期訪問曜日</Label>
+              <div className="flex flex-wrap gap-2">
+                {FACILITY_VISIT_DAY_WEEKDAY_OPTIONS.map((weekday) => {
+                  const checked = facilityVisitDayForm.preferred_weekdays.includes(weekday.value);
+                  return (
+                    <label
+                      key={weekday.value}
+                      className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(next) =>
+                          setFacilityVisitDayForm((current) => ({
+                            ...current,
+                            preferred_weekdays: next
+                              ? [...current.preferred_weekdays, weekday.value].sort((left, right) => left - right)
+                              : current.preferred_weekdays.filter((value) => value !== weekday.value),
+                          }))
+                        }
+                      />
+                      <span>{weekday.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="facility-preferred-time-from">訪問希望時間帯</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="facility-preferred-time-from"
+                    type="time"
+                    value={facilityVisitDayForm.preferred_time_from}
+                    onChange={(event) =>
+                      setFacilityVisitDayForm((current) => ({
+                        ...current,
+                        preferred_time_from: event.target.value,
+                      }))
+                    }
+                  />
+                  <span className="text-sm text-muted-foreground">〜</span>
+                  <Input
+                    type="time"
+                    value={facilityVisitDayForm.preferred_time_to}
+                    onChange={(event) =>
+                      setFacilityVisitDayForm((current) => ({
+                        ...current,
+                        preferred_time_to: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="facility-accept-time-from">施設受入時間帯</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="facility-accept-time-from"
+                    type="time"
+                    value={facilityVisitDayForm.facility_time_from}
+                    onChange={(event) =>
+                      setFacilityVisitDayForm((current) => ({
+                        ...current,
+                        facility_time_from: event.target.value,
+                      }))
+                    }
+                  />
+                  <span className="text-sm text-muted-foreground">〜</span>
+                  <Input
+                    type="time"
+                    value={facilityVisitDayForm.facility_time_to}
+                    onChange={(event) =>
+                      setFacilityVisitDayForm((current) => ({
+                        ...current,
+                        facility_time_to: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-[180px_1fr]">
+              <div className="space-y-1.5">
+                <Label htmlFor="facility-buffer-minutes">訪問間バッファ(分)</Label>
+                <Input
+                  id="facility-buffer-minutes"
+                  type="number"
+                  min={0}
+                  max={240}
+                  value={facilityVisitDayForm.visit_buffer_minutes}
+                  onChange={(event) =>
+                    setFacilityVisitDayForm((current) => ({
+                      ...current,
+                      visit_buffer_minutes: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="facility-visit-notes">補足メモ</Label>
+                <Textarea
+                  id="facility-visit-notes"
+                  rows={3}
+                  value={facilityVisitDayForm.notes}
+                  onChange={(event) =>
+                    setFacilityVisitDayForm((current) => ({
+                      ...current,
+                      notes: event.target.value,
+                    }))
+                  }
+                  placeholder="例: 毎月第1・第3週の午前、配薬と残薬確認をまとめて実施"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setFacilityVisitDayTarget(null)}
+              disabled={facilityVisitDayMutation.isPending}
+            >
+              閉じる
+            </Button>
+            <Button
+              onClick={() => facilityVisitDayMutation.mutate()}
+              disabled={
+                facilityVisitDayForm.preferred_weekdays.length === 0 ||
+                facilityVisitDayMutation.isPending
+              }
+            >
+              {facilityVisitDayMutation.isPending ? '保存中...' : '施設訪問日を保存'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={preparationTarget !== null}
         onOpenChange={(open) => {
           if (open) return;
@@ -2193,6 +4291,16 @@ export function ScheduleDayView() {
                           locale: ja,
                         })}`
                       : '未保存'}
+                </p>
+              </div>
+            )}
+            {getDepartureCarryWarning(preparationTarget) && (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-900">
+                <p className="font-medium">
+                  {getDepartureCarryWarning(preparationTarget)?.title}
+                </p>
+                <p className="mt-1 leading-6">
+                  {getDepartureCarryWarning(preparationTarget)?.description}
                 </p>
               </div>
             )}
@@ -2253,6 +4361,118 @@ export function ScheduleDayView() {
                     )}
                   </div>
                 )}
+
+                {preparationDetails.pack.billing_blockers.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">算定ブロッカー</p>
+                    <div className="grid gap-2 lg:grid-cols-2">
+                      {preparationDetails.pack.billing_blockers.map((blocker) => (
+                        <div
+                          key={`${blocker.evidence_id}:${blocker.key}`}
+                          className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900"
+                        >
+                          <p className="font-medium">{blocker.reason}</p>
+                          <p className="mt-1 text-rose-800/80">
+                            {blocker.action_label} / {blocker.action_href}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {preparationDetails.pack.prescription_changes && (
+                  <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-3 text-xs text-sky-950">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-medium">処方差分サマリー</p>
+                      <span className="text-[11px] text-sky-800/80">
+                        {preparationDetails.pack.prescription_changes.previous_prescribed_date
+                          ? `${format(
+                              parseISO(preparationDetails.pack.prescription_changes.previous_prescribed_date),
+                              'yyyy/MM/dd',
+                              { locale: ja }
+                            )} → ${format(
+                              parseISO(preparationDetails.pack.prescription_changes.current_prescribed_date),
+                              'yyyy/MM/dd',
+                              { locale: ja }
+                            )}`
+                          : `最新 ${format(
+                              parseISO(preparationDetails.pack.prescription_changes.current_prescribed_date),
+                              'yyyy/MM/dd',
+                              { locale: ja }
+                            )}`}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                      <span className="rounded-full border border-sky-200 bg-white px-2 py-0.5">
+                        追加 {preparationDetails.pack.prescription_changes.added.length}
+                      </span>
+                      <span className="rounded-full border border-sky-200 bg-white px-2 py-0.5">
+                        変更 {preparationDetails.pack.prescription_changes.changed.length}
+                      </span>
+                      <span className="rounded-full border border-sky-200 bg-white px-2 py-0.5">
+                        中止 {preparationDetails.pack.prescription_changes.removed.length}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid gap-2 lg:grid-cols-3">
+                      <div>
+                        <p className="font-medium text-sky-900">追加</p>
+                        {preparationDetails.pack.prescription_changes.added.length === 0 ? (
+                          <p className="mt-1 text-sky-800/80">なし</p>
+                        ) : (
+                          <ul className="mt-1 space-y-1 text-sky-900">
+                            {preparationDetails.pack.prescription_changes.added.slice(0, 4).map((drug) => (
+                              <li key={`added-${drug}`}>+ {drug}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-medium text-sky-900">変更</p>
+                        {preparationDetails.pack.prescription_changes.changed.length === 0 ? (
+                          <p className="mt-1 text-sky-800/80">なし</p>
+                        ) : (
+                          <ul className="mt-1 space-y-1 text-sky-900">
+                            {preparationDetails.pack.prescription_changes.changed.slice(0, 4).map((item) => (
+                              <li key={`changed-${item.drug_name}`}>
+                                {item.drug_name}
+                                <span className="block text-[11px] text-sky-800/80">
+                                  {item.reasons.join(' / ')}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-medium text-sky-900">中止</p>
+                        {preparationDetails.pack.prescription_changes.removed.length === 0 ? (
+                          <p className="mt-1 text-sky-800/80">なし</p>
+                        ) : (
+                          <ul className="mt-1 space-y-1 text-sky-900">
+                            {preparationDetails.pack.prescription_changes.removed.slice(0, 4).map((drug) => (
+                              <li key={`removed-${drug}`}>- {drug}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <VisitBriefCard
+                  brief={preparationDetails.pack.visit_brief}
+                  title="訪問要点サマリー"
+                  description="処方内容、調剤方法、連携更新を短くまとめています。"
+                  compact
+                />
+
+                <HomeCareFeatureHighlights
+                  features={preparationDetails.pack.home_care_feature_highlights}
+                  title="訪問時の優先ハイライト"
+                  description="訪問支援項目のうち、この訪問で先に見るべきものだけを抽出しています。"
+                  emptyText="この訪問で優先表示するハイライトはありません。"
+                />
 
                 {(preparationDetails.pack.open_tasks.length > 0 ||
                   preparationDetails.pack.recent_contact_logs.length > 0 ||
@@ -2323,24 +4543,55 @@ export function ScheduleDayView() {
                 )}
               </div>
             )}
-            <div className="grid gap-3">
-              {PREPARATION_ITEMS.map(([field, label]) => (
-                <label
-                  key={field}
-                  className="flex items-center gap-3 rounded-lg border border-border/70 px-3 py-2 text-sm"
-                >
-                  <Checkbox
-                    checked={preparationForm[field as keyof typeof preparationForm]}
-                    onCheckedChange={(checked) =>
-                      setPreparationForm((current) => ({
-                        ...current,
-                        [field]: Boolean(checked),
-                      }))
-                    }
-                  />
-                  <span>{label}</span>
-                </label>
-              ))}
+            <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+              <div className="grid gap-3">
+                {PREPARATION_ITEMS.map(([field, label]) => (
+                  <label
+                    key={field}
+                    className="flex items-center gap-3 rounded-lg border border-border/70 px-3 py-2 text-sm"
+                  >
+                    <Checkbox
+                      checked={preparationForm[field as keyof typeof preparationForm]}
+                      onCheckedChange={(checked) =>
+                        setPreparationForm((current) => ({
+                          ...current,
+                          [field]: Boolean(checked),
+                        }))
+                      }
+                    />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+
+              {preparationDetails?.pack?.patient.address ? (
+                <div className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-3">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-foreground">訪問先マップ</p>
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      {preparationDetails.pack.patient.address}
+                    </p>
+                  </div>
+                  <div className="overflow-hidden rounded-lg border border-border bg-background">
+                    <iframe
+                      title="訪問先地図"
+                      src={buildMapEmbedUrl(preparationDetails.pack.patient.address)}
+                      className="h-56 w-full"
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                    />
+                  </div>
+                  <a
+                    href={buildDirectionsUrl(preparationDetails.pack.patient.address)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted/30"
+                  >
+                    <Navigation className="size-4" aria-hidden="true" />
+                    ナビで開く
+                  </a>
+                </div>
+              ) : null}
             </div>
           </div>
           <DialogFooter>
@@ -2383,6 +4634,57 @@ export function ScheduleDayView() {
               }
             >
               ready に進める
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={departureWarningTarget !== null}
+        onOpenChange={(open) => {
+          if (open) return;
+          setDepartureWarningTarget(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{getDepartureCarryWarning(departureWarningTarget)?.title}</DialogTitle>
+            <DialogDescription>
+              {getDepartureCarryWarning(departureWarningTarget)?.description}
+            </DialogDescription>
+          </DialogHeader>
+          {departureWarningTarget && (
+            <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+              <p className="font-medium text-foreground">
+                {departureWarningTarget.case_.patient.name}
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                {format(parseISO(departureWarningTarget.scheduled_date), 'yyyy/MM/dd', {
+                  locale: ja,
+                })}{' '}
+                {timeLabel(
+                  departureWarningTarget.time_window_start,
+                  departureWarningTarget.time_window_end
+                )}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                持参物ステータス: {departureWarningTarget.carry_items_status}
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDepartureWarningTarget(null)}>
+              戻る
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (!departureWarningTarget) return;
+                router.push(`/visits/${departureWarningTarget.id}/record`);
+                setDepartureWarningTarget(null);
+              }}
+            >
+              警告を確認して訪問開始
             </Button>
           </DialogFooter>
         </DialogContent>

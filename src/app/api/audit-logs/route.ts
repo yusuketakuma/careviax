@@ -1,69 +1,56 @@
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
-import { withAuth, AuthenticatedRequest } from '@/lib/auth/middleware';
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/db/client';
 import { success, validationError } from '@/lib/api/response';
-import { parsePaginationParams } from '@/lib/api/pagination';
-
-const querySchema = z.object({
-  actor: z.string().optional(),
-  target: z.string().optional(),
-  action: z.string().optional(),
-  from: z.string().datetime({ offset: true }).optional(),
-  to: z.string().datetime({ offset: true }).optional(),
-  cursor: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional(),
-});
+import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { parseAuditLogFilters } from '@/lib/api/audit-log-filters';
+import { buildPagination } from '@/lib/api/search';
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
-  const searchParams = req.nextUrl.searchParams;
-  const parsed = querySchema.safeParse({
-    actor: searchParams.get('actor') ?? undefined,
-    target: searchParams.get('target') ?? undefined,
-    action: searchParams.get('action') ?? undefined,
-    from: searchParams.get('from') ?? undefined,
-    to: searchParams.get('to') ?? undefined,
-    cursor: searchParams.get('cursor') ?? undefined,
-    limit: searchParams.get('limit') ?? undefined,
-  });
-
-  if (!parsed.success) {
-    return validationError('クエリパラメータが不正です', parsed.error.flatten()) as NextResponse;
+  const url = 'nextUrl' in req && req.nextUrl ? req.nextUrl : new URL(req.url);
+  const filters = parseAuditLogFilters(url.searchParams);
+  if ('error' in filters) {
+    return validationError(filters.error);
   }
+  const page = url.searchParams.get('page')
+    ? Number(url.searchParams.get('page'))
+    : undefined;
+  const limit = url.searchParams.get('limit')
+    ? Number(url.searchParams.get('limit'))
+    : undefined;
 
-  const { cursor, limit } = parsePaginationParams(searchParams);
-  const { actor, target, action, from, to } = parsed.data;
+  const { skip, take } = buildPagination(page, limit);
 
   const where = {
     org_id: req.orgId,
-    ...(actor ? { actor_id: actor } : {}),
-    ...(target ? { target_id: target } : {}),
-    ...(action ? { action } : {}),
-    ...((from ?? to)
+    ...(filters.actor ? { actor_id: filters.actor } : {}),
+    ...(filters.targetType ? { target_type: filters.targetType } : {}),
+    ...(filters.action ? { action: filters.action } : {}),
+    ...(filters.from || filters.to
       ? {
           created_at: {
-            ...(from ? { gte: new Date(from) } : {}),
-            ...(to ? { lte: new Date(to) } : {}),
+            ...(filters.from ? { gte: filters.from } : {}),
+            ...(filters.to ? { lte: filters.to } : {}),
           },
         }
       : {}),
   };
 
-  const [logs, totalCount] = await Promise.all([
+  const [logs, total] = await Promise.all([
     prisma.auditLog.findMany({
       where,
       orderBy: { created_at: 'desc' },
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      skip,
+      take,
     }),
     prisma.auditLog.count({ where }),
   ]);
 
-  const hasMore = logs.length > limit;
-  const data = hasMore ? logs.slice(0, limit) : logs;
-  const nextCursor = hasMore ? data[data.length - 1].id : undefined;
-  return success({ data, nextCursor, hasMore, totalCount }) as NextResponse;
-}, {
-  permission: 'canAdmin',
-  message: '監査ログの閲覧には管理者権限が必要です',
-});
+  return success({
+    data: logs,
+    pagination: {
+      total,
+      page: Math.floor(skip / take) + 1,
+      limit: take,
+      totalPages: Math.ceil(total / take),
+    },
+  });
+}, { permission: 'canAdmin' });

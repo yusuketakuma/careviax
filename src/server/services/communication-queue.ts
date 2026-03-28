@@ -20,6 +20,34 @@ export type CommunicationQueueItem = {
   action_label: string;
 };
 
+export type CommunicationTimelineItem = {
+  id: string;
+  source_type: 'care_report' | 'tracing_report' | 'communication_request' | 'delivery_record';
+  patient_id: string | null;
+  patient_name: string | null;
+  title: string;
+  summary: string;
+  status: string;
+  occurred_at: string | null;
+  action_href: string;
+  action_label: string;
+};
+
+export type CommunicationDraftSuggestion = {
+  id: string;
+  patient_id: string;
+  template_key: 'missing_emergency_contact' | 'emergency_physician' | 'emergency_nurse' | 'emergency_family';
+  request_type: string;
+  target_name: string | null;
+  target_role: string;
+  title: string;
+  summary: string;
+  subject: string;
+  content: string;
+  action_href: string;
+  action_label: string;
+};
+
 export type CommunicationQueueOverview = {
   summary: {
     pending_count: number;
@@ -29,8 +57,25 @@ export type CommunicationQueueOverview = {
     open_requests: number;
     delivery_backlog: number;
     expiring_external_shares: number;
+    unconfirmed_count: number;
+    reply_waiting_count: number;
+    failed_count: number;
   };
   items: CommunicationQueueItem[];
+  timeline: CommunicationTimelineItem[];
+  emergency_drafts: CommunicationDraftSuggestion[];
+};
+
+type TimelineSeed = {
+  source_type: CommunicationTimelineItem['source_type'];
+  id: string;
+  patient_id: string | null;
+  title: string;
+  summary: string;
+  status: string;
+  occurred_at: Date | null;
+  action_href: string;
+  action_label: string;
 };
 
 function priorityRank(priority: QueuePriority) {
@@ -60,6 +105,199 @@ function sortItems(left: CommunicationQueueItem, right: CommunicationQueueItem) 
   return left.title.localeCompare(right.title, 'ja');
 }
 
+function sortTimeline(left: TimelineSeed, right: TimelineSeed) {
+  const leftTime = left.occurred_at?.getTime() ?? 0;
+  const rightTime = right.occurred_at?.getTime() ?? 0;
+  return rightTime - leftTime;
+}
+
+function buildEmergencyContactGapDraft(patientName: string): CommunicationDraftSuggestion {
+  return {
+    id: 'missing_emergency_contact',
+    patient_id: '',
+    template_key: 'missing_emergency_contact',
+    request_type: 'emergency_contact_review',
+    target_name: null,
+    target_role: 'internal',
+    title: '緊急連絡先の整備が必要です',
+    summary: `${patientName} の緊急連絡先が不足しています。先に連絡先と共有先を登録してください。`,
+    subject: `${patientName} の緊急連絡先確認`,
+    content: `${patientName} さんの急変時に連絡できる家族・主治医・訪看の連絡先確認が必要です。`,
+    action_href: '/patients',
+    action_label: '患者詳細を開く',
+  };
+}
+
+function buildDraftSignalSummary(args: {
+  patientName: string;
+  urgentIssueTitle: string | null;
+  recentSelfReportTitle: string | null;
+}) {
+  if (args.urgentIssueTitle) {
+    return `${args.patientName} で急変または薬学的緊急対応の可能性があります。要点: ${args.urgentIssueTitle}`;
+  }
+  if (args.recentSelfReportTitle) {
+    return `${args.patientName} の自己申告から緊急連絡候補を生成しました。要点: ${args.recentSelfReportTitle}`;
+  }
+  return `${args.patientName} の緊急時共有テンプレートです。`;
+}
+
+function buildEmergencyDraft(args: {
+  templateKey: CommunicationDraftSuggestion['template_key'];
+  requestType: string;
+  patientId: string;
+  patientName: string;
+  targetName: string | null;
+  targetRole: string;
+  summary: string;
+}) {
+  const recipient = args.targetName ?? args.targetRole;
+  return {
+    id: `${args.templateKey}:${recipient}`,
+    patient_id: args.patientId,
+    template_key: args.templateKey,
+    request_type: args.requestType,
+    target_name: args.targetName,
+    target_role: args.targetRole,
+    title: `${recipient} 宛の緊急連絡ドラフト`,
+    summary: `${args.summary} / 宛先: ${recipient}`,
+    subject: `${args.patientName} の緊急連絡`,
+    content: [
+      `【患者】${args.patientName}`,
+      `【想定宛先】${recipient}`,
+      `【共有要点】${args.summary}`,
+      '【依頼】急変時対応または至急の情報共有が必要です。必要時は折返しをお願いします。',
+    ].join('\n'),
+    action_href: '/communications/requests',
+    action_label: 'ドラフト化する',
+  } satisfies CommunicationDraftSuggestion;
+}
+
+async function buildEmergencyDrafts(
+  db: DbClient,
+  args: { orgId: string; patientId?: string }
+): Promise<CommunicationDraftSuggestion[]> {
+  if (!args.patientId) return [];
+
+  const patient = await db.patient.findFirst({
+    where: {
+      org_id: args.orgId,
+      id: args.patientId,
+    },
+    select: {
+      id: true,
+      name: true,
+      contacts: {
+        select: {
+          name: true,
+          relation: true,
+          is_emergency_contact: true,
+        },
+      },
+    },
+  });
+
+  if (!patient) return [];
+
+  const [urgentIssues, recentSelfReports] = await Promise.all([
+    db.medicationIssue.findMany({
+      where: {
+        org_id: args.orgId,
+        patient_id: args.patientId,
+        status: {
+          in: ['open', 'in_progress'],
+        },
+        priority: {
+          in: ['critical', 'high'],
+        },
+      },
+      orderBy: [{ identified_at: 'desc' }],
+      take: 2,
+      select: {
+        title: true,
+      },
+    }),
+    db.patientSelfReport.findMany({
+      where: {
+        org_id: args.orgId,
+        patient_id: args.patientId,
+        status: {
+          in: ['submitted', 'triaged', 'converted_to_task'],
+        },
+      },
+      orderBy: [{ requested_callback: 'desc' }, { created_at: 'desc' }],
+      take: 2,
+      select: {
+        subject: true,
+        requested_callback: true,
+      },
+    }),
+  ]);
+
+  const contacts = patient.contacts ?? [];
+  const emergencyContacts = contacts.filter((contact) => contact.is_emergency_contact);
+  const physician = contacts.find((contact) => contact.relation === 'physician') ?? null;
+  const nurse = contacts.find((contact) => contact.relation === 'nurse') ?? null;
+  const family = emergencyContacts[0] ?? contacts.find((contact) =>
+    ['spouse', 'child', 'parent', 'sibling'].includes(contact.relation)
+  );
+
+  const summary = buildDraftSignalSummary({
+    patientName: patient.name,
+    urgentIssueTitle: urgentIssues[0]?.title ?? null,
+    recentSelfReportTitle: recentSelfReports[0]?.subject ?? null,
+  });
+
+  const drafts: CommunicationDraftSuggestion[] = [];
+  if (emergencyContacts.length === 0) {
+    drafts.push({
+      ...buildEmergencyContactGapDraft(patient.name),
+      patient_id: patient.id,
+    });
+  }
+  if (physician) {
+    drafts.push(
+      buildEmergencyDraft({
+        templateKey: 'emergency_physician',
+        requestType: 'emergency_physician',
+        patientId: patient.id,
+        patientName: patient.name,
+        targetName: physician.name,
+        targetRole: 'physician',
+        summary,
+      })
+    );
+  }
+  if (nurse) {
+    drafts.push(
+      buildEmergencyDraft({
+        templateKey: 'emergency_nurse',
+        requestType: 'emergency_nurse',
+        patientId: patient.id,
+        patientName: patient.name,
+        targetName: nurse.name,
+        targetRole: 'nurse',
+        summary,
+      })
+    );
+  }
+  if (family) {
+    drafts.push(
+      buildEmergencyDraft({
+        templateKey: 'emergency_family',
+        requestType: 'emergency_family',
+        patientId: patient.id,
+        patientName: patient.name,
+        targetName: family.name,
+        targetRole: 'family',
+        summary,
+      })
+    );
+  }
+
+  return drafts.slice(0, 4);
+}
+
 export async function listCommunicationQueue(
   db: DbClient,
   args: {
@@ -72,135 +310,184 @@ export async function listCommunicationQueue(
   const shareWindow = addDays(now, 7);
   const limit = Math.max(args.limit ?? 8, 1);
 
-  const [selfReports, callbackLogs, openRequests, deliveryRecords, externalShares] =
-    await Promise.all([
-      db.patientSelfReport.findMany({
-        where: {
-          org_id: args.orgId,
-          ...(args.patientId ? { patient_id: args.patientId } : {}),
-          status: {
-            in: ['submitted', 'triaged', 'converted_to_task'],
+  const [
+    selfReports,
+    callbackLogs,
+    openRequests,
+    deliveryRecords,
+    externalShares,
+    careReports,
+    tracingReports,
+    emergencyDrafts,
+  ] = await Promise.all([
+    db.patientSelfReport.findMany({
+      where: {
+        org_id: args.orgId,
+        ...(args.patientId ? { patient_id: args.patientId } : {}),
+        status: {
+          in: ['submitted', 'triaged', 'converted_to_task'],
+        },
+      },
+      orderBy: [{ requested_callback: 'desc' }, { created_at: 'asc' }],
+      take: limit,
+      select: {
+        id: true,
+        patient_id: true,
+        subject: true,
+        category: true,
+        requested_callback: true,
+        preferred_contact_time: true,
+        reported_by_name: true,
+        status: true,
+        created_at: true,
+      },
+    }),
+    db.visitScheduleContactLog.findMany({
+      where: {
+        org_id: args.orgId,
+        ...(args.patientId ? { patient_id: args.patientId } : {}),
+        OR: [
+          {
+            callback_due_at: {
+              not: null,
+            },
           },
+          {
+            outcome: {
+              in: ['attempted', 'unreachable'],
+            },
+          },
+        ],
+      },
+      orderBy: [{ callback_due_at: 'asc' }, { called_at: 'desc' }],
+      take: limit,
+      select: {
+        id: true,
+        patient_id: true,
+        outcome: true,
+        contact_name: true,
+        contact_phone: true,
+        note: true,
+        callback_due_at: true,
+        called_at: true,
+      },
+    }),
+    db.communicationRequest.findMany({
+      where: {
+        org_id: args.orgId,
+        ...(args.patientId ? { patient_id: args.patientId } : {}),
+        status: {
+          in: ['draft', 'sent', 'received', 'in_progress', 'responded', 'escalated', 'closed'],
         },
-        orderBy: [{ requested_callback: 'desc' }, { created_at: 'asc' }],
-        take: limit,
-        select: {
-          id: true,
-          patient_id: true,
-          subject: true,
-          category: true,
-          requested_callback: true,
-          preferred_contact_time: true,
-          reported_by_name: true,
-          status: true,
-          created_at: true,
+      },
+      orderBy: [{ due_date: 'asc' }, { requested_at: 'desc' }],
+      take: limit,
+      select: {
+        id: true,
+        patient_id: true,
+        request_type: true,
+        subject: true,
+        content: true,
+        template_key: true,
+        status: true,
+        due_date: true,
+        requested_at: true,
+      },
+    }),
+    db.deliveryRecord.findMany({
+      where: {
+        org_id: args.orgId,
+        status: {
+          in: ['draft', 'failed', 'response_waiting', 'sent', 'confirmed'],
         },
-      }),
-      db.visitScheduleContactLog.findMany({
-        where: {
-          org_id: args.orgId,
-          ...(args.patientId ? { patient_id: args.patientId } : {}),
-          OR: [
-            {
-              callback_due_at: {
-                not: null,
+        ...(args.patientId
+          ? {
+              report: {
+                patient_id: args.patientId,
               },
-            },
-            {
-              outcome: {
-                in: ['attempted', 'unreachable'],
-              },
-            },
-          ],
-        },
-        orderBy: [{ callback_due_at: 'asc' }, { called_at: 'desc' }],
-        take: limit,
-        select: {
-          id: true,
-          patient_id: true,
-          outcome: true,
-          contact_name: true,
-          contact_phone: true,
-          note: true,
-          callback_due_at: true,
-          called_at: true,
-          schedule_id: true,
-          proposal_id: true,
-        },
-      }),
-      db.communicationRequest.findMany({
-        where: {
-          org_id: args.orgId,
-          ...(args.patientId ? { patient_id: args.patientId } : {}),
-          status: {
-            in: ['sent', 'received', 'in_progress', 'escalated'],
+            }
+          : {}),
+      },
+      orderBy: [{ updated_at: 'desc' }],
+      take: limit,
+      select: {
+        id: true,
+        channel: true,
+        recipient_name: true,
+        status: true,
+        failure_reason: true,
+        sent_at: true,
+        confirmed_at: true,
+        updated_at: true,
+        report: {
+          select: {
+            id: true,
+            patient_id: true,
+            report_type: true,
           },
         },
-        orderBy: [{ due_date: 'asc' }, { requested_at: 'asc' }],
-        take: limit,
-        select: {
-          id: true,
-          patient_id: true,
-          request_type: true,
-          subject: true,
-          status: true,
-          due_date: true,
-          requested_at: true,
+      },
+    }),
+    db.externalAccessGrant.findMany({
+      where: {
+        org_id: args.orgId,
+        ...(args.patientId ? { patient_id: args.patientId } : {}),
+        revoked_at: null,
+        accessed_at: null,
+        expires_at: {
+          lte: shareWindow,
         },
-      }),
-      db.deliveryRecord.findMany({
-        where: {
-          org_id: args.orgId,
-          status: {
-            in: ['draft', 'failed', 'response_waiting'],
-          },
-          ...(args.patientId
-            ? {
-                report: {
-                  patient_id: args.patientId,
-                },
-              }
-            : {}),
+      },
+      orderBy: [{ expires_at: 'asc' }],
+      take: limit,
+      select: {
+        id: true,
+        patient_id: true,
+        granted_to_name: true,
+        expires_at: true,
+      },
+    }),
+    db.careReport.findMany({
+      where: {
+        org_id: args.orgId,
+        ...(args.patientId ? { patient_id: args.patientId } : {}),
+        status: {
+          in: ['sent', 'failed', 'response_waiting', 'confirmed'],
         },
-        orderBy: [{ updated_at: 'desc' }],
-        take: limit,
-        select: {
-          id: true,
-          channel: true,
-          recipient_name: true,
-          status: true,
-          failure_reason: true,
-          sent_at: true,
-          updated_at: true,
-          report: {
-            select: {
-              id: true,
-              patient_id: true,
-              report_type: true,
-            },
-          },
+      },
+      orderBy: [{ updated_at: 'desc' }],
+      take: limit,
+      select: {
+        id: true,
+        patient_id: true,
+        report_type: true,
+        status: true,
+        created_at: true,
+        updated_at: true,
+      },
+    }),
+    db.tracingReport.findMany({
+      where: {
+        org_id: args.orgId,
+        ...(args.patientId ? { patient_id: args.patientId } : {}),
+        status: {
+          in: ['sent', 'received', 'acknowledged'],
         },
-      }),
-      db.externalAccessGrant.findMany({
-        where: {
-          org_id: args.orgId,
-          ...(args.patientId ? { patient_id: args.patientId } : {}),
-          revoked_at: null,
-          accessed_at: null,
-          expires_at: {
-            lte: shareWindow,
-          },
-        },
-        orderBy: [{ expires_at: 'asc' }],
-        take: limit,
-        select: {
-          id: true,
-          patient_id: true,
-          granted_to_name: true,
-          expires_at: true,
-        },
-      }),
-    ]);
+      },
+      orderBy: [{ updated_at: 'desc' }],
+      take: limit,
+      select: {
+        id: true,
+        patient_id: true,
+        status: true,
+        sent_to_physician: true,
+        sent_at: true,
+        acknowledged_at: true,
+        updated_at: true,
+      },
+    }),
+    buildEmergencyDrafts(db, args),
+  ]);
 
   const patientIds = Array.from(
     new Set(
@@ -214,6 +501,10 @@ export async function listCommunicationQueue(
           .map((item) => item.report.patient_id)
           .filter((value): value is string => Boolean(value)),
         ...externalShares.map((item) => item.patient_id),
+        ...careReports
+          .map((item) => item.patient_id)
+          .filter((value): value is string => Boolean(value)),
+        ...tracingReports.map((item) => item.patient_id),
       ].filter((value): value is string => Boolean(value))
     )
   );
@@ -232,6 +523,13 @@ export async function listCommunicationQueue(
           },
         });
   const patientNameById = new Map(patients.map((patient) => [patient.id, patient.name]));
+
+  const actionableRequests = openRequests.filter((request) =>
+    ['draft', 'sent', 'received', 'in_progress', 'escalated'].includes(request.status)
+  );
+  const actionableDeliveries = deliveryRecords.filter((record) =>
+    ['draft', 'failed', 'response_waiting'].includes(record.status)
+  );
 
   const items: CommunicationQueueItem[] = [
     ...selfReports.map((report) => ({
@@ -265,7 +563,7 @@ export async function listCommunicationQueue(
       action_href: '/schedules',
       action_label: '架電履歴を確認',
     })),
-    ...openRequests.map((request) => ({
+    ...actionableRequests.map((request) => ({
       id: `request:${request.id}`,
       queue_type: 'request' as const,
       title: request.subject,
@@ -278,10 +576,10 @@ export async function listCommunicationQueue(
       patient_name:
         request.patient_id != null ? patientNameById.get(request.patient_id) ?? null : null,
       due_at: isoOrNull(request.due_date ?? request.requested_at),
-      action_href: '/conferences',
+      action_href: '/communications/requests',
       action_label: '依頼を確認',
     })),
-    ...deliveryRecords.map((record) => ({
+    ...actionableDeliveries.map((record) => ({
       id: `delivery:${record.id}`,
       queue_type: 'delivery' as const,
       title: `${record.report.report_type} の送達確認`,
@@ -318,6 +616,73 @@ export async function listCommunicationQueue(
     .sort(sortItems)
     .slice(0, limit);
 
+  const timelineSeeds: TimelineSeed[] = [
+    ...careReports.map((report) => ({
+      id: `care_report:${report.id}`,
+      source_type: 'care_report' as const,
+      patient_id: report.patient_id,
+      title: `報告書 ${report.report_type}`,
+      summary: `状態: ${report.status}`,
+      status: report.status,
+      occurred_at: report.updated_at ?? report.created_at,
+      action_href: '/reports',
+      action_label: '報告書を確認',
+    })),
+    ...tracingReports.map((report) => ({
+      id: `tracing_report:${report.id}`,
+      source_type: 'tracing_report' as const,
+      patient_id: report.patient_id,
+      title: '服薬情報提供書',
+      summary: `${report.sent_to_physician ?? '送付先未設定'} / ${report.status}`,
+      status: report.status,
+      occurred_at: report.acknowledged_at ?? report.sent_at ?? report.updated_at,
+      action_href: '/communications/requests',
+      action_label: 'tracing を確認',
+    })),
+    ...openRequests.map((request) => ({
+      id: `communication_request:${request.id}`,
+      source_type: 'communication_request' as const,
+      patient_id: request.patient_id ?? null,
+      title: request.subject,
+      summary: `${request.request_type} / ${request.content}`,
+      status: request.status,
+      occurred_at: request.due_date ?? request.requested_at,
+      action_href: '/communications/requests',
+      action_label: '依頼を確認',
+    })),
+    ...deliveryRecords.map((record) => ({
+      id: `delivery_record:${record.id}`,
+      source_type: 'delivery_record' as const,
+      patient_id: record.report.patient_id,
+      title: `${record.report.report_type} の送達`,
+      summary:
+        record.failure_reason ??
+        `${record.recipient_name} / ${record.channel} / ${record.status}`,
+      status: record.status,
+      occurred_at: record.confirmed_at ?? record.sent_at ?? record.updated_at,
+      action_href: '/reports',
+      action_label: '送達履歴を確認',
+    })),
+  ];
+
+  const timeline = timelineSeeds
+    .sort(sortTimeline)
+    .slice(0, limit)
+    .map((item) => ({
+      ...item,
+      patient_name: item.patient_id ? patientNameById.get(item.patient_id) ?? null : null,
+      occurred_at: isoOrNull(item.occurred_at),
+    }));
+
+  const unconfirmedCount = deliveryRecords.filter((record) => record.status === 'draft').length;
+  const requestDraftCount = actionableRequests.filter((request) => request.status === 'draft').length;
+  const replyWaitingCount =
+    deliveryRecords.filter((record) => record.status === 'response_waiting').length +
+    actionableRequests.filter((request) =>
+      ['received', 'in_progress', 'escalated'].includes(request.status)
+    ).length;
+  const failedCount = deliveryRecords.filter((record) => record.status === 'failed').length;
+
   return {
     summary: {
       pending_count: items.length,
@@ -326,10 +691,15 @@ export async function listCommunicationQueue(
       ).length,
       self_reports: selfReports.length,
       callback_followups: callbackLogs.length,
-      open_requests: openRequests.length,
-      delivery_backlog: deliveryRecords.length,
+      open_requests: actionableRequests.length,
+      delivery_backlog: actionableDeliveries.length,
       expiring_external_shares: externalShares.length,
+      unconfirmed_count: unconfirmedCount + requestDraftCount,
+      reply_waiting_count: replyWaitingCount,
+      failed_count: failedCount,
     },
     items,
+    timeline,
+    emergency_drafts: emergencyDrafts,
   };
 }

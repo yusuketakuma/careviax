@@ -1,0 +1,187 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import {
+  APIProvider,
+  InfoWindow,
+  Map,
+  Marker,
+  Polyline,
+} from '@vis.gl/react-google-maps';
+import { Badge } from '@/components/ui/badge';
+
+type VisitMapStatus =
+  | 'planned'
+  | 'in_preparation'
+  | 'ready'
+  | 'departed'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled'
+  | 'postponed'
+  | 'rescheduled'
+  | 'no_show';
+
+type VisitMapPriority = 'normal' | 'urgent' | 'emergency';
+
+export type VisitRouteMapPoint = {
+  scheduleId: string;
+  patientName: string;
+  address: string;
+  lat: number;
+  lng: number;
+  orderLabel: string;
+  status: VisitMapStatus;
+  priority: VisitMapPriority;
+  etaLabel: string | null;
+};
+
+function markerColor(point: Pick<VisitRouteMapPoint, 'status' | 'priority'>) {
+  if (point.priority === 'emergency') return '#dc2626';
+  if (point.status === 'in_progress') return '#16a34a';
+  if (point.status === 'completed') return '#6b7280';
+  return '#2563eb';
+}
+
+function buildMarkerIcon(orderLabel: string, fill: string) {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" viewBox="0 0 42 42">
+      <circle cx="21" cy="21" r="16" fill="${fill}" stroke="#ffffff" stroke-width="3" />
+      <text x="21" y="26" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#ffffff">${orderLabel}</text>
+    </svg>
+  `.trim();
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function averageCenter(points: Array<{ lat: number; lng: number }>) {
+  const totals = points.reduce(
+    (acc, point) => ({
+      lat: acc.lat + point.lat,
+      lng: acc.lng + point.lng,
+    }),
+    { lat: 0, lng: 0 },
+  );
+
+  return {
+    lat: totals.lat / points.length,
+    lng: totals.lng / points.length,
+  };
+}
+
+export function VisitRouteMap(props: {
+  points: VisitRouteMapPoint[];
+  encodedPath?: string | null;
+  site?: { name: string; lat: number; lng: number } | null;
+  note?: string | null;
+  className?: string;
+}) {
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  const [activeScheduleId, setActiveScheduleId] = useState<string | null>(null);
+
+  const allPoints = useMemo(() => {
+    const mapped = props.points.map((point) => ({ lat: point.lat, lng: point.lng }));
+    if (props.site) {
+      mapped.unshift({ lat: props.site.lat, lng: props.site.lng });
+    }
+    return mapped;
+  }, [props.points, props.site]);
+
+  const center = useMemo(() => {
+    if (allPoints.length === 0) {
+      return { lat: 35.681236, lng: 139.767125 };
+    }
+    return averageCenter(allPoints);
+  }, [allPoints]);
+
+  const activePoint =
+    props.points.find((point) => point.scheduleId === activeScheduleId) ?? null;
+
+  if (!apiKey) {
+    return (
+      <div className={props.className}>
+        <div className="rounded-xl border border-dashed border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+          NEXT_PUBLIC_GOOGLE_MAPS_API_KEY が未設定のためマップを表示できません。
+          {props.note ? <div className="mt-2">{props.note}</div> : null}
+        </div>
+      </div>
+    );
+  }
+
+  if (props.points.length === 0) {
+    return (
+      <div className={props.className}>
+        <div className="rounded-xl border border-dashed border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+          地図に表示できる訪問先がありません。
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={props.className}>
+      <APIProvider apiKey={apiKey} language="ja" region="JP">
+        <div className="overflow-hidden rounded-2xl border border-border bg-background">
+          <Map
+            defaultZoom={12}
+            defaultCenter={center}
+            mapId={process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID ?? 'DEMO_MAP_ID'}
+            gestureHandling="greedy"
+            disableDefaultUI={false}
+            className="h-[360px] w-full"
+          >
+            {props.encodedPath ? (
+              <Polyline
+                encodedPath={props.encodedPath}
+                strokeColor="#0f172a"
+                strokeOpacity={0.7}
+                strokeWeight={4}
+              />
+            ) : null}
+            {props.site ? (
+              <Marker
+                position={{ lat: props.site.lat, lng: props.site.lng }}
+                title={props.site.name}
+                icon={{
+                  url: buildMarkerIcon('薬', '#0f172a'),
+                }}
+                onClick={() => setActiveScheduleId(null)}
+              />
+            ) : null}
+            {props.points.map((point) => (
+              <Marker
+                key={point.scheduleId}
+                position={{ lat: point.lat, lng: point.lng }}
+                title={`${point.patientName} / ${point.address}`}
+                icon={{
+                  url: buildMarkerIcon(point.orderLabel, markerColor(point)),
+                }}
+                onClick={() => setActiveScheduleId(point.scheduleId)}
+              />
+            ))}
+            {activePoint ? (
+              <InfoWindow
+                position={{ lat: activePoint.lat, lng: activePoint.lng }}
+                onCloseClick={() => setActiveScheduleId(null)}
+              >
+                <div className="max-w-[220px] space-y-1 text-sm">
+                  <div className="font-medium text-slate-900">{activePoint.patientName}</div>
+                  <div className="text-xs leading-5 text-slate-600">{activePoint.address}</div>
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    <Badge variant="outline">順路 {activePoint.orderLabel}</Badge>
+                    {activePoint.etaLabel ? (
+                      <Badge variant="outline">ETA {activePoint.etaLabel}</Badge>
+                    ) : null}
+                  </div>
+                </div>
+              </InfoWindow>
+            ) : null}
+          </Map>
+        </div>
+      </APIProvider>
+      {props.note ? (
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">{props.note}</p>
+      ) : null}
+    </div>
+  );
+}

@@ -94,6 +94,7 @@ model MedicationIssue {
   updated_at    DateTime      @updatedAt
 
   interventions   Intervention[]
+  inquiries       InquiryRecord[]
   tracing_reports TracingReport[]
 
   @@index([org_id])

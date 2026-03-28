@@ -1,6 +1,7 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
 const createSetAuditSchema = z.object({
@@ -12,6 +13,45 @@ const createSetAuditSchema = z.object({
   reject_reason: z.string().optional(),
   audited_at: z.string().datetime().optional(),
 });
+
+function buildSetCarryItems(
+  batches: Array<{
+    id: string;
+    slot: string;
+    day_number: number;
+    quantity: number;
+    carry_type: string;
+    line: {
+      id: string;
+      drug_name: string;
+      dose: string;
+      frequency: string;
+      unit: string | null;
+    };
+  }>,
+  approvedScope?: Record<string, unknown>
+) {
+  const approvedKeys =
+    approvedScope == null ? null : new Set(Object.keys(approvedScope).filter((key) => approvedScope[key] === true));
+
+  return batches
+    .filter((batch) => {
+      if (!approvedKeys) return true;
+      return approvedKeys.has(`${batch.day_number}-${batch.slot}`);
+    })
+    .map((batch) => ({
+      batch_id: batch.id,
+      line_id: batch.line.id,
+      drug_name: batch.line.drug_name,
+      dose: batch.line.dose,
+      frequency: batch.line.frequency,
+      day_number: batch.day_number,
+      slot: batch.slot,
+      quantity: batch.quantity,
+      unit: batch.line.unit,
+      carry_type: batch.carry_type,
+    }));
+}
 
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
   const body = await req.json().catch(() => null);
@@ -34,6 +74,20 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     if (!plan) return null;
 
     const now = audited_at ? new Date(audited_at) : new Date();
+    const setBatches = await tx.setBatch.findMany({
+      where: { plan_id, org_id: req.orgId },
+      include: {
+        line: {
+          select: {
+            id: true,
+            drug_name: true,
+            dose: true,
+            frequency: true,
+            unit: true,
+          },
+        },
+      },
+    });
 
     const audit = await tx.setAudit.create({
       data: {
@@ -51,17 +105,48 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
     if (result === 'approved') {
       // carry_items confirmed — advance cycle to set_audited
+      const carryItems = buildSetCarryItems(setBatches);
       await tx.medicationCycle.update({
         where: { id: plan.cycle_id },
         data: { overall_status: 'set_audited' },
       });
+      await tx.visitSchedule.updateMany({
+        where: {
+          org_id: req.orgId,
+          cycle_id: plan.cycle_id,
+          schedule_status: {
+            in: ['planned', 'in_preparation', 'ready', 'postponed'],
+          },
+        },
+        data: {
+          carry_items: carryItems as Prisma.InputJsonValue,
+          carry_items_status: 'ready',
+        },
+      });
     } else if (result === 'partial_approved') {
       // Partial: carry_items_partial + re-work task
+      const carryItems = buildSetCarryItems(
+        setBatches,
+        approved_scope as Record<string, unknown> | undefined
+      );
       await tx.medicationCycle.update({
         where: { id: plan.cycle_id },
         data: {
           overall_status: 'set_audited',
           exception_status: 'carry_items_partial',
+        },
+      });
+      await tx.visitSchedule.updateMany({
+        where: {
+          org_id: req.orgId,
+          cycle_id: plan.cycle_id,
+          schedule_status: {
+            in: ['planned', 'in_preparation', 'ready', 'postponed'],
+          },
+        },
+        data: {
+          carry_items: carryItems as Prisma.InputJsonValue,
+          carry_items_status: 'partial',
         },
       });
 
@@ -83,6 +168,19 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       await tx.medicationCycle.update({
         where: { id: plan.cycle_id },
         data: { overall_status: 'setting' },
+      });
+      await tx.visitSchedule.updateMany({
+        where: {
+          org_id: req.orgId,
+          cycle_id: plan.cycle_id,
+          schedule_status: {
+            in: ['planned', 'in_preparation', 'ready', 'postponed'],
+          },
+        },
+        data: {
+          carry_items: [],
+          carry_items_status: 'blocked',
+        },
       });
 
       await tx.workflowException.create({

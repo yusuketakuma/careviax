@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CheckCircle2, XCircle, PauseCircle, FileText, ClipboardList, Package } from 'lucide-react';
@@ -24,6 +24,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loading } from '@/components/ui/loading';
 import { CdsAlertPanel, type CdsAlert } from '@/components/features/cds/alert-panel';
+import { useKeyboardShortcuts, type ShortcutDefinition } from '@/components/features/keyboard/use-keyboard-shortcuts';
 
 type PrescriptionLine = {
   id: string;
@@ -116,16 +117,28 @@ type AuditDetailProps = {
   taskId: string;
 };
 
+type AuditPane = 'original' | 'structured' | 'results' | 'checklist';
+
+const AUDIT_PANES: AuditPane[] = ['original', 'structured', 'results', 'checklist'];
+
 export function AuditDetail({ taskId }: AuditDetailProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const orgId = useOrgId();
+  const actionParam = searchParams.get('action');
 
   const [checklist, setChecklist] = useState<Record<string, boolean>>(
     Object.fromEntries(CHECKLIST_ITEMS.map((item) => [item.id, false]))
   );
   const [rejectReason, setRejectReason] = useState('');
   const [rejectDetail, setRejectDetail] = useState('');
-  const [showRejectForm, setShowRejectForm] = useState(false);
+  const [showRejectForm, setShowRejectForm] = useState(() => actionParam === 'reject');
+  const [showEmergencyApprovalForm, setShowEmergencyApprovalForm] = useState(false);
+  const [emergencyApprovalReason, setEmergencyApprovalReason] = useState('');
+  const [activePane, setActivePane] = useState<AuditPane>(() =>
+    actionParam === 'approve' || actionParam === 'reject' ? 'checklist' : 'original'
+  );
+  const [activeChecklistIndex, setActiveChecklistIndex] = useState(0);
 
   const { data: task, isLoading } = useQuery({
     queryKey: ['audit-task-detail', taskId, orgId],
@@ -201,19 +214,19 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
 
   const allChecked = Object.values(checklist).every(Boolean);
 
-  const handleApprove = () => {
+  const handleApprove = useCallback(() => {
     if (!allChecked) {
       toast.warning('チェックリストを全て確認してください');
       return;
     }
     mutation.mutate({ result: 'approved' });
-  };
+  }, [allChecked, mutation]);
 
-  const handleHold = () => {
+  const handleHold = useCallback(() => {
     mutation.mutate({ result: 'hold' });
-  };
+  }, [mutation]);
 
-  const handleReject = () => {
+  const handleReject = useCallback(() => {
     if (!rejectReason) {
       toast.warning('差戻し理由を選択してください');
       return;
@@ -223,7 +236,67 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
       reject_reason: rejectReason,
       reject_detail: rejectDetail || undefined,
     });
-  };
+  }, [mutation, rejectDetail, rejectReason]);
+
+  const handleEmergencyApprove = useCallback(() => {
+    if (!allChecked) {
+      toast.warning('チェックリストを全て確認してください');
+      return;
+    }
+    if (!emergencyApprovalReason.trim()) {
+      toast.warning('緊急例外承認の理由を入力してください');
+      return;
+    }
+    mutation.mutate({
+      result: 'emergency_approved',
+      reject_detail: emergencyApprovalReason.trim(),
+    });
+  }, [allChecked, emergencyApprovalReason, mutation]);
+
+  const handleNextPane = useCallback((direction: 1 | -1) => {
+    setActivePane((current) => {
+      const currentIndex = AUDIT_PANES.indexOf(current);
+      const nextIndex = (currentIndex + direction + AUDIT_PANES.length) % AUDIT_PANES.length;
+      return AUDIT_PANES[nextIndex] ?? 'original';
+    });
+  }, []);
+
+  const handleToggleChecklistItem = useCallback(() => {
+    if (activePane !== 'checklist') {
+      setActivePane('checklist');
+      return;
+    }
+
+    const item = CHECKLIST_ITEMS[activeChecklistIndex];
+    if (!item) return;
+
+    setChecklist((prev) => ({ ...prev, [item.id]: !prev[item.id] }));
+  }, [activeChecklistIndex, activePane]);
+
+  const shortcuts: ShortcutDefinition[] = useMemo(
+    () => [
+      { key: 'Tab', handler: () => handleNextPane(1), description: 'ペイン切替', scope: 'auditing' },
+      { key: 'Tab', shiftKey: true, handler: () => handleNextPane(-1), description: '前のペインへ切替', scope: 'auditing' },
+      { key: 'a', handler: handleApprove, description: '承認', scope: 'auditing' },
+      {
+        key: 'r',
+        handler: () => {
+          if (!showRejectForm) {
+            setShowRejectForm(true);
+            setActivePane('checklist');
+            return;
+          }
+          handleReject();
+        },
+        description: '差戻し',
+        scope: 'auditing',
+      },
+      { key: ' ', handler: handleToggleChecklistItem, description: 'チェック項目トグル', scope: 'auditing' },
+    ],
+    [handleApprove, handleNextPane, handleReject, handleToggleChecklistItem, showRejectForm],
+  );
+
+  useKeyboardShortcuts(shortcuts);
 
   if (isLoading) return <Loading />;
   if (!task) {
@@ -258,7 +331,7 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
       {/* 3-pane comparison view */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:items-start">
         {/* Left: Original prescription */}
-        <Card className="lg:col-span-1">
+        <Card className={activePane === 'original' ? 'ring-2 ring-primary/50 lg:col-span-1' : 'lg:col-span-1'}>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm">
               <FileText className="size-4" aria-hidden="true" />
@@ -284,7 +357,7 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
         </Card>
 
         {/* Center: Structured prescription lines */}
-        <Card className="lg:col-span-1">
+        <Card className={activePane === 'structured' ? 'ring-2 ring-primary/50 lg:col-span-1' : 'lg:col-span-1'}>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm">
               <ClipboardList className="size-4" aria-hidden="true" />
@@ -337,7 +410,7 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
         </Card>
 
         {/* Right: Dispense results */}
-        <Card className="lg:col-span-1">
+        <Card className={activePane === 'results' ? 'ring-2 ring-primary/50 lg:col-span-1' : 'lg:col-span-1'}>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Package className="size-4" aria-hidden="true" />
@@ -379,25 +452,40 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
       </div>
 
       {/* Checklist */}
-      <Card>
+      <Card className={activePane === 'checklist' ? 'ring-2 ring-primary/50' : undefined}>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">鑑査チェックリスト</CardTitle>
         </CardHeader>
         <CardContent>
           <ul className="space-y-3">
-            {CHECKLIST_ITEMS.map((item) => (
-              <li key={item.id} className="flex items-center gap-3">
+            {CHECKLIST_ITEMS.map((item, index) => (
+              <li
+                key={item.id}
+                className={
+                  activePane === 'checklist' && activeChecklistIndex === index
+                    ? 'flex items-center gap-3 rounded-md bg-primary/5 px-2 py-1'
+                    : 'flex items-center gap-3 rounded-md px-2 py-1'
+                }
+              >
                 <Checkbox
                   id={`checklist-${item.id}`}
                   checked={checklist[item.id]}
                   onCheckedChange={(checked) =>
                     setChecklist((prev) => ({ ...prev, [item.id]: checked === true }))
                   }
+                  onFocus={() => {
+                    setActivePane('checklist');
+                    setActiveChecklistIndex(index);
+                  }}
                   aria-label={item.label}
                 />
                 <label
                   htmlFor={`checklist-${item.id}`}
                   className="cursor-pointer select-none text-sm"
+                  onMouseEnter={() => {
+                    setActivePane('checklist');
+                    setActiveChecklistIndex(index);
+                  }}
                 >
                   {item.label}
                 </label>
@@ -447,6 +535,28 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
         </Card>
       )}
 
+      {showEmergencyApprovalForm && (
+        <Card className="border-amber-400/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-amber-700">緊急例外承認</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="emergency-approval-reason" className="text-xs">
+                承認理由 <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                id="emergency-approval-reason"
+                value={emergencyApprovalReason}
+                onChange={(e) => setEmergencyApprovalReason(e.target.value)}
+                className="min-h-[80px] text-sm"
+                placeholder="例外承認が必要な理由を入力してください"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Separator />
 
       {/* Action buttons */}
@@ -475,7 +585,10 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
           <Button
             type="button"
             variant="destructive"
-            onClick={() => setShowRejectForm(true)}
+            onClick={() => {
+              setShowEmergencyApprovalForm(false);
+              setShowRejectForm(true);
+            }}
             disabled={mutation.isPending}
           >
             <XCircle className="mr-1.5 size-4" aria-hidden="true" />
@@ -501,6 +614,31 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
           <CheckCircle2 className="mr-1.5 size-4" aria-hidden="true" />
           {mutation.isPending ? '処理中...' : '承認'}
         </Button>
+
+        {!showEmergencyApprovalForm ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="border-amber-400 text-amber-700 hover:bg-amber-50"
+            onClick={() => {
+              setShowRejectForm(false);
+              setShowEmergencyApprovalForm(true);
+            }}
+            disabled={mutation.isPending}
+          >
+            緊急例外承認
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            className="border-amber-400 text-amber-700 hover:bg-amber-50"
+            onClick={handleEmergencyApprove}
+            disabled={mutation.isPending}
+          >
+            {mutation.isPending ? '処理中...' : '例外承認を確定'}
+          </Button>
+        )}
       </div>
     </div>
   );

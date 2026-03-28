@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -14,6 +14,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { FormErrorSummary } from '@/components/ui/form-error-summary';
+import { LoadingButton } from '@/components/ui/loading-button';
+import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 
 const referralFormSchema = z.object({
   // Referral-specific fields
@@ -45,6 +48,7 @@ export function ReferralForm() {
   const router = useRouter();
   const orgId = useOrgId();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const errorSummaryId = 'referral-form-error-summary';
 
   const form = useForm<ReferralFormValues, unknown, ReferralFormSubmit>({
     resolver: zodResolver(referralFormSchema),
@@ -62,6 +66,24 @@ export function ReferralForm() {
     setValue,
     formState: { errors },
   } = form;
+  const errorSummaryItems = collectFormErrorSummaryItems(errors, {
+    referral_type: '依頼種別',
+    referral_date: '紹介日',
+    name: '氏名',
+    name_kana: 'フリガナ',
+    birth_date: '生年月日',
+    gender: '性別',
+  });
+
+  const scrollToErrorSummary = useCallback(() => {
+    if (typeof document === 'undefined') return;
+    window.requestAnimationFrame(() => {
+      const summary = document.getElementById(errorSummaryId);
+      summary?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      summary?.focus();
+    });
+  }, [errorSummaryId]);
+
   async function onSubmit(data: ReferralFormSubmit) {
     setIsSubmitting(true);
     try {
@@ -115,7 +137,9 @@ export function ReferralForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-6">
+    <form onSubmit={handleSubmit(onSubmit, scrollToErrorSummary)} noValidate className="space-y-6">
+      <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
+
       {/* 依頼元情報 */}
       <Card>
         <CardHeader>
@@ -330,9 +354,9 @@ export function ReferralForm() {
         >
           キャンセル
         </Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? '受付中...' : '紹介受付を完了する'}
-        </Button>
+        <LoadingButton type="submit" loading={isSubmitting} loadingLabel="受付中...">
+          紹介受付を完了する
+        </LoadingButton>
       </div>
     </form>
   );

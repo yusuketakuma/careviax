@@ -1,13 +1,20 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
+import Link from 'next/link';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { differenceInYears, format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Loading } from '@/components/ui/loading';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { HomeCareFeatureBoard } from '@/components/home-care/home-care-feature-board';
+import { VisitBriefCard } from '@/components/visit-brief/visit-brief-card';
 import { CasesTab } from './cases-tab';
 import { ManagementPlanPanel } from './management-plan-panel';
 import { MedicationsContent } from './medications/medications-content';
@@ -19,7 +26,10 @@ import { PrescriptionHistoryContent } from './prescriptions/prescription-history
 import { ExternalShareContent } from './share/external-share-content';
 import { VisitConstraintsCard } from './visit-constraints-card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { FileQuestion } from 'lucide-react';
+import type { HomeCareFeatureSummary } from '@/types/home-care';
+import type { VisitBrief } from '@/types/visit-brief';
+import { FileDown, FileQuestion, Printer } from 'lucide-react';
+import { toast } from 'sonner';
 
 type Patient = {
   id: string;
@@ -97,6 +107,27 @@ type Patient = {
       notes: string | null;
     }>;
   }>;
+  first_visit_documents: Array<{
+    id: string;
+    case_id: string;
+    emergency_contacts: Array<{
+      id?: string;
+      name: string;
+      relation: string | null;
+      phone: string | null;
+      email: string | null;
+      fax: string | null;
+      organization_name: string | null;
+      department: string | null;
+      is_primary: boolean;
+      is_emergency_contact: boolean;
+    }>;
+    document_url: string | null;
+    delivered_at: string | null;
+    delivered_to: string | null;
+    created_at: string;
+    updated_at: string;
+  }>;
   current_medications: Array<{
     id: string;
     drug_name: string;
@@ -128,9 +159,12 @@ type Patient = {
     id: string;
     subject: string;
     category: string;
+    content: string;
+    relation: string | null;
     status: string;
     reported_by_name: string;
     requested_callback: boolean;
+    preferred_contact_time: string | null;
     created_at: string;
   }>;
   external_shares: Array<{
@@ -168,6 +202,9 @@ type Patient = {
       open_requests: number;
       delivery_backlog: number;
       expiring_external_shares: number;
+      unconfirmed_count: number;
+      reply_waiting_count: number;
+      failed_count: number;
     };
     items: Array<{
       id: string;
@@ -177,7 +214,33 @@ type Patient = {
       channel: string;
       status: string;
       priority: 'urgent' | 'high' | 'normal';
+      patient_name: string | null;
       due_at: string | null;
+      action_href: string;
+      action_label: string;
+    }>;
+    timeline: Array<{
+      id: string;
+      source_type: 'care_report' | 'tracing_report' | 'communication_request' | 'delivery_record';
+      patient_name: string | null;
+      title: string;
+      summary: string;
+      status: string;
+      occurred_at: string | null;
+      action_href: string;
+      action_label: string;
+    }>;
+    emergency_drafts: Array<{
+      id: string;
+      patient_id: string;
+      template_key: string;
+      request_type: string;
+      target_name: string | null;
+      target_role: string;
+      title: string;
+      summary: string;
+      subject: string;
+      content: string;
       action_href: string;
       action_label: string;
     }>;
@@ -196,6 +259,8 @@ type Patient = {
     missing_visit_consent: boolean;
     missing_management_plan: boolean;
   } | null;
+  home_care_feature_summary: HomeCareFeatureSummary;
+  visit_brief: VisitBrief;
   billing_summary: {
     claimable_count: number;
     blocked_count: number;
@@ -205,6 +270,13 @@ type Patient = {
       claimable: boolean;
       exclusion_reason: string | null;
       validation_notes: string | null;
+      blockers: Array<{
+        key: string;
+        reason: string;
+        action_href: string;
+        action_label: string;
+        severity: 'urgent' | 'high' | 'normal';
+      }>;
     }>;
     candidates: Array<{
       id: string;
@@ -230,8 +302,35 @@ interface PatientDetailTabsProps {
   patientId: string;
 }
 
+const PATIENT_DETAIL_TABS = [
+  { value: 'basic', label: '基本情報', description: '患者マスタ、保険、リスク、訪問条件' },
+  { value: 'cases', label: 'ケース', description: 'ケース進行、担当、紹介情報' },
+  { value: 'prescriptions', label: '処方履歴', description: '前回比較と薬剤ライン差分' },
+  { value: 'medications', label: '薬剤', description: '服薬一覧、残薬、管理状況' },
+  { value: 'visits', label: '訪問', description: '予定、記録、月次実績' },
+  { value: 'communications', label: '連携', description: '連絡キュー、課題、請求ブロッカー' },
+  { value: 'documents', label: '文書', description: '計画書、共有、PDF 導線' },
+  { value: 'timeline', label: 'タイムライン', description: '自己申告、共有、統合イベント' },
+] as const;
+
+const CONTACT_RELATION_LABELS: Record<string, string> = {
+  self: '本人',
+  spouse: '配偶者',
+  child: '子',
+  parent: '親',
+  sibling: '兄弟姉妹',
+  care_manager: 'ケアマネ',
+  physician: '医師',
+  nurse: '看護師',
+  facility_staff: '施設職員',
+  other: 'その他',
+};
+
+type PatientDetailTabValue = (typeof PATIENT_DETAIL_TABS)[number]['value'];
+
 export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
   const orgId = useOrgId();
+  const [activeTab, setActiveTab] = useState<PatientDetailTabValue>('basic');
 
   const {
     data: patient,
@@ -260,105 +359,270 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
     );
   }
 
+  const primaryResidence = patient.residences.find((residence) => residence.is_primary) ?? null;
+  const nextVisit =
+    [...patient.visit_schedules]
+      .filter((schedule) => !schedule.visit_record)
+      .sort(
+        (left, right) =>
+          new Date(left.scheduled_date).getTime() - new Date(right.scheduled_date).getTime(),
+      )[0] ??
+    [...patient.visit_schedules].sort(
+      (left, right) =>
+        new Date(left.scheduled_date).getTime() - new Date(right.scheduled_date).getTime(),
+    )[0] ??
+    null;
+  const age = differenceInYears(new Date(), new Date(patient.birth_date));
+  const activeTabMeta =
+    PATIENT_DETAIL_TABS.find((tab) => tab.value === activeTab) ?? PATIENT_DETAIL_TABS[0];
+
   return (
-    <div>
+    <div className="space-y-6">
       {/* Patient header */}
-      <div className="mb-6">
+      <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">{patient.name}</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">{patient.name_kana}</p>
       </div>
 
-      <Tabs defaultValue="basic">
-        <TabsList variant="line" className="mb-4 w-full overflow-x-auto">
-          <TabsTrigger value="basic">基本情報</TabsTrigger>
-          <TabsTrigger value="cases">ケース</TabsTrigger>
-          <TabsTrigger value="prescriptions">処方履歴</TabsTrigger>
-          <TabsTrigger value="medications">薬剤</TabsTrigger>
-          <TabsTrigger value="visits">訪問</TabsTrigger>
-          <TabsTrigger value="communications">連携</TabsTrigger>
-          <TabsTrigger value="documents">文書</TabsTrigger>
-          <TabsTrigger value="timeline">タイムライン</TabsTrigger>
-        </TabsList>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as PatientDetailTabValue)}>
+        <div className="space-y-4 md:hidden">
+          <VisitBriefCard
+            brief={patient.visit_brief}
+            title="患者サマリー"
+            description="処方変更、調剤方法、他職種共有、未解決事項を1画面に要約しています。"
+          />
+          <TabsList variant="line" className="w-full overflow-x-auto">
+            {PATIENT_DETAIL_TABS.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value}>
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
 
-        {/* 基本情報タブ */}
-        <TabsContent value="basic">
-          <div className="grid gap-4 lg:grid-cols-2">
-            <PatientMasterCard patient={patient} orgId={orgId} />
-            <PatientRiskCard riskSummary={patient.risk_summary} />
-
+        <div className="md:grid md:grid-cols-[320px_minmax(0,1fr)] md:items-start md:gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+          <aside className="hidden space-y-4 md:sticky md:top-6 md:block">
             <Card>
-              <CardHeader>
-                <CardTitle className="text-base">保険情報</CardTitle>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">患者ハブ</CardTitle>
               </CardHeader>
-              <CardContent>
-                <dl className="space-y-3 text-sm">
-                  <DetailRow label="医療保険番号" value={patient.medical_insurance_number ?? '—'} />
-                  <DetailRow label="介護保険番号" value={patient.care_insurance_number ?? '—'} />
-                </dl>
+              <CardContent className="space-y-4 text-sm">
+                <div className="space-y-2">
+                  <div>
+                    <p className="font-medium text-foreground">{patient.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {patient.name_kana} / {age}歳 / {patient.gender}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border/70 bg-muted/30 p-3">
+                    <p className="text-xs text-muted-foreground">主住所</p>
+                    <p className="mt-1 leading-5 text-foreground">
+                      {primaryResidence?.address ?? '未登録'}
+                    </p>
+                    {primaryResidence?.unit_name ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        部屋番号 {primaryResidence.unit_name}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-lg border border-border/70 p-3">
+                    <p className="text-muted-foreground">次回訪問</p>
+                    <p className="mt-1 font-medium text-foreground">
+                      {nextVisit
+                        ? format(new Date(nextVisit.scheduled_date), 'M/d HH:mm', { locale: ja })
+                        : '未設定'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border/70 p-3">
+                    <p className="text-muted-foreground">連絡キュー</p>
+                    <p className="mt-1 font-medium text-foreground">
+                      {patient.communication_queue.summary.pending_count}件
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border/70 p-3">
+                    <p className="text-muted-foreground">未完了タスク</p>
+                    <p className="mt-1 font-medium text-foreground">{patient.open_tasks.length}件</p>
+                  </div>
+                  <div className="rounded-lg border border-border/70 p-3">
+                    <p className="text-muted-foreground">リスク</p>
+                    <p className="mt-1 font-medium text-foreground">
+                      {patient.risk_summary
+                        ? `${patient.risk_summary.level} / ${patient.risk_summary.score}`
+                        : 'stable'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {patient.medical_insurance_number ? <Badge variant="outline">医療保険</Badge> : null}
+                  {patient.care_insurance_number ? <Badge variant="outline">介護保険</Badge> : null}
+                  {patient.communication_queue.summary.overdue_count > 0 ? (
+                    <Badge variant="destructive">
+                      期限超過 {patient.communication_queue.summary.overdue_count}
+                    </Badge>
+                  ) : null}
+                </div>
               </CardContent>
             </Card>
 
-            <PatientConditionsCard
-              patientId={patient.id}
-              orgId={orgId}
-              initialConditions={patient.conditions}
-            />
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">詳細セクション</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1.5">
+                {PATIENT_DETAIL_TABS.map((tab) => {
+                  const isActive = activeTab === tab.value;
+                  return (
+                    <button
+                      key={tab.value}
+                      type="button"
+                      aria-pressed={isActive}
+                      onClick={() => setActiveTab(tab.value)}
+                      className={`flex min-h-11 w-full items-start justify-between gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
+                        isActive
+                          ? 'border-primary/30 bg-primary/5 text-foreground'
+                          : 'border-border/70 bg-background text-muted-foreground hover:bg-muted/50'
+                      }`}
+                    >
+                      <span className="space-y-1">
+                        <span className="block text-sm font-medium">{tab.label}</span>
+                        <span className="block text-xs leading-5">{tab.description}</span>
+                      </span>
+                      {isActive ? <Badge variant="outline">表示中</Badge> : null}
+                    </button>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          </aside>
 
-            <div className="lg:col-span-2">
-              <VisitConstraintsCard patientId={patient.id} orgId={orgId} />
+          <div className="min-w-0 space-y-4">
+            <div className="hidden rounded-2xl border border-border/70 bg-muted/20 px-4 py-3 md:block">
+              <p className="text-sm font-medium text-foreground">{activeTabMeta.label}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{activeTabMeta.description}</p>
             </div>
-          </div>
-        </TabsContent>
 
-        {/* ケースタブ */}
-        <TabsContent value="cases">
-          <CasesTab patient={patient} orgId={orgId} />
-        </TabsContent>
+            <div className="hidden md:block">
+              <VisitBriefCard
+                brief={patient.visit_brief}
+                title="患者サマリー"
+                description="処方変更、調剤方法、他職種共有、未解決事項を1画面に要約しています。"
+              />
+            </div>
 
-        {/* 処方履歴タブ */}
-        <TabsContent value="prescriptions">
-          <PrescriptionHistoryContent />
-        </TabsContent>
+            {/* 基本情報タブ */}
+            <TabsContent value="basic">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <PatientMasterCard patient={patient} orgId={orgId} />
+                <PatientRiskCard riskSummary={patient.risk_summary} />
 
-        {/* プレースホルダータブ群 */}
-        <TabsContent value="medications">
-          <MedicationsContent patientId={patient.id} />
-        </TabsContent>
-        <TabsContent value="visits">
-          <PatientVisitsTab
-            visitSchedules={patient.visit_schedules}
-            visitRecords={patient.visit_records}
-          />
-        </TabsContent>
-        <TabsContent value="communications">
-          <div className="grid gap-4 lg:grid-cols-2">
-            <PatientContactsPanel
-              patientId={patient.id}
-              orgId={orgId}
-              initialContacts={patient.contacts}
-            />
-            <PatientCareTeamPanel patientId={patient.id} orgId={orgId} cases={patient.cases} />
-            <CommunicationQueueCard queue={patient.communication_queue} />
-            <TaskAndIssueCard
-              tasks={patient.open_tasks}
-              issues={patient.medication_issues}
-              billingSummary={patient.billing_summary}
-            />
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">保険情報</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <dl className="space-y-3 text-sm">
+                      <DetailRow label="医療保険番号" value={patient.medical_insurance_number ?? '—'} />
+                      <DetailRow label="介護保険番号" value={patient.care_insurance_number ?? '—'} />
+                    </dl>
+                  </CardContent>
+                </Card>
+
+                <PatientConditionsCard
+                  patientId={patient.id}
+                  orgId={orgId}
+                  initialConditions={patient.conditions}
+                />
+
+                <div className="lg:col-span-2">
+                  <VisitConstraintsCard patientId={patient.id} orgId={orgId} />
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* ケースタブ */}
+            <TabsContent value="cases">
+              <CasesTab patient={patient} orgId={orgId} />
+            </TabsContent>
+
+            {/* 処方履歴タブ */}
+            <TabsContent value="prescriptions">
+              <PrescriptionHistoryContent />
+            </TabsContent>
+
+            {/* プレースホルダータブ群 */}
+            <TabsContent value="medications">
+              <MedicationsContent
+                patientId={patient.id}
+                patientName={patient.name}
+                patientNameKana={patient.name_kana}
+                birthDate={patient.birth_date}
+                gender={patient.gender}
+                allergyInfo={patient.allergy_info}
+              />
+            </TabsContent>
+            <TabsContent value="visits">
+              <div className="space-y-4">
+                <HomeCareFeatureBoard
+                  summary={patient.home_care_feature_summary}
+                  title="訪問支援サマリー"
+                  description="この患者で優先して整備・確認すべき訪問支援項目を一覧化しています。"
+                  compact
+                />
+                <PatientVisitsTab
+                  patientId={patient.id}
+                  medicalInsuranceNumber={patient.medical_insurance_number}
+                  careInsuranceNumber={patient.care_insurance_number}
+                  visitSchedules={patient.visit_schedules}
+                  visitRecords={patient.visit_records}
+                />
+              </div>
+            </TabsContent>
+            <TabsContent value="communications">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <PatientContactsPanel
+                  patientId={patient.id}
+                  orgId={orgId}
+                  initialContacts={patient.contacts}
+                />
+                <PatientCareTeamPanel patientId={patient.id} orgId={orgId} cases={patient.cases} />
+                <CommunicationQueueCard queue={patient.communication_queue} orgId={orgId} patientId={patient.id} />
+                <TaskAndIssueCard
+                  tasks={patient.open_tasks}
+                  issues={patient.medication_issues}
+                  billingSummary={patient.billing_summary}
+                />
+              </div>
+            </TabsContent>
+            <TabsContent value="documents">
+              <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+                <ManagementPlanPanel
+                  patientId={patient.id}
+                  patientName={patient.name}
+                  cases={patient.cases}
+                  orgId={orgId}
+                />
+                <ExternalShareContent patientId={patient.id} />
+                <div className="xl:col-span-2">
+                  <FirstVisitDocumentsPanel
+                    cases={patient.cases}
+                    documents={patient.first_visit_documents}
+                  />
+                </div>
+              </div>
+            </TabsContent>
+            <TabsContent value="timeline">
+              <PatientTimelineTab
+                timelineEvents={patient.timeline_events}
+                selfReports={patient.self_reports}
+                externalShares={patient.external_shares}
+              />
+            </TabsContent>
           </div>
-        </TabsContent>
-        <TabsContent value="documents">
-          <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-            <ManagementPlanPanel patientName={patient.name} cases={patient.cases} orgId={orgId} />
-            <ExternalShareContent patientId={patient.id} />
-          </div>
-        </TabsContent>
-        <TabsContent value="timeline">
-          <PatientTimelineTab
-            timelineEvents={patient.timeline_events}
-            selfReports={patient.self_reports}
-            externalShares={patient.external_shares}
-          />
-        </TabsContent>
+        </div>
       </Tabs>
     </div>
   );
@@ -373,13 +637,177 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function FirstVisitDocumentsPanel({
+  cases,
+  documents,
+}: {
+  cases: Patient['cases'];
+  documents: Patient['first_visit_documents'];
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">初回訪問文書・交付記録</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {documents.length === 0 ? (
+          <EmptyState
+            icon={FileQuestion}
+            title="初回訪問文書はまだありません"
+            description="初回訪問の完了後に、緊急連絡先と交付記録を含む文書が自動作成されます。"
+          />
+        ) : (
+          <div className="space-y-4">
+            {documents.map((document) => {
+              const careCase = cases.find((item) => item.id === document.case_id) ?? null;
+
+              return (
+                <div
+                  key={document.id}
+                  className="rounded-2xl border border-border/70 bg-muted/10 p-4"
+                >
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium text-foreground">初回訪問文書</p>
+                        <Badge variant="outline">
+                          ケース {careCase ? careCase.status : document.case_id}
+                        </Badge>
+                        {document.delivered_at ? (
+                          <Badge>交付記録あり</Badge>
+                        ) : (
+                          <Badge variant="secondary">交付未記録</Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        作成日時 {format(new Date(document.created_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        交付先 {document.delivered_to ?? '未記録'} / 交付日時{' '}
+                        {document.delivered_at
+                          ? format(new Date(document.delivered_at), 'yyyy/MM/dd HH:mm', {
+                              locale: ja,
+                            })
+                          : '未記録'}
+                      </p>
+                    </div>
+
+                    {document.document_url ? (
+                      <Link
+                        href={document.document_url}
+                        target="_blank"
+                        className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                      >
+                        <FileDown className="mr-1.5 size-4" aria-hidden="true" />
+                        PDF
+                      </Link>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">緊急連絡先</p>
+                    {document.emergency_contacts.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        緊急連絡先は文書作成時点で未登録でした。
+                      </p>
+                    ) : (
+                      <div className="grid gap-2 md:grid-cols-2">
+                        {document.emergency_contacts.map((contact) => (
+                          <div
+                            key={contact.id ?? `${document.id}-${contact.name}`}
+                            className="rounded-xl border border-border/60 bg-background p-3"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-sm font-medium text-foreground">{contact.name}</p>
+                              <Badge variant="outline">
+                                {CONTACT_RELATION_LABELS[contact.relation ?? ''] ??
+                                  contact.relation ??
+                                  '連絡先'}
+                              </Badge>
+                              {contact.is_primary ? <Badge variant="secondary">主</Badge> : null}
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {contact.organization_name ?? '所属未登録'}
+                              {contact.department ? ` / ${contact.department}` : ''}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {contact.phone ?? contact.email ?? contact.fax ?? '連絡先未登録'}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function PatientVisitsTab({
+  patientId,
+  medicalInsuranceNumber,
+  careInsuranceNumber,
   visitSchedules,
   visitRecords,
 }: {
+  patientId: string;
+  medicalInsuranceNumber: string | null;
+  careInsuranceNumber: string | null;
   visitSchedules: Patient['visit_schedules'];
   visitRecords: Patient['visit_records'];
 }) {
+  const orgId = useOrgId();
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  const visitRecordQuery = useQuery<{ data: Patient['visit_records'] }>({
+    queryKey: ['patient-visit-records', patientId, orgId, dateFrom, dateTo],
+    enabled: Boolean(patientId && orgId),
+    initialData: { data: visitRecords },
+    queryFn: async () => {
+      const query = new URLSearchParams({
+        patient_id: patientId,
+        limit: '200',
+      });
+      if (dateFrom) query.set('date_from', dateFrom);
+      if (dateTo) query.set('date_to', dateTo);
+
+      const response = await fetch(`/api/visit-records?${query.toString()}`, {
+        headers: { 'x-org-id': orgId },
+        cache: 'no-store',
+      });
+      if (!response.ok) throw new Error('訪問記録を取得できませんでした');
+      return response.json();
+    },
+  });
+
+  const visibleVisitRecords = visitRecordQuery.data?.data ?? visitRecords;
+  const exportQuery = new URLSearchParams();
+  if (dateFrom) exportQuery.set('date_from', dateFrom);
+  if (dateTo) exportQuery.set('date_to', dateTo);
+  const exportHref = `/api/patients/${patientId}/visit-records/pdf${exportQuery.size > 0 ? `?${exportQuery.toString()}` : ''}`;
+  const printHref = `/patients/${patientId}/visit-records/print${dateFrom || dateTo ? `?${new URLSearchParams({
+    ...(dateFrom ? { dateFrom } : {}),
+    ...(dateTo ? { dateTo } : {}),
+  }).toString()}` : ''}`;
+  const currentMonthKey = format(new Date(), 'yyyy-MM');
+  const monthlyScheduledCount = visitSchedules.filter(
+    (item) => format(new Date(item.scheduled_date), 'yyyy-MM') === currentMonthKey
+  ).length;
+  const monthlyCountBadges = [
+    ...(medicalInsuranceNumber
+      ? [{ label: '医療', limit: 4 }]
+      : []),
+    ...(careInsuranceNumber
+      ? [{ label: '介護', limit: 2 }]
+      : []),
+  ];
+
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card>
@@ -387,6 +815,18 @@ function PatientVisitsTab({
           <CardTitle className="text-base">直近の訪問予定</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          {monthlyCountBadges.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {monthlyCountBadges.map((badge) => (
+                <Badge
+                  key={badge.label}
+                  variant={monthlyScheduledCount > badge.limit ? 'destructive' : 'outline'}
+                >
+                  今月 {badge.label} {monthlyScheduledCount}/{badge.limit} 回
+                </Badge>
+              ))}
+            </div>
+          ) : null}
           {visitSchedules.length === 0 ? (
             <p className="text-sm text-muted-foreground">訪問予定はありません</p>
           ) : (
@@ -419,19 +859,58 @@ function PatientVisitsTab({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">訪問記録</CardTitle>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <CardTitle className="text-base">訪問記録</CardTitle>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href={exportHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={buttonVariants({ variant: 'outline', size: 'sm' })}
+              >
+                <FileDown className="mr-1.5 size-3.5" aria-hidden="true" />
+                PDF
+              </Link>
+              <Link href={printHref} target="_blank" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+                <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
+                印刷
+              </Link>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {visitRecords.length === 0 ? (
+          <div className="flex flex-wrap gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="patient-visit-date-from" className="text-xs">開始日</Label>
+              <Input
+                id="patient-visit-date-from"
+                type="date"
+                value={dateFrom}
+                onChange={(event) => setDateFrom(event.target.value)}
+                className="h-8 w-40 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="patient-visit-date-to" className="text-xs">終了日</Label>
+              <Input
+                id="patient-visit-date-to"
+                type="date"
+                value={dateTo}
+                onChange={(event) => setDateTo(event.target.value)}
+                className="h-8 w-40 text-sm"
+              />
+            </div>
+          </div>
+          {visibleVisitRecords.length === 0 ? (
             <p className="text-sm text-muted-foreground">訪問記録はありません</p>
           ) : (
-            visitRecords.map((item) => (
+            visibleVisitRecords.map((item) => (
               <div key={item.id} className="rounded-lg border border-border p-3 text-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-medium">
+                    <Link href={`/visits/${item.id}`} className="font-medium text-primary hover:underline">
                       {format(new Date(item.visit_date ?? item.created_at), 'yyyy年M月d日(E)', { locale: ja })}
-                    </p>
+                    </Link>
                     <p className="text-muted-foreground">結果: {item.outcome_status}</p>
                   </div>
                   {item.next_visit_suggestion_date ? (
@@ -502,8 +981,18 @@ function PatientTimelineTab({
                 <div key={item.id} className="rounded-lg border border-border p-3 text-sm">
                   <p className="font-medium">{item.subject}</p>
                   <p className="text-xs text-muted-foreground">
-                    {item.reported_by_name} / {item.category} / {item.status}
+                    {item.reported_by_name}
+                    {item.relation ? ` (${item.relation})` : ''} / {item.category} / {item.status}
                   </p>
+                  <p className="mt-2 whitespace-pre-line text-xs leading-5 text-muted-foreground">
+                    {item.content}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                    {item.requested_callback ? <span>折返し希望</span> : null}
+                    {item.preferred_contact_time ? (
+                      <span>希望連絡帯 {item.preferred_contact_time}</span>
+                    ) : null}
+                  </div>
                 </div>
               ))
             )}
@@ -584,9 +1073,55 @@ function PatientRiskCard({
 
 function CommunicationQueueCard({
   queue,
+  orgId,
+  patientId,
 }: {
   queue: Patient['communication_queue'];
+  orgId: string;
+  patientId: string;
 }) {
+  const queryClient = useQueryClient();
+  const createDraftMutation = useMutation({
+    mutationFn: async (draft: Patient['communication_queue']['emergency_drafts'][number]) => {
+      const res = await fetch('/api/communication-requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          patient_id: draft.patient_id || patientId,
+          request_type: draft.request_type,
+          template_key: draft.template_key,
+          recipient_name: draft.target_name ?? draft.target_role,
+          recipient_role: draft.target_role,
+          related_entity_type: 'patient',
+          related_entity_id: draft.patient_id || patientId,
+          context_snapshot: {
+            source: 'patient_detail',
+            template_key: draft.template_key,
+          },
+          status: 'draft',
+          subject: draft.subject,
+          content: draft.content,
+        }),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message ?? '緊急連絡ドラフトの起票に失敗しました');
+      }
+      return res.json();
+    },
+    onSuccess: async () => {
+      toast.success('緊急連絡ドラフトを起票しました');
+      await queryClient.invalidateQueries({ queryKey: ['patient', patientId, orgId] });
+      await queryClient.invalidateQueries({ queryKey: ['communication-requests', orgId] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '緊急連絡ドラフトの起票に失敗しました');
+    },
+  });
+
   return (
     <Card>
       <CardHeader>
@@ -597,7 +1132,9 @@ function CommunicationQueueCard({
           <Badge variant="outline">未処理 {queue.summary.pending_count}</Badge>
           <Badge variant="outline">再架電 {queue.summary.callback_followups}</Badge>
           <Badge variant="outline">自己申告 {queue.summary.self_reports}</Badge>
-          <Badge variant="outline">報告送達 {queue.summary.delivery_backlog}</Badge>
+          <Badge variant="outline">未確認 {queue.summary.unconfirmed_count}</Badge>
+          <Badge variant="outline">返信待ち {queue.summary.reply_waiting_count}</Badge>
+          <Badge variant="outline">失敗 {queue.summary.failed_count}</Badge>
         </div>
         {queue.items.length === 0 ? (
           <p className="text-sm text-muted-foreground">未処理の連絡はありません</p>
@@ -607,7 +1144,9 @@ function CommunicationQueueCard({
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-medium">{item.title}</p>
-                  <p className="text-xs text-muted-foreground">{item.summary}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {item.patient_name ?? '患者未設定'} / {item.summary}
+                  </p>
                 </div>
                 <Badge variant={item.priority === 'urgent' ? 'destructive' : 'outline'}>
                   {item.channel}
@@ -616,6 +1155,27 @@ function CommunicationQueueCard({
             </div>
           ))
         )}
+        {queue.emergency_drafts.length > 0 ? (
+          <div className="space-y-2 pt-1">
+            <p className="text-xs font-medium text-muted-foreground">緊急連絡ドラフト</p>
+            {queue.emergency_drafts.slice(0, 3).map((draft) => (
+              <div key={draft.id} className="rounded-lg border border-border p-3 text-sm">
+                <p className="font-medium">{draft.title}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{draft.summary}</p>
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => createDraftMutation.mutate(draft)}
+                    disabled={createDraftMutation.isPending}
+                  >
+                    下書き作成
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -660,6 +1220,17 @@ function TaskAndIssueCard({
               </p>
             </div>
           ))}
+          {billingSummary.evidence
+            .filter((evidence) => evidence.blockers.length > 0)
+            .slice(0, 2)
+            .map((evidence) => (
+              <div key={evidence.id} className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm">
+                <p className="font-medium text-rose-900">算定ブロッカー</p>
+                <p className="mt-1 text-xs text-rose-800">
+                  {evidence.blockers[0]?.reason ?? evidence.exclusion_reason ?? '算定条件を確認してください'}
+                </p>
+              </div>
+            ))}
         </div>
       </CardContent>
     </Card>

@@ -186,4 +186,49 @@ describe('/api/pharmacists/[id] PATCH', () => {
       },
     });
   });
+
+  it('updates an external collaborator without requiring a site assignment', async () => {
+    const response = await PATCH(
+      createRequest(
+        {
+          action: 'update',
+          name: '外部連携 共有先',
+          name_kana: 'ガイブレンケイ キョウユウサキ',
+          phone: '090-2222-3333',
+          role: 'external_viewer',
+        },
+        { 'x-org-id': 'org_1' }
+      ),
+      { params: Promise.resolve({ id: 'user_1' }) }
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
+      site_id: undefined,
+    });
+    expect(userUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'user_1' },
+      data: expect.objectContaining({
+        name: '外部連携 共有先',
+        max_daily_visits: null,
+        max_weekly_visits: null,
+        max_travel_minutes: null,
+        can_accept_emergency: false,
+        visit_specialties: [],
+        coverage_area: [],
+      }),
+    });
+    expect(membershipUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'membership_1' },
+      data: expect.objectContaining({
+        site_id: null,
+        role: 'external_viewer',
+        can_dispense: false,
+        can_set: false,
+        can_audit_dispense: false,
+        can_audit_set: false,
+      }),
+    });
+  });
 });

@@ -5,7 +5,7 @@ type Tx = Prisma.TransactionClient;
 type BillingRuleSeed = {
   ssot_key: string;
   rule_type: string;
-  service_type: 'medical_home_visit' | 'care_home_management';
+  service_type: 'medical_home_visit' | 'care_home_management' | 'generic';
   payer_basis: PayerBasis;
   provider_scope: string | null;
   selection_mode: 'auto' | 'manual';
@@ -45,6 +45,8 @@ export type BillingCandidateSpec = {
   calculationBreakdown: Record<string, unknown>;
   sourceSnapshot: Record<string, unknown>;
 };
+
+export const HOME_CARE_BILLING_RULESET_VERSION = '2026-revision-v1';
 
 const MEDICAL_SOURCE_URL =
   'https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/0000188411_00045.html';
@@ -445,6 +447,187 @@ const OFFICIAL_HOME_CARE_RULES: BillingRuleSeed[] = [
     source_url: CARE_SOURCE_URL,
     source_note: '厚労省 令和6年度介護報酬改定 中山間地域等に居住する者へのサービス提供加算 5%',
   },
+  {
+    ssot_key: 'medical.information_provision.1',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 400,
+    name: '服薬情報等提供料1',
+    code: 'MED_INFO_PROVISION_1',
+    amount: 30,
+    conditions: {
+      information_provision_type: '1',
+      requested_by_medical_institution: true,
+      frequency_limit: 'monthly_once',
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 区分15の5 服薬情報等提供料1 30点',
+  },
+  {
+    ssot_key: 'medical.information_provision.2_medical',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 410,
+    name: '服薬情報等提供料2 イ',
+    code: 'MED_INFO_PROVISION_2_I',
+    amount: 20,
+    conditions: {
+      information_provision_type: '2_i',
+      target: 'medical_institution',
+      frequency_limit: 'monthly_once',
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 区分15の5 服薬情報等提供料2 イ 20点',
+  },
+  {
+    ssot_key: 'medical.information_provision.2_refill',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 420,
+    name: '服薬情報等提供料2 ロ',
+    code: 'MED_INFO_PROVISION_2_RO',
+    amount: 20,
+    conditions: {
+      information_provision_type: '2_ro',
+      target: 'prescriber',
+      refill_followup: true,
+      frequency_limit: 'monthly_once',
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 区分15の5 服薬情報等提供料2 ロ 20点',
+  },
+  {
+    ssot_key: 'medical.information_provision.2_care_manager',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 430,
+    name: '服薬情報等提供料2 ハ',
+    code: 'MED_INFO_PROVISION_2_HA',
+    amount: 20,
+    conditions: {
+      information_provision_type: '2_ha',
+      target: 'care_manager',
+      same_month_home_management_disallowed: true,
+      frequency_limit: 'monthly_once',
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 区分15の5 服薬情報等提供料2 ハ 20点',
+  },
+  {
+    ssot_key: 'medical.information_provision.3',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 440,
+    name: '服薬情報等提供料3',
+    code: 'MED_INFO_PROVISION_3',
+    amount: 50,
+    conditions: {
+      information_provision_type: '3',
+      pre_admission_medication_reconciliation: true,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 区分15の5 服薬情報等提供料3 50点',
+  },
+  {
+    ssot_key: 'medical.home_duplicate_interaction.change_other',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 450,
+    name: '在宅患者重複投薬・相互作用等防止管理料1 イ',
+    code: 'MED_HOME_DUPLICATE_CHANGE_OTHER',
+    amount: 40,
+    conditions: {
+      duplicate_interaction_type: '1_i',
+      residual_adjustment: false,
+      requires_prescription_change: true,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 区分15の6 在宅患者重複投薬・相互作用等防止管理料1 イ 40点',
+  },
+  {
+    ssot_key: 'medical.home_duplicate_interaction.change_residual',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 460,
+    name: '在宅患者重複投薬・相互作用等防止管理料1 ロ',
+    code: 'MED_HOME_DUPLICATE_CHANGE_RESIDUAL',
+    amount: 20,
+    conditions: {
+      duplicate_interaction_type: '1_ro',
+      residual_adjustment: true,
+      requires_prescription_change: true,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 区分15の6 在宅患者重複投薬・相互作用等防止管理料1 ロ 20点',
+  },
+  {
+    ssot_key: 'medical.home_duplicate_interaction.proposal_other',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 470,
+    name: '在宅患者重複投薬・相互作用等防止管理料2 イ',
+    code: 'MED_HOME_DUPLICATE_PROPOSAL_OTHER',
+    amount: 40,
+    conditions: {
+      duplicate_interaction_type: '2_i',
+      residual_adjustment: false,
+      proposal_reflected: true,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 区分15の6 在宅患者重複投薬・相互作用等防止管理料2 イ 40点',
+  },
+  {
+    ssot_key: 'medical.home_duplicate_interaction.proposal_residual',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 480,
+    name: '在宅患者重複投薬・相互作用等防止管理料2 ロ',
+    code: 'MED_HOME_DUPLICATE_PROPOSAL_RESIDUAL',
+    amount: 20,
+    conditions: {
+      duplicate_interaction_type: '2_ro',
+      residual_adjustment: true,
+      proposal_reflected: true,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 区分15の6 在宅患者重複投薬・相互作用等防止管理料2 ロ 20点',
+  },
 ];
 
 function buildingTier(buildingPatientCount: number) {
@@ -660,6 +843,7 @@ export async function buildBillingCandidateSpecs(
         source_url: baseRule.source_url,
         source_note: baseRule.source_note,
         selection_mode: baseRule.selection_mode,
+        ruleset_version: HOME_CARE_BILLING_RULESET_VERSION,
       },
     });
   }
@@ -698,6 +882,7 @@ export async function buildBillingCandidateSpecs(
         source_url: manualRule.source_url,
         source_note: manualRule.source_note,
         selection_mode: manualRule.selection_mode,
+        ruleset_version: HOME_CARE_BILLING_RULESET_VERSION,
       },
     });
   }

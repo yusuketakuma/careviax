@@ -1,0 +1,41 @@
+{
+  "bucketName": "careviax-audit-archive",
+  "rules": [
+    {
+      "id": "careviax-audit-logs-five-year-retention",
+      "status": "Enabled",
+      "filter": {
+        "prefix": "audit-logs/"
+      },
+      "transitions": [
+        {
+          "days": 30,
+          "storageClass": "GLACIER"
+        },
+        {
+          "days": 365,
+          "storageClass": "DEEP_ARCHIVE"
+        }
+      ],
+      "expiration": {
+        "days": 1825
+      },
+      "noncurrentVersionTransitions": [
+        {
+          "noncurrentDays": 30,
+          "storageClass": "GLACIER"
+        }
+      ],
+      "noncurrentVersionExpiration": {
+        "noncurrentDays": 1825
+      }
+    }
+  ],
+  "objectLock": {
+    "enabled": true,
+    "defaultRetention": {
+      "mode": "COMPLIANCE",
+      "years": 5
+    }
+  }
+}

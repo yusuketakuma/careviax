@@ -124,6 +124,19 @@ describe('protected POST routes auth/body matrix', () => {
         billingCandidate: {
           findMany: vi.fn().mockResolvedValue([]),
         },
+        billingEvidence: {
+          findMany: vi.fn().mockResolvedValue([]),
+          count: vi.fn().mockResolvedValue(0),
+        },
+        tracingReport: {
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        careReport: {
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        inquiryRecord: {
+          findMany: vi.fn().mockResolvedValue([]),
+        },
         auditLog: {
           create: vi.fn().mockResolvedValue({}),
         },

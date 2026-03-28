@@ -21,6 +21,7 @@ type FacilityStandard = {
   expiry_date: string | null;
   renewal_alert_date: string | null;
   requirements_status: Record<string, boolean> | null;
+  claim_status: 'claimable' | 'blocked' | 'unknown';
 };
 
 // --- Helpers ---
@@ -87,37 +88,15 @@ function ExpiryCell({ expiryDate }: { expiryDate: string | null }) {
   return <span className="text-xs text-muted-foreground">{formatted}</span>;
 }
 
-// --- Sample data (placeholder) ---
-
-const SAMPLE_STANDARDS: FacilityStandard[] = [
-  {
-    id: '1',
-    standard_type: '地域連携薬局',
-    filed_date: '2024-04-01',
-    effective_date: '2024-04-01',
-    expiry_date: '2027-03-31',
-    renewal_alert_date: '2027-01-01',
-    requirements_status: { 麻薬小売業者免許: true, 特定の研修: true, 専門的な薬剤師: false },
-  },
-  {
-    id: '2',
-    standard_type: '健康サポート薬局',
-    filed_date: '2023-10-01',
-    effective_date: '2023-10-01',
-    expiry_date: '2026-09-30',
-    renewal_alert_date: '2026-07-01',
-    requirements_status: { 研修修了薬剤師: true, 設備基準: true, 開局時間: true },
-  },
-  {
-    id: '3',
-    standard_type: '調剤基本料1',
-    filed_date: '2024-06-01',
-    effective_date: '2024-06-01',
-    expiry_date: null,
-    renewal_alert_date: null,
-    requirements_status: { 処方集中率要件: true },
-  },
-];
+function ClaimStatusBadge({ status }: { status: FacilityStandard['claim_status'] }) {
+  if (status === 'claimable') {
+    return <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">算定可</Badge>;
+  }
+  if (status === 'blocked') {
+    return <Badge variant="destructive">算定不可</Badge>;
+  }
+  return <Badge variant="outline">判定待ち</Badge>;
+}
 
 // --- Main ---
 
@@ -130,14 +109,13 @@ export function FacilityStandardsContent() {
       const res = await fetch('/api/admin/facility-standards', {
         headers: { 'x-org-id': orgId },
       });
-      if (res.status === 404) return { data: SAMPLE_STANDARDS };
       if (!res.ok) throw new Error('施設基準の取得に失敗しました');
       return res.json() as Promise<{ data: FacilityStandard[] }>;
     },
     enabled: !!orgId,
   });
 
-  const standards = data?.data ?? SAMPLE_STANDARDS;
+  const standards = data?.data ?? [];
 
   // Alerts: expiry within 90 days
   const alertItems = standards.filter((s) => {
@@ -174,6 +152,11 @@ export function FacilityStandardsContent() {
         header: '有効期限',
         cell: ({ row }) => <ExpiryCell expiryDate={row.original.expiry_date} />,
       },
+      {
+        accessorKey: 'claim_status',
+        header: '算定可否',
+        cell: ({ row }) => <ClaimStatusBadge status={row.original.claim_status} />,
+      },
     ],
     []
   );
@@ -181,12 +164,19 @@ export function FacilityStandardsContent() {
   return (
     <div className="space-y-4">
       {/* Alert banner */}
-      {alertItems.length > 0 && (
+      {(alertItems.length > 0 || standards.some((item) => item.claim_status === 'blocked')) && (
         <div className="flex items-start gap-3 rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <div>
-            <p className="font-medium">更新期限が近い届出があります</p>
+            <p className="font-medium">更新期限または要件未達の届出があります</p>
             <ul className="mt-1 list-inside list-disc text-orange-700">
+              {standards
+                .filter((item) => item.claim_status === 'blocked')
+                .map((item) => (
+                  <li key={`${item.id}:blocked`}>
+                    {item.standard_type} — 要件未達のため加算算定不可
+                  </li>
+                ))}
               {alertItems.map((s) => {
                 const days = differenceInDays(parseISO(s.expiry_date!), new Date());
                 return (

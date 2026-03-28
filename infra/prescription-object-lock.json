@@ -1,0 +1,18 @@
+{
+  "bucket": "careviax-files",
+  "objectLockConfiguration": {
+    "ObjectLockEnabled": "Enabled",
+    "Rule": {
+      "DefaultRetention": {
+        "Mode": "COMPLIANCE",
+        "Years": 5
+      }
+    }
+  },
+  "scopes": [
+    {
+      "prefix": "prescriptions/",
+      "description": "紙/FAX処方箋の原本スキャン保存領域"
+    }
+  ]
+}

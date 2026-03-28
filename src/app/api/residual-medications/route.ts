@@ -7,13 +7,40 @@ import { z } from 'zod';
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const { searchParams } = new URL(req.url);
   const visitRecordId = searchParams.get('visit_record_id') ?? undefined;
+  const patientId = searchParams.get('patient_id') ?? undefined;
+  const limitParam = Number(searchParams.get('limit') ?? '');
+  const take = Number.isFinite(limitParam) && limitParam > 0 ? Math.floor(limitParam) : undefined;
+
+  let patientVisitRecordIds: string[] | null = null;
+  if (patientId) {
+    const visitRecords = await prisma.visitRecord.findMany({
+      where: {
+        org_id: req.orgId,
+        patient_id: patientId,
+      },
+      select: { id: true },
+    });
+
+    patientVisitRecordIds = visitRecords.map((record) => record.id);
+    if (visitRecordId && !patientVisitRecordIds.includes(visitRecordId)) {
+      return success({ data: [] });
+    }
+    if (!visitRecordId && patientVisitRecordIds.length === 0) {
+      return success({ data: [] });
+    }
+  }
 
   const records = await prisma.residualMedication.findMany({
     where: {
       org_id: req.orgId,
-      ...(visitRecordId ? { visit_record_id: visitRecordId } : {}),
+      ...(visitRecordId
+        ? { visit_record_id: visitRecordId }
+        : patientVisitRecordIds
+          ? { visit_record_id: { in: patientVisitRecordIds } }
+          : {}),
     },
     orderBy: { created_at: 'asc' },
+    ...(take ? { take } : {}),
   });
 
   return success({ data: records });

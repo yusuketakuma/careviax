@@ -2,14 +2,15 @@
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, parseISO, differenceInYears } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { Archive, Search } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Search } from 'lucide-react';
+import { LoadingButton } from '@/components/ui/loading-button';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type PatientRow = {
@@ -119,17 +120,65 @@ const columns: ColumnDef<PatientRow>[] = [
 export function PatientsTable() {
   const orgId = useOrgId();
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedPatients, setSelectedPatients] = useState<PatientRow[]>([]);
+  const [exportFeedback, setExportFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['patients', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/patients?limit=100', {
+      const res = await fetch('/api/patients?limit=500', {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('患者一覧の取得に失敗しました');
       return res.json() as Promise<{ data: PatientRow[] }>;
     },
     enabled: !!orgId,
+  });
+
+  const bulkExportMutation = useMutation({
+    mutationFn: async (patientIds: string[]) => {
+      const res = await fetch('/api/patients/medications/bulk-export', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          patient_ids: patientIds,
+        }),
+      });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(
+          payload?.message ?? '薬歴 PDF 一括出力のキュー登録に失敗しました'
+        );
+      }
+      return payload as {
+        data: {
+          jobId: string;
+          queuePosition: number;
+          patientCount: number;
+          startedImmediately?: boolean;
+        };
+      };
+    },
+    onSuccess: (payload) => {
+      setExportFeedback({
+        type: 'success',
+        message: payload.data.startedImmediately
+          ? `${payload.data.patientCount}名分の薬歴 PDF 出力を開始しました。完了すると通知から ZIP を開けます。`
+          : `${payload.data.patientCount}名分の薬歴 PDF をキュー登録しました。完了すると通知から ZIP を開けます。`,
+      });
+    },
+    onError: (cause) => {
+      setExportFeedback({
+        type: 'error',
+        message: cause instanceof Error ? cause.message : '一括出力に失敗しました',
+      });
+    },
   });
 
   const filtered = useMemo(() => {
@@ -145,26 +194,58 @@ export function PatientsTable() {
 
   return (
     <div className="space-y-4">
-      <div className="relative max-w-sm">
-        <Search
-          className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-          aria-hidden="true"
-        />
-        <Input
-          type="search"
-          placeholder="氏名・フリガナで検索"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-8"
-          aria-label="患者検索"
-        />
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="relative max-w-sm flex-1">
+          <Search
+            className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <Input
+            type="search"
+            placeholder="氏名・フリガナで検索"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-8"
+            aria-label="患者検索"
+          />
+        </div>
+        <LoadingButton
+          type="button"
+          variant="outline"
+          className="shrink-0"
+          loading={bulkExportMutation.isPending}
+          loadingLabel="ZIP生成をキュー登録中..."
+          disabled={selectedPatients.length === 0}
+          onClick={() => bulkExportMutation.mutate(selectedPatients.map((patient) => patient.id))}
+        >
+          <Archive className="size-4" aria-hidden="true" />
+          薬歴PDFを一括出力
+        </LoadingButton>
       </div>
+
+      {exportFeedback ? (
+        <div
+          className={
+            exportFeedback.type === 'success'
+              ? 'rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800'
+              : 'rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive'
+          }
+        >
+          {exportFeedback.message}
+        </div>
+      ) : null}
 
       <DataTable
         columns={columns}
         data={filtered}
         isLoading={isLoading}
         caption="患者一覧"
+        enableRowSelection
+        getRowId={(row) => row.id}
+        onSelectionChange={(rows) => {
+          setSelectedPatients(rows);
+          setExportFeedback(null);
+        }}
       />
     </div>
   );

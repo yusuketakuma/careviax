@@ -157,6 +157,7 @@ model VisitRecord {
   postpone_reason           String?
   revisit_reason            String?
   structured_soap            Json? // StructuredSoap (構造化SOAP、薬学的評価シート7項目含む)
+  visit_geo_log             Json? // optional geolocation log for visit start/end
   attachments               Json? // S3 URLs
   version                   Int            @default(1)
   created_at                DateTime       @default(now())

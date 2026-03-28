@@ -1,5 +1,6 @@
-import { createHash } from 'crypto';
+import { createHash, timingSafeEqual } from 'crypto';
 import { startOfDay } from 'date-fns';
+import { decode, encode } from 'next-auth/jwt';
 import { prisma } from '@/lib/db/client';
 
 type ExternalGrantRecord = {
@@ -31,11 +32,82 @@ export function hashExternalAccessOtp(otp: string) {
   return createHash('sha256').update(otp).digest('hex');
 }
 
+const EXTERNAL_ACCESS_TOKEN_SALT = 'careviax-external-access';
+
+type ExternalAccessTokenPayload = {
+  grant_id: string;
+  org_id: string;
+  patient_id: string;
+  purpose: 'external_access_grant';
+};
+
+function getExternalAccessSecret() {
+  return (
+    process.env.EXTERNAL_ACCESS_TOKEN_SECRET ??
+    process.env.NEXTAUTH_SECRET ??
+    'careviax-external-access'
+  );
+}
+
+function isExternalAccessTokenPayload(
+  payload: Record<string, unknown>
+): payload is Record<string, unknown> & ExternalAccessTokenPayload {
+  return (
+    payload.purpose === 'external_access_grant' &&
+    typeof payload.grant_id === 'string' &&
+    typeof payload.org_id === 'string' &&
+    typeof payload.patient_id === 'string'
+  );
+}
+
+export async function issueExternalAccessToken(args: {
+  grantId: string;
+  orgId: string;
+  patientId: string;
+  expiresHours: number;
+}) {
+  return encode({
+    secret: getExternalAccessSecret(),
+    salt: EXTERNAL_ACCESS_TOKEN_SALT,
+    maxAge: args.expiresHours * 60 * 60,
+    token: {
+      sub: args.grantId,
+      grant_id: args.grantId,
+      org_id: args.orgId,
+      patient_id: args.patientId,
+      purpose: 'external_access_grant',
+    } satisfies ExternalAccessTokenPayload & { sub: string },
+  });
+}
+
+async function decodeExternalAccessToken(token: string) {
+  const payload = await decode({
+    token,
+    secret: getExternalAccessSecret(),
+    salt: EXTERNAL_ACCESS_TOKEN_SALT,
+  }).catch(() => null);
+
+  if (!payload || !isExternalAccessTokenPayload(payload as Record<string, unknown>)) {
+    return null;
+  }
+
+  return payload as Record<string, unknown> & ExternalAccessTokenPayload;
+}
+
 export async function validateExternalAccessGrant(
   token: string,
   otp: string | null | undefined
 ): Promise<ExternalAccessValidationResult> {
   if (!token || token.length < 8) {
+    return {
+      ok: false,
+      kind: 'not_found',
+      message: '共有リンクが無効です',
+    };
+  }
+
+  const tokenPayload = await decodeExternalAccessToken(token);
+  if (!tokenPayload) {
     return {
       ok: false,
       kind: 'not_found',
@@ -56,7 +128,14 @@ export async function validateExternalAccessGrant(
     },
   });
 
-  if (!grant || grant.revoked_at || grant.expires_at < new Date()) {
+  if (
+    !grant ||
+    grant.id !== tokenPayload.grant_id ||
+    grant.org_id !== tokenPayload.org_id ||
+    grant.patient_id !== tokenPayload.patient_id ||
+    grant.revoked_at ||
+    grant.expires_at < new Date()
+  ) {
     return {
       ok: false,
       kind: 'not_found',
@@ -73,7 +152,12 @@ export async function validateExternalAccessGrant(
       };
     }
 
-    if (hashExternalAccessOtp(otp) !== grant.otp_hash) {
+    const expected = Buffer.from(grant.otp_hash, 'hex');
+    const actual = Buffer.from(hashExternalAccessOtp(otp), 'hex');
+    if (
+      expected.length !== actual.length ||
+      !timingSafeEqual(expected, actual)
+    ) {
       return {
         ok: false,
         kind: 'validation',
@@ -92,6 +176,65 @@ export async function markExternalAccessViewed(grantId: string) {
   });
 }
 
+function formatShareDate(value: Date) {
+  return new Intl.DateTimeFormat('ja-JP', {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  }).format(value);
+}
+
+function buildExternalSharedSummary(args: {
+  patientName: string;
+  allergyInfo: string | null;
+  medicationProfiles: Array<{
+    drug_name: string;
+    dose: string | null;
+    frequency: string | null;
+  }> | null;
+  visitSchedules: Array<{
+    scheduled_date: Date;
+  }> | null;
+  careReports: Array<{
+    report_type: string;
+    created_at: Date;
+  }> | null;
+}) {
+  const medicationCount = args.medicationProfiles?.length ?? 0;
+  const medicationNames = (args.medicationProfiles ?? []).slice(0, 4).map((item) => item.drug_name);
+  const nextVisitDate = args.visitSchedules?.[0]?.scheduled_date ?? null;
+  const latestCareReport = args.careReports?.[0] ?? null;
+
+  const headlineParts = [
+    medicationCount > 0 ? `服薬中 ${medicationCount}剤` : null,
+    nextVisitDate ? `次回訪問 ${formatShareDate(nextVisitDate)}` : null,
+    latestCareReport ? `共有報告 ${args.careReports?.length ?? 0}件` : null,
+  ].filter((value): value is string => Boolean(value));
+
+  const bullets = [
+    medicationCount > 0
+      ? `主な処方薬: ${medicationNames.join(' / ')}`
+      : args.medicationProfiles
+        ? '服薬情報はまだ登録されていません。'
+        : null,
+    nextVisitDate ? `直近の訪問予定: ${formatShareDate(nextVisitDate)}` : null,
+    latestCareReport
+      ? `最新の共有報告: ${latestCareReport.report_type} (${formatShareDate(latestCareReport.created_at)})`
+      : args.careReports
+        ? '共有済み報告書はありません。'
+        : null,
+    args.allergyInfo ? 'アレルギー情報を共有しています。' : null,
+  ].filter((value): value is string => Boolean(value));
+
+  return {
+    headline:
+      headlineParts.join(' / ') || `${args.patientName}さんの共有情報を確認できます。`,
+    bullets,
+    key_medications: medicationNames,
+    next_visit_date: nextVisitDate?.toISOString() ?? null,
+  };
+}
+
 export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
   const scope = ((grant.scope ?? {}) as Record<string, boolean>) ?? {};
 
@@ -102,7 +245,6 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
       name: true,
       birth_date: true,
       gender: true,
-      phone: true,
       ...(scope.allergy_info === true ? { allergy_info: true } : {}),
     },
   });
@@ -204,12 +346,46 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
     });
   }
 
+  let selfReportHistory: Array<Record<string, unknown>> = [];
+  if ((scope as Record<string, unknown>).self_report_history === true) {
+    selfReportHistory =
+      (await prisma.patientSelfReport?.findMany?.({
+        where: {
+          patient_id: grant.patient_id,
+          org_id: grant.org_id,
+        },
+        select: {
+          id: true,
+          reported_by_name: true,
+          relation: true,
+          category: true,
+          subject: true,
+          content: true,
+          requested_callback: true,
+          preferred_contact_time: true,
+          status: true,
+          created_at: true,
+          triaged_at: true,
+        },
+        orderBy: { created_at: 'desc' },
+        take: 8,
+      })) ?? [];
+  }
+
   return {
     patient,
     ...(allergyInfo !== null ? { allergy_info: allergyInfo } : {}),
     ...(medicationProfiles !== null ? { medication_profiles: medicationProfiles } : {}),
     ...(visitSchedules !== null ? { visit_schedules: visitSchedules } : {}),
     ...(careReports !== null ? { care_reports: careReports } : {}),
+    self_report_history: selfReportHistory,
+    shared_summary: buildExternalSharedSummary({
+      patientName: patient.name,
+      allergyInfo,
+      medicationProfiles,
+      visitSchedules,
+      careReports,
+    }),
     scope,
     expires_at: grant.expires_at,
   };

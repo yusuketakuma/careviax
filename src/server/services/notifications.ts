@@ -1,6 +1,9 @@
 import { Prisma, type NotificationType } from '@prisma/client';
+import { LineNotificationAdapter } from '@/server/adapters/line';
+import { SmsNotificationAdapter } from '@/server/adapters/sms';
 
 type Tx = Prisma.TransactionClient;
+type NotificationChannel = 'in_app' | 'sms' | 'line' | 'email';
 
 type DispatchNotificationEventInput = {
   orgId: string;
@@ -18,27 +21,44 @@ function uniqueStrings(values: Array<string | null | undefined>) {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
 }
 
-export async function dispatchNotificationEvent(
-  tx: Tx,
-  input: DispatchNotificationEventInput
-) {
-  const rules = await tx.notificationRule.findMany({
-    where: {
-      org_id: input.orgId,
-      event_type: input.eventType,
-      enabled: true,
-      channel: 'in_app',
-    },
-  });
+const smsAdapter = new SmsNotificationAdapter();
+const lineAdapter = new LineNotificationAdapter();
 
-  const roleRecipients = rules.flatMap((rule) => {
+function getEnabledRulesForChannel(
+  rules: Array<{
+    channel: string;
+    enabled: boolean;
+    recipients: Prisma.JsonValue;
+  }>,
+  channel: NotificationChannel
+) {
+  return rules.filter((rule) => rule.channel === channel && rule.enabled);
+}
+
+async function resolveTargetUserIds(
+  tx: Tx,
+  input: Pick<DispatchNotificationEventInput, 'orgId' | 'explicitUserIds'>,
+  rules: Array<{
+    channel: string;
+    enabled: boolean;
+    recipients: Prisma.JsonValue;
+  }>,
+  channel: NotificationChannel
+) {
+  const channelRules = rules.filter((rule) => rule.channel === channel);
+  const enabledRules = getEnabledRulesForChannel(rules, channel);
+  if (channel !== 'in_app' && enabledRules.length === 0) {
+    return [];
+  }
+
+  const roleRecipients = enabledRules.flatMap((rule) => {
     const recipients = rule.recipients as {
       roles?: string[];
       user_ids?: string[];
     } | null;
     return recipients?.roles ?? [];
   });
-  const userRecipients = rules.flatMap((rule) => {
+  const userRecipients = enabledRules.flatMap((rule) => {
     const recipients = rule.recipients as {
       roles?: string[];
       user_ids?: string[];
@@ -63,14 +83,36 @@ export async function dispatchNotificationEvent(
           },
         });
 
-  const targetUserIds = uniqueStrings([
-    ...(input.explicitUserIds ?? []),
+  const allowExplicitRecipients =
+    channel === 'in_app'
+      ? channelRules.length === 0 || enabledRules.length > 0
+      : enabledRules.length > 0;
+
+  return uniqueStrings([
+    ...(allowExplicitRecipients ? (input.explicitUserIds ?? []) : []),
     ...userRecipients,
     ...membershipRecipients.map((membership) => membership.user_id),
   ]);
+}
+
+export async function dispatchNotificationEvent(
+  tx: Tx,
+  input: DispatchNotificationEventInput
+) {
+  const rules = await tx.notificationRule.findMany({
+    where: {
+      org_id: input.orgId,
+      event_type: input.eventType,
+    },
+  });
+  const targetUserIds = await resolveTargetUserIds(tx, input, rules, 'in_app');
 
   if (targetUserIds.length === 0) {
-    return [];
+    const smsUserIds = await resolveTargetUserIds(tx, input, rules, 'sms');
+    const lineUserIds = await resolveTargetUserIds(tx, input, rules, 'line');
+    if (smsUserIds.length === 0 && lineUserIds.length === 0) {
+      return [];
+    }
   }
 
   const notifications = [];
@@ -125,6 +167,36 @@ export async function dispatchNotificationEvent(
         },
       })
     );
+  }
+
+  const smsUserIds = await resolveTargetUserIds(tx, input, rules, 'sms');
+  const lineUserIds = await resolveTargetUserIds(tx, input, rules, 'line');
+  const externalUserIds = uniqueStrings([...smsUserIds, ...lineUserIds]);
+
+  if (externalUserIds.length > 0) {
+    const users = await tx.user.findMany({
+      where: {
+        org_id: input.orgId,
+        id: { in: externalUserIds },
+        is_active: true,
+      },
+      select: {
+        id: true,
+        phone: true,
+      },
+    });
+    const usersById = new Map(users.map((user) => [user.id, user]));
+
+    for (const userId of smsUserIds) {
+      const phoneNumber = usersById.get(userId)?.phone;
+      if (!phoneNumber) continue;
+      await smsAdapter.sendSms(phoneNumber, `${input.title}\n${input.message}`);
+    }
+
+    for (const userId of lineUserIds) {
+      if (!usersById.has(userId)) continue;
+      await lineAdapter.sendMessage(userId, `${input.title}\n${input.message}`);
+    }
   }
 
   return notifications;

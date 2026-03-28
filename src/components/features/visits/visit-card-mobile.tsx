@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef, type TouchEvent } from 'react';
 import { MapPin, Clock, Navigation, Play } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -13,7 +14,9 @@ export type VisitStatus =
   | 'in_progress'
   | 'completed'
   | 'cancelled'
-  | 'postponed';
+  | 'postponed'
+  | 'rescheduled'
+  | 'no_show';
 
 export interface VisitCardMobileProps {
   id: string;
@@ -21,10 +24,14 @@ export interface VisitCardMobileProps {
   address: string;
   lat?: number;
   lng?: number;
+  routeOrder?: number | null;
   scheduledTimeStart?: string;
   scheduledTimeEnd?: string;
   status: VisitStatus;
+  carryItemsStatus?: string | null;
+  mustCheckToday?: string[];
   onStartVisit?: (id: string) => void;
+  onCompleteVisit?: (id: string) => void;
   className?: string;
 }
 
@@ -40,6 +47,8 @@ const STATUS_CONFIG: Record<
   completed: { label: '完了', variant: 'secondary' },
   cancelled: { label: 'キャンセル', variant: 'destructive' },
   postponed: { label: '延期', variant: 'outline' },
+  rescheduled: { label: '再調整', variant: 'outline' },
+  no_show: { label: '不在', variant: 'destructive' },
 };
 
 function buildMapsUrl(address: string, lat?: number, lng?: number): string {
@@ -55,14 +64,19 @@ export function VisitCardMobile({
   address,
   lat,
   lng,
+  routeOrder,
   scheduledTimeStart,
   scheduledTimeEnd,
   status,
+  carryItemsStatus,
+  mustCheckToday = [],
   onStartVisit,
+  onCompleteVisit,
   className,
 }: VisitCardMobileProps) {
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const config = STATUS_CONFIG[status] ?? { label: status, variant: 'outline' as const };
-  const isActionable = status === 'ready' || status === 'in_preparation';
+  const isActionable = status === 'ready' || status === 'in_preparation' || status === 'departed';
   const isCompleted = status === 'completed' || status === 'cancelled';
   const mapsUrl = buildMapsUrl(address, lat, lng);
 
@@ -70,6 +84,45 @@ export function VisitCardMobile({
     scheduledTimeStart && scheduledTimeEnd
       ? `${scheduledTimeStart} 〜 ${scheduledTimeEnd}`
       : scheduledTimeStart ?? null;
+
+  const showStartAction = isActionable && onStartVisit;
+  const showCompleteAction = status === 'in_progress' && onCompleteVisit;
+  const swipeHint = showStartAction
+    ? showCompleteAction
+      ? '右スワイプで訪問開始、左スワイプで完了'
+      : '右スワイプで訪問開始'
+    : showCompleteAction
+      ? '左スワイプで訪問完了'
+      : null;
+
+  const handleTouchStart = (event: TouchEvent<HTMLElement>) => {
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+  };
+
+  const handleTouchEnd = (event: TouchEvent<HTMLElement>) => {
+    if (!touchStartRef.current) return;
+
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+
+    const { x, y } = touchStartRef.current;
+    touchStartRef.current = null;
+
+    const deltaX = touch.clientX - x;
+    const deltaY = Math.abs(touch.clientY - y);
+    if (deltaY > 48) return;
+
+    if (deltaX > 72 && showStartAction) {
+      onStartVisit(id);
+      return;
+    }
+
+    if (deltaX < -72 && showCompleteAction) {
+      onCompleteVisit(id);
+    }
+  };
 
   return (
     <article
@@ -79,6 +132,8 @@ export function VisitCardMobile({
         className
       )}
       aria-label={`訪問カード: ${patientName}`}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
     >
       {/* Header: patient name + status badge */}
       <div className="flex items-start justify-between gap-2">
@@ -95,6 +150,30 @@ export function VisitCardMobile({
         <MapPin className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
         <span className="line-clamp-2">{address}</span>
       </div>
+
+      {(routeOrder != null || carryItemsStatus || mustCheckToday.length > 0) && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {routeOrder != null && <Badge variant="secondary">順路 {routeOrder}</Badge>}
+          {carryItemsStatus && (
+            <Badge
+              variant={
+                carryItemsStatus === 'blocked'
+                  ? 'destructive'
+                  : carryItemsStatus === 'partial'
+                    ? 'default'
+                    : 'outline'
+              }
+            >
+              持参物 {carryItemsStatus}
+            </Badge>
+          )}
+          {mustCheckToday.slice(0, 2).map((item) => (
+            <Badge key={item} variant="outline" className="max-w-full truncate">
+              {item}
+            </Badge>
+          ))}
+        </div>
+      )}
 
       {/* Time */}
       {timeLabel && (
@@ -120,7 +199,7 @@ export function VisitCardMobile({
           ナビ起動
         </a>
 
-        {isActionable && onStartVisit && (
+        {showStartAction && (
           <Button
             size="sm"
             className="min-h-[44px] flex-1"
@@ -131,7 +210,21 @@ export function VisitCardMobile({
             訪問開始
           </Button>
         )}
+
+        {!showStartAction && showCompleteAction && (
+          <Button
+            size="sm"
+            className="min-h-[44px] flex-1 bg-emerald-600 hover:bg-emerald-700"
+            onClick={() => onCompleteVisit(id)}
+            aria-label={`${patientName}の訪問を完了`}
+          >
+            <Play className="mr-1.5 h-4 w-4" aria-hidden="true" />
+            訪問完了
+          </Button>
+        )}
       </div>
+
+      {swipeHint && <p className="mt-3 text-xs text-muted-foreground">{swipeHint}</p>}
     </article>
   );
 }

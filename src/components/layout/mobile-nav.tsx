@@ -14,10 +14,10 @@ interface BottomNavItem {
 }
 
 const bottomNavItems: BottomNavItem[] = [
-  { label: '本日の訪問', href: '/dashboard/visits', icon: Car },
-  { label: '患者', href: '/dashboard/patients', icon: Users },
-  { label: 'スケジュール', href: '/dashboard/schedule', icon: Calendar },
-  { label: '通知', href: '/dashboard/notifications', icon: Bell },
+  { label: '本日の訪問', href: '/visits', icon: Car },
+  { label: '患者', href: '/patients', icon: Users },
+  { label: 'スケジュール', href: '/schedules', icon: Calendar },
+  { label: '通知', href: '/notifications', icon: Bell },
 ];
 
 export function MobileNav() {

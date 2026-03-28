@@ -22,6 +22,11 @@ type ExternalGrant = {
   expires_at: string;
   accessed_at: string | null;
   created_at: string;
+  self_report_summary: {
+    total: number;
+    open: number;
+    latest_at: string | null;
+  };
 };
 
 type SelfReport = {
@@ -224,6 +229,15 @@ export function ExternalViewerContent() {
                       有効期限: {format(new Date(grant.expires_at), 'yyyy年M月d日 HH:mm', { locale: ja })}
                     </span>
                     <span>{grant.accessed_at ? '閲覧済み' : '未閲覧'}</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    <span>自己申告 {grant.self_report_summary.total} 件</span>
+                    <span>未解決 {grant.self_report_summary.open} 件</span>
+                    {grant.self_report_summary.latest_at ? (
+                      <span>
+                        最新 {format(new Date(grant.self_report_summary.latest_at), 'M/d HH:mm', { locale: ja })}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="mt-3">
                     <Link

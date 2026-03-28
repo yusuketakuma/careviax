@@ -1,8 +1,8 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import type { AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError } from '@/lib/api/response';
+import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
 
@@ -36,9 +36,13 @@ export const GET = withAuthContext<Record<string, string>>(
           select: {
             id: true,
             drug_name: true,
+            drug_code: true,
+            dosage_form: true,
             dose: true,
             frequency: true,
             unit: true,
+            packaging_instructions: true,
+            notes: true,
           },
         },
       },
@@ -50,7 +54,7 @@ export const GET = withAuthContext<Record<string, string>>(
 );
 
 export const POST = withAuthContext<Record<string, string>>(
-  async (req: NextRequest, ctx: AuthContext) => {
+  async (req: NextRequest, ctx: AuthContext): Promise<NextResponse> => {
     const body = await req.json().catch(() => null);
     if (!body) return validationError('リクエストボディが不正です');
 
@@ -64,17 +68,58 @@ export const POST = withAuthContext<Record<string, string>>(
     const result = await withOrgContext(ctx.orgId, async (tx) => {
       const plan = await tx.setPlan.findFirst({
         where: { id: plan_id, org_id: ctx.orgId },
-        select: { id: true },
+        select: { id: true, cycle_id: true },
       });
-      if (!plan) throw new Error('NOT_FOUND:指定されたセットプランが見つかりません');
+      if (!plan) {
+        return {
+          kind: 'error' as const,
+          response: notFound('指定されたセットプランが見つかりません'),
+        };
+      }
 
       const line = await tx.prescriptionLine.findFirst({
         where: { id: line_id, org_id: ctx.orgId },
+        select: {
+          id: true,
+          intake: {
+            select: {
+              cycle_id: true,
+            },
+          },
+        },
+      });
+      if (!line) {
+        return {
+          kind: 'error' as const,
+          response: notFound('指定された処方ラインが見つかりません'),
+        };
+      }
+
+      if (line.intake.cycle_id !== plan.cycle_id) {
+        return {
+          kind: 'error' as const,
+          response: validationError('指定された処方ラインはこのセットプランに紐づいていません'),
+        };
+      }
+
+      const duplicate = await tx.setBatch.findFirst({
+        where: {
+          org_id: ctx.orgId,
+          plan_id,
+          line_id,
+          slot,
+          day_number,
+        },
         select: { id: true },
       });
-      if (!line) throw new Error('NOT_FOUND:指定された処方ラインが見つかりません');
+      if (duplicate) {
+        return {
+          kind: 'error' as const,
+          response: conflict('同じ処方ライン・スロット・日付のセットバッチがすでに存在します'),
+        };
+      }
 
-      return tx.setBatch.create({
+      const batch = await tx.setBatch.create({
         data: {
           org_id: ctx.orgId,
           plan_id,
@@ -89,16 +134,24 @@ export const POST = withAuthContext<Record<string, string>>(
             select: {
               id: true,
               drug_name: true,
+              drug_code: true,
+              dosage_form: true,
               dose: true,
               frequency: true,
               unit: true,
+              packaging_instructions: true,
+              notes: true,
             },
           },
         },
       });
+
+      return { kind: 'success' as const, batch };
     });
 
-    return success({ data: result }, 201);
+    if (result.kind === 'error') return result.response;
+
+    return success({ data: result.batch }, 201);
   },
   { permission: 'canSet' }
 );

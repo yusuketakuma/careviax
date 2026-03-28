@@ -78,6 +78,12 @@ model CommunicationRequest {
   patient_id    String?
   case_id       String?
   request_type  String
+  template_key  String?
+  recipient_name String?
+  recipient_role String?
+  related_entity_type String?
+  related_entity_id   String?
+  context_snapshot Json?
   status        RequestStatus @default(draft)
   subject       String
   content       String
@@ -91,6 +97,7 @@ model CommunicationRequest {
 
   @@index([org_id])
   @@index([status])
+  @@index([related_entity_type, related_entity_id])
 }
 
 model CommunicationResponse {

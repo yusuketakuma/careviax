@@ -2,8 +2,12 @@ import { prisma } from '@/lib/db/client';
 
 type LocalUserIdentity = {
   id: string;
+  org_id: string;
   cognito_sub: string;
   email: string;
+  name: string;
+  phone: string | null;
+  default_site_id: string | null;
   is_active: boolean;
   account_status: 'invited' | 'active' | 'suspended' | 'retired';
   activated_at: Date | null;
@@ -20,8 +24,12 @@ export async function resolveLocalUserByIdentity(args: {
       where: { cognito_sub: args.cognitoSub },
       select: {
         id: true,
+        org_id: true,
         cognito_sub: true,
         email: true,
+        name: true,
+        phone: true,
+        default_site_id: true,
         is_active: true,
         account_status: true,
         activated_at: true,
@@ -36,8 +44,12 @@ export async function resolveLocalUserByIdentity(args: {
     where: { email: normalizedEmail },
     select: {
       id: true,
+      org_id: true,
       cognito_sub: true,
       email: true,
+      name: true,
+      phone: true,
+      default_site_id: true,
       is_active: true,
       account_status: true,
       activated_at: true,
@@ -69,8 +81,12 @@ export async function markLocalUserActive(user: LocalUserIdentity) {
     },
     select: {
       id: true,
+      org_id: true,
       cognito_sub: true,
       email: true,
+      name: true,
+      phone: true,
+      default_site_id: true,
       is_active: true,
       account_status: true,
       activated_at: true,

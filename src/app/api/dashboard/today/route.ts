@@ -150,19 +150,25 @@ export const GET = withAuth(
         where: {
           org_id: req.orgId,
           OR: [
-            {
-              source_type: 'refill',
-              refill_remaining_count: { gt: 0 },
-              refill_next_dispense_date: {
-                gte: today,
-                lte: sevenDaysFromNow,
-              },
+          {
+            source_type: 'refill',
+            refill_remaining_count: { gt: 0 },
+            refill_next_dispense_date: {
+              gte: today,
+              lte: sevenDaysFromNow,
             },
-            {
-              prescription_expiry_date: {
-                gte: today,
-                lte: sevenDaysFromNow,
-              },
+          },
+          {
+            split_next_dispense_date: {
+              gte: today,
+              lte: sevenDaysFromNow,
+            },
+          },
+          {
+            prescription_expiry_date: {
+              gte: today,
+              lte: sevenDaysFromNow,
+            },
             },
           ],
         },
@@ -178,6 +184,9 @@ export const GET = withAuth(
           prescribed_date: true,
           prescription_expiry_date: true,
           refill_next_dispense_date: true,
+          split_dispense_total: true,
+          split_dispense_current: true,
+          split_next_dispense_date: true,
           cycle: {
             select: {
               case_: {
@@ -252,7 +261,13 @@ export const GET = withAuth(
           ? [
               { label: '再架電待ち', count: communicationQueue.summary.callback_followups, action_href: '/external' },
               { label: '自己申告', count: communicationQueue.summary.self_reports, action_href: '/external' },
-              { label: '請求レビュー', count: taskCountByType.billing_evidence_review ?? 0, action_href: '/billing/candidates' },
+              {
+                label: '請求レビュー',
+                count:
+                  (taskCountByType.billing_evidence_review ?? 0) +
+                  (taskCountByType.initial_home_visit_assessment ?? 0),
+                action_href: '/billing/candidates',
+              },
             ]
           : [
               { label: '例外変更承認', count: overridePending, action_href: '/schedules' },
@@ -295,6 +310,7 @@ export const GET = withAuth(
       })),
       medication_deadlines: intakeDeadlines.map((intake) => {
         const dueAt =
+          intake.split_next_dispense_date ??
           intake.refill_next_dispense_date ??
           intake.prescription_expiry_date ??
           intake.prescribed_date;
@@ -308,6 +324,8 @@ export const GET = withAuth(
           due_at: dueAt.toISOString(),
           days_left: daysLeft,
           source_type: intake.source_type,
+          split_dispense_total: intake.split_dispense_total ?? null,
+          split_dispense_current: intake.split_dispense_current ?? null,
         };
       }),
       communication_queue: communicationQueue,

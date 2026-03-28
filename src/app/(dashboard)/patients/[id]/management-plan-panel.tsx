@@ -1,13 +1,15 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Archive, CheckCircle2, FileText, PencilLine, Plus } from 'lucide-react';
+import { Archive, CheckCircle2, FileText, PencilLine, Plus, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
@@ -327,10 +329,12 @@ function ManagementPlanEditorDialog({
 }
 
 export function ManagementPlanPanel({
+  patientId,
   patientName,
   cases,
   orgId,
 }: {
+  patientId: string;
   patientName: string;
   cases: CaseSummary[];
   orgId: string;
@@ -556,6 +560,22 @@ export function ManagementPlanPanel({
                     </div>
 
                     <div className="flex flex-wrap gap-2">
+                      <Link
+                        href={`/api/management-plans/${plan.id}/pdf`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                      >
+                        <FileText className="size-4" aria-hidden="true" />
+                        PDF
+                      </Link>
+                      <Link
+                        href={`/patients/${patientId}/management-plan/print?planId=${plan.id}`}
+                        className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                      >
+                        <Printer className="size-4" aria-hidden="true" />
+                        印刷ビュー
+                      </Link>
                       {plan.status === 'draft' ? (
                         <>
                           <Button

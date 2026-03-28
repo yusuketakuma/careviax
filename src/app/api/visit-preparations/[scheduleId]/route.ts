@@ -10,6 +10,69 @@ import {
   upsertOperationalTask,
   resolveOperationalTasks,
 } from '@/server/services/operational-tasks';
+import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
+import {
+  getPatientHomeCareFeatureSummary,
+  selectScheduleHomeCareFeatureHighlights,
+} from '@/server/services/home-care-ops';
+import { getScheduleVisitBrief } from '@/server/services/visit-brief';
+
+type IntakeLineSummary = {
+  drug_name: string;
+  drug_code: string | null;
+  dose: string;
+  frequency: string;
+  days: number;
+};
+
+function lineIdentity(line: IntakeLineSummary) {
+  return line.drug_code?.trim() || line.drug_name.trim();
+}
+
+function summarizePrescriptionChanges(
+  currentLines: IntakeLineSummary[],
+  previousLines: IntakeLineSummary[]
+) {
+  const previousByKey = new Map(previousLines.map((line) => [lineIdentity(line), line]));
+  const currentKeys = new Set<string>();
+
+  const added: string[] = [];
+  const changed: Array<{ drug_name: string; reasons: string[] }> = [];
+
+  for (const line of currentLines) {
+    const key = lineIdentity(line);
+    currentKeys.add(key);
+    const previous = previousByKey.get(key);
+    if (!previous) {
+      added.push(line.drug_name);
+      continue;
+    }
+
+    const reasons: string[] = [];
+    if (previous.dose !== line.dose) reasons.push(`用量 ${previous.dose} → ${line.dose}`);
+    if (previous.frequency !== line.frequency) {
+      reasons.push(`用法 ${previous.frequency} → ${line.frequency}`);
+    }
+    if (previous.days !== line.days) reasons.push(`日数 ${previous.days}日 → ${line.days}日`);
+
+    if (reasons.length > 0) {
+      changed.push({
+        drug_name: line.drug_name,
+        reasons,
+      });
+    }
+  }
+
+  const removed = previousLines
+    .filter((line) => !currentKeys.has(lineIdentity(line)))
+    .map((line) => line.drug_name);
+
+  return {
+    added,
+    changed,
+    removed,
+  };
+}
 
 function buildPreparationTaskKey(scheduleId: string) {
   return `visit-preparation:${scheduleId}`;
@@ -112,7 +175,15 @@ export async function GET(
   const preparation = schedule.preparation;
   const primaryResidence = schedule.case_.patient.residences[0] ?? null;
 
-  const [previousVisit, openTasks, recentContactLogs, sameDaySchedules] = await Promise.all([
+  const [
+    previousVisit,
+    openTasks,
+    recentContactLogs,
+    sameDaySchedules,
+    billingEvidence,
+    recentPrescriptionIntakes,
+  ] =
+    await Promise.all([
     prisma.visitRecord.findFirst({
       where: {
         org_id: ctx.orgId,
@@ -222,6 +293,36 @@ export async function GET(
         },
       },
     }),
+    listBillingEvidenceBlockers(prisma, {
+      orgId: ctx.orgId,
+      patientId: schedule.case_.patient.id,
+      limit: 4,
+    }),
+    prisma.prescriptionIntake.findMany({
+      where: {
+        org_id: ctx.orgId,
+        cycle: {
+          patient_id: schedule.case_.patient.id,
+        },
+      },
+      orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
+      take: 2,
+      select: {
+        id: true,
+        source_type: true,
+        prescribed_date: true,
+        lines: {
+          orderBy: { line_number: 'asc' },
+          select: {
+            drug_name: true,
+            drug_code: true,
+            dose: true,
+            frequency: true,
+            days: true,
+          },
+        },
+      },
+    }),
   ]);
 
   const sameFacilitySchedules = sameDaySchedules.filter((item) => {
@@ -240,6 +341,34 @@ export async function GET(
     !preparation?.route_confirmed ? 'ルート確認' : null,
     !preparation?.offline_synced ? 'オフライン同期確認' : null,
   ].filter((value): value is string => value != null);
+  const homeCareFeatureSummary = await getPatientHomeCareFeatureSummary(prisma, {
+    orgId: ctx.orgId,
+    patientId: schedule.case_.patient.id,
+  });
+  const visitBrief = await getScheduleVisitBrief(prisma, {
+    orgId: ctx.orgId,
+    patientId: schedule.case_.patient.id,
+  });
+  const latestIntake = recentPrescriptionIntakes[0] ?? null;
+  const previousIntake = recentPrescriptionIntakes[1] ?? null;
+  const prescriptionChanges =
+    latestIntake && previousIntake
+      ? {
+          current_prescribed_date: latestIntake.prescribed_date.toISOString(),
+          previous_prescribed_date: previousIntake.prescribed_date.toISOString(),
+          source_type: latestIntake.source_type,
+          ...summarizePrescriptionChanges(latestIntake.lines, previousIntake.lines),
+        }
+      : latestIntake
+        ? {
+            current_prescribed_date: latestIntake.prescribed_date.toISOString(),
+            previous_prescribed_date: null,
+            source_type: latestIntake.source_type,
+            added: latestIntake.lines.map((line) => line.drug_name),
+            changed: [],
+            removed: [],
+          }
+        : null;
 
   return success({
     data: {
@@ -319,6 +448,17 @@ export async function GET(
           same_day_visit_count: sameDaySchedules.length + 1,
         },
         care_team: schedule.case_.care_team_links,
+        billing_blockers: billingEvidence.flatMap((item) =>
+          item.blockers.map((blocker) => ({
+            evidence_id: item.id,
+            visit_record_id: item.visit_record_id,
+            ...blocker,
+          }))
+        ),
+        prescription_changes: prescriptionChanges,
+        home_care_feature_highlights:
+          selectScheduleHomeCareFeatureHighlights(homeCareFeatureSummary),
+        visit_brief: visitBrief,
       },
     },
   });

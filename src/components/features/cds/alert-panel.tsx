@@ -111,6 +111,42 @@ function AlertItem({ alert }: AlertItemProps) {
                   <dd>{String(alert.details.prescribed_days)}日</dd>
                 </div>
               )}
+              {alert.details?.patient_age !== undefined && (
+                <div>
+                  <dt className="font-medium">患者年齢</dt>
+                  <dd>{String(alert.details.patient_age)}歳</dd>
+                </div>
+              )}
+              {alert.details?.egfr !== undefined && (
+                <div>
+                  <dt className="font-medium">eGFR</dt>
+                  <dd>{String(alert.details.egfr)}</dd>
+                </div>
+              )}
+              {alert.details?.egfr_range !== undefined && (
+                <div>
+                  <dt className="font-medium">該当レンジ</dt>
+                  <dd>{String(alert.details.egfr_range)}</dd>
+                </div>
+              )}
+              {alert.details?.recommendation !== undefined && (
+                <div>
+                  <dt className="font-medium">推奨対応</dt>
+                  <dd>{String(alert.details.recommendation)}</dd>
+                </div>
+              )}
+              {alert.details?.allergy_drug !== undefined && (
+                <div>
+                  <dt className="font-medium">既知アレルギー</dt>
+                  <dd>{String(alert.details.allergy_drug)}</dd>
+                </div>
+              )}
+              {alert.details?.therapeutic_category !== undefined && (
+                <div>
+                  <dt className="font-medium">薬効分類</dt>
+                  <dd>{String(alert.details.therapeutic_category)}</dd>
+                </div>
+              )}
             </dl>
           )}
         </div>

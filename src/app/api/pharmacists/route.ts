@@ -4,19 +4,27 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { validateOrgReferences } from '@/lib/api/org-reference';
+import {
+  MANAGEABLE_MEMBER_ROLES,
+  isOperationalMemberRole,
+  membershipFlagsForRole,
+} from '@/lib/auth/member-roles';
 import { createPharmacistSchema } from '@/lib/validations/pharmacist';
 import { inviteCognitoUser } from '@/server/services/cognito-admin';
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const { searchParams } = new URL(req.url);
   const siteId = searchParams.get('site_id');
+  const includeCollaborators = searchParams.get('include_collaborators') === 'true';
 
   const pharmacists = await prisma.membership.findMany({
     where: {
       org_id: req.orgId,
       is_active: true,
       role: {
-        in: ['owner', 'admin', 'pharmacist', 'pharmacist_trainee'],
+        in: includeCollaborators
+          ? ['owner', ...MANAGEABLE_MEMBER_ROLES]
+          : ['owner', 'admin', 'pharmacist', 'pharmacist_trainee'],
       },
       ...(siteId ? { site_id: siteId } : {}),
     },
@@ -126,6 +134,8 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
   const invitedAt = new Date();
 
+  const isOperational = isOperationalMemberRole(parsed.data.role);
+
   const pharmacist = await withOrgContext(req.orgId, async (tx) => {
     const user = await tx.user.create({
       data: {
@@ -136,12 +146,14 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         name: parsed.data.name,
         name_kana: parsed.data.name_kana,
         phone: parsed.data.phone ?? null,
-        max_daily_visits: parsed.data.max_daily_visits ?? null,
-        max_weekly_visits: parsed.data.max_weekly_visits ?? null,
-        max_travel_minutes: parsed.data.max_travel_minutes ?? null,
-        can_accept_emergency: parsed.data.can_accept_emergency,
-        visit_specialties: parsed.data.visit_specialties as Prisma.InputJsonValue,
-        coverage_area: parsed.data.coverage_area as Prisma.InputJsonValue,
+        max_daily_visits: isOperational ? (parsed.data.max_daily_visits ?? null) : null,
+        max_weekly_visits: isOperational ? (parsed.data.max_weekly_visits ?? null) : null,
+        max_travel_minutes: isOperational ? (parsed.data.max_travel_minutes ?? null) : null,
+        can_accept_emergency: isOperational ? parsed.data.can_accept_emergency : false,
+        visit_specialties: (isOperational
+          ? parsed.data.visit_specialties
+          : []) as Prisma.InputJsonValue,
+        coverage_area: (isOperational ? parsed.data.coverage_area : []) as Prisma.InputJsonValue,
         account_status: 'invited',
         invited_at: invitedAt,
         invited_by: req.userId,
@@ -153,10 +165,9 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       data: {
         org_id: req.orgId,
         user_id: user.id,
-        site_id: parsed.data.site_id,
+        site_id: parsed.data.site_id ?? null,
         role: parsed.data.role,
-        can_dispense: true,
-        can_set: true,
+        ...membershipFlagsForRole(parsed.data.role),
       },
     });
 

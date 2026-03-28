@@ -1,0 +1,1807 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {
+  Document,
+  Font,
+  Page,
+  StyleSheet,
+  Text,
+  View,
+  type DocumentProps,
+  renderToBuffer,
+} from '@react-pdf/renderer';
+import { prisma } from '@/lib/db/client';
+import type {
+  CareManagerReportContent,
+  PhysicianReportContent,
+} from '@/types/care-report-content';
+
+type PdfRenderResult = {
+  buffer: Buffer;
+  fileName: string;
+};
+
+type PdfShellProps = {
+  title: string;
+  subtitle?: string;
+  pharmacyName: string;
+  generatedAt: Date;
+  orientation?: 'portrait' | 'landscape';
+  children: React.ReactNode;
+};
+
+type KeyValueRow = {
+  label: string;
+  value: string;
+};
+
+type MedicationProfileRow = {
+  id: string;
+  drug_name: string;
+  dose: string | null;
+  frequency: string | null;
+  start_date: Date | null;
+  end_date: Date | null;
+  prescriber: string | null;
+  source: string | null;
+};
+
+type CareReportRecord = {
+  id: string;
+  report_type: string;
+  status: string;
+  created_at: Date;
+  updated_at: Date;
+  content: Record<string, unknown>;
+  patient: {
+    id: string;
+    name: string;
+    birth_date: Date;
+    gender: string;
+  };
+};
+
+type TracingReportRecord = {
+  id: string;
+  status: string;
+  sent_to_physician: string | null;
+  sent_at: Date | null;
+  acknowledged_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+  content: Record<string, unknown>;
+  patient: {
+    id: string;
+    name: string;
+    birth_date: Date;
+    gender: string;
+  };
+  issue: {
+    title: string;
+    description: string;
+    priority: string;
+    status: string;
+  } | null;
+};
+
+type ManagementPlanRecord = {
+  id: string;
+  title: string;
+  summary: string | null;
+  status: string;
+  version: number;
+  effective_from: Date | null;
+  next_review_date: Date | null;
+  approved_at: Date | null;
+  updated_at: Date;
+  content: Record<string, unknown>;
+  patient: {
+    id: string;
+    name: string;
+    birth_date: Date;
+    gender: string;
+  };
+};
+
+type MedicationHistoryRecord = {
+  patient: {
+    id: string;
+    name: string;
+    birth_date: Date;
+    gender: string;
+  };
+  medications: MedicationProfileRow[];
+};
+
+type MedicationCalendarRecord = MedicationHistoryRecord & {
+  month: Date;
+};
+
+type VisitRecordResidualRow = {
+  id: string;
+  drug_name: string;
+  drug_code: string | null;
+  prescribed_quantity: number | null;
+  remaining_quantity: number;
+  excess_days: number | null;
+  is_prohibited_reduction: boolean;
+  is_reduction_target: boolean;
+};
+
+type VisitRecordPdfEntry = {
+  id: string;
+  visit_date: Date;
+  outcome_status: string;
+  soap_subjective: string | null;
+  soap_objective: string | null;
+  soap_assessment: string | null;
+  soap_plan: string | null;
+  receipt_person_name: string | null;
+  receipt_person_relation: string | null;
+  receipt_at: Date | null;
+  next_visit_suggestion_date: Date | null;
+  cancellation_reason: string | null;
+  postpone_reason: string | null;
+  revisit_reason: string | null;
+  version: number;
+  created_at: Date;
+  updated_at: Date;
+  pharmacist_id: string;
+  pharmacist_name: string | null;
+  last_modified_by_id: string | null;
+  last_modified_by_name: string | null;
+  schedule: {
+    visit_type: string;
+    scheduled_date: Date;
+  } | null;
+  patient: {
+    id: string;
+    name: string;
+    birth_date: Date;
+    gender: string;
+  };
+  residuals: VisitRecordResidualRow[];
+};
+
+type PatientVisitRecordPdfRecord = {
+  patient: VisitRecordPdfEntry['patient'];
+  dateFrom: Date | null;
+  dateTo: Date | null;
+  records: VisitRecordPdfEntry[];
+};
+
+let fontRegistered = false;
+
+const SLOT_KEYS = ['morning', 'noon', 'evening', 'bedtime'] as const;
+type CalendarSlot = (typeof SLOT_KEYS)[number];
+
+const SLOT_LABELS: Record<CalendarSlot, string> = {
+  morning: '朝',
+  noon: '昼',
+  evening: '夕',
+  bedtime: '眠前',
+};
+
+const VISIT_OUTCOME_LABELS: Record<string, string> = {
+  completed: '完了',
+  revisit_needed: '再訪必要',
+  postponed: '延期',
+  cancelled: 'キャンセル',
+  delivery_only: '投薬のみ',
+  completed_with_issue: '完了（課題あり）',
+};
+
+const VISIT_TYPE_LABELS: Record<string, string> = {
+  initial: '初回',
+  regular: '定期',
+  temporary: '臨時',
+  revisit: '再訪',
+  delivery_only: '配薬のみ',
+  emergency: '緊急',
+  physician_co_visit: '医師同行',
+};
+
+const RELATION_LABELS: Record<string, string> = {
+  self: '本人',
+  spouse: '配偶者',
+  child: '子',
+  parent: '親',
+  sibling: '兄弟姉妹',
+  other_family: 'その他家族',
+  caregiver: '介護者',
+  facility_staff: '施設職員',
+  other: 'その他',
+};
+
+const styles = StyleSheet.create({
+  page: {
+    paddingTop: 78,
+    paddingBottom: 52,
+    paddingHorizontal: 28,
+    fontFamily: 'NotoSansJP',
+    fontSize: 9.5,
+    color: '#111827',
+    lineHeight: 1.45,
+  },
+  header: {
+    position: 'absolute',
+    top: 18,
+    left: 28,
+    right: 28,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#D1D5DB',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+  },
+  headerTitleWrap: {
+    maxWidth: '70%',
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: 700,
+  },
+  headerSubtitle: {
+    fontSize: 8.5,
+    color: '#4B5563',
+    marginTop: 2,
+  },
+  headerMeta: {
+    fontSize: 8,
+    textAlign: 'right',
+    color: '#4B5563',
+  },
+  footerLeft: {
+    position: 'absolute',
+    bottom: 18,
+    left: 28,
+    fontSize: 8,
+    color: '#4B5563',
+  },
+  footerRight: {
+    position: 'absolute',
+    bottom: 18,
+    right: 28,
+    fontSize: 8,
+    color: '#4B5563',
+  },
+  section: {
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 10.5,
+    fontWeight: 700,
+    marginBottom: 6,
+    paddingBottom: 3,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  keyValueGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  keyValueCard: {
+    width: '48%',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  keyValueLabel: {
+    fontSize: 8,
+    color: '#6B7280',
+    marginBottom: 2,
+  },
+  keyValueValue: {
+    fontSize: 9.5,
+  },
+  paragraph: {
+    fontSize: 9.5,
+    whiteSpace: 'pre-wrap',
+  },
+  bulletList: {
+    marginTop: 2,
+    gap: 3,
+  },
+  bulletItem: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  bulletMarker: {
+    width: 8,
+    fontSize: 9.5,
+  },
+  bulletText: {
+    flex: 1,
+    fontSize: 9.5,
+  },
+  table: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
+  },
+  tableRow: {
+    flexDirection: 'row',
+  },
+  tableHeaderCell: {
+    backgroundColor: '#F3F4F6',
+    fontWeight: 700,
+  },
+  tableCell: {
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#D1D5DB',
+    paddingHorizontal: 6,
+    paddingVertical: 5,
+    fontSize: 8.5,
+  },
+  tableCellTight: {
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    fontSize: 7.5,
+  },
+  muted: {
+    color: '#6B7280',
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  badge: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    fontSize: 8,
+  },
+  calendarHeaderRow: {
+    flexDirection: 'row',
+  },
+  calendarDayCell: {
+    width: `${100 / 7}%`,
+    minHeight: 88,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#D1D5DB',
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
+  calendarDayNumber: {
+    fontSize: 8.5,
+    fontWeight: 700,
+    marginBottom: 3,
+  },
+  calendarSlotBox: {
+    marginBottom: 3,
+    borderRadius: 3,
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 3,
+    paddingVertical: 2,
+  },
+  calendarSlotLabel: {
+    fontSize: 6.5,
+    color: '#374151',
+    marginBottom: 1,
+  },
+  calendarDrugLine: {
+    fontSize: 6.2,
+    lineHeight: 1.25,
+  },
+});
+
+function ensurePdfFontRegistered() {
+  if (fontRegistered) return;
+
+  const fontPath = path.join(process.cwd(), 'public', 'fonts', 'NotoSansJP-Regular.otf');
+  if (!fs.existsSync(fontPath)) {
+    throw new Error('PDF 用フォントが見つかりません');
+  }
+
+  Font.register({
+    family: 'NotoSansJP',
+    src: fontPath,
+  });
+  fontRegistered = true;
+}
+
+function formatDate(value?: Date | string | null, includeTime = false) {
+  if (!value) return '—';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+
+  const datePart = `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(
+    date.getDate(),
+  ).padStart(2, '0')}`;
+  if (!includeTime) return datePart;
+
+  return `${datePart} ${String(date.getHours()).padStart(2, '0')}:${String(
+    date.getMinutes(),
+  ).padStart(2, '0')}`;
+}
+
+function sanitizeFileName(value: string) {
+  return value
+    .trim()
+    .replaceAll(/[^A-Za-z0-9._-]/g, '_')
+    .replaceAll(/_+/g, '_')
+    .replaceAll(/^_+|_+$/g, '') || 'document';
+}
+
+function inferPharmacyName(orgName?: string | null, siteName?: string | null) {
+  return siteName?.trim() || orgName?.trim() || 'CareViaX薬局';
+}
+
+function flattenJson(value: unknown, labelPrefix = ''): KeyValueRow[] {
+  if (value == null) {
+    return labelPrefix ? [{ label: labelPrefix, value: '—' }] : [];
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return labelPrefix ? [{ label: labelPrefix, value: '—' }] : [];
+    }
+
+    if (value.every((item) => item == null || ['string', 'number', 'boolean'].includes(typeof item))) {
+      return labelPrefix
+        ? [{ label: labelPrefix, value: value.map((item) => String(item ?? '—')).join(' / ') }]
+        : [];
+    }
+
+    return value.flatMap((item, index) =>
+      flattenJson(item, labelPrefix ? `${labelPrefix}[${index + 1}]` : `[${index + 1}]`),
+    );
+  }
+
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) {
+      return labelPrefix ? [{ label: labelPrefix, value: '—' }] : [];
+    }
+
+    return entries.flatMap(([key, nextValue]) =>
+      flattenJson(nextValue, labelPrefix ? `${labelPrefix}.${key}` : key),
+    );
+  }
+
+  return labelPrefix ? [{ label: labelPrefix, value: String(value) }] : [];
+}
+
+function inferCalendarSlots(frequency?: string | null): CalendarSlot[] {
+  const text = frequency ?? '';
+  const slots = new Set<CalendarSlot>();
+
+  if (text.includes('毎食')) {
+    slots.add('morning');
+    slots.add('noon');
+    slots.add('evening');
+  }
+  if (text.includes('朝')) slots.add('morning');
+  if (text.includes('昼')) slots.add('noon');
+  if (text.includes('夕') || text.includes('夜')) slots.add('evening');
+  if (text.includes('眠前') || text.includes('就寝')) slots.add('bedtime');
+
+  if (slots.size === 0) {
+    slots.add('morning');
+  }
+
+  return [...slots];
+}
+
+function isMedicationActiveOnDate(profile: MedicationProfileRow, date: Date) {
+  const start = profile.start_date ? new Date(profile.start_date) : null;
+  const end = profile.end_date ? new Date(profile.end_date) : null;
+  const compare = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+
+  if (start) {
+    const startValue = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+    if (compare < startValue) return false;
+  }
+
+  if (end) {
+    const endValue = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime();
+    if (compare > endValue) return false;
+  }
+
+  return true;
+}
+
+function enumerateMonthDays(month: Date) {
+  const first = new Date(month.getFullYear(), month.getMonth(), 1);
+  const last = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+  const daysInMonth = last.getDate();
+  const offset = first.getDay();
+  const cells: Array<Date | null> = [];
+
+  for (let index = 0; index < offset; index += 1) {
+    cells.push(null);
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    cells.push(new Date(month.getFullYear(), month.getMonth(), day));
+  }
+
+  while (cells.length % 7 !== 0) {
+    cells.push(null);
+  }
+
+  return cells;
+}
+
+function buildMedicationCalendarSlots(
+  medications: MedicationProfileRow[],
+  date: Date | null,
+): Partial<Record<CalendarSlot, string[]>> {
+  if (!date) return {};
+
+  const slots: Partial<Record<CalendarSlot, string[]>> = {};
+
+  for (const profile of medications) {
+    if (!isMedicationActiveOnDate(profile, date)) continue;
+    for (const slot of inferCalendarSlots(profile.frequency)) {
+      if (!slots[slot]) {
+        slots[slot] = [];
+      }
+      slots[slot].push(
+        [profile.drug_name, profile.dose].filter(Boolean).join(' '),
+      );
+    }
+  }
+
+  return slots;
+}
+
+function PdfShell({
+  title,
+  subtitle,
+  pharmacyName,
+  generatedAt,
+  orientation = 'portrait',
+  children,
+}: PdfShellProps) {
+  return (
+    <Document title={title} author="CareViaX" subject={subtitle}>
+      <Page size="A4" orientation={orientation} style={styles.page}>
+        <View fixed style={styles.header}>
+          <View style={styles.headerTitleWrap}>
+            <Text style={styles.headerTitle}>{title}</Text>
+            {subtitle ? <Text style={styles.headerSubtitle}>{subtitle}</Text> : null}
+          </View>
+          <Text style={styles.headerMeta}>
+            {pharmacyName}
+            {'\n'}
+            出力日時: {formatDate(generatedAt, true)}
+          </Text>
+        </View>
+
+        <Text
+          fixed
+          style={styles.footerLeft}
+        >
+          CareViaX PDF
+        </Text>
+        <Text
+          fixed
+          style={styles.footerRight}
+          render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`}
+        />
+
+        {children}
+      </Page>
+    </Document>
+  );
+}
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {children}
+    </View>
+  );
+}
+
+function KeyValueCards({ rows }: { rows: KeyValueRow[] }) {
+  return (
+    <View style={styles.keyValueGrid}>
+      {rows.map((row) => (
+        <View key={`${row.label}:${row.value}`} style={styles.keyValueCard}>
+          <Text style={styles.keyValueLabel}>{row.label}</Text>
+          <Text style={styles.keyValueValue}>{row.value || '—'}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function BulletList({ items }: { items: string[] }) {
+  const resolvedItems = items.length > 0 ? items : ['—'];
+  return (
+    <View style={styles.bulletList}>
+      {resolvedItems.map((item, index) => (
+        <View key={`${index}:${item}`} style={styles.bulletItem}>
+          <Text style={styles.bulletMarker}>•</Text>
+          <Text style={styles.bulletText}>{item}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function Table({
+  headers,
+  rows,
+  widths,
+  compact = false,
+}: {
+  headers: string[];
+  rows: string[][];
+  widths: number[];
+  compact?: boolean;
+}) {
+  const cellStyle = compact ? [styles.tableCell, styles.tableCellTight] : [styles.tableCell];
+
+  return (
+    <View style={styles.table}>
+      <View style={styles.tableRow}>
+        {headers.map((header, index) => (
+          <Text
+            key={header}
+            style={[
+              ...cellStyle,
+              styles.tableHeaderCell,
+              { width: `${widths[index]}%` },
+            ]}
+          >
+            {header}
+          </Text>
+        ))}
+      </View>
+      {rows.map((row, rowIndex) => (
+        <View key={`${rowIndex}:${row.join('|')}`} style={styles.tableRow}>
+          {row.map((cell, cellIndex) => (
+            <Text
+              key={`${rowIndex}:${cellIndex}`}
+              style={[...cellStyle, { width: `${widths[cellIndex]}%` }]}
+            >
+              {cell || '—'}
+            </Text>
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function renderCareReportContent(report: CareReportRecord) {
+  if (report.report_type === 'physician_report') {
+    const content = report.content as unknown as PhysicianReportContent;
+    return (
+      <>
+        <Section title="基本情報">
+          <KeyValueCards
+            rows={[
+              { label: '患者名', value: content.patient.name },
+              { label: '生年月日', value: content.patient.birth_date },
+              { label: '性別', value: content.patient.gender },
+              { label: '訪問日', value: content.visit_date },
+              { label: '報告日', value: content.report_date },
+              { label: '担当薬剤師', value: content.pharmacist_name },
+              { label: '主治医', value: content.prescriber.name },
+              { label: '所属', value: content.prescriber.institution },
+            ]}
+          />
+        </Section>
+
+        <Section title="処方内容">
+          <Table
+            headers={['薬剤名', '用量', '用法', '日数']}
+            widths={[42, 18, 25, 15]}
+            rows={content.prescriptions.map((item) => [
+              item.drug_name,
+              item.dose,
+              item.frequency,
+              `${item.days}日`,
+            ])}
+          />
+        </Section>
+
+        <Section title="服薬管理">
+          <KeyValueCards
+            rows={[
+              { label: '服薬サマリー', value: content.medication_management.compliance_summary },
+              {
+                label: 'アドヒアランス',
+                value: `${content.medication_management.adherence_score}/5`,
+              },
+              { label: '自己管理', value: content.medication_management.self_management },
+              {
+                label: 'カレンダー使用',
+                value: content.medication_management.calendar_used ? '使用あり' : '使用なし',
+              },
+            ]}
+          />
+        </Section>
+
+        <Section title="薬学的評価と対応">
+          <Text style={styles.paragraph}>{content.assessment}</Text>
+          <Text style={[styles.paragraph, { marginTop: 6 }]}>{content.plan}</Text>
+          {content.prescription_proposals ? (
+            <Text style={[styles.paragraph, { marginTop: 6 }]}>
+              処方提案: {content.prescription_proposals}
+            </Text>
+          ) : null}
+        </Section>
+
+        <Section title="残薬・注意事項">
+          <BulletList
+            items={[
+              ...content.residual_medications.map(
+                (item) =>
+                  `${item.drug_name}: 残 ${item.remaining_qty} / 余剰 ${item.excess_days}日`,
+              ),
+              ...content.warnings,
+            ]}
+          />
+        </Section>
+      </>
+    );
+  }
+
+  if (report.report_type === 'care_manager_report') {
+    const content = report.content as unknown as CareManagerReportContent;
+    return (
+      <>
+        <Section title="基本情報">
+          <KeyValueCards
+            rows={[
+              { label: '患者名', value: content.patient.name },
+              { label: '生年月日', value: content.patient.birth_date },
+              { label: '報告日', value: content.report_date },
+              { label: '訪問日', value: content.visit_date },
+              { label: '担当薬剤師', value: content.pharmacist_name },
+              { label: 'ケアマネ', value: content.care_manager.name },
+              { label: '所属', value: content.care_manager.organization },
+            ]}
+          />
+        </Section>
+
+        <Section title="服薬管理サマリー">
+          <KeyValueCards
+            rows={[
+              {
+                label: '服薬薬剤数',
+                value: `${content.medication_management_summary.total_drugs}剤`,
+              },
+              {
+                label: '服薬状況',
+                value: content.medication_management_summary.compliance_summary,
+              },
+              {
+                label: '自己管理',
+                value: content.medication_management_summary.self_management,
+              },
+              {
+                label: 'カレンダー使用',
+                value: content.medication_management_summary.calendar_used ? '使用あり' : '使用なし',
+              },
+            ]}
+          />
+        </Section>
+
+        <Section title="生活機能への影響">
+          <BulletList
+            items={[
+              `睡眠: ${content.functional_impact.sleep_impact}`,
+              `認知: ${content.functional_impact.cognition_impact}`,
+              `食事・口腔: ${content.functional_impact.diet_impact}`,
+              `移動: ${content.functional_impact.mobility_impact}`,
+              `排泄: ${content.functional_impact.excretion_impact}`,
+            ]}
+          />
+        </Section>
+
+        <Section title="連携・次回計画">
+          <BulletList
+            items={[
+              `残薬状況: ${content.residual_status.summary}`,
+              `服薬支援: ${content.care_service_coordination.medication_assistance}`,
+              `一包化: ${content.care_service_coordination.unit_dose_packaging ? 'あり' : 'なし'}`,
+              `服薬カレンダー提案: ${content.care_service_coordination.calendar_recommendation ? 'あり' : 'なし'}`,
+              `次回訪問予定: ${content.next_visit_plan.date ?? '未定'}`,
+              ...content.next_visit_plan.followup_items,
+              ...content.warnings,
+            ]}
+          />
+        </Section>
+      </>
+    );
+  }
+
+  return (
+    <Section title="内容">
+      <BulletList items={flattenJson(report.content).map((row) => `${row.label}: ${row.value}`)} />
+    </Section>
+  );
+}
+
+function renderManagementPlanContent(plan: ManagementPlanRecord) {
+  return (
+    <>
+      <Section title="基本情報">
+        <KeyValueCards
+          rows={[
+            { label: '患者名', value: plan.patient.name },
+            { label: '生年月日', value: formatDate(plan.patient.birth_date) },
+            { label: '性別', value: plan.patient.gender },
+            { label: '版数', value: `v${plan.version}` },
+            { label: '状態', value: plan.status },
+            { label: '適用開始日', value: formatDate(plan.effective_from) },
+            { label: '次回見直し日', value: formatDate(plan.next_review_date) },
+            { label: '承認日', value: formatDate(plan.approved_at) },
+          ]}
+        />
+      </Section>
+
+      <Section title="要約">
+        <Text style={styles.paragraph}>{plan.summary ?? '—'}</Text>
+      </Section>
+
+      <Section title="計画内容">
+        <BulletList items={flattenJson(plan.content).map((row) => `${row.label}: ${row.value}`)} />
+      </Section>
+    </>
+  );
+}
+
+function renderMedicationHistoryContent(record: MedicationHistoryRecord) {
+  return (
+    <>
+      <Section title="患者情報">
+        <KeyValueCards
+          rows={[
+            { label: '患者名', value: record.patient.name },
+            { label: '生年月日', value: formatDate(record.patient.birth_date) },
+            { label: '性別', value: record.patient.gender },
+            { label: '患者ID', value: record.patient.id },
+          ]}
+        />
+      </Section>
+
+      <Section title="服薬中薬剤一覧">
+        <Table
+          headers={['薬剤名', '用量', '用法', '開始', '終了', '処方医']}
+          widths={[31, 14, 17, 12, 12, 14]}
+          rows={record.medications.map((item) => [
+            item.drug_name,
+            item.dose ?? '',
+            item.frequency ?? '',
+            formatDate(item.start_date),
+            formatDate(item.end_date),
+            item.prescriber ?? '',
+          ])}
+        />
+      </Section>
+    </>
+  );
+}
+
+function renderMedicationCalendarContent(record: MedicationCalendarRecord) {
+  const calendarCells = enumerateMonthDays(record.month);
+  const weekRows = Array.from({ length: calendarCells.length / 7 }, (_, index) =>
+    calendarCells.slice(index * 7, index * 7 + 7),
+  );
+
+  return (
+    <>
+      <Section title="対象情報">
+        <KeyValueCards
+          rows={[
+            { label: '患者名', value: record.patient.name },
+            {
+              label: '対象月',
+              value: `${record.month.getFullYear()}年${record.month.getMonth() + 1}月`,
+            },
+            { label: '患者ID', value: record.patient.id },
+            { label: '薬剤数', value: `${record.medications.length}件` },
+          ]}
+        />
+      </Section>
+
+      <View style={styles.table}>
+        <View style={styles.calendarHeaderRow}>
+          {['日', '月', '火', '水', '木', '金', '土'].map((label) => (
+            <Text
+              key={label}
+              style={[
+                styles.tableCell,
+                styles.tableHeaderCell,
+                styles.tableCellTight,
+                { width: `${100 / 7}%` },
+              ]}
+            >
+              {label}
+            </Text>
+          ))}
+        </View>
+
+        {weekRows.map((week, weekIndex) => (
+          <View key={`week-${weekIndex}`} style={styles.calendarHeaderRow}>
+            {week.map((date, dayIndex) => {
+              const slots = buildMedicationCalendarSlots(record.medications, date);
+              return (
+                <View key={`day-${weekIndex}-${dayIndex}`} style={styles.calendarDayCell}>
+                  <Text style={styles.calendarDayNumber}>{date ? date.getDate() : ''}</Text>
+                  {date
+                    ? SLOT_KEYS.map((slot) => (
+                        <View key={`${date.toISOString()}-${slot}`} style={styles.calendarSlotBox}>
+                          <Text style={styles.calendarSlotLabel}>{SLOT_LABELS[slot]}</Text>
+                          {(slots[slot] ?? []).slice(0, 3).map((line, lineIndex) => (
+                            <Text key={`${slot}-${lineIndex}`} style={styles.calendarDrugLine}>
+                              {line}
+                            </Text>
+                          ))}
+                          {(slots[slot]?.length ?? 0) > 3 ? (
+                            <Text style={styles.calendarDrugLine}>
+                              他 {(slots[slot]?.length ?? 0) - 3} 件
+                            </Text>
+                          ) : null}
+                        </View>
+                      ))
+                    : null}
+                </View>
+              );
+            })}
+          </View>
+        ))}
+      </View>
+    </>
+  );
+}
+
+function renderVisitRecordEntryContent(record: VisitRecordPdfEntry) {
+  const issueNotes = [
+    record.cancellation_reason ? `キャンセル理由: ${record.cancellation_reason}` : null,
+    record.postpone_reason ? `延期理由: ${record.postpone_reason}` : null,
+    record.revisit_reason ? `再訪理由: ${record.revisit_reason}` : null,
+  ].filter((value): value is string => Boolean(value));
+
+  return (
+    <>
+      <Section title="患者情報">
+        <KeyValueCards
+          rows={[
+            { label: '患者名', value: record.patient.name },
+            { label: '患者ID', value: record.patient.id },
+            { label: '生年月日', value: formatDate(record.patient.birth_date) },
+            { label: '性別', value: record.patient.gender },
+          ]}
+        />
+      </Section>
+
+      <Section title="訪問情報">
+        <KeyValueCards
+          rows={[
+            { label: '訪問日', value: formatDate(record.visit_date) },
+            {
+              label: '訪問タイプ',
+              value: record.schedule
+                ? (VISIT_TYPE_LABELS[record.schedule.visit_type] ?? record.schedule.visit_type)
+                : '—',
+            },
+            {
+              label: '結果',
+              value: VISIT_OUTCOME_LABELS[record.outcome_status] ?? record.outcome_status,
+            },
+            { label: '記録者', value: record.pharmacist_name ?? record.pharmacist_id },
+            {
+              label: '最終更新者',
+              value: record.last_modified_by_name ?? record.last_modified_by_id ?? '—',
+            },
+            {
+              label: '最終更新日時',
+              value: formatDate(record.updated_at, true),
+            },
+            { label: '作成日時', value: formatDate(record.created_at, true) },
+            { label: '版数', value: `v${record.version}` },
+          ]}
+        />
+      </Section>
+
+      <Section title="SOAP">
+        <BulletList
+          items={[
+            `S: ${record.soap_subjective ?? '記録なし'}`,
+            `O: ${record.soap_objective ?? '記録なし'}`,
+            `A: ${record.soap_assessment ?? '記録なし'}`,
+            `P: ${record.soap_plan ?? '記録なし'}`,
+          ]}
+        />
+      </Section>
+
+      <Section title="受領・次回対応">
+        <BulletList
+          items={[
+            `受領者: ${record.receipt_person_name ?? '記録なし'}`,
+            `続柄: ${
+              record.receipt_person_relation
+                ? (RELATION_LABELS[record.receipt_person_relation] ?? record.receipt_person_relation)
+                : '—'
+            }`,
+            `受領日時: ${formatDate(record.receipt_at, true)}`,
+            `次回訪問提案日: ${formatDate(record.next_visit_suggestion_date)}`,
+            ...issueNotes,
+          ]}
+        />
+      </Section>
+
+      <Section title="残薬記録">
+        <Table
+          headers={['薬剤名', '処方量', '残数', '余剰日数', '区分']}
+          widths={[40, 14, 14, 14, 18]}
+          rows={
+            record.residuals.length > 0
+              ? record.residuals.map((item) => [
+                  item.drug_name,
+                  item.prescribed_quantity != null ? String(item.prescribed_quantity) : '—',
+                  String(item.remaining_quantity),
+                  item.excess_days != null ? `${item.excess_days}日` : '—',
+                  item.is_prohibited_reduction
+                    ? '減数禁止'
+                    : item.is_reduction_target
+                      ? '減数対象'
+                      : '通常',
+                ])
+              : [['記録なし', '', '', '', '']]
+          }
+        />
+      </Section>
+    </>
+  );
+}
+
+function renderPatientVisitRecordsContent(record: PatientVisitRecordPdfRecord) {
+  return (
+    <>
+      <Section title="患者情報">
+        <KeyValueCards
+          rows={[
+            { label: '患者名', value: record.patient.name },
+            { label: '患者ID', value: record.patient.id },
+            { label: '生年月日', value: formatDate(record.patient.birth_date) },
+            { label: '性別', value: record.patient.gender },
+            {
+              label: '期間',
+              value:
+                record.dateFrom || record.dateTo
+                  ? `${formatDate(record.dateFrom)} - ${formatDate(record.dateTo)}`
+                  : '全期間',
+            },
+            { label: '記録件数', value: `${record.records.length}件` },
+          ]}
+        />
+      </Section>
+
+      <Section title="訪問記録一覧">
+        <Table
+          headers={['訪問日', '訪問タイプ', '結果', '次回提案', '更新日時', '記録者']}
+          widths={[16, 17, 16, 16, 18, 17]}
+          compact
+          rows={record.records.map((item) => [
+            formatDate(item.visit_date),
+            item.schedule
+              ? (VISIT_TYPE_LABELS[item.schedule.visit_type] ?? item.schedule.visit_type)
+              : '—',
+            VISIT_OUTCOME_LABELS[item.outcome_status] ?? item.outcome_status,
+            formatDate(item.next_visit_suggestion_date),
+            formatDate(item.updated_at, true),
+            item.last_modified_by_name ?? item.pharmacist_name ?? item.pharmacist_id,
+          ])}
+        />
+      </Section>
+
+      {record.records.map((item, index) => (
+        <Section
+          key={item.id}
+          title={`${index + 1}. ${formatDate(item.visit_date)} / ${
+            VISIT_OUTCOME_LABELS[item.outcome_status] ?? item.outcome_status
+          }`}
+        >
+          <BulletList
+            items={[
+              `訪問タイプ: ${
+                item.schedule
+                  ? (VISIT_TYPE_LABELS[item.schedule.visit_type] ?? item.schedule.visit_type)
+                  : '—'
+              }`,
+              `記録者: ${item.pharmacist_name ?? item.pharmacist_id}`,
+              `最終更新者: ${item.last_modified_by_name ?? item.last_modified_by_id ?? '—'}`,
+              `S: ${item.soap_subjective ?? '記録なし'}`,
+              `O: ${item.soap_objective ?? '記録なし'}`,
+              `A: ${item.soap_assessment ?? '記録なし'}`,
+              `P: ${item.soap_plan ?? '記録なし'}`,
+              ...(item.cancellation_reason ? [`キャンセル理由: ${item.cancellation_reason}`] : []),
+              ...(item.postpone_reason ? [`延期理由: ${item.postpone_reason}`] : []),
+              ...(item.revisit_reason ? [`再訪理由: ${item.revisit_reason}`] : []),
+            ]}
+          />
+        </Section>
+      ))}
+    </>
+  );
+}
+
+function renderTracingReportContent(report: TracingReportRecord) {
+  return (
+    <>
+      <Section title="基本情報">
+        <KeyValueCards
+          rows={[
+            { label: '患者名', value: report.patient.name },
+            { label: '生年月日', value: formatDate(report.patient.birth_date) },
+            { label: '性別', value: report.patient.gender },
+            { label: '送付先医師', value: report.sent_to_physician ?? '—' },
+            { label: '状態', value: report.status },
+            { label: '送付日時', value: formatDate(report.sent_at, true) },
+            { label: '受領確認', value: formatDate(report.acknowledged_at, true) },
+          ]}
+        />
+      </Section>
+
+      {report.issue ? (
+        <Section title="関連課題">
+          <BulletList
+            items={[
+              `タイトル: ${report.issue.title}`,
+              `優先度: ${report.issue.priority}`,
+              `状態: ${report.issue.status}`,
+              `内容: ${report.issue.description}`,
+            ]}
+          />
+        </Section>
+      ) : null}
+
+      <Section title="報告内容">
+        <BulletList items={flattenJson(report.content).map((row) => `${row.label}: ${row.value}`)} />
+      </Section>
+    </>
+  );
+}
+
+async function renderPdf(document: React.ReactElement, fileName: string) {
+  ensurePdfFontRegistered();
+  const buffer = await renderToBuffer(
+    document as React.ReactElement<DocumentProps>,
+  );
+  return { buffer, fileName };
+}
+
+async function getPdfBranding(orgId: string) {
+  const [org, site] = await Promise.all([
+    prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { name: true },
+    }),
+    prisma.pharmacySite.findFirst({
+      where: { org_id: orgId },
+      orderBy: { created_at: 'asc' },
+      select: { name: true },
+    }),
+  ]);
+
+  return {
+    pharmacyName: inferPharmacyName(org?.name, site?.name),
+  };
+}
+
+async function getCareReportRecord(orgId: string, reportId: string): Promise<CareReportRecord> {
+  const report = await prisma.careReport.findFirst({
+    where: { id: reportId, org_id: orgId },
+    select: {
+      id: true,
+      patient_id: true,
+      report_type: true,
+      status: true,
+      content: true,
+      created_at: true,
+      updated_at: true,
+    },
+  });
+
+  if (!report) {
+    throw new Error('報告書が見つかりません');
+  }
+
+  const patient = await prisma.patient.findFirst({
+    where: { id: report.patient_id, org_id: orgId },
+    select: {
+      id: true,
+      name: true,
+      birth_date: true,
+      gender: true,
+    },
+  });
+
+  if (!patient) {
+    throw new Error('患者が見つかりません');
+  }
+
+  return {
+    ...report,
+    content: (report.content as Record<string, unknown>) ?? {},
+    patient,
+  };
+}
+
+async function getManagementPlanRecord(
+  orgId: string,
+  planId: string,
+): Promise<ManagementPlanRecord> {
+  const plan = await prisma.managementPlan.findFirst({
+    where: { id: planId, org_id: orgId },
+    select: {
+      id: true,
+      title: true,
+      summary: true,
+      status: true,
+      version: true,
+      effective_from: true,
+      next_review_date: true,
+      approved_at: true,
+      updated_at: true,
+      content: true,
+      case_: {
+        select: {
+          patient: {
+            select: {
+              id: true,
+              name: true,
+              birth_date: true,
+              gender: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!plan) {
+    throw new Error('管理計画書が見つかりません');
+  }
+
+  return {
+    id: plan.id,
+    title: plan.title,
+    summary: plan.summary,
+    status: plan.status,
+    version: plan.version,
+    effective_from: plan.effective_from,
+    next_review_date: plan.next_review_date,
+    approved_at: plan.approved_at,
+    updated_at: plan.updated_at,
+    content: (plan.content as Record<string, unknown>) ?? {},
+    patient: plan.case_.patient,
+  };
+}
+
+async function getMedicationHistoryRecord(
+  orgId: string,
+  patientId: string,
+): Promise<MedicationHistoryRecord> {
+  const [patient, medications] = await Promise.all([
+    prisma.patient.findFirst({
+      where: { id: patientId, org_id: orgId },
+      select: {
+        id: true,
+        name: true,
+        birth_date: true,
+        gender: true,
+      },
+    }),
+    prisma.medicationProfile.findMany({
+      where: { org_id: orgId, patient_id: patientId, is_current: true },
+      orderBy: [{ drug_name: 'asc' }, { created_at: 'desc' }],
+      select: {
+        id: true,
+        drug_name: true,
+        dose: true,
+        frequency: true,
+        start_date: true,
+        end_date: true,
+        prescriber: true,
+        source: true,
+      },
+    }),
+  ]);
+
+  if (!patient) {
+    throw new Error('患者が見つかりません');
+  }
+
+  return {
+    patient,
+    medications,
+  };
+}
+
+async function getVisitRecordEntries(
+  orgId: string,
+  where: { id?: string; patientId?: string; dateFrom?: Date | null; dateTo?: Date | null },
+): Promise<VisitRecordPdfEntry[]> {
+  const records = await prisma.visitRecord.findMany({
+    where: {
+      org_id: orgId,
+      ...(where.id ? { id: where.id } : {}),
+      ...(where.patientId ? { patient_id: where.patientId } : {}),
+      ...(where.dateFrom || where.dateTo
+        ? {
+            visit_date: {
+              ...(where.dateFrom ? { gte: where.dateFrom } : {}),
+              ...(where.dateTo ? { lte: where.dateTo } : {}),
+            },
+          }
+        : {}),
+    },
+    orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }],
+    select: {
+      id: true,
+      patient_id: true,
+      pharmacist_id: true,
+      visit_date: true,
+      outcome_status: true,
+      soap_subjective: true,
+      soap_objective: true,
+      soap_assessment: true,
+      soap_plan: true,
+      receipt_person_name: true,
+      receipt_person_relation: true,
+      receipt_at: true,
+      next_visit_suggestion_date: true,
+      cancellation_reason: true,
+      postpone_reason: true,
+      revisit_reason: true,
+      version: true,
+      created_at: true,
+      updated_at: true,
+      schedule: {
+        select: {
+          visit_type: true,
+          scheduled_date: true,
+        },
+      },
+    },
+  });
+
+  if (records.length === 0) {
+    throw new Error('訪問記録が見つかりません');
+  }
+
+  const patientIds = Array.from(new Set(records.map((record) => record.patient_id)));
+  const recordIds = records.map((record) => record.id);
+
+  const [patients, residuals, auditLogs] = await Promise.all([
+    prisma.patient.findMany({
+      where: {
+        org_id: orgId,
+        id: { in: patientIds },
+      },
+      select: {
+        id: true,
+        name: true,
+        birth_date: true,
+        gender: true,
+      },
+    }),
+    prisma.residualMedication.findMany({
+      where: {
+        org_id: orgId,
+        visit_record_id: { in: recordIds },
+      },
+      orderBy: [{ created_at: 'asc' }],
+      select: {
+        id: true,
+        visit_record_id: true,
+        drug_name: true,
+        drug_code: true,
+        prescribed_quantity: true,
+        remaining_quantity: true,
+        excess_days: true,
+        is_prohibited_reduction: true,
+        is_reduction_target: true,
+      },
+    }),
+    prisma.auditLog.findMany({
+      where: {
+        org_id: orgId,
+        target_type: 'visit_record',
+        target_id: { in: recordIds },
+      },
+      orderBy: [{ created_at: 'desc' }],
+      select: {
+        target_id: true,
+        actor_id: true,
+        created_at: true,
+      },
+    }),
+  ]);
+
+  const patientById = new Map(patients.map((patient) => [patient.id, patient]));
+  const latestAuditByRecordId = new Map<string, { actor_id: string; created_at: Date }>();
+  const userIds = new Set(records.map((record) => record.pharmacist_id));
+
+  for (const audit of auditLogs) {
+    if (!latestAuditByRecordId.has(audit.target_id)) {
+      latestAuditByRecordId.set(audit.target_id, {
+        actor_id: audit.actor_id,
+        created_at: audit.created_at,
+      });
+      userIds.add(audit.actor_id);
+    }
+  }
+
+  const users = await prisma.user.findMany({
+    where: {
+      org_id: orgId,
+      id: { in: Array.from(userIds) },
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  const userById = new Map(users.map((user) => [user.id, user.name]));
+  const residualsByRecordId = new Map<string, VisitRecordResidualRow[]>();
+  for (const residual of residuals) {
+    const bucket = residualsByRecordId.get(residual.visit_record_id) ?? [];
+    bucket.push({
+      id: residual.id,
+      drug_name: residual.drug_name,
+      drug_code: residual.drug_code,
+      prescribed_quantity: residual.prescribed_quantity,
+      remaining_quantity: residual.remaining_quantity,
+      excess_days: residual.excess_days,
+      is_prohibited_reduction: residual.is_prohibited_reduction,
+      is_reduction_target: residual.is_reduction_target,
+    });
+    residualsByRecordId.set(residual.visit_record_id, bucket);
+  }
+
+  return records.map((record) => {
+    const patient = patientById.get(record.patient_id);
+    if (!patient) {
+      throw new Error('患者が見つかりません');
+    }
+
+    const latestAudit = latestAuditByRecordId.get(record.id);
+    return {
+      id: record.id,
+      visit_date: record.visit_date,
+      outcome_status: record.outcome_status,
+      soap_subjective: record.soap_subjective,
+      soap_objective: record.soap_objective,
+      soap_assessment: record.soap_assessment,
+      soap_plan: record.soap_plan,
+      receipt_person_name: record.receipt_person_name,
+      receipt_person_relation: record.receipt_person_relation,
+      receipt_at: record.receipt_at,
+      next_visit_suggestion_date: record.next_visit_suggestion_date,
+      cancellation_reason: record.cancellation_reason,
+      postpone_reason: record.postpone_reason,
+      revisit_reason: record.revisit_reason,
+      version: record.version,
+      created_at: record.created_at,
+      updated_at: record.updated_at,
+      pharmacist_id: record.pharmacist_id,
+      pharmacist_name: userById.get(record.pharmacist_id) ?? null,
+      last_modified_by_id: latestAudit?.actor_id ?? record.pharmacist_id,
+      last_modified_by_name:
+        (latestAudit ? userById.get(latestAudit.actor_id) : null) ??
+        userById.get(record.pharmacist_id) ??
+        null,
+      schedule: record.schedule,
+      patient,
+      residuals: residualsByRecordId.get(record.id) ?? [],
+    };
+  });
+}
+
+async function getVisitRecordEntry(
+  orgId: string,
+  recordId: string,
+): Promise<VisitRecordPdfEntry> {
+  const entries = await getVisitRecordEntries(orgId, { id: recordId });
+  const entry = entries[0];
+  if (!entry) {
+    throw new Error('訪問記録が見つかりません');
+  }
+  return entry;
+}
+
+async function getPatientVisitRecordRecord(
+  orgId: string,
+  patientId: string,
+  dateFrom?: Date | null,
+  dateTo?: Date | null,
+): Promise<PatientVisitRecordPdfRecord> {
+  const [patient, records] = await Promise.all([
+    prisma.patient.findFirst({
+      where: { id: patientId, org_id: orgId },
+      select: {
+        id: true,
+        name: true,
+        birth_date: true,
+        gender: true,
+      },
+    }),
+    getVisitRecordEntries(orgId, { patientId, dateFrom, dateTo }),
+  ]);
+
+  if (!patient) {
+    throw new Error('患者が見つかりません');
+  }
+
+  return {
+    patient,
+    dateFrom: dateFrom ?? null,
+    dateTo: dateTo ?? null,
+    records,
+  };
+}
+
+async function getTracingReportRecord(
+  orgId: string,
+  reportId: string,
+): Promise<TracingReportRecord> {
+  const report = await prisma.tracingReport.findFirst({
+    where: { id: reportId, org_id: orgId },
+    select: {
+      id: true,
+      patient_id: true,
+      status: true,
+      sent_to_physician: true,
+      sent_at: true,
+      acknowledged_at: true,
+      created_at: true,
+      updated_at: true,
+      content: true,
+      issue: {
+        select: {
+          title: true,
+          description: true,
+          priority: true,
+          status: true,
+        },
+      },
+    },
+  });
+
+  if (!report) {
+    throw new Error('トレーシングレポートが見つかりません');
+  }
+
+  const patient = await prisma.patient.findFirst({
+    where: { id: report.patient_id, org_id: orgId },
+    select: {
+      id: true,
+      name: true,
+      birth_date: true,
+      gender: true,
+    },
+  });
+
+  if (!patient) {
+    throw new Error('患者が見つかりません');
+  }
+
+  return {
+    ...report,
+    content: (report.content as Record<string, unknown>) ?? {},
+    patient,
+  };
+}
+
+export async function buildCareReportPdf(
+  orgId: string,
+  reportId: string,
+): Promise<PdfRenderResult> {
+  const [branding, report] = await Promise.all([
+    getPdfBranding(orgId),
+    getCareReportRecord(orgId, reportId),
+  ]);
+  const fileName = sanitizeFileName(`care-report-${report.patient.name}-${report.id}.pdf`);
+
+  return renderPdf(
+    <PdfShell
+      title="訪問薬剤管理指導報告書"
+      subtitle={`${report.patient.name} / ${report.report_type}`}
+      pharmacyName={branding.pharmacyName}
+      generatedAt={new Date()}
+    >
+      {renderCareReportContent(report)}
+    </PdfShell>,
+    fileName,
+  );
+}
+
+export async function buildManagementPlanPdf(
+  orgId: string,
+  planId: string,
+): Promise<PdfRenderResult> {
+  const [branding, plan] = await Promise.all([
+    getPdfBranding(orgId),
+    getManagementPlanRecord(orgId, planId),
+  ]);
+  const fileName = sanitizeFileName(`management-plan-${plan.patient.name}-${plan.id}.pdf`);
+
+  return renderPdf(
+    <PdfShell
+      title="訪問薬剤管理指導計画書"
+      subtitle={plan.patient.name}
+      pharmacyName={branding.pharmacyName}
+      generatedAt={new Date()}
+    >
+      {renderManagementPlanContent(plan)}
+    </PdfShell>,
+    fileName,
+  );
+}
+
+export async function buildMedicationHistoryPdf(
+  orgId: string,
+  patientId: string,
+): Promise<PdfRenderResult> {
+  const [branding, record] = await Promise.all([
+    getPdfBranding(orgId),
+    getMedicationHistoryRecord(orgId, patientId),
+  ]);
+  const fileName = sanitizeFileName(`medications-${record.patient.name}-${record.patient.id}.pdf`);
+
+  return renderPdf(
+    <PdfShell
+      title="薬歴・服薬一覧"
+      subtitle={record.patient.name}
+      pharmacyName={branding.pharmacyName}
+      generatedAt={new Date()}
+    >
+      {renderMedicationHistoryContent(record)}
+    </PdfShell>,
+    fileName,
+  );
+}
+
+export async function buildVisitRecordPdf(
+  orgId: string,
+  recordId: string,
+): Promise<PdfRenderResult> {
+  const [branding, record] = await Promise.all([
+    getPdfBranding(orgId),
+    getVisitRecordEntry(orgId, recordId),
+  ]);
+  const fileName = sanitizeFileName(
+    `visit-record-${record.patient.name}-${formatDate(record.visit_date).replaceAll('/', '')}-${record.id}.pdf`,
+  );
+
+  return renderPdf(
+    <PdfShell
+      title="訪問記録（薬歴）"
+      subtitle={`${record.patient.name} / ${formatDate(record.visit_date)}`}
+      pharmacyName={branding.pharmacyName}
+      generatedAt={new Date()}
+    >
+      {renderVisitRecordEntryContent(record)}
+    </PdfShell>,
+    fileName,
+  );
+}
+
+export async function buildPatientVisitRecordsPdf(
+  orgId: string,
+  patientId: string,
+  dateFrom?: string | null,
+  dateTo?: string | null,
+): Promise<PdfRenderResult> {
+  const normalizedDateFrom =
+    dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom)
+      ? new Date(`${dateFrom}T00:00:00.000Z`)
+      : null;
+  const normalizedDateTo =
+    dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo)
+      ? new Date(`${dateTo}T23:59:59.999Z`)
+      : null;
+
+  const [branding, record] = await Promise.all([
+    getPdfBranding(orgId),
+    getPatientVisitRecordRecord(orgId, patientId, normalizedDateFrom, normalizedDateTo),
+  ]);
+  const fileName = sanitizeFileName(
+    `visit-records-${record.patient.name}-${record.patient.id}${
+      dateFrom || dateTo ? `-${dateFrom ?? 'start'}-${dateTo ?? 'end'}` : ''
+    }.pdf`,
+  );
+
+  return renderPdf(
+    <PdfShell
+      title="訪問記録一覧（薬歴）"
+      subtitle={record.patient.name}
+      pharmacyName={branding.pharmacyName}
+      generatedAt={new Date()}
+    >
+      {renderPatientVisitRecordsContent(record)}
+    </PdfShell>,
+    fileName,
+  );
+}
+
+export async function buildMedicationCalendarPdf(
+  orgId: string,
+  patientId: string,
+  month?: string | null,
+): Promise<PdfRenderResult> {
+  const parsedMonth =
+    month && /^\d{4}-\d{2}$/.test(month)
+      ? new Date(`${month}-01T00:00:00.000Z`)
+      : new Date();
+  const currentMonth = new Date(parsedMonth.getFullYear(), parsedMonth.getMonth(), 1);
+
+  const [branding, record] = await Promise.all([
+    getPdfBranding(orgId),
+    getMedicationHistoryRecord(orgId, patientId),
+  ]);
+  const fileName = sanitizeFileName(
+    `medication-calendar-${record.patient.name}-${currentMonth.getFullYear()}-${String(
+      currentMonth.getMonth() + 1,
+    ).padStart(2, '0')}.pdf`,
+  );
+
+  return renderPdf(
+    <PdfShell
+      title="服薬カレンダー"
+      subtitle={`${record.patient.name} / ${currentMonth.getFullYear()}年${currentMonth.getMonth() + 1}月`}
+      pharmacyName={branding.pharmacyName}
+      generatedAt={new Date()}
+      orientation="landscape"
+    >
+      {renderMedicationCalendarContent({
+        ...record,
+        month: currentMonth,
+      })}
+    </PdfShell>,
+    fileName,
+  );
+}
+
+export async function buildTracingReportPdf(
+  orgId: string,
+  reportId: string,
+): Promise<PdfRenderResult> {
+  const [branding, report] = await Promise.all([
+    getPdfBranding(orgId),
+    getTracingReportRecord(orgId, reportId),
+  ]);
+  const fileName = sanitizeFileName(`tracing-report-${report.patient.name}-${report.id}.pdf`);
+
+  return renderPdf(
+    <PdfShell
+      title="トレーシングレポート"
+      subtitle={report.patient.name}
+      pharmacyName={branding.pharmacyName}
+      generatedAt={new Date()}
+    >
+      {renderTracingReportContent(report)}
+    </PdfShell>,
+    fileName,
+  );
+}

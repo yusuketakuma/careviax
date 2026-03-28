@@ -1,3 +1,8 @@
+import { Prisma } from '@prisma/client';
+import {
+  getRequestAuthContext,
+  type RequestAuthContext,
+} from '@/lib/auth/request-context';
 import { prisma } from './client';
 
 // cuid v2 format: starts with 'c', 24-28 alphanumeric chars
@@ -14,18 +19,34 @@ function validateOrgId(orgId: string): void {
   }
 }
 
+async function setLocalConfig(
+  tx: Prisma.TransactionClient,
+  key: string,
+  value?: string
+) {
+  await tx.$executeRaw(Prisma.sql`SELECT set_config(${key}, ${value ?? ''}, true)`);
+}
+
 /**
  * Executes a function within a PostgreSQL transaction with RLS context set.
- * Sets `app.current_org_id` session variable so RLS policies can filter by org.
+ * Sets org and request metadata so RLS policies and audit triggers share the same context.
  */
 export async function withOrgContext<T>(
   orgId: string,
-  fn: (tx: typeof prisma) => Promise<T>
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  options?: {
+    requestContext?: RequestAuthContext;
+  }
 ): Promise<T> {
   validateOrgId(orgId);
+  const requestContext = options?.requestContext ?? getRequestAuthContext();
+
   return prisma.$transaction(async (tx) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (tx as any).$executeRawUnsafe(`SET LOCAL app.current_org_id = '${orgId}'`);
-    return fn(tx as unknown as typeof prisma);
+    await setLocalConfig(tx, 'app.current_org_id', orgId);
+    await setLocalConfig(tx, 'app.current_actor_id', requestContext?.userId);
+    await setLocalConfig(tx, 'app.current_member_role', requestContext?.role);
+    await setLocalConfig(tx, 'app.current_ip_address', requestContext?.ipAddress);
+    await setLocalConfig(tx, 'app.current_user_agent', requestContext?.userAgent);
+    return fn(tx);
   });
 }

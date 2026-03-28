@@ -1,5 +1,7 @@
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import type { HomeCareFeatureState } from '@/types/home-care';
+import type { VisitBrief } from '@/types/visit-brief';
 
 export type VisitPriority = 'normal' | 'urgent' | 'emergency';
 export type VisitType =
@@ -47,6 +49,8 @@ export type CaseOption = {
     name: string;
     residences: Array<{
       address: string;
+      lat?: number | null;
+      lng?: number | null;
     }>;
   };
 };
@@ -100,6 +104,10 @@ export type Proposal = {
       name: string;
       residences: Array<{
         address: string;
+        building_id?: string | null;
+        unit_name?: string | null;
+        lat?: number | null;
+        lng?: number | null;
       }>;
     };
   };
@@ -107,6 +115,8 @@ export type Proposal = {
     id: string;
     name: string;
     address: string;
+    lat?: number | null;
+    lng?: number | null;
   } | null;
   finalized_schedule: {
     id: string;
@@ -228,6 +238,34 @@ export type VisitPreparationPack = {
     organization_name: string | null;
     phone: string | null;
   }>;
+  billing_blockers: Array<{
+    evidence_id: string;
+    visit_record_id: string;
+    key:
+      | 'missing_visit_consent'
+      | 'missing_management_plan'
+      | 'management_plan_review_overdue'
+      | 'initial_home_visit_assessment_missing'
+      | 'report_delivery_incomplete'
+      | 'outcome_not_claimable';
+    reason: string;
+    action_href: string;
+    action_label: string;
+    severity: 'urgent' | 'high' | 'normal';
+  }>;
+  prescription_changes: {
+    current_prescribed_date: string;
+    previous_prescribed_date: string | null;
+    source_type: string;
+    added: string[];
+    changed: Array<{
+      drug_name: string;
+      reasons: string[];
+    }>;
+    removed: string[];
+  } | null;
+  home_care_feature_highlights: HomeCareFeatureState[];
+  visit_brief: VisitBrief;
 };
 
 export type ScheduleTaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
@@ -255,12 +293,14 @@ export type VisitSchedule = {
   visit_type: VisitType;
   priority: VisitPriority;
   schedule_status: ScheduleStatus;
+  carry_items_status: string | null;
   scheduled_date: string;
   time_window_start: string | null;
   time_window_end: string | null;
   pharmacist_id: string;
   assignment_mode: AssignmentMode;
   route_order: number | null;
+  facility_batch_id: string | null;
   confirmed_at: string | null;
   case_: {
     patient: {
@@ -268,6 +308,10 @@ export type VisitSchedule = {
       name: string;
       residences: Array<{
         address: string;
+        building_id?: string | null;
+        unit_name?: string | null;
+        lat?: number | null;
+        lng?: number | null;
       }>;
     };
   };
@@ -275,6 +319,8 @@ export type VisitSchedule = {
     id: string;
     name: string;
     address: string;
+    lat?: number | null;
+    lng?: number | null;
   } | null;
   preparation: VisitPreparation | null;
   override_request: PendingOverrideRequest | null;
@@ -355,6 +401,9 @@ export const TASK_TYPE_LABELS: Record<string, string> = {
   visit_demand: '訪問需要',
   visit_followup: '次回訪問',
   visit_intake_linkage: '処方受付導線',
+  visit_carry_item_review: '持参物確認',
+  facility_batch_tracker: '施設訪問',
+  mobile_visit_mode: 'オフライン同期',
 };
 
 export const SCHEDULING_TASK_TYPES = new Set(Object.keys(TASK_TYPE_LABELS));
@@ -438,6 +487,15 @@ export function readImpactCount(impactSummary: Record<string, unknown> | null | 
   if (!impactSummary) return null;
   const value = impactSummary.impacted_schedule_count;
   return typeof value === 'number' ? value : null;
+}
+
+export function readImpactedPatientNames(
+  impactSummary: Record<string, unknown> | null | undefined
+) {
+  if (!impactSummary) return [];
+  const value = impactSummary.impacted_patient_names;
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
 }
 
 export function priorityBadgeClass(priority: VisitPriority) {

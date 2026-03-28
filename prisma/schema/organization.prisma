@@ -33,6 +33,8 @@ model Organization {
 
   sites       PharmacySite[]
   memberships Membership[]
+
+  @@index([name])
 }
 
 model PharmacySite {

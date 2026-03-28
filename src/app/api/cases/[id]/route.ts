@@ -5,6 +5,7 @@ import { success, validationError, notFound } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { updateCaseSchema } from '@/lib/validations/case';
 import { prisma } from '@/lib/db/client';
+import type { Prisma } from '@prisma/client';
 
 export async function PATCH(
   req: NextRequest,
@@ -40,7 +41,7 @@ export async function PATCH(
     parsed.data.backup_pharmacist_id === ''
       ? null
       : parsed.data.backup_pharmacist_id;
-  const { start_date, end_date, ...rest } = parsed.data;
+  const { start_date, end_date, required_visit_support, ...rest } = parsed.data;
 
   const refResult = await validateOrgReferences(ctx.orgId, {
     ...(normalizedPrimaryPharmacistId
@@ -64,10 +65,15 @@ export async function PATCH(
         ...(normalizedBackupPharmacistId !== undefined
           ? { backup_pharmacist_id: normalizedBackupPharmacistId }
           : {}),
+        ...(required_visit_support !== undefined
+          ? {
+              required_visit_support: required_visit_support as Prisma.InputJsonValue,
+            }
+          : {}),
         ...rest,
       },
     });
-  });
+  }, { requestContext: ctx });
 
   return success(careCase);
 }

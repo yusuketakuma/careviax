@@ -30,6 +30,8 @@ type GeneratedGrant = {
   shareUrl: string;
   otp: string;
   expiresAt: string;
+  otpDelivery: 'sms' | 'manual';
+  otpDeliveryDestination: string | null;
 };
 
 // --- Constants ---
@@ -78,6 +80,8 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
           token: string;
           otp: string;
           expires_at: string;
+          otp_delivery: 'sms' | 'manual';
+          otp_delivery_destination: string | null;
         };
       };
       return {
@@ -85,6 +89,8 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
           shareUrl: `${window.location.origin}/shared/${payload.data.token}`,
           otp: payload.data.otp,
           expiresAt: payload.data.expires_at,
+          otpDelivery: payload.data.otp_delivery,
+          otpDeliveryDestination: payload.data.otp_delivery_destination,
         },
       } satisfies { data: GeneratedGrant };
     },
@@ -145,7 +151,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
         <div>
           <p className="font-medium">個人情報の外部共有には十分注意してください</p>
           <p className="mt-0.5 text-orange-700">
-            発行されたリンクは有効期限内に限り閲覧可能です。OTPは別の手段（電話・SMS）で伝達してください。
+            発行されたリンクは有効期限内に限り閲覧可能です。共有先連絡先に電話番号を入れると OTP を SMS 送信し、それ以外は別経路で手動共有します。
           </p>
         </div>
       </div>
@@ -269,10 +275,17 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
               有効期限: {new Date(generated.expiresAt).toLocaleString('ja-JP')}
             </div>
 
-            <div className="flex items-start gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
-              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-              OTPは電話・SMSなど共有URLとは別の手段で伝達してください。
-            </div>
+            {generated.otpDelivery === 'sms' ? (
+              <div className="flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                OTP を {generated.otpDeliveryDestination ?? '共有先連絡先'} に SMS 送信しました。必要に応じて下の控え用 OTP を確認してください。
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
+                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                OTPは電話・SMSなど共有URLとは別の手段で伝達してください。
+              </div>
+            )}
 
             <Button
               variant="outline"

@@ -95,14 +95,8 @@ export async function POST(
         },
       });
 
-    await resolveOperationalTasks(tx, {
-      orgId: ctx.orgId,
-      dedupeKey: `visit-reschedule-approval:${override.source_schedule_id}`,
-      status: 'completed',
-    });
-
     return updated;
-  });
+  }, { requestContext: ctx });
 
   return success({ data: approved });
 }

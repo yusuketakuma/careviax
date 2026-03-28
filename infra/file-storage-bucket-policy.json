@@ -1,0 +1,56 @@
+{
+  "bucketNameEnv": "S3_BUCKET_NAME",
+  "statements": [
+    {
+      "sid": "DenyInsecureTransport",
+      "effect": "Deny",
+      "principal": "*",
+      "actions": ["s3:*"],
+      "resources": [
+        "arn:aws:s3:::${S3_BUCKET_NAME}",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/*"
+      ],
+      "condition": {
+        "Bool": {
+          "aws:SecureTransport": "false"
+        }
+      }
+    },
+    {
+      "sid": "RequireServerSideEncryptionForAppUploads",
+      "effect": "Deny",
+      "principal": "*",
+      "actions": ["s3:PutObject"],
+      "resources": [
+        "arn:aws:s3:::${S3_BUCKET_NAME}/prescriptions/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/visit-photos/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/reports/*"
+      ],
+      "condition": {
+        "StringNotEquals": {
+          "s3:x-amz-server-side-encryption": "AES256"
+        }
+      }
+    },
+    {
+      "sid": "DenyPublicReadAcls",
+      "effect": "Deny",
+      "principal": "*",
+      "actions": ["s3:PutObject", "s3:PutObjectAcl"],
+      "resources": [
+        "arn:aws:s3:::${S3_BUCKET_NAME}/prescriptions/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/visit-photos/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/reports/*"
+      ],
+      "condition": {
+        "StringEqualsIfExists": {
+          "s3:x-amz-acl": [
+            "public-read",
+            "public-read-write",
+            "authenticated-read"
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import type { ElementType } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState, type ElementType } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
@@ -65,8 +65,23 @@ const TYPE_CONFIG: Record<NotificationType, { label: string; badge: string; icon
   system: { label: 'システム', badge: 'border-slate-200 bg-slate-50 text-slate-700', icon: Sparkles },
 };
 
+function mergeNotifications(current: Notification[], incoming: Notification[]) {
+  const merged = [...incoming, ...current];
+  const unique = merged.filter(
+    (notification, index, all) =>
+      all.findIndex((candidate) => candidate.id === notification.id) === index
+  );
+  unique.sort(
+    (left, right) =>
+      new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+  );
+  return unique.slice(0, 12);
+}
+
 export default function RealtimePage() {
   const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  const [isStreamConnected, setIsStreamConnected] = useState(false);
 
   const workflowQuery = useQuery({
     queryKey: ['admin-realtime-workflow', orgId],
@@ -91,8 +106,67 @@ export default function RealtimePage() {
       return res.json() as Promise<{ data: Notification[] }>;
     },
     enabled: !!orgId,
-    refetchInterval: 10_000,
+    refetchInterval: 60_000,
   });
+
+  useEffect(() => {
+    if (!orgId) return;
+    const controller = new AbortController();
+    let active = true;
+
+    (async () => {
+      try {
+        const response = await fetch('/api/notifications/stream', {
+          headers: { 'x-org-id': orgId },
+          signal: controller.signal,
+        });
+        if (!response.ok || !response.body) return;
+
+        if (active) {
+          setIsStreamConnected(true);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (active) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const chunks = buffer.split('\n\n');
+          buffer = chunks.pop() ?? '';
+
+          for (const chunk of chunks) {
+            if (!chunk.startsWith('data: ')) continue;
+            try {
+              const nextNotifications = JSON.parse(chunk.slice(6)) as Notification[];
+              queryClient.setQueryData<{ data: Notification[] }>(
+                ['admin-realtime-notifications', orgId],
+                (current) => ({
+                  data: mergeNotifications(current?.data ?? [], nextNotifications),
+                })
+              );
+            } catch {
+              // Ignore malformed SSE payloads and keep the stream alive.
+            }
+          }
+        }
+      } catch {
+        // Network aborts and reconnects fall back to the periodic query refresh.
+      } finally {
+        if (active) {
+          setIsStreamConnected(false);
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+      setIsStreamConnected(false);
+      controller.abort();
+    };
+  }, [orgId, queryClient]);
 
   const workflow = workflowQuery.data?.data;
   const notifications = notificationsQuery.data?.data ?? [];
@@ -132,8 +206,8 @@ export default function RealtimePage() {
               通知と訪問制御を同じ運用面で監視
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-              通知とワークフローを定期再取得し、確定ロック、変更承認待ち、
-              緊急影響をリアルタイムに近い粒度で追います。
+              通知は SSE で即時反映し、ワークフローは定期再取得で補完して、
+              確定ロック、変更承認待ち、緊急影響を継続監視します。
             </p>
           </div>
           <div className="grid gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
@@ -146,7 +220,9 @@ export default function RealtimePage() {
               <span className="font-medium">{workbenchItems.length}</span>
             </div>
             <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
-              SSE は未接続です。認証付きポーリングで代替しています。
+              {isStreamConnected
+                ? 'SSE 接続中です。新着通知は即時反映されます。'
+                : 'SSE 再接続中です。未接続時は定期再取得へフォールバックします。'}
             </div>
           </div>
         </CardContent>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -35,6 +35,19 @@ const TYPE_CONFIG: Record<NotificationType, { label: string; icon: React.Element
   reminder: { label: 'リマインダー', icon: Clock, badgeClass: 'bg-orange-100 text-orange-800 border-orange-200' },
   system: { label: 'システム', icon: Cpu, badgeClass: 'bg-gray-100 text-gray-700 border-gray-200' },
 };
+
+function mergeNotifications(current: Notification[], incoming: Notification[]) {
+  const merged = [...incoming, ...current];
+  const unique = merged.filter(
+    (notification, index, all) =>
+      all.findIndex((candidate) => candidate.id === notification.id) === index
+  );
+  unique.sort(
+    (left, right) =>
+      new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+  );
+  return unique.slice(0, 50);
+}
 
 // --- Helpers ---
 
@@ -109,6 +122,7 @@ export function NotificationsContent() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<'unread' | 'all'>('unread');
+  const [typeFilter, setTypeFilter] = useState<'all' | NotificationType>('all');
 
   const { data: unreadData, isLoading: unreadLoading } = useQuery({
     queryKey: ['notifications', orgId, 'unread'],
@@ -133,6 +147,62 @@ export function NotificationsContent() {
     },
     enabled: !!orgId && tab === 'all',
   });
+
+  useEffect(() => {
+    if (!orgId) return;
+    const controller = new AbortController();
+    let active = true;
+
+    (async () => {
+      try {
+        const response = await fetch('/api/notifications/stream', {
+          headers: { 'x-org-id': orgId },
+          signal: controller.signal,
+        });
+        if (!response.ok || !response.body) return;
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (active) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const chunks = buffer.split('\n\n');
+          buffer = chunks.pop() ?? '';
+
+          for (const chunk of chunks) {
+            if (!chunk.startsWith('data: ')) continue;
+            try {
+              const nextNotifications = JSON.parse(chunk.slice(6)) as Notification[];
+              queryClient.setQueryData<{ data: Notification[] }>(
+                ['notifications', orgId, 'unread'],
+                (current) => ({
+                  data: mergeNotifications(current?.data ?? [], nextNotifications),
+                })
+              );
+              queryClient.setQueryData<{ data: Notification[] }>(
+                ['notifications', orgId, 'all'],
+                (current) => ({
+                  data: mergeNotifications(current?.data ?? [], nextNotifications),
+                })
+              );
+            } catch {
+              // Ignore malformed SSE payloads and keep the stream alive.
+            }
+          }
+        }
+      } catch {
+        // Unmounts and transient reconnects are handled by the next page visit.
+      }
+    })();
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [orgId, queryClient]);
 
   const markReadMutation = useMutation({
     mutationFn: async ({ ids, all }: { ids?: string[]; all?: boolean }) => {
@@ -165,6 +235,10 @@ export function NotificationsContent() {
   }
 
   const currentList = tab === 'unread' ? unreadNotifications : allNotifications;
+  const filteredList =
+    typeFilter === 'all'
+      ? currentList
+      : currentList.filter((notification) => notification.type === typeFilter);
   const isLoading = tab === 'unread' ? unreadLoading : allLoading;
 
   return (
@@ -197,6 +271,37 @@ export function NotificationsContent() {
         )}
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant={typeFilter === 'all' ? 'default' : 'outline'}
+          onClick={() => setTypeFilter('all')}
+        >
+          すべて
+          <Badge variant="secondary" className="ml-1.5">
+            {currentList.length}
+          </Badge>
+        </Button>
+        {(Object.keys(TYPE_CONFIG) as NotificationType[]).map((type) => {
+          const count = currentList.filter((notification) => notification.type === type).length;
+          return (
+            <Button
+              key={type}
+              type="button"
+              size="sm"
+              variant={typeFilter === type ? 'default' : 'outline'}
+              onClick={() => setTypeFilter(type)}
+            >
+              {TYPE_CONFIG[type].label}
+              <Badge variant="secondary" className="ml-1.5">
+                {count}
+              </Badge>
+            </Button>
+          );
+        })}
+      </div>
+
       {isLoading && (
         <div className="space-y-2">
           {[1, 2, 3].map((i) => (
@@ -205,17 +310,21 @@ export function NotificationsContent() {
         </div>
       )}
 
-      {!isLoading && currentList.length === 0 && (
+      {!isLoading && filteredList.length === 0 && (
         <div className="flex min-h-[200px] flex-col items-center justify-center gap-2 rounded-md border border-dashed border-border text-center">
           <BellOff className="size-8 text-muted-foreground" aria-hidden="true" />
           <p className="text-sm text-muted-foreground">
-            {tab === 'unread' ? '未読の通知はありません' : '通知はありません'}
+            {typeFilter === 'all'
+              ? tab === 'unread'
+                ? '未読の通知はありません'
+                : '通知はありません'
+              : `${TYPE_CONFIG[typeFilter].label}の通知はありません`}
           </p>
         </div>
       )}
 
       <div className="space-y-2">
-        {currentList.map((notification) => (
+        {filteredList.map((notification) => (
           <NotificationCard
             key={notification.id}
             notification={notification}

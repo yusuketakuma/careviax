@@ -76,10 +76,13 @@ model PrescriptionIntake {
   prescriber_name           String?
   prescriber_institution    String?
   original_document_url     String? // S3
+  original_collected_at     DateTime?
+  original_collected_by     String?
   refill_remaining_count    Int?
   refill_next_dispense_date DateTime?
   split_dispense_total      Int?
   split_dispense_current    Int?
+  split_next_dispense_date  DateTime?
   prescription_expiry_date  DateTime?
   created_at                DateTime                @default(now())
   updated_at                DateTime                @updatedAt
@@ -129,6 +132,8 @@ model InquiryRecord {
   org_id          String
   cycle_id        String
   cycle           MedicationCycle @relation(fields: [cycle_id], references: [id])
+  issue_id        String?
+  issue           MedicationIssue? @relation(fields: [issue_id], references: [id])
   line_id         String?
   line            PrescriptionLine? @relation(fields: [line_id], references: [id])
   reason          String // 用量疑義/相互作用/禁忌/重複/その他
@@ -143,6 +148,7 @@ model InquiryRecord {
 
   @@index([org_id])
   @@index([cycle_id])
+  @@index([issue_id])
 }
 
 model DispenseTask {

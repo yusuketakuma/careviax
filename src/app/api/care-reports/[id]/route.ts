@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { conflict, success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
 
@@ -71,18 +71,26 @@ export async function PATCH(
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
+  if (parsed.data.status && parsed.data.status !== 'draft') {
+    return conflict('報告書の送信状態は送信APIからのみ更新できます');
+  }
+
   const existing = await prisma.careReport.findFirst({
     where: { id, org_id: ctx.orgId },
-    select: { id: true },
+    select: { id: true, status: true },
   });
   if (!existing) return notFound('報告書が見つかりません');
+
+  if (existing.status !== 'draft' && parsed.data.status === 'draft') {
+    return conflict('送信済みの報告書を下書きへ戻すことはできません');
+  }
 
   const report = await withOrgContext(ctx.orgId, async (tx) => {
     return tx.careReport.update({
       where: { id },
       data: parsed.data,
     });
-  });
+  }, { requestContext: ctx });
 
   return success({ data: report });
 }

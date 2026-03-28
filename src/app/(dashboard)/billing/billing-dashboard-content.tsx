@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type BillingStats = {
@@ -30,6 +31,37 @@ type BillingStats = {
   undrafted_reports: number;
 };
 
+type BillingAnalytics = {
+  summary: {
+    ssot_rule_count: number;
+    current_month: string;
+    current_month_candidates: number;
+    current_month_review_pending: number;
+    current_month_claimable_rate: number;
+    current_month_close_rate: number;
+    current_month_exported: number;
+  };
+  monthly_trend: Array<{
+    month: string;
+    total_candidates: number;
+    review_pending: number;
+    confirmed: number;
+    excluded: number;
+    exported: number;
+    claimable_evidence: number;
+    unclaimable_evidence: number;
+  }>;
+  blocker_reasons: Array<{
+    reason: string;
+    count: number;
+  }>;
+  top_codes: Array<{
+    billing_code: string;
+    billing_name: string;
+    count: number;
+  }>;
+};
+
 export function BillingDashboardContent() {
   const orgId = useOrgId();
 
@@ -45,7 +77,20 @@ export function BillingDashboardContent() {
     enabled: !!orgId,
   });
 
+  const { data: analyticsData, isLoading: analyticsLoading } = useQuery({
+    queryKey: ['billing-analytics', orgId],
+    queryFn: async () => {
+      const res = await fetch('/api/billing-evidence/analytics', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('請求分析の取得に失敗しました');
+      return res.json() as Promise<{ data: BillingAnalytics }>;
+    },
+    enabled: !!orgId,
+  });
+
   const stats = data?.data;
+  const analytics = analyticsData?.data;
 
   return (
     <div className="space-y-6">
@@ -255,6 +300,164 @@ export function BillingDashboardContent() {
               >
                 {stats?.undrafted_reports ?? 0}
               </span>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-3">
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle className="text-sm">今月の算定成立率</CardTitle>
+            <CardDescription className="text-xs">
+              claimable evidence / 全 billing evidence
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {analyticsLoading ? (
+              <div className="h-8 w-16 animate-pulse rounded bg-muted" />
+            ) : (
+              <div className="space-y-1">
+                <p className="text-3xl font-bold tabular-nums">
+                  {analytics?.summary.current_month_claimable_rate ?? 0}%
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  対象月: {analytics?.summary.current_month ?? '—'}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle className="text-sm">今月の締め進捗</CardTitle>
+            <CardDescription className="text-xs">
+              reviewed/excluded/exported を含む close rate
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {analyticsLoading ? (
+              <div className="h-8 w-16 animate-pulse rounded bg-muted" />
+            ) : (
+              <div className="space-y-1">
+                <p className="text-3xl font-bold tabular-nums">
+                  {analytics?.summary.current_month_close_rate ?? 0}%
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  締め済み {analytics?.summary.current_month_exported ?? 0} 件
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle className="text-sm">主要請求コード</CardTitle>
+            <CardDescription className="text-xs">
+              直近6か月で確定または締め済みの上位コード
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {analyticsLoading ? (
+              <div className="space-y-2">
+                <div className="h-4 w-full animate-pulse rounded bg-muted" />
+                <div className="h-4 w-4/5 animate-pulse rounded bg-muted" />
+                <div className="h-4 w-3/5 animate-pulse rounded bg-muted" />
+              </div>
+            ) : analytics?.top_codes.length ? (
+              <div className="space-y-2">
+                {analytics.top_codes.slice(0, 3).map((item) => (
+                  <div key={`${item.billing_code}:${item.billing_name}`} className="flex items-start justify-between gap-3 text-sm">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{item.billing_name}</p>
+                      <p className="font-mono text-xs text-muted-foreground">{item.billing_code}</p>
+                    </div>
+                    <Badge variant="outline">{item.count}件</Badge>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">まだ請求コード集計がありません。</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">月次推移</CardTitle>
+            <CardDescription>
+              直近6か月の候補生成、レビュー滞留、締め済みを並べて確認します。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {analyticsLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <div key={index} className="h-10 animate-pulse rounded bg-muted" />
+                ))}
+              </div>
+            ) : analytics?.monthly_trend.length ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="text-left text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-2 py-2 font-medium">月</th>
+                      <th className="px-2 py-2 font-medium">候補</th>
+                      <th className="px-2 py-2 font-medium">未レビュー</th>
+                      <th className="px-2 py-2 font-medium">締め済み</th>
+                      <th className="px-2 py-2 font-medium">算定可</th>
+                      <th className="px-2 py-2 font-medium">算定不可</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {analytics.monthly_trend.map((row) => (
+                      <tr key={row.month} className="border-t border-border/60">
+                        <td className="px-2 py-2 font-medium">{row.month}</td>
+                        <td className="px-2 py-2 tabular-nums">{row.total_candidates}</td>
+                        <td className="px-2 py-2 tabular-nums text-orange-700">{row.review_pending}</td>
+                        <td className="px-2 py-2 tabular-nums text-sky-700">{row.exported}</td>
+                        <td className="px-2 py-2 tabular-nums text-green-700">{row.claimable_evidence}</td>
+                        <td className="px-2 py-2 tabular-nums text-rose-700">{row.unclaimable_evidence}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">月次推移データはまだありません。</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">主要ブロッカー</CardTitle>
+            <CardDescription>
+              算定不可の主因を上位から表示します。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {analyticsLoading ? (
+              <div className="space-y-2">
+                <div className="h-4 w-full animate-pulse rounded bg-muted" />
+                <div className="h-4 w-5/6 animate-pulse rounded bg-muted" />
+                <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
+              </div>
+            ) : analytics?.blocker_reasons.length ? (
+              <div className="space-y-3">
+                {analytics.blocker_reasons.map((item) => (
+                  <div key={item.reason} className="flex items-start justify-between gap-3 rounded-md border border-border/60 px-3 py-2 text-sm">
+                    <p className="min-w-0 text-foreground">{item.reason}</p>
+                    <Badge variant="secondary">{item.count}件</Badge>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">現在の算定ブロッカーはありません。</p>
             )}
           </CardContent>
         </Card>

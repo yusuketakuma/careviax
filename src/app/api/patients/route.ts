@@ -1,32 +1,49 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildSearchFilter, buildSort } from '@/lib/api/search';
+import { parseSearchParams } from '@/lib/api/validation';
 import { createPatientSchema } from '@/lib/validations/patient';
 import { prisma } from '@/lib/db/client';
+import { z } from 'zod';
+
+const patientListQuerySchema = z.object({
+  q: z.string().trim().optional(),
+  cursor: z.string().trim().optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+  sort: z.enum(['name_kana', 'name', 'created_at']).optional(),
+  order: z.enum(['asc', 'desc']).optional(),
+});
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const { searchParams } = new URL(req.url);
-  const { cursor, limit } = parsePaginationParams(searchParams);
-  const query = searchParams.get('q')?.trim() ?? '';
+  const parsed = parseSearchParams(patientListQuerySchema, searchParams);
+  if (!parsed.ok) {
+    return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
+  }
+  const cursor = parsed.data.cursor;
+  const limit = parsed.data.limit ?? 50;
+  const query = parsed.data.q ?? '';
+  const primarySort = buildSort(
+    parsed.data.sort,
+    parsed.data.order,
+    ['name_kana', 'name', 'created_at'],
+    'name_kana'
+  );
 
   const where = {
     org_id: req.orgId,
-    ...(query
-      ? {
-          OR: [
-            { name: { contains: query } },
-            { name_kana: { contains: query } },
-          ],
-        }
-      : {}),
+    ...buildSearchFilter(query, ['name', 'name_kana']),
   };
 
   const patients = await prisma.patient.findMany({
     where,
     take: limit + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    orderBy: { name_kana: 'asc' },
+    orderBy:
+      parsed.data.sort === 'name'
+        ? [primarySort ?? { name_kana: 'asc' }, { name_kana: 'asc' }]
+        : [primarySort ?? { name_kana: 'asc' }, { name: 'asc' }],
     select: {
       id: true,
       name: true,

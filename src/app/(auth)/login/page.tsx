@@ -3,6 +3,11 @@
 import { Suspense, useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+import {
+  COGNITO_CHALLENGE_STORAGE_KEY,
+  decodeCognitoChallenge,
+} from '@/lib/auth/cognito-challenge';
 import {
   Card,
   CardContent,
@@ -13,6 +18,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AlertCircle, ShieldCheck } from 'lucide-react';
 
 const ERROR_MESSAGES: Record<string, string> = {
   CredentialsSignin: 'メールアドレスまたはパスワードが正しくありません。',
@@ -20,67 +27,103 @@ const ERROR_MESSAGES: Record<string, string> = {
   UserNotConfirmed: 'メールアドレスの確認が完了していません。',
   PasswordResetRequired: 'パスワードのリセットが必要です。',
   UserLambdaValidationException: 'アカウントがロックされています。しばらくお待ちください。',
+  AccountLocked: 'アカウントがロックされています。',
+  NotAuthorizedException: 'メールアドレスまたはパスワードが正しくありません。',
+  UserNotFoundException: 'メールアドレスまたはパスワードが正しくありません。',
+  PasswordResetRequiredException: 'パスワードのリセットが必要です。',
+  UserNotConfirmedException: 'メールアドレスの確認が完了していません。',
+};
+
+const LOCKOUT_ERROR_CODES = new Set([
+  'AccountLocked',
+  'UserLambdaValidationException',
+  'TooManyFailedAttemptsException',
+  'PasswordAttemptsExceeded',
+]);
+
+const NOTICE_MESSAGES: Record<string, string> = {
+  mfa_recovery_reset:
+    'リカバリーコードでMFAを解除しました。ログイン後にMFAを再設定してください。',
 };
 
 function LoginForm() {
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get('callbackUrl') ?? '/';
+  const rawCallback = searchParams.get('callbackUrl') ?? '/dashboard';
+  const callbackUrl = rawCallback.startsWith('/') ? rawCallback : '/dashboard';
   const errorCode = searchParams.get('error') ?? '';
+  const noticeCode = searchParams.get('notice') ?? '';
+  const notice = noticeCode ? NOTICE_MESSAGES[noticeCode] ?? null : null;
 
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(
+    errorCode ? (ERROR_MESSAGES[errorCode] ?? 'ログインに失敗しました。') : null
+  );
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setError(null);
     setIsLoading(true);
+
     try {
-      await signIn('cognito', { callbackUrl });
+      const result = await signIn('credentials', {
+        email,
+        password,
+        mode: 'password',
+        redirect: false,
+        callbackUrl,
+      });
+
+      if (result?.error) {
+        if (LOCKOUT_ERROR_CODES.has(result.error)) {
+          window.location.href = '/lockout';
+          return;
+        }
+
+        const challenge = decodeCognitoChallenge(result.error);
+        if (challenge) {
+          window.sessionStorage.setItem(
+            COGNITO_CHALLENGE_STORAGE_KEY,
+            JSON.stringify(challenge)
+          );
+          window.location.href =
+            challenge.type === 'NEW_PASSWORD_REQUIRED'
+              ? `/first-login?callbackUrl=${encodeURIComponent(callbackUrl)}`
+              : `/mfa?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+          return;
+        }
+
+        setError(ERROR_MESSAGES[result.error] ?? 'ログインに失敗しました。');
+      } else if (result?.url) {
+        window.location.href = result.url;
+      }
+    } catch {
+      setError('ネットワークエラーが発生しました。接続を確認してください。');
     } finally {
       setIsLoading(false);
     }
   }
 
-  const errorMessage = errorCode
-    ? (ERROR_MESSAGES[errorCode] ?? 'ログインに失敗しました。')
-    : null;
-
   return (
-    <div className="w-full max-w-sm px-4">
-      <div className="mb-8 text-center">
-        <div className="mb-3 flex justify-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-600">
-            <svg
-              className="h-7 w-7 text-white"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-              />
-            </svg>
-          </div>
-        </div>
-        <h1 className="text-xl font-semibold text-slate-800">CareViaX</h1>
-        <p className="mt-1 text-sm text-slate-500">在宅訪問薬局プラットフォーム</p>
-      </div>
-
+    <div className="w-full max-w-md">
       <Card>
         <CardHeader>
           <CardTitle>ログイン</CardTitle>
           <CardDescription>アカウント情報を入力してください</CardDescription>
         </CardHeader>
         <CardContent>
-          {errorMessage && (
-            <div
-              role="alert"
-              className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-            >
-              {errorMessage}
-            </div>
+          {notice && (
+            <Alert className="mb-4 border-blue-200 bg-blue-50 text-blue-900">
+              <ShieldCheck className="h-4 w-4 text-blue-600" />
+              <AlertDescription>{notice}</AlertDescription>
+            </Alert>
+          )}
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -92,6 +135,8 @@ function LoginForm() {
                 type="email"
                 autoComplete="email"
                 placeholder="example@pharmacy.jp"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
                 disabled={isLoading}
               />
@@ -104,6 +149,8 @@ function LoginForm() {
                 name="password"
                 type="password"
                 autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={isLoading}
               />
@@ -119,12 +166,17 @@ function LoginForm() {
               {isLoading ? 'ログイン中...' : 'ログイン'}
             </Button>
           </form>
+
+          <div className="mt-4 text-center">
+            <Link
+              href="/password/reset"
+              className="text-sm text-blue-600 hover:text-blue-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+            >
+              パスワードを忘れた方
+            </Link>
+          </div>
         </CardContent>
       </Card>
-
-      <p className="mt-6 text-center text-xs text-slate-400">
-        3省2ガイドライン準拠 / ISMAP準拠 AWS基盤
-      </p>
     </div>
   );
 }
@@ -133,8 +185,8 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="w-full max-w-sm px-4">
-          <div className="h-64 animate-pulse rounded-xl bg-slate-100" />
+        <div className="w-full max-w-md">
+          <div className="h-72 animate-pulse rounded-xl bg-slate-100" />
         </div>
       }
     >

@@ -10,6 +10,57 @@ if (!connectionString) {
 const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
 
+const DEFAULT_SOURCE_OF_TRUTH_MATRIX = [
+  {
+    entity_type: 'patient_basic',
+    source_of_truth: 'careviax',
+    sync_direction: 'pull',
+    external_system: 'receipt_computer',
+    recovery_procedure:
+      'レセコン再取込後に患者単位で差分照合し、Patient/Residence/ContactParty/CareCase の在宅運用属性を手動確定する',
+  },
+  {
+    entity_type: 'prescription_original',
+    source_of_truth: 'external',
+    sync_direction: 'pull',
+    external_system: 'receipt_computer_or_e_prescription',
+    recovery_procedure:
+      '原本識別子で再照合し、PrescriptionIntake と PrescriptionLine の差分を WorkflowException として解消する',
+  },
+  {
+    entity_type: 'dispense_result',
+    source_of_truth: 'external',
+    sync_direction: 'push',
+    external_system: 'receipt_computer',
+    recovery_procedure:
+      'CareViaX で保持した DispenseTask/DispenseResult/DispenseAudit を再送し、確定調剤実績との差分を再確認する',
+  },
+  {
+    entity_type: 'carry_items',
+    source_of_truth: 'careviax',
+    sync_direction: 'internal',
+    external_system: null,
+    recovery_procedure:
+      'DispenseResult・SetAudit・VisitSchedule を元に carry_items を再計算し、出発前チェックを再実行する',
+  },
+  {
+    entity_type: 'report_delivery',
+    source_of_truth: 'careviax',
+    sync_direction: 'push',
+    external_system: 'ses_fax_phone',
+    recovery_procedure:
+      'DeliveryRecord と CommunicationEvent に送達証跡を再取込し、未確認分を response_waiting として再起票する',
+  },
+  {
+    entity_type: 'billing',
+    source_of_truth: 'careviax',
+    sync_direction: 'push',
+    external_system: 'receipt_computer',
+    recovery_procedure:
+      'BillingEvidence と BillingCandidate を再生成し、提出済みレセコンデータとの差分を再送または除外理由更新で解消する',
+  },
+] as const;
+
 async function main() {
   // 組織
   const org = await prisma.organization.create({
@@ -28,6 +79,13 @@ async function main() {
       lat: 35.6812,
       lng: 139.7671,
     },
+  });
+
+  await prisma.sourceOfTruthMatrix.createMany({
+    data: DEFAULT_SOURCE_OF_TRUTH_MATRIX.map((entry) => ({
+      org_id: org.id,
+      ...entry,
+    })),
   });
 
   // ユーザー（管理者薬剤師）
@@ -96,6 +154,7 @@ async function main() {
     site: site.id,
     user: user.id,
     patients: patients.length,
+    sourceOfTruthEntries: DEFAULT_SOURCE_OF_TRUTH_MATRIX.length,
   });
 }
 

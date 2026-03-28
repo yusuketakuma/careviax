@@ -22,9 +22,13 @@ type SetBatch = {
   line: {
     id: string;
     drug_name: string;
+    drug_code: string | null;
+    dosage_form: string | null;
     dose: string;
     frequency: string;
     unit: string | null;
+    packaging_instructions: string | null;
+    notes: string | null;
   };
 };
 
@@ -85,9 +89,12 @@ function batchesToSlotGrid(batches: SetBatch[]): {
   const slotCellMap = new Map<string, SlotCell>();
   for (const b of regularBatches) {
     const key = `${b.slot}-${b.day_number}`;
+    const specialNotes = `${b.line.packaging_instructions ?? ''} ${b.line.notes ?? ''}`;
     const drug: DrugEntry = {
       drugName: b.line.drug_name,
       quantity: `${b.quantity}${b.line.unit ?? ''}`,
+      isCold: /冷所/.test(specialNotes),
+      isNarcotic: /麻薬/.test(specialNotes),
     };
     if (slotCellMap.has(key)) {
       slotCellMap.get(key)!.drugs.push(drug);
@@ -110,10 +117,13 @@ function batchesToSlotGrid(batches: SetBatch[]): {
   const prnMap = new Map<string, PrnDrug>();
   for (const b of prnBatches) {
     if (!prnMap.has(b.line.drug_name)) {
+      const specialNotes = `${b.line.packaging_instructions ?? ''} ${b.line.notes ?? ''}`;
       prnMap.set(b.line.drug_name, {
         drugName: b.line.drug_name,
         quantity: `${b.quantity}${b.line.unit ?? ''}`,
         condition: b.line.frequency,
+        isCold: /冷所/.test(specialNotes),
+        isNarcotic: /麻薬/.test(specialNotes),
       });
     }
   }
@@ -245,10 +255,9 @@ function PrnSection({ drugs }: { drugs: PrnDrug[] }) {
   );
 }
 
-function CarryPackChecklist({ grid, prn }: { grid: SlotCell[]; prn: PrnDrug[] }) {
+function CarryPackChecklist({ drugs }: { drugs: DrugEntry[] }) {
   const allDrugs = [
-    ...grid.flatMap((c) => c.drugs),
-    ...prn,
+    ...drugs,
   ];
   const uniqueDrugs = Array.from(new Map(allDrugs.map((d) => [d.drugName, d])).values());
 
@@ -361,6 +370,18 @@ export function MedicationSetFullContent() {
 
   const batches = data ?? [];
   const { grid, prn, days, usedSlots } = batchesToSlotGrid(batches);
+  const carryDrugMap = new Map<string, DrugEntry>();
+  for (const batch of batches.filter((item) => item.carry_type === 'carry')) {
+    const specialNotes = `${batch.line.packaging_instructions ?? ''} ${batch.line.notes ?? ''}`;
+    if (!carryDrugMap.has(batch.line.drug_name)) {
+      carryDrugMap.set(batch.line.drug_name, {
+        drugName: batch.line.drug_name,
+        quantity: `${batch.quantity}${batch.line.unit ?? ''}`,
+        isCold: /冷所/.test(specialNotes),
+        isNarcotic: /麻薬/.test(specialNotes),
+      });
+    }
+  }
 
   return (
     <>
@@ -393,7 +414,7 @@ export function MedicationSetFullContent() {
         <PrnSection drugs={prn} />
 
         {/* Carry pack checklist */}
-        <CarryPackChecklist grid={grid} prn={prn} />
+        <CarryPackChecklist drugs={Array.from(carryDrugMap.values())} />
       </div>
     </>
   );

@@ -15,7 +15,20 @@ const {
   checkCallbackFollowupsMock,
   checkResidenceGeocodeQualityMock,
   checkPreparationBacklogMock,
+  checkInitialHomeVisitAssessmentBacklogMock,
   generateBillingEvidenceDailyMock,
+  syncVisitSupportFeatureTasksMock,
+  runNextDayOperationsMock,
+  runMonthlyOperationsMock,
+  refreshMhlwDrugReferencesMock,
+  refreshPmdaPackageInsertsDeltaMock,
+  refreshSskDrugMasterMock,
+  drainMedicationHistoryBulkExportJobsMock,
+  checkFacilityStandardExpiryMock,
+  checkCredentialExpiryMock,
+  checkConsentExpiryMock,
+  checkVisitRecordRetentionMock,
+  checkPrescriptionOriginalRetentionMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -30,7 +43,20 @@ const {
   checkCallbackFollowupsMock: vi.fn(),
   checkResidenceGeocodeQualityMock: vi.fn(),
   checkPreparationBacklogMock: vi.fn(),
+  checkInitialHomeVisitAssessmentBacklogMock: vi.fn(),
   generateBillingEvidenceDailyMock: vi.fn(),
+  syncVisitSupportFeatureTasksMock: vi.fn(),
+  runNextDayOperationsMock: vi.fn(),
+  runMonthlyOperationsMock: vi.fn(),
+  refreshMhlwDrugReferencesMock: vi.fn(),
+  refreshPmdaPackageInsertsDeltaMock: vi.fn(),
+  refreshSskDrugMasterMock: vi.fn(),
+  drainMedicationHistoryBulkExportJobsMock: vi.fn(),
+  checkFacilityStandardExpiryMock: vi.fn(),
+  checkCredentialExpiryMock: vi.fn(),
+  checkConsentExpiryMock: vi.fn(),
+  checkVisitRecordRetentionMock: vi.fn(),
+  checkPrescriptionOriginalRetentionMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -57,7 +83,20 @@ vi.mock('@/server/jobs', () => ({
   checkCallbackFollowups: checkCallbackFollowupsMock,
   checkResidenceGeocodeQuality: checkResidenceGeocodeQualityMock,
   checkPreparationBacklog: checkPreparationBacklogMock,
+  checkInitialHomeVisitAssessmentBacklog: checkInitialHomeVisitAssessmentBacklogMock,
   generateBillingEvidenceDaily: generateBillingEvidenceDailyMock,
+  syncVisitSupportFeatureTasks: syncVisitSupportFeatureTasksMock,
+  runNextDayOperations: runNextDayOperationsMock,
+  runMonthlyOperations: runMonthlyOperationsMock,
+  refreshMhlwDrugReferences: refreshMhlwDrugReferencesMock,
+  refreshPmdaPackageInsertsDelta: refreshPmdaPackageInsertsDeltaMock,
+  refreshSskDrugMaster: refreshSskDrugMasterMock,
+  drainMedicationHistoryBulkExportJobs: drainMedicationHistoryBulkExportJobsMock,
+  checkFacilityStandardExpiry: checkFacilityStandardExpiryMock,
+  checkCredentialExpiry: checkCredentialExpiryMock,
+  checkConsentExpiry: checkConsentExpiryMock,
+  checkVisitRecordRetention: checkVisitRecordRetentionMock,
+  checkPrescriptionOriginalRetention: checkPrescriptionOriginalRetentionMock,
 }));
 
 import { POST } from './route';
@@ -82,6 +121,19 @@ describe('/api/jobs/[jobType] POST', () => {
     checkUnrecordedVisitsMock.mockResolvedValue({ processedCount: 0 });
     runDailyOperationsMock.mockResolvedValue({ processedCount: 3 });
     runEveningOperationsMock.mockResolvedValue({ processedCount: 0 });
+    syncVisitSupportFeatureTasksMock.mockResolvedValue({ processedCount: 2 });
+    checkInitialHomeVisitAssessmentBacklogMock.mockResolvedValue({ processedCount: 1 });
+    runNextDayOperationsMock.mockResolvedValue({ processedCount: 1 });
+    runMonthlyOperationsMock.mockResolvedValue({ processedCount: 4 });
+    refreshMhlwDrugReferencesMock.mockResolvedValue({ processedCount: 120 });
+    refreshPmdaPackageInsertsDeltaMock.mockResolvedValue({ processedCount: 42 });
+    refreshSskDrugMasterMock.mockResolvedValue({ processedCount: 12 });
+    drainMedicationHistoryBulkExportJobsMock.mockResolvedValue({ processedCount: 25 });
+    checkFacilityStandardExpiryMock.mockResolvedValue({ processedCount: 0 });
+    checkCredentialExpiryMock.mockResolvedValue({ processedCount: 0 });
+    checkConsentExpiryMock.mockResolvedValue({ processedCount: 0 });
+    checkVisitRecordRetentionMock.mockResolvedValue({ processedCount: 1 });
+    checkPrescriptionOriginalRetentionMock.mockResolvedValue({ processedCount: 1 });
   });
 
   afterAll(() => {
@@ -136,5 +188,123 @@ describe('/api/jobs/[jobType] POST', () => {
 
     expect(response.status).toBe(200);
     expect(checkMedicationDeadlinesMock).toHaveBeenCalledOnce();
+  });
+
+  it('returns 200 when admin executes visit support sync', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ jobType: 'daily-visit-support-sync' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(syncVisitSupportFeatureTasksMock).toHaveBeenCalledOnce();
+    await expect(response.json()).resolves.toMatchObject({
+      jobType: 'daily-visit-support-sync',
+      processedCount: 2,
+    });
+  });
+
+  it('returns 200 when api key executes drug master refresh', async () => {
+    authMock.mockResolvedValue(null);
+
+    const response = await POST(
+      createRequest({ 'x-api-key': 'job-secret' }),
+      {
+        params: Promise.resolve({ jobType: 'drug-master-refresh' }),
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(refreshSskDrugMasterMock).toHaveBeenCalledOnce();
+    await expect(response.json()).resolves.toMatchObject({
+      jobType: 'drug-master-refresh',
+      processedCount: 12,
+    });
+  });
+
+  it('returns 200 when api key executes drug reference refresh', async () => {
+    authMock.mockResolvedValue(null);
+
+    const response = await POST(
+      createRequest({ 'x-api-key': 'job-secret' }),
+      {
+        params: Promise.resolve({ jobType: 'drug-reference-refresh' }),
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(refreshMhlwDrugReferencesMock).toHaveBeenCalledOnce();
+    await expect(response.json()).resolves.toMatchObject({
+      jobType: 'drug-reference-refresh',
+      processedCount: 120,
+    });
+  });
+
+  it('returns 200 when api key executes pmda delta refresh', async () => {
+    authMock.mockResolvedValue(null);
+
+    const response = await POST(
+      createRequest({ 'x-api-key': 'job-secret' }),
+      {
+        params: Promise.resolve({ jobType: 'pmda-package-insert-refresh' }),
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(refreshPmdaPackageInsertsDeltaMock).toHaveBeenCalledOnce();
+    await expect(response.json()).resolves.toMatchObject({
+      jobType: 'pmda-package-insert-refresh',
+      processedCount: 42,
+    });
+  });
+
+  it('returns 200 when admin drains bulk medication history exports', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ jobType: 'medication-history-bulk-export-drain' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(drainMedicationHistoryBulkExportJobsMock).toHaveBeenCalledOnce();
+    await expect(response.json()).resolves.toMatchObject({
+      jobType: 'medication-history-bulk-export-drain',
+      processedCount: 25,
+    });
+  });
+
+  it('returns 200 when admin executes visit record retention checks', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ jobType: 'daily-visit-record-retention' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(checkVisitRecordRetentionMock).toHaveBeenCalledOnce();
+    await expect(response.json()).resolves.toMatchObject({
+      jobType: 'daily-visit-record-retention',
+      processedCount: 1,
+    });
+  });
+
+  it('returns 200 when admin executes prescription original retention checks', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ jobType: 'daily-prescription-original-retention' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(checkPrescriptionOriginalRetentionMock).toHaveBeenCalledOnce();
+    await expect(response.json()).resolves.toMatchObject({
+      jobType: 'daily-prescription-original-retention',
+      processedCount: 1,
+    });
   });
 });

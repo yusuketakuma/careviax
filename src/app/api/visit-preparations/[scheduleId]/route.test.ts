@@ -9,6 +9,11 @@ const {
   taskFindManyMock,
   visitScheduleContactLogFindManyMock,
   peerVisitScheduleFindManyMock,
+  prescriptionIntakeFindManyMock,
+  billingEvidenceBlockersMock,
+  patientHomeCareFeatureSummaryMock,
+  scheduleFeatureHighlightsMock,
+  scheduleVisitBriefMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -17,6 +22,11 @@ const {
   taskFindManyMock: vi.fn(),
   visitScheduleContactLogFindManyMock: vi.fn(),
   peerVisitScheduleFindManyMock: vi.fn(),
+  prescriptionIntakeFindManyMock: vi.fn(),
+  billingEvidenceBlockersMock: vi.fn(),
+  patientHomeCareFeatureSummaryMock: vi.fn(),
+  scheduleFeatureHighlightsMock: vi.fn(),
+  scheduleVisitBriefMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -41,7 +51,23 @@ vi.mock('@/lib/db/client', () => ({
     visitScheduleContactLog: {
       findMany: visitScheduleContactLogFindManyMock,
     },
+    prescriptionIntake: {
+      findMany: prescriptionIntakeFindManyMock,
+    },
   },
+}));
+
+vi.mock('@/server/services/home-care-ops', () => ({
+  getPatientHomeCareFeatureSummary: patientHomeCareFeatureSummaryMock,
+  selectScheduleHomeCareFeatureHighlights: scheduleFeatureHighlightsMock,
+}));
+
+vi.mock('@/server/services/billing-evidence', () => ({
+  listBillingEvidenceBlockers: billingEvidenceBlockersMock,
+}));
+
+vi.mock('@/server/services/visit-brief', () => ({
+  getScheduleVisitBrief: scheduleVisitBriefMock,
 }));
 
 import { GET } from './route';
@@ -169,6 +195,103 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
         },
       },
     ]);
+    prescriptionIntakeFindManyMock.mockResolvedValue([
+      {
+        id: 'intake_current',
+        source_type: 'paper',
+        prescribed_date: new Date('2026-03-26T00:00:00Z'),
+        lines: [
+          {
+            drug_name: 'アムロジピンOD錠5mg',
+            drug_code: '111',
+            dose: '1回1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+          {
+            drug_name: 'ロキソプロフェン錠60mg',
+            drug_code: '222',
+            dose: '1回2錠',
+            frequency: '疼痛時',
+            days: 7,
+          },
+        ],
+      },
+      {
+        id: 'intake_previous',
+        source_type: 'paper',
+        prescribed_date: new Date('2026-03-10T00:00:00Z'),
+        lines: [
+          {
+            drug_name: 'ロキソプロフェン錠60mg',
+            drug_code: '222',
+            dose: '1回1錠',
+            frequency: '疼痛時',
+            days: 7,
+          },
+          {
+            drug_name: 'マグミット錠330mg',
+            drug_code: '333',
+            dose: '1回2錠',
+            frequency: '1日3回毎食後',
+            days: 14,
+          },
+        ],
+      },
+    ]);
+    billingEvidenceBlockersMock.mockResolvedValue([]);
+    patientHomeCareFeatureSummaryMock.mockResolvedValue({
+      totals: { blocked: 1, attention: 0, monitoring: 0, ready: 19 },
+      features: [],
+    });
+    scheduleFeatureHighlightsMock.mockReturnValue([
+      {
+        key: 'consent_plan_huddle',
+        title: '同意・計画書ハドル',
+        description: '訪問前の同意・計画書ブロックを見逃しません。',
+        group: 'preparation',
+        action_href: '/workflow',
+        action_label: '前提不足を確認',
+        status: 'blocked',
+        severity: 'urgent',
+        count: 1,
+        summary: '同意または計画書の確認が必要です。',
+        evidence: ['前提不足 1件'],
+      },
+    ]);
+    scheduleVisitBriefMock.mockResolvedValue({
+      patient: { id: 'patient_1', name: '山田 太郎' },
+      context: 'schedule',
+      generated_at: '2026-03-27T00:00:00.000Z',
+      last_prescribed_date: '2026-03-26T00:00:00.000Z',
+      medication_changes: [],
+      medications: [],
+      dispensing_items: [],
+      delivery_status: [],
+      dosage_form_support: [],
+      multidisciplinary_updates: [],
+      unresolved_items: [],
+      must_check_today: [],
+      rule_summary: {
+        headline: '処方・連携情報に大きな変化はありません。',
+        bullets: [],
+        must_check_today: [],
+        source_refs: [],
+        generated_at: '2026-03-27T00:00:00.000Z',
+      },
+      ai_summary: {
+        provider: 'rule',
+        requested_provider: 'disabled',
+        is_fallback: true,
+        model: null,
+        fallback_reason: 'provider_unavailable',
+        headline: '処方・連携情報に大きな変化はありません。',
+        bullets: [],
+        must_check_today: [],
+        source_refs: [],
+        generated_at: '2026-03-27T00:00:00.000Z',
+      },
+    });
   });
 
   it('returns preparation and pre-visit pack data', async () => {
@@ -206,6 +329,27 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
               name: '佐藤 医師',
             }),
           ],
+          home_care_feature_highlights: [
+            expect.objectContaining({
+              key: 'consent_plan_huddle',
+              status: 'blocked',
+            }),
+          ],
+          prescription_changes: {
+            added: ['アムロジピンOD錠5mg'],
+            changed: [
+              expect.objectContaining({
+                drug_name: 'ロキソプロフェン錠60mg',
+              }),
+            ],
+            removed: ['マグミット錠330mg'],
+          },
+          visit_brief: {
+            context: 'schedule',
+            ai_summary: {
+              provider: 'rule',
+            },
+          },
           open_tasks: [
             expect.objectContaining({
               title: '訪問準備が未完了です',
@@ -214,6 +358,15 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
           ],
         },
       },
+    });
+    expect(patientHomeCareFeatureSummaryMock).toHaveBeenCalledWith(expect.anything(), {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+    });
+    expect(scheduleFeatureHighlightsMock).toHaveBeenCalledOnce();
+    expect(scheduleVisitBriefMock).toHaveBeenCalledWith(expect.anything(), {
+      orgId: 'org_1',
+      patientId: 'patient_1',
     });
   });
 });

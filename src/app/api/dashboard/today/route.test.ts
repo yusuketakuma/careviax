@@ -126,6 +126,9 @@ describe('/api/dashboard/today GET', () => {
         prescribed_date: new Date('2026-03-20T00:00:00Z'),
         prescription_expiry_date: null,
         refill_next_dispense_date: new Date('2026-03-30T00:00:00Z'),
+        split_dispense_total: null,
+        split_dispense_current: null,
+        split_next_dispense_date: null,
         cycle: {
           case_: {
             patient: {

@@ -1,6 +1,7 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
@@ -15,6 +16,7 @@ import {
   UserRound,
   XCircle,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   Card,
   CardContent,
@@ -22,7 +24,12 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { HomeCareFeatureBoard } from '@/components/home-care/home-care-feature-board';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import type { HomeCareFeatureSummary } from '@/types/home-care';
 
 type WorkflowData = {
   cycle_status_counts: Record<string, number>;
@@ -74,6 +81,9 @@ type WorkflowData = {
       open_requests: number;
       delivery_backlog: number;
       expiring_external_shares: number;
+      unconfirmed_count: number;
+      reply_waiting_count: number;
+      failed_count: number;
     };
     items: Array<{
       id: string;
@@ -85,6 +95,31 @@ type WorkflowData = {
       priority: 'urgent' | 'high' | 'normal';
       patient_name: string | null;
       due_at: string | null;
+      action_href: string;
+      action_label: string;
+    }>;
+    timeline: Array<{
+      id: string;
+      source_type: 'care_report' | 'tracing_report' | 'communication_request' | 'delivery_record';
+      patient_name: string | null;
+      title: string;
+      summary: string;
+      status: string;
+      occurred_at: string | null;
+      action_href: string;
+      action_label: string;
+    }>;
+    emergency_drafts: Array<{
+      id: string;
+      patient_id: string;
+      template_key: string;
+      request_type: string;
+      target_name: string | null;
+      target_role: string;
+      title: string;
+      summary: string;
+      subject: string;
+      content: string;
       action_href: string;
       action_label: string;
     }>;
@@ -106,6 +141,34 @@ type WorkflowData = {
       missing_management_plan: boolean;
     }>;
   };
+  inquiry_workbench: Array<{
+    id: string;
+    item_type: 'issue' | 'inquiry';
+    inquiry_id: string | null;
+    issue_id: string | null;
+    line_id: string | null;
+    cycle_id: string | null;
+    case_id: string | null;
+    patient_id: string;
+    patient_name: string;
+    title: string;
+    summary: string;
+    reason: string;
+    inquiry_to_physician: string;
+    change_detail: string | null;
+    line: {
+      id: string;
+      drug_name: string;
+      dose: string;
+      frequency: string;
+      days: number;
+    } | null;
+    request_status: string | null;
+    queue_state: string;
+    due_at: string | null;
+    created_at: string;
+    can_create: boolean;
+  }>;
   remediation_guidance: Array<{
     id: string;
     title: string;
@@ -213,6 +276,7 @@ type WorkflowData = {
     review_tasks: number;
     report_delivery_backlog: number;
   };
+  home_care_feature_summary: HomeCareFeatureSummary;
   intake_linkage: Array<{
     id: string;
     patient_name: string;
@@ -237,15 +301,73 @@ type WorkflowData = {
   refill_upcoming: Array<{
     id: string;
     cycle_id: string;
+    case_id: string | null;
+    upcoming_kind: 'refill' | 'split';
+    remaining_count: number;
     refill_remaining_count: number;
+    split_dispense_total: number | null;
+    split_dispense_current: number | null;
     prescribed_date: string;
     refill_next_dispense_date: string | null;
+    split_next_dispense_date: string | null;
+    next_dispense_date: string | null;
+    suggested_start_date: string | null;
+    has_existing_route: boolean;
     cycle: {
       patient_id: string;
       case_: { patient: { id: string; name: string } };
     };
   }>;
 };
+
+type InquiryWorkbenchItem = WorkflowData['inquiry_workbench'][number];
+
+type InquiryEditState = {
+  changeDetail: string;
+  drugName: string;
+  dose: string;
+  frequency: string;
+  days: string;
+  proposalOrigin: 'post_inquiry' | 'pre_issuance';
+  residualAdjustment: boolean;
+};
+
+function buildInquiryEditState(item: InquiryWorkbenchItem): InquiryEditState {
+  const detail = item.change_detail ?? '';
+  return {
+    changeDetail: detail,
+    drugName: item.line?.drug_name ?? '',
+    dose: item.line?.dose ?? '',
+    frequency: item.line?.frequency ?? '',
+    days: item.line ? String(item.line.days) : '',
+    proposalOrigin: detail.includes('proposal_origin:pre_issuance')
+      ? 'pre_issuance'
+      : 'post_inquiry',
+    residualAdjustment:
+      item.reason.includes('残薬') || detail.toLowerCase().includes('residual_adjustment:true'),
+  };
+}
+
+function buildInquiryResolutionDetail(args: {
+  result: 'changed' | 'unchanged' | 'pending';
+  changeDetail?: string;
+  proposalOrigin?: InquiryEditState['proposalOrigin'];
+  residualAdjustment?: boolean;
+}) {
+  const baseDetail =
+    args.changeDetail?.trim() ||
+    (args.result === 'changed'
+      ? 'workflow から処方反映ありで確定'
+      : args.result === 'unchanged'
+        ? 'workflow から変更なしで確定'
+        : 'workflow から回答待ちへ更新');
+
+  return [
+    baseDetail,
+    `proposal_origin:${args.proposalOrigin ?? 'post_inquiry'}`,
+    `residual_adjustment:${args.residualAdjustment ? 'true' : 'false'}`,
+  ].join(' | ');
+}
 
 const CYCLE_STATUS_LABELS: Record<
   string,
@@ -313,6 +435,8 @@ function severityClass(severity: string) {
 
 export function WorkflowDashboardContent() {
   const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  const [inquiryEdits, setInquiryEdits] = useState<Record<string, InquiryEditState>>({});
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['dashboard-workflow', orgId],
@@ -328,6 +452,202 @@ export function WorkflowDashboardContent() {
   });
 
   const workflow = data?.data;
+
+  const createEmergencyDraftMutation = useMutation({
+    mutationFn: async (draft: WorkflowData['communication_queue']['emergency_drafts'][number]) => {
+      const res = await fetch('/api/communication-requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          patient_id: draft.patient_id,
+          request_type: draft.request_type,
+          template_key: draft.template_key,
+          recipient_name: draft.target_name ?? draft.target_role,
+          recipient_role: draft.target_role,
+          related_entity_type: 'patient',
+          related_entity_id: draft.patient_id,
+          context_snapshot: {
+            source: 'communication_queue',
+            template_key: draft.template_key,
+          },
+          status: 'draft',
+          subject: draft.subject,
+          content: draft.content,
+        }),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message ?? '緊急連絡ドラフトの起票に失敗しました');
+      }
+      return res.json();
+    },
+    onSuccess: async () => {
+      toast.success('緊急連絡ドラフトを起票しました');
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-workflow', orgId] });
+      await queryClient.invalidateQueries({ queryKey: ['communication-requests', orgId] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '緊急連絡ドラフトの起票に失敗しました');
+    },
+  });
+
+  const createInquiryMutation = useMutation({
+    mutationFn: async (item: WorkflowData['inquiry_workbench'][number]) => {
+      if (!item.cycle_id || !item.issue_id) {
+        throw new Error('有効なサイクルがないため疑義照会を起票できません');
+      }
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + 1);
+      const res = await fetch('/api/inquiry-records', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          cycle_id: item.cycle_id,
+          issue_id: item.issue_id,
+          reason: item.reason,
+          inquiry_to_physician: item.inquiry_to_physician,
+          inquiry_content: item.summary,
+          inquired_at: new Date().toISOString(),
+          request_due_date: format(dueDate, 'yyyy-MM-dd'),
+        }),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message ?? '疑義照会の起票に失敗しました');
+      }
+      return res.json();
+    },
+    onSuccess: async () => {
+      toast.success('疑義照会を起票しました');
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-workflow', orgId] });
+      await queryClient.invalidateQueries({ queryKey: ['communication-requests', orgId] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '疑義照会の起票に失敗しました');
+    },
+  });
+
+  const resolveInquiryMutation = useMutation({
+    mutationFn: async ({
+      inquiryId,
+      result,
+      changeDetail,
+      lineUpdate,
+    }: {
+      inquiryId: string;
+      result: 'changed' | 'unchanged' | 'pending';
+      changeDetail?: string;
+      lineUpdate?: {
+        drug_name: string;
+        dose: string;
+        frequency: string;
+        days: number;
+      };
+    }) => {
+      const res = await fetch(`/api/inquiry-records/${inquiryId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          result,
+          change_detail:
+            changeDetail ??
+            (result === 'changed'
+              ? 'workflow から処方反映ありで確定'
+              : result === 'unchanged'
+                ? 'workflow から変更なしで確定'
+                : 'workflow から回答待ちへ更新'),
+          ...(lineUpdate ? { line_update: lineUpdate } : {}),
+        }),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message ?? '疑義照会の更新に失敗しました');
+      }
+      return res.json();
+    },
+    onSuccess: async (_data, variables) => {
+      setInquiryEdits((prev) => {
+        const next = { ...prev };
+        delete next[variables.inquiryId];
+        return next;
+      });
+      toast.success('疑義照会を更新しました');
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-workflow', orgId] });
+      await queryClient.invalidateQueries({ queryKey: ['communication-requests', orgId] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '疑義照会の更新に失敗しました');
+    },
+  });
+
+  const getInquiryEditState = (item: InquiryWorkbenchItem) => {
+    if (!item.inquiry_id) return buildInquiryEditState(item);
+    return inquiryEdits[item.inquiry_id] ?? buildInquiryEditState(item);
+  };
+
+  const updateInquiryEditState = (
+    item: InquiryWorkbenchItem,
+    patch: Partial<InquiryEditState>
+  ) => {
+    if (!item.inquiry_id) return;
+    const inquiryId = item.inquiry_id;
+    setInquiryEdits((prev) => ({
+      ...prev,
+      [inquiryId]: {
+        ...(prev[inquiryId] ?? buildInquiryEditState(item)),
+        ...patch,
+      },
+    }));
+  };
+
+  const generateRefillProposalMutation = useMutation({
+    mutationFn: async (item: WorkflowData['refill_upcoming'][number]) => {
+      if (!item.case_id) {
+        throw new Error('ケースIDがないため再訪候補を作成できません');
+      }
+      const startDate =
+        item.suggested_start_date ??
+        item.next_dispense_date ??
+        item.refill_next_dispense_date ??
+        item.split_next_dispense_date ??
+        item.prescribed_date;
+      const res = await fetch('/api/visit-schedule-proposals', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          case_id: item.case_id,
+          visit_type: 'regular',
+          priority: 'normal',
+          start_date: startDate.slice(0, 10),
+          candidate_count: 3,
+        }),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message ?? '再訪候補の生成に失敗しました');
+      }
+      return res.json();
+    },
+    onSuccess: async () => {
+      toast.success('リフィル再訪候補を生成しました');
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-workflow', orgId] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '再訪候補の生成に失敗しました');
+    },
+  });
 
   if (isLoading) {
     return (
@@ -461,7 +781,7 @@ export function WorkflowDashboardContent() {
         <h2 className="mb-3 text-base font-semibold text-foreground">
           連絡キュー
         </h2>
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
           <MetricCard
             icon={BellRing}
             label="未処理"
@@ -482,9 +802,27 @@ export function WorkflowDashboardContent() {
           />
           <MetricCard
             icon={XCircle}
-            label="報告送達"
-            value={workflow?.communication_queue.summary.delivery_backlog ?? 0}
-            caption="draft / failed"
+            label="未確認"
+            value={workflow?.communication_queue.summary.unconfirmed_count ?? 0}
+            caption="draft"
+          />
+          <MetricCard
+            icon={Clock}
+            label="返信待ち"
+            value={workflow?.communication_queue.summary.reply_waiting_count ?? 0}
+            caption="received / waiting"
+          />
+          <MetricCard
+            icon={XCircle}
+            label="送達失敗"
+            value={workflow?.communication_queue.summary.failed_count ?? 0}
+            caption="再送・確認"
+          />
+          <MetricCard
+            icon={BellRing}
+            label="外部共有期限"
+            value={workflow?.communication_queue.summary.expiring_external_shares ?? 0}
+            caption="未閲覧の期限接近"
           />
         </div>
         {(workflow?.communication_queue.items.length ?? 0) > 0 && (
@@ -507,6 +845,334 @@ export function WorkflowDashboardContent() {
                 </CardContent>
               </Card>
             ))}
+          </div>
+        )}
+        {((workflow?.communication_queue.emergency_drafts.length ?? 0) > 0 ||
+          (workflow?.communication_queue.timeline.length ?? 0) > 0) && (
+          <div className="mt-3 grid gap-3 xl:grid-cols-[0.9fr_1.1fr]">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">緊急連絡ドラフト</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {(workflow?.communication_queue.emergency_drafts.length ?? 0) === 0 ? (
+                  <p className="text-sm text-muted-foreground">緊急ドラフト候補はありません</p>
+                ) : (
+                  workflow?.communication_queue.emergency_drafts.map((draft) => (
+                    <div key={draft.id} className="rounded-lg border border-border px-3 py-2 text-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-foreground">{draft.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {draft.target_name ?? draft.target_role} / {draft.request_type}
+                          </p>
+                        </div>
+                        <a href={draft.action_href} className="text-xs font-medium text-primary hover:underline">
+                          {draft.action_label}
+                        </a>
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-muted-foreground">{draft.summary}</p>
+                      <div className="mt-3 flex justify-end">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => createEmergencyDraftMutation.mutate(draft)}
+                          disabled={createEmergencyDraftMutation.isPending}
+                        >
+                          下書き作成
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">共有タイムライン</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {(workflow?.communication_queue.timeline.length ?? 0) === 0 ? (
+                  <p className="text-sm text-muted-foreground">共有履歴はありません</p>
+                ) : (
+                  workflow?.communication_queue.timeline.map((item) => (
+                    <div key={item.id} className="rounded-lg border border-border px-3 py-2 text-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-foreground">{item.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {item.patient_name ?? '患者未設定'} / {item.status}
+                          </p>
+                        </div>
+                        {item.occurred_at ? (
+                          <span className="text-xs text-muted-foreground">
+                            {format(parseISO(item.occurred_at), 'M/d HH:mm', { locale: ja })}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-muted-foreground">{item.summary}</p>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-base font-semibold text-foreground">
+          疑義照会ワークベンチ
+        </h2>
+        {(workflow?.inquiry_workbench.length ?? 0) === 0 ? (
+          <p className="text-sm text-muted-foreground">未処理の疑義照会はありません</p>
+        ) : (
+          <div className="grid gap-3 lg:grid-cols-2">
+            {workflow?.inquiry_workbench.map((item) => {
+              const inquiryEdit = item.item_type === 'inquiry' ? getInquiryEditState(item) : null;
+              const parsedDays = inquiryEdit ? Number(inquiryEdit.days) : 0;
+              const canSubmitChanged =
+                item.item_type !== 'inquiry' ||
+                item.line_id == null ||
+                (
+                  inquiryEdit != null &&
+                  inquiryEdit.drugName.trim().length > 0 &&
+                  inquiryEdit.dose.trim().length > 0 &&
+                  inquiryEdit.frequency.trim().length > 0 &&
+                  Number.isInteger(parsedDays) &&
+                  parsedDays > 0
+                );
+
+              return (
+                <Card key={item.id} size="sm">
+                  <CardContent className="space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold text-foreground">{item.patient_name}</p>
+                          <Badge variant="outline">{item.queue_state}</Badge>
+                          <Badge variant="secondary">{item.item_type === 'issue' ? '候補' : '照会中'}</Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {item.title} / {item.inquiry_to_physician}
+                        </p>
+                      </div>
+                      {item.due_at ? (
+                        <span className="text-xs text-muted-foreground">
+                          {format(parseISO(item.due_at), 'M/d HH:mm', { locale: ja })}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="text-sm leading-6 text-muted-foreground">{item.summary}</p>
+                    {item.item_type === 'inquiry' ? (
+                      <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-3">
+                        {item.line ? (
+                          <>
+                            <div className="space-y-1">
+                              <p className="text-xs font-medium text-foreground">変更反映対象</p>
+                              <p className="text-xs text-muted-foreground">
+                                現在: {item.line.drug_name} / {item.line.dose} / {item.line.frequency} / {item.line.days}日
+                              </p>
+                            </div>
+                            <div className="grid gap-2 md:grid-cols-2">
+                              <Input
+                                value={inquiryEdit?.drugName ?? ''}
+                                onChange={(event) =>
+                                  updateInquiryEditState(item, { drugName: event.target.value })
+                                }
+                                placeholder="薬剤名"
+                              />
+                              <Input
+                                value={inquiryEdit?.dose ?? ''}
+                                onChange={(event) =>
+                                  updateInquiryEditState(item, { dose: event.target.value })
+                                }
+                                placeholder="用量"
+                              />
+                              <Input
+                                value={inquiryEdit?.frequency ?? ''}
+                                onChange={(event) =>
+                                  updateInquiryEditState(item, { frequency: event.target.value })
+                                }
+                                placeholder="用法"
+                              />
+                              <Input
+                                type="number"
+                                min={1}
+                                value={inquiryEdit?.days ?? ''}
+                                onChange={(event) =>
+                                  updateInquiryEditState(item, { days: event.target.value })
+                                }
+                                placeholder="投与日数"
+                              />
+                            </div>
+                          </>
+                        ) : null}
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium text-foreground">
+                            {item.line ? '変更内容メモ' : '回答メモ'}
+                          </p>
+                          <Textarea
+                            value={inquiryEdit?.changeDetail ?? ''}
+                            onChange={(event) =>
+                              updateInquiryEditState(item, { changeDetail: event.target.value })
+                            }
+                            rows={2}
+                            placeholder={
+                              item.line
+                                ? '例: 1日3回から1日2回へ変更、14日分で再発行'
+                                : '回答内容の要点を記録'
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <p className="text-xs font-medium text-foreground">算定区分メタデータ</p>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              type="button"
+                              variant={
+                                inquiryEdit?.proposalOrigin === 'post_inquiry'
+                                  ? 'default'
+                                  : 'outline'
+                              }
+                              onClick={() =>
+                                updateInquiryEditState(item, {
+                                  proposalOrigin: 'post_inquiry',
+                                })
+                              }
+                            >
+                              照会後変更
+                            </Button>
+                            <Button
+                              size="sm"
+                              type="button"
+                              variant={
+                                inquiryEdit?.proposalOrigin === 'pre_issuance'
+                                  ? 'default'
+                                  : 'outline'
+                              }
+                              onClick={() =>
+                                updateInquiryEditState(item, {
+                                  proposalOrigin: 'pre_issuance',
+                                })
+                              }
+                            >
+                              事前提案反映
+                            </Button>
+                            <Button
+                              size="sm"
+                              type="button"
+                              variant={inquiryEdit?.residualAdjustment ? 'default' : 'outline'}
+                              onClick={() =>
+                                updateInquiryEditState(item, {
+                                  residualAdjustment: !inquiryEdit?.residualAdjustment,
+                                })
+                              }
+                            >
+                              {inquiryEdit?.residualAdjustment ? '残薬調整あり' : '残薬調整なし'}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="flex flex-wrap gap-2">
+                      {item.item_type === 'issue' ? (
+                        <Button
+                          size="sm"
+                          onClick={() => createInquiryMutation.mutate(item)}
+                          disabled={!item.can_create || createInquiryMutation.isPending}
+                        >
+                          疑義照会を起票
+                        </Button>
+                      ) : (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() =>
+                              item.inquiry_id &&
+                              resolveInquiryMutation.mutate({
+                                inquiryId: item.inquiry_id,
+                                result: 'pending',
+                                changeDetail: buildInquiryResolutionDetail({
+                                  result: 'pending',
+                                  changeDetail: inquiryEdit?.changeDetail,
+                                  proposalOrigin: inquiryEdit?.proposalOrigin,
+                                  residualAdjustment: inquiryEdit?.residualAdjustment,
+                                }),
+                              })
+                            }
+                            disabled={!item.inquiry_id || resolveInquiryMutation.isPending}
+                          >
+                            回答待ち
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              item.inquiry_id &&
+                              resolveInquiryMutation.mutate({
+                                inquiryId: item.inquiry_id,
+                                result: 'changed',
+                                changeDetail: buildInquiryResolutionDetail({
+                                  result: 'changed',
+                                  changeDetail: inquiryEdit?.changeDetail,
+                                  proposalOrigin: inquiryEdit?.proposalOrigin,
+                                  residualAdjustment: inquiryEdit?.residualAdjustment,
+                                }),
+                                lineUpdate:
+                                  item.line_id != null && inquiryEdit
+                                    ? {
+                                        drug_name: inquiryEdit.drugName.trim(),
+                                        dose: inquiryEdit.dose.trim(),
+                                        frequency: inquiryEdit.frequency.trim(),
+                                        days: Number(inquiryEdit.days),
+                                      }
+                                    : undefined,
+                              })
+                            }
+                            disabled={
+                              !item.inquiry_id ||
+                              resolveInquiryMutation.isPending ||
+                              !canSubmitChanged
+                            }
+                          >
+                            変更ありで確定
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              item.inquiry_id &&
+                              resolveInquiryMutation.mutate({
+                                inquiryId: item.inquiry_id,
+                                result: 'unchanged',
+                                changeDetail: buildInquiryResolutionDetail({
+                                  result: 'unchanged',
+                                  changeDetail: inquiryEdit?.changeDetail,
+                                  proposalOrigin: inquiryEdit?.proposalOrigin,
+                                  residualAdjustment: inquiryEdit?.residualAdjustment,
+                                }),
+                              })
+                            }
+                            disabled={!item.inquiry_id || resolveInquiryMutation.isPending}
+                          >
+                            変更なしで確定
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                    {!item.can_create && item.item_type === 'issue' ? (
+                      <p className="text-xs text-amber-700">
+                        起票に必要な有効サイクルが見つからないため、患者詳細から確認してください。
+                      </p>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
       </section>
@@ -596,6 +1262,20 @@ export function WorkflowDashboardContent() {
             </CardContent>
           </Card>
         </div>
+      </section>
+
+      <section>
+        <HomeCareFeatureBoard
+          summary={
+            workflow?.home_care_feature_summary ?? {
+              totals: { blocked: 0, attention: 0, monitoring: 0, ready: 0 },
+              features: [],
+            }
+          }
+          title="訪問支援ボード"
+          description="訪問薬剤管理指導を止める要因と、整備すべき運用機能を同じ尺度で管理します。"
+          compact
+        />
       </section>
 
       <section>
@@ -999,11 +1679,11 @@ export function WorkflowDashboardContent() {
 
       <section>
         <h2 className="mb-3 text-base font-semibold text-foreground">
-          リフィル処方箋 — 次回調剤予定
+          継続調剤 — 次回対応
         </h2>
         {(workflow?.refill_upcoming.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">
-            リフィル処方箋の予定はありません
+            継続調剤の予定はありません
           </p>
         ) : (
           <div className="overflow-hidden rounded-md border border-border">
@@ -1014,10 +1694,13 @@ export function WorkflowDashboardContent() {
                     患者名
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">
-                    残回数
+                    状況
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">
                     次回調剤日
+                  </th>
+                  <th className="px-4 py-2 text-right text-xs font-medium text-muted-foreground">
+                    再訪候補
                   </th>
                 </tr>
               </thead>
@@ -1031,16 +1714,43 @@ export function WorkflowDashboardContent() {
                       {item.cycle.case_.patient.name}
                     </td>
                     <td className="px-4 py-2">
-                      <Badge variant="secondary">残{item.refill_remaining_count}回</Badge>
+                      {item.upcoming_kind === 'refill' ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="secondary">リフィル残{item.remaining_count}回</Badge>
+                          <Badge variant="outline">薬局保管</Badge>
+                        </div>
+                      ) : (
+                        <Badge variant="outline">
+                          分割 {item.split_dispense_current}/{item.split_dispense_total}
+                        </Badge>
+                      )}
                     </td>
                     <td className="px-4 py-2 text-muted-foreground">
-                      {item.refill_next_dispense_date
-                        ? format(parseISO(item.refill_next_dispense_date), 'M/d', {
+                      {item.next_dispense_date
+                        ? format(parseISO(item.next_dispense_date), 'M/d', {
                             locale: ja,
                           })
                         : format(parseISO(item.prescribed_date), 'M/d', {
                             locale: ja,
                           })}
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      {item.has_existing_route ? (
+                        <Badge variant="outline">既存導線あり</Badge>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => generateRefillProposalMutation.mutate(item)}
+                          disabled={
+                            !item.case_id ||
+                            item.has_existing_route ||
+                            generateRefillProposalMutation.isPending
+                          }
+                        >
+                          候補生成
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))}

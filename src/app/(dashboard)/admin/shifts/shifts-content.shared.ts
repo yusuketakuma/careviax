@@ -12,7 +12,14 @@ export type Pharmacist = {
   name_kana: string | null;
   email: string;
   phone: string | null;
-  role: 'pharmacist' | 'pharmacist_trainee' | 'owner' | 'admin';
+  role:
+    | 'pharmacist'
+    | 'pharmacist_trainee'
+    | 'owner'
+    | 'admin'
+    | 'clerk'
+    | 'driver'
+    | 'external_viewer';
   site_id: string | null;
   site_name: string | null;
   is_active: boolean;

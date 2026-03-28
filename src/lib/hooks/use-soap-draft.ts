@@ -2,12 +2,49 @@
 // 訪問記録ウィザードのオフライン自動保存フック。
 // IndexedDB (Dexie) を使って structuredSoap と currentStep を永続化する。
 
+import { useCallback } from 'react';
 import { offlineDb } from '@/lib/stores/offline-db';
+import { decryptOfflinePayload, encryptOfflinePayload } from '@/lib/offline/crypto';
 import type { StructuredSoap } from '@/types/structured-soap';
+import type { VisitGeoLog } from '@/lib/visit-location';
+
+export type SoapDraftResidualMedication = {
+  drug_name: string;
+  drug_code?: string;
+  prescribed_quantity?: number;
+  prescribed_daily_dose?: number;
+  remaining_quantity: number;
+  is_prohibited_reduction: boolean;
+};
 
 export type SoapDraftSnapshot = {
   structuredSoap: StructuredSoap;
   currentStep: number;
+  visitDate: string | null;
+  outcomeStatus: string | null;
+  receiptPersonName: string | null;
+  receiptPersonRelation: string | null;
+  receiptAt: string | null;
+  nextVisitSuggestionDate: string | null;
+  cancellationReason: string | null;
+  postponeReason: string | null;
+  revisitReason: string | null;
+  residualMedications: SoapDraftResidualMedication[];
+  visitGeoLog: VisitGeoLog | null;
+};
+
+export type SoapDraftMetadata = {
+  visitDate?: string;
+  outcomeStatus?: string;
+  receiptPersonName?: string;
+  receiptPersonRelation?: string;
+  receiptAt?: string;
+  nextVisitSuggestionDate?: string;
+  cancellationReason?: string;
+  postponeReason?: string;
+  revisitReason?: string;
+  residualMedications?: SoapDraftResidualMedication[];
+  visitGeoLog?: VisitGeoLog | null;
 };
 
 /**
@@ -21,25 +58,56 @@ export function useSoapDraft(scheduleId: string, patientId: string) {
    * マウント時に既存ドラフトを読み込む。
    * ドラフトが存在しない、または structuredSoap が未設定なら null を返す。
    */
-  async function loadDraft(): Promise<SoapDraftSnapshot | null> {
+  const loadDraft = useCallback(async (): Promise<SoapDraftSnapshot | null> => {
     const draft = await offlineDb.visitDrafts
       .where('scheduleId')
       .equals(scheduleId)
       .first();
+    if (!draft) return null;
 
-    if (!draft?.structuredSoap) return null;
+    const structuredSoapPayload = await decryptOfflinePayload(draft?.structuredSoap);
+    if (!structuredSoapPayload) return null;
+
+    const residualPayload = await decryptOfflinePayload(draft.residualMedications);
+    const visitGeoLogPayload = await decryptOfflinePayload(draft.visitGeoLog);
 
     return {
-      structuredSoap: JSON.parse(draft.structuredSoap) as StructuredSoap,
+      structuredSoap: JSON.parse(structuredSoapPayload) as StructuredSoap,
       currentStep: draft.currentStep ?? 0,
+      visitDate: draft.visitDate ?? null,
+      outcomeStatus: draft.outcomeStatus ?? null,
+      receiptPersonName: draft.receiptPersonName ?? null,
+      receiptPersonRelation: draft.receiptPersonRelation ?? null,
+      receiptAt: draft.receiptAt ?? null,
+      nextVisitSuggestionDate: draft.nextVisitSuggestionDate ?? null,
+      cancellationReason: draft.cancellationReason ?? null,
+      postponeReason: draft.postponeReason ?? null,
+      revisitReason: draft.revisitReason ?? null,
+      residualMedications: residualPayload
+        ? (JSON.parse(residualPayload) as SoapDraftResidualMedication[])
+        : [],
+      visitGeoLog: visitGeoLogPayload
+        ? (JSON.parse(visitGeoLogPayload) as VisitGeoLog)
+        : null,
     };
-  }
+  }, [scheduleId]);
 
   /**
    * ステップ変更のたびにドラフトを保存する。
    * 既存レコードがあれば更新、なければ新規追加する。
    */
-  async function saveDraft(soap: StructuredSoap, currentStep: number): Promise<void> {
+  const saveDraft = useCallback(async (
+    soap: StructuredSoap,
+    currentStep: number,
+    metadata: SoapDraftMetadata = {}
+  ): Promise<void> => {
+    const structuredSoap = await encryptOfflinePayload(JSON.stringify(soap));
+    const residualMedications = await encryptOfflinePayload(
+      JSON.stringify(metadata.residualMedications ?? [])
+    );
+    const visitGeoLog = metadata.visitGeoLog
+      ? await encryptOfflinePayload(JSON.stringify(metadata.visitGeoLog))
+      : undefined;
     const existing = await offlineDb.visitDrafts
       .where('scheduleId')
       .equals(scheduleId)
@@ -47,8 +115,23 @@ export function useSoapDraft(scheduleId: string, patientId: string) {
 
     if (existing?.id !== undefined) {
       await offlineDb.visitDrafts.update(existing.id, {
-        structuredSoap: JSON.stringify(soap),
+        structuredSoap,
         currentStep,
+        soapSubjective: soap.subjective.free_text,
+        soapObjective: soap.objective.free_text,
+        soapAssessment: soap.assessment.free_text,
+        soapPlan: soap.plan.free_text,
+        visitDate: metadata.visitDate,
+        outcomeStatus: metadata.outcomeStatus,
+        receiptPersonName: metadata.receiptPersonName,
+        receiptPersonRelation: metadata.receiptPersonRelation,
+        receiptAt: metadata.receiptAt,
+        nextVisitSuggestionDate: metadata.nextVisitSuggestionDate,
+        cancellationReason: metadata.cancellationReason,
+        postponeReason: metadata.postponeReason,
+        revisitReason: metadata.revisitReason,
+        residualMedications,
+        visitGeoLog,
         updatedAt: new Date(),
       });
     } else {
@@ -56,21 +139,36 @@ export function useSoapDraft(scheduleId: string, patientId: string) {
         scheduleId,
         patientId,
         pharmacistId: '', // sync 時に補完
-        structuredSoap: JSON.stringify(soap),
+        soapSubjective: soap.subjective.free_text,
+        soapObjective: soap.objective.free_text,
+        soapAssessment: soap.assessment.free_text,
+        soapPlan: soap.plan.free_text,
+        visitDate: metadata.visitDate,
+        outcomeStatus: metadata.outcomeStatus,
+        receiptPersonName: metadata.receiptPersonName,
+        receiptPersonRelation: metadata.receiptPersonRelation,
+        receiptAt: metadata.receiptAt,
+        nextVisitSuggestionDate: metadata.nextVisitSuggestionDate,
+        cancellationReason: metadata.cancellationReason,
+        postponeReason: metadata.postponeReason,
+        revisitReason: metadata.revisitReason,
+        residualMedications,
+        visitGeoLog,
+        structuredSoap,
         currentStep,
         createdAt: new Date(),
         updatedAt: new Date(),
         synced: false,
       });
     }
-  }
+  }, [patientId, scheduleId]);
 
   /**
    * 送信完了後にドラフトを削除する。
    */
-  async function clearDraft(): Promise<void> {
+  const clearDraft = useCallback(async (): Promise<void> => {
     await offlineDb.visitDrafts.where('scheduleId').equals(scheduleId).delete();
-  }
+  }, [scheduleId]);
 
   return { loadDraft, saveDraft, clearDraft };
 }

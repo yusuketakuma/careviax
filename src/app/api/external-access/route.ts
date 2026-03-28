@@ -1,19 +1,33 @@
 import { NextRequest } from 'next/server';
-import { createHash, randomInt } from 'crypto';
+import { createHash, randomInt, randomUUID } from 'crypto';
 import { withAuthContext } from '@/lib/auth/context';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { SmsNotificationAdapter } from '@/server/adapters/sms';
+import { issueExternalAccessToken } from '@/server/services/external-access';
 import { z } from 'zod';
 
 const createGrantSchema = z.object({
   patient_id: z.string().min(1),
   granted_to_name: z.string().min(1, '共有先氏名は必須です'),
-  granted_to_contact: z.string().optional(),
+  granted_to_contact: z.string().trim().optional().nullable(),
   scope: z.record(z.string(), z.boolean()),
   expires_hours: z.number().int().min(1).max(720).default(72),
 });
+
+function looksLikePhoneNumber(value: string | null | undefined) {
+  if (!value) return false;
+  const normalized = value.replace(/[^\d+]/g, '');
+  return /^(\+?\d{10,15})$/.test(normalized);
+}
+
+function maskPhoneNumber(value: string) {
+  const digitsOnly = value.replace(/[^\d]/g, '');
+  if (digitsOnly.length <= 4) return value;
+  return `${digitsOnly.slice(0, 3)}****${digitsOnly.slice(-4)}`;
+}
 
 export const GET = withAuthContext(
   async (req: NextRequest, ctx) => {
@@ -133,28 +147,29 @@ export const POST = withAuthContext(
 
     const { patient_id, granted_to_name, granted_to_contact, scope, expires_hours } =
       parsed.data;
+    const normalizedGrantedToContact =
+      granted_to_contact && granted_to_contact.trim().length > 0
+        ? granted_to_contact.trim()
+        : null;
 
     const refResult = await validateOrgReferences(ctx.orgId, { patient_id });
     if (!refResult.ok) return refResult.response;
 
-    // Generate raw token and OTP — only hashes are persisted
-    const rawToken = crypto.randomUUID();
-    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
-
     const rawOtp = randomInt(100000, 999999).toString();
     const otpHash = createHash('sha256').update(rawOtp).digest('hex');
-
     const expiresAt = new Date(Date.now() + expires_hours * 60 * 60 * 1000);
+    const provisionalToken = `provisional:${randomUUID()}`;
+    const provisionalTokenHash = createHash('sha256').update(provisionalToken).digest('hex');
 
     const grant = await withOrgContext(ctx.orgId, async (tx) => {
-      return tx.externalAccessGrant.create({
+      const created = await tx.externalAccessGrant.create({
         data: {
           org_id: ctx.orgId,
           patient_id,
-          token_hash: tokenHash,
+          token_hash: provisionalTokenHash,
           otp_hash: otpHash,
           granted_to_name,
-          granted_to_contact: granted_to_contact ?? null,
+          granted_to_contact: normalizedGrantedToContact,
           scope: scope as import('@prisma/client').Prisma.InputJsonValue,
           expires_at: expiresAt,
         },
@@ -168,14 +183,51 @@ export const POST = withAuthContext(
           created_at: true,
         },
       });
+
+      const jwtToken = await issueExternalAccessToken({
+        grantId: created.id,
+        orgId: ctx.orgId,
+        patientId: patient_id,
+        expiresHours: expires_hours,
+      });
+
+      const finalTokenHash = createHash('sha256').update(jwtToken).digest('hex');
+      await tx.externalAccessGrant.update({
+        where: { id: created.id },
+        data: { token_hash: finalTokenHash },
+      });
+
+      return {
+        ...created,
+        token: jwtToken,
+      };
     });
+
+    let otpDelivery: 'sms' | 'manual' = 'manual';
+    let otpDeliveryDestination: string | null = null;
+
+    if (looksLikePhoneNumber(normalizedGrantedToContact) && normalizedGrantedToContact) {
+      try {
+        const smsAdapter = new SmsNotificationAdapter();
+        await smsAdapter.sendSms(
+          normalizedGrantedToContact,
+          `CareViaX共有OTP: ${rawOtp} 有効期限 ${expiresAt.toLocaleString('ja-JP')}`
+        );
+        otpDelivery = 'sms';
+        otpDeliveryDestination = maskPhoneNumber(normalizedGrantedToContact);
+      } catch {
+        otpDelivery = 'manual';
+        otpDeliveryDestination = null;
+      }
+    }
 
     return success(
       {
         data: {
           ...grant,
-          token: rawToken,
           otp: rawOtp,
+          otp_delivery: otpDelivery,
+          otp_delivery_destination: otpDeliveryDestination,
         },
       },
       201

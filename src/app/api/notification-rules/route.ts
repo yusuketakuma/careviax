@@ -7,7 +7,7 @@ import { success, validationError } from '@/lib/api/response';
 
 const createRuleSchema = z.object({
   event_type: z.string().min(1),
-  channel: z.enum(['in_app', 'email']),
+  channel: z.enum(['in_app', 'email', 'sms', 'line']),
   recipients: z.object({
     roles: z.array(z.string()).optional(),
     user_ids: z.array(z.string()).optional(),

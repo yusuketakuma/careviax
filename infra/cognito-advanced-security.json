@@ -1,0 +1,25 @@
+{
+  "userPoolIdEnv": "NEXT_PUBLIC_COGNITO_USER_POOL_ID",
+  "advancedSecurityMode": "ENFORCED",
+  "compromisedCredentialsRiskConfiguration": {
+    "actions": {
+      "eventAction": "BLOCK"
+    },
+    "eventFilter": [
+      "SIGN_IN",
+      "PASSWORD_CHANGE",
+      "SIGN_UP"
+    ]
+  },
+  "accountTakeoverRiskConfiguration": {
+    "notifyConfiguration": {
+      "sourceArnEnv": "SES_FROM_EMAIL",
+      "replyTo": "security@careviax.example"
+    },
+    "actions": {
+      "highAction": "BLOCK",
+      "mediumAction": "MFA_IF_CONFIGURED",
+      "lowAction": "NO_ACTION"
+    }
+  }
+}

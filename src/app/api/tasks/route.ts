@@ -51,7 +51,9 @@ export async function POST(req: NextRequest) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const task = await withOrgContext(ctx.orgId, (tx) =>
+  const task = await withOrgContext(
+    ctx.orgId,
+    (tx) =>
     tx.task.create({
       data: {
         org_id: ctx.orgId,
@@ -69,8 +71,9 @@ export async function POST(req: NextRequest) {
           parsed.data.metadata != null
             ? (parsed.data.metadata as import('@prisma/client').Prisma.InputJsonValue)
             : undefined,
-      },
-    })
+        },
+    }),
+    { requestContext: ctx }
   );
 
   return success({ data: task }, 201);

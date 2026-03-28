@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
@@ -47,6 +48,25 @@ type SetPlanRow = {
     };
   };
   audits: Array<{ id: string; result: string; audited_at: string }>;
+};
+
+type CaseRow = {
+  id: string;
+  patient_id: string;
+  status: string;
+  required_visit_support: Record<string, unknown> | null;
+  patient: {
+    id: string;
+    name: string;
+    name_kana: string;
+  };
+};
+
+type MedicationCycleRow = {
+  id: string;
+  case_id: string;
+  patient_id: string;
+  overall_status: string;
 };
 
 const SET_METHOD_LABELS: Record<string, string> = {
@@ -118,6 +138,30 @@ export function MedicationSetsContent() {
     enabled: !!orgId,
   });
 
+  const casesQuery = useQuery({
+    queryKey: ['set-target-cases', orgId],
+    queryFn: async () => {
+      const res = await fetch('/api/cases?status=active&limit=100', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('ケース一覧の取得に失敗しました');
+      return res.json() as Promise<{ data: CaseRow[] }>;
+    },
+    enabled: !!orgId,
+  });
+
+  const cyclesQuery = useQuery({
+    queryKey: ['set-target-cycles', orgId],
+    queryFn: async () => {
+      const res = await fetch('/api/medication-cycles?limit=100', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('サイクル一覧の取得に失敗しました');
+      return res.json() as Promise<{ data: MedicationCycleRow[] }>;
+    },
+    enabled: !!orgId,
+  });
+
   const createMutation = useMutation({
     mutationFn: async (form: CreatePlanForm) => {
       const res = await fetch('/api/set-plans', {
@@ -166,6 +210,51 @@ export function MedicationSetsContent() {
     onError: (err: Error) => {
       toast.error(err.message);
     },
+  });
+
+  const setTargetMutation = useMutation({
+    mutationFn: async ({
+      caseId,
+      requiredVisitSupport,
+    }: {
+      caseId: string;
+      requiredVisitSupport: Record<string, unknown>;
+    }) => {
+      const res = await fetch(`/api/cases/${caseId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify({
+          required_visit_support: requiredVisitSupport,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message ?? 'セット対象フラグの更新に失敗しました');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success('セット対象フラグを更新しました');
+      void queryClient.invalidateQueries({ queryKey: ['set-target-cases', orgId] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const cases = casesQuery.data?.data ?? [];
+  const cycles = cyclesQuery.data?.data ?? [];
+  const pendingAuditPlans = (data?.data ?? []).filter((plan) => {
+    const latestAudit = plan.audits[0];
+    return latestAudit == null || latestAudit.result !== 'approved';
+  });
+  const flaggedCases = cases.filter(
+    (careCase) => careCase.required_visit_support?.set_pilot_enabled === true
+  );
+  const eligibleCycles = cycles.filter((cycle) => {
+    if (!['audited', 'setting'].includes(cycle.overall_status)) return false;
+    if (!flaggedCases.some((careCase) => careCase.id === cycle.case_id)) return false;
+    return !(data?.data ?? []).some((plan) => plan.cycle_id === cycle.id);
   });
 
   const columns = useMemo<ColumnDef<SetPlanRow>[]>(
@@ -240,22 +329,36 @@ export function MedicationSetsContent() {
         cell: ({ row }) => {
           const hasAudit = row.original.audits.length > 0;
           return (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={hasAudit}
-              onClick={() => {
-                setAuditForm({
-                  plan_id: row.original.id,
-                  result: 'approved',
-                  reject_reason: '',
-                });
-                setShowAuditDialog(true);
-              }}
-            >
-              <ClipboardCheck className="mr-1 size-3" aria-hidden="true" />
-              セット鑑査
-            </Button>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Link
+                href={`/medication-sets/${row.original.id}/edit`}
+                className="inline-flex h-7 items-center rounded-[min(var(--radius-md),12px)] border border-border bg-background px-2.5 text-[0.8rem] font-medium text-foreground hover:bg-muted"
+              >
+                編集
+              </Link>
+              <Link
+                href={`/medication-sets/full?plan_id=${row.original.id}`}
+                className="inline-flex h-7 items-center rounded-[min(var(--radius-md),12px)] border border-border bg-background px-2.5 text-[0.8rem] font-medium text-foreground hover:bg-muted"
+              >
+                持参パック
+              </Link>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={hasAudit}
+                onClick={() => {
+                  setAuditForm({
+                    plan_id: row.original.id,
+                    result: 'approved',
+                    reject_reason: '',
+                  });
+                  setShowAuditDialog(true);
+                }}
+              >
+                <ClipboardCheck className="mr-1 size-3" aria-hidden="true" />
+                セット鑑査
+              </Button>
+            </div>
           );
         },
       },
@@ -265,11 +368,96 @@ export function MedicationSetsContent() {
 
   return (
     <div className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="rounded-xl border border-border/70 bg-muted/10 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-foreground">セット対象患者</p>
+              <p className="text-xs text-muted-foreground">
+                pilot 対象として明示したケースだけをセット計画の候補に出します。
+              </p>
+            </div>
+            <Badge variant="outline">{flaggedCases.length}件</Badge>
+          </div>
+          <div className="mt-3 space-y-2">
+            {cases.length === 0 ? (
+              <p className="text-sm text-muted-foreground">稼働中ケースがありません。</p>
+            ) : (
+              cases.map((careCase) => {
+                const flagged = careCase.required_visit_support?.set_pilot_enabled === true;
+                return (
+                  <div
+                    key={careCase.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">
+                        {careCase.patient.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {careCase.patient.name_kana} / ケース {careCase.id}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant={flagged ? 'default' : 'outline'}
+                      disabled={setTargetMutation.isPending}
+                      onClick={() =>
+                        setTargetMutation.mutate({
+                          caseId: careCase.id,
+                          requiredVisitSupport: {
+                            ...(careCase.required_visit_support ?? {}),
+                            set_pilot_enabled: !flagged,
+                          },
+                        })
+                      }
+                    >
+                      {flagged ? '対象中' : '対象化'}
+                    </Button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border/70 bg-muted/10 p-4">
+          <p className="text-sm font-medium text-foreground">計画候補</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            鑑査済みまたは setting のサイクルから、未計画のものだけを表示しています。
+          </p>
+          <div className="mt-3 space-y-2">
+            {eligibleCycles.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                候補サイクルはありません。セット対象フラグと鑑査済みサイクルを確認してください。
+              </p>
+            ) : (
+              eligibleCycles.map((cycle) => {
+                const careCase = flaggedCases.find((item) => item.id === cycle.case_id) ?? null;
+                return (
+                  <div
+                    key={cycle.id}
+                    className="rounded-lg border border-border/60 bg-background px-3 py-2"
+                  >
+                    <p className="text-sm font-medium text-foreground">
+                      {careCase?.patient.name ?? cycle.patient_id}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      cycle {cycle.id} / {cycle.overall_status}
+                    </p>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+
       <div className="flex justify-end">
         <Button
           onClick={() => {
             setCreateForm({
-              cycle_id: '',
+              cycle_id: eligibleCycles[0]?.id ?? '',
               target_period_start: '',
               target_period_end: '',
               set_method: 'facility_calendar',
@@ -281,6 +469,57 @@ export function MedicationSetsContent() {
           <Plus className="mr-2 size-4" aria-hidden="true" />
           セットプラン作成
         </Button>
+      </div>
+
+      <div className="rounded-xl border border-border/70 bg-muted/10 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-foreground">鑑査待ち一覧</p>
+            <p className="text-xs text-muted-foreground">
+              患者 / 対象期間 / 時間帯グリッド確認へ直接進めます。
+            </p>
+          </div>
+          <Badge variant="outline">{pendingAuditPlans.length}件</Badge>
+        </div>
+        <div className="mt-3 space-y-2">
+          {pendingAuditPlans.length === 0 ? (
+            <p className="text-sm text-muted-foreground">鑑査待ちのセット計画はありません。</p>
+          ) : (
+            pendingAuditPlans.map((plan) => (
+              <div
+                key={plan.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-background px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">
+                    {plan.cycle.case_.patient.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {format(parseISO(plan.target_period_start), 'M/d', { locale: ja })}
+                    {' — '}
+                    {format(parseISO(plan.target_period_end), 'M/d', { locale: ja })}
+                    {' / '}
+                    {SET_METHOD_LABELS[plan.set_method] ?? plan.set_method}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    href={`/medication-sets/${plan.id}/edit`}
+                    className="inline-flex h-7 items-center rounded-[min(var(--radius-md),12px)] border border-border bg-background px-2.5 text-[0.8rem] font-medium text-foreground hover:bg-muted"
+                  >
+                    セット編集
+                  </Link>
+                  <Link
+                    href={`/medication-sets/audit/${plan.id}`}
+                    className="inline-flex h-7 items-center rounded-[min(var(--radius-md),12px)] border border-border bg-background px-2.5 text-[0.8rem] font-medium text-foreground hover:bg-muted"
+                  >
+                    グリッド鑑査
+                  </Link>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
       <DataTable
@@ -299,14 +538,27 @@ export function MedicationSetsContent() {
           <div className="space-y-4 py-2">
             <div className="space-y-1">
               <Label htmlFor="cycle_id">サイクルID</Label>
-              <Input
-                id="cycle_id"
+              <Select
                 value={createForm.cycle_id}
-                onChange={(e) =>
-                  setCreateForm((f) => ({ ...f, cycle_id: e.target.value }))
+                onValueChange={(value) =>
+                  value && setCreateForm((form) => ({ ...form, cycle_id: value }))
                 }
-                placeholder="cycle_id を入力"
-              />
+              >
+                <SelectTrigger id="cycle_id">
+                  <SelectValue placeholder="対象サイクルを選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  {eligibleCycles.map((cycle) => {
+                    const careCase = flaggedCases.find((item) => item.id === cycle.case_id) ?? null;
+                    return (
+                      <SelectItem key={cycle.id} value={cycle.id}>
+                        {(careCase?.patient.name ?? cycle.patient_id) +
+                          ` / ${cycle.id.slice(0, 8)} / ${cycle.overall_status}`}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">

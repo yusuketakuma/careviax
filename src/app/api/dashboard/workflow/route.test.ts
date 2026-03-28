@@ -8,8 +8,10 @@ const {
   workflowExceptionCountMock,
   workflowExceptionFindManyMock,
   communicationRequestCountMock,
+  communicationRequestFindManyMock,
   visitScheduleCountMock,
   medicationCycleCountMock,
+  medicationCycleFindManyMock,
   visitScheduleFindManyMock,
   consentRecordFindManyMock,
   managementPlanFindManyMock,
@@ -26,8 +28,11 @@ const {
   careCaseCountMock,
   pharmacistShiftFindManyMock,
   businessHolidayFindManyMock,
+  inquiryRecordFindManyMock,
+  medicationIssueFindManyMock,
   communicationQueueMock,
   patientRiskQueueMock,
+  homeCareFeatureSummaryMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -35,8 +40,10 @@ const {
   workflowExceptionCountMock: vi.fn(),
   workflowExceptionFindManyMock: vi.fn(),
   communicationRequestCountMock: vi.fn(),
+  communicationRequestFindManyMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
   medicationCycleCountMock: vi.fn(),
+  medicationCycleFindManyMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   consentRecordFindManyMock: vi.fn(),
   managementPlanFindManyMock: vi.fn(),
@@ -53,8 +60,11 @@ const {
   careCaseCountMock: vi.fn(),
   pharmacistShiftFindManyMock: vi.fn(),
   businessHolidayFindManyMock: vi.fn(),
+  inquiryRecordFindManyMock: vi.fn(),
+  medicationIssueFindManyMock: vi.fn(),
   communicationQueueMock: vi.fn(),
   patientRiskQueueMock: vi.fn(),
+  homeCareFeatureSummaryMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -69,6 +79,7 @@ vi.mock('@/lib/db/client', () => ({
     medicationCycle: {
       groupBy: cycleGroupByMock,
       count: medicationCycleCountMock,
+      findMany: medicationCycleFindManyMock,
     },
     workflowException: {
       count: workflowExceptionCountMock,
@@ -76,6 +87,7 @@ vi.mock('@/lib/db/client', () => ({
     },
     communicationRequest: {
       count: communicationRequestCountMock,
+      findMany: communicationRequestFindManyMock,
     },
     visitSchedule: {
       count: visitScheduleCountMock,
@@ -89,6 +101,12 @@ vi.mock('@/lib/db/client', () => ({
     },
     prescriptionIntake: {
       findMany: prescriptionIntakeFindManyMock,
+    },
+    inquiryRecord: {
+      findMany: inquiryRecordFindManyMock,
+    },
+    medicationIssue: {
+      findMany: medicationIssueFindManyMock,
     },
     deliveryRecord: {
       count: deliveryRecordCountMock,
@@ -133,6 +151,10 @@ vi.mock('@/server/services/patient-risk', () => ({
   listPatientRiskSummaries: patientRiskQueueMock,
 }));
 
+vi.mock('@/server/services/home-care-ops', () => ({
+  getHomeCareFeatureSummary: homeCareFeatureSummaryMock,
+}));
+
 import { GET } from './route';
 
 function createRequest(headers?: Record<string, string>) {
@@ -172,6 +194,10 @@ describe('/api/dashboard/workflow GET', () => {
     communicationRequestCountMock
       .mockResolvedValueOnce(4)
       .mockResolvedValueOnce(1);
+    communicationRequestFindManyMock.mockResolvedValue([]);
+    medicationCycleFindManyMock.mockResolvedValue([]);
+    inquiryRecordFindManyMock.mockResolvedValue([]);
+    medicationIssueFindManyMock.mockResolvedValue([]);
     taskGroupByMock.mockResolvedValue([
       { task_type: 'visit_demand', _count: { id: 2 } },
       { task_type: 'visit_contact_followup', _count: { id: 1 } },
@@ -192,6 +218,8 @@ describe('/api/dashboard/workflow GET', () => {
         related_entity_id: 'schedule_1',
         metadata: {
           patient_name: '山田 太郎',
+          action_href: '/patients/patient_1/prescriptions',
+          action_label: '原本回収を記録',
         },
       },
     ]);
@@ -322,9 +350,12 @@ describe('/api/dashboard/workflow GET', () => {
         cycle_id: 'cycle_1',
         source_type: 'refill',
         refill_remaining_count: 2,
+        split_dispense_total: null,
+        split_dispense_current: null,
         prescribed_date: new Date('2026-03-20T00:00:00Z'),
         prescription_expiry_date: null,
         refill_next_dispense_date: new Date('2026-03-30T00:00:00Z'),
+        split_next_dispense_date: null,
         cycle: {
           id: 'cycle_1',
           patient_id: 'patient_1',
@@ -431,6 +462,10 @@ describe('/api/dashboard/workflow GET', () => {
         missing_management_plan: false,
       },
     ]);
+    homeCareFeatureSummaryMock.mockResolvedValue({
+      totals: { blocked: 1, attention: 1, monitoring: 1, ready: 17 },
+      features: [],
+    });
   });
 
   it('returns 401 when unauthenticated', async () => {
@@ -475,6 +510,14 @@ describe('/api/dashboard/workflow GET', () => {
             overdue_count: 1,
           }),
         },
+        home_care_feature_summary: {
+          totals: {
+            blocked: 1,
+            attention: 1,
+            monitoring: 1,
+            ready: 17,
+          },
+        },
         patient_risk_queue: {
           high_risk_count: 1,
           items: [
@@ -506,6 +549,8 @@ describe('/api/dashboard/workflow GET', () => {
           expect.objectContaining({
             id: 'task:task_1',
             queue_label: '訪問準備',
+            action_href: '/patients/patient_1/prescriptions',
+            action_label: '原本回収を記録',
           }),
           expect.objectContaining({
             id: 'self-report:report_1',
@@ -568,6 +613,9 @@ describe('/api/dashboard/workflow GET', () => {
           }),
         ],
       },
+    });
+    expect(homeCareFeatureSummaryMock).toHaveBeenCalledWith(expect.anything(), {
+      orgId: 'org_1',
     });
   });
 });

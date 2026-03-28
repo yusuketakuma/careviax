@@ -22,6 +22,10 @@ type PharmacistCredential = {
   expiry_date: string | null;
   tenure_years: number | null;
   weekly_work_hours: number | null;
+  consented_patients: Array<{
+    id: string;
+    name: string;
+  }>;
 };
 
 // --- Helpers ---
@@ -64,41 +68,6 @@ function ExpiryBadge({ expiryDate }: { expiryDate: string | null }) {
   );
 }
 
-// --- Sample data ---
-
-const SAMPLE_CREDENTIALS: PharmacistCredential[] = [
-  {
-    id: '1',
-    user_name: '鈴木 一郎',
-    certification_type: 'かかりつけ薬剤師研修認定',
-    certification_number: 'R2024-001',
-    issued_date: '2024-04-01',
-    expiry_date: '2026-03-31',
-    tenure_years: 3.5,
-    weekly_work_hours: 32,
-  },
-  {
-    id: '2',
-    user_name: '田中 花子',
-    certification_type: 'かかりつけ薬剤師研修認定',
-    certification_number: 'R2023-042',
-    issued_date: '2023-10-01',
-    expiry_date: '2026-05-15',
-    tenure_years: 5.2,
-    weekly_work_hours: 40,
-  },
-  {
-    id: '3',
-    user_name: '山本 次郎',
-    certification_type: 'かかりつけ薬剤師研修認定',
-    certification_number: null,
-    issued_date: null,
-    expiry_date: null,
-    tenure_years: 1.8,
-    weekly_work_hours: 38,
-  },
-];
-
 // --- Main ---
 
 export function PharmacistCredentialsContent() {
@@ -110,14 +79,13 @@ export function PharmacistCredentialsContent() {
       const res = await fetch('/api/admin/pharmacist-credentials', {
         headers: { 'x-org-id': orgId },
       });
-      if (res.status === 404) return { data: SAMPLE_CREDENTIALS };
       if (!res.ok) throw new Error('薬剤師認定情報の取得に失敗しました');
       return res.json() as Promise<{ data: PharmacistCredential[] }>;
     },
     enabled: !!orgId,
   });
 
-  const credentials = data?.data ?? SAMPLE_CREDENTIALS;
+  const credentials = data?.data ?? [];
 
   // Alert items
   const alertItems = credentials.filter((c) => {
@@ -176,6 +144,27 @@ export function PharmacistCredentialsContent() {
               : '—'}
           </span>
         ),
+      },
+      {
+        accessorKey: 'consented_patients',
+        header: '同意患者',
+        cell: ({ row }) => {
+          const patients = row.original.consented_patients;
+          if (patients.length === 0) {
+            return <span className="text-xs text-muted-foreground">—</span>;
+          }
+          return (
+            <div className="flex flex-wrap gap-1">
+              <Badge variant="outline">{patients.length}名</Badge>
+              {patients.slice(0, 2).map((patient) => (
+                <Badge key={patient.id} variant="secondary" className="max-w-36 truncate">
+                  {patient.name}
+                </Badge>
+              ))}
+              {patients.length > 2 ? <Badge variant="outline">+{patients.length - 2}</Badge> : null}
+            </div>
+          );
+        },
       },
     ],
     []

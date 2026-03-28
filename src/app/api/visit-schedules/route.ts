@@ -1,7 +1,9 @@
+import { z } from 'zod';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildSort } from '@/lib/api/search';
+import { parseSearchParams } from '@/lib/api/validation';
 import { createVisitScheduleSchema } from '@/lib/validations/visit-schedule';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { prisma } from '@/lib/db/client';
@@ -10,15 +12,44 @@ import {
   formatVisitWorkflowGateIssues,
 } from '@/server/services/management-plans';
 
+const optionalDateParam = z
+  .string()
+  .trim()
+  .refine((value) => !Number.isNaN(Date.parse(value)), '日付形式が不正です')
+  .optional();
+
+const visitScheduleQuerySchema = z.object({
+  cursor: z.string().trim().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  date_from: optionalDateParam,
+  date_to: optionalDateParam,
+  pharmacist_id: z.string().trim().optional(),
+  case_id: z.string().trim().optional(),
+  patient_id: z.string().trim().optional(),
+  sort: z.enum(['scheduled_date', 'time_window_start', 'priority', 'created_at']).optional(),
+  order: z.enum(['asc', 'desc']).optional(),
+});
+
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const { searchParams } = new URL(req.url);
-  const { cursor, limit } = parsePaginationParams(searchParams);
+  const parsed = parseSearchParams(visitScheduleQuerySchema, searchParams);
+  if (!parsed.ok) {
+    return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
+  }
+  const cursor = parsed.data.cursor;
+  const limit = parsed.data.limit ?? 50;
 
-  const dateFrom = searchParams.get('date_from');
-  const dateTo = searchParams.get('date_to');
-  const pharmacistId = searchParams.get('pharmacist_id');
-  const caseId = searchParams.get('case_id');
-  const patientId = searchParams.get('patient_id');
+  const dateFrom = parsed.data.date_from;
+  const dateTo = parsed.data.date_to;
+  const pharmacistId = parsed.data.pharmacist_id;
+  const caseId = parsed.data.case_id;
+  const patientId = parsed.data.patient_id;
+  const primarySort = buildSort(
+    parsed.data.sort,
+    parsed.data.order,
+    ['scheduled_date', 'time_window_start', 'priority', 'created_at'],
+    'scheduled_date'
+  );
 
   const where = {
     org_id: req.orgId,
@@ -45,9 +76,17 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     where,
     take: limit + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    orderBy: [{ scheduled_date: 'asc' }, { time_window_start: 'asc' }],
+    orderBy:
+      parsed.data.sort === 'time_window_start'
+        ? [primarySort ?? { scheduled_date: 'asc' }, { scheduled_date: 'asc' }]
+        : [primarySort ?? { scheduled_date: 'asc' }, { time_window_start: 'asc' }],
     include: {
       visit_record: { select: { id: true, outcome_status: true } },
+      facility_batch: {
+        select: {
+          id: true,
+        },
+      },
       preparation: {
         select: {
           id: true,
@@ -99,6 +138,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
                 select: {
                   address: true,
                   building_id: true,
+                  unit_name: true,
                   lat: true,
                   lng: true,
                 },
@@ -113,6 +153,8 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
           id: true,
           name: true,
           address: true,
+          lat: true,
+          lng: true,
         },
       },
     },
@@ -187,6 +229,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
 
     return {
       ...schedule,
+      facility_batch_id: schedule.facility_batch?.id ?? null,
       facility_hint:
         facilityGroup && facilityGroup.patientNames.length > 1
           ? {

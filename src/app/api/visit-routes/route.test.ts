@@ -1,0 +1,191 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { NextRequest } from 'next/server';
+
+const { withAuthMock, withOrgContextMock, computeOptimizedVisitRouteMock } = vi.hoisted(() => ({
+  withAuthMock: vi.fn(
+    (
+      handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>,
+    ) => {
+      return (req: NextRequest) =>
+        handler({
+          ...req,
+          orgId: 'org_1',
+          userId: 'user_1',
+        } as NextRequest & { orgId: string; userId: string });
+    },
+  ),
+  withOrgContextMock: vi.fn(),
+  computeOptimizedVisitRouteMock: vi.fn(),
+}));
+
+vi.mock('@/lib/auth/middleware', () => ({
+  withAuth: withAuthMock,
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/server/services/google-routes', () => ({
+  computeOptimizedVisitRoute: computeOptimizedVisitRouteMock,
+}));
+
+import { POST } from './route';
+
+function createRequest(body: unknown) {
+  return {
+    json: async () => body,
+  } as unknown as NextRequest;
+}
+
+describe('/api/visit-routes POST', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('computes an optimized route from selected schedules', async () => {
+    computeOptimizedVisitRouteMock.mockResolvedValue({
+      status: 'ok',
+      note: null,
+      travelMode: 'DRIVE',
+      origin: { lat: 35.0, lng: 139.0, label: '本店' },
+      encodedPath: 'encoded-path',
+      orderedScheduleIds: ['schedule_2', 'schedule_1'],
+      totalDistanceMeters: 5400,
+      totalDurationSeconds: 1500,
+      stopSummaries: [],
+    });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        visitSchedule: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'schedule_1',
+              scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+              site: {
+                id: 'site_1',
+                name: '本店',
+                lat: 35.0,
+                lng: 139.0,
+              },
+              case_: {
+                patient: {
+                  name: '山田 太郎',
+                  residences: [{ address: '東京都港区1-1-1', lat: 35.1, lng: 139.1 }],
+                },
+              },
+            },
+            {
+              id: 'schedule_2',
+              scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+              site: {
+                id: 'site_1',
+                name: '本店',
+                lat: 35.0,
+                lng: 139.0,
+              },
+              case_: {
+                patient: {
+                  name: '佐藤 花子',
+                  residences: [{ address: '東京都港区1-1-2', lat: 35.2, lng: 139.2 }],
+                },
+              },
+            },
+          ]),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        schedule_ids: ['schedule_1', 'schedule_2'],
+        travel_mode: 'DRIVE',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: 'ok',
+      orderedScheduleIds: ['schedule_2', 'schedule_1'],
+    });
+    expect(computeOptimizedVisitRouteMock).toHaveBeenCalledWith({
+      origin: { lat: 35.0, lng: 139.0, label: '本店' },
+      travelMode: 'DRIVE',
+      waypoints: [
+        expect.objectContaining({ scheduleId: 'schedule_1' }),
+        expect.objectContaining({ scheduleId: 'schedule_2' }),
+      ],
+    });
+  });
+
+  it('annotates the response when some schedules are missing coordinates', async () => {
+    computeOptimizedVisitRouteMock.mockResolvedValue({
+      status: 'unavailable',
+      note: 'Google Maps API key が未設定のためルート最適化を計算できません',
+      travelMode: 'WALK',
+      origin: { lat: 35.0, lng: 139.0, label: '本店' },
+      encodedPath: null,
+      orderedScheduleIds: ['schedule_1'],
+      totalDistanceMeters: null,
+      totalDurationSeconds: null,
+      stopSummaries: [],
+    });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        visitSchedule: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'schedule_1',
+              scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+              site: {
+                id: 'site_1',
+                name: '本店',
+                lat: 35.0,
+                lng: 139.0,
+              },
+              case_: {
+                patient: {
+                  name: '山田 太郎',
+                  residences: [{ address: '東京都港区1-1-1', lat: 35.1, lng: 139.1 }],
+                },
+              },
+            },
+            {
+              id: 'schedule_2',
+              scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+              site: {
+                id: 'site_1',
+                name: '本店',
+                lat: 35.0,
+                lng: 139.0,
+              },
+              case_: {
+                patient: {
+                  name: '座標なし患者',
+                  residences: [{ address: '東京都港区1-1-9', lat: null, lng: null }],
+                },
+              },
+            },
+          ]),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        schedule_ids: ['schedule_1', 'schedule_2'],
+        travel_mode: 'WALK',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: 'unavailable',
+      note: expect.stringContaining('座標未設定: 座標なし患者'),
+    });
+  });
+});

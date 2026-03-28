@@ -47,7 +47,7 @@ export async function PATCH(
       where: { id },
       data: { status: to },
     });
-  });
+  }, { requestContext: ctx });
 
   return success(careCase);
 }

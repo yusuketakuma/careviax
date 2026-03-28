@@ -164,6 +164,7 @@ model AuditLog {
   ip_address  String?
   user_agent  String?
   created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
 
   @@index([org_id])
   @@index([actor_id])
@@ -219,6 +220,7 @@ model Setting {
   updated_at DateTime     @updatedAt
 
   @@unique([scope, scope_id, key])
+  @@index([scope, scope_id])
 }
 
 model LabelDictionary {
@@ -229,6 +231,8 @@ model LabelDictionary {
   category   String?
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+
+  @@index([category])
 }
 
 model SourceOfTruthMatrix {

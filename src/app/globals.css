@@ -152,3 +152,44 @@
     @apply font-sans;
   }
 }
+
+@media print {
+  html,
+  body {
+    background: white;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  body {
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  [data-print-skip='true'] {
+    display: none !important;
+  }
+
+  [data-print-container='true'],
+  [data-print-main='true'] {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  .print-page-break-before {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  .print-page-break-after {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .print-page-break-inside-avoid {
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+  }
+}

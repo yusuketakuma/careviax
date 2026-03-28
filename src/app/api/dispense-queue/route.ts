@@ -3,10 +3,11 @@ import { success } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
+  const now = new Date();
   const tasks = await prisma.dispenseTask.findMany({
     where: {
       org_id: req.orgId,
-      status: 'pending',
+      status: { in: ['pending', 'in_progress'] },
     },
     orderBy: [
       {
@@ -16,6 +17,19 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       { created_at: 'asc' },
     ],
     include: {
+      results: {
+        select: {
+          id: true,
+          line_id: true,
+          actual_drug_name: true,
+          actual_drug_code: true,
+          actual_quantity: true,
+          actual_unit: true,
+          discrepancy_reason: true,
+          carry_type: true,
+          special_notes: true,
+        },
+      },
       cycle: {
         select: {
           id: true,
@@ -29,6 +43,36 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
                   id: true,
                   name: true,
                   name_kana: true,
+                  residences: {
+                    where: { is_primary: true },
+                    take: 1,
+                    select: {
+                      building_id: true,
+                      address: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          inquiries: {
+            where: {
+              OR: [{ result: null }, { result: 'pending' }],
+            },
+            orderBy: [{ inquired_at: 'desc' }, { created_at: 'desc' }],
+            select: {
+              id: true,
+              line_id: true,
+              reason: true,
+              inquiry_to_physician: true,
+              inquiry_content: true,
+              result: true,
+              change_detail: true,
+              line: {
+                select: {
+                  id: true,
+                  line_number: true,
+                  drug_name: true,
                 },
               },
             },
@@ -76,7 +120,19 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     return a.created_at.getTime() - b.created_at.getTime();
   });
 
-  return success({ data: sorted });
+  return success({
+    data: sorted.map((task) => {
+      const residence = task.cycle.case_.patient.residences[0] ?? null;
+      const facilityLabel = residence?.building_id ?? residence?.address ?? null;
+      const isOverdue = task.due_date != null && task.due_date.getTime() < now.getTime();
+
+      return {
+        ...task,
+        facility_label: facilityLabel,
+        is_overdue: isOverdue,
+      };
+    }),
+  });
 }, {
   permission: 'canDispense',
   message: '調剤キューの閲覧権限がありません',

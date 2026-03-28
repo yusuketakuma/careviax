@@ -4,14 +4,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { MemberRole } from '@prisma/client';
 import { hasPermission, type PermissionKey } from './permissions';
 import { resolveLocalUserByIdentity } from './user-resolution';
+import { authNoOrg, forbiddenResponse, unauthorized } from '@/lib/api/response';
+import {
+  clearRequestAuthContext,
+  runWithRequestAuthContext,
+  type RequestAuthContext,
+} from './request-context';
+import { withRoutePerformance } from '@/lib/utils/performance';
 
-export type AuthContext = {
-  userId: string;
-  orgId: string;
-  role: MemberRole;
-  ipAddress?: string;
-  userAgent?: string;
-};
+export type AuthContext = RequestAuthContext;
 
 type RequireAuthContextOptions = {
   permission?: PermissionKey;
@@ -29,17 +30,18 @@ type RequireApiKeyOrAuthContextOptions = RequireAuthContextOptions & {
 
 export async function getAuthContext(request: NextRequest): Promise<AuthContext | null> {
   const session = await auth();
-  const userId =
-    session?.user?.id ??
-    (
-      await resolveLocalUserByIdentity({
-        cognitoSub: session?.user?.cognitoSub,
-        email: session?.user?.email,
-      })
-    )?.id;
+  const requestedOrgId = request.headers.get('x-org-id');
+  const resolvedUser =
+    !requestedOrgId || !session?.user?.id
+      ? await resolveLocalUserByIdentity({
+          cognitoSub: session?.user?.cognitoSub,
+          email: session?.user?.email,
+        })
+      : null;
+  const userId = session?.user?.id ?? resolvedUser?.id;
   if (!userId) return null;
 
-  const orgId = request.headers.get('x-org-id');
+  const orgId = requestedOrgId || resolvedUser?.org_id;
   if (!orgId) return null;
 
   const membership = await prisma.membership.findFirst({
@@ -69,44 +71,36 @@ export async function requireAuthContext(
   | { ctx: AuthContext; response?: never }
   | { ctx?: never; response: NextResponse }
 > {
+  clearRequestAuthContext();
+
   const session = await auth();
+  const requestedOrgId = request.headers.get('x-org-id');
   const resolvedUser =
-    session?.user?.id
-      ? { id: session.user.id }
-      : await resolveLocalUserByIdentity({
+    !requestedOrgId || !session?.user?.id
+      ? await resolveLocalUserByIdentity({
           cognitoSub: session?.user?.cognitoSub,
           email: session?.user?.email,
-        });
+        })
+      : null;
 
-  if (!resolvedUser?.id) {
+  const userId = session?.user?.id ?? resolvedUser?.id;
+  if (!userId) {
     return {
-      response: NextResponse.json(
-        { code: 'AUTH_UNAUTHENTICATED', message: '認証が必要です' },
-        { status: 401 }
-      ),
+      response: await unauthorized(),
     };
   }
 
-  const orgId = request.headers.get('x-org-id');
+  const orgId = requestedOrgId || resolvedUser?.org_id;
   if (!orgId) {
     return {
-      response: NextResponse.json(
-        { code: 'AUTH_NO_ORG', message: '組織IDが必要です' },
-        { status: 400 }
-      ),
+      response: await authNoOrg(),
     };
   }
 
-  const membership = await getMembership(resolvedUser.id, orgId);
+  const membership = await getMembership(userId, orgId);
   if (!membership) {
     return {
-      response: NextResponse.json(
-        {
-          code: 'AUTH_FORBIDDEN',
-          message: 'この組織へのアクセス権限がありません',
-        },
-        { status: 403 }
-      ),
+      response: await forbiddenResponse('この組織へのアクセス権限がありません'),
     };
   }
 
@@ -117,7 +111,7 @@ export async function requireAuthContext(
   const userAgent = request.headers.get('user-agent') ?? undefined;
 
   const ctx: AuthContext = {
-    userId: resolvedUser.id,
+    userId,
     orgId,
     role: membership.role,
     ipAddress,
@@ -127,13 +121,7 @@ export async function requireAuthContext(
   if (options?.permission) {
     if (!hasPermission(ctx.role, options.permission)) {
       return {
-        response: NextResponse.json(
-          {
-            code: 'AUTH_FORBIDDEN',
-            message: options.message ?? '権限がありません',
-          },
-          { status: 403 }
-        ),
+        response: await forbiddenResponse(options.message ?? '権限がありません'),
       };
     }
   }
@@ -150,10 +138,14 @@ export function withAuthContext<TParams extends Record<string, string>>(
   options?: RequireAuthContextOptions
 ) {
   return async (req: NextRequest, routeContext: AuthRouteContext<TParams>) => {
-    const authResult = await requireAuthContext(req, options);
-    if ('response' in authResult) return authResult.response;
+    return withRoutePerformance(req, async () => {
+      const authResult = await requireAuthContext(req, options);
+      if ('response' in authResult) return authResult.response;
 
-    return handler(req, authResult.ctx, routeContext);
+      return runWithRequestAuthContext(authResult.ctx, () =>
+        handler(req, authResult.ctx, routeContext)
+      );
+    });
   };
 }
 
@@ -165,6 +157,8 @@ export async function requireApiKeyOrAuthContext(
   | { authType: 'auth'; ctx: AuthContext; response?: never }
   | { authType?: never; ctx?: never; response: NextResponse }
 > {
+  clearRequestAuthContext();
+
   const apiKeyHeader = options?.apiKeyHeader ?? 'x-api-key';
   const requestApiKey = request.headers.get(apiKeyHeader);
   if (options?.apiKey && requestApiKey === options.apiKey) {

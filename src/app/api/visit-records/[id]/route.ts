@@ -3,8 +3,77 @@ import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
-import { updateVisitRecordSchema } from '@/lib/validations/visit-record';
+import {
+  updateVisitRecordSchema,
+  type VisitRecordAttachmentRefInput,
+} from '@/lib/validations/visit-record';
 import { prisma } from '@/lib/db/client';
+import {
+  getStoredFileRecord,
+  toVisitRecordAttachment,
+  type VisitRecordAttachment,
+} from '@/server/services/file-storage';
+
+function parseStoredVisitRecordAttachments(value: unknown): VisitRecordAttachment[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return [];
+
+    const record = entry as Record<string, unknown>;
+    if (
+      typeof record.file_id !== 'string' ||
+      typeof record.file_name !== 'string' ||
+      typeof record.mime_type !== 'string' ||
+      typeof record.size_bytes !== 'number'
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        file_id: record.file_id,
+        file_name: record.file_name,
+        mime_type: record.mime_type,
+        size_bytes: record.size_bytes,
+        uploaded_at: typeof record.uploaded_at === 'string' ? record.uploaded_at : null,
+        kind: record.kind === 'attachment' ? 'attachment' : 'photo',
+      } satisfies VisitRecordAttachment,
+    ];
+  });
+}
+
+async function resolveVisitRecordAttachments(
+  orgId: string,
+  recordId: string,
+  attachments: VisitRecordAttachmentRefInput[]
+) {
+  const seen = new Set<string>();
+  const resolved: VisitRecordAttachment[] = [];
+
+  for (const attachment of attachments) {
+    if (seen.has(attachment.file_id)) continue;
+    seen.add(attachment.file_id);
+
+    const file = await getStoredFileRecord(orgId, attachment.file_id);
+
+    if (file.status !== 'uploaded') {
+      throw new Error('アップロードが完了していない添付ファイルがあります');
+    }
+
+    if (file.purpose !== 'visit-photo') {
+      throw new Error('訪問記録に紐づけできない添付ファイルが含まれています');
+    }
+
+    if (file.visitRecordId !== recordId) {
+      throw new Error('添付ファイルの訪問記録IDが一致しません');
+    }
+
+    resolved.push(toVisitRecordAttachment(file));
+  }
+
+  return resolved;
+}
 
 export async function GET(
   req: NextRequest,
@@ -24,9 +93,15 @@ export async function GET(
     include: {
       schedule: {
         select: {
+          id: true,
+          case_id: true,
+          site_id: true,
+          pharmacist_id: true,
           visit_type: true,
           scheduled_date: true,
           recurrence_rule: true,
+          time_window_start: true,
+          time_window_end: true,
         },
       },
     },
@@ -34,7 +109,46 @@ export async function GET(
 
   if (!record) return notFound('訪問記録が見つかりません');
 
-  return success(record);
+  const latestAudit = await prisma.auditLog.findFirst({
+    where: {
+      org_id: ctx.orgId,
+      target_type: 'visit_record',
+      target_id: id,
+    },
+    orderBy: { created_at: 'desc' },
+    select: {
+      actor_id: true,
+    },
+  });
+
+  const userIds = Array.from(
+    new Set([record.pharmacist_id, latestAudit?.actor_id].filter(Boolean) as string[])
+  );
+  const users =
+    userIds.length === 0
+      ? []
+      : await prisma.user.findMany({
+          where: {
+            org_id: ctx.orgId,
+            id: { in: userIds },
+          },
+          select: {
+            id: true,
+            name: true,
+          },
+        });
+  const userById = new Map(users.map((user) => [user.id, user.name]));
+
+  return success({
+    ...record,
+    attachments: parseStoredVisitRecordAttachments(record.attachments),
+    pharmacist_name: userById.get(record.pharmacist_id) ?? null,
+    last_modified_by_id: latestAudit?.actor_id ?? record.pharmacist_id,
+    last_modified_by_name:
+      (latestAudit?.actor_id ? userById.get(latestAudit.actor_id) : null) ??
+      userById.get(record.pharmacist_id) ??
+      null,
+  });
 }
 
 export async function PATCH(
@@ -58,7 +172,18 @@ export async function PATCH(
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const { version, next_visit_suggestion_date, visit_date, ...rest } = parsed.data;
+  const { version, next_visit_suggestion_date, visit_date, attachments, ...rest } = parsed.data;
+  let normalizedAttachments: VisitRecordAttachment[] | undefined;
+
+  if (attachments) {
+    try {
+      normalizedAttachments = await resolveVisitRecordAttachments(ctx.orgId, id, attachments);
+    } catch (cause) {
+      return validationError(
+        cause instanceof Error ? cause.message : '添付ファイル情報が不正です'
+      );
+    }
+  }
 
   const updated = await withOrgContext(ctx.orgId, async (tx) => {
     // Optimistic lock: check version
@@ -77,10 +202,13 @@ export async function PATCH(
         ...(next_visit_suggestion_date
           ? { next_visit_suggestion_date: new Date(next_visit_suggestion_date) }
           : {}),
+        ...(normalizedAttachments
+          ? { attachments: normalizedAttachments as Prisma.InputJsonValue }
+          : {}),
         version: { increment: 1 },
       } as Prisma.VisitRecordUncheckedUpdateInput,
     });
-  });
+  }, { requestContext: ctx });
 
   if (!updated) return notFound('訪問記録が見つかりません');
   if (updated === 'conflict') {

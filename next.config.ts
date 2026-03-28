@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import withSerwistInit from '@serwist/next';
 
 const securityHeaders = [
   {
@@ -36,6 +37,10 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  experimental: {
+    authInterrupts: true,
+  },
+  serverExternalPackages: ['@react-pdf/renderer'],
   async headers() {
     return [
       {
@@ -46,4 +51,12 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+const withSerwist = withSerwistInit({
+  swSrc: 'src/app/sw.ts',
+  swDest: 'public/sw.js',
+  disable: process.env.NODE_ENV !== 'production',
+  cacheOnNavigation: true,
+  reloadOnOnline: true,
+});
+
+export default withSerwist(nextConfig);

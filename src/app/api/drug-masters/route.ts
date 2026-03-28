@@ -1,31 +1,67 @@
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
+import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
-import { success } from '@/lib/api/response';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { success, validationError } from '@/lib/api/response';
+import { buildSearchFilter, buildSort } from '@/lib/api/search';
+import { parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
+
+const booleanParam = z
+  .enum(['true', 'false'])
+  .transform((value) => value === 'true')
+  .optional();
+
+const drugMasterQuerySchema = z.object({
+  q: z.string().trim().optional(),
+  category: z.string().trim().optional(),
+  generic: booleanParam,
+  narcotic: booleanParam,
+  cursor: z.string().trim().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  sort: z.enum(['drug_name_kana', 'drug_name', 'drug_price', 'yj_code']).optional(),
+  order: z.enum(['asc', 'desc']).optional(),
+});
 
 export const GET = withAuthContext(
   async (req: NextRequest) => {
     const { searchParams } = new URL(req.url);
-    const { limit, cursor } = parsePaginationParams(searchParams);
+    const parsed = parseSearchParams(drugMasterQuerySchema, searchParams);
+    if (!parsed.ok) {
+      return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
+    }
+    const limit = parsed.data.limit ?? 50;
+    const cursor = parsed.data.cursor;
     const offset = cursor ? parseInt(cursor, 10) : 0;
 
-    const q = searchParams.get('q') ?? '';
-    const category = searchParams.get('category') ?? undefined;
-    const genericOnly = searchParams.get('generic') === 'true';
-    const narcoticOnly = searchParams.get('narcotic') === 'true';
-
-    const where = {
+    const q = parsed.data.q ?? '';
+    const category = parsed.data.category;
+    const genericOnly = parsed.data.generic ?? false;
+    const narcoticOnly = parsed.data.narcotic ?? false;
+    const textSearch = buildSearchFilter(q, [
+      'drug_name',
+      'drug_name_kana',
+      'generic_name',
+    ]) as Prisma.DrugMasterWhereInput;
+    const orClauses: Prisma.DrugMasterWhereInput[] = [
+      ...(textSearch.OR ?? []),
       ...(q
-        ? {
-            OR: [
-              { drug_name: { contains: q } },
-              { drug_name_kana: { contains: q } },
-              { yj_code: { startsWith: q } },
-              { generic_name: { contains: q } },
-            ],
-          }
-        : {}),
+        ? [
+            { yj_code: { startsWith: q } },
+            { receipt_code: { startsWith: q } },
+            { jan_code: { startsWith: q } },
+          ]
+        : []),
+    ];
+    const primarySort = buildSort(
+      parsed.data.sort,
+      parsed.data.order,
+      ['drug_name_kana', 'drug_name', 'drug_price', 'yj_code'],
+      'drug_name_kana'
+    );
+
+    const where: Prisma.DrugMasterWhereInput = {
+      ...(orClauses.length > 0 ? { OR: orClauses } : {}),
       ...(category ? { therapeutic_category: { startsWith: category } } : {}),
       ...(genericOnly ? { is_generic: true } : {}),
       ...(narcoticOnly ? { is_narcotic: true } : {}),
@@ -34,7 +70,10 @@ export const GET = withAuthContext(
     const [drugs, totalCount] = await Promise.all([
       prisma.drugMaster.findMany({
         where,
-        orderBy: [{ drug_name_kana: 'asc' }, { drug_name: 'asc' }],
+        orderBy:
+          parsed.data.sort === 'drug_name'
+            ? [primarySort ?? { drug_name_kana: 'asc' }, { drug_name_kana: 'asc' }]
+            : [primarySort ?? { drug_name_kana: 'asc' }, { drug_name: 'asc' }],
         skip: offset,
         take: limit + 1,
         select: {
@@ -61,9 +100,36 @@ export const GET = withAuthContext(
 
     const hasMore = drugs.length > limit;
     const data = hasMore ? drugs.slice(0, limit) : drugs;
+    const genericNames = [...new Set(data.map((drug) => drug.generic_name?.trim()).filter((value): value is string => Boolean(value)))];
+    const genericMappings =
+      genericNames.length > 0
+        ? await prisma.genericDrugMapping.findMany({
+            where: {
+              generic_name: {
+                in: genericNames,
+              },
+            },
+            select: {
+              generic_name: true,
+              price_comparison: true,
+            },
+          })
+        : [];
+    const priceComparisonByGenericName = new Map(
+      genericMappings.map((mapping) => [
+        mapping.generic_name,
+        mapping.price_comparison as Prisma.JsonObject | null,
+      ])
+    );
 
     return success({
-      data,
+      data: data.map((drug) => ({
+        ...drug,
+        generic_price_comparison:
+          drug.generic_name != null
+            ? priceComparisonByGenericName.get(drug.generic_name) ?? null
+            : null,
+      })),
       hasMore,
       totalCount,
       nextCursor: hasMore ? String(offset + limit) : undefined,

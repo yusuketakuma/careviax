@@ -3,13 +3,25 @@ import { Suspense } from 'react';
 import Link from 'next/link';
 import { CalendarPlus } from 'lucide-react';
 import { ScheduleDayView } from './day-view';
+import { CalendarView } from './calendar-view';
+import { ScheduleViewToggle } from './schedule-view-toggle';
 import { Loading } from '@/components/ui/loading';
 
 export const metadata: Metadata = {
   title: '訪問スケジュール — CareViaX',
 };
 
-export default function SchedulesPage() {
+type SchedulesPageProps = {
+  searchParams?: Promise<{
+    view?: string;
+  }>;
+};
+
+export default async function SchedulesPage({ searchParams }: SchedulesPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const activeView =
+    resolvedSearchParams?.view === 'calendar' ? 'calendar' : 'list';
+
   return (
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
@@ -30,8 +42,12 @@ export default function SchedulesPage() {
         </Link>
       </div>
 
+      <div className="mb-6 flex items-center justify-end">
+        <ScheduleViewToggle activeView={activeView} />
+      </div>
+
       <Suspense fallback={<Loading />}>
-        <ScheduleDayView />
+        {activeView === 'calendar' ? <CalendarView /> : <ScheduleDayView />}
       </Suspense>
     </div>
   );

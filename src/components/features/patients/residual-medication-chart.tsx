@@ -9,7 +9,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 type ResidualRecord = {
   id: string;
   drug_name: string;
-  excess_days: number;
+  excess_days: number | null;
   created_at: string;
 };
 
@@ -44,7 +44,7 @@ export function ResidualMedicationChart({ patientId }: { patientId: string }) {
     for (const r of data.data) {
       const dateKey = r.created_at.slice(0, 10);
       const existing = grouped.get(dateKey) ?? { totalExcessDays: 0, count: 0 };
-      existing.totalExcessDays += r.excess_days;
+      existing.totalExcessDays += r.excess_days ?? 0;
       existing.count++;
       grouped.set(dateKey, existing);
     }

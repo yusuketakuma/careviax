@@ -8,7 +8,7 @@ import { ja } from 'date-fns/locale';
 import { ArrowLeft, Send, FileText, Clock, Pencil, Printer } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -35,6 +35,7 @@ import { CareManagerReportView } from '@/components/features/reports/care-manage
 import { ReportEditForm } from '@/components/features/reports/report-edit-form';
 import { ComplianceChecklist } from '@/components/features/reports/compliance-checklist';
 import type { PhysicianReportContent, CareManagerReportContent } from '@/types/care-report-content';
+import { cn } from '@/lib/utils';
 
 // --- Types ---
 
@@ -187,10 +188,19 @@ export default function ReportDetailPage() {
               {editMode ? '表示に戻る' : '編集'}
             </Button>
           )}
+          <a
+            href={`/api/care-reports/${id}/pdf`}
+            target="_blank"
+            rel="noreferrer"
+            className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+          >
+            <FileText className="mr-1.5 size-3.5" aria-hidden="true" />
+            PDFを開く
+          </a>
           <Link href={`/reports/${id}/print`}>
             <Button variant="outline" size="sm">
               <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
-              印刷
+              印刷ビュー
             </Button>
           </Link>
           <Button size="sm" onClick={() => setSendDialogOpen(true)}>

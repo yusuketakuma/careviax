@@ -5,7 +5,6 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, forbidden } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { hasPermission } from '@/lib/auth/permissions';
-import { createAuditLog } from '@/server/audit-log';
 
 const revokeConsentSchema = z.object({
   reason: z.string().optional(),
@@ -73,22 +72,6 @@ export const POST = withAuthContext<{ id: string }>(
       });
 
       return revokedRecord;
-    });
-
-    // Write audit log outside of RLS transaction
-    await createAuditLog({
-      orgId: ctx.orgId,
-      actorId: ctx.userId,
-      action: 'consent.revoke',
-      targetType: 'ConsentRecord',
-      targetId: id,
-      changes: {
-        consent_type: existing.consent_type,
-        patient_id: existing.patient_id,
-        reason: parsed.data.reason ?? null,
-      },
-      ipAddress: ctx.ipAddress,
-      userAgent: ctx.userAgent,
     });
 
     return success(result);

@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { Save } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Activity, Database, HardDriveDownload, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -16,63 +17,66 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  SCOPE_LABELS,
+  type SettingScope,
+  type SettingValueItem,
+} from '@/lib/admin/settings-catalog';
+import { useOrgId } from '@/lib/hooks/use-org-id';
 
-// --- Types ---
-
-type SettingItem = {
-  key: string;
-  label: string;
-  description?: string;
-  value: string;
-  type: 'text' | 'number' | 'select' | 'boolean';
-  options?: { value: string; label: string }[];
+type SettingResponse = {
+  data: {
+    scope: SettingScope;
+    scope_id: string | null;
+    items: SettingValueItem[];
+  };
 };
 
-type SettingScope = 'system' | 'organization' | 'site' | 'user';
-
-// --- Sample settings ---
-
-const SETTINGS: Record<SettingScope, SettingItem[]> = {
-  system: [
-    { key: 'session_timeout_minutes', label: 'セッションタイムアウト', description: '分単位（3省2GL準拠: 最大30分）', value: '30', type: 'number' },
-    { key: 'mfa_required', label: 'MFA強制', description: 'ログイン時の多要素認証', value: 'true', type: 'boolean', options: [{ value: 'true', label: '必須' }, { value: 'false', label: '任意' }] },
-    { key: 'audit_log_retention_days', label: '監査ログ保持期間', description: '日数（最低365日）', value: '365', type: 'number' },
-    { key: 'password_min_length', label: 'パスワード最小文字数', value: '12', type: 'number' },
-  ],
-  organization: [
-    { key: 'org_name', label: '法人名', value: '株式会社CareViaX薬局', type: 'text' },
-    { key: 'corporate_number', label: '法人番号', value: '1234567890123', type: 'text' },
-    { key: 'default_billing_rule', label: 'デフォルト算定ルール', value: 'medical', type: 'select', options: [{ value: 'medical', label: '医療保険' }, { value: 'care', label: '介護保険' }] },
-    { key: 'notification_email', label: '通知先メールアドレス', value: 'admin@careviax.example', type: 'text' },
-  ],
-  site: [
-    { key: 'site_name', label: '店舗名', value: 'CareViaX薬局 本店', type: 'text' },
-    { key: 'opening_hours', label: '営業時間', value: '09:00-19:00', type: 'text' },
-    { key: 'dispensing_fee_category', label: '調剤基本料区分', value: '1', type: 'select', options: [{ value: '1', label: '調剤基本料1' }, { value: '3', label: '調剤基本料3' }] },
-    { key: 'is_health_support_pharmacy', label: '健康サポート薬局', value: 'true', type: 'boolean', options: [{ value: 'true', label: '届出あり' }, { value: 'false', label: '届出なし' }] },
-  ],
-  user: [
-    { key: 'display_language', label: '表示言語', value: 'ja', type: 'select', options: [{ value: 'ja', label: '日本語' }] },
-    { key: 'notification_email_enabled', label: 'メール通知', value: 'true', type: 'boolean', options: [{ value: 'true', label: '有効' }, { value: 'false', label: '無効' }] },
-    { key: 'default_page', label: 'ログイン後の初期ページ', value: '/today', type: 'text' },
-    { key: 'rows_per_page', label: '一覧の表示件数', value: '50', type: 'number' },
-  ],
+type SiteOption = {
+  id: string;
+  name: string;
 };
 
-const SCOPE_LABELS: Record<SettingScope, { label: string; badge: string }> = {
-  system: { label: 'システム', badge: 'bg-red-100 text-red-800 border-red-200' },
-  organization: { label: '法人', badge: 'bg-orange-100 text-orange-800 border-orange-200' },
-  site: { label: '店舗', badge: 'bg-blue-100 text-blue-800 border-blue-200' },
-  user: { label: '個人', badge: 'bg-green-100 text-green-800 border-green-200' },
+type CurrentProfile = {
+  id: string;
+  name: string;
+  defaultSiteId: string | null;
 };
 
-// --- Components ---
+type HealthPayload = {
+  status: 'ok' | 'degraded' | 'down';
+  timestamp: string;
+  checks: Record<
+    string,
+    {
+      status: string;
+      latencyMs?: number;
+      message?: string;
+    }
+  >;
+};
+
+const EMPTY_SETTING_ITEMS: SettingValueItem[] = [];
+
+function statusBadgeClass(status: string) {
+  switch (status) {
+    case 'ok':
+      return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+    case 'degraded':
+      return 'bg-amber-100 text-amber-800 border-amber-200';
+    case 'down':
+    case 'error':
+      return 'bg-rose-100 text-rose-800 border-rose-200';
+    default:
+      return 'bg-muted text-muted-foreground border-border';
+  }
+}
 
 function SettingRow({
   item,
   onChange,
 }: {
-  item: SettingItem;
+  item: SettingValueItem;
   onChange: (key: string, value: string) => void;
 }) {
   return (
@@ -81,24 +85,21 @@ function SettingRow({
         <Label htmlFor={`setting-${item.key}`} className="text-sm font-medium">
           {item.label}
         </Label>
-        {item.description && (
+        {item.description ? (
           <p className="mt-0.5 text-xs text-muted-foreground">{item.description}</p>
-        )}
+        ) : null}
         <p className="mt-0.5 font-mono text-xs text-muted-foreground/60">{item.key}</p>
       </div>
-      <div className="w-48 shrink-0">
+      <div className="w-56 shrink-0">
         {item.type === 'select' || item.type === 'boolean' ? (
-          <Select
-            value={item.value}
-            onValueChange={(v) => onChange(item.key, v ?? item.value)}
-          >
+          <Select value={item.value} onValueChange={(value) => onChange(item.key, value ?? item.value)}>
             <SelectTrigger id={`setting-${item.key}`} className="h-8 text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {(item.options ?? []).map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
+              {(item.options ?? []).map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -108,7 +109,7 @@ function SettingRow({
             id={`setting-${item.key}`}
             type={item.type === 'number' ? 'number' : 'text'}
             value={item.value}
-            onChange={(e) => onChange(item.key, e.target.value)}
+            onChange={(event) => onChange(item.key, event.target.value)}
             className="h-8 text-sm"
           />
         )}
@@ -117,65 +118,289 @@ function SettingRow({
   );
 }
 
-function ScopePanel({ scope, items }: { scope: SettingScope; items: SettingItem[] }) {
-  const [localItems, setLocalItems] = useState<SettingItem[]>(items);
-  const [dirty, setDirty] = useState(false);
+function ScopePanel({
+  orgId,
+  scope,
+  scopeId,
+  targetLabel,
+}: {
+  orgId: string;
+  scope: SettingScope;
+  scopeId: string | null;
+  targetLabel?: string | null;
+}) {
+  const queryClient = useQueryClient();
+  const [draftItems, setDraftItems] = useState<SettingValueItem[] | null>(null);
+  const settingsQueryKey = ['admin-settings', orgId, scope, scopeId] as const;
+
+  const query = useQuery({
+    queryKey: settingsQueryKey,
+    queryFn: async () => {
+      const params = new URLSearchParams({ scope });
+      if (scopeId) {
+        params.set('scope_id', scopeId);
+      }
+
+      const response = await fetch(`/api/settings?${params.toString()}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(payload?.message ?? '設定の取得に失敗しました');
+      }
+      return response.json() as Promise<SettingResponse>;
+    },
+    enabled: !!orgId && (scope !== 'site' || !!scopeId),
+  });
+  const fetchedItems = query.data?.data.items ?? EMPTY_SETTING_ITEMS;
+  const displayedItems = draftItems ?? fetchedItems;
+
+  const isDirty = useMemo(() => {
+    const original = JSON.stringify(fetchedItems);
+    const current = JSON.stringify(displayedItems);
+    return original !== current;
+  }, [displayedItems, fetchedItems]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          scope,
+          scope_id: scopeId,
+          values: Object.fromEntries(displayedItems.map((item) => [item.key, item.value])),
+        }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(payload?.message ?? '設定の保存に失敗しました');
+      }
+      return response.json() as Promise<SettingResponse>;
+    },
+    onSuccess: async (payload) => {
+      queryClient.setQueryData(settingsQueryKey, payload);
+      setDraftItems(null);
+      await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
+      toast.success(`${SCOPE_LABELS[scope].label}設定を保存しました`);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
 
   function handleChange(key: string, value: string) {
-    setLocalItems((prev) =>
-      prev.map((item) => (item.key === key ? { ...item, value } : item))
+    setDraftItems((current) =>
+      (current ?? displayedItems).map((item) => (item.key === key ? { ...item, value } : item))
     );
-    setDirty(true);
   }
 
-  function handleSave() {
-    setDirty(false);
-    toast.success(`${SCOPE_LABELS[scope].label}設定を保存しました`);
+  if (scope === 'site' && !scopeId) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-sm text-muted-foreground">
+          設定対象の店舗を選択してください。
+        </CardContent>
+      </Card>
+    );
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Badge variant="outline" className={`text-xs ${SCOPE_LABELS[scope].badge}`}>
-          {SCOPE_LABELS[scope].label}
-        </Badge>
-        <Button
-          size="sm"
-          onClick={handleSave}
-          disabled={!dirty}
-        >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className={`text-xs ${SCOPE_LABELS[scope].badge}`}>
+            {SCOPE_LABELS[scope].label}
+          </Badge>
+          {targetLabel ? (
+            <span className="text-sm text-muted-foreground">{targetLabel}</span>
+          ) : null}
+        </div>
+        <Button size="sm" onClick={() => saveMutation.mutate()} disabled={!isDirty || saveMutation.isPending}>
           <Save className="mr-1.5 size-3.5" aria-hidden="true" />
-          保存
+          {saveMutation.isPending ? '保存中...' : '保存'}
         </Button>
       </div>
+
       <Card>
-        <CardContent className="p-0 px-4">
-          {localItems.map((item) => (
-            <SettingRow key={item.key} item={item} onChange={handleChange} />
-          ))}
+        <CardContent className="px-4 py-0">
+          {query.isLoading ? (
+            <div className="py-6 text-sm text-muted-foreground">設定を読み込んでいます...</div>
+          ) : query.error instanceof Error ? (
+            <div className="py-6 text-sm text-rose-700">{query.error.message}</div>
+          ) : (
+            displayedItems.map((item) => (
+              <SettingRow key={item.key} item={item} onChange={handleChange} />
+            ))
+          )}
         </CardContent>
       </Card>
     </div>
   );
 }
 
-// --- Main ---
-
 export function SettingsContent() {
+  const orgId = useOrgId();
+  const [selectedSiteId, setSelectedSiteId] = useState<string>('');
+
+  const profileQuery = useQuery({
+    queryKey: ['me-profile', orgId, 'admin-settings'],
+    queryFn: async () => {
+      const response = await fetch('/api/me/profile');
+      if (!response.ok) throw new Error('プロフィールの取得に失敗しました');
+      return response.json() as Promise<{ data: CurrentProfile }>;
+    },
+    enabled: !!orgId,
+  });
+
+  const sitesQuery = useQuery({
+    queryKey: ['pharmacy-sites', orgId, 'admin-settings'],
+    queryFn: async () => {
+      const response = await fetch('/api/pharmacy-sites', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!response.ok) throw new Error('店舗一覧の取得に失敗しました');
+      return response.json() as Promise<{ data: SiteOption[] }>;
+    },
+    enabled: !!orgId,
+  });
+
+  const healthQuery = useQuery({
+    queryKey: ['admin-health-monitor'],
+    queryFn: async () => {
+      const response = await fetch('/api/health');
+      if (!response.ok && response.status !== 503) {
+        throw new Error('外部連携監視の取得に失敗しました');
+      }
+      return response.json() as Promise<HealthPayload>;
+    },
+    refetchInterval: 30000,
+  });
+
+  const sites = sitesQuery.data?.data ?? [];
+  const resolvedSiteId = selectedSiteId || profileQuery.data?.data.defaultSiteId || sites[0]?.id || '';
+  const selectedSite = sites.find((site) => site.id === resolvedSiteId) ?? null;
+  const currentUser = profileQuery.data?.data ?? null;
+  const healthChecks = healthQuery.data?.checks ?? {};
+
   return (
-    <Tabs defaultValue="system">
-      <TabsList className="mb-4">
-        {(Object.keys(SETTINGS) as SettingScope[]).map((scope) => (
-          <TabsTrigger key={scope} value={scope}>
-            {SCOPE_LABELS[scope].label}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-      {(Object.entries(SETTINGS) as [SettingScope, SettingItem[]][]).map(([scope, items]) => (
-        <TabsContent key={scope} value={scope}>
-          <ScopePanel scope={scope} items={items} />
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Activity className="size-4" aria-hidden="true" />
+            外部連携監視
+          </CardTitle>
+          <CardDescription>DB・バックアップ系の健全性を 30 秒ごとに確認します</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-3">
+          <HealthCard
+            title="全体ステータス"
+            value={healthQuery.data?.status ?? 'loading'}
+            description={healthQuery.data?.timestamp ? `更新: ${new Date(healthQuery.data.timestamp).toLocaleString('ja-JP')}` : '監視情報を取得しています'}
+            icon={Activity}
+          />
+          <HealthCard
+            title="Database"
+            value={healthChecks.database?.status ?? 'unknown'}
+            description={
+              healthChecks.database?.latencyMs != null
+                ? `${healthChecks.database.latencyMs}ms`
+                : healthChecks.database?.message ?? '未取得'
+            }
+            icon={Database}
+          />
+          <HealthCard
+            title="Backups"
+            value={healthChecks.backups?.status ?? 'unknown'}
+            description={healthChecks.backups?.message ?? 'バックアップ監視'}
+            icon={HardDriveDownload}
+          />
+        </CardContent>
+      </Card>
+
+      <Tabs defaultValue="system">
+        <TabsList className="mb-4">
+          {(Object.keys(SCOPE_LABELS) as SettingScope[]).map((scope) => (
+            <TabsTrigger key={scope} value={scope}>
+              {SCOPE_LABELS[scope].label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        <TabsContent value="system">
+          <ScopePanel orgId={orgId} scope="system" scopeId={null} />
         </TabsContent>
-      ))}
-    </Tabs>
+
+        <TabsContent value="organization">
+          <ScopePanel orgId={orgId} scope="organization" scopeId={orgId} />
+        </TabsContent>
+
+        <TabsContent value="site" className="space-y-4">
+          <div className="max-w-xs space-y-1.5">
+            <Label htmlFor="admin-settings-site">対象店舗</Label>
+            <Select value={resolvedSiteId} onValueChange={(value) => setSelectedSiteId(value ?? '')}>
+              <SelectTrigger id="admin-settings-site">
+                <SelectValue placeholder="店舗を選択" />
+              </SelectTrigger>
+              <SelectContent>
+                {sites.map((site) => (
+                  <SelectItem key={site.id} value={site.id}>
+                    {site.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <ScopePanel
+            orgId={orgId}
+            scope="site"
+            scopeId={resolvedSiteId || null}
+            targetLabel={selectedSite?.name ?? null}
+          />
+        </TabsContent>
+
+        <TabsContent value="user">
+          <ScopePanel
+            orgId={orgId}
+            scope="user"
+            scopeId={currentUser?.id ?? null}
+            targetLabel={currentUser ? `${currentUser.name} (${currentUser.id})` : null}
+          />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function HealthCard({
+  title,
+  value,
+  description,
+  icon: Icon,
+}: {
+  title: string;
+  value: string;
+  description: string;
+  icon: typeof Activity;
+}) {
+  return (
+    <Card>
+      <CardContent className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-muted-foreground">{title}</p>
+          <Badge variant="outline" className={`mt-2 text-xs ${statusBadgeClass(value)}`}>
+            {value}
+          </Badge>
+          <p className="mt-2 text-xs text-muted-foreground">{description}</p>
+        </div>
+        <div className="rounded-full border border-border bg-background p-2">
+          <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+        </div>
+      </CardContent>
+    </Card>
   );
 }

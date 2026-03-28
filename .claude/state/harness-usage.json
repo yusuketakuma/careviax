@@ -1,31 +1,39 @@
 {
   "version": "1.0",
-  "updatedAt": "2026-03-26T06:27:20.199Z",
+  "updatedAt": "2026-03-28T12:14:06.266Z",
   "skills": {},
   "commands": {
     "harness-review": {
-      "count": 3,
-      "lastUsed": "2026-03-25T13:35:02.788Z"
+      "count": 5,
+      "lastUsed": "2026-03-27T12:33:45.323Z"
     },
     "harness-setup": {
       "count": 2,
       "lastUsed": "2026-03-25T14:49:34.657Z"
     },
     "breezing": {
-      "count": 4,
-      "lastUsed": "2026-03-25T14:51:13.312Z"
+      "count": 7,
+      "lastUsed": "2026-03-27T12:17:28.907Z"
     },
     "simplify": {
       "count": 1,
       "lastUsed": "2026-03-26T06:27:20.199Z"
+    },
+    "harness-work": {
+      "count": 1,
+      "lastUsed": "2026-03-27T11:09:22.894Z"
+    },
+    "harness-sync": {
+      "count": 3,
+      "lastUsed": "2026-03-28T12:14:06.265Z"
     }
   },
   "agents": {},
   "hooks": {
     "session-init": {
-      "triggered": 4,
+      "triggered": 10,
       "blocked": 0,
-      "lastTriggered": "2026-03-25T14:31:45.955Z"
+      "lastTriggered": "2026-03-28T11:09:40.655Z"
     }
   }
 }

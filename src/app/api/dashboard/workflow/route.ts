@@ -5,6 +5,7 @@ import {
   getVisitWorkflowGuidance,
   type VisitWorkflowGateIssue,
 } from '@/server/services/management-plans';
+import { getHomeCareFeatureSummary } from '@/server/services/home-care-ops';
 import { describeOperationalTask } from '@/server/services/operational-tasks';
 import { listCommunicationQueue } from '@/server/services/communication-queue';
 import { listPatientRiskSummaries } from '@/server/services/patient-risk';
@@ -134,6 +135,8 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     pendingProposals,
     deliveryFailures,
     candidateIntakes,
+    unresolvedInquiryRecords,
+    openMedicationIssues,
     triageSelfReports,
     communityFollowups,
     intakeCasesAwaitingStart,
@@ -395,6 +398,12 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
             },
           },
           {
+            split_next_dispense_date: {
+              gte: today,
+              lte: upcomingWindow,
+            },
+          },
+          {
             prescription_expiry_date: {
               gte: today,
               lte: sevenDaysFromNow,
@@ -413,9 +422,12 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         cycle_id: true,
         source_type: true,
         refill_remaining_count: true,
+        split_dispense_total: true,
+        split_dispense_current: true,
         prescribed_date: true,
         prescription_expiry_date: true,
         refill_next_dispense_date: true,
+        split_next_dispense_date: true,
         cycle: {
           select: {
             id: true,
@@ -452,6 +464,88 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
             },
           },
         },
+      },
+    }),
+    prisma.inquiryRecord.findMany({
+      where: {
+        org_id: req.orgId,
+        resolved_at: null,
+      },
+      orderBy: [{ inquired_at: 'desc' }],
+      take: 8,
+      select: {
+        id: true,
+        cycle_id: true,
+        issue_id: true,
+        line_id: true,
+        reason: true,
+        inquiry_to_physician: true,
+        inquiry_content: true,
+        result: true,
+        change_detail: true,
+        inquired_at: true,
+        line: {
+          select: {
+            id: true,
+            drug_name: true,
+            dose: true,
+            frequency: true,
+            days: true,
+          },
+        },
+        cycle: {
+          select: {
+            case_id: true,
+            patient_id: true,
+            case_: {
+              select: {
+                patient: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+            prescription_intakes: {
+              orderBy: [{ prescribed_date: 'desc' }],
+              take: 1,
+              select: {
+                prescriber_name: true,
+              },
+            },
+          },
+        },
+        issue: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            priority: true,
+            category: true,
+          },
+        },
+      },
+    }),
+    prisma.medicationIssue.findMany({
+      where: {
+        org_id: req.orgId,
+        status: {
+          in: ['open', 'in_progress'],
+        },
+      },
+      orderBy: [{ priority: 'desc' }, { identified_at: 'desc' }],
+      take: 12,
+      select: {
+        id: true,
+        patient_id: true,
+        case_id: true,
+        title: true,
+        description: true,
+        status: true,
+        priority: true,
+        category: true,
+        identified_at: true,
       },
     }),
     prisma.patientSelfReport.findMany({
@@ -542,12 +636,82 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     prisma.task.count({
       where: {
         org_id: req.orgId,
-        task_type: 'billing_evidence_review',
+        task_type: {
+          in: ['billing_evidence_review', 'initial_home_visit_assessment'],
+        },
         status: {
           in: ['pending', 'in_progress'],
         },
       },
     }),
+  ]);
+  const homeCareFeatureSummary = await getHomeCareFeatureSummary(prisma, {
+    orgId: req.orgId,
+  });
+
+  const inquiryIds = unresolvedInquiryRecords.map((item) => item.id);
+  const linkedIssueIds = new Set(
+    unresolvedInquiryRecords
+      .map((item) => item.issue_id)
+      .filter((value): value is string => Boolean(value))
+  );
+  const unresolvedIssueCaseIds = Array.from(
+    new Set(
+      openMedicationIssues
+        .map((item) => item.case_id)
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const unresolvedIssuePatientIds = Array.from(
+    new Set(openMedicationIssues.map((item) => item.patient_id))
+  );
+
+  const [linkedInquiryRequests, latestCyclesForIssues] = await Promise.all([
+    inquiryIds.length === 0
+      ? []
+      : prisma.communicationRequest.findMany({
+          where: {
+            org_id: req.orgId,
+            related_entity_type: 'inquiry_record',
+            related_entity_id: { in: inquiryIds },
+          },
+          orderBy: [{ requested_at: 'desc' }],
+          select: {
+            id: true,
+            related_entity_id: true,
+            status: true,
+            due_date: true,
+            requested_at: true,
+          },
+        }),
+    unresolvedIssueCaseIds.length === 0 && unresolvedIssuePatientIds.length === 0
+      ? []
+      : prisma.medicationCycle.findMany({
+          where: {
+            org_id: req.orgId,
+            OR: [
+              ...(unresolvedIssueCaseIds.length > 0
+                ? [{ case_id: { in: unresolvedIssueCaseIds } }]
+                : []),
+              ...(unresolvedIssuePatientIds.length > 0
+                ? [{ patient_id: { in: unresolvedIssuePatientIds } }]
+                : []),
+            ],
+          },
+          orderBy: [{ updated_at: 'desc' }],
+          select: {
+            id: true,
+            case_id: true,
+            patient_id: true,
+            prescription_intakes: {
+              orderBy: [{ prescribed_date: 'desc' }],
+              take: 1,
+              select: {
+                prescriber_name: true,
+              },
+            },
+          },
+        }),
   ]);
 
   const cycleStatusMap: Record<string, number> = {};
@@ -591,7 +755,11 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   ]);
 
   const selfReportPatientIds = Array.from(
-    new Set(triageSelfReports.map((report) => report.patient_id))
+    new Set([
+      ...triageSelfReports.map((report) => report.patient_id),
+      ...unresolvedInquiryRecords.map((item) => item.cycle.patient_id),
+      ...openMedicationIssues.map((item) => item.patient_id),
+    ])
   );
   const userIds = Array.from(
     new Set(
@@ -633,6 +801,19 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
 
   const patientNameById = new Map(patientsForReports.map((patient) => [patient.id, patient.name]));
   const userNameById = new Map(users.map((user) => [user.id, user.name]));
+  const latestInquiryRequestByInquiryId = new Map(
+    linkedInquiryRequests.map((request) => [request.related_entity_id ?? '', request])
+  );
+  const latestCycleByCaseId = new Map<string, (typeof latestCyclesForIssues)[number]>();
+  const latestCycleByPatientId = new Map<string, (typeof latestCyclesForIssues)[number]>();
+  for (const cycle of latestCyclesForIssues) {
+    if (cycle.case_id && !latestCycleByCaseId.has(cycle.case_id)) {
+      latestCycleByCaseId.set(cycle.case_id, cycle);
+    }
+    if (!latestCycleByPatientId.has(cycle.patient_id)) {
+      latestCycleByPatientId.set(cycle.patient_id, cycle);
+    }
+  }
   const consentedPatientIds = new Set(activeVisitConsents.map((consent) => consent.patient_id));
   const activePlanCaseIds = new Set(activeManagementPlans.map((plan) => plan.case_id));
 
@@ -650,12 +831,135 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const refillUpcoming = candidateIntakes
     .filter(
       (intake) =>
-        intake.source_type === 'refill' &&
-        (intake.refill_remaining_count ?? 0) > 0 &&
-        intake.refill_next_dispense_date != null &&
-        intake.refill_next_dispense_date <= sevenDaysFromNow
+        (
+          intake.source_type === 'refill' &&
+          (intake.refill_remaining_count ?? 0) > 0 &&
+          intake.refill_next_dispense_date != null &&
+          intake.refill_next_dispense_date <= sevenDaysFromNow
+        ) ||
+        (
+          intake.split_dispense_total != null &&
+          intake.split_dispense_current != null &&
+          intake.split_dispense_current < intake.split_dispense_total &&
+          intake.split_next_dispense_date != null &&
+          intake.split_next_dispense_date <= upcomingWindow
+        )
     )
-    .slice(0, 10);
+    .slice(0, 10)
+    .map((intake) => {
+      const suggestedStartDate =
+        intake.split_next_dispense_date ??
+        intake.refill_next_dispense_date ??
+        intake.prescription_expiry_date ??
+        intake.prescribed_date;
+      return {
+        ...intake,
+        case_id: intake.cycle?.case_id ?? null,
+        upcoming_kind:
+          intake.source_type === 'refill' ? 'refill' : 'split',
+        remaining_count:
+          intake.source_type === 'refill'
+            ? (intake.refill_remaining_count ?? 0)
+            : Math.max(
+                0,
+                (intake.split_dispense_total ?? 0) - (intake.split_dispense_current ?? 0)
+              ),
+        next_dispense_date: isoOrNull(
+          intake.source_type === 'refill'
+            ? intake.refill_next_dispense_date
+            : intake.split_next_dispense_date
+        ),
+        suggested_start_date: isoOrNull(suggestedStartDate),
+        has_existing_route:
+          (intake.cycle?.visit_schedules.length ?? 0) > 0 ||
+          (intake.cycle?.visit_schedule_proposals.length ?? 0) > 0,
+      };
+    });
+
+  const inquiryWorkbench = [
+    ...unresolvedInquiryRecords.map((item) => {
+      const linkedRequest = latestInquiryRequestByInquiryId.get(item.id) ?? null;
+      const queueState =
+        linkedRequest?.status === 'responded'
+          ? '未反映'
+          : linkedRequest?.status === 'draft'
+            ? '下書き'
+            : '回答待ち';
+      return {
+        id: `inquiry:${item.id}`,
+        item_type: 'inquiry' as const,
+        inquiry_id: item.id,
+        issue_id: item.issue_id,
+        cycle_id: item.cycle_id,
+        case_id: item.cycle.case_id,
+        patient_id: item.cycle.patient_id,
+        patient_name:
+          patientNameById.get(item.cycle.patient_id) ??
+          item.cycle.case_.patient.name,
+        title: item.issue?.title ?? item.reason,
+        summary: item.inquiry_content,
+        reason: item.reason,
+        change_detail: item.change_detail,
+        line_id: item.line_id,
+        line: item.line
+          ? {
+              id: item.line.id,
+              drug_name: item.line.drug_name,
+              dose: item.line.dose,
+              frequency: item.line.frequency,
+              days: item.line.days,
+            }
+          : null,
+        inquiry_to_physician:
+          item.inquiry_to_physician ||
+          item.cycle.prescription_intakes[0]?.prescriber_name ||
+          '主治医',
+        request_status: linkedRequest?.status ?? null,
+        queue_state: queueState,
+        due_at: isoOrNull(linkedRequest?.due_date ?? item.inquired_at),
+        created_at: item.inquired_at.toISOString(),
+        can_create: false,
+      };
+    }),
+    ...openMedicationIssues
+      .filter((issue) => !linkedIssueIds.has(issue.id))
+      .slice(0, 8)
+      .map((issue) => {
+        const cycle =
+          (issue.case_id ? latestCycleByCaseId.get(issue.case_id) : undefined) ??
+          latestCycleByPatientId.get(issue.patient_id) ??
+          null;
+        return {
+          id: `issue:${issue.id}`,
+          item_type: 'issue' as const,
+          inquiry_id: null,
+          issue_id: issue.id,
+          cycle_id: cycle?.id ?? null,
+          case_id: issue.case_id ?? cycle?.case_id ?? null,
+          patient_id: issue.patient_id,
+          patient_name: patientNameById.get(issue.patient_id) ?? '患者未登録',
+          title: issue.title,
+          summary: issue.description,
+          reason: issue.category ?? 'other',
+          change_detail: null,
+          line_id: null,
+          line: null,
+          inquiry_to_physician:
+            cycle?.prescription_intakes[0]?.prescriber_name ?? '主治医',
+          request_status: null,
+          queue_state: '起票待ち',
+          due_at: isoOrNull(issue.identified_at),
+          created_at: issue.identified_at.toISOString(),
+          can_create: cycle != null,
+        };
+      }),
+  ]
+    .sort((left, right) => {
+      const leftTime = new Date(left.due_at ?? left.created_at).getTime();
+      const rightTime = new Date(right.due_at ?? right.created_at).getTime();
+      return leftTime - rightTime;
+    })
+    .slice(0, 8);
 
   const intakeLinkage = candidateIntakes
     .filter(
@@ -978,6 +1282,12 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         (taskCountByType.visit_demand ?? 0) +
         (taskCountByType.visit_preparation ?? 0) +
         (taskCountByType.patient_self_report_followup ?? 0) +
+        (taskCountByType.emergency_contact_review ?? 0) +
+        (taskCountByType.dosage_form_support ?? 0) +
+        (taskCountByType.inquiry_workbench ?? 0) +
+        (taskCountByType.facility_batch_tracker ?? 0) +
+        (taskCountByType.mobile_visit_mode ?? 0) +
+        (taskCountByType.visit_carry_item_review ?? 0) +
         awaitingReports,
       urgent_items:
         pendingProposals.filter((proposal) =>
@@ -1047,6 +1357,10 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       task.metadata && typeof task.metadata === 'object' && !Array.isArray(task.metadata)
         ? (task.metadata as Record<string, unknown>)
         : null;
+    const actionHref =
+      typeof taskMetadata?.action_href === 'string' ? taskMetadata.action_href : presentation.actionHref;
+    const actionLabel =
+      typeof taskMetadata?.action_label === 'string' ? taskMetadata.action_label : presentation.actionLabel;
     return {
       id: `task:${task.id}`,
       item_type: 'task',
@@ -1055,8 +1369,8 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       summary: task.description ?? '担当者アクション待ちです。',
       priority: task.priority,
       due_at: isoOrNull(task.sla_due_at ?? task.due_date),
-      action_href: presentation.actionHref,
-      action_label: presentation.actionLabel,
+      action_href: actionHref,
+      action_label: actionLabel,
       owner_name: task.assigned_to ? userNameById.get(task.assigned_to) ?? null : null,
       patient_name:
         typeof taskMetadata?.patient_name === 'string'
@@ -1145,6 +1459,42 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   }));
 
   const aggregateItems: WorkbenchItem[] = [
+    ...(communicationQueue.summary.unconfirmed_count > 0
+      ? [
+          {
+            id: 'aggregate:communication_unconfirmed',
+            item_type: 'aggregate' as const,
+            queue_label: '連携',
+            title: '未確認の共有ドラフトまたは送達があります',
+            summary: `${communicationQueue.summary.unconfirmed_count}件が未確認のまま残っています。`,
+            priority: 'high' as const,
+            due_at: communicationQueue.items[0]?.due_at ?? null,
+            action_href: '/communications/requests',
+            action_label: '未確認を確認',
+            owner_name: null,
+            patient_name: null,
+            badges: ['communication_unconfirmed'],
+          },
+        ]
+      : []),
+    ...(communicationQueue.summary.reply_waiting_count > 0
+      ? [
+          {
+            id: 'aggregate:communication_reply_waiting',
+            item_type: 'aggregate' as const,
+            queue_label: '返信待ち',
+            title: '多職種連携の返信待ちがあります',
+            summary: `${communicationQueue.summary.reply_waiting_count}件が返信待ちまたは未反映です。`,
+            priority: 'high' as const,
+            due_at: communicationQueue.items[0]?.due_at ?? null,
+            action_href: '/communications/requests',
+            action_label: '返信待ちを確認',
+            owner_name: null,
+            patient_name: null,
+            badges: ['communication_reply_waiting'],
+          },
+        ]
+      : []),
     ...(awaitingReports > 0
       ? [
           {
@@ -1232,6 +1582,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         high_risk_count: patientRiskQueue.filter((item) => item.level === 'high').length,
         items: patientRiskQueue,
       },
+      inquiry_workbench: inquiryWorkbench,
       remediation_guidance: remediationGuidance,
       unified_workbench: unifiedWorkbench,
       facility_visibility: {
@@ -1252,6 +1603,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       inventory_readiness: inventoryReadiness,
       regional_pipeline: regionalPipeline,
       billing_prevention: billingPrevention,
+      home_care_feature_summary: homeCareFeatureSummary,
       intake_linkage: intakeLinkage,
       self_reports: triageSelfReports.map((report) => ({
         id: report.id,

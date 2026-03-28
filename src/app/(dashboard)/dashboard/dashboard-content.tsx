@@ -2,9 +2,20 @@
 
 import { useQuery } from '@tanstack/react-query';
 import type { ElementType } from 'react';
-import { Calendar, Car, CheckSquare, MessageSquare, TrendingDown, TrendingUp } from 'lucide-react';
+import {
+  Calendar,
+  Car,
+  CheckSquare,
+  ClipboardList,
+  MessageSquare,
+  TrendingDown,
+  TrendingUp,
+} from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
+import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 interface DashboardToday {
@@ -44,6 +55,8 @@ interface DashboardToday {
     due_at: string;
     days_left: number;
     source_type: string;
+    split_dispense_total: number | null;
+    split_dispense_current: number | null;
   }>;
   communication_queue: {
     summary: {
@@ -75,11 +88,38 @@ interface DashboardToday {
   };
 }
 
+class DashboardFetchError extends Error {
+  status?: number;
+  code?: string;
+}
+
 async function fetchTodayStats(orgId: string): Promise<DashboardToday> {
-  const res = await fetch('/api/dashboard/today', {
-    headers: { 'x-org-id': orgId },
-  });
-  if (!res.ok) throw new Error('Failed to fetch today stats');
+  let res: Response;
+
+  try {
+    res = await fetch('/api/dashboard/today', {
+      headers: { 'x-org-id': orgId },
+    });
+  } catch {
+    const error = new DashboardFetchError(
+      'ネットワークエラーが発生しました。接続を確認してください。'
+    );
+    error.status = 0;
+    throw error;
+  }
+
+  if (!res.ok) {
+    const payload = (await res.json().catch(() => null)) as
+      | { message?: string; code?: string }
+      | null;
+    const error = new DashboardFetchError(
+      payload?.message ?? 'ダッシュボード情報の取得に失敗しました。'
+    );
+    error.status = res.status;
+    error.code = payload?.code;
+    throw error;
+  }
+
   return res.json();
 }
 
@@ -139,7 +179,12 @@ function TodayVisitsSection({ visits }: { visits: DashboardToday['today_visits']
         本日の訪問（上位5件）
       </h2>
       {visits.length === 0 ? (
-        <p className="text-sm text-muted-foreground">本日の訪問予定はありません。</p>
+        <EmptyState
+          icon={Car}
+          title="本日の訪問予定はありません"
+          description="訪問予定を追加すると、ここに優先順で表示されます。"
+          action={{ label: 'スケジュールを開く', href: '/schedules' }}
+        />
       ) : (
         <ul className="divide-y divide-border rounded-lg border" role="list">
           {visits.map((visit) => (
@@ -173,7 +218,12 @@ function ReportsBacklogSection({
         報告送達・下書き待ち
       </h2>
       {reports.length === 0 ? (
-        <p className="text-sm text-muted-foreground">未送付の報告書はありません。</p>
+        <EmptyState
+          icon={ClipboardList}
+          title="未送付の報告書はありません"
+          description="報告書の下書きや送達待ちが発生すると、ここから確認できます。"
+          action={{ label: '報告一覧を開く', href: '/reports' }}
+        />
       ) : (
         <ul className="divide-y divide-border rounded-lg border" role="list">
           {reports.map((report) => (
@@ -200,20 +250,35 @@ function MedicationDeadlinesSection({
 }: {
   items: DashboardToday['medication_deadlines'];
 }) {
+  const sourceLabel = (item: DashboardToday['medication_deadlines'][number]) => {
+    if (item.source_type === 'refill') {
+      return 'リフィル';
+    }
+    if (item.split_dispense_total != null && item.split_dispense_current != null) {
+      return `分割調剤 ${item.split_dispense_current}/${item.split_dispense_total}`;
+    }
+    return item.source_type;
+  };
+
   return (
     <section aria-labelledby="med-records-heading">
       <h2 id="med-records-heading" className="mb-3 text-base font-semibold text-foreground">
         服薬・処方期限接近
       </h2>
       {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">直近の期限接近はありません。</p>
+        <EmptyState
+          icon={Calendar}
+          title="直近の期限接近はありません"
+          description="服薬や処方期限が近づいた患者が出ると、ここに警告が表示されます。"
+          action={{ label: '患者一覧を開く', href: '/patients' }}
+        />
       ) : (
         <ul className="divide-y divide-border rounded-lg border" role="list">
           {items.map((item) => (
             <li key={item.id} className="flex items-center justify-between px-4 py-3">
               <div>
                 <p className="text-sm font-medium text-foreground">{item.patient_name}</p>
-                <p className="text-xs text-muted-foreground">{item.source_type}</p>
+                <p className="text-xs text-muted-foreground">{sourceLabel(item)}</p>
               </div>
               <Badge variant={item.days_left <= 3 ? 'destructive' : 'outline'}>
                 残{item.days_left}日
@@ -247,7 +312,13 @@ function CommunicationQueueSection({
           ))}
         </div>
         {queue.items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">未処理の連絡はありません。</p>
+          <EmptyState
+            icon={MessageSquare}
+            title="未処理の連絡はありません"
+            description="自己申告や多職種連携依頼が届くと、ここから優先度順に確認できます。"
+            action={{ label: '連携一覧を開く', href: '/communications/requests' }}
+            className="border-0 px-0 py-4"
+          />
         ) : (
           <div className="space-y-3">
             {queue.items.slice(0, 4).map((item) => (
@@ -270,13 +341,45 @@ function CommunicationQueueSection({
 
 export function DashboardContent() {
   const orgId = useOrgId();
-  const { data, isLoading, isError } = useQuery<DashboardToday>({
+  const { data, error, isLoading, isError, refetch } = useQuery<
+    DashboardToday,
+    DashboardFetchError
+  >({
     queryKey: ['dashboard', 'today', orgId],
     queryFn: () => fetchTodayStats(orgId),
     staleTime: 60_000,
     retry: false,
     enabled: !!orgId,
   });
+
+  if (!orgId) {
+    return <Loading label="組織情報を読み込み中..." />;
+  }
+
+  if (isError) {
+    const variant =
+      error.status === 401
+        ? 'unauthorized'
+        : error.status === 403
+          ? 'forbidden'
+          : error.status === 0
+            ? 'network'
+            : 'server';
+
+    return (
+      <ErrorState
+        variant={variant}
+        title="ダッシュボードを読み込めませんでした"
+        description={error.message}
+        action={{ label: '再試行', onClick: () => void refetch() }}
+        secondaryAction={{
+          label: 'スケジュールへ移動',
+          href: '/schedules',
+          variant: 'outline',
+        }}
+      />
+    );
+  }
 
   const visitTotal = data?.visits.total ?? 0;
   const visitPending = data?.tasks.open ?? 0;
@@ -315,7 +418,7 @@ export function DashboardContent() {
   ] as const;
 
   return (
-    <div className="space-y-8 p-6">
+    <div className="space-y-8">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {summaryCards.map((card) => (
           <SummaryCard key={card.title} {...card} />

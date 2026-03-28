@@ -62,6 +62,7 @@ export const generateVisitSchedulesSchema = z.object({
   visit_type: z.enum(visitTypeValues),
   pharmacist_id: z.string().min(1, '薬剤師IDは必須です'),
   recurrence_rule: z.string().min(1, 'RRULEは必須です'),
+  insurance_type: z.enum(['medical', 'care']).optional(),
   start_date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）'),

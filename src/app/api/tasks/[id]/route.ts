@@ -52,7 +52,7 @@ export async function PATCH(
               : existing.completed_at,
       },
     });
-  });
+  }, { requestContext: ctx });
 
   return success({ data: task });
 }

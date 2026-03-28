@@ -2,6 +2,8 @@ import { type MemberRole } from '@prisma/client';
 import { type NextRequest, type NextResponse } from 'next/server';
 import { requireAuthContext } from './context';
 import { type PermissionKey } from './permissions';
+import { runWithRequestAuthContext } from './request-context';
+import { withRoutePerformance } from '@/lib/utils/performance';
 
 export type AuthenticatedRequest = NextRequest & {
   userId: string;
@@ -25,16 +27,18 @@ export function withAuth(
   options?: WithAuthOptions
 ) {
   return async (req: NextRequest) => {
-    const authResult = await requireAuthContext(req, options);
-    if ('response' in authResult) return authResult.response;
+    return withRoutePerformance(req, async () => {
+      const authResult = await requireAuthContext(req, options);
+      if ('response' in authResult) return authResult.response;
 
-    const authReq = req as AuthenticatedRequest;
-    authReq.userId = authResult.ctx.userId;
-    authReq.orgId = authResult.ctx.orgId;
-    authReq.role = authResult.ctx.role;
-    authReq.ipAddress = authResult.ctx.ipAddress;
-    authReq.userAgent = authResult.ctx.userAgent;
+      const authReq = req as AuthenticatedRequest;
+      authReq.userId = authResult.ctx.userId;
+      authReq.orgId = authResult.ctx.orgId;
+      authReq.role = authResult.ctx.role;
+      authReq.ipAddress = authResult.ctx.ipAddress;
+      authReq.userAgent = authResult.ctx.userAgent;
 
-    return handler(authReq);
+      return runWithRequestAuthContext(authResult.ctx, () => handler(authReq));
+    });
   };
 }

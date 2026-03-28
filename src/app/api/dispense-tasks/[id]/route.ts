@@ -19,6 +19,223 @@ const STATUS_ORDER: Record<string, number> = {
   completed: 2,
 };
 
+function uniqueNonEmpty(values: Array<string | null | undefined>) {
+  return Array.from(new Set(values.filter((value): value is string => Boolean(value?.trim()))));
+}
+
+async function resolveDispenseSite(orgId: string, userId: string) {
+  const membership = await prisma.membership.findFirst({
+    where: {
+      org_id: orgId,
+      user_id: userId,
+      is_active: true,
+    },
+    select: {
+      site_id: true,
+      user: {
+        select: {
+          default_site_id: true,
+        },
+      },
+    },
+  });
+
+  const siteId = membership?.user.default_site_id ?? membership?.site_id ?? null;
+  if (!siteId) return null;
+
+  return prisma.pharmacySite.findFirst({
+    where: {
+      id: siteId,
+      org_id: orgId,
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+}
+
+async function buildLineStockGuidance(input: {
+  orgId: string;
+  siteId: string | null;
+  lines: Array<{
+    id: string;
+    drug_name: string;
+    drug_code: string | null;
+    is_generic_name_prescription?: boolean;
+  }>;
+}) {
+  if (!input.siteId || input.lines.length === 0) return [];
+
+  const yjCodes = uniqueNonEmpty(input.lines.map((line) => line.drug_code));
+  const masters = yjCodes.length
+    ? await prisma.drugMaster.findMany({
+        where: {
+          yj_code: { in: yjCodes },
+        },
+        select: {
+          id: true,
+          drug_name: true,
+          yj_code: true,
+          generic_name: true,
+          is_generic: true,
+        },
+      })
+    : [];
+
+  const masterByYjCode = new Map(masters.map((master) => [master.yj_code, master]));
+  const genericNames = uniqueNonEmpty([
+    ...masters.map((master) => master.generic_name),
+    ...input.lines
+      .filter((line) => line.is_generic_name_prescription)
+      .map((line) => line.drug_name),
+  ]);
+
+  if (masters.length === 0 && genericNames.length === 0) return [];
+
+  const stockEntries = await prisma.pharmacyDrugStock.findMany({
+    where: {
+      org_id: input.orgId,
+      site_id: input.siteId,
+      is_stocked: true,
+      OR: [
+        ...(masters.length > 0
+          ? [
+              {
+                drug_master_id: {
+                  in: masters.map((master) => master.id),
+                },
+              },
+            ]
+          : []),
+        ...(genericNames.length > 0
+          ? [
+              {
+                drug_master: {
+                  generic_name: {
+                    in: genericNames,
+                  },
+                },
+              },
+            ]
+          : []),
+      ],
+    },
+    select: {
+      drug_master_id: true,
+      preferred_generic_id: true,
+      drug_master: {
+        select: {
+          id: true,
+          drug_name: true,
+          yj_code: true,
+          generic_name: true,
+          is_generic: true,
+        },
+      },
+      preferred_generic: {
+        select: {
+          id: true,
+          drug_name: true,
+          yj_code: true,
+        },
+      },
+    },
+  });
+
+  return input.lines.map((line) => {
+    const exactMaster = line.drug_code ? masterByYjCode.get(line.drug_code) ?? null : null;
+    const genericName =
+      exactMaster?.generic_name ??
+      (line.is_generic_name_prescription ? line.drug_name.trim() : null);
+    const exactStock = exactMaster
+      ? stockEntries.find((entry) => entry.drug_master_id === exactMaster.id) ?? null
+      : null;
+    const relatedStocks = genericName
+      ? stockEntries.filter((entry) => entry.drug_master.generic_name === genericName)
+      : exactStock
+        ? [exactStock]
+        : [];
+
+    const preferredGeneric =
+      exactStock?.preferred_generic ??
+      relatedStocks.find((entry) => entry.preferred_generic)?.preferred_generic ??
+      null;
+
+    const candidateMap = new Map<string, {
+      drug_master_id: string;
+      drug_name: string;
+      yj_code: string;
+      source: 'exact' | 'preferred_generic' | 'alternative';
+    }>();
+
+    if (exactStock) {
+      candidateMap.set(exactStock.drug_master.id, {
+        drug_master_id: exactStock.drug_master.id,
+        drug_name: exactStock.drug_master.drug_name,
+        yj_code: exactStock.drug_master.yj_code,
+        source: 'exact',
+      });
+    }
+    if (preferredGeneric) {
+      candidateMap.set(preferredGeneric.id, {
+        drug_master_id: preferredGeneric.id,
+        drug_name: preferredGeneric.drug_name,
+        yj_code: preferredGeneric.yj_code,
+        source: 'preferred_generic',
+      });
+    }
+    for (const entry of relatedStocks) {
+      candidateMap.set(entry.drug_master.id, {
+        drug_master_id: entry.drug_master.id,
+        drug_name: entry.drug_master.drug_name,
+        yj_code: entry.drug_master.yj_code,
+        source:
+          entry.preferred_generic_id != null ? 'preferred_generic' : 'alternative',
+      });
+    }
+
+    const stockedCandidates = Array.from(candidateMap.values());
+    const recommendedCandidate =
+      preferredGeneric
+        ? stockedCandidates.find((candidate) => candidate.drug_master_id === preferredGeneric.id)
+        : exactStock
+          ? stockedCandidates.find(
+              (candidate) => candidate.drug_master_id === exactStock.drug_master.id
+            )
+          : stockedCandidates[0];
+
+    let stockStatus: 'stocked' | 'preferred_generic' | 'alternative_available' | 'out_of_stock' =
+      'out_of_stock';
+    if (exactStock) {
+      stockStatus =
+        line.is_generic_name_prescription && preferredGeneric ? 'preferred_generic' : 'stocked';
+    } else if (preferredGeneric) {
+      stockStatus = 'preferred_generic';
+    } else if (stockedCandidates.length > 0) {
+      stockStatus = 'alternative_available';
+    }
+
+    const message =
+      stockStatus === 'stocked'
+        ? '在庫あり'
+        : stockStatus === 'preferred_generic'
+          ? '採用後発品を優先候補として提示します'
+          : stockStatus === 'alternative_available'
+            ? '欠品時の代替候補があります'
+            : '在庫未登録です';
+
+    return {
+      line_id: line.id,
+      stock_status: stockStatus,
+      message,
+      recommended_drug_name: recommendedCandidate?.drug_name ?? null,
+      recommended_drug_code: recommendedCandidate?.yj_code ?? null,
+      stocked_candidates: stockedCandidates,
+    };
+  });
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -29,7 +246,38 @@ export async function GET(
     const task = await prisma.dispenseTask.findFirst({
       where: { id, org_id: authReq.orgId },
       include: {
-        results: true,
+        results: {
+          select: {
+            id: true,
+            line_id: true,
+            actual_drug_name: true,
+            actual_drug_code: true,
+            actual_quantity: true,
+            actual_unit: true,
+            discrepancy_reason: true,
+            carry_type: true,
+            special_notes: true,
+            dispensed_at: true,
+            line: {
+              select: {
+                id: true,
+                line_number: true,
+                drug_name: true,
+                drug_code: true,
+                dosage_form: true,
+                dose: true,
+                frequency: true,
+                days: true,
+                quantity: true,
+                unit: true,
+                is_generic: true,
+                is_generic_name_prescription: true,
+                packaging_instructions: true,
+                notes: true,
+              },
+            },
+          },
+        },
         audits: true,
         cycle: {
           select: {
@@ -39,11 +287,73 @@ export async function GET(
             case_: {
               select: {
                 id: true,
+                primary_pharmacist_id: true,
                 patient: {
                   select: {
                     id: true,
                     name: true,
                     name_kana: true,
+                    residences: {
+                      where: { is_primary: true },
+                      take: 1,
+                      select: {
+                        building_id: true,
+                        address: true,
+                        unit_name: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            inquiries: {
+              where: {
+                OR: [{ result: null }, { result: 'pending' }],
+              },
+              orderBy: [{ inquired_at: 'desc' }, { created_at: 'desc' }],
+              select: {
+                id: true,
+                line_id: true,
+                reason: true,
+                inquiry_to_physician: true,
+                inquiry_content: true,
+                result: true,
+                change_detail: true,
+                line: {
+                  select: {
+                    id: true,
+                    line_number: true,
+                    drug_name: true,
+                  },
+                },
+              },
+            },
+            prescription_intakes: {
+              orderBy: { created_at: 'desc' },
+              take: 1,
+              select: {
+                id: true,
+                prescribed_date: true,
+                prescriber_name: true,
+                prescriber_institution: true,
+                original_document_url: true,
+                lines: {
+                  orderBy: { line_number: 'asc' },
+                  select: {
+                    id: true,
+                    line_number: true,
+                    drug_name: true,
+                    drug_code: true,
+                    dosage_form: true,
+                    dose: true,
+                    frequency: true,
+                    days: true,
+                    quantity: true,
+                    unit: true,
+                    is_generic: true,
+                    is_generic_name_prescription: true,
+                    packaging_instructions: true,
+                    notes: true,
                   },
                 },
               },
@@ -55,7 +365,28 @@ export async function GET(
 
     if (!task) return notFound('タスクが見つかりません');
 
-    return success(task);
+    const site = await resolveDispenseSite(authReq.orgId, authReq.userId);
+    const intake = task.cycle.prescription_intakes[0] ?? null;
+    const stockGuidance = await buildLineStockGuidance({
+      orgId: authReq.orgId,
+      siteId: site?.id ?? null,
+      lines:
+        intake?.lines.map((line) => ({
+          id: line.id,
+          drug_name: line.drug_name,
+          drug_code: line.drug_code,
+          is_generic_name_prescription: line.is_generic_name_prescription,
+        })) ?? [],
+    });
+    const primaryResidence = task.cycle.case_.patient.residences[0] ?? null;
+    const facilityLabel = primaryResidence?.building_id ?? primaryResidence?.address ?? null;
+
+    return success({
+      ...task,
+      facility_label: facilityLabel,
+      site,
+      stock_guidance: stockGuidance,
+    });
   })(req);
 }
 

@@ -1,16 +1,30 @@
 'use client';
 
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
+import { AlertTriangle } from 'lucide-react';
 import { createPatientSchema, type CreatePatientInput } from '@/lib/validations/patient';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { FormErrorSummary } from '@/components/ui/form-error-summary';
+import { LoadingButton } from '@/components/ui/loading-button';
+import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
+
+interface DuplicatePatient {
+  id: string;
+  name: string;
+  name_kana: string | null;
+  birth_date: string;
+  gender: string;
+}
 
 interface PatientFormProps {
   /** Where to redirect after successful submission */
@@ -24,15 +38,79 @@ interface PatientFormProps {
 export function PatientForm({ redirectTo, onSuccess, defaultValues }: PatientFormProps) {
   const router = useRouter();
   const orgId = useOrgId();
+  const [duplicates, setDuplicates] = useState<DuplicatePatient[]>([]);
+  const [duplicateConfirmedKey, setDuplicateConfirmedKey] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const errorSummaryId = 'patient-form-error-summary';
 
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<CreatePatientInput>({
     resolver: zodResolver(createPatientSchema),
     defaultValues: defaultValues ?? {},
   });
+
+  const [watchedName, watchedBirthDate, watchedGender] = useWatch({
+    control,
+    name: ['name', 'birth_date', 'gender'],
+  });
+  const duplicateLookupKey =
+    watchedName?.trim() && watchedBirthDate && watchedGender
+      ? `${watchedName.trim()}::${watchedBirthDate}::${watchedGender}`
+      : null;
+  const duplicateConfirmed = duplicateLookupKey !== null && duplicateConfirmedKey === duplicateLookupKey;
+  const activeDuplicates = duplicateLookupKey ? duplicates : [];
+  const errorSummaryItems = collectFormErrorSummaryItems(errors, {
+    name: '氏名',
+    name_kana: 'フリガナ',
+    birth_date: '生年月日',
+    gender: '性別',
+  });
+
+  const scrollToErrorSummary = useCallback(() => {
+    if (typeof document === 'undefined') return;
+    window.requestAnimationFrame(() => {
+      const summary = document.getElementById(errorSummaryId);
+      summary?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      summary?.focus();
+    });
+  }, [errorSummaryId]);
+
+  const checkDuplicate = useCallback(
+    async (name: string, birthDate: string, gender: string) => {
+      try {
+        const params = new URLSearchParams({ name, date_of_birth: birthDate, gender });
+        const res = await fetch(`/api/patients/check-duplicate?${params}`, {
+          headers: { 'x-org-id': orgId },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setDuplicates(data.duplicates ?? []);
+        }
+      } catch {
+        // Silently ignore duplicate check errors
+      }
+    },
+    [orgId],
+  );
+
+  useEffect(() => {
+    if (!watchedName?.trim() || !watchedBirthDate || !watchedGender) {
+      return;
+    }
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      checkDuplicate(watchedName.trim(), watchedBirthDate, watchedGender);
+    }, 500);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [watchedName, watchedBirthDate, watchedGender, checkDuplicate]);
 
   async function onSubmit(data: CreatePatientInput) {
     const res = await fetch('/api/patients', {
@@ -59,7 +137,9 @@ export function PatientForm({ redirectTo, onSuccess, defaultValues }: PatientFor
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-6">
+    <form onSubmit={handleSubmit(onSubmit, scrollToErrorSummary)} noValidate className="space-y-6">
+      <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">基本情報</CardTitle>
@@ -200,6 +280,36 @@ export function PatientForm({ redirectTo, onSuccess, defaultValues }: PatientFor
         </CardContent>
       </Card>
 
+      {activeDuplicates.length > 0 && !duplicateConfirmed && (
+        <Alert variant="default" className="border-amber-400 bg-amber-50 text-amber-900 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-200">
+          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          <AlertDescription className="space-y-2">
+            <p className="font-medium">同名の患者が存在します:</p>
+            <ul className="list-disc pl-5 text-sm">
+              {activeDuplicates.map((d) => {
+                const birth = new Date(d.birth_date);
+                const birthStr = `${birth.getFullYear()}年${birth.getMonth() + 1}月${birth.getDate()}日生`;
+                const genderLabel = d.gender === 'male' ? '男性' : d.gender === 'female' ? '女性' : 'その他';
+                return (
+                  <li key={d.id}>
+                    {d.name}（{birthStr}・{genderLabel}）
+                  </li>
+                );
+              })}
+            </ul>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-2 border-amber-500 text-amber-800 hover:bg-amber-100 dark:border-amber-500 dark:text-amber-200 dark:hover:bg-amber-900"
+              onClick={() => setDuplicateConfirmedKey(duplicateLookupKey)}
+            >
+              それでも登録する
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="flex justify-end gap-3">
         <Button
           type="button"
@@ -209,9 +319,14 @@ export function PatientForm({ redirectTo, onSuccess, defaultValues }: PatientFor
         >
           キャンセル
         </Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? '登録中...' : '登録する'}
-        </Button>
+        <LoadingButton
+          type="submit"
+          loading={isSubmitting}
+          loadingLabel="登録中..."
+          disabled={activeDuplicates.length > 0 && !duplicateConfirmed}
+        >
+          登録する
+        </LoadingButton>
       </div>
     </form>
   );

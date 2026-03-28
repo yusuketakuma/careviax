@@ -4,6 +4,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { updatePrescriptionIntakeSchema } from '@/lib/validations/prescription';
 import { prisma } from '@/lib/db/client';
+import { resolveOperationalTasks } from '@/server/services/operational-tasks';
 
 export async function GET(
   req: NextRequest,
@@ -73,21 +74,77 @@ export async function PATCH(
   });
   if (!existing) return notFound('処方箋が見つかりません');
 
-  const { refill_next_dispense_date, ...rest } = parsed.data;
+  const {
+    refill_next_dispense_date,
+    original_collected_at,
+    split_dispense_total,
+    split_dispense_current,
+    split_next_dispense_date,
+    ...rest
+  } = parsed.data;
+
+  const effectiveSplitTotal = split_dispense_total ?? existing.split_dispense_total ?? undefined;
+  const effectiveSplitCurrent = split_dispense_current ?? existing.split_dispense_current ?? undefined;
+  const effectiveSplitNextDate =
+    split_next_dispense_date ??
+    existing.split_next_dispense_date?.toISOString().slice(0, 10) ??
+    undefined;
+  const hasAnySplitField =
+    effectiveSplitTotal != null ||
+    effectiveSplitCurrent != null ||
+    effectiveSplitNextDate != null;
+
+  if (hasAnySplitField) {
+    if (effectiveSplitTotal == null || effectiveSplitCurrent == null) {
+      return validationError('分割調剤は分割回数と今回回数を両方入力してください');
+    }
+    if (effectiveSplitCurrent > effectiveSplitTotal) {
+      return validationError('今回回数は分割回数以下である必要があります', {
+        split_dispense_total: effectiveSplitTotal,
+        split_dispense_current: effectiveSplitCurrent,
+      });
+    }
+    if (effectiveSplitCurrent < effectiveSplitTotal && !effectiveSplitNextDate) {
+      return validationError('分割調剤の途中回は次回調剤予定日が必須です');
+    }
+  }
 
   const intake = await withOrgContext(ctx.orgId, async (tx) => {
-    return tx.prescriptionIntake.update({
+    const updated = await tx.prescriptionIntake.update({
       where: { id },
       data: {
         ...rest,
         ...(refill_next_dispense_date
           ? { refill_next_dispense_date: new Date(refill_next_dispense_date) }
           : {}),
+        ...(split_dispense_total != null ? { split_dispense_total } : {}),
+        ...(split_dispense_current != null ? { split_dispense_current } : {}),
+        ...(split_next_dispense_date
+          ? { split_next_dispense_date: new Date(split_next_dispense_date) }
+          : {}),
+        ...(original_collected_at
+          ? {
+              original_collected_at: new Date(original_collected_at),
+              original_collected_by: ctx.userId,
+            }
+          : {}),
       },
       include: {
         lines: { orderBy: { line_number: 'asc' } },
       },
     });
+
+    if (original_collected_at && updated.source_type === 'fax') {
+      await resolveOperationalTasks(tx, {
+        orgId: ctx.orgId,
+        taskType: 'fax_original_followup',
+        relatedEntityType: 'prescription_intake',
+        relatedEntityId: id,
+        status: 'completed',
+      });
+    }
+
+    return updated;
   });
 
   return success(intake);

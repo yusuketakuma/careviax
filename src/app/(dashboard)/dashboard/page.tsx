@@ -1,4 +1,6 @@
 import { DashboardContent } from './dashboard-content';
+import { DeviceSupportMatrix } from './device-support-matrix';
+import { OnboardingChecklist } from './onboarding-checklist';
 
 export default function DashboardPage() {
   return (
@@ -11,7 +13,11 @@ export default function DashboardPage() {
           在宅訪問薬局業務・連携プラットフォーム
         </p>
       </div>
-      <DashboardContent />
+      <div className="space-y-6 p-6">
+        <OnboardingChecklist />
+        <DashboardContent />
+        <DeviceSupportMatrix />
+      </div>
     </div>
   );
 }

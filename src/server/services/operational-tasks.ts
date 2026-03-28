@@ -154,6 +154,12 @@ export function describeOperationalTask(task: {
         actionLabel: '準備を完了',
         queueLabel: '訪問準備',
       };
+    case 'initial_home_visit_assessment':
+      return {
+        actionHref: '/patients',
+        actionLabel: '患者記録を確認',
+        queueLabel: '初回算定',
+      };
     case 'management_plan_review':
       return {
         actionHref: '/workflow',
@@ -184,6 +190,54 @@ export function describeOperationalTask(task: {
         actionLabel: '自己申告を確認',
         queueLabel: '患者連絡',
       };
+    case 'emergency_contact_review':
+      return {
+        actionHref: '/patients',
+        actionLabel: '連絡先と文書を確認',
+        queueLabel: '初回整備',
+      };
+    case 'dosage_form_support':
+      return {
+        actionHref: '/patients',
+        actionLabel: '剤形支援を確認',
+        queueLabel: '剤形支援',
+      };
+    case 'inquiry_workbench':
+      return {
+        actionHref: '/workflow',
+        actionLabel: '疑義照会を確認',
+        queueLabel: '照会',
+      };
+    case 'facility_batch_tracker':
+      return {
+        actionHref: '/schedules',
+        actionLabel: '施設訪問を確認',
+        queueLabel: '施設訪問',
+      };
+    case 'mobile_visit_mode':
+      return {
+        actionHref: '/schedules',
+        actionLabel: '同期状況を確認',
+        queueLabel: 'モバイル',
+      };
+    case 'visit_record_retention':
+      return {
+        actionHref: '/visits',
+        actionLabel: '薬歴を確認',
+        queueLabel: '保存期限',
+      };
+    case 'prescription_original_retention':
+      return {
+        actionHref: '/workflow',
+        actionLabel: '原本保全を確認',
+        queueLabel: '原本保存',
+      };
+    case 'fax_original_followup':
+      return {
+        actionHref: '/patients',
+        actionLabel: '原本回収を記録',
+        queueLabel: 'FAX原本',
+      };
     case 'community_activity_followup':
       return {
         actionHref: '/external',
@@ -195,6 +249,18 @@ export function describeOperationalTask(task: {
         actionHref: '/reports',
         actionLabel: '報告送達を確認',
         queueLabel: '報告送達',
+      };
+    case 'tracing_report_followup':
+      return {
+        actionHref: '/workflow',
+        actionLabel: '減数調整を確認',
+        queueLabel: 'Tracing',
+      };
+    case 'residual_reduction_review':
+      return {
+        actionHref: '/visits',
+        actionLabel: '残薬を確認',
+        queueLabel: '残薬調整',
       };
     case 'visit_carry_item_review':
       return {

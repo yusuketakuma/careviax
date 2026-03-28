@@ -80,6 +80,7 @@ export const CHANNEL_LABELS: Record<string, string> = {
   phone: '電話',
   in_person: '手渡し',
   postal: '郵便',
+  ses: 'メール(SES)',
 };
 
 export const SCHEDULE_STATUS_LABELS: Record<string, string> = {

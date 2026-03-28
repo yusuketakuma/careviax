@@ -37,6 +37,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  isOperationalMemberRole,
+  memberRoleLabel,
+  roleRequiresSite,
+  type ManageableMemberRole,
+} from '@/lib/auth/member-roles';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   buildShiftGrid,
@@ -80,7 +86,7 @@ export function ShiftsContent() {
     email: '',
     phone: '',
     site_id: '',
-    role: 'pharmacist' as 'pharmacist' | 'pharmacist_trainee' | 'admin',
+    role: 'pharmacist' as ManageableMemberRole,
     max_daily_visits: '',
     max_weekly_visits: '',
     max_travel_minutes: '',
@@ -142,10 +148,10 @@ export function ShiftsContent() {
   const { data: pharmacistsData, isLoading: pharmacistsLoading } = useQuery({
     queryKey: ['pharmacists', orgId, 'admin-shifts'],
     queryFn: async () => {
-      const res = await fetch('/api/pharmacists', {
+      const res = await fetch('/api/pharmacists?include_collaborators=true', {
         headers: { 'x-org-id': orgId },
       });
-      if (!res.ok) throw new Error('薬剤師一覧の取得に失敗しました');
+      if (!res.ok) throw new Error('メンバー一覧の取得に失敗しました');
       return res.json() as Promise<{ data: Pharmacist[] }>;
     },
     enabled: !!orgId,
@@ -198,6 +204,10 @@ export function ShiftsContent() {
   });
 
   const pharmacists = useMemo(() => pharmacistsData?.data ?? [], [pharmacistsData]);
+  const shiftPharmacists = useMemo(
+    () => pharmacists.filter((member) => isOperationalMemberRole(member.role)),
+    [pharmacists],
+  );
   const sites = useMemo(() => sitesData?.data ?? [], [sitesData]);
   const siteById = useMemo(() => new Map(sites.map((site) => [site.id, site])), [sites]);
   const shifts = useMemo(() => shiftsData?.data ?? [], [shiftsData]);
@@ -206,12 +216,12 @@ export function ShiftsContent() {
   const baselineShifts = useMemo(
     () =>
       buildShiftGrid({
-        pharmacists,
+        pharmacists: shiftPharmacists,
         sitesById: siteById,
         month: currentMonth,
         shifts,
       }),
-    [currentMonth, pharmacists, shifts, siteById],
+    [currentMonth, shiftPharmacists, shifts, siteById],
   );
   const baselineShiftByKey = useMemo(
     () => new Map(baselineShifts.map((shift) => [shift.key, shift])),
@@ -243,14 +253,17 @@ export function ShiftsContent() {
   }, [currentMonth]);
 
   useEffect(() => {
-    if (pharmacists.length === 0 || sites.length === 0) return;
+    if (shiftPharmacists.length === 0 || sites.length === 0) return;
 
     setTemplateForm((current) => ({
       ...current,
-      user_id: current.user_id || pharmacists[0]?.id || '',
+      user_id: current.user_id || shiftPharmacists[0]?.id || '',
       site_id: current.site_id || sites[0]?.id || '',
     }));
-  }, [pharmacists, sites]);
+  }, [shiftPharmacists, sites]);
+
+  const selectedRoleIsOperational = isOperationalMemberRole(pharmacistForm.role);
+  const selectedRoleRequiresSite = roleRequiresSite(pharmacistForm.role);
 
   function updateDraftShift(targetKey: string, updater: (shift: ShiftCell) => ShiftCell) {
     setDraftShifts((current) =>
@@ -290,9 +303,7 @@ export function ShiftsContent() {
       role:
         pharmacist.role === 'owner'
           ? 'admin'
-          : pharmacist.role === 'admin'
-            ? 'admin'
-            : pharmacist.role,
+          : pharmacist.role,
       max_daily_visits: pharmacist.max_daily_visits?.toString() ?? '',
       max_weekly_visits: pharmacist.max_weekly_visits?.toString() ?? '',
       max_travel_minutes: pharmacist.max_travel_minutes?.toString() ?? '',
@@ -319,7 +330,7 @@ export function ShiftsContent() {
   function resetTemplateForm() {
     setEditingTemplateId(null);
     setTemplateForm({
-      user_id: pharmacists[0]?.id ?? '',
+      user_id: shiftPharmacists[0]?.id ?? '',
       site_id: sites[0]?.id ?? '',
       weekday: '1',
       available: true,
@@ -518,6 +529,7 @@ export function ShiftsContent() {
         body: JSON.stringify({
           ...pharmacistForm,
           phone: pharmacistForm.phone || undefined,
+          site_id: pharmacistForm.site_id || undefined,
           max_daily_visits: toOptionalNumber(pharmacistForm.max_daily_visits),
           max_weekly_visits: toOptionalNumber(pharmacistForm.max_weekly_visits),
           max_travel_minutes: toOptionalNumber(pharmacistForm.max_travel_minutes),
@@ -527,12 +539,12 @@ export function ShiftsContent() {
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '薬剤師登録に失敗しました');
+        throw new Error(error.message ?? 'メンバー登録に失敗しました');
       }
       return res.json();
     },
     onSuccess: async () => {
-      toast.success('薬剤師を登録しました');
+      toast.success('メンバーを登録しました');
       setPharmacistDialogOpen(false);
       setPharmacistForm({
         name: '',
@@ -551,7 +563,7 @@ export function ShiftsContent() {
       await queryClient.invalidateQueries({ queryKey: ['pharmacists', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '薬剤師登録に失敗しました');
+      toast.error(error instanceof Error ? error.message : 'メンバー登録に失敗しました');
     },
   });
 
@@ -570,7 +582,7 @@ export function ShiftsContent() {
           name: pharmacistForm.name,
           name_kana: pharmacistForm.name_kana,
           phone: pharmacistForm.phone || undefined,
-          site_id: pharmacistForm.site_id,
+          site_id: pharmacistForm.site_id || undefined,
           role: pharmacistForm.role,
           max_daily_visits: toOptionalNumber(pharmacistForm.max_daily_visits),
           max_weekly_visits: toOptionalNumber(pharmacistForm.max_weekly_visits),
@@ -582,18 +594,18 @@ export function ShiftsContent() {
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '薬剤師更新に失敗しました');
+        throw new Error(error.message ?? 'メンバー更新に失敗しました');
       }
       return res.json();
     },
     onSuccess: async () => {
-      toast.success('薬剤師情報を更新しました');
+      toast.success('メンバー情報を更新しました');
       setPharmacistDialogOpen(false);
       setEditingPharmacistId(null);
       await queryClient.invalidateQueries({ queryKey: ['pharmacists', orgId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '薬剤師更新に失敗しました');
+      toast.error(error instanceof Error ? error.message : 'メンバー更新に失敗しました');
     },
   });
 
@@ -792,9 +804,9 @@ export function ShiftsContent() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={openPharmacistDialog} disabled={sites.length === 0}>
+            <Button variant="outline" onClick={openPharmacistDialog}>
               <UserPlus className="mr-1.5 size-4" />
-              薬剤師登録
+              メンバー招待
             </Button>
             {editMode ? (
               <>
@@ -824,11 +836,11 @@ export function ShiftsContent() {
                 <Button
                   variant="outline"
                   onClick={() => copyPreviousMonthMutation.mutate()}
-                  disabled={pharmacists.length === 0 || copyPreviousMonthMutation.isPending}
+                  disabled={shiftPharmacists.length === 0 || copyPreviousMonthMutation.isPending}
                 >
                   {copyPreviousMonthMutation.isPending ? '読込中...' : '前月をコピー'}
                 </Button>
-                <Button onClick={startEdit} disabled={pharmacists.length === 0}>
+                <Button onClick={startEdit} disabled={shiftPharmacists.length === 0}>
                   シフト編集
                 </Button>
               </>
@@ -840,9 +852,9 @@ export function ShiftsContent() {
       <div className="grid gap-3 md:grid-cols-3">
         <Card size="sm">
           <CardContent>
-            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">薬剤師</p>
-            <p className="mt-2 text-2xl font-semibold text-foreground">{pharmacists.length}</p>
-            <p className="mt-1 text-xs text-muted-foreground">担当薬剤師候補</p>
+            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">シフト候補</p>
+            <p className="mt-2 text-2xl font-semibold text-foreground">{shiftPharmacists.length}</p>
+            <p className="mt-1 text-xs text-muted-foreground">訪問・調剤の担当候補</p>
           </CardContent>
         </Card>
         <Card size="sm">
@@ -898,9 +910,9 @@ export function ShiftsContent() {
             <div className="py-12 text-center text-sm text-muted-foreground">
               シフトを読み込んでいます...
             </div>
-          ) : pharmacists.length === 0 ? (
+          ) : shiftPharmacists.length === 0 ? (
             <div className="py-12 text-center text-sm text-muted-foreground">
-              薬剤師が登録されていません
+              シフト対象メンバーが登録されていません
             </div>
           ) : (
             <>
@@ -943,7 +955,7 @@ export function ShiftsContent() {
                     </tr>
                   </thead>
                   <tbody>
-                    {pharmacists.map((pharmacist) => (
+                    {shiftPharmacists.map((pharmacist) => (
                       <tr key={pharmacist.id} className="border-b border-border hover:bg-muted/20">
                         <td className="sticky left-0 z-10 bg-background px-3 py-2">
                           <div className="font-medium text-foreground">{pharmacist.name}</div>
@@ -1111,12 +1123,14 @@ export function ShiftsContent() {
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">薬剤師一覧</CardTitle>
-            <CardDescription>担当薬剤師制の割当候補として利用されます</CardDescription>
+            <CardTitle className="text-base">メンバー一覧</CardTitle>
+            <CardDescription>
+              シフト担当者と外部連携者を同じ管理面で招待・更新します
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {pharmacists.length === 0 ? (
-              <p className="text-sm text-muted-foreground">薬剤師が登録されていません</p>
+              <p className="text-sm text-muted-foreground">メンバーが登録されていません</p>
             ) : (
               pharmacists.map((pharmacist) => (
                 <div key={pharmacist.id} className="space-y-3 rounded-xl border px-3 py-3">
@@ -1132,11 +1146,17 @@ export function ShiftsContent() {
                         </Badge>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {pharmacist.site_name ?? '所属店舗未設定'} / {pharmacist.role}
+                        {pharmacist.site_name ?? '所属店舗未設定'} / {memberRoleLabel(pharmacist.role)}
                       </p>
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {formatCapacitySummary(pharmacist)}
-                      </p>
+                      {isOperationalMemberRole(pharmacist.role) ? (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {formatCapacitySummary(pharmacist)}
+                        </p>
+                      ) : (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          外部連携・補助業務向けアカウント
+                        </p>
+                      )}
                     </div>
                     <div className="text-right text-xs text-muted-foreground">
                       <p>{pharmacist.email}</p>
@@ -1166,7 +1186,8 @@ export function ShiftsContent() {
                     )}
                   </div>
 
-                  {pharmacist.visit_specialties?.length || pharmacist.coverage_area?.length ? (
+                  {isOperationalMemberRole(pharmacist.role) &&
+                  (pharmacist.visit_specialties?.length || pharmacist.coverage_area?.length) ? (
                     <div className="flex flex-wrap gap-2">
                       {pharmacist.visit_specialties?.map((specialty) => (
                         <Badge key={`${pharmacist.id}-specialty-${specialty}`} variant="outline">
@@ -1256,13 +1277,13 @@ export function ShiftsContent() {
             <CardHeader>
               <CardTitle className="text-base">週次定型シフト</CardTitle>
               <CardDescription>
-                薬剤師ごとの曜日テンプレートを登録し、対象月へ一括反映します
+                シフト対象メンバーごとの曜日テンプレートを登録し、対象月へ一括反映します
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label htmlFor="template-user">薬剤師</Label>
+                  <Label htmlFor="template-user">担当者</Label>
                   <Select
                     value={templateForm.user_id}
                     onValueChange={(value) =>
@@ -1275,10 +1296,10 @@ export function ShiftsContent() {
                     }
                   >
                     <SelectTrigger id="template-user" className="w-full">
-                      <SelectValue placeholder="薬剤師を選択" />
+                      <SelectValue placeholder="担当者を選択" />
                     </SelectTrigger>
                     <SelectContent>
-                      {pharmacists.map((pharmacist) => (
+                      {shiftPharmacists.map((pharmacist) => (
                         <SelectItem key={pharmacist.id} value={pharmacist.id}>
                           {pharmacist.name}
                         </SelectItem>
@@ -1448,8 +1469,8 @@ export function ShiftsContent() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">全薬剤師</SelectItem>
-                        {pharmacists.map((pharmacist) => (
+                        <SelectItem value="all">全担当者</SelectItem>
+                        {shiftPharmacists.map((pharmacist) => (
                           <SelectItem key={pharmacist.id} value={pharmacist.id}>
                             {pharmacist.name}
                           </SelectItem>
@@ -1710,11 +1731,11 @@ export function ShiftsContent() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              {pharmacistDialogMode === 'create' ? '薬剤師登録' : '薬剤師情報を編集'}
+              {pharmacistDialogMode === 'create' ? 'メンバー招待' : 'メンバー情報を編集'}
             </DialogTitle>
             <DialogDescription>
               {pharmacistDialogMode === 'create'
-                ? '新しい担当薬剤師を登録し、シフト管理とケース割当に利用します。'
+                ? 'シフト担当者または外部連携者を招待し、運用に必要な権限を割り当てます。'
                 : '所属店舗、役割、連絡先を更新します。'}
             </DialogDescription>
           </DialogHeader>
@@ -1783,20 +1804,21 @@ export function ShiftsContent() {
               <div className="space-y-1.5">
                 <Label htmlFor="pharmacist-site">所属店舗</Label>
                 <Select
-                  value={pharmacistForm.site_id}
+                  value={pharmacistForm.site_id || '__none__'}
                   onValueChange={(value) =>
-                    value
-                      ? setPharmacistForm((current) => ({
-                          ...current,
-                          site_id: value,
-                        }))
-                      : undefined
+                    setPharmacistForm((current) => ({
+                      ...current,
+                      site_id: value && value !== '__none__' ? value : '',
+                    }))
                   }
                 >
                   <SelectTrigger id="pharmacist-site" className="w-full">
                     <SelectValue placeholder="店舗を選択" />
                   </SelectTrigger>
                   <SelectContent>
+                    {!selectedRoleRequiresSite ? (
+                      <SelectItem value="__none__">未設定</SelectItem>
+                    ) : null}
                     {sites.map((site) => (
                       <SelectItem key={site.id} value={site.id}>
                         {site.name}
@@ -1813,7 +1835,7 @@ export function ShiftsContent() {
                     value
                       ? setPharmacistForm((current) => ({
                           ...current,
-                          role: value as 'pharmacist' | 'pharmacist_trainee' | 'admin',
+                          role: value as ManageableMemberRole,
                         }))
                       : undefined
                   }
@@ -1822,118 +1844,127 @@ export function ShiftsContent() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="admin">管理者</SelectItem>
                     <SelectItem value="pharmacist">薬剤師</SelectItem>
                     <SelectItem value="pharmacist_trainee">研修薬剤師</SelectItem>
-                    {pharmacistDialogMode === 'edit' ? (
-                      <SelectItem value="admin">管理者</SelectItem>
-                    ) : null}
+                    <SelectItem value="clerk">事務スタッフ</SelectItem>
+                    <SelectItem value="driver">配送担当</SelectItem>
+                    <SelectItem value="external_viewer">外部連携者</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="pharmacist-max-daily">日次上限件数</Label>
-                <Input
-                  id="pharmacist-max-daily"
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={pharmacistForm.max_daily_visits}
-                  onChange={(event) =>
-                    setPharmacistForm((current) => ({
-                      ...current,
-                      max_daily_visits: event.target.value,
-                    }))
-                  }
-                  placeholder="例: 6"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="pharmacist-max-weekly">週次上限件数</Label>
-                <Input
-                  id="pharmacist-max-weekly"
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={pharmacistForm.max_weekly_visits}
-                  onChange={(event) =>
-                    setPharmacistForm((current) => ({
-                      ...current,
-                      max_weekly_visits: event.target.value,
-                    }))
-                  }
-                  placeholder="例: 25"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="pharmacist-max-travel">移動上限分</Label>
-                <Input
-                  id="pharmacist-max-travel"
-                  type="number"
-                  min="0"
-                  max="480"
-                  value={pharmacistForm.max_travel_minutes}
-                  onChange={(event) =>
-                    setPharmacistForm((current) => ({
-                      ...current,
-                      max_travel_minutes: event.target.value,
-                    }))
-                  }
-                  placeholder="例: 90"
-                />
-              </div>
-            </div>
+            {selectedRoleIsOperational ? (
+              <>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="pharmacist-max-daily">日次上限件数</Label>
+                    <Input
+                      id="pharmacist-max-daily"
+                      type="number"
+                      min="1"
+                      max="20"
+                      value={pharmacistForm.max_daily_visits}
+                      onChange={(event) =>
+                        setPharmacistForm((current) => ({
+                          ...current,
+                          max_daily_visits: event.target.value,
+                        }))
+                      }
+                      placeholder="例: 6"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="pharmacist-max-weekly">週次上限件数</Label>
+                    <Input
+                      id="pharmacist-max-weekly"
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={pharmacistForm.max_weekly_visits}
+                      onChange={(event) =>
+                        setPharmacistForm((current) => ({
+                          ...current,
+                          max_weekly_visits: event.target.value,
+                        }))
+                      }
+                      placeholder="例: 25"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="pharmacist-max-travel">移動上限分</Label>
+                    <Input
+                      id="pharmacist-max-travel"
+                      type="number"
+                      min="0"
+                      max="480"
+                      value={pharmacistForm.max_travel_minutes}
+                      onChange={(event) =>
+                        setPharmacistForm((current) => ({
+                          ...current,
+                          max_travel_minutes: event.target.value,
+                        }))
+                      }
+                      placeholder="例: 90"
+                    />
+                  </div>
+                </div>
 
-            <div className="flex items-center gap-3 rounded-lg border px-3 py-2">
-              <Checkbox
-                id="pharmacist-emergency"
-                checked={pharmacistForm.can_accept_emergency}
-                onCheckedChange={(checked) =>
-                  setPharmacistForm((current) => ({
-                    ...current,
-                    can_accept_emergency: checked === true,
-                  }))
-                }
-              />
-              <label htmlFor="pharmacist-emergency" className="cursor-pointer text-sm">
-                緊急訪問の割込候補に含める
-              </label>
-            </div>
+                <div className="flex items-center gap-3 rounded-lg border px-3 py-2">
+                  <Checkbox
+                    id="pharmacist-emergency"
+                    checked={pharmacistForm.can_accept_emergency}
+                    onCheckedChange={(checked) =>
+                      setPharmacistForm((current) => ({
+                        ...current,
+                        can_accept_emergency: checked === true,
+                      }))
+                    }
+                  />
+                  <label htmlFor="pharmacist-emergency" className="cursor-pointer text-sm">
+                    緊急訪問の割込候補に含める
+                  </label>
+                </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="pharmacist-specialties">対応領域</Label>
-                <Textarea
-                  id="pharmacist-specialties"
-                  rows={4}
-                  value={pharmacistForm.visit_specialties}
-                  onChange={(event) =>
-                    setPharmacistForm((current) => ({
-                      ...current,
-                      visit_specialties: event.target.value,
-                    }))
-                  }
-                  placeholder={'例:\n在宅緩和\n施設\n無菌調剤'}
-                />
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="pharmacist-specialties">対応領域</Label>
+                    <Textarea
+                      id="pharmacist-specialties"
+                      rows={4}
+                      value={pharmacistForm.visit_specialties}
+                      onChange={(event) =>
+                        setPharmacistForm((current) => ({
+                          ...current,
+                          visit_specialties: event.target.value,
+                        }))
+                      }
+                      placeholder={'例:\n在宅緩和\n施設\n無菌調剤'}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="pharmacist-coverage">対応エリア</Label>
+                    <Textarea
+                      id="pharmacist-coverage"
+                      rows={4}
+                      value={pharmacistForm.coverage_area}
+                      onChange={(event) =>
+                        setPharmacistForm((current) => ({
+                          ...current,
+                          coverage_area: event.target.value,
+                        }))
+                      }
+                      placeholder={'例:\n世田谷区\n目黒区\n川崎市中原区'}
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="rounded-lg border border-dashed px-3 py-3 text-sm text-muted-foreground">
+                この役割はシフト・訪問割当の対象外です。連携閲覧や補助業務向けのアカウントとして招待されます。
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="pharmacist-coverage">対応エリア</Label>
-                <Textarea
-                  id="pharmacist-coverage"
-                  rows={4}
-                  value={pharmacistForm.coverage_area}
-                  onChange={(event) =>
-                    setPharmacistForm((current) => ({
-                      ...current,
-                      coverage_area: event.target.value,
-                    }))
-                  }
-                  placeholder={'例:\n世田谷区\n目黒区\n川崎市中原区'}
-                />
-              </div>
-            </div>
+            )}
           </div>
           <DialogFooter>
             <Button
@@ -1953,7 +1984,7 @@ export function ShiftsContent() {
                 !pharmacistForm.name ||
                 !pharmacistForm.name_kana ||
                 !pharmacistForm.email ||
-                !pharmacistForm.site_id ||
+                (selectedRoleRequiresSite && !pharmacistForm.site_id) ||
                 createPharmacistMutation.isPending ||
                 updatePharmacistMutation.isPending
               }

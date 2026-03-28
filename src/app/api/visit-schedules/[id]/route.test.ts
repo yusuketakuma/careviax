@@ -50,6 +50,7 @@ describe('/api/visit-schedules/[id] GET', () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
+      cycle_id: 'cycle_1',
       visit_type: 'regular',
       scheduled_date: '2026-03-26',
       visit_record: null,
@@ -70,6 +71,7 @@ describe('/api/visit-schedules/[id] GET', () => {
     await expect(response.json()).resolves.toMatchObject({
       id: 'schedule_1',
       case_id: 'case_1',
+      cycle_id: 'cycle_1',
       patient_id: 'patient_1',
     });
   });

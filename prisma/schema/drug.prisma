@@ -39,6 +39,7 @@ enum ImportSource {
   mhlw_price
   mhlw_generic
   hot
+  manual_clinical
 }
 
 enum ImportStatus {
@@ -179,4 +180,7 @@ model DrugMasterImportLog {
   error_log    String?
   created_at   DateTime     @default(now())
   updated_at   DateTime     @updatedAt
+
+  @@index([source, imported_at])
+  @@index([status, imported_at])
 }

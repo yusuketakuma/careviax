@@ -10,12 +10,15 @@ import {
   ClipboardCheck,
   Car,
   FileText,
+  QrCode,
   Settings,
   Database,
   ScrollText,
-  ChevronLeft,
-  ChevronRight,
   LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Pin,
+  PinOff,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/lib/stores/ui-store';
@@ -29,18 +32,20 @@ interface NavItem {
 
 const mainNavItems: NavItem[] = [
   { label: 'ホーム', href: '/dashboard', icon: Home },
-  { label: '患者', href: '/dashboard/patients', icon: Users },
-  { label: 'スケジュール', href: '/dashboard/schedule', icon: Calendar },
-  { label: '調剤', href: '/dashboard/dispensing', icon: Pill },
-  { label: '鑑査', href: '/dashboard/inspection', icon: ClipboardCheck },
-  { label: '訪問', href: '/dashboard/visits', icon: Car },
-  { label: '報告', href: '/dashboard/reports', icon: FileText },
+  { label: '患者', href: '/patients', icon: Users },
+  { label: 'スケジュール', href: '/schedules', icon: Calendar },
+  { label: '調剤', href: '/dispensing', icon: Pill },
+  { label: '鑑査', href: '/auditing', icon: ClipboardCheck },
+  { label: '訪問', href: '/visits', icon: Car },
+  { label: '報告', href: '/reports', icon: FileText },
+  { label: 'QRスキャン', href: '/qr-scan', icon: QrCode },
 ];
 
 const adminNavItems: NavItem[] = [
-  { label: '設定', href: '/dashboard/settings', icon: Settings },
-  { label: 'マスタ', href: '/dashboard/master', icon: Database },
-  { label: '監査ログ', href: '/dashboard/audit', icon: ScrollText },
+  { label: '設定', href: '/admin/settings', icon: Settings },
+  { label: '文書テンプレート', href: '/admin/document-templates', icon: FileText },
+  { label: 'マスタ', href: '/admin/drug-masters', icon: Database },
+  { label: '監査ログ', href: '/admin/audit-logs', icon: ScrollText },
 ];
 
 interface SidebarNavItemProps {
@@ -81,7 +86,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ className }: SidebarProps) {
-  const { sidebarOpen, toggleSidebar } = useUIStore();
+  const { sidebarOpen, sidebarPinned, toggleSidebar, toggleSidebarPinned } = useUIStore();
 
   return (
     <aside
@@ -117,10 +122,28 @@ export function Sidebar({ className }: SidebarProps) {
           aria-label={sidebarOpen ? 'サイドバーを折りたたむ' : 'サイドバーを展開する'}
         >
           {sidebarOpen ? (
-            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+            <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
           ) : (
-            <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
           )}
+        </Button>
+      </div>
+
+      <div className="border-b border-border px-2 py-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={toggleSidebarPinned}
+          className={cn('w-full justify-start gap-2', !sidebarOpen && 'justify-center px-2')}
+          aria-label={sidebarPinned ? 'サイドバー固定を解除' : 'サイドバーを固定'}
+          title={!sidebarOpen ? (sidebarPinned ? '固定中' : '固定する') : undefined}
+        >
+          {sidebarPinned ? (
+            <Pin className="h-4 w-4" aria-hidden="true" />
+          ) : (
+            <PinOff className="h-4 w-4" aria-hidden="true" />
+          )}
+          {sidebarOpen && <span>{sidebarPinned ? '固定中' : '固定する'}</span>}
         </Button>
       </div>
 

@@ -6,6 +6,10 @@ const {
   prismaMock,
   withOrgContextMock,
   txMock,
+  patientVisitBriefMock,
+  scheduleVisitBriefMock,
+  buildPatientVisitRecordsPdfMock,
+  buildVisitRecordPdfMock,
 } = vi.hoisted(() => {
   const createRecord = () => ({
     id: 'entity_1',
@@ -16,6 +20,9 @@ const {
     line_id: 'line_1',
     patient_id: 'patient_1',
     case_id: 'case_1',
+    case_: {
+      patient_id: 'patient_1',
+    },
     role: 'admin',
     _count: { id: 0 },
   });
@@ -53,6 +60,10 @@ const {
     prismaMock: createDbProxy() as DbProxy,
     txMock: createDbProxy() as DbProxy,
     withOrgContextMock: vi.fn(),
+    patientVisitBriefMock: vi.fn(),
+    scheduleVisitBriefMock: vi.fn(),
+    buildPatientVisitRecordsPdfMock: vi.fn(),
+    buildVisitRecordPdfMock: vi.fn(),
   };
 });
 
@@ -68,6 +79,16 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/server/services/visit-brief', () => ({
+  getPatientVisitBrief: patientVisitBriefMock,
+  getScheduleVisitBrief: scheduleVisitBriefMock,
+}));
+
+vi.mock('@/server/services/pdf-documents', () => ({
+  buildPatientVisitRecordsPdf: buildPatientVisitRecordsPdfMock,
+  buildVisitRecordPdf: buildVisitRecordPdfMock,
+}));
+
 import { GET as auditLogsGet } from '../audit-logs/route';
 import { GET as auditLogsExportGet } from '../audit-logs/export/route';
 import { GET as billingCandidatesGet } from '../billing-candidates/route';
@@ -78,10 +99,13 @@ import { GET as careReportGet } from '../care-reports/[id]/route';
 import { GET as casesGet } from '../cases/route';
 import { GET as communicationEventsGet } from '../communication-events/route';
 import { GET as communicationRequestsGet } from '../communication-requests/route';
+import { GET as communicationRequestsExportGet } from '../communication-requests/export/route';
 import { GET as conferenceNotesGet } from '../conference-notes/route';
 import { GET as dashboardTodayGet } from '../dashboard/today/route';
 import { GET as dashboardWorkflowGet } from '../dashboard/workflow/route';
 import { GET as dashboardMedicationDeadlinesGet } from '../dashboard/medication-deadlines/route';
+import { GET as dashboardMonthlyStatsGet } from '../dashboard/monthly-stats/route';
+import { GET as dashboardOverdueGet } from '../dashboard/overdue/route';
 import { GET as dispenseAuditsGet } from '../dispense-audits/route';
 import { GET as dispenseQueueGet } from '../dispense-queue/route';
 import { GET as inquiryRecordsGet } from '../inquiry-records/route';
@@ -89,6 +113,8 @@ import { GET as medicationIssuesGet } from '../medication-issues/route';
 import { GET as medicationProfilesGet } from '../medication-profiles/route';
 import { GET as patientsGet } from '../patients/route';
 import { GET as patientGet } from '../patients/[id]/route';
+import { GET as patientVisitBriefGet } from '../patients/[id]/visit-brief/route';
+import { GET as patientVisitRecordsPdfGet } from '../patients/[id]/visit-records/pdf/route';
 import { GET as pharmacistsGet } from '../pharmacists/route';
 import { GET as pharmacistShiftsGet } from '../pharmacist-shifts/route';
 import { GET as pharmacistShiftsAvailableGet } from '../pharmacist-shifts/available/route';
@@ -100,10 +126,12 @@ import { GET as setPlansGet } from '../set-plans/route';
 import { GET as tracingReportsGet } from '../tracing-reports/route';
 import { GET as visitRecordsGet } from '../visit-records/route';
 import { GET as visitRecordGet } from '../visit-records/[id]/route';
+import { GET as visitRecordPdfGet } from '../visit-records/[id]/pdf/route';
 import { GET as visitScheduleProposalsGet } from '../visit-schedule-proposals/route';
 import { GET as visitSchedulesGet } from '../visit-schedules/route';
 import { GET as visitScheduleGet } from '../visit-schedules/[id]/route';
 import { GET as visitSchedulesTodayGet } from '../visit-schedules/today/route';
+import { GET as visitPreparationBriefGet } from '../visit-preparations/[scheduleId]/brief/route';
 
 type Handler = () => Promise<Response | undefined>;
 
@@ -160,6 +188,13 @@ const routes: Array<{ name: string; handler: Handler }> = [
     handler: () => communicationRequestsGet(createRequest('http://localhost/api/communication-requests', { 'x-org-id': 'org_1' })),
   },
   {
+    name: 'communication-requests/export GET',
+    handler: () =>
+      communicationRequestsExportGet(
+        createRequest('http://localhost/api/communication-requests/export', { 'x-org-id': 'org_1' }),
+      ),
+  },
+  {
     name: 'conference-notes GET',
     handler: () => conferenceNotesGet(createRequest('http://localhost/api/conference-notes', { 'x-org-id': 'org_1' })),
   },
@@ -170,6 +205,14 @@ const routes: Array<{ name: string; handler: Handler }> = [
   {
     name: 'dashboard/workflow GET',
     handler: () => dashboardWorkflowGet(createRequest('http://localhost/api/dashboard/workflow', { 'x-org-id': 'org_1' })),
+  },
+  {
+    name: 'dashboard/overdue GET',
+    handler: () => dashboardOverdueGet(createRequest('http://localhost/api/dashboard/overdue', { 'x-org-id': 'org_1' })),
+  },
+  {
+    name: 'dashboard/monthly-stats GET',
+    handler: () => dashboardMonthlyStatsGet(createRequest('http://localhost/api/dashboard/monthly-stats?month=2026-03', { 'x-org-id': 'org_1' })),
   },
   {
     name: 'dashboard/medication-deadlines GET',
@@ -202,6 +245,14 @@ const routes: Array<{ name: string; handler: Handler }> = [
   {
     name: 'patients/[id] GET',
     handler: () => patientGet(createRequest('http://localhost/api/patients/patient_1', { 'x-org-id': 'org_1' }), { params: Promise.resolve({ id: 'patient_1' }) }),
+  },
+  {
+    name: 'patients/[id]/visit-brief GET',
+    handler: () => patientVisitBriefGet(createRequest('http://localhost/api/patients/patient_1/visit-brief', { 'x-org-id': 'org_1' }), { params: Promise.resolve({ id: 'patient_1' }) }),
+  },
+  {
+    name: 'patients/[id]/visit-records/pdf GET',
+    handler: () => patientVisitRecordsPdfGet(createRequest('http://localhost/api/patients/patient_1/visit-records/pdf', { 'x-org-id': 'org_1' }), { params: Promise.resolve({ id: 'patient_1' }) }),
   },
   {
     name: 'pharmacists GET',
@@ -248,6 +299,10 @@ const routes: Array<{ name: string; handler: Handler }> = [
     handler: () => visitRecordGet(createRequest('http://localhost/api/visit-records/record_1', { 'x-org-id': 'org_1' }), { params: Promise.resolve({ id: 'record_1' }) }),
   },
   {
+    name: 'visit-records/[id]/pdf GET',
+    handler: () => visitRecordPdfGet(createRequest('http://localhost/api/visit-records/record_1/pdf', { 'x-org-id': 'org_1' }), { params: Promise.resolve({ id: 'record_1' }) }),
+  },
+  {
     name: 'visit-schedule-proposals GET',
     handler: () => visitScheduleProposalsGet(createRequest('http://localhost/api/visit-schedule-proposals', { 'x-org-id': 'org_1' })),
   },
@@ -263,14 +318,68 @@ const routes: Array<{ name: string; handler: Handler }> = [
     name: 'visit-schedules/today GET',
     handler: () => visitSchedulesTodayGet(createRequest('http://localhost/api/visit-schedules/today', { 'x-org-id': 'org_1' })),
   },
+  {
+    name: 'visit-preparations/[scheduleId]/brief GET',
+    handler: () => visitPreparationBriefGet(createRequest('http://localhost/api/visit-preparations/schedule_1/brief', { 'x-org-id': 'org_1' }), { params: Promise.resolve({ scheduleId: 'schedule_1' }) }),
+  },
 ];
 
 describe('protected GET routes auth matrix', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    patientVisitBriefMock.mockResolvedValue({
+      patient: { id: 'patient_1', name: '患者A' },
+      context: 'patient',
+      generated_at: '2026-03-27T00:00:00.000Z',
+      last_prescribed_date: null,
+      medication_changes: [],
+      medications: [],
+      dispensing_items: [],
+      multidisciplinary_updates: [],
+      unresolved_items: [],
+      must_check_today: [],
+      ai_summary: {
+        provider: 'rule',
+        is_fallback: true,
+        headline: '要点なし',
+        bullets: [],
+        must_check_today: [],
+        source_refs: [],
+        generated_at: '2026-03-27T00:00:00.000Z',
+      },
+    });
+    scheduleVisitBriefMock.mockResolvedValue({
+      patient: { id: 'patient_1', name: '患者A' },
+      context: 'schedule',
+      generated_at: '2026-03-27T00:00:00.000Z',
+      last_prescribed_date: null,
+      medication_changes: [],
+      medications: [],
+      dispensing_items: [],
+      multidisciplinary_updates: [],
+      unresolved_items: [],
+      must_check_today: [],
+      ai_summary: {
+        provider: 'rule',
+        is_fallback: true,
+        headline: '要点なし',
+        bullets: [],
+        must_check_today: [],
+        source_refs: [],
+        generated_at: '2026-03-27T00:00:00.000Z',
+      },
+    });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback(txMock)
     );
+    buildPatientVisitRecordsPdfMock.mockResolvedValue({
+      buffer: Buffer.from('%PDF-patient-visits'),
+      fileName: 'visit-records.pdf',
+    });
+    buildVisitRecordPdfMock.mockResolvedValue({
+      buffer: Buffer.from('%PDF-visit-record'),
+      fileName: 'visit-record.pdf',
+    });
   });
 
   for (const route of routes) {
