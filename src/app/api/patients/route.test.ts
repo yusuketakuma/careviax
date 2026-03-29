@@ -1,0 +1,492 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { NextRequest } from 'next/server';
+
+const {
+  withAuthMock,
+  patientFindManyMock,
+  patientCreateMock,
+  facilityFindManyMock,
+  userFindManyMock,
+  visitRecordFindManyMock,
+  visitScheduleFindManyMock,
+  listPatientRiskSummariesMock,
+  withOrgContextMock,
+  assertFacilityReferenceMock,
+  residenceCreateMock,
+  contactPartyCreateManyMock,
+  patientConditionCreateManyMock,
+  patientPackagingProfileCreateMock,
+  patientSchedulePreferenceCreateMock,
+  careCaseCreateMock,
+  careTeamLinkCreateManyMock,
+} =
+  vi.hoisted(() => ({
+    withAuthMock: vi.fn(),
+    patientFindManyMock: vi.fn(),
+    patientCreateMock: vi.fn(),
+    facilityFindManyMock: vi.fn(),
+    userFindManyMock: vi.fn(),
+    visitRecordFindManyMock: vi.fn(),
+    visitScheduleFindManyMock: vi.fn(),
+    listPatientRiskSummariesMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+    assertFacilityReferenceMock: vi.fn(),
+    residenceCreateMock: vi.fn(),
+    contactPartyCreateManyMock: vi.fn(),
+    patientConditionCreateManyMock: vi.fn(),
+    patientPackagingProfileCreateMock: vi.fn(),
+    patientSchedulePreferenceCreateMock: vi.fn(),
+    careCaseCreateMock: vi.fn(),
+    careTeamLinkCreateManyMock: vi.fn(),
+  }));
+
+vi.mock('@/lib/auth/middleware', () => ({
+  withAuth: (
+    handler: (
+      req: NextRequest & { orgId: string; userId: string; role: string }
+    ) => Promise<Response>
+  ) => {
+    withAuthMock.mockImplementation(handler);
+    return handler;
+  },
+}));
+
+vi.mock('@/lib/db/client', () => ({
+  prisma: {
+    patient: {
+      findMany: patientFindManyMock,
+      create: patientCreateMock,
+    },
+    facility: {
+      findMany: facilityFindManyMock,
+    },
+    user: {
+      findMany: userFindManyMock,
+    },
+    visitRecord: {
+      findMany: visitRecordFindManyMock,
+    },
+    visitSchedule: {
+      findMany: visitScheduleFindManyMock,
+    },
+  },
+}));
+
+vi.mock('@/server/services/patient-risk', () => ({
+  listPatientRiskSummaries: listPatientRiskSummariesMock,
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/patient/facility-reference', () => ({
+  FacilityReferenceValidationError: class FacilityReferenceValidationError extends Error {},
+  assertFacilityReference: assertFacilityReferenceMock,
+}));
+
+import { GET, POST } from './route';
+
+function createRequest(body?: unknown) {
+  return {
+    headers: { get: () => null },
+    json: async () => body,
+  } as unknown as NextRequest;
+}
+
+describe('/api/patients GET', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    patientCreateMock.mockResolvedValue({ id: 'patient_new' });
+    residenceCreateMock.mockResolvedValue({ id: 'residence_new' });
+    contactPartyCreateManyMock.mockResolvedValue({ count: 1 });
+    patientConditionCreateManyMock.mockResolvedValue({ count: 1 });
+    patientPackagingProfileCreateMock.mockResolvedValue({ id: 'packaging_new' });
+    patientSchedulePreferenceCreateMock.mockResolvedValue({ id: 'schedule_pref_new' });
+    careCaseCreateMock.mockResolvedValue({ id: 'case_new' });
+    careTeamLinkCreateManyMock.mockResolvedValue({ count: 2 });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        patient: {
+          create: patientCreateMock,
+        },
+        residence: {
+          create: residenceCreateMock,
+        },
+        contactParty: {
+          createMany: contactPartyCreateManyMock,
+        },
+        patientCondition: {
+          createMany: patientConditionCreateManyMock,
+        },
+        patientPackagingProfile: {
+          create: patientPackagingProfileCreateMock,
+        },
+        patientSchedulePreference: {
+          create: patientSchedulePreferenceCreateMock,
+        },
+        careCase: {
+          create: careCaseCreateMock,
+        },
+        careTeamLink: {
+          createMany: careTeamLinkCreateManyMock,
+        },
+      }),
+    );
+    patientFindManyMock.mockResolvedValue([
+      {
+        id: 'patient_1',
+        name: '青葉 花子',
+        name_kana: 'アオバ ハナコ',
+        birth_date: new Date('1948-05-20'),
+        gender: 'female',
+        phone: '090-0000-0001',
+        medical_insurance_number: 'med-001',
+        care_insurance_number: null,
+        billing_support_flag: true,
+        residences: [
+          {
+            address: '東京都千代田区1-1-1',
+            building_id: 'facility_alpha',
+            unit_name: '201',
+          },
+        ],
+        contacts: [
+          {
+            name: '施設担当',
+            organization_name: 'あおば苑',
+          },
+        ],
+        conditions: [
+          {
+            id: 'condition_1',
+            condition_type: 'disease',
+            name: '糖尿病',
+            is_primary: true,
+          },
+        ],
+        cases: [
+          {
+            id: 'case_1',
+            status: 'active',
+            updated_at: new Date('2026-03-27T09:00:00.000Z'),
+            primary_pharmacist_id: 'user_1',
+          },
+        ],
+        consents: [
+          {
+            consent_type: 'visit_medication_management',
+            expiry_date: null,
+          },
+        ],
+        visit_records: [
+          {
+            id: 'visit_1',
+            visit_date: new Date('2026-03-25T00:00:00.000Z'),
+            outcome_status: 'completed',
+            created_at: new Date('2026-03-25T10:00:00.000Z'),
+          },
+        ],
+        visit_schedules: [
+          {
+            id: 'schedule_1',
+            scheduled_date: new Date('2026-03-30T00:00:00.000Z'),
+            schedule_status: 'scheduled',
+            priority: 'normal',
+          },
+        ],
+      },
+      {
+        id: 'patient_2',
+        name: '鈴木 次郎',
+        name_kana: 'スズキ ジロウ',
+        birth_date: new Date('1952-10-01'),
+        gender: 'male',
+        phone: null,
+        medical_insurance_number: null,
+        care_insurance_number: null,
+        billing_support_flag: false,
+        residences: [
+          {
+            address: '東京都墨田区2-2-2',
+            building_id: null,
+            unit_name: null,
+          },
+        ],
+        contacts: [],
+        conditions: [],
+        cases: [
+          {
+            id: 'case_2',
+            status: 'assessment',
+            updated_at: new Date('2026-03-20T09:00:00.000Z'),
+            primary_pharmacist_id: null,
+          },
+        ],
+        consents: [],
+        visit_records: [],
+        visit_schedules: [],
+      },
+    ]);
+    userFindManyMock.mockResolvedValue([{ id: 'user_1', name: '佐藤 薬剤師' }]);
+    facilityFindManyMock.mockResolvedValue([
+      {
+        id: 'facility_alpha',
+        name: 'あおば苑',
+      },
+    ]);
+    visitRecordFindManyMock.mockResolvedValue([
+      {
+        id: 'visit_1',
+        patient_id: 'patient_1',
+        visit_date: new Date('2026-03-25T00:00:00.000Z'),
+        outcome_status: 'completed',
+        created_at: new Date('2026-03-25T10:00:00.000Z'),
+      },
+    ]);
+    visitScheduleFindManyMock.mockResolvedValue([
+      {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        scheduled_date: new Date('2026-03-30T00:00:00.000Z'),
+        schedule_status: 'scheduled',
+        priority: 'normal',
+      },
+    ]);
+    listPatientRiskSummariesMock.mockResolvedValue([
+      {
+        patient_id: 'patient_1',
+        patient_name: '青葉 花子',
+        score: 5,
+        level: 'watch',
+        reasons: ['訪問同意が未整備です'],
+        unresolved_self_reports: 0,
+        open_issues: 0,
+        disrupted_visits_30d: 0,
+        pending_reports: 0,
+        open_tasks: 0,
+        missing_visit_consent: true,
+        missing_management_plan: false,
+      },
+      {
+        patient_id: 'patient_2',
+        patient_name: '鈴木 次郎',
+        score: 0,
+        level: 'stable',
+        reasons: [],
+        unresolved_self_reports: 0,
+        open_issues: 0,
+        disrupted_visits_30d: 0,
+        pending_reports: 0,
+        open_tasks: 0,
+        missing_visit_consent: false,
+        missing_management_plan: false,
+      },
+    ]);
+  });
+
+  it('supports advanced patient filters and enriches risk, consent, and assignment fields', async () => {
+    const response = (await GET({
+      orgId: 'org_1',
+      userId: 'user_1',
+      role: 'pharmacist',
+      url: 'http://localhost/api/patients?q=青葉&facility_mode=facility&consent_status=complete&risk_level=watch&last_visit=within_30_days',
+      headers: { get: () => null },
+    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(patientFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+        }),
+      }),
+    );
+    expect(listPatientRiskSummariesMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        patientIds: ['patient_1', 'patient_2'],
+        includeStable: true,
+      }),
+    );
+
+    const payload = (await response.json()) as {
+      data: Array<{
+        id: string;
+        facility_mode: 'facility' | 'home';
+        latest_case: { primary_pharmacist_name: string | null } | null;
+        consent: { has_visit_medication_management: boolean };
+        risk_summary: { level: 'stable' | 'watch' | 'high' };
+      }>;
+      summary: {
+        total: number;
+        facility_count: number;
+        missing_consent_count: number;
+        by_risk: Record<'stable' | 'watch' | 'high', number>;
+      };
+    };
+
+    expect(payload.data).toHaveLength(1);
+    expect(payload.data[0]).toMatchObject({
+      id: 'patient_1',
+      facility_mode: 'facility',
+      latest_case: {
+        primary_pharmacist_name: '佐藤 薬剤師',
+      },
+      consent: {
+        has_visit_medication_management: true,
+      },
+      risk_summary: {
+        level: 'watch',
+      },
+    });
+    expect(payload.summary).toMatchObject({
+      total: 1,
+      facility_count: 1,
+      missing_consent_count: 0,
+      by_risk: {
+        stable: 0,
+        watch: 1,
+        high: 0,
+      },
+    });
+  });
+
+  it('masks phone and insurance fields for users without sensitive data access', async () => {
+    const response = (await GET({
+      orgId: 'org_1',
+      userId: 'user_2',
+      role: 'clerk',
+      url: 'http://localhost/api/patients',
+      headers: { get: () => null },
+    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+
+    if (!response) throw new Error('response is required');
+    const payload = (await response.json()) as {
+      data: Array<{
+        id: string;
+        phone: string | null;
+        medical_insurance_number: string | null;
+      }>;
+      privacy: {
+        sensitive_fields_masked: boolean;
+        can_view_detail: boolean;
+      };
+    };
+
+    expect(payload.privacy.sensitive_fields_masked).toBe(true);
+    expect(payload.privacy.can_view_detail).toBe(true);
+    expect(payload.data[0]).toMatchObject({
+      id: 'patient_1',
+      phone: '***-****-0001',
+      medical_insurance_number: '***-001',
+    });
+  });
+
+  it('persists rich intake payload into canonical tables and intake-only case metadata', async () => {
+    patientCreateMock.mockResolvedValue({
+      id: 'patient_new',
+      name: '訪問 花子',
+    });
+
+    const response = (await POST({
+      orgId: 'org_1',
+      userId: 'user_1',
+      role: 'pharmacist',
+      ...createRequest({
+        name: '訪問 花子',
+        gender: 'female',
+        address: '東京都千代田区1-2-3',
+        requester: {
+          organization_name: '千代田クリニック',
+          profession: 'physician',
+          contact_name: '連携 太郎',
+          phone: '03-1111-2222',
+          preferred_contact_method: 'mcs',
+        },
+        intake: {
+          age: 82,
+          primary_disease: '心不全',
+          contact_phone: '03-3333-4444',
+          primary_contact_preference: 'phone',
+          visit_before_contact_required: true,
+          care_level: 'care_3',
+          medication_support_methods: ['unit_dose', 'calendar'],
+          parking_available: false,
+          mcs_linked: true,
+          care_manager: {
+            name: 'ケア 山田',
+            organization_name: '地域ケア',
+            phone: '03-9999-0000',
+          },
+          special_medical_procedures: ['narcotics', 'home_oxygen'],
+        },
+      }),
+    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+
+    expect(response.status).toBe(201);
+    expect(assertFacilityReferenceMock).toHaveBeenCalled();
+    expect(patientCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: '訪問 花子',
+          phone: '03-3333-4444',
+          birth_date: expect.any(Date),
+        }),
+      }),
+    );
+    expect(patientConditionCreateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.arrayContaining([
+          expect.objectContaining({
+            name: '心不全',
+            is_primary: true,
+          }),
+        ]),
+      }),
+    );
+    expect(patientPackagingProfileCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          default_packaging_method: 'unit_dose',
+        }),
+      }),
+    );
+    expect(patientSchedulePreferenceCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          preferred_contact_phone: '03-3333-4444',
+        }),
+      }),
+    );
+    expect(careCaseCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          referral_source: '千代田クリニック',
+          required_visit_support: expect.objectContaining({
+            home_visit_intake: expect.objectContaining({
+              requester: expect.objectContaining({
+                organization_name: '千代田クリニック',
+              }),
+              reported_age: 82,
+              care_level: 'care_3',
+              special_medical_procedures: ['narcotics', 'home_oxygen'],
+            }),
+          }),
+        }),
+      }),
+    );
+    expect(careTeamLinkCreateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.arrayContaining([
+          expect.objectContaining({
+            role: 'care_manager',
+            name: 'ケア 山田',
+          }),
+        ]),
+      }),
+    );
+  });
+});

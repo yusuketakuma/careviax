@@ -8,6 +8,33 @@ enum MemberRole {
   external_viewer
 }
 
+enum FacilityTypeEnum {
+  nursing_home
+  group_home
+  assisted_living
+  clinic
+  hospital
+  day_service
+  home
+  other
+}
+
+enum ProfessionTypeEnum {
+  physician
+  nurse
+  care_manager
+  medical_social_worker
+  physical_therapist
+  occupational_therapist
+  speech_therapist
+  registered_dietitian
+  dentist
+  dental_hygienist
+  home_helper
+  care_staff
+  other
+}
+
 enum HolidayType {
   public_holiday
   site_closure
@@ -31,8 +58,10 @@ model Organization {
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
 
-  sites       PharmacySite[]
-  memberships Membership[]
+  sites                 PharmacySite[]
+  memberships           Membership[]
+  facilities            Facility[]
+  external_professionals ExternalProfessional[]
 
   @@index([name])
 }
@@ -92,6 +121,7 @@ model User {
   activated_at        DateTime?
   deactivated_at      DateTime?
   deactivation_reason String?
+  session_version     Int               @default(0)
   created_at          DateTime          @default(now())
   updated_at          DateTime          @updatedAt
 
@@ -219,3 +249,61 @@ model BusinessHoliday {
 
 // PharmacyDrugStock は drug.prisma で定義予定（未実装時はコメントアウト）
 // model PharmacyDrugStock は他ファイルで定義
+
+model Facility {
+  id            String          @id @default(cuid())
+  org_id        String
+  org           Organization    @relation(fields: [org_id], references: [id])
+  name          String
+  facility_type FacilityTypeEnum
+  address       String?
+  phone         String?
+  fax           String?
+  notes         String?
+  created_at    DateTime        @default(now())
+  updated_at    DateTime        @default(now()) @updatedAt
+
+  contacts FacilityContact[]
+
+  @@unique([org_id, name])
+  @@index([org_id])
+}
+
+model FacilityContact {
+  id          String   @id @default(cuid())
+  org_id      String
+  facility_id String
+  facility    Facility @relation(fields: [facility_id], references: [id], onDelete: Cascade)
+  name        String
+  role        String?
+  phone       String?
+  email       String?
+  fax         String?
+  is_primary  Boolean  @default(false)
+  notes       String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @default(now()) @updatedAt
+
+  @@index([org_id])
+  @@index([facility_id])
+}
+
+model ExternalProfessional {
+  id                String             @id @default(cuid())
+  org_id            String
+  org               Organization       @relation(fields: [org_id], references: [id])
+  profession_type   ProfessionTypeEnum
+  name              String
+  organization_name String?
+  department        String?
+  phone             String?
+  email             String?
+  fax               String?
+  address           String?
+  notes             String?
+  created_at        DateTime           @default(now())
+  updated_at        DateTime           @default(now()) @updatedAt
+
+  @@index([org_id])
+  @@index([profession_type])
+}

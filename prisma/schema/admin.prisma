@@ -235,6 +235,22 @@ model LabelDictionary {
   @@index([category])
 }
 
+model UatFeedback {
+  id                  String   @id @default(cuid())
+  org_id              String
+  submitted_by        String?
+  priority            String
+  feedback            String
+  checklist_progress  String?
+  checked_items       Json?
+  source              String   @default("pilot_pharmacy")
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  @@index([org_id])
+  @@index([priority])
+}
+
 model SourceOfTruthMatrix {
   id                 String   @id @default(cuid())
   org_id             String

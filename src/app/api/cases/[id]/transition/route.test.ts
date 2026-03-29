@@ -81,14 +81,14 @@ describe('/api/cases/[id]/transition', () => {
   });
 
   it('transitions a case when the current status matches', async () => {
-    const response = await PATCH({
+    const response = (await PATCH({
       json: async () => ({
         from: 'assessment',
         to: 'active',
       }),
     } as NextRequest, {
       params: Promise.resolve({ id: 'case_1' }),
-    });
+    }))!;
 
     expect(response.status).toBe(200);
     expect(careCaseUpdateMock).toHaveBeenCalledWith({
@@ -100,14 +100,14 @@ describe('/api/cases/[id]/transition', () => {
   it('adds a warning and creates a task when transitioning to active with undelivered first visit doc', async () => {
     firstVisitDocFindFirstMock.mockResolvedValue(null);
 
-    const response = await PATCH({
+    const response = (await PATCH({
       json: async () => ({
         from: 'assessment',
         to: 'active',
       }),
     } as NextRequest, {
       params: Promise.resolve({ id: 'case_1' }),
-    });
+    }))!;
 
     expect(response.status).toBe(200);
     const body = await response.json();
@@ -122,14 +122,14 @@ describe('/api/cases/[id]/transition', () => {
   });
 
   it('rejects transitions when the current status does not match', async () => {
-    const response = await PATCH({
+    const response = (await PATCH({
       json: async () => ({
         from: 'active',
         to: 'discharged',
       }),
     } as NextRequest, {
       params: Promise.resolve({ id: 'case_1' }),
-    });
+    }))!;
 
     expect(response.status).toBe(400);
     expect(careCaseUpdateMock).not.toHaveBeenCalled();

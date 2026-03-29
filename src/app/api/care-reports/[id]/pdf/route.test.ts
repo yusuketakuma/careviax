@@ -38,9 +38,9 @@ describe('/api/care-reports/[id]/pdf', () => {
       fileName: 'care-report.pdf',
     });
 
-    const response = await GET({} as NextRequest, {
+    const response = (await GET({} as NextRequest, {
       params: Promise.resolve({ id: 'report_1' }),
-    });
+    }))!;
 
     expect(response.status).toBe(200);
     expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), 'care-report.pdf');
@@ -49,9 +49,9 @@ describe('/api/care-reports/[id]/pdf', () => {
   it('returns 404 when the care report does not exist', async () => {
     buildCareReportPdfMock.mockRejectedValue(new Error('報告書が見つかりません'));
 
-    const response = await GET({} as NextRequest, {
+    const response = (await GET({} as NextRequest, {
       params: Promise.resolve({ id: 'report_1' }),
-    });
+    }))!;
 
     expect(response.status).toBe(404);
   });

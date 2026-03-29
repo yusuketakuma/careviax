@@ -34,11 +34,11 @@ describe('/api/care-reports/generate-from-visit', () => {
       reports: [{ id: 'report_1', report_type: 'physician_report' }],
     });
 
-    const response = await POST({
+    const response = (await POST({
       json: async () => ({
         visit_record_id: 'visit_1',
       }),
-    } as NextRequest);
+    } as NextRequest))!;
 
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({
@@ -49,11 +49,11 @@ describe('/api/care-reports/generate-from-visit', () => {
   it('returns 404 when the visit record is missing', async () => {
     generateReportsFromVisitMock.mockRejectedValue(new Error('visit record not found'));
 
-    const response = await POST({
+    const response = (await POST({
       json: async () => ({
         visit_record_id: 'visit_missing',
       }),
-    } as NextRequest);
+    } as NextRequest))!;
 
     expect(response.status).toBe(404);
   });

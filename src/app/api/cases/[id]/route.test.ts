@@ -68,7 +68,7 @@ describe('/api/cases/[id]', () => {
   });
 
   it('updates a case and normalizes empty pharmacist ids to null', async () => {
-    const response = await PATCH({
+    const response = (await PATCH({
       json: async () => ({
         primary_pharmacist_id: '',
         backup_pharmacist_id: 'pharmacist_2',
@@ -76,7 +76,7 @@ describe('/api/cases/[id]', () => {
       }),
     } as NextRequest, {
       params: Promise.resolve({ id: 'case_1' }),
-    });
+    }))!;
 
     expect(response.status).toBe(200);
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {

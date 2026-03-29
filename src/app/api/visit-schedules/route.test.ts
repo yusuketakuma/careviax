@@ -116,9 +116,9 @@ describe('/api/visit-schedules', () => {
   });
 
   it('lists visit schedules with workload and facility hints', async () => {
-    const response = await GET(
+    const response = (await GET(
       createRequest('http://localhost/api/visit-schedules?patient_id=patient_1')
-    );
+    ))!;
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -138,7 +138,7 @@ describe('/api/visit-schedules', () => {
   });
 
   it('creates a visit schedule after gate and reference checks', async () => {
-    const response = await POST(
+    const response = (await POST(
       createRequest('http://localhost/api/visit-schedules', {
         case_id: 'case_1',
         site_id: 'site_1',
@@ -148,7 +148,7 @@ describe('/api/visit-schedules', () => {
         time_window_start: '09:00',
         time_window_end: '10:00',
       })
-    );
+    ))!;
 
     expect(response.status).toBe(201);
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {

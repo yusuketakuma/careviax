@@ -38,9 +38,9 @@ describe('/api/visit-records/[id]/pdf', () => {
       fileName: 'visit-record.pdf',
     });
 
-    const response = await GET({} as NextRequest, {
+    const response = (await GET({} as NextRequest, {
       params: Promise.resolve({ id: 'visit_1' }),
-    });
+    }))!;
 
     expect(response.status).toBe(200);
     expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), 'visit-record.pdf');

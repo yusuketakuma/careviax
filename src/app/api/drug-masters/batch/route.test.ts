@@ -1,0 +1,62 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { NextRequest } from 'next/server';
+
+const { drugMasterFindManyMock } = vi.hoisted(() => ({
+  drugMasterFindManyMock: vi.fn(),
+}));
+
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (handler: (...args: unknown[]) => unknown) => {
+    return (req: NextRequest) =>
+      handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' });
+  },
+}));
+
+vi.mock('@/lib/db/client', () => ({
+  prisma: {
+    drugMaster: {
+      findMany: drugMasterFindManyMock,
+    },
+  },
+}));
+
+import { POST } from './route';
+
+describe('/api/drug-masters/batch', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    drugMasterFindManyMock.mockResolvedValue([
+      {
+        yj_code: '1111111A',
+        drug_name: 'アセトアミノフェン',
+        dosage_form: '錠剤',
+        drug_price: 10,
+        unit: '錠',
+        is_generic: true,
+        is_narcotic: false,
+        is_psychotropic: false,
+        max_administration_days: 30,
+        therapeutic_category: '解熱鎮痛薬',
+      },
+    ]);
+  });
+
+  it('returns drug master records keyed by yj code', async () => {
+    const response = (await POST({
+      json: async () => ({
+        yj_codes: ['1111111A'],
+      }),
+    } as NextRequest, { params: Promise.resolve({}) }))!;
+
+    expect(response.status).toBe(200);
+    expect(drugMasterFindManyMock).toHaveBeenCalledWith({
+      where: { yj_code: { in: ['1111111A'] } },
+      select: expect.any(Object),
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      '1111111A': expect.objectContaining({
+        drug_name: 'アセトアミノフェン',
+      }),
+    });
+  });
+});

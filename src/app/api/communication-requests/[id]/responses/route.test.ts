@@ -68,15 +68,15 @@ describe('/api/communication-requests/[id]/responses', () => {
   });
 
   it('lists responses for a communication request', async () => {
-    const response = await GET({} as NextRequest, {
+    const response = (await GET({} as NextRequest, {
       params: Promise.resolve({ id: 'request_1' }),
-    });
+    }))!;
 
     expect(response.status).toBe(200);
   });
 
   it('creates a response and updates the request status', async () => {
-    const response = await POST({
+    const response = (await POST({
       json: async () => ({
         responder_name: '医師A',
         content: '確認しました',
@@ -84,7 +84,7 @@ describe('/api/communication-requests/[id]/responses', () => {
       }),
     } as NextRequest, {
       params: Promise.resolve({ id: 'request_1' }),
-    });
+    }))!;
 
     expect(response.status).toBe(201);
     expect(communicationRequestUpdateMock).toHaveBeenCalledWith({

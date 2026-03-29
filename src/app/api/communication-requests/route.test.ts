@@ -53,21 +53,21 @@ describe('/api/communication-requests', () => {
   });
 
   it('lists communication requests', async () => {
-    const response = await GET({
+    const response = (await GET({
       url: 'http://localhost/api/communication-requests?status=draft',
-    } as NextRequest);
+    } as NextRequest))!;
 
     expect(response.status).toBe(200);
   });
 
   it('creates a communication request', async () => {
-    const response = await POST({
+    const response = (await POST({
       json: async () => ({
         request_type: '疑義照会',
         subject: '確認事項',
         content: '処方内容を確認したいです',
       }),
-    } as NextRequest);
+    } as NextRequest))!;
 
     expect(response.status).toBe(201);
     expect(communicationRequestCreateMock).toHaveBeenCalledWith({

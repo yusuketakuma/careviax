@@ -90,18 +90,18 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
       },
     });
 
-    const response = await POST({} as NextRequest, {
+    const response = (await POST({} as NextRequest, {
       params: Promise.resolve({ id: 'schedule_1' }),
-    });
+    }))!;
 
     expect(response.status).toBe(400);
     expect(visitScheduleOverrideUpdateMock).not.toHaveBeenCalled();
   });
 
   it('approves the override, resolves tasks, and dispatches a notification', async () => {
-    const response = await POST({} as NextRequest, {
+    const response = (await POST({} as NextRequest, {
       params: Promise.resolve({ id: 'schedule_1' }),
-    });
+    }))!;
 
     expect(response.status).toBe(200);
     expect(visitScheduleOverrideUpdateMock).toHaveBeenCalled();

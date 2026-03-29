@@ -43,7 +43,7 @@ function createRequest(body: unknown) {
   } as unknown as NextRequest;
 }
 
-describe('set-plans/[planId]/generate-batches POST', () => {
+describe('set-plans/[id]/generate-batches POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
@@ -83,7 +83,7 @@ describe('set-plans/[planId]/generate-batches POST', () => {
     ]);
 
     const response = await POST(createRequest({ force: false }), {
-      params: Promise.resolve({ planId: 'plan_1' }),
+      params: Promise.resolve({ id: 'plan_1' }),
     });
     if (!response) throw new Error('response is required');
     const payload = await response.json();
@@ -108,7 +108,7 @@ describe('set-plans/[planId]/generate-batches POST', () => {
     });
 
     const response = await POST(createRequest({ force: false }), {
-      params: Promise.resolve({ planId: 'plan_1' }),
+      params: Promise.resolve({ id: 'plan_1' }),
     });
     if (!response) throw new Error('response is required');
 

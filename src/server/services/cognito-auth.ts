@@ -6,6 +6,7 @@ import {
   ConfirmForgotPasswordCommand,
   ForgotPasswordCommand,
   GetUserCommand,
+  GlobalSignOutCommand,
   InitiateAuthCommand,
   RespondToAuthChallengeCommand,
   SetUserMFAPreferenceCommand,
@@ -325,6 +326,15 @@ export async function disableTotpForAccessToken(accessToken: string) {
         Enabled: false,
         PreferredMfa: false,
       },
+    })
+  );
+}
+
+export async function globalSignOutWithAccessToken(accessToken: string) {
+  const client = getClient();
+  return client.send(
+    new GlobalSignOutCommand({
+      AccessToken: accessToken,
     })
   );
 }

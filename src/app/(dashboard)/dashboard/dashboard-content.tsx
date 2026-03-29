@@ -18,8 +18,8 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
-interface DashboardToday {
-  visits: {
+export interface DashboardToday {
+  visits?: {
     total: number;
     completed: number;
     pending: number;
@@ -27,7 +27,7 @@ interface DashboardToday {
     ready: number;
     cancelled: number;
   };
-  tasks: {
+  tasks?: {
     open: number;
   };
   today_visits: Array<{
@@ -41,7 +41,7 @@ interface DashboardToday {
     preparation_ready: boolean;
     carry_items_status: string | null;
   }>;
-  reports_backlog: Array<{
+  reports_backlog?: Array<{
     id: string;
     patient_name: string;
     report_type: string;
@@ -58,7 +58,7 @@ interface DashboardToday {
     split_dispense_total: number | null;
     split_dispense_current: number | null;
   }>;
-  communication_queue: {
+  communication_queue?: {
     summary: {
       pending_count: number;
       overdue_count: number;
@@ -78,7 +78,7 @@ interface DashboardToday {
       patient_name: string | null;
     }>;
   };
-  role_focus: {
+  role_focus?: {
     role: string;
     items: Array<{
       label: string;
@@ -210,7 +210,7 @@ function TodayVisitsSection({ visits }: { visits: DashboardToday['today_visits']
 function ReportsBacklogSection({
   reports,
 }: {
-  reports: DashboardToday['reports_backlog'];
+  reports: NonNullable<DashboardToday['reports_backlog']>;
 }) {
   return (
     <section aria-labelledby="unsent-reports-heading">
@@ -295,8 +295,8 @@ function CommunicationQueueSection({
   queue,
   roleFocus,
 }: {
-  queue: DashboardToday['communication_queue'];
-  roleFocus: DashboardToday['role_focus'];
+  queue: NonNullable<DashboardToday['communication_queue']>;
+  roleFocus: NonNullable<DashboardToday['role_focus']>;
 }) {
   return (
     <section aria-labelledby="communication-queue-heading">
@@ -381,9 +381,9 @@ export function DashboardContent() {
     );
   }
 
-  const visitTotal = data?.visits.total ?? 0;
-  const visitPending = data?.tasks.open ?? 0;
-  const communicationPending = data?.communication_queue.summary.pending_count ?? 0;
+  const visitTotal = data?.visits?.total ?? 0;
+  const visitPending = data?.tasks?.open ?? 0;
+  const communicationPending = data?.communication_queue?.summary?.pending_count ?? 0;
   const deadlines = data?.medication_deadlines.length ?? 0;
 
   const summaryCards = [
@@ -447,6 +447,29 @@ export function DashboardContent() {
         <ReportsBacklogSection reports={data?.reports_backlog ?? []} />
         <MedicationDeadlinesSection items={data?.medication_deadlines ?? []} />
       </div>
+    </div>
+  );
+}
+
+// ---- Preview / Storybook helpers ----
+
+export type WorkflowDashboard = Record<string, unknown>;
+
+export function DashboardOverview({
+  today,
+}: {
+  today: DashboardToday;
+  workflow?: WorkflowDashboard;
+}) {
+  const visits = today.today_visits ?? [];
+  const deadlines = today.medication_deadlines ?? [];
+  const reports = today.reports_backlog ?? [];
+
+  return (
+    <div className="space-y-8">
+      <TodayVisitsSection visits={visits} />
+      <MedicationDeadlinesSection items={deadlines} />
+      <ReportsBacklogSection reports={reports} />
     </div>
   );
 }

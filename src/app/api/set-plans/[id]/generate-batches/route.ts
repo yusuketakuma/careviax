@@ -46,13 +46,13 @@ function diffInDays(start: Date, end: Date): number {
   return Math.floor((end.getTime() - start.getTime()) / msPerDay) + 1;
 }
 
-export const POST = withAuthContext<{ planId: string }>(
+export const POST = withAuthContext<{ id: string }>(
   async (
     req: NextRequest,
     ctx: AuthContext,
-    routeContext: AuthRouteContext<{ planId: string }>
+    routeContext: AuthRouteContext<{ id: string }>
   ) => {
-    const { planId } = await routeContext.params;
+    const { id } = await routeContext.params;
 
     const body = await req.json().catch(() => ({}));
     const parsed = generateBatchesSchema.safeParse(body);
@@ -63,7 +63,7 @@ export const POST = withAuthContext<{ planId: string }>(
     const { force } = parsed.data;
 
     const plan = await prisma.setPlan.findFirst({
-      where: { id: planId, org_id: ctx.orgId },
+      where: { id: id, org_id: ctx.orgId },
       select: {
         id: true,
         cycle_id: true,
@@ -122,7 +122,7 @@ export const POST = withAuthContext<{ planId: string }>(
 
     const result = await withOrgContext(ctx.orgId, async (tx) => {
       const existingCount = await tx.setBatch.count({
-        where: { plan_id: planId, org_id: ctx.orgId },
+        where: { plan_id: id, org_id: ctx.orgId },
       });
       const latestIntakeUpdatedAt = intakes.reduce<Date | null>((latest, intake) => {
         if (!latest || intake.updated_at > latest) return intake.updated_at;
@@ -131,7 +131,7 @@ export const POST = withAuthContext<{ planId: string }>(
 
       if (existingCount > 0 && !force) {
         const latestBatch = await tx.setBatch.findFirst({
-          where: { plan_id: planId, org_id: ctx.orgId },
+          where: { plan_id: id, org_id: ctx.orgId },
           orderBy: { updated_at: 'desc' },
           select: { updated_at: true },
         });
@@ -142,7 +142,7 @@ export const POST = withAuthContext<{ planId: string }>(
           } as const;
         }
         const existing = await tx.setBatch.findMany({
-          where: { plan_id: planId, org_id: ctx.orgId },
+          where: { plan_id: id, org_id: ctx.orgId },
           orderBy: [{ day_number: 'asc' }, { slot: 'asc' }],
           include: {
             line: {
@@ -162,7 +162,7 @@ export const POST = withAuthContext<{ planId: string }>(
 
       if (force) {
         await tx.setBatch.deleteMany({
-          where: { plan_id: planId, org_id: ctx.orgId },
+          where: { plan_id: id, org_id: ctx.orgId },
         });
       }
 
@@ -191,7 +191,7 @@ export const POST = withAuthContext<{ planId: string }>(
           for (const slot of slots) {
             batchData.push({
               org_id: ctx.orgId,
-              plan_id: planId,
+              plan_id: id,
               line_id: line.id,
               slot,
               day_number: day,
@@ -205,7 +205,7 @@ export const POST = withAuthContext<{ planId: string }>(
       await tx.setBatch.createMany({ data: batchData });
 
       const created = await tx.setBatch.findMany({
-        where: { plan_id: planId, org_id: ctx.orgId },
+        where: { plan_id: id, org_id: ctx.orgId },
         orderBy: [{ day_number: 'asc' }, { slot: 'asc' }],
         include: {
           line: {

@@ -159,20 +159,33 @@ model DeliveryRecord {
   @@index([status])
 }
 
+enum ConferenceNoteType {
+  regular
+  pre_discharge
+  service_manager
+  care_team
+  emergency
+  death_conference
+}
+
 model ConferenceNote {
-  id              String    @id @default(cuid())
-  org_id          String
-  case_id         String?
-  title           String
-  content         String
-  participants    Json // [{name, role}]
-  conference_date DateTime
-  action_items    Json? // Task 変換用
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
+  id                 String             @id @default(cuid())
+  org_id             String
+  case_id            String?
+  note_type          ConferenceNoteType @default(regular)
+  title              String
+  content            String
+  structured_content Json?
+  metadata           Json?
+  participants       Json // [{name, role}]
+  conference_date    DateTime
+  action_items       Json? // Task 変換用
+  created_at         DateTime           @default(now())
+  updated_at         DateTime           @updatedAt
 
   @@index([org_id])
   @@index([case_id])
+  @@index([note_type])
 }
 
 model EscalationRule {

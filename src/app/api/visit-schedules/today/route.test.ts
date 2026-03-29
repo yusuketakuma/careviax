@@ -31,9 +31,9 @@ describe('/api/visit-schedules/today', () => {
   });
 
   it('lists today visit schedules', async () => {
-    const response = await GET({
+    const response = (await GET({
       url: 'http://localhost/api/visit-schedules/today?pharmacist_id=pharm_1',
-    } as NextRequest);
+    } as NextRequest))!;
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({

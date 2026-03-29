@@ -98,9 +98,9 @@ describe('/api/cases', () => {
   });
 
   it('lists cases and resolves primary pharmacist names', async () => {
-    const response = await GET(
+    const response = (await GET(
       createRequest('http://localhost/api/cases?patient_id=patient_1&status=active&q=%E6%82%A3%E8%80%85')
-    );
+    ))!;
 
     expect(response.status).toBe(200);
     expect(careCaseFindManyMock).toHaveBeenCalledWith(
@@ -123,14 +123,14 @@ describe('/api/cases', () => {
   });
 
   it('creates a case for a patient in the same org', async () => {
-    const response = await POST(
+    const response = (await POST(
       createRequest('http://localhost/api/cases', {
         patient_id: 'patient_1',
         referral_source: '病院A',
         referral_date: '2026-03-28',
         notes: '初回相談',
       })
-    );
+    ))!;
 
     expect(response.status).toBe(201);
     expect(careCaseCreateMock).toHaveBeenCalledWith({
