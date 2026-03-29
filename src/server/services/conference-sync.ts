@@ -57,6 +57,26 @@ const CONFERENCE_BILLING_CONFIG = {
 
 type SupportedBillingNoteType = keyof typeof CONFERENCE_BILLING_CONFIG;
 
+/** Maps note_type → CareReport report_type(s) per SSOT section 7-1 */
+const REPORT_TYPE_MAP: Record<string, string[]> = {
+  pre_discharge: ['physician_report'],
+  service_manager: ['care_manager_report'],
+  death_conference: ['internal_record'],
+  care_team: ['internal_record'],
+  emergency: ['physician_report', 'internal_record'],
+  regular: ['internal_record'],
+};
+
+/** Human-readable Japanese label per note_type */
+const NOTE_TYPE_LABEL: Record<string, string> = {
+  pre_discharge: '退院前カンファレンス',
+  service_manager: 'サービス担当者会議',
+  death_conference: 'デスカンファレンス',
+  care_team: '薬剤師間カンファレンス',
+  emergency: '緊急カンファレンス',
+  regular: '定例会議',
+};
+
 /** Parse participants from note.participants field (JSON array [{name, role}]). */
 function parseParticipants(raw: unknown): Participant[] {
   if (!Array.isArray(raw)) return [];
@@ -107,18 +127,30 @@ export class ConferenceSyncService {
       medication_issues_created: 0,
     };
 
+    // Pre-fetch careCase once so sub-methods don't each query independently.
+    let patientId: string | null = null;
+    let primaryPharmacistId: string | null = null;
+    if (note.case_id) {
+      const careCase = await tx.careCase.findFirst({
+        where: { id: note.case_id, org_id: orgId },
+        select: { patient_id: true, primary_pharmacist_id: true },
+      });
+      patientId = careCase?.patient_id ?? null;
+      primaryPharmacistId = careCase?.primary_pharmacist_id ?? null;
+    }
+
     // 1. Batch-convert action_items to Tasks
     result.tasks_created = await this.convertActionItemsBatch(tx, orgId, note);
 
     // 2. Register billing candidate for pre_discharge / death_conference
     if (note.note_type === 'pre_discharge' || note.note_type === 'death_conference') {
-      const candidate = await this.registerBillingCandidate(tx, orgId, note);
+      const candidate = await this.registerBillingCandidate(tx, orgId, note, patientId, primaryPharmacistId);
       if (candidate) result.billing_candidate_id = candidate.id;
     }
 
     // 3. Create visit schedule proposal for pre_discharge (if next_visit_plan section exists)
     if (note.note_type === 'pre_discharge') {
-      const proposal = await this.proposeVisitSchedule(tx, orgId, note);
+      const proposal = await this.proposeVisitSchedule(tx, orgId, note, primaryPharmacistId);
       if (proposal) result.visit_proposal_id = proposal.id;
     }
 
@@ -128,12 +160,13 @@ export class ConferenceSyncService {
         tx,
         orgId,
         userId,
-        note
+        note,
+        patientId
       );
     }
 
     // 5. Generate CareReport draft(s) based on note_type
-    const reportDraftIds = await this.generateReportDraft(tx, orgId, userId, note);
+    const reportDraftIds = await this.generateReportDraft(tx, orgId, userId, note, patientId);
     if (reportDraftIds.length > 0) {
       result.report_draft_ids = reportDraftIds;
     }
@@ -142,8 +175,8 @@ export class ConferenceSyncService {
   }
 
   /**
-   * Converts all action_items in the note to Task records (upsert with dedupe_key).
-   * Returns the count of new tasks actually created.
+   * Converts all action_items in the note to Task records (batch insert, skip existing).
+   * Returns the total count of tasks (existing + newly created).
    */
   private static async convertActionItemsBatch(
     tx: TransactionClient,
@@ -156,25 +189,44 @@ export class ConferenceSyncService {
 
     if (actionItems.length === 0) return 0;
 
-    let created = 0;
-
+    // Build all dedupe keys upfront (only for items with a title)
+    type IndexedItem = { item: ActionItem; index: number; dedupeKey: string };
+    const validItems: IndexedItem[] = [];
     for (let index = 0; index < actionItems.length; index++) {
       const item = actionItems[index];
       if (!item?.title) continue;
+      validItems.push({
+        item,
+        index,
+        dedupeKey: `conference-action-item:${note.id}:${index}`,
+      });
+    }
+    if (validItems.length === 0) return 0;
 
-      const dedupeKey = `conference-action-item:${note.id}:${index}`;
+    // One query to find all already-existing tasks for this conference note
+    const existingTasks = await tx.task.findMany({
+      where: {
+        related_entity_id: note.id,
+        related_entity_type: 'conference_note',
+        org_id: orgId,
+      },
+      select: { dedupe_key: true },
+    });
+    const existingDedupeKeys = new Set(
+      existingTasks.map((t) => t.dedupe_key).filter(Boolean)
+    );
 
-      const result = await tx.task.upsert({
-        where: {
-          org_id_dedupe_key: {
-            org_id: orgId,
-            dedupe_key: dedupeKey,
-          },
-        },
-        create: {
+    // Filter to only items that do not yet exist
+    const newItems = validItems.filter(
+      ({ dedupeKey }) => !existingDedupeKeys.has(dedupeKey)
+    );
+
+    if (newItems.length > 0) {
+      await tx.task.createMany({
+        data: newItems.map(({ item, index, dedupeKey }) => ({
           org_id: orgId,
           task_type: 'conference_action_item',
-          title: item.title,
+          title: item.title!,
           description: `${note.title} のアクションアイテム`,
           priority: 'normal',
           dedupe_key: dedupeKey,
@@ -189,19 +241,13 @@ export class ConferenceSyncService {
             assignee_label: item.assignee ?? null,
             conference_metadata: note.metadata ?? null,
           },
-        },
-        update: {},
-        select: { id: true },
+        })),
+        skipDuplicates: true,
       });
-
-      // Count as created if the item had no prior converted_task_id
-      if (!item.converted_task_id) {
-        created++;
-      }
-      void result;
     }
 
-    return created;
+    // Return total count: existing + newly created
+    return existingTasks.length + newItems.length;
   }
 
   /**
@@ -218,20 +264,15 @@ export class ConferenceSyncService {
   private static async registerBillingCandidate(
     tx: TransactionClient,
     orgId: string,
-    note: NoteInput
+    note: NoteInput,
+    patientId: string | null,
+    _primaryPharmacistId: string | null
   ): Promise<{ id: string } | null> {
-    if (!note.case_id) return null;
+    if (!note.case_id || !patientId) return null;
 
     const noteType = note.note_type as SupportedBillingNoteType;
     const billingConfig = CONFERENCE_BILLING_CONFIG[noteType];
     if (!billingConfig) return null;
-
-    // Resolve patient_id and primary_pharmacist_id from case
-    const careCase = await tx.careCase.findFirst({
-      where: { id: note.case_id, org_id: orgId },
-      select: { patient_id: true, primary_pharmacist_id: true },
-    });
-    if (!careCase) return null;
 
     // Billing month is anchored to the conference_date if available,
     // otherwise falls back to the current month.
@@ -251,7 +292,7 @@ export class ConferenceSyncService {
     const evidenceDetails = await this.buildBillingEvidenceDetails(
       tx,
       orgId,
-      careCase.patient_id,
+      patientId,
       note.case_id,
       noteType,
       sections,
@@ -296,7 +337,7 @@ export class ConferenceSyncService {
       },
       create: {
         org_id: orgId,
-        patient_id: careCase.patient_id,
+        patient_id: patientId,
         dedupe_key: dedupeKey,
         billing_month: billingMonth,
         billing_code: billingConfig.billing_code,
@@ -339,39 +380,40 @@ export class ConferenceSyncService {
     const notes: string[] = [];
 
     if (noteType === 'pre_discharge') {
-      // Check active consent record (visit_medication_management)
-      const consent = await tx.consentRecord.findFirst({
-        where: {
-          org_id: orgId,
-          patient_id: patientId,
-          consent_type: 'visit_medication_management',
-          is_active: true,
-          revoked_date: null,
-          OR: [
-            { expiry_date: null },
-            { expiry_date: { gte: referenceDate } },
-          ],
-        },
-        select: { id: true },
-      });
+      // Check active consent record and approved management plan in parallel
+      const [consent, plan] = await Promise.all([
+        tx.consentRecord.findFirst({
+          where: {
+            org_id: orgId,
+            patient_id: patientId,
+            consent_type: 'visit_medication_management',
+            is_active: true,
+            revoked_date: null,
+            OR: [
+              { expiry_date: null },
+              { expiry_date: { gte: referenceDate } },
+            ],
+          },
+          select: { id: true },
+        }),
+        tx.managementPlan.findFirst({
+          where: {
+            org_id: orgId,
+            case_id: caseId,
+            status: 'approved',
+            approved_at: { not: null },
+            OR: [
+              { next_review_date: null },
+              { next_review_date: { gte: referenceDate } },
+            ],
+          },
+          select: { id: true },
+        }),
+      ]);
+
       if (!consent) {
         missing.push('在宅療養管理同意記録（ConsentRecord）が未取得です');
       }
-
-      // Check approved management plan
-      const plan = await tx.managementPlan.findFirst({
-        where: {
-          org_id: orgId,
-          case_id: caseId,
-          status: 'approved',
-          approved_at: { not: null },
-          OR: [
-            { next_review_date: null },
-            { next_review_date: { gte: referenceDate } },
-          ],
-        },
-        select: { id: true },
-      });
       if (!plan) {
         missing.push('服薬管理計画書（ManagementPlan）が承認されていません');
       }
@@ -424,23 +466,14 @@ export class ConferenceSyncService {
   private static async proposeVisitSchedule(
     tx: TransactionClient,
     orgId: string,
-    note: NoteInput
+    note: NoteInput,
+    primaryPharmacistId: string | null
   ): Promise<{ id: string } | null> {
-    if (!note.case_id) return null;
+    if (!note.case_id || !primaryPharmacistId) return null;
 
     const sections = parseStructuredSections(note.structured_content);
     const visitPlanSection = findSection(sections, 'next_visit_plan');
     if (!visitPlanSection?.body) return null;
-
-    // Resolve patient info via case to find an assigned pharmacist
-    const careCase = await tx.careCase.findFirst({
-      where: { id: note.case_id, org_id: orgId },
-      select: {
-        id: true,
-        primary_pharmacist_id: true,
-      },
-    });
-    if (!careCase?.primary_pharmacist_id) return null;
 
     // Propose visit 7 days from now as a default planning horizon for pre_discharge
     const proposedDate = new Date();
@@ -474,7 +507,7 @@ export class ConferenceSyncService {
         proposal_status: 'proposed',
         patient_contact_status: 'pending',
         proposed_date: proposedDateOnly,
-        proposed_pharmacist_id: careCase.primary_pharmacist_id,
+        proposed_pharmacist_id: primaryPharmacistId,
         assignment_mode: 'primary',
         proposal_reason: dedupeKey,
         escalation_reason: null,
@@ -493,20 +526,14 @@ export class ConferenceSyncService {
     tx: TransactionClient,
     orgId: string,
     userId: string,
-    note: NoteInput
+    note: NoteInput,
+    patientId: string | null
   ): Promise<number> {
-    if (!note.case_id) return 0;
+    if (!note.case_id || !patientId) return 0;
 
     const sections = parseStructuredSections(note.structured_content);
     const issueSection = findSection(sections, 'medication_issues');
     if (!issueSection?.body?.trim()) return 0;
-
-    // Resolve patient_id from case
-    const careCase = await tx.careCase.findFirst({
-      where: { id: note.case_id, org_id: orgId },
-      select: { patient_id: true },
-    });
-    if (!careCase) return 0;
 
     // Parse issue titles: one per non-empty line
     const issueTitles = issueSection.body
@@ -517,27 +544,23 @@ export class ConferenceSyncService {
     if (issueTitles.length === 0) return 0;
 
     const now = new Date();
-    let created = 0;
 
-    for (const title of issueTitles) {
-      await tx.medicationIssue.create({
-        data: {
-          org_id: orgId,
-          patient_id: careCase.patient_id,
-          case_id: note.case_id,
-          title,
-          description: `カンファレンス「${note.title}」で確認された薬学的課題`,
-          status: 'open',
-          priority: 'medium',
-          category: 'other',
-          identified_by: userId,
-          identified_at: now,
-        },
-      });
-      created++;
-    }
+    await tx.medicationIssue.createMany({
+      data: issueTitles.map((title) => ({
+        org_id: orgId,
+        patient_id: patientId,
+        case_id: note.case_id!,
+        title,
+        description: `カンファレンス「${note.title}」で確認された薬学的課題`,
+        status: 'open',
+        priority: 'medium',
+        category: 'other',
+        identified_by: userId,
+        identified_at: now,
+      })),
+    });
 
-    return created;
+    return issueTitles.length;
   }
 
   /**
@@ -549,30 +572,11 @@ export class ConferenceSyncService {
     tx: TransactionClient,
     orgId: string,
     userId: string,
-    note: NoteInput
+    note: NoteInput,
+    patientId: string | null
   ): Promise<string[]> {
-    // Map note_type → report_type(s) per SSOT section 7-1
-    const reportTypeMap: Record<string, string[]> = {
-      pre_discharge: ['physician_report'],
-      service_manager: ['care_manager_report'],
-      death_conference: ['internal_record'],
-      care_team: ['internal_record'],
-      emergency: ['physician_report', 'internal_record'],
-      regular: ['internal_record'],
-    };
-
-    const reportTypes = reportTypeMap[note.note_type];
+    const reportTypes = REPORT_TYPE_MAP[note.note_type];
     if (!reportTypes || reportTypes.length === 0) return [];
-
-    // Resolve patient_id from case (required field on CareReport)
-    let patientId: string | null = null;
-    if (note.case_id) {
-      const careCase = await tx.careCase.findFirst({
-        where: { id: note.case_id, org_id: orgId },
-        select: { patient_id: true },
-      });
-      patientId = careCase?.patient_id ?? null;
-    }
     if (!patientId) return [];
 
     // Build report content from structured_content sections
@@ -582,47 +586,40 @@ export class ConferenceSyncService {
       .map((s) => `### ${s.label}\n${s.body}`)
       .join('\n\n');
 
-    const noteTypeLabel: Record<string, string> = {
-      pre_discharge: '退院前カンファレンス',
-      service_manager: 'サービス担当者会議',
-      death_conference: 'デスカンファレンス',
-      care_team: '薬剤師間カンファレンス',
-      emergency: '緊急カンファレンス',
-      regular: '定例会議',
-    };
-    const label = noteTypeLabel[note.note_type] ?? '会議';
+    const label = NOTE_TYPE_LABEL[note.note_type] ?? '会議';
 
-    const createdIds: string[] = [];
+    type ReportType =
+      | 'physician_report'
+      | 'care_manager_report'
+      | 'facility_handoff'
+      | 'nurse_share'
+      | 'family_share'
+      | 'internal_record';
 
-    for (const reportType of reportTypes) {
-      // Deduplicate: skip if a draft with this conference_note_id and report_type already exists.
-      // CareReport has no dedupe_key, so we check via content metadata.
-      const existing = await tx.careReport.findFirst({
-        where: {
-          org_id: orgId,
-          patient_id: patientId,
-          report_type: reportType as
-            | 'physician_report'
-            | 'care_manager_report'
-            | 'facility_handoff'
-            | 'nurse_share'
-            | 'family_share'
-            | 'internal_record',
-          status: 'draft',
-          // Check metadata embedded in content
-          content: {
-            path: ['conference_note_id'],
-            equals: note.id,
-          },
+    // One query to find all existing drafts for this conference note
+    const existingDrafts = await tx.careReport.findMany({
+      where: {
+        org_id: orgId,
+        patient_id: patientId,
+        status: 'draft',
+        content: {
+          path: ['conference_note_id'],
+          equals: note.id,
         },
-        select: { id: true },
-      });
-      if (existing) {
-        createdIds.push(existing.id);
-        continue;
-      }
+      },
+      select: { id: true, report_type: true },
+    });
+    const existingTypeSet = new Set(existingDrafts.map((r) => r.report_type));
 
-      const content: Record<string, unknown> = {
+    const createdIds: string[] = existingDrafts.map((r) => r.id);
+
+    // Filter to only report types that don't already exist
+    const newReportTypes = reportTypes.filter(
+      (rt) => !existingTypeSet.has(rt as ReportType)
+    );
+
+    if (newReportTypes.length > 0) {
+      const contentBase = {
         conference_note_id: note.id,
         note_type: note.note_type,
         title: `${label} 報告書ドラフト — ${note.title}`,
@@ -632,26 +629,33 @@ export class ConferenceSyncService {
           .map((s) => ({ key: s.key, label: s.label, body: s.body ?? '' })),
       };
 
-      const report = await tx.careReport.create({
-        data: {
+      await tx.careReport.createMany({
+        data: newReportTypes.map((reportType) => ({
           org_id: orgId,
           patient_id: patientId,
           case_id: note.case_id ?? null,
-          report_type: reportType as
-            | 'physician_report'
-            | 'care_manager_report'
-            | 'facility_handoff'
-            | 'nurse_share'
-            | 'family_share'
-            | 'internal_record',
-          status: 'draft',
-          content: content as import('@prisma/client').Prisma.InputJsonValue,
+          report_type: reportType as ReportType,
+          status: 'draft' as const,
+          content: contentBase as Prisma.InputJsonValue,
           created_by: userId,
+        })),
+      });
+
+      // Fetch the newly created IDs
+      const newDrafts = await tx.careReport.findMany({
+        where: {
+          org_id: orgId,
+          patient_id: patientId,
+          status: 'draft',
+          report_type: { in: newReportTypes as ReportType[] },
+          content: {
+            path: ['conference_note_id'],
+            equals: note.id,
+          },
         },
         select: { id: true },
       });
-
-      createdIds.push(report.id);
+      createdIds.push(...newDrafts.map((r) => r.id));
     }
 
     return createdIds;

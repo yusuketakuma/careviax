@@ -262,6 +262,34 @@ function formatEtaLabel(
   return format(shifted, 'HH:mm');
 }
 
+type OnboardingReadiness = {
+  consent_obtained: boolean;
+  first_visit_doc_delivered: boolean;
+  emergency_contact_set: boolean;
+};
+
+function OnboardingWarningBadges({ readiness }: { readiness: OnboardingReadiness }) {
+  const warnings = [
+    !readiness.consent_obtained && (
+      <Badge key="consent" variant="destructive" className="text-xs">
+        同意未取得
+      </Badge>
+    ),
+    !readiness.first_visit_doc_delivered && (
+      <Badge key="fvd" variant="outline" className="text-xs border-orange-500 text-orange-600">
+        初回文書未交付
+      </Badge>
+    ),
+    !readiness.emergency_contact_set && (
+      <Badge key="ec" variant="outline" className="text-xs border-yellow-500 text-yellow-600">
+        緊急連絡先未登録
+      </Badge>
+    ),
+  ].filter(Boolean);
+  if (warnings.length === 0) return null;
+  return <div className="flex flex-wrap gap-1.5">{warnings}</div>;
+}
+
 export function ScheduleDayView() {
   const router = useRouter();
   const orgId = useOrgId();
@@ -4344,39 +4372,7 @@ export function ScheduleDayView() {
                 )}
 
                 {preparationDetails.pack.onboarding_readiness && (
-                  (() => {
-                    const r = preparationDetails.pack.onboarding_readiness;
-                    const warnings = [
-                      !r.consent_obtained && (
-                        <Badge key="consent" variant="destructive" className="text-xs">
-                          同意未取得
-                        </Badge>
-                      ),
-                      !r.first_visit_doc_delivered && (
-                        <Badge
-                          key="fvd"
-                          variant="outline"
-                          className="text-xs border-orange-500 text-orange-600"
-                        >
-                          初回文書未交付
-                        </Badge>
-                      ),
-                      !r.emergency_contact_set && (
-                        <Badge
-                          key="ec"
-                          variant="outline"
-                          className="text-xs border-yellow-500 text-yellow-600"
-                        >
-                          緊急連絡先未登録
-                        </Badge>
-                      ),
-                    ].filter(Boolean);
-                    return warnings.length > 0 ? (
-                      <div className="flex flex-wrap gap-1.5">
-                        {warnings}
-                      </div>
-                    ) : null;
-                  })()
+                  <OnboardingWarningBadges readiness={preparationDetails.pack.onboarding_readiness} />
                 )}
 
                 {preparationDetails.pack.previous_visit && (

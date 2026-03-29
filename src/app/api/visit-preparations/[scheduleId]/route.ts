@@ -16,6 +16,7 @@ import {
   selectScheduleHomeCareFeatureHighlights,
 } from '@/server/services/home-care-ops';
 import { getScheduleVisitBrief } from '@/server/services/visit-brief';
+import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 
 type IntakeLineSummary = {
   drug_name: string;
@@ -385,13 +386,7 @@ export async function GET(
   };
 
   // HVI-01C: build intake_context from home_visit_intake JSON and scheduling_preference
-  const rawVisitSupport = caseData.required_visit_support as Record<string, unknown> | null;
-  const intakeData = (
-    rawVisitSupport?.home_visit_intake != null &&
-    typeof rawVisitSupport.home_visit_intake === 'object'
-      ? rawVisitSupport.home_visit_intake
-      : {}
-  ) as Record<string, unknown>;
+  const intakeData = getHomeVisitIntake(caseData.required_visit_support);
   const schedulingPref = patient.scheduling_preference;
 
   const intake_context = {
@@ -408,25 +403,19 @@ export async function GET(
     mcs_linked: schedulingPref?.mcs_linked ?? null,
 
     // From home_visit_intake JSON (CareCase.required_visit_support)
-    money_management: (intakeData.money_management as string | null | undefined) ?? null,
-    family_key_person: (intakeData.family_key_person as string | null | undefined) ?? null,
-    care_level: (intakeData.care_level as string | null | undefined) ?? null,
-    adl_level: (intakeData.adl_level as string | null | undefined) ?? null,
-    dementia_level: (intakeData.dementia_level as string | null | undefined) ?? null,
-    special_medical_procedures: Array.isArray(intakeData.special_medical_procedures)
-      ? (intakeData.special_medical_procedures as string[])
-      : [],
-    special_medical_notes:
-      (intakeData.special_medical_notes as string | null | undefined) ?? null,
-    ent_prescription: (intakeData.ent_prescription as string | null | undefined) ?? null,
-    narcotics_base: (intakeData.narcotics_base as string | null | undefined) ?? null,
-    narcotics_rescue: (intakeData.narcotics_rescue as string | null | undefined) ?? null,
-    infection_isolation: (intakeData.infection_isolation as string | null | undefined) ?? null,
-    residual_medication_status:
-      (intakeData.residual_medication_status as string | null | undefined) ?? null,
-    medication_support_methods: Array.isArray(intakeData.medication_support_methods)
-      ? (intakeData.medication_support_methods as string[])
-      : [],
+    money_management: intakeData?.money_management ?? null,
+    family_key_person: intakeData?.family_key_person ?? null,
+    care_level: intakeData?.care_level ?? null,
+    adl_level: intakeData?.adl_level ?? null,
+    dementia_level: intakeData?.dementia_level ?? null,
+    special_medical_procedures: intakeData?.special_medical_procedures ?? [],
+    special_medical_notes: intakeData?.special_medical_notes ?? null,
+    ent_prescription: intakeData?.ent_prescription ?? null,
+    narcotics_base: intakeData?.narcotics_base ?? null,
+    narcotics_rescue: intakeData?.narcotics_rescue ?? null,
+    infection_isolation: intakeData?.infection_isolation ?? null,
+    residual_medication_status: intakeData?.residual_medication_status ?? null,
+    medication_support_methods: intakeData?.medication_support_methods ?? [],
   };
 
   const sameFacilitySchedules = sameDaySchedules.filter((item) => {

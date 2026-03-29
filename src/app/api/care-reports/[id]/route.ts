@@ -43,22 +43,19 @@ export async function GET(
       delivery_records: {
         orderBy: { created_at: 'desc' },
       },
+      case_: {
+        select: { required_visit_support: true },
+      },
     },
   });
 
   if (!report) return notFound('報告書が見つかりません');
 
   // case_id がある場合は intake baseline context を付加してUIでの表示に利用する
-  let intakeBaselineContext: ReturnType<typeof getHomeVisitIntake> = null;
-  if (report.case_id) {
-    const careCase = await prisma.careCase.findFirst({
-      where: { id: report.case_id, org_id: ctx.orgId },
-      select: { required_visit_support: true },
-    });
-    intakeBaselineContext = getHomeVisitIntake(careCase?.required_visit_support);
-  }
+  const intakeBaselineContext = getHomeVisitIntake(report.case_?.required_visit_support ?? null);
+  const { case_: _case, ...reportData } = report;
 
-  return success({ data: { ...report, intake_baseline_context: intakeBaselineContext } });
+  return success({ data: { ...reportData, intake_baseline_context: intakeBaselineContext } });
 }
 
 export async function PATCH(

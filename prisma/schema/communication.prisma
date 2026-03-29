@@ -121,6 +121,7 @@ model CareReport {
   visit_record_id  String?
   patient_id       String
   case_id          String?
+  case_            CareCase?    @relation(fields: [case_id], references: [id])
   report_type      ReportType
   status           ReportStatus @default(draft)
   content          Json
@@ -135,6 +136,7 @@ model CareReport {
   @@index([org_id])
   @@index([patient_id])
   @@index([status])
+  @@index([case_id])
 }
 
 model DeliveryRecord {

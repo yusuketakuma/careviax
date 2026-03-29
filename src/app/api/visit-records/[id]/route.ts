@@ -13,7 +13,7 @@ import {
   toVisitRecordAttachment,
   type VisitRecordAttachment,
 } from '@/server/services/file-storage';
-import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
+import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
 
 function parseStoredVisitRecordAttachments(value: unknown): VisitRecordAttachment[] {
   if (!Array.isArray(value)) return [];
@@ -157,22 +157,7 @@ export async function GET(
   const intakeData = getHomeVisitIntake(activeCase?.required_visit_support ?? null);
   const visitBeforeContactRequired =
     patientSchedulePref?.visit_before_contact_required ?? null;
-  const baselineContext =
-    intakeData || visitBeforeContactRequired !== null
-      ? {
-          care_level: intakeData?.care_level ?? null,
-          adl_level: intakeData?.adl_level ?? null,
-          dementia_level: intakeData?.dementia_level ?? null,
-          medication_support_methods: intakeData?.medication_support_methods ?? [],
-          special_medical_procedures: intakeData?.special_medical_procedures ?? [],
-          family_key_person: intakeData?.family_key_person ?? null,
-          money_management: intakeData?.money_management ?? null,
-          visit_before_contact_required: visitBeforeContactRequired,
-          narcotics_base: intakeData?.narcotics_base ?? null,
-          narcotics_rescue: intakeData?.narcotics_rescue ?? null,
-          infection_isolation: intakeData?.infection_isolation ?? null,
-        }
-      : null;
+  const baselineContext = buildBaselineContext(intakeData, visitBeforeContactRequired);
 
   return success({
     ...record,

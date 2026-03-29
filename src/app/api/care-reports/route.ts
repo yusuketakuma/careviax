@@ -4,7 +4,7 @@ import { success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
-import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
+import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
 
 const createCareReportSchema = z.object({
   patient_id: z.string().min(1, '患者IDは必須です'),
@@ -96,7 +96,6 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  // intake baseline context を取得（case_id がある場合）
   let enrichedContent = parsed.data.content as Record<string, unknown>;
   let recipientPrefill: { recipient_name?: string; recipient_organization?: string } | undefined;
 
@@ -109,26 +108,8 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     const intake = getHomeVisitIntake(careCase?.required_visit_support) ?? undefined;
 
     if (intake) {
-      const baselineContext = {
-        care_level: intake.care_level,
-        adl_level: intake.adl_level,
-        dementia_level: intake.dementia_level,
-        special_medical_procedures: intake.special_medical_procedures,
-        primary_disease: intake.primary_disease,
-        requester: intake.requester
-          ? {
-              contact_name: intake.requester.contact_name,
-              organization_name: intake.requester.organization_name,
-              profession: intake.requester.profession,
-              phone: intake.requester.phone,
-              fax: intake.requester.fax,
-            }
-          : undefined,
-      };
+      enrichedContent = { ...enrichedContent, baseline_context: buildBaselineContext(intake) };
 
-      enrichedContent = { ...enrichedContent, baseline_context: baselineContext };
-
-      // 依頼元が医師の場合、recipient 情報を pre-fill するためのメタデータを付与
       if (
         intake.requester?.profession === 'physician' &&
         parsed.data.report_type === 'physician_report'

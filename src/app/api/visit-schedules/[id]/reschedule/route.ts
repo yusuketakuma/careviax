@@ -12,6 +12,7 @@ import { formatVisitWorkflowGateIssues, type VisitWorkflowGateIssue } from '@/se
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import type { HomeVisitIntake } from '@/lib/patient/home-visit-intake';
+import { fetchEmergencyContacts } from '@/lib/patient/emergency-contacts';
 
 const rescheduleSchema = z.object({
   reason: z.string().min(1, 'リスケ理由は必須です'),
@@ -846,25 +847,7 @@ export async function POST(
     });
 
     // FVD-01C: Fetch emergency contacts as SSOT for reschedule contact suggestions
-    const emergencyContacts = await tx.contactParty.findMany({
-      where: {
-        org_id: ctx.orgId,
-        patient_id: schedule.case_.patient_id,
-        is_emergency_contact: true,
-      },
-      select: {
-        id: true,
-        name: true,
-        relation: true,
-        phone: true,
-        email: true,
-        fax: true,
-        is_primary: true,
-        organization_name: true,
-        notes: true,
-      },
-      orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
-    });
+    const emergencyContacts = await fetchEmergencyContacts(tx, ctx.orgId, schedule.case_.patient_id);
 
     // FVD-01C: Fetch scheduling preference for UI-facing contact suggestion metadata
     const schedulingPreferenceRecord = await tx.patientSchedulePreference.findFirst({

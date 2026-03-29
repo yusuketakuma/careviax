@@ -3,11 +3,10 @@ import { prisma } from '@/lib/db/client';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
 import { listCommunicationQueue } from '@/server/services/communication-queue';
 import { generateVisitBriefAiSummary } from '@/server/services/visit-brief-ai';
-import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
+import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
 import type {
   VisitBrief,
   VisitBriefAiSummary,
-  VisitBriefBaselineContext,
   VisitBriefChangeType,
   VisitBriefCommunicationItem,
   VisitBriefConferenceSummary,
@@ -708,37 +707,6 @@ async function buildAiSummary(args: {
   });
 }
 
-function buildBaselineContext(args: {
-  intakeData: {
-    care_level?: string;
-    adl_level?: string;
-    dementia_level?: string;
-    medication_support_methods?: string[];
-    special_medical_procedures?: string[];
-    family_key_person?: string;
-    money_management?: string;
-    narcotics_base?: boolean;
-    narcotics_rescue?: boolean;
-    infection_isolation?: string;
-  } | null;
-  visitBeforeContactRequired: boolean | null;
-}): VisitBriefBaselineContext | null {
-  const { intakeData, visitBeforeContactRequired } = args;
-  if (!intakeData && visitBeforeContactRequired === null) return null;
-  return {
-    care_level: intakeData?.care_level ?? null,
-    adl_level: intakeData?.adl_level ?? null,
-    dementia_level: intakeData?.dementia_level ?? null,
-    medication_support_methods: intakeData?.medication_support_methods ?? [],
-    special_medical_procedures: intakeData?.special_medical_procedures ?? [],
-    family_key_person: intakeData?.family_key_person ?? null,
-    money_management: intakeData?.money_management ?? null,
-    visit_before_contact_required: visitBeforeContactRequired,
-    narcotics_base: intakeData?.narcotics_base ?? null,
-    narcotics_rescue: intakeData?.narcotics_rescue ?? null,
-    infection_isolation: intakeData?.infection_isolation ?? null,
-  };
-}
 
 export async function getPatientVisitBrief(
   db: DbClient,
@@ -1018,21 +986,23 @@ export async function getPatientVisitBrief(
         required_visit_support: true,
       },
     }),
-    db.conferenceNote.findMany({
-      where: {
-        org_id: args.orgId,
-        case_id: caseIds.length > 0 ? { in: caseIds } : undefined,
-        conference_date: { gte: thirtyDaysAgo },
-      },
-      orderBy: [{ conference_date: 'desc' }],
-      take: 10,
-      select: {
-        id: true,
-        title: true,
-        conference_date: true,
-        action_items: true,
-      },
-    }),
+    caseIds.length === 0
+      ? Promise.resolve([])
+      : db.conferenceNote.findMany({
+          where: {
+            org_id: args.orgId,
+            case_id: { in: caseIds },
+            conference_date: { gte: thirtyDaysAgo },
+          },
+          orderBy: [{ conference_date: 'desc' }],
+          take: 10,
+          select: {
+            id: true,
+            title: true,
+            conference_date: true,
+            action_items: true,
+          },
+        }),
   ]);
 
   if (!patient) {
@@ -1063,10 +1033,7 @@ export async function getPatientVisitBrief(
   const intakeData = getHomeVisitIntake(activeCase?.required_visit_support ?? null);
   const visitBeforeContactRequired =
     patient.scheduling_preference?.visit_before_contact_required ?? null;
-  const baselineContext = buildBaselineContext({
-    intakeData,
-    visitBeforeContactRequired,
-  });
+  const baselineContext = buildBaselineContext(intakeData, visitBeforeContactRequired);
 
   const communicationQueue = await listCommunicationQueue(db, {
     orgId: args.orgId,

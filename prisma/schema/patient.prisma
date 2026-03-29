@@ -117,6 +117,7 @@ model CareCase {
   medication_cycles MedicationCycle[]
   visit_schedules   VisitSchedule[]
   visit_schedule_proposals VisitScheduleProposal[]
+  care_reports      CareReport[]
 
   @@index([org_id])
   @@index([patient_id])

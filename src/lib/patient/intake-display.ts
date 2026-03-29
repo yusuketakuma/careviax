@@ -53,6 +53,13 @@ export type IntakeBadge = {
 const BADGE_KEYS = ['care_level', 'adl_level', 'dementia_level', 'special_medical_procedures'] as const;
 type BadgeKey = (typeof BADGE_KEYS)[number];
 
+const BADGE_LABEL_MAP: Record<BadgeKey, { label: string; labels: Record<string, string> }> = {
+  care_level: { label: '介護認定', labels: careLevelLabels },
+  adl_level: { label: 'ADL', labels: adlLabels },
+  dementia_level: { label: '認知症', labels: dementiaLabels },
+  special_medical_procedures: { label: '特別処置', labels: specialProcedureLabels },
+};
+
 /** Return true when a care/adl/dementia level warrants visual highlight */
 function isHighCareLevel(key: string, value: string): boolean {
   if (key === 'care_level') return ['care_3', 'care_4', 'care_5'].includes(value);
@@ -88,14 +95,7 @@ export function buildIntakeBadges(intake: HomeVisitIntake | null): IntakeBadge[]
     const raw = intake[key as keyof HomeVisitIntake] as string | undefined;
     if (!raw) continue;
 
-    const labelMap: Record<BadgeKey, { label: string; labels: Record<string, string> }> = {
-      care_level: { label: '介護認定', labels: careLevelLabels },
-      adl_level: { label: 'ADL', labels: adlLabels },
-      dementia_level: { label: '認知症', labels: dementiaLabels },
-      special_medical_procedures: { label: '特別処置', labels: specialProcedureLabels },
-    };
-
-    const meta = labelMap[key];
+    const meta = BADGE_LABEL_MAP[key];
     badges.push({
       key,
       label: meta.label,

@@ -242,17 +242,8 @@ function buildBaselineContext(intake: HomeVisitIntake): BaselineContext {
 
 export function buildPhysicianReport(ctx: PhysicianReportContext): PhysicianReportContent {
   const { patient, visitRecord, structuredSoap, prescriptionLines, residualMedications, pharmacistName, intake } = ctx;
-
-  // 依頼元が医師の場合、intake の requester 情報でケアチームの主治医情報を補完する
-  const prescriberResolved: PhysicianReportContext['prescriber'] =
-    intake?.requester?.profession === 'physician' && intake.requester.contact_name
-      ? {
-          name: intake.requester.contact_name,
-          organization_name: intake.requester.organization_name ?? ctx.prescriber.organization_name,
-        }
-      : ctx.prescriber;
   const { subjective, objective, assessment, plan } = structuredSoap;
-  const prescriber = prescriberResolved;
+  const prescriber = ctx.prescriber;
 
   const warnings: string[] = [];
 

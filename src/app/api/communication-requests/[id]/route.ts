@@ -1,4 +1,5 @@
 import { requireAuthContext } from '@/lib/auth/context';
+import { fetchEmergencyContacts } from '@/lib/patient/emergency-contacts';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, forbidden } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
@@ -57,25 +58,7 @@ export async function GET(
   // FVD-01C: Include emergency contacts as SSOT for contact target suggestions
   // Avoids re-inferring contacts from care team on every communication request load
   const emergencyContacts = request.patient_id
-    ? await prisma.contactParty.findMany({
-        where: {
-          org_id: orgId,
-          patient_id: request.patient_id,
-          is_emergency_contact: true,
-        },
-        select: {
-          id: true,
-          name: true,
-          relation: true,
-          phone: true,
-          email: true,
-          fax: true,
-          is_primary: true,
-          organization_name: true,
-          notes: true,
-        },
-        orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
-      })
+    ? await fetchEmergencyContacts(prisma, orgId, request.patient_id)
     : [];
 
   return success({

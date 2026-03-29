@@ -1,5 +1,6 @@
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import type { VisitBriefBaselineContext } from '@/types/visit-brief';
 
 export const requesterProfessionLabels: Record<string, string> = {
   physician: '医師',
@@ -161,6 +162,27 @@ export type HomeVisitIntake = {
     fax?: string;
   };
 };
+
+export function buildBaselineContext(
+  intake: HomeVisitIntake | null,
+  visitBeforeContactRequired?: boolean | null,
+): VisitBriefBaselineContext | null {
+  const vbcr = visitBeforeContactRequired ?? null;
+  if (!intake && vbcr === null) return null;
+  return {
+    care_level: intake?.care_level ?? null,
+    adl_level: intake?.adl_level ?? null,
+    dementia_level: intake?.dementia_level ?? null,
+    medication_support_methods: intake?.medication_support_methods ?? [],
+    special_medical_procedures: intake?.special_medical_procedures ?? [],
+    family_key_person: intake?.family_key_person ?? null,
+    money_management: intake?.money_management ?? null,
+    visit_before_contact_required: vbcr,
+    narcotics_base: intake?.narcotics_base ?? null,
+    narcotics_rescue: intake?.narcotics_rescue ?? null,
+    infection_isolation: intake?.infection_isolation ?? null,
+  };
+}
 
 export function getHomeVisitIntake(value: unknown): HomeVisitIntake | null {
   if (!value || typeof value !== 'object') return null;
