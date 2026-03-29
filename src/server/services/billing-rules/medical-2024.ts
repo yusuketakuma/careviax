@@ -409,6 +409,149 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
     source_url: MEDICAL_TABLE_URL,
     source_note: '調剤報酬点数表 区分15の6 在宅患者重複投薬・相互作用等防止管理料2 ロ 20点',
   },
+  // ── 在宅中心静脈栄養法加算 ──
+  {
+    ssot_key: 'medical.addition.central_venous_nutrition',
+    rule_type: 'addition',
+    service_type: 'medical_home_visit',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 155,
+    name: '在宅中心静脈栄養法加算',
+    code: 'MED_ADD_CENTRAL_VENOUS',
+    amount: 150,
+    conditions: {
+      requires_central_venous_nutrition: true,
+      special_cap_eligible: true,
+    },
+    source_url: MEDICAL_SOURCE_URL,
+    source_note: '調剤報酬点数表 区分15 在宅中心静脈栄養法加算 150点',
+  },
+
+  // ── 在宅薬学総合体制加算 ──
+  {
+    ssot_key: 'medical.addition.home_comprehensive_1',
+    rule_type: 'addition',
+    service_type: 'medical_home_visit',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'auto',
+    calculation_unit: 'point',
+    display_order: 160,
+    name: '在宅薬学総合体制加算1',
+    code: 'MED_ADD_HOME_COMPREHENSIVE_1',
+    amount: 15,
+    conditions: {
+      facility_standard_required: 'home_comprehensive_1',
+    },
+    source_url: MEDICAL_SOURCE_URL,
+    source_note: '調剤報酬点数表 区分15 在宅薬学総合体制加算1 15点（施設基準届出要）',
+  },
+  {
+    ssot_key: 'medical.addition.home_comprehensive_2',
+    rule_type: 'addition',
+    service_type: 'medical_home_visit',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'auto',
+    calculation_unit: 'point',
+    display_order: 165,
+    name: '在宅薬学総合体制加算2',
+    code: 'MED_ADD_HOME_COMPREHENSIVE_2',
+    amount: 50,
+    conditions: {
+      facility_standard_required: 'home_comprehensive_2',
+    },
+    source_url: MEDICAL_SOURCE_URL,
+    source_note: '調剤報酬点数表 区分15 在宅薬学総合体制加算2 50点（施設基準届出要）',
+  },
+
+  // ── 在宅移行初期管理料（令和6年新設） ──
+  {
+    ssot_key: 'medical.home_transition_initial',
+    rule_type: 'addition',
+    service_type: 'medical_home_visit',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 200,
+    name: '在宅移行初期管理料',
+    code: 'MED_HOME_TRANSITION_INITIAL',
+    amount: 240,
+    conditions: {
+      requires_initial_transition: true,
+      once_per_patient: true,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 区分15の8 在宅移行初期管理料 240点（令和6年新設。退院処方後の在宅移行時に1回）',
+  },
+
+  // ── 退院時共同指導料 ──
+  {
+    ssot_key: 'medical.discharge_joint_guidance',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 300,
+    name: '退院時共同指導料',
+    code: 'MED_DISCHARGE_JOINT_GUIDANCE',
+    amount: 600,
+    conditions: {
+      requires_hospital_conference: true,
+      once_per_admission: true,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 区分15の4 退院時共同指導料 600点（入院中の患者1回）',
+  },
+
+  // ── 在宅患者緊急時等共同指導料 ──
+  {
+    ssot_key: 'medical.emergency_joint_guidance',
+    rule_type: 'addition',
+    service_type: 'medical_home_visit',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 350,
+    name: '在宅患者緊急時等共同指導料',
+    code: 'MED_EMERGENCY_JOINT_GUIDANCE',
+    amount: 700,
+    conditions: {
+      requires_emergency_conference: true,
+      monthly_cap: 2,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 区分15の7 在宅患者緊急時等共同指導料 700点（月2回まで）',
+  },
+
+  // ── 経管投薬支援料 ──
+  {
+    ssot_key: 'medical.enteral_medication_support',
+    rule_type: 'addition',
+    service_type: 'generic',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 380,
+    name: '経管投薬支援料',
+    code: 'MED_ENTERAL_MEDICATION_SUPPORT',
+    amount: 100,
+    conditions: {
+      requires_enteral_feeding: true,
+      once_per_patient: true,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 区分14の4 経管投薬支援料 100点（初回のみ）',
+  },
+
   // ── 在宅患者緊急訪問薬剤管理指導料（令和6年度） ──
   // 介護認定の有無に関わらず医療保険で算定。
   // 1: 計画的訪問の対象疾患の急変 500点
