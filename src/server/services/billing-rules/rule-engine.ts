@@ -1,0 +1,230 @@
+import { Prisma } from '@prisma/client';
+import type { BillingEvidenceContext, BillingCandidateSpec } from './types';
+import { ensureHomeCareBillingSsot } from './seeder';
+import { HOME_CARE_BILLING_RULESET_VERSION } from './seeder';
+
+type Tx = Prisma.TransactionClient;
+
+function buildingTier(buildingPatientCount: number) {
+  if (buildingPatientCount >= 10) return 'multi_10_plus';
+  if (buildingPatientCount >= 2) return 'multi_2_9';
+  return 'single';
+}
+
+function conditionValue(
+  rule: Awaited<ReturnType<typeof getHomeCareBillingSsotSummary>>['rules'][number],
+  key: string
+) {
+  return ((rule.conditions ?? {}) as Record<string, unknown>)[key];
+}
+
+function hasRegionAddOn(
+  regionAddOns: BillingEvidenceContext['regionAddOnEligible'],
+  regionKey: string
+) {
+  return (regionAddOns ?? []).some((value) => value === regionKey);
+}
+
+export async function getHomeCareBillingSsotSummary(
+  tx: Tx,
+  orgId: string,
+  asOfDate?: Date
+) {
+  const now = asOfDate ?? new Date();
+
+  const [matrix, rules] = await Promise.all([
+    tx.sourceOfTruthMatrix.findFirst({
+      where: {
+        org_id: orgId,
+        entity_type: 'billing',
+      },
+    }),
+    tx.billingRule.findMany({
+      where: {
+        org_id: orgId,
+        billing_scope: 'home_care_ssot',
+        is_active: true,
+        OR: [
+          { effective_from: null },
+          { effective_from: { lte: now } },
+        ],
+        AND: [
+          { OR: [{ effective_to: null }, { effective_to: { gt: now } }] },
+        ],
+      },
+      orderBy: [{ display_order: 'asc' }, { created_at: 'asc' }],
+    }),
+  ]);
+
+  return {
+    source: matrix,
+    rules,
+  };
+}
+
+function chooseBaseRule(
+  rules: Awaited<ReturnType<typeof getHomeCareBillingSsotSummary>>['rules'],
+  context: BillingEvidenceContext
+) {
+  // 緊急訪問 → 在宅患者緊急訪問薬剤管理指導料を優先選択
+  // デフォルトは「2」（それ以外の急変 200点）。
+  // 「1」（計画的訪問対象疾患の急変 500点）は手動選択で昇格。
+  if (context.visitType === 'emergency') {
+    return (
+      rules.find((rule) => {
+        if (rule.rule_type !== 'base') return false;
+        if (rule.payer_basis !== 'medical') return false;
+        return (
+          conditionValue(rule, 'visit_type') === 'emergency' &&
+          conditionValue(rule, 'emergency_category') === 'other_exacerbation'
+        );
+      }) ?? null
+    );
+  }
+
+  const onlineRule =
+    context.onlineEligible
+      ? rules.find((rule) => {
+          if (rule.rule_type !== 'base') return false;
+          if (rule.service_type !== context.serviceType) return false;
+          if (rule.payer_basis !== context.payerBasis) return false;
+          if (rule.provider_scope && rule.provider_scope !== context.providerScope) return false;
+          return conditionValue(rule, 'requires_online_visit') === true;
+        }) ?? null
+      : null;
+
+  if (onlineRule) return onlineRule;
+
+  const tier = buildingTier(context.buildingPatientCount);
+  return (
+    rules.find((rule) => {
+      if (rule.rule_type !== 'base') return false;
+      if (rule.service_type !== context.serviceType) return false;
+      if (rule.payer_basis !== context.payerBasis) return false;
+      if (rule.provider_scope && rule.provider_scope !== context.providerScope) return false;
+      if (conditionValue(rule, 'requires_online_visit') === true) return false;
+      if (conditionValue(rule, 'visit_type') === 'emergency') return false;
+      return conditionValue(rule, 'building_tier') === tier;
+    }) ?? null
+  );
+}
+
+function manualRuleCandidates(
+  rules: Awaited<ReturnType<typeof getHomeCareBillingSsotSummary>>['rules'],
+  context: BillingEvidenceContext
+) {
+  return rules.filter((rule) => {
+    if (rule.service_type !== context.serviceType && rule.service_type !== 'generic') return false;
+    if (rule.payer_basis !== context.payerBasis) return false;
+    if (rule.provider_scope && rule.provider_scope !== context.providerScope) return false;
+    // Exclude emergency rules from manual candidates for non-emergency visits
+    if (conditionValue(rule, 'visit_type') === 'emergency' && context.visitType !== 'emergency') return false;
+    if (rule.rule_type === 'base') {
+      // For emergency visits, include emergency_visit.1 as manual upgrade option
+      if (context.visitType === 'emergency') {
+        return (
+          conditionValue(rule, 'visit_type') === 'emergency' &&
+          conditionValue(rule, 'emergency_category') !== 'other_exacerbation'
+        );
+      }
+      return conditionValue(rule, 'requires_online_visit') === true;
+    }
+    return true;
+  });
+}
+
+export async function buildBillingCandidateSpecs(
+  tx: Tx,
+  context: BillingEvidenceContext
+): Promise<BillingCandidateSpec[]> {
+  await ensureHomeCareBillingSsot(tx, context.orgId);
+  const { rules } = await getHomeCareBillingSsotSummary(tx, context.orgId);
+
+  const specs: BillingCandidateSpec[] = [];
+  const baseRule = chooseBaseRule(rules, context);
+  const tier = buildingTier(context.buildingPatientCount);
+
+  if (baseRule) {
+    let exclusionReason: string | null = null;
+    const conditions = (baseRule.conditions ?? {}) as Record<string, unknown>;
+    const monthlyCap = Number(
+      context.specialCapEligible ? conditions.special_monthly_cap : conditions.monthly_cap
+    );
+    const weeklyCap = Number(
+      context.specialCapEligible ? conditions.special_weekly_cap : conditions.weekly_pharmacist_cap
+    );
+
+    if (!context.claimable) {
+      exclusionReason = context.exclusionReason ?? '請求根拠の確認が必要です';
+    } else if (Number.isFinite(monthlyCap) && context.monthlyVisitCount > monthlyCap) {
+      exclusionReason = `月内算定上限を超過しています（${context.monthlyVisitCount}/${monthlyCap}）`;
+    } else if (Number.isFinite(weeklyCap) && context.weeklyVisitCount > weeklyCap) {
+      exclusionReason = `週内算定上限を超過しています（${context.weeklyVisitCount}/${weeklyCap}）`;
+    }
+
+    specs.push({
+      ssotKey: baseRule.ssot_key ?? baseRule.code ?? baseRule.id,
+      code: baseRule.code ?? baseRule.id,
+      name: baseRule.name,
+      status: exclusionReason ? 'excluded' : 'confirmed',
+      points: baseRule.amount,
+      exclusionReason,
+      calculationBreakdown: {
+        calculation_unit: baseRule.calculation_unit,
+        building_patient_count: context.buildingPatientCount,
+        building_tier: tier,
+        online_eligible: context.onlineEligible,
+        monthly_visit_count: context.monthlyVisitCount,
+        weekly_visit_count: context.weeklyVisitCount,
+      },
+      sourceSnapshot: {
+        billing_scope: baseRule.billing_scope,
+        source_url: baseRule.source_url,
+        source_note: baseRule.source_note,
+        selection_mode: baseRule.selection_mode,
+        ruleset_version: HOME_CARE_BILLING_RULESET_VERSION,
+      },
+    });
+  }
+
+  for (const manualRule of manualRuleCandidates(rules, context)) {
+    const conditions = (manualRule.conditions ?? {}) as Record<string, unknown>;
+    const regionKey = String(conditions.region_add_on ?? '');
+    const requiresOnline = conditions.requires_online_visit === true;
+    const suggested =
+      (regionKey.length === 0 || hasRegionAddOn(context.regionAddOnEligible, regionKey)) &&
+      (!requiresOnline || context.onlineEligible);
+
+    const ratePercent = manualRule.calculation_unit === 'percent' ? manualRule.amount : null;
+    const derivedPoints =
+      ratePercent != null && baseRule ? Math.round((baseRule.amount * ratePercent) / 100) : manualRule.amount;
+
+    specs.push({
+      ssotKey: manualRule.ssot_key ?? manualRule.code ?? manualRule.id,
+      code: manualRule.code ?? manualRule.id,
+      name: manualRule.name,
+      status: context.claimable && suggested ? 'candidate' : 'excluded',
+      points: derivedPoints,
+      exclusionReason:
+        context.claimable && suggested
+          ? 'SSOT上の追加算定候補です。要件確認後に採否を確定してください'
+          : context.exclusionReason ?? '基礎算定が成立していないため候補化しません',
+      calculationBreakdown: {
+        calculation_unit: manualRule.calculation_unit,
+        rate_percent: ratePercent,
+        base_points: baseRule?.amount ?? null,
+        derived_points: derivedPoints,
+        conditions,
+      },
+      sourceSnapshot: {
+        billing_scope: manualRule.billing_scope,
+        source_url: manualRule.source_url,
+        source_note: manualRule.source_note,
+        selection_mode: manualRule.selection_mode,
+        ruleset_version: HOME_CARE_BILLING_RULESET_VERSION,
+      },
+    });
+  }
+
+  return specs;
+}
