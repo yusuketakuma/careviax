@@ -20,11 +20,14 @@ describe('rate-limit', () => {
   });
 
   it('scopes the default limiter by pathname as well as identifier', () => {
-    for (let index = 0; index < 100; index += 1) {
-      expect(checkRateLimit('203.0.113.10', '/api/patients').allowed).toBe(true);
+    // Use POST (write budget = 60) so the limit is reached within the loop.
+    for (let index = 0; index < 60; index += 1) {
+      expect(checkRateLimit('203.0.113.10', '/api/patients', 'POST').allowed).toBe(true);
     }
 
-    expect(checkRateLimit('203.0.113.10', '/api/patients').allowed).toBe(false);
-    expect(checkRateLimit('203.0.113.10', '/api/visit-schedules').allowed).toBe(true);
+    // 61st write request exceeds the write budget
+    expect(checkRateLimit('203.0.113.10', '/api/patients', 'POST').allowed).toBe(false);
+    // Different pathname has its own independent bucket
+    expect(checkRateLimit('203.0.113.10', '/api/visit-schedules', 'POST').allowed).toBe(true);
   });
 });
