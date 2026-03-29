@@ -26,6 +26,8 @@ export async function GET(req: NextRequest) {
   let lastCheckAt = new Date();
 
   const POLL_INTERVAL_MS = 5_000;
+  // Fix 4: Hard ceiling on stream lifetime to reclaim server resources.
+  const MAX_STREAM_DURATION_MS = 5 * 60_000; // 5 minutes
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -33,6 +35,17 @@ export async function GET(req: NextRequest) {
 
       let timer: ReturnType<typeof setTimeout> | null = null;
       let stopped = false;
+
+      const teardown = () => {
+        stopped = true;
+        if (timer) clearTimeout(timer);
+        clearTimeout(lifetime);
+        releaseSseConnection(userId);
+        controller.close();
+      };
+
+      // Safety valve: close stream after MAX_STREAM_DURATION_MS regardless of client state
+      const lifetime = setTimeout(teardown, MAX_STREAM_DURATION_MS);
 
       const poll = async () => {
         if (stopped) return;
@@ -65,12 +78,7 @@ export async function GET(req: NextRequest) {
 
       timer = setTimeout(poll, POLL_INTERVAL_MS);
 
-      req.signal.addEventListener('abort', () => {
-        stopped = true;
-        if (timer) clearTimeout(timer);
-        releaseSseConnection(userId);
-        controller.close();
-      });
+      req.signal.addEventListener('abort', teardown);
     },
   });
 

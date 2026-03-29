@@ -12,6 +12,7 @@ import {
 } from './request-context';
 import { withRoutePerformance } from '@/lib/utils/performance';
 import { logSecurityEvent } from './security-events';
+import { getClientIp } from '@/lib/api/request-ip';
 
 export type AuthContext = RequestAuthContext;
 
@@ -84,10 +85,7 @@ export async function requireAuthContext(
         })
       : null;
 
-  const ipAddress =
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    request.headers.get('x-real-ip') ??
-    undefined;
+  const ipAddress = getClientIp(request);
   const userAgent = request.headers.get('user-agent') ?? undefined;
   const path = request.nextUrl.pathname;
   const method = request.method;

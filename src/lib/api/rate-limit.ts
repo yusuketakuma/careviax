@@ -50,7 +50,8 @@ interface RateLimitEntry {
 const store = new Map<string, RateLimitEntry>();
 
 // Periodic cleanup — runs inside the process; safe to skip in test environments.
-let cleanupTimer: ReturnType<typeof setInterval> | null = null;
+// Fix 7: Use NodeJS.Timeout directly; .unref() is always present on Node.js intervals.
+let cleanupTimer: NodeJS.Timeout | null = null;
 
 function startCleanup() {
   if (cleanupTimer !== null) return;
@@ -64,9 +65,7 @@ function startCleanup() {
   }, RATE_LIMIT_CLEANUP_INTERVAL_MS);
 
   // Allow the process to exit without waiting for the interval.
-  if (typeof cleanupTimer === 'object' && cleanupTimer !== null && 'unref' in cleanupTimer) {
-    (cleanupTimer as ReturnType<typeof setInterval>).unref?.();
-  }
+  cleanupTimer.unref();
 }
 
 // Start cleanup unless we are in a test environment where explicit resets are used.
@@ -133,7 +132,7 @@ export interface RateLimitResult {
 export function checkRateLimit(
   identifier: string,
   pathname: string,
-  method = 'GET',
+  method: string,
 ): RateLimitResult {
   const read = isReadMethod(method);
   const maxRequests = read ? RATE_LIMIT_READ_MAX : RATE_LIMIT_WRITE_MAX;
