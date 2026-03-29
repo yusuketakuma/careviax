@@ -92,11 +92,38 @@ export async function POST(
         override_id: override.id,
         case_id: override.source_schedule.case_id,
         patient_id: override.source_schedule.case_.patient_id,
-        },
-      });
+      },
+    });
 
-    return updated;
+    // FVD-01C: Fetch emergency contacts as default recipients for post-approval notification
+    const emergencyContacts = await tx.contactParty.findMany({
+      where: {
+        org_id: ctx.orgId,
+        patient_id: override.source_schedule.case_.patient_id,
+        is_emergency_contact: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        relation: true,
+        phone: true,
+        email: true,
+        fax: true,
+        is_primary: true,
+        organization_name: true,
+        notes: true,
+      },
+      orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+    });
+
+    return { updated, emergencyContacts };
   }, { requestContext: ctx });
 
-  return success({ data: approved });
+  return success({
+    data: {
+      ...approved.updated,
+      // FVD-01C: Emergency contacts provided as default recipients for post-approval patient/family notification
+      suggested_contacts: approved.emergencyContacts,
+    },
+  });
 }

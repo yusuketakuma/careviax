@@ -252,6 +252,14 @@ model PatientSchedulePreference {
   preferred_contact_name  String?
   preferred_contact_phone String?
   notes                   String?
+  // HVI-01B: structured scheduling & onboarding fields
+  visit_before_contact_required Boolean?
+  first_visit_preferred_date    DateTime? @db.Date
+  first_visit_time_slot         String?
+  first_visit_time_note         String?
+  parking_available             Boolean?
+  primary_contact_preference    String?
+  mcs_linked                    Boolean?
   created_at              DateTime @default(now())
   updated_at              DateTime @updatedAt
 

@@ -6,12 +6,28 @@ import type { VitalSigns } from './structured-soap';
 
 export type { VitalSigns };
 
+export type BaselineContext = {
+  care_level?: string;
+  adl_level?: string;
+  dementia_level?: string;
+  special_medical_procedures?: string[];
+  primary_disease?: string;
+  requester?: {
+    contact_name?: string;
+    organization_name?: string;
+    profession?: string;
+    phone?: string;
+    fax?: string;
+  };
+};
+
 export type PhysicianReportContent = {
   patient: { name: string; birth_date: string; gender: string };
   report_date: string;
   visit_date: string;
   pharmacist_name: string;
   prescriber: { name: string; institution: string };
+  baseline_context?: BaselineContext;
   prescriptions: Array<{
     drug_name: string;
     dose: string;
@@ -54,6 +70,7 @@ export type CareManagerReportContent = {
   report_date: string;
   visit_date: string;
   pharmacist_name: string;
+  baseline_context?: BaselineContext;
   medication_management_summary: {
     total_drugs: number;
     compliance_summary: string;

@@ -145,6 +145,8 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     communicationQueue,
     patientRiskQueue,
     billingReviewTasks,
+    conferencePendingTasks,
+    conferenceUndeliveredReports,
   ] = await Promise.all([
     prisma.medicationCycle.groupBy({
       by: ['overall_status'],
@@ -644,6 +646,25 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         },
       },
     }),
+    prisma.task.count({
+      where: {
+        org_id: req.orgId,
+        related_entity_type: 'conference_note',
+        status: { notIn: ['completed', 'cancelled'] },
+      },
+    }),
+    prisma.$queryRaw<[{ count: bigint }]>`
+      SELECT COUNT(*)::bigint AS count
+      FROM "ConferenceNote"
+      WHERE org_id = ${req.orgId}
+        AND action_items IS NOT NULL
+        AND action_items != 'null'::jsonb
+        AND jsonb_array_length(action_items) > 0
+        AND EXISTS (
+          SELECT 1 FROM jsonb_array_elements(action_items) AS item
+          WHERE item->>'converted_task_id' IS NULL
+        )
+    `.then((rows) => Number(rows[0]?.count ?? 0)),
   ]);
   const homeCareFeatureSummary = await getHomeCareFeatureSummary(prisma, {
     orgId: req.orgId,
@@ -726,7 +747,12 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     new Set(upcomingSchedules.map((schedule) => schedule.case_id))
   );
 
-  const [activeVisitConsents, activeManagementPlans] = await Promise.all([
+  const [
+    activeVisitConsents,
+    activeManagementPlans,
+    missingFirstVisitDocCount,
+    missingEmergencyContactCount,
+  ] = await Promise.all([
     upcomingPatientIds.length === 0
       ? []
       : prisma.consentRecord.findMany({
@@ -751,6 +777,26 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
             OR: [{ next_review_date: null }, { next_review_date: { gte: today } }],
           },
           select: { case_id: true },
+        }),
+    upcomingCaseIds.length === 0
+      ? 0
+      : prisma.firstVisitDocument.count({
+          where: {
+            org_id: req.orgId,
+            case_id: { in: upcomingCaseIds },
+            delivered_at: { not: null },
+          },
+        }).then((deliveredCount) => Math.max(0, upcomingCaseIds.length - deliveredCount)),
+    upcomingPatientIds.length === 0
+      ? 0
+      : prisma.patient.count({
+          where: {
+            org_id: req.orgId,
+            id: { in: upcomingPatientIds },
+            contacts: {
+              none: { is_emergency_contact: true },
+            },
+          },
         }),
   ]);
 
@@ -1563,6 +1609,8 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         awaiting_reports: awaitingReports,
         missing_visit_consent: missingVisitConsentSchedules.length,
         missing_management_plan: missingManagementPlanSchedules.length,
+        missing_first_visit_doc: missingFirstVisitDocCount,
+        missing_emergency_contact: missingEmergencyContactCount,
       },
       operations_queue: {
         visit_demands: taskCountByType.visit_demand ?? 0,
@@ -1605,6 +1653,10 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       billing_prevention: billingPrevention,
       home_care_feature_summary: homeCareFeatureSummary,
       intake_linkage: intakeLinkage,
+      conference_follow_ups: {
+        pending_tasks: conferencePendingTasks,
+        undelivered_reports: conferenceUndeliveredReports,
+      },
       self_reports: triageSelfReports.map((report) => ({
         id: report.id,
         patient_name: patientNameById.get(report.patient_id) ?? '患者未登録',

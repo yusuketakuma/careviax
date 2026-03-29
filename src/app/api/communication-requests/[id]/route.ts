@@ -5,6 +5,87 @@ import { prisma } from '@/lib/db/client';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canReport',
+    message: '連携依頼の閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+  const orgId = ctx.orgId;
+
+  const { id } = await params;
+
+  const request = await prisma.communicationRequest.findFirst({
+    where: { id, org_id: orgId },
+    select: {
+      id: true,
+      org_id: true,
+      patient_id: true,
+      case_id: true,
+      request_type: true,
+      template_key: true,
+      recipient_name: true,
+      recipient_role: true,
+      related_entity_type: true,
+      related_entity_id: true,
+      context_snapshot: true,
+      status: true,
+      subject: true,
+      content: true,
+      requested_by: true,
+      requested_at: true,
+      due_date: true,
+      updated_at: true,
+      responses: {
+        orderBy: { responded_at: 'desc' },
+        select: {
+          id: true,
+          responder_name: true,
+          content: true,
+          responded_at: true,
+        },
+      },
+    },
+  });
+
+  if (!request) return notFound('依頼が見つかりません');
+
+  // FVD-01C: Include emergency contacts as SSOT for contact target suggestions
+  // Avoids re-inferring contacts from care team on every communication request load
+  const emergencyContacts = request.patient_id
+    ? await prisma.contactParty.findMany({
+        where: {
+          org_id: orgId,
+          patient_id: request.patient_id,
+          is_emergency_contact: true,
+        },
+        select: {
+          id: true,
+          name: true,
+          relation: true,
+          phone: true,
+          email: true,
+          fax: true,
+          is_primary: true,
+          organization_name: true,
+          notes: true,
+        },
+        orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+      })
+    : [];
+
+  return success({
+    data: {
+      ...request,
+      suggested_contacts: emergencyContacts,
+    },
+  });
+}
+
 const ALLOWED_STATUS_TRANSITIONS: Record<
   string,
   Array<

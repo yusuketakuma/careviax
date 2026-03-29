@@ -4343,6 +4343,42 @@ export function ScheduleDayView() {
                   </div>
                 )}
 
+                {preparationDetails.pack.onboarding_readiness && (
+                  (() => {
+                    const r = preparationDetails.pack.onboarding_readiness;
+                    const warnings = [
+                      !r.consent_obtained && (
+                        <Badge key="consent" variant="destructive" className="text-xs">
+                          同意未取得
+                        </Badge>
+                      ),
+                      !r.first_visit_doc_delivered && (
+                        <Badge
+                          key="fvd"
+                          variant="outline"
+                          className="text-xs border-orange-500 text-orange-600"
+                        >
+                          初回文書未交付
+                        </Badge>
+                      ),
+                      !r.emergency_contact_set && (
+                        <Badge
+                          key="ec"
+                          variant="outline"
+                          className="text-xs border-yellow-500 text-yellow-600"
+                        >
+                          緊急連絡先未登録
+                        </Badge>
+                      ),
+                    ].filter(Boolean);
+                    return warnings.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {warnings}
+                      </div>
+                    ) : null;
+                  })()
+                )}
+
                 {preparationDetails.pack.previous_visit && (
                   <div className="rounded-lg border border-border/70 bg-background px-3 py-2 text-xs">
                     <p className="font-medium text-foreground">前回訪問</p>

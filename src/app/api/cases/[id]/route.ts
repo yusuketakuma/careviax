@@ -7,6 +7,59 @@ import { updateCaseSchema } from '@/lib/validations/case';
 import { prisma } from '@/lib/db/client';
 import type { Prisma } from '@prisma/client';
 
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: 'ケース参照の権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const ctx = authResult.ctx;
+
+  const { id } = await params;
+
+  const careCase = await prisma.careCase.findFirst({
+    where: { id, org_id: ctx.orgId },
+    include: {
+      patient: {
+        select: {
+          id: true,
+          name: true,
+          name_kana: true,
+        },
+      },
+    },
+  });
+  if (!careCase) return notFound('ケースが見つかりません');
+
+  const firstVisitDoc = await prisma.firstVisitDocument.findFirst({
+    where: { case_id: id, org_id: ctx.orgId },
+    select: {
+      id: true,
+      delivered_at: true,
+      delivered_to: true,
+      document_url: true,
+      created_at: true,
+    },
+  });
+
+  return success({
+    data: {
+      ...careCase,
+      first_visit_doc: firstVisitDoc
+        ? {
+            ...firstVisitDoc,
+            delivered_at: firstVisitDoc.delivered_at?.toISOString() ?? null,
+            created_at: firstVisitDoc.created_at.toISOString(),
+          }
+        : null,
+      first_visit_doc_delivered: firstVisitDoc?.delivered_at != null,
+    },
+  });
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

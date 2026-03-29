@@ -1,4 +1,4 @@
-import { addDays, format } from 'date-fns';
+import { addDays, format, parseISO } from 'date-fns';
 import { NextRequest } from 'next/server';
 import type { ScheduleStatus, VisitAssignmentMode, VisitPriority, VisitType } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
@@ -11,6 +11,7 @@ import { buildVisitScheduleSnapshot } from '@/server/services/visit-schedule-aud
 import { formatVisitWorkflowGateIssues, type VisitWorkflowGateIssue } from '@/server/services/management-plans';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
+import type { HomeVisitIntake } from '@/lib/patient/home-visit-intake';
 
 const rescheduleSchema = z.object({
   reason: z.string().min(1, 'リスケ理由は必須です'),
@@ -44,10 +45,17 @@ const RESCHEDULE_REASON_LABELS: Record<
 };
 
 type CommunicationTarget = {
-  key: 'family' | 'facility' | 'nurse' | 'care_manager';
+  key: 'family' | 'facility' | 'nurse' | 'care_manager' | 'mcs';
   recipientRole: string;
   recipientName: string;
   contact: string | null;
+};
+
+type SchedulingPreferenceContext = {
+  preferredContactMethod: string | null;
+  visitBeforeContactRequired: boolean;
+  mcsLinked: boolean;
+  pharmacyDecisionDueDate: Date | null;
 };
 
 type RescheduleSourceSchedule = {
@@ -85,6 +93,24 @@ function firstValue(...values: Array<string | null | undefined>) {
   return values.find((value) => Boolean(value)) ?? null;
 }
 
+// Map intake preferred_contact_method values to reschedule schema channel values.
+// 'mcs' is treated separately (not a direct channel in the schema enum).
+function resolveEffectiveChannel(
+  requestedChannel: z.infer<typeof rescheduleSchema>['communication_channel'],
+  preferredContactMethod: string | null
+): z.infer<typeof rescheduleSchema>['communication_channel'] {
+  if (!preferredContactMethod || preferredContactMethod === 'other') {
+    return requestedChannel;
+  }
+  const methodToChannel: Record<string, z.infer<typeof rescheduleSchema>['communication_channel']> = {
+    phone: 'phone',
+    fax: 'fax',
+    email: 'email',
+    mcs: 'collaboration',
+  };
+  return methodToChannel[preferredContactMethod] ?? requestedChannel;
+}
+
 function buildCommunicationTargets(args: {
   contacts: Array<{
     name: string;
@@ -103,7 +129,14 @@ function buildCommunicationTargets(args: {
     is_primary: boolean;
   }>;
   channel: z.infer<typeof rescheduleSchema>['communication_channel'];
+  schedulingPreference: SchedulingPreferenceContext;
 }) {
+  // Apply intake preferred_contact_method to override effective channel
+  const effectiveChannel = resolveEffectiveChannel(
+    args.channel,
+    args.schedulingPreference.preferredContactMethod
+  );
+
   const sortedContacts = [...args.contacts].sort(
     (left, right) => Number(right.is_primary) - Number(left.is_primary)
   );
@@ -111,7 +144,7 @@ function buildCommunicationTargets(args: {
     (left, right) => Number(right.is_primary) - Number(left.is_primary)
   );
   const contactField =
-    args.channel === 'fax' ? 'fax' : args.channel === 'email' ? 'email' : 'phone';
+    effectiveChannel === 'fax' ? 'fax' : effectiveChannel === 'email' ? 'email' : 'phone';
 
   const familyContact = sortedContacts.find((contact) =>
     ['self', 'spouse', 'child', 'parent', 'sibling', 'other'].includes(contact.relation)
@@ -124,10 +157,10 @@ function buildCommunicationTargets(args: {
     sortedCareTeam.find((member) => member.role === 'care_manager') ??
     sortedContacts.find((contact) => contact.relation === 'care_manager');
 
-  return [
+  const targets: Array<CommunicationTarget | null> = [
     familyContact
       ? {
-          key: 'family',
+          key: 'family' as const,
           recipientRole: 'family_share',
           recipientName: familyContact.name,
           contact: firstValue(familyContact[contactField], familyContact.phone),
@@ -135,7 +168,7 @@ function buildCommunicationTargets(args: {
       : null,
     facilityContact
       ? {
-          key: 'facility',
+          key: 'facility' as const,
           recipientRole: 'facility_handoff',
           recipientName: facilityContact.name,
           contact: firstValue(facilityContact[contactField], facilityContact.phone),
@@ -143,7 +176,7 @@ function buildCommunicationTargets(args: {
       : null,
     nurseContact
       ? {
-          key: 'nurse',
+          key: 'nurse' as const,
           recipientRole: 'nurse_share',
           recipientName: nurseContact.name,
           contact: firstValue(nurseContact[contactField], nurseContact.phone),
@@ -151,13 +184,26 @@ function buildCommunicationTargets(args: {
       : null,
     careManagerContact
       ? {
-          key: 'care_manager',
+          key: 'care_manager' as const,
           recipientRole: 'care_manager_report',
           recipientName: careManagerContact.name,
           contact: firstValue(careManagerContact[contactField], careManagerContact.phone),
         }
       : null,
-  ].filter((target): target is CommunicationTarget => target != null);
+  ];
+
+  // If MCS is linked, add it as an explicit communication target so the operator
+  // knows to notify via the MCS collaboration platform in addition to other channels.
+  if (args.schedulingPreference.mcsLinked) {
+    targets.push({
+      key: 'mcs' as const,
+      recipientRole: 'mcs_collaboration',
+      recipientName: 'MCS連携',
+      contact: null,
+    });
+  }
+
+  return targets.filter((target): target is CommunicationTarget => target != null);
 }
 
 function toTimeString(value: Date | null) {
@@ -247,16 +293,58 @@ export async function POST(
       case_: {
         select: {
           patient_id: true,
+          required_visit_support: true,
           patient: {
             select: {
               name: true,
+              scheduling_preference: {
+                select: {
+                  visit_before_contact_required: true,
+                  mcs_linked: true,
+                  primary_contact_preference: true,
+                },
+              },
             },
           },
         },
       },
     },
-  }) as RescheduleSourceSchedule | null;
+  }) as (RescheduleSourceSchedule & {
+    case_: RescheduleSourceSchedule['case_'] & {
+      required_visit_support: unknown;
+      patient: RescheduleSourceSchedule['case_']['patient'] & {
+        scheduling_preference: {
+          visit_before_contact_required: boolean | null;
+          mcs_linked: boolean | null;
+          primary_contact_preference: string | null;
+        } | null;
+      };
+    };
+  }) | null;
   if (!schedule) return notFound('訪問予定が見つかりません');
+
+  // Build scheduling preference context from structured fields + JSON intake
+  const schedulingPref = schedule.case_.patient.scheduling_preference;
+  const intakeJson = schedule.case_.required_visit_support as { home_visit_intake?: HomeVisitIntake } | null;
+  const intake = intakeJson?.home_visit_intake;
+  const schedulingPreference: SchedulingPreferenceContext = {
+    preferredContactMethod:
+      intake?.requester?.preferred_contact_method ??
+      schedulingPref?.primary_contact_preference ??
+      null,
+    visitBeforeContactRequired:
+      schedulingPref?.visit_before_contact_required ??
+      intake?.visit_before_contact_required ??
+      false,
+    mcsLinked:
+      schedulingPref?.mcs_linked ??
+      intake?.mcs_linked ??
+      false,
+    pharmacyDecisionDueDate:
+      intake?.requester?.pharmacy_decision_due_date
+        ? parseISO(intake.requester.pharmacy_decision_due_date)
+        : null,
+  };
 
   if (['completed', 'cancelled', 'rescheduled'].includes(schedule.schedule_status)) {
     return validationError('この訪問予定はリスケできません');
@@ -541,6 +629,7 @@ export async function POST(
       contacts,
       careTeamLinks,
       channel: parsed.data.communication_channel,
+      schedulingPreference,
     });
 
     await tx.visitScheduleOverride.create({
@@ -580,6 +669,20 @@ export async function POST(
       },
     });
 
+    // HVI-01F: SLA due date — prefer pharmacy_decision_due_date from intake when it falls
+    // before the scheduled visit date, otherwise fall back to the scheduled date itself.
+    const slaDueDate =
+      schedulingPreference.pharmacyDecisionDueDate !== null &&
+      schedulingPreference.pharmacyDecisionDueDate < schedule.scheduled_date
+        ? schedulingPreference.pharmacyDecisionDueDate
+        : schedule.scheduled_date;
+
+    // HVI-01F: effective channel after applying intake preferred_contact_method
+    const effectiveChannel = resolveEffectiveChannel(
+      parsed.data.communication_channel,
+      schedulingPreference.preferredContactMethod
+    );
+
     if (communicationTargets.length > 0) {
       await Promise.all(
         communicationTargets.map((target) =>
@@ -589,7 +692,10 @@ export async function POST(
               patient_id: schedule.case_.patient_id,
               case_id: schedule.case_id,
               request_type: 'schedule_change',
-              template_key: 'visit_reschedule_notification',
+              template_key:
+                target.key === 'mcs'
+                  ? 'visit_reschedule_mcs_notification'
+                  : 'visit_reschedule_notification',
               recipient_name: target.recipientName,
               recipient_role: target.recipientRole,
               related_entity_type: 'visit_schedule',
@@ -598,21 +704,32 @@ export async function POST(
                 reason_code: parsed.data.reason_code,
                 reason_label: RESCHEDULE_REASON_LABELS[parsed.data.reason_code],
                 reason: parsed.data.reason,
-                communication_channel: parsed.data.communication_channel,
+                // HVI-01F: use effective channel (may be overridden by intake preferred_contact_method)
+                communication_channel: effectiveChannel,
                 communication_result: parsed.data.communication_result,
                 recipient_bucket: target.key,
                 recipient_contact: target.contact,
                 impacted_schedule_count: impactedScheduleCount,
                 proposal_ids: createdProposals.map((proposal) => proposal.id),
+                // HVI-01F: intake-derived scheduling preference metadata
+                preferred_contact_method: schedulingPreference.preferredContactMethod,
+                visit_before_contact_required: schedulingPreference.visitBeforeContactRequired,
+                mcs_linked: schedulingPreference.mcsLinked,
+                pharmacy_decision_due_date:
+                  schedulingPreference.pharmacyDecisionDueDate?.toISOString() ?? null,
               },
               status:
                 parsed.data.communication_result === 'pending'
                   ? 'draft'
                   : 'sent',
               subject: `訪問予定変更の連絡 (${RESCHEDULE_REASON_LABELS[parsed.data.reason_code]})`,
-              content: `${format(schedule.scheduled_date, 'yyyy/MM/dd')} の訪問予定を変更します。理由: ${parsed.data.reason}`,
+              // HVI-01F: prepend patient-contact-first flag when visit_before_contact_required
+              content: schedulingPreference.visitBeforeContactRequired
+                ? `【要訪問前連絡】${format(schedule.scheduled_date, 'yyyy/MM/dd')} の訪問予定を変更します。訪問前に患者への連絡が必要です。理由: ${parsed.data.reason}`
+                : `${format(schedule.scheduled_date, 'yyyy/MM/dd')} の訪問予定を変更します。理由: ${parsed.data.reason}`,
               requested_by: ctx.userId,
-              due_date: schedule.scheduled_date,
+              // HVI-01F: SLA due date from pharmacy_decision_due_date when available
+              due_date: slaDueDate,
             },
           })
         )
@@ -625,10 +742,13 @@ export async function POST(
         patient_id: schedule.case_.patient_id,
         case_id: schedule.case_id,
         event_type: 'schedule_change',
-        channel: toCommunicationEventChannel(parsed.data.communication_channel),
+        // HVI-01F: reflect effective channel in the event record
+        channel: toCommunicationEventChannel(effectiveChannel),
         direction: 'outbound',
         subject: `訪問予定変更 (${RESCHEDULE_REASON_LABELS[parsed.data.reason_code]})`,
-        content: `${format(schedule.scheduled_date, 'yyyy/MM/dd')} の訪問予定を変更します。理由: ${parsed.data.reason}`,
+        content: schedulingPreference.visitBeforeContactRequired
+          ? `【要訪問前連絡】${format(schedule.scheduled_date, 'yyyy/MM/dd')} の訪問予定を変更します。訪問前に患者への連絡が必要です。理由: ${parsed.data.reason}`
+          : `${format(schedule.scheduled_date, 'yyyy/MM/dd')} の訪問予定を変更します。理由: ${parsed.data.reason}`,
         counterpart_name:
           communicationTargets.length > 0
             ? communicationTargets.map((target) => target.recipientName).join(' / ')
@@ -640,11 +760,14 @@ export async function POST(
     await upsertOperationalTask(tx, {
       orgId: ctx.orgId,
       taskType: 'visit_schedule_override_approval',
-      title: '確定済み訪問の変更承認が必要です',
+      title: schedulingPreference.visitBeforeContactRequired
+        ? '【要訪問前連絡】確定済み訪問の変更承認が必要です'
+        : '確定済み訪問の変更承認が必要です',
       description: parsed.data.reason,
       priority: parsed.data.priority === 'emergency' ? 'urgent' : 'high',
-      dueDate: schedule.scheduled_date,
-      slaDueAt: schedule.scheduled_date,
+      dueDate: slaDueDate,
+      // HVI-01F: use pharmacy_decision_due_date as SLA deadline when provided
+      slaDueAt: slaDueDate,
       relatedEntityType: 'visit_schedule',
       relatedEntityId: schedule.id,
       dedupeKey: `visit-reschedule-approval:${schedule.id}`,
@@ -653,6 +776,12 @@ export async function POST(
         impacted_schedule_count: impactedScheduleCount,
         proposal_ids: createdProposals.map((proposal) => proposal.id),
         source_schedule_id: schedule.id,
+        // HVI-01F: intake-derived scheduling metadata in task for approver context
+        preferred_contact_method: schedulingPreference.preferredContactMethod,
+        visit_before_contact_required: schedulingPreference.visitBeforeContactRequired,
+        mcs_linked: schedulingPreference.mcsLinked,
+        pharmacy_decision_due_date:
+          schedulingPreference.pharmacyDecisionDueDate?.toISOString() ?? null,
       },
     });
 
@@ -716,8 +845,72 @@ export async function POST(
       },
     });
 
-    return createdProposals;
+    // FVD-01C: Fetch emergency contacts as SSOT for reschedule contact suggestions
+    const emergencyContacts = await tx.contactParty.findMany({
+      where: {
+        org_id: ctx.orgId,
+        patient_id: schedule.case_.patient_id,
+        is_emergency_contact: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        relation: true,
+        phone: true,
+        email: true,
+        fax: true,
+        is_primary: true,
+        organization_name: true,
+        notes: true,
+      },
+      orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+    });
+
+    // FVD-01C: Fetch scheduling preference for UI-facing contact suggestion metadata
+    const schedulingPreferenceRecord = await tx.patientSchedulePreference.findFirst({
+      where: {
+        org_id: ctx.orgId,
+        patient_id: schedule.case_.patient_id,
+      },
+      select: {
+        preferred_contact_name: true,
+        preferred_contact_phone: true,
+        primary_contact_preference: true,
+        visit_before_contact_required: true,
+        mcs_linked: true,
+        phone_contact_from: true,
+        phone_contact_to: true,
+      },
+    });
+
+    return { proposals: createdProposals, emergencyContacts, schedulingPreferenceRecord };
   }, { requestContext: ctx });
 
-  return success({ data: proposals }, 201);
+  return success({
+    data: {
+      proposals: proposals.proposals,
+      // FVD-01C: Emergency contacts (is_emergency_contact=true) as SSOT for contact suggestions
+      // The UI should pre-fill reschedule notification targets from this list
+      suggested_contacts: proposals.emergencyContacts,
+      scheduling_preference: proposals.schedulingPreferenceRecord
+        ? {
+            preferred_contact_name: proposals.schedulingPreferenceRecord.preferred_contact_name,
+            preferred_contact_phone: proposals.schedulingPreferenceRecord.preferred_contact_phone,
+            primary_contact_preference: proposals.schedulingPreferenceRecord.primary_contact_preference,
+            visit_before_contact_required: proposals.schedulingPreferenceRecord.visit_before_contact_required ?? false,
+            mcs_linked: proposals.schedulingPreferenceRecord.mcs_linked ?? false,
+            phone_contact_from: proposals.schedulingPreferenceRecord.phone_contact_from,
+            phone_contact_to: proposals.schedulingPreferenceRecord.phone_contact_to,
+          }
+        : null,
+      // HVI-01F: intake-derived scheduling metadata surfaced to UI
+      intake_scheduling: {
+        preferred_contact_method: schedulingPreference.preferredContactMethod,
+        visit_before_contact_required: schedulingPreference.visitBeforeContactRequired,
+        mcs_linked: schedulingPreference.mcsLinked,
+        pharmacy_decision_due_date:
+          schedulingPreference.pharmacyDecisionDueDate?.toISOString() ?? null,
+      },
+    },
+  }, 201);
 }

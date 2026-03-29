@@ -7,6 +7,8 @@ const {
   visitRecordUpdateMock,
   auditLogFindFirstMock,
   userFindManyMock,
+  careCaseFindFirstMock,
+  patientSchedulePreferenceFindFirstMock,
   withOrgContextMock,
   getStoredFileRecordMock,
   toVisitRecordAttachmentMock,
@@ -16,6 +18,8 @@ const {
   visitRecordUpdateMock: vi.fn(),
   auditLogFindFirstMock: vi.fn(),
   userFindManyMock: vi.fn(),
+  careCaseFindFirstMock: vi.fn(),
+  patientSchedulePreferenceFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   getStoredFileRecordMock: vi.fn(),
   toVisitRecordAttachmentMock: vi.fn(),
@@ -35,6 +39,12 @@ vi.mock('@/lib/db/client', () => ({
     },
     user: {
       findMany: userFindManyMock,
+    },
+    careCase: {
+      findFirst: careCaseFindFirstMock,
+    },
+    patientSchedulePreference: {
+      findFirst: patientSchedulePreferenceFindFirstMock,
     },
   },
 }));
@@ -71,6 +81,8 @@ describe('/api/visit-records/[id]', () => {
     });
     auditLogFindFirstMock.mockResolvedValue({ actor_id: 'user_1' });
     userFindManyMock.mockResolvedValue([{ id: 'user_1', name: '薬剤師A' }]);
+    careCaseFindFirstMock.mockResolvedValue(null);
+    patientSchedulePreferenceFindFirstMock.mockResolvedValue(null);
     toVisitRecordAttachmentMock.mockImplementation((record) => ({
       file_id: record.id,
       file_name: record.originalName,
@@ -194,6 +206,86 @@ describe('/api/visit-records/[id]', () => {
         }),
       })
     );
+  });
+
+  it('includes baseline_context with care_level, adl_level, dementia_level from intake data', async () => {
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'visit_1',
+      org_id: 'org_1',
+      schedule_id: 'schedule_1',
+      patient_id: 'patient_1',
+      pharmacist_id: 'user_1',
+      visit_date: new Date('2026-03-28T00:00:00.000Z').toISOString(),
+      outcome_status: 'completed',
+      soap_subjective: null,
+      soap_objective: null,
+      soap_assessment: null,
+      soap_plan: null,
+      receipt_person_name: null,
+      receipt_person_relation: null,
+      receipt_at: null,
+      next_visit_suggestion_date: null,
+      cancellation_reason: null,
+      postpone_reason: null,
+      revisit_reason: null,
+      version: 1,
+      created_at: new Date('2026-03-28T00:00:00.000Z').toISOString(),
+      updated_at: new Date('2026-03-28T00:00:00.000Z').toISOString(),
+      attachments: [],
+      schedule: {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        site_id: null,
+        pharmacist_id: 'user_1',
+        visit_type: 'home_visit',
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        recurrence_rule: null,
+        time_window_start: null,
+        time_window_end: null,
+      },
+    });
+    careCaseFindFirstMock.mockResolvedValue({
+      required_visit_support: {
+        home_visit_intake: {
+          care_level: 'care_3',
+          adl_level: 'b',
+          dementia_level: 'ii',
+          medication_support_methods: ['unit_dose', 'calendar'],
+          special_medical_procedures: ['narcotics', 'home_oxygen'],
+          family_key_person: '山田 長男',
+          money_management: 'family',
+          narcotics_base: true,
+          narcotics_rescue: false,
+          infection_isolation: 'droplet',
+        },
+      },
+    });
+    patientSchedulePreferenceFindFirstMock.mockResolvedValue({
+      visit_before_contact_required: true,
+    });
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'visit_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      id: 'visit_1',
+      baseline_context: {
+        care_level: 'care_3',
+        adl_level: 'b',
+        dementia_level: 'ii',
+        medication_support_methods: ['unit_dose', 'calendar'],
+        special_medical_procedures: ['narcotics', 'home_oxygen'],
+        family_key_person: '山田 長男',
+        money_management: 'family',
+        visit_before_contact_required: true,
+        narcotics_base: true,
+        narcotics_rescue: false,
+        infection_isolation: 'droplet',
+      },
+    });
   });
 
   it('rejects attachments uploaded for another visit record', async () => {

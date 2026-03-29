@@ -4,6 +4,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { conflict, success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
+import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 
 const updateCareReportSchema = z.object({
   report_type: z
@@ -47,7 +48,17 @@ export async function GET(
 
   if (!report) return notFound('報告書が見つかりません');
 
-  return success({ data: report });
+  // case_id がある場合は intake baseline context を付加してUIでの表示に利用する
+  let intakeBaselineContext: ReturnType<typeof getHomeVisitIntake> = null;
+  if (report.case_id) {
+    const careCase = await prisma.careCase.findFirst({
+      where: { id: report.case_id, org_id: ctx.orgId },
+      select: { required_visit_support: true },
+    });
+    intakeBaselineContext = getHomeVisitIntake(careCase?.required_visit_support);
+  }
+
+  return success({ data: { ...report, intake_baseline_context: intakeBaselineContext } });
 }
 
 export async function PATCH(

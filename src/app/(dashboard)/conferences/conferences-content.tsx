@@ -71,11 +71,25 @@ function NoteCard({
     locale: ja,
   });
 
+  const pendingActionCount = (note.action_items ?? []).filter(
+    (item) => !item.converted_task_id
+  ).length;
+  const hasPending = pendingActionCount > 0;
+
   return (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-base">{note.title}</CardTitle>
+          {hasPending ? (
+            <Badge className="shrink-0 bg-amber-100 text-amber-900 hover:bg-amber-100">
+              未処理 {pendingActionCount}件
+            </Badge>
+          ) : note.action_items && note.action_items.length > 0 ? (
+            <Badge variant="outline" className="shrink-0 text-xs text-muted-foreground">
+              完了
+            </Badge>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">

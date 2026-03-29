@@ -23,6 +23,7 @@ const {
   visitScheduleProposalFindManyMock,
   patientSelfReportFindManyMock,
   patientFindManyMock,
+  patientCountMock,
   userFindManyMock,
   communityActivityFindManyMock,
   careCaseCountMock,
@@ -30,6 +31,7 @@ const {
   businessHolidayFindManyMock,
   inquiryRecordFindManyMock,
   medicationIssueFindManyMock,
+  firstVisitDocumentCountMock,
   communicationQueueMock,
   patientRiskQueueMock,
   homeCareFeatureSummaryMock,
@@ -55,6 +57,7 @@ const {
   visitScheduleProposalFindManyMock: vi.fn(),
   patientSelfReportFindManyMock: vi.fn(),
   patientFindManyMock: vi.fn(),
+  patientCountMock: vi.fn(),
   userFindManyMock: vi.fn(),
   communityActivityFindManyMock: vi.fn(),
   careCaseCountMock: vi.fn(),
@@ -62,6 +65,7 @@ const {
   businessHolidayFindManyMock: vi.fn(),
   inquiryRecordFindManyMock: vi.fn(),
   medicationIssueFindManyMock: vi.fn(),
+  firstVisitDocumentCountMock: vi.fn(),
   communicationQueueMock: vi.fn(),
   patientRiskQueueMock: vi.fn(),
   homeCareFeatureSummaryMock: vi.fn(),
@@ -124,6 +128,10 @@ vi.mock('@/lib/db/client', () => ({
     },
     patient: {
       findMany: patientFindManyMock,
+      count: patientCountMock,
+    },
+    firstVisitDocument: {
+      count: firstVisitDocumentCountMock,
     },
     user: {
       findMany: userFindManyMock,
@@ -140,6 +148,7 @@ vi.mock('@/lib/db/client', () => ({
     businessHoliday: {
       findMany: businessHolidayFindManyMock,
     },
+    $queryRaw: vi.fn().mockResolvedValue([{ count: BigInt(0) }]),
   },
 }));
 
@@ -466,6 +475,8 @@ describe('/api/dashboard/workflow GET', () => {
       totals: { blocked: 1, attention: 1, monitoring: 1, ready: 17 },
       features: [],
     });
+    firstVisitDocumentCountMock.mockResolvedValue(1);
+    patientCountMock.mockResolvedValue(1);
   });
 
   it('returns 401 when unauthenticated', async () => {
@@ -497,6 +508,8 @@ describe('/api/dashboard/workflow GET', () => {
           awaiting_reports: 5,
           missing_visit_consent: 1,
           missing_management_plan: 1,
+          missing_first_visit_doc: expect.any(Number),
+          missing_emergency_contact: 1,
         },
         operations_queue: {
           visit_demands: 2,

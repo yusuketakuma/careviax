@@ -13,6 +13,7 @@ import {
   toVisitRecordAttachment,
   type VisitRecordAttachment,
 } from '@/server/services/file-storage';
+import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 
 function parseStoredVisitRecordAttachments(value: unknown): VisitRecordAttachment[] {
   if (!Array.isArray(value)) return [];
@@ -109,17 +110,31 @@ export async function GET(
 
   if (!record) return notFound('訪問記録が見つかりません');
 
-  const latestAudit = await prisma.auditLog.findFirst({
-    where: {
-      org_id: ctx.orgId,
-      target_type: 'visit_record',
-      target_id: id,
-    },
-    orderBy: { created_at: 'desc' },
-    select: {
-      actor_id: true,
-    },
-  });
+  const caseId = record.schedule?.case_id ?? null;
+  const patientId = record.patient_id;
+  const [latestAudit, activeCase, patientSchedulePref] = await Promise.all([
+    prisma.auditLog.findFirst({
+      where: {
+        org_id: ctx.orgId,
+        target_type: 'visit_record',
+        target_id: id,
+      },
+      orderBy: { created_at: 'desc' },
+      select: {
+        actor_id: true,
+      },
+    }),
+    caseId
+      ? prisma.careCase.findFirst({
+          where: { id: caseId, org_id: ctx.orgId },
+          select: { required_visit_support: true },
+        })
+      : Promise.resolve(null),
+    prisma.patientSchedulePreference.findFirst({
+      where: { patient_id: patientId, org_id: ctx.orgId },
+      select: { visit_before_contact_required: true },
+    }),
+  ]);
 
   const userIds = Array.from(
     new Set([record.pharmacist_id, latestAudit?.actor_id].filter(Boolean) as string[])
@@ -139,6 +154,26 @@ export async function GET(
         });
   const userById = new Map(users.map((user) => [user.id, user.name]));
 
+  const intakeData = getHomeVisitIntake(activeCase?.required_visit_support ?? null);
+  const visitBeforeContactRequired =
+    patientSchedulePref?.visit_before_contact_required ?? null;
+  const baselineContext =
+    intakeData || visitBeforeContactRequired !== null
+      ? {
+          care_level: intakeData?.care_level ?? null,
+          adl_level: intakeData?.adl_level ?? null,
+          dementia_level: intakeData?.dementia_level ?? null,
+          medication_support_methods: intakeData?.medication_support_methods ?? [],
+          special_medical_procedures: intakeData?.special_medical_procedures ?? [],
+          family_key_person: intakeData?.family_key_person ?? null,
+          money_management: intakeData?.money_management ?? null,
+          visit_before_contact_required: visitBeforeContactRequired,
+          narcotics_base: intakeData?.narcotics_base ?? null,
+          narcotics_rescue: intakeData?.narcotics_rescue ?? null,
+          infection_isolation: intakeData?.infection_isolation ?? null,
+        }
+      : null;
+
   return success({
     ...record,
     attachments: parseStoredVisitRecordAttachments(record.attachments),
@@ -148,6 +183,7 @@ export async function GET(
       (latestAudit?.actor_id ? userById.get(latestAudit.actor_id) : null) ??
       userById.get(record.pharmacist_id) ??
       null,
+    baseline_context: baselineContext,
   });
 }
 

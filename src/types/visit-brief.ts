@@ -99,6 +99,27 @@ export type VisitBriefRuleSummary = {
   generated_at: string;
 };
 
+export type VisitBriefBaselineContext = {
+  care_level: string | null;
+  adl_level: string | null;
+  dementia_level: string | null;
+  medication_support_methods: string[];
+  special_medical_procedures: string[];
+  family_key_person: string | null;
+  money_management: string | null;
+  visit_before_contact_required: boolean | null;
+  narcotics_base: boolean | null;
+  narcotics_rescue: boolean | null;
+  infection_isolation: string | null;
+};
+
+export type VisitBriefConferenceSummary = {
+  recent_conferences: number;
+  pending_action_items: number;
+  last_conference_date: string | null;
+  last_conference_type: string | null;
+};
+
 export type VisitBrief = {
   patient: {
     id: string;
@@ -107,6 +128,7 @@ export type VisitBrief = {
   context: VisitBriefContext;
   generated_at: string;
   last_prescribed_date: string | null;
+  baseline_context: VisitBriefBaselineContext | null;
   medication_changes: VisitBriefMedicationChange[];
   medications: VisitBriefMedicationItem[];
   dispensing_items: VisitBriefDispensingItem[];
@@ -117,4 +139,5 @@ export type VisitBrief = {
   must_check_today: string[];
   rule_summary: VisitBriefRuleSummary;
   ai_summary: VisitBriefAiSummary;
+  conference_summary: VisitBriefConferenceSummary | null;
 };

@@ -3,11 +3,14 @@ import { prisma } from '@/lib/db/client';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
 import { listCommunicationQueue } from '@/server/services/communication-queue';
 import { generateVisitBriefAiSummary } from '@/server/services/visit-brief-ai';
+import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import type {
   VisitBrief,
   VisitBriefAiSummary,
+  VisitBriefBaselineContext,
   VisitBriefChangeType,
   VisitBriefCommunicationItem,
+  VisitBriefConferenceSummary,
   VisitBriefDeliveryItem,
   VisitBriefDispensingItem,
   VisitBriefDosageFormCandidate,
@@ -705,6 +708,38 @@ async function buildAiSummary(args: {
   });
 }
 
+function buildBaselineContext(args: {
+  intakeData: {
+    care_level?: string;
+    adl_level?: string;
+    dementia_level?: string;
+    medication_support_methods?: string[];
+    special_medical_procedures?: string[];
+    family_key_person?: string;
+    money_management?: string;
+    narcotics_base?: boolean;
+    narcotics_rescue?: boolean;
+    infection_isolation?: string;
+  } | null;
+  visitBeforeContactRequired: boolean | null;
+}): VisitBriefBaselineContext | null {
+  const { intakeData, visitBeforeContactRequired } = args;
+  if (!intakeData && visitBeforeContactRequired === null) return null;
+  return {
+    care_level: intakeData?.care_level ?? null,
+    adl_level: intakeData?.adl_level ?? null,
+    dementia_level: intakeData?.dementia_level ?? null,
+    medication_support_methods: intakeData?.medication_support_methods ?? [],
+    special_medical_procedures: intakeData?.special_medical_procedures ?? [],
+    family_key_person: intakeData?.family_key_person ?? null,
+    money_management: intakeData?.money_management ?? null,
+    visit_before_contact_required: visitBeforeContactRequired,
+    narcotics_base: intakeData?.narcotics_base ?? null,
+    narcotics_rescue: intakeData?.narcotics_rescue ?? null,
+    infection_isolation: intakeData?.infection_isolation ?? null,
+  };
+}
+
 export async function getPatientVisitBrief(
   db: DbClient,
   args: BuildVisitBriefArgs
@@ -718,6 +753,9 @@ export async function getPatientVisitBrief(
       select: { id: true },
     })
   ).map((item) => item.id);
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
   const [
     patient,
@@ -733,6 +771,8 @@ export async function getPatientVisitBrief(
     inquiries,
     blockedBillingEvidence,
     previousVisit,
+    activeCase,
+    recentConferenceNotes,
   ] = await Promise.all([
     db.patient.findFirst({
       where: {
@@ -742,6 +782,11 @@ export async function getPatientVisitBrief(
       select: {
         id: true,
         name: true,
+        scheduling_preference: {
+          select: {
+            visit_before_contact_required: true,
+          },
+        },
       },
     }),
     db.prescriptionIntake.findMany({
@@ -962,11 +1007,66 @@ export async function getPatientVisitBrief(
         soap_plan: true,
       },
     }),
+    db.careCase.findFirst({
+      where: {
+        org_id: args.orgId,
+        patient_id: args.patientId,
+        status: { in: ['active', 'assessment'] },
+      },
+      orderBy: [{ start_date: 'desc' }, { created_at: 'desc' }],
+      select: {
+        required_visit_support: true,
+      },
+    }),
+    db.conferenceNote.findMany({
+      where: {
+        org_id: args.orgId,
+        case_id: caseIds.length > 0 ? { in: caseIds } : undefined,
+        conference_date: { gte: thirtyDaysAgo },
+      },
+      orderBy: [{ conference_date: 'desc' }],
+      take: 10,
+      select: {
+        id: true,
+        title: true,
+        conference_date: true,
+        action_items: true,
+      },
+    }),
   ]);
 
   if (!patient) {
     throw new Error(`VISIT_BRIEF_PATIENT_NOT_FOUND:${args.patientId}`);
   }
+
+  // Build conference summary from recent notes
+  const conferenceSummary = ((): VisitBriefConferenceSummary | null => {
+    if (recentConferenceNotes.length === 0) return null;
+    let pendingActionItems = 0;
+    for (const note of recentConferenceNotes) {
+      const items = note.action_items as Array<{ converted_task_id?: string }> | null;
+      if (Array.isArray(items)) {
+        for (const item of items) {
+          if (!item.converted_task_id) pendingActionItems += 1;
+        }
+      }
+    }
+    const latest = recentConferenceNotes[0];
+    return {
+      recent_conferences: recentConferenceNotes.length,
+      pending_action_items: pendingActionItems,
+      last_conference_date: latest ? latest.conference_date.toISOString() : null,
+      last_conference_type: latest ? latest.title : null,
+    };
+  })();
+
+  const intakeData = getHomeVisitIntake(activeCase?.required_visit_support ?? null);
+  const visitBeforeContactRequired =
+    patient.scheduling_preference?.visit_before_contact_required ?? null;
+  const baselineContext = buildBaselineContext({
+    intakeData,
+    visitBeforeContactRequired,
+  });
 
   const communicationQueue = await listCommunicationQueue(db, {
     orgId: args.orgId,
@@ -1089,10 +1189,11 @@ export async function getPatientVisitBrief(
   }
 
   return {
-    patient,
+    patient: { id: patient.id, name: patient.name },
     context: args.context,
     generated_at: new Date().toISOString(),
     last_prescribed_date: currentIntake?.prescribed_date.toISOString() ?? null,
+    baseline_context: baselineContext,
     medication_changes: medicationChanges.slice(0, 8),
     medications,
     dispensing_items: dispensingItems,
@@ -1103,6 +1204,7 @@ export async function getPatientVisitBrief(
     must_check_today: mustCheckToday,
     rule_summary: ruleSummary,
     ai_summary: hydratedAiSummary,
+    conference_summary: conferenceSummary,
   };
 }
 

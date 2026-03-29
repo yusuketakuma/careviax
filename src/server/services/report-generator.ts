@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import type { StructuredSoap } from '@/types/structured-soap';
 import { buildPhysicianReport, buildCareManagerReport } from './report-templates';
+import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 
 type ReportType = 'physician_report' | 'care_manager_report';
 
@@ -39,6 +40,8 @@ export async function generateReportsFromVisit(
     select: { case_id: true, org_id: true },
   });
 
+  // required_visit_support は schedule 確定後に取得（case_id が必要）
+
   // org_id を二重確認（RLS は withOrgContext 内のみ有効なため）
   if (schedule && schedule.org_id !== orgId) {
     throw new Error(`VisitSchedule not found for schedule_id: ${visitRecord.schedule_id}`);
@@ -51,7 +54,7 @@ export async function generateReportsFromVisit(
   const caseId = schedule.case_id;
 
   // ─── 3-7. 独立クエリを並列実行 ────────────────────────────────────────────
-  const [patient, medicationCycle, residualMedications, careTeamLinks, pharmacistUser, billingEvidence] =
+  const [patient, medicationCycle, residualMedications, careTeamLinks, pharmacistUser, billingEvidence, careCase] =
     await Promise.all([
       prisma.patient.findFirst({
         where: { id: visitRecord.patient_id, org_id: orgId },
@@ -80,11 +83,18 @@ export async function generateReportsFromVisit(
         select: { payer_basis: true },
         orderBy: { created_at: 'desc' },
       }),
+      prisma.careCase.findFirst({
+        where: { id: caseId, org_id: orgId },
+        select: { required_visit_support: true },
+      }),
     ]);
 
   if (!patient) {
     throw new Error(`Patient not found: ${visitRecord.patient_id}`);
   }
+
+  // intake コンテキスト（required_visit_support.home_visit_intake）
+  const intake = getHomeVisitIntake(careCase?.required_visit_support) ?? undefined;
 
   // ─── PrescriptionLines（medicationCycle に依存） ───────────────────────────
   const prescriptionLines =
@@ -112,14 +122,21 @@ export async function generateReportsFromVisit(
     is_reduction_target: r.is_reduction_target,
   }));
 
-  const prescriber = careTeamLinks.find((l) => l.role === 'physician') ?? {
-    name: '主治医',
-    organization_name: null,
-  };
-  const careManager = careTeamLinks.find((l) => l.role === 'care_manager') ?? {
-    name: 'ケアマネジャー',
-    organization_name: null,
-  };
+  // 依頼元が医師の場合、intake.requester をケアチームの主治医として優先使用
+  const careTeamPhysician = careTeamLinks.find((l) => l.role === 'physician');
+  const prescriberFromIntake =
+    intake?.requester?.profession === 'physician' && intake.requester.contact_name
+      ? { name: intake.requester.contact_name, organization_name: intake.requester.organization_name ?? null }
+      : null;
+  const prescriber = careTeamPhysician ?? prescriberFromIntake ?? { name: '主治医', organization_name: null };
+
+  // intake.care_manager があればケアチームの未登録情報を補完
+  const careTeamCareManager = careTeamLinks.find((l) => l.role === 'care_manager');
+  const careManagerFromIntake =
+    intake?.care_manager?.name
+      ? { name: intake.care_manager.name, organization_name: intake.care_manager.organization_name ?? null }
+      : null;
+  const careManager = careTeamCareManager ?? careManagerFromIntake ?? { name: 'ケアマネジャー', organization_name: null };
   const pharmacistName = pharmacistUser?.name ?? '担当薬剤師';
 
   // ─── 保険種別で報告書タイプを判定 ──────────────────────────────────────────
@@ -182,6 +199,7 @@ export async function generateReportsFromVisit(
         residualMedications: residualMedicationsNormalized,
         prescriber: { name: prescriber.name, organization_name: prescriber.organization_name },
         pharmacistName,
+        intake,
       }) as unknown as Record<string, unknown>);
     } else {
       contentByType.set(type, buildCareManagerReport({
@@ -192,6 +210,7 @@ export async function generateReportsFromVisit(
         residualMedications: residualMedicationsNormalized,
         careManager: { name: careManager.name, organization_name: careManager.organization_name },
         pharmacistName,
+        intake,
       }) as unknown as Record<string, unknown>);
     }
   }

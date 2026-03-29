@@ -268,6 +268,12 @@ export function describeOperationalTask(task: {
         actionLabel: '持参物を確認',
         queueLabel: '持参物',
       };
+    case 'first_visit_document_delivery':
+      return {
+        actionHref: '/patients',
+        actionLabel: '文書交付を記録',
+        queueLabel: '初回文書',
+      };
     case 'emergency_coverage_gap':
       return {
         actionHref: '/admin/shifts',

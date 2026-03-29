@@ -10,6 +10,7 @@ const {
   visitScheduleContactLogFindManyMock,
   peerVisitScheduleFindManyMock,
   prescriptionIntakeFindManyMock,
+  firstVisitDocumentFindFirstMock,
   billingEvidenceBlockersMock,
   patientHomeCareFeatureSummaryMock,
   scheduleFeatureHighlightsMock,
@@ -23,6 +24,7 @@ const {
   visitScheduleContactLogFindManyMock: vi.fn(),
   peerVisitScheduleFindManyMock: vi.fn(),
   prescriptionIntakeFindManyMock: vi.fn(),
+  firstVisitDocumentFindFirstMock: vi.fn(),
   billingEvidenceBlockersMock: vi.fn(),
   patientHomeCareFeatureSummaryMock: vi.fn(),
   scheduleFeatureHighlightsMock: vi.fn(),
@@ -53,6 +55,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     prescriptionIntake: {
       findMany: prescriptionIntakeFindManyMock,
+    },
+    firstVisitDocument: {
+      findFirst: firstVisitDocumentFindFirstMock,
     },
   },
 }));
@@ -133,6 +138,8 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
               building_id: 'facility_a',
             },
           ],
+          contacts: [{ id: 'contact_1', name: '山田 次郎', is_emergency_contact: true, relation: 'son', phone: '090-1234-5678' }],
+          consents: [{ id: 'consent_1', consent_type: 'visit_medication_management', is_active: true }],
         },
         care_team_links: [
           {
@@ -239,6 +246,11 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
         ],
       },
     ]);
+    firstVisitDocumentFindFirstMock.mockResolvedValue({
+      id: 'fvd_1',
+      delivered_at: new Date('2026-03-20T10:00:00Z'),
+      delivered_to: '山田 次郎',
+    });
     billingEvidenceBlockersMock.mockResolvedValue([]);
     patientHomeCareFeatureSummaryMock.mockResolvedValue({
       totals: { blocked: 1, attention: 0, monitoring: 0, ready: 19 },
@@ -356,6 +368,19 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
               action_label: '準備を完了',
             }),
           ],
+          onboarding_readiness: expect.objectContaining({
+            consent_obtained: true,
+            emergency_contact_set: true,
+            first_visit_doc_delivered: true,
+          }),
+          emergency_contacts: [
+            expect.objectContaining({
+              name: '山田 次郎',
+            }),
+          ],
+          first_visit_document: expect.objectContaining({
+            delivered_to: '山田 次郎',
+          }),
         },
       },
     });
@@ -367,6 +392,92 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
     expect(scheduleVisitBriefMock).toHaveBeenCalledWith(expect.anything(), {
       orgId: 'org_1',
       patientId: 'patient_1',
+    });
+  });
+
+  it('includes intake_context with structured scheduling preference and home_visit_intake fields', async () => {
+    visitScheduleFindFirstMock.mockResolvedValue({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      scheduled_date: new Date('2026-03-27T00:00:00Z'),
+      time_window_start: new Date('1970-01-01T10:00:00Z'),
+      time_window_end: new Date('1970-01-01T11:00:00Z'),
+      schedule_status: 'planned',
+      priority: 'normal',
+      pharmacist_id: 'user_1',
+      assignment_mode: 'primary',
+      escalation_reason: null,
+      confirmed_at: null,
+      site: null,
+      preparation: null,
+      override_request: null,
+      applied_override: null,
+      case_: {
+        id: 'case_1',
+        primary_pharmacist_id: 'user_1',
+        backup_pharmacist_id: null,
+        required_visit_support: {
+          home_visit_intake: {
+            money_management: 'family',
+            family_key_person: '長男 田中',
+            care_level: 'care_2',
+            adl_level: 'a',
+            dementia_level: 'i',
+            special_medical_procedures: ['narcotics', 'home_oxygen'],
+            special_medical_notes: '麻薬処方あり',
+            narcotics_base: true,
+            narcotics_rescue: false,
+            infection_isolation: 'contact',
+            residual_medication_status: 'none',
+            medication_support_methods: ['unit_dose'],
+          },
+        },
+        management_plans: [],
+        patient: {
+          id: 'patient_1',
+          name: '田中 三郎',
+          residences: [{ address: '東京都新宿区1-1-1', building_id: null }],
+          contacts: [],
+          consents: [],
+          scheduling_preference: {
+            visit_before_contact_required: true,
+            first_visit_preferred_date: null,
+            first_visit_time_slot: 'morning',
+            first_visit_time_note: '9時以降希望',
+            parking_available: false,
+            primary_contact_preference: 'phone',
+            mcs_linked: true,
+          },
+        },
+        care_team_links: [],
+      },
+    });
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        pack: {
+          intake_context: {
+            // from scheduling_preference (HVI-01B structured fields)
+            visit_before_contact_required: true,
+            first_visit_time_slot: 'morning',
+            first_visit_time_note: '9時以降希望',
+            parking_available: false,
+            primary_contact_preference: 'phone',
+            mcs_linked: true,
+            // from home_visit_intake JSON (HVI-01C)
+            money_management: 'family',
+            special_medical_procedures: ['narcotics', 'home_oxygen'],
+            infection_isolation: 'contact',
+            narcotics_base: true,
+          },
+        },
+      },
     });
   });
 });

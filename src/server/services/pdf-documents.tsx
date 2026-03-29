@@ -12,9 +12,16 @@ import {
 } from '@react-pdf/renderer';
 import { prisma } from '@/lib/db/client';
 import type {
+  BaselineContext,
   CareManagerReportContent,
   PhysicianReportContent,
 } from '@/types/care-report-content';
+import {
+  careLevelLabels,
+  adlLabels,
+  dementiaLabels,
+  specialProcedureLabels,
+} from '@/lib/patient/home-visit-intake';
 
 type PdfRenderResult = {
   buffer: Buffer;
@@ -685,6 +692,35 @@ function Table({
   );
 }
 
+function renderBaselineContextSection(baseline: BaselineContext) {
+  const procedureLabels = (baseline.special_medical_procedures ?? []).map(
+    (p) => specialProcedureLabels[p] ?? p,
+  );
+  const rows: KeyValueRow[] = [
+    { label: '介護度', value: careLevelLabels[baseline.care_level ?? ''] ?? baseline.care_level ?? '—' },
+    { label: 'ADL', value: adlLabels[baseline.adl_level ?? ''] ?? baseline.adl_level ?? '—' },
+    {
+      label: '認知症',
+      value: dementiaLabels[baseline.dementia_level ?? ''] ?? baseline.dementia_level ?? '—',
+    },
+    { label: '主傷病', value: baseline.primary_disease ?? '—' },
+  ];
+  if (baseline.requester) {
+    rows.push(
+      { label: '依頼元', value: baseline.requester.organization_name ?? '—' },
+      { label: '担当者', value: baseline.requester.contact_name ?? '—' },
+    );
+  }
+  return (
+    <Section title="患者状態（受付時ベースライン）">
+      <KeyValueCards rows={rows} />
+      {procedureLabels.length > 0 ? (
+        <BulletList items={procedureLabels} />
+      ) : null}
+    </Section>
+  );
+}
+
 function renderCareReportContent(report: CareReportRecord) {
   if (report.report_type === 'physician_report') {
     const content = report.content as unknown as PhysicianReportContent;
@@ -704,6 +740,7 @@ function renderCareReportContent(report: CareReportRecord) {
             ]}
           />
         </Section>
+        {content.baseline_context ? renderBaselineContextSection(content.baseline_context) : null}
 
         <Section title="処方内容">
           <Table
@@ -777,6 +814,7 @@ function renderCareReportContent(report: CareReportRecord) {
             ]}
           />
         </Section>
+        {content.baseline_context ? renderBaselineContextSection(content.baseline_context) : null}
 
         <Section title="服薬管理サマリー">
           <KeyValueCards

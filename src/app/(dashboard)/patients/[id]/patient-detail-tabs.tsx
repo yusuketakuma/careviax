@@ -93,6 +93,7 @@ type Patient = {
     notes: string | null;
     created_at: string;
     updated_at: string;
+    required_visit_support: Record<string, unknown> | null;
     care_team_links: Array<{
       id: string;
       role: string;

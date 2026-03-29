@@ -18,6 +18,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { caseStatusTransitions, type CaseStatus } from '@/lib/validations/case';
+import {
+  buildIntakeFieldRows,
+  getHomeVisitIntake,
+} from '@/lib/patient/intake-display';
 import { ClipboardList, Plus } from 'lucide-react';
 
 const caseStatusLabel: Record<CaseStatus, string> = {
@@ -47,6 +51,7 @@ type CaseRow = {
   start_date: string | null;
   end_date: string | null;
   notes: string | null;
+  required_visit_support: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
   care_team_links: Array<{
@@ -191,6 +196,19 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
           const status = c.status as CaseStatus;
           const nextStatuses = caseStatusTransitions[status] ?? [];
 
+          const caseIntake = getHomeVisitIntake(c.required_visit_support);
+          const intakeRows = buildIntakeFieldRows(caseIntake, [
+            'primary_disease',
+            'care_level',
+            'adl_level',
+            'dementia_level',
+            'money_management',
+            'narcotics',
+            'special_medical_procedures',
+            'allergy_history',
+            'infection_isolation',
+          ]);
+
           return (
             <Card key={c.id}>
               <CardHeader>
@@ -226,6 +244,22 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
                     </dd>
                   </div>
                 </dl>
+
+                {intakeRows.length > 0 && (
+                  <div className="rounded-md border border-border/60 bg-muted/10 p-3">
+                    <p className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground">
+                      受付時インテーク情報
+                    </p>
+                    <dl className="grid grid-cols-1 gap-1.5 text-sm sm:grid-cols-2">
+                      {intakeRows.map((row) => (
+                        <div key={row.label} className="flex gap-2">
+                          <dt className="shrink-0 text-muted-foreground">{row.label}</dt>
+                          <dd className="min-w-0 break-words text-foreground">{row.display}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                )}
 
                 {c.notes && (
                   <p className="rounded-md bg-muted/40 p-3 text-sm text-foreground">

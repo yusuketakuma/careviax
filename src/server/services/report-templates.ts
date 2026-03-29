@@ -3,7 +3,8 @@
 // 厚労省「在宅患者訪問薬剤管理指導ガイド」薬学的評価シート7項目準拠
 
 import type { StructuredSoap } from '@/types/structured-soap';
-import type { PhysicianReportContent, CareManagerReportContent } from '@/types/care-report-content';
+import type { PhysicianReportContent, CareManagerReportContent, BaselineContext } from '@/types/care-report-content';
+import type { HomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import {
   getSoapLabel,
   ADHERENCE_LABELS,
@@ -180,6 +181,8 @@ export type PhysicianReportContext = {
     organization_name?: string | null;
   };
   pharmacistName: string;
+  /** intake から抽出したベースライン情報（オプション） */
+  intake?: HomeVisitIntake;
 };
 
 // ─── BuildCareManagerReport の入力型 ─────────────────────────────────────────
@@ -210,13 +213,46 @@ export type CareManagerReportContext = {
     organization_name?: string | null;
   };
   pharmacistName: string;
+  /** intake から抽出したベースライン情報（オプション） */
+  intake?: HomeVisitIntake;
 };
+
+// ─── intake → BaselineContext 変換 ───────────────────────────────────────────
+
+function buildBaselineContext(intake: HomeVisitIntake): BaselineContext {
+  return {
+    care_level: intake.care_level,
+    adl_level: intake.adl_level,
+    dementia_level: intake.dementia_level,
+    special_medical_procedures: intake.special_medical_procedures,
+    primary_disease: intake.primary_disease,
+    requester: intake.requester
+      ? {
+          contact_name: intake.requester.contact_name,
+          organization_name: intake.requester.organization_name,
+          profession: intake.requester.profession,
+          phone: intake.requester.phone,
+          fax: intake.requester.fax,
+        }
+      : undefined,
+  };
+}
 
 // ─── 医師向け報告書ビルダー ───────────────────────────────────────────────────
 
 export function buildPhysicianReport(ctx: PhysicianReportContext): PhysicianReportContent {
-  const { patient, visitRecord, structuredSoap, prescriptionLines, residualMedications, prescriber, pharmacistName } = ctx;
+  const { patient, visitRecord, structuredSoap, prescriptionLines, residualMedications, pharmacistName, intake } = ctx;
+
+  // 依頼元が医師の場合、intake の requester 情報でケアチームの主治医情報を補完する
+  const prescriberResolved: PhysicianReportContext['prescriber'] =
+    intake?.requester?.profession === 'physician' && intake.requester.contact_name
+      ? {
+          name: intake.requester.contact_name,
+          organization_name: intake.requester.organization_name ?? ctx.prescriber.organization_name,
+        }
+      : ctx.prescriber;
   const { subjective, objective, assessment, plan } = structuredSoap;
+  const prescriber = prescriberResolved;
 
   const warnings: string[] = [];
 
@@ -298,13 +334,14 @@ export function buildPhysicianReport(ctx: PhysicianReportContext): PhysicianRepo
     prescription_proposals: plan.prescription_proposal ?? undefined,
     physician_communication: plan.physician_report_items ?? '',
     warnings,
+    baseline_context: intake ? buildBaselineContext(intake) : undefined,
   };
 }
 
 // ─── ケアマネ向け情報提供書ビルダー ──────────────────────────────────────────
 
 export function buildCareManagerReport(ctx: CareManagerReportContext): CareManagerReportContent {
-  const { patient, visitRecord, structuredSoap, prescriptionLines, residualMedications, careManager, pharmacistName } = ctx;
+  const { patient, visitRecord, structuredSoap, prescriptionLines, residualMedications, careManager, pharmacistName, intake } = ctx;
   const { objective, plan } = structuredSoap;
 
   const warnings: string[] = [];
@@ -394,5 +431,6 @@ export function buildCareManagerReport(ctx: CareManagerReportContext): CareManag
       followup_items: followupItems,
     },
     warnings,
+    baseline_context: intake ? buildBaselineContext(intake) : undefined,
   };
 }

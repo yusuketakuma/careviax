@@ -142,6 +142,7 @@ export async function GET(
           id: true,
           primary_pharmacist_id: true,
           backup_pharmacist_id: true,
+          required_visit_support: true,
           patient: {
             select: {
               id: true,
@@ -152,6 +153,34 @@ export async function GET(
                 select: {
                   address: true,
                   building_id: true,
+                },
+              },
+              contacts: {
+                where: { is_emergency_contact: true },
+                select: {
+                  id: true,
+                  name: true,
+                  relation: true,
+                  phone: true,
+                },
+              },
+              consents: {
+                where: {
+                  consent_type: 'visit_medication_management',
+                  is_active: true,
+                  revoked_date: null,
+                },
+                select: { id: true },
+              },
+              scheduling_preference: {
+                select: {
+                  visit_before_contact_required: true,
+                  first_visit_preferred_date: true,
+                  first_visit_time_slot: true,
+                  first_visit_time_note: true,
+                  parking_available: true,
+                  primary_contact_preference: true,
+                  mcs_linked: true,
                 },
               },
             },
@@ -166,6 +195,11 @@ export async function GET(
               phone: true,
             },
           },
+          management_plans: {
+            where: { status: 'approved' },
+            take: 1,
+            select: { id: true },
+          },
         },
       },
     },
@@ -175,6 +209,9 @@ export async function GET(
   const preparation = schedule.preparation;
   const primaryResidence = schedule.case_.patient.residences[0] ?? null;
 
+  const caseData = schedule.case_;
+  const patient = caseData.patient;
+
   const [
     previousVisit,
     openTasks,
@@ -182,6 +219,7 @@ export async function GET(
     sameDaySchedules,
     billingEvidence,
     recentPrescriptionIntakes,
+    firstVisitDoc,
   ] =
     await Promise.all([
     prisma.visitRecord.findFirst({
@@ -323,7 +361,73 @@ export async function GET(
         },
       },
     }),
+    prisma.firstVisitDocument.findFirst({
+      where: {
+        org_id: ctx.orgId,
+        case_id: schedule.case_id,
+      },
+      orderBy: { created_at: 'desc' },
+      select: {
+        id: true,
+        delivered_at: true,
+        delivered_to: true,
+      },
+    }),
   ]);
+
+  const onboarding_readiness = {
+    consent_obtained: (patient.consents?.length ?? 0) > 0,
+    emergency_contact_set: (patient.contacts?.length ?? 0) > 0,
+    first_visit_doc_delivered: firstVisitDoc?.delivered_at != null,
+    management_plan_approved: (caseData.management_plans?.length ?? 0) > 0,
+    primary_physician_set:
+      caseData.care_team_links?.some((l) => l.role === 'physician') ?? false,
+  };
+
+  // HVI-01C: build intake_context from home_visit_intake JSON and scheduling_preference
+  const rawVisitSupport = caseData.required_visit_support as Record<string, unknown> | null;
+  const intakeData = (
+    rawVisitSupport?.home_visit_intake != null &&
+    typeof rawVisitSupport.home_visit_intake === 'object'
+      ? rawVisitSupport.home_visit_intake
+      : {}
+  ) as Record<string, unknown>;
+  const schedulingPref = patient.scheduling_preference;
+
+  const intake_context = {
+    // From scheduling_preference (structured, HVI-01B)
+    visit_before_contact_required: schedulingPref?.visit_before_contact_required ?? null,
+    first_visit_preferred_date:
+      schedulingPref?.first_visit_preferred_date instanceof Date
+        ? schedulingPref.first_visit_preferred_date.toISOString().split('T')[0]
+        : (schedulingPref?.first_visit_preferred_date as string | null | undefined) ?? null,
+    first_visit_time_slot: schedulingPref?.first_visit_time_slot ?? null,
+    first_visit_time_note: schedulingPref?.first_visit_time_note ?? null,
+    parking_available: schedulingPref?.parking_available ?? null,
+    primary_contact_preference: schedulingPref?.primary_contact_preference ?? null,
+    mcs_linked: schedulingPref?.mcs_linked ?? null,
+
+    // From home_visit_intake JSON (CareCase.required_visit_support)
+    money_management: (intakeData.money_management as string | null | undefined) ?? null,
+    family_key_person: (intakeData.family_key_person as string | null | undefined) ?? null,
+    care_level: (intakeData.care_level as string | null | undefined) ?? null,
+    adl_level: (intakeData.adl_level as string | null | undefined) ?? null,
+    dementia_level: (intakeData.dementia_level as string | null | undefined) ?? null,
+    special_medical_procedures: Array.isArray(intakeData.special_medical_procedures)
+      ? (intakeData.special_medical_procedures as string[])
+      : [],
+    special_medical_notes:
+      (intakeData.special_medical_notes as string | null | undefined) ?? null,
+    ent_prescription: (intakeData.ent_prescription as string | null | undefined) ?? null,
+    narcotics_base: (intakeData.narcotics_base as string | null | undefined) ?? null,
+    narcotics_rescue: (intakeData.narcotics_rescue as string | null | undefined) ?? null,
+    infection_isolation: (intakeData.infection_isolation as string | null | undefined) ?? null,
+    residual_medication_status:
+      (intakeData.residual_medication_status as string | null | undefined) ?? null,
+    medication_support_methods: Array.isArray(intakeData.medication_support_methods)
+      ? (intakeData.medication_support_methods as string[])
+      : [],
+  };
 
   const sameFacilitySchedules = sameDaySchedules.filter((item) => {
     const residence = item.case_.patient.residences[0] ?? null;
@@ -459,6 +563,15 @@ export async function GET(
         home_care_feature_highlights:
           selectScheduleHomeCareFeatureHighlights(homeCareFeatureSummary),
         visit_brief: visitBrief,
+        onboarding_readiness,
+        intake_context,
+        emergency_contacts: patient.contacts ?? [],
+        first_visit_document: firstVisitDoc
+          ? {
+              delivered_at: firstVisitDoc.delivered_at?.toISOString() ?? null,
+              delivered_to: firstVisitDoc.delivered_to ?? null,
+            }
+          : null,
       },
     },
   });

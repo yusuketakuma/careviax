@@ -266,6 +266,23 @@ export type VisitPreparationPack = {
   } | null;
   home_care_feature_highlights: HomeCareFeatureState[];
   visit_brief: VisitBrief;
+  onboarding_readiness: {
+    consent_obtained: boolean;
+    emergency_contact_set: boolean;
+    first_visit_doc_delivered: boolean;
+    management_plan_approved: boolean;
+    primary_physician_set: boolean;
+  } | null;
+  emergency_contacts: Array<{
+    id: string;
+    name: string;
+    relation: string;
+    phone: string | null;
+  }>;
+  first_visit_document: {
+    delivered_at: string | null;
+    delivered_to: string | null;
+  } | null;
 };
 
 export type ScheduleTaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';

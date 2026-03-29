@@ -4,10 +4,12 @@ import { useState, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { buildIntakeBadges, getHomeVisitIntake } from '@/lib/patient/intake-display';
 
 type PatientMasterCardProps = {
   orgId: string;
@@ -29,12 +31,20 @@ type PatientMasterCardProps = {
       unit_name: string | null;
       is_primary: boolean;
     }>;
+    cases?: Array<{
+      required_visit_support: Record<string, unknown> | null;
+    }>;
   };
 };
 
 export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
   const queryClient = useQueryClient();
   const primaryResidence = patient.residences.find((residence) => residence.is_primary) ?? null;
+
+  // Resolve the first case that has intake data and derive compact badges
+  const intakeCase = patient.cases?.find((c) => getHomeVisitIntake(c.required_visit_support)) ?? null;
+  const intake = intakeCase ? getHomeVisitIntake(intakeCase.required_visit_support) : null;
+  const intakeBadges = buildIntakeBadges(intake);
   const [form, setForm] = useState({
     name: patient.name,
     name_kana: patient.name_kana,
@@ -95,8 +105,22 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="space-y-2">
         <CardTitle className="text-base">患者マスタ</CardTitle>
+        {intakeBadges.length > 0 && (
+          <div className="flex flex-wrap gap-1.5" aria-label="インテーク情報サマリ">
+            {intakeBadges.map((badge) => (
+              <Badge
+                key={badge.key}
+                variant={badge.highlight ? 'destructive' : 'secondary'}
+                className="text-xs font-normal"
+              >
+                <span className="mr-1 text-muted-foreground">{badge.label}</span>
+                {badge.value}
+              </Badge>
+            ))}
+          </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-4 md:grid-cols-2">
