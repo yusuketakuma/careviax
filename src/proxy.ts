@@ -157,7 +157,10 @@ function buildResponse(
   const csp = [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
-    `style-src 'self' 'nonce-${nonce}'`,
+    // style-src uses 'unsafe-inline' because Tailwind, shadcn/ui, and
+    // next-themes inject inline styles without nonce support.
+    // CSS injection risk is significantly lower than script injection.
+    "style-src 'self' 'unsafe-inline'",
     ...CSP_STATIC_TAIL,
   ].join('; ');
 
