@@ -40,6 +40,14 @@ export const CARE_RULES_2024: BillingRuleSeed[] = [
       requires_care_manager_report: true,
       requires_medication_management_record: true,
     },
+    exclusion_rules: {
+      same_month_exclusive: [
+        'MED_HOME_VISIT_SINGLE',
+        'MED_HOME_VISIT_MULTI_2_9',
+        'MED_HOME_VISIT_MULTI_10_PLUS',
+        'MED_HOME_VISIT_ONLINE',
+      ],
+    },
     source_url: CARE_NOTICE_URL,
     source_note: '居宅療養管理指導費 薬局薬剤師 単一建物1人 518単位（令和6年改定: 517→518）',
   },
@@ -67,6 +75,14 @@ export const CARE_RULES_2024: BillingRuleSeed[] = [
       requires_care_manager_report: true,
       requires_medication_management_record: true,
     },
+    exclusion_rules: {
+      same_month_exclusive: [
+        'MED_HOME_VISIT_SINGLE',
+        'MED_HOME_VISIT_MULTI_2_9',
+        'MED_HOME_VISIT_MULTI_10_PLUS',
+        'MED_HOME_VISIT_ONLINE',
+      ],
+    },
     source_url: CARE_NOTICE_URL,
     source_note: '居宅療養管理指導費 薬局薬剤師 単一建物2〜9人 379単位（令和6年改定: 378→379）',
   },
@@ -93,6 +109,14 @@ export const CARE_RULES_2024: BillingRuleSeed[] = [
     evidence_requirements: {
       requires_care_manager_report: true,
       requires_medication_management_record: true,
+    },
+    exclusion_rules: {
+      same_month_exclusive: [
+        'MED_HOME_VISIT_SINGLE',
+        'MED_HOME_VISIT_MULTI_2_9',
+        'MED_HOME_VISIT_MULTI_10_PLUS',
+        'MED_HOME_VISIT_ONLINE',
+      ],
     },
     source_url: CARE_NOTICE_URL,
     source_note: '居宅療養管理指導費 薬局薬剤師 単一建物10人以上 345単位（令和6年改定: 344→345）',
@@ -131,6 +155,14 @@ export const CARE_RULES_2024: BillingRuleSeed[] = [
       requires_care_manager_report: true,
       requires_medication_management_record: true,
     },
+    exclusion_rules: {
+      same_month_exclusive: [
+        'MED_HOME_VISIT_SINGLE',
+        'MED_HOME_VISIT_MULTI_2_9',
+        'MED_HOME_VISIT_MULTI_10_PLUS',
+        'MED_HOME_VISIT_ONLINE',
+      ],
+    },
     source_url: CARE_NOTICE_URL,
     source_note: '介護予防居宅療養管理指導費 薬局薬剤師 単一建物1人 518単位',
   },
@@ -158,6 +190,14 @@ export const CARE_RULES_2024: BillingRuleSeed[] = [
       requires_care_manager_report: true,
       requires_medication_management_record: true,
     },
+    exclusion_rules: {
+      same_month_exclusive: [
+        'MED_HOME_VISIT_SINGLE',
+        'MED_HOME_VISIT_MULTI_2_9',
+        'MED_HOME_VISIT_MULTI_10_PLUS',
+        'MED_HOME_VISIT_ONLINE',
+      ],
+    },
     source_url: CARE_NOTICE_URL,
     source_note: '介護予防居宅療養管理指導費 薬局薬剤師 単一建物2〜9人 379単位',
   },
@@ -184,6 +224,14 @@ export const CARE_RULES_2024: BillingRuleSeed[] = [
     evidence_requirements: {
       requires_care_manager_report: true,
       requires_medication_management_record: true,
+    },
+    exclusion_rules: {
+      same_month_exclusive: [
+        'MED_HOME_VISIT_SINGLE',
+        'MED_HOME_VISIT_MULTI_2_9',
+        'MED_HOME_VISIT_MULTI_10_PLUS',
+        'MED_HOME_VISIT_ONLINE',
+      ],
     },
     source_url: CARE_NOTICE_URL,
     source_note: '介護予防居宅療養管理指導費 薬局薬剤師 単一建物10人以上 345単位',

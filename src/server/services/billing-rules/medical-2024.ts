@@ -38,6 +38,20 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
       requires_visit_documentation: true,
       requires_written_report: true,
     },
+    exclusion_rules: {
+      same_month_exclusive: [
+        'medication_management_guidance',  // 服薬管理指導料
+        'family_pharmacist_guidance',      // かかりつけ薬剤師指導料
+        'family_pharmacist_comprehensive', // かかりつけ薬剤師包括管理料
+      ],
+      same_visit_exclusive: [
+        'outpatient_medication_support_1', // 外来服薬支援料1
+        'MED_INFO_PROVISION_1',           // 服薬情報等提供料
+        'MED_INFO_PROVISION_2_I',
+        'MED_INFO_PROVISION_2_RO',
+        'MED_INFO_PROVISION_2_HA',
+      ],
+    },
     source_url: MEDICAL_TABLE_URL,
     source_note: `厚労省 令和6年度診療報酬改定 在宅患者訪問薬剤管理指導料（単一建物1人 ${650}点）`,
   },
@@ -65,6 +79,20 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
       requires_management_plan: true,
       requires_visit_documentation: true,
       requires_written_report: true,
+    },
+    exclusion_rules: {
+      same_month_exclusive: [
+        'medication_management_guidance',  // 服薬管理指導料
+        'family_pharmacist_guidance',      // かかりつけ薬剤師指導料
+        'family_pharmacist_comprehensive', // かかりつけ薬剤師包括管理料
+      ],
+      same_visit_exclusive: [
+        'outpatient_medication_support_1', // 外来服薬支援料1
+        'MED_INFO_PROVISION_1',           // 服薬情報等提供料
+        'MED_INFO_PROVISION_2_I',
+        'MED_INFO_PROVISION_2_RO',
+        'MED_INFO_PROVISION_2_HA',
+      ],
     },
     source_url: MEDICAL_TABLE_URL,
     source_note: `厚労省 令和6年度診療報酬改定 在宅患者訪問薬剤管理指導料（単一建物2〜9人 ${320}点）`,
@@ -94,6 +122,20 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
       requires_visit_documentation: true,
       requires_written_report: true,
     },
+    exclusion_rules: {
+      same_month_exclusive: [
+        'medication_management_guidance',  // 服薬管理指導料
+        'family_pharmacist_guidance',      // かかりつけ薬剤師指導料
+        'family_pharmacist_comprehensive', // かかりつけ薬剤師包括管理料
+      ],
+      same_visit_exclusive: [
+        'outpatient_medication_support_1', // 外来服薬支援料1
+        'MED_INFO_PROVISION_1',           // 服薬情報等提供料
+        'MED_INFO_PROVISION_2_I',
+        'MED_INFO_PROVISION_2_RO',
+        'MED_INFO_PROVISION_2_HA',
+      ],
+    },
     source_url: MEDICAL_TABLE_URL,
     source_note: `厚労省 令和6年度診療報酬改定 在宅患者訪問薬剤管理指導料（単一建物10人以上 ${290}点）`,
   },
@@ -114,6 +156,20 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
       monthly_cap_shared: true,
       weekly_pharmacist_cap: 40,
     },
+    exclusion_rules: {
+      same_month_exclusive: [
+        'medication_management_guidance',  // 服薬管理指導料
+        'family_pharmacist_guidance',      // かかりつけ薬剤師指導料
+        'family_pharmacist_comprehensive', // かかりつけ薬剤師包括管理料
+      ],
+      same_visit_exclusive: [
+        'outpatient_medication_support_1', // 外来服薬支援料1
+        'MED_INFO_PROVISION_1',           // 服薬情報等提供料
+        'MED_INFO_PROVISION_2_I',
+        'MED_INFO_PROVISION_2_RO',
+        'MED_INFO_PROVISION_2_HA',
+      ],
+    },
     source_url: MEDICAL_SOURCE_URL,
     source_note: '厚労省 令和6年度診療報酬改定 在宅患者オンライン薬剤管理指導料 59点',
   },
@@ -131,6 +187,7 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
     amount: 100,
     conditions: {
       requires_narcotic_management: true,
+      exclusive_with: ['MED_ADD_CONTINUOUS_NARCOTIC'],
     },
     source_url: MEDICAL_SOURCE_URL,
     source_note: '厚労省 令和6年度診療報酬改定 麻薬管理指導加算 100点',
@@ -167,8 +224,9 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
     code: 'MED_ADD_CONTINUOUS_NARCOTIC',
     amount: 250,
     conditions: {
-      requires_continuous_narcotic_infusion: true,
+      requires_narcotic_continuous_injection: true,
       special_cap_eligible: true,
+      exclusive_with: ['MED_ADD_NARCOTIC'],
     },
     source_url: MEDICAL_SOURCE_URL,
     source_note: '厚労省 令和6年度診療報酬改定 在宅患者医療用麻薬持続注射療法加算 250点',
@@ -485,6 +543,10 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
       requires_initial_transition: true,
       once_per_patient: true,
     },
+    evidence_requirements: {
+      requires_physician_instruction: true,
+      requires_management_plan: true,
+    },
     source_url: MEDICAL_TABLE_URL,
     source_note: '調剤報酬点数表 区分15の8 在宅移行初期管理料 240点（令和6年新設。退院処方後の在宅移行時に1回）',
   },
@@ -506,6 +568,9 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
       requires_hospital_conference: true,
       once_per_admission: true,
     },
+    evidence_requirements: {
+      requires_visit_documentation: true, // 退院時カンファレンス参加記録
+    },
     source_url: MEDICAL_TABLE_URL,
     source_note: '調剤報酬点数表 区分15の4 退院時共同指導料 600点（入院中の患者1回）',
   },
@@ -526,6 +591,9 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
     conditions: {
       requires_emergency_conference: true,
       monthly_cap: 2,
+    },
+    evidence_requirements: {
+      requires_visit_documentation: true, // 緊急時カンファレンス参加記録
     },
     source_url: MEDICAL_TABLE_URL,
     source_note: '調剤報酬点数表 区分15の7 在宅患者緊急時等共同指導料 700点（月2回まで）',
@@ -573,6 +641,12 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
       emergency_category: 'planned_disease_exacerbation',
       monthly_cap: 4,
     },
+    evidence_requirements: {
+      requires_physician_instruction: true,
+      requires_management_plan: true,
+      requires_visit_documentation: true,
+      requires_written_report: true,
+    },
     source_url: MEDICAL_TABLE_URL,
     source_note: '調剤報酬点数表 区分15の3 在宅患者緊急訪問薬剤管理指導料1 500点（計画的訪問の対象疾患の急変）',
   },
@@ -593,6 +667,22 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
       emergency_category: 'other_exacerbation',
       monthly_cap: 4,
     },
+    evidence_requirements: {
+      requires_physician_instruction: true,
+      requires_management_plan: true,
+      requires_visit_documentation: true,
+      requires_written_report: true,
+    },
+    exclusion_rules: {
+      same_month_exclusive: [
+        'MED_HOME_VISIT_SINGLE',
+        'MED_HOME_VISIT_MULTI_2_9',
+        'MED_HOME_VISIT_MULTI_10_PLUS',
+        'CARE_HOME_PHARMACY_SINGLE',
+        'CARE_HOME_PHARMACY_MULTI_2_9',
+        'CARE_HOME_PHARMACY_MULTI_10_PLUS',
+      ],
+    },
     source_url: MEDICAL_TABLE_URL,
     source_note: '調剤報酬点数表 区分15の3 在宅患者緊急訪問薬剤管理指導料2 200点（それ以外の急変）',
   },
@@ -612,6 +702,12 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
       visit_type: 'emergency',
       emergency_category: 'online',
       monthly_cap: 4,
+    },
+    evidence_requirements: {
+      requires_physician_instruction: true,
+      requires_management_plan: true,
+      requires_visit_documentation: true,
+      requires_written_report: true,
     },
     source_url: MEDICAL_TABLE_URL,
     source_note: '調剤報酬点数表 区分15の3 在宅患者緊急オンライン薬剤管理指導料 59点',
