@@ -99,74 +99,9 @@ export const CARE_RULES_2024: BillingRuleSeed[] = [
   },
 
   // ════════════════════════════════════════════════════════════════
-  // 居宅療養管理指導費（要介護） — 病院・診療所薬剤師
+  // NOTE: 病院・診療所薬剤師の居宅療養管理指導費 (558/414/378単位) は
+  // 保険薬局の責務外のため除外。CareViaX は保険薬局向けシステム。
   // ════════════════════════════════════════════════════════════════
-  {
-    ssot_key: 'care.home_management.hospital.single',
-    rule_type: 'base',
-    service_type: 'care_home_management',
-    payer_basis: 'care',
-    provider_scope: 'hospital_clinic',
-    selection_mode: 'manual',
-    calculation_unit: 'unit',
-    display_order: 230,
-    name: '居宅療養管理指導費 病院・診療所薬剤師 単一建物1人',
-    code: 'CARE_HOME_HOSPITAL_SINGLE',
-    amount: 558,
-    conditions: {
-      building_tier: 'single',
-      care_level_category: 'care_required',
-      monthly_cap: 4,
-      special_monthly_cap: 8,
-      special_weekly_cap: 2,
-    },
-    source_url: CARE_NOTICE_URL,
-    source_note: '居宅療養管理指導費 病院・診療所薬剤師 単一建物1人 558単位',
-  },
-  {
-    ssot_key: 'care.home_management.hospital.multi_2_9',
-    rule_type: 'base',
-    service_type: 'care_home_management',
-    payer_basis: 'care',
-    provider_scope: 'hospital_clinic',
-    selection_mode: 'manual',
-    calculation_unit: 'unit',
-    display_order: 240,
-    name: '居宅療養管理指導費 病院・診療所薬剤師 単一建物2〜9人',
-    code: 'CARE_HOME_HOSPITAL_MULTI_2_9',
-    amount: 414,
-    conditions: {
-      building_tier: 'multi_2_9',
-      care_level_category: 'care_required',
-      monthly_cap: 4,
-      special_monthly_cap: 8,
-      special_weekly_cap: 2,
-    },
-    source_url: CARE_NOTICE_URL,
-    source_note: '居宅療養管理指導費 病院・診療所薬剤師 単一建物2〜9人 414単位',
-  },
-  {
-    ssot_key: 'care.home_management.hospital.multi_10_plus',
-    rule_type: 'base',
-    service_type: 'care_home_management',
-    payer_basis: 'care',
-    provider_scope: 'hospital_clinic',
-    selection_mode: 'manual',
-    calculation_unit: 'unit',
-    display_order: 250,
-    name: '居宅療養管理指導費 病院・診療所薬剤師 単一建物10人以上',
-    code: 'CARE_HOME_HOSPITAL_MULTI_10_PLUS',
-    amount: 378,
-    conditions: {
-      building_tier: 'multi_10_plus',
-      care_level_category: 'care_required',
-      monthly_cap: 4,
-      special_monthly_cap: 8,
-      special_weekly_cap: 2,
-    },
-    source_url: CARE_NOTICE_URL,
-    source_note: '居宅療養管理指導費 病院・診療所薬剤師 単一建物10人以上 378単位',
-  },
 
   // ════════════════════════════════════════════════════════════════
   // 介護予防居宅療養管理指導費（要支援） — 薬局薬剤師
