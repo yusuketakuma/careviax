@@ -183,10 +183,33 @@ function isClaimableOutcome(outcome: string) {
   return ['completed', 'completed_with_issue', 'revisit_needed'].includes(outcome);
 }
 
+/**
+ * Determine the payer basis (insurance type) for billing.
+ *
+ * Rules (令和6年度):
+ * - 介護認定あり (care_insurance_number exists) → 介護保険 (care)
+ * - 介護認定なし → 医療保険 (medical)
+ * - 緊急訪問 (visit_type === 'emergency') → 常に医療保険 (medical)
+ *   ※ 在宅患者緊急訪問薬剤管理指導料は介護認定ありでも医療保険で算定
+ * - 保険番号なし → 自費 (self_pay)
+ */
 function getPayerBasis(args: {
   medicalInsuranceNumber?: string | null;
   careInsuranceNumber?: string | null;
+  visitType?: string | null;
 }) {
+  // 緊急訪問は介護認定の有無に関わらず医療保険で算定
+  const isEmergencyVisit = args.visitType === 'emergency';
+
+  if (isEmergencyVisit) {
+    // 緊急訪問は常に医療保険（在宅患者緊急訪問薬剤管理指導料）
+    if (args.medicalInsuranceNumber || args.careInsuranceNumber) {
+      return 'medical' as const;
+    }
+    return 'self_pay' as const;
+  }
+
+  // 通常訪問: 介護認定あり → 介護保険優先
   if (args.careInsuranceNumber) return 'care' as const;
   if (args.medicalInsuranceNumber) return 'medical' as const;
   return 'self_pay' as const;
@@ -1204,6 +1227,7 @@ export async function upsertBillingEvidenceForVisit(
           cycle_id: true,
           case_id: true,
           pharmacist_id: true,
+          visit_type: true,
         },
       },
     },
@@ -1321,6 +1345,7 @@ export async function upsertBillingEvidenceForVisit(
   const payerBasis = getPayerBasis({
     medicalInsuranceNumber: patient.medical_insurance_number,
     careInsuranceNumber: patient.care_insurance_number,
+    visitType: visitRecord.schedule.visit_type,
   });
   const allReportsDelivered =
     reports.length > 0 &&
@@ -1374,6 +1399,7 @@ export async function upsertBillingEvidenceForVisit(
     specialCapEligible: false,
     onlineEligible: false,
     regionAddOnEligible: [],
+    visitType: visitRecord.schedule.visit_type,
   });
 
   const evidence = await tx.billingEvidence.upsert({

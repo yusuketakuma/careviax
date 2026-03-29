@@ -33,6 +33,8 @@ export type BillingEvidenceContext = {
   specialCapEligible?: boolean;
   onlineEligible?: boolean;
   regionAddOnEligible?: Array<'special_15' | 'small_office_10' | 'resident_5'>;
+  /** VisitType from the schedule — drives emergency billing rule selection */
+  visitType?: string | null;
 };
 
 export type BillingCandidateSpec = {
@@ -628,6 +630,71 @@ const OFFICIAL_HOME_CARE_RULES: BillingRuleSeed[] = [
     source_url: MEDICAL_TABLE_URL,
     source_note: '調剤報酬点数表 区分15の6 在宅患者重複投薬・相互作用等防止管理料2 ロ 20点',
   },
+
+  // ── 在宅患者緊急訪問薬剤管理指導料（令和6年度） ──
+  // 介護認定の有無に関わらず医療保険で算定。
+  // 1: 計画的訪問の対象疾患の急変 500点
+  // 2: それ以外の急変 200点
+  {
+    ssot_key: 'medical.emergency_visit.1',
+    rule_type: 'base',
+    service_type: 'medical_home_visit',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'auto',
+    calculation_unit: 'point',
+    display_order: 500,
+    name: '在宅患者緊急訪問薬剤管理指導料1',
+    code: 'MED_EMERGENCY_VISIT_1',
+    amount: 500,
+    conditions: {
+      visit_type: 'emergency',
+      emergency_category: 'planned_disease_exacerbation',
+      monthly_cap: 4,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 区分15の3 在宅患者緊急訪問薬剤管理指導料1 500点（計画的訪問の対象疾患の急変）',
+  },
+  {
+    ssot_key: 'medical.emergency_visit.2',
+    rule_type: 'base',
+    service_type: 'medical_home_visit',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'auto',
+    calculation_unit: 'point',
+    display_order: 510,
+    name: '在宅患者緊急訪問薬剤管理指導料2',
+    code: 'MED_EMERGENCY_VISIT_2',
+    amount: 200,
+    conditions: {
+      visit_type: 'emergency',
+      emergency_category: 'other_exacerbation',
+      monthly_cap: 4,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 区分15の3 在宅患者緊急訪問薬剤管理指導料2 200点（それ以外の急変）',
+  },
+  {
+    ssot_key: 'medical.emergency_visit.online',
+    rule_type: 'base',
+    service_type: 'medical_home_visit',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'auto',
+    calculation_unit: 'point',
+    display_order: 520,
+    name: '在宅患者緊急オンライン薬剤管理指導料',
+    code: 'MED_EMERGENCY_VISIT_ONLINE',
+    amount: 59,
+    conditions: {
+      visit_type: 'emergency',
+      emergency_category: 'online',
+      monthly_cap: 4,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 区分15の3 在宅患者緊急オンライン薬剤管理指導料 59点',
+  },
 ];
 
 function buildingTier(buildingPatientCount: number) {
@@ -753,6 +820,20 @@ function chooseBaseRule(
   rules: Awaited<ReturnType<typeof getHomeCareBillingSsotSummary>>['rules'],
   context: BillingEvidenceContext
 ) {
+  // 緊急訪問 → 在宅患者緊急訪問薬剤管理指導料を優先選択
+  // デフォルトは「2」（それ以外の急変 200点）。
+  // 「1」（計画的訪問対象疾患の急変 500点）は手動選択で昇格。
+  if (context.visitType === 'emergency') {
+    return (
+      rules.find((rule) => {
+        if (rule.rule_type !== 'base') return false;
+        if (rule.payer_basis !== 'medical') return false;
+        return conditionValue(rule, 'visit_type') === 'emergency' &&
+          conditionValue(rule, 'emergency_category') === 'other_exacerbation';
+      }) ?? null
+    );
+  }
+
   const onlineRule =
     context.onlineEligible
       ? rules.find((rule) => {
@@ -774,6 +855,7 @@ function chooseBaseRule(
       if (rule.payer_basis !== context.payerBasis) return false;
       if (rule.provider_scope && rule.provider_scope !== context.providerScope) return false;
       if (conditionValue(rule, 'requires_online_visit') === true) return false;
+      if (conditionValue(rule, 'visit_type') === 'emergency') return false;
       return conditionValue(rule, 'building_tier') === tier;
     }) ?? null
   );
@@ -784,10 +866,17 @@ function manualRuleCandidates(
   context: BillingEvidenceContext
 ) {
   return rules.filter((rule) => {
-    if (rule.service_type !== context.serviceType) return false;
+    if (rule.service_type !== context.serviceType && rule.service_type !== 'generic') return false;
     if (rule.payer_basis !== context.payerBasis) return false;
     if (rule.provider_scope && rule.provider_scope !== context.providerScope) return false;
+    // Exclude emergency rules from manual candidates for non-emergency visits
+    if (conditionValue(rule, 'visit_type') === 'emergency' && context.visitType !== 'emergency') return false;
     if (rule.rule_type === 'base') {
+      // For emergency visits, include emergency_visit.1 as manual upgrade option
+      if (context.visitType === 'emergency') {
+        return conditionValue(rule, 'visit_type') === 'emergency' &&
+          conditionValue(rule, 'emergency_category') !== 'other_exacerbation';
+      }
       return conditionValue(rule, 'requires_online_visit') === true;
     }
     return true;
