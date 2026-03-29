@@ -190,6 +190,22 @@ export type BillingEvidenceContext = {
   regionAddOnEligible?: Array<'special_15' | 'small_office_10' | 'resident_5'>;
   /** VisitType from the schedule — drives emergency billing rule selection */
   visitType?: string | null;
+
+  // ── 患者データから自動判定された条件 ──
+  /** 乳幼児（6歳未満） — Patient.birth_date から自動計算 */
+  infantEligible?: boolean;
+  /** 18歳未満 — Patient.birth_date から自動計算（小児特定加算の年齢要件） */
+  pediatricAge?: boolean;
+  /** 麻薬処方あり — intake.narcotics_base/rescue から自動判定 */
+  narcoticRequired?: boolean;
+  /** 麻薬持続注射 — intake.special_medical_procedures から自動判定 */
+  narcoticInjectionRequired?: boolean;
+  /** 中心静脈栄養法 — intake.special_medical_procedures から自動判定 */
+  centralVenousRequired?: boolean;
+  /** 経管投薬 — intake.medication_support_methods から自動判定 */
+  enteralRequired?: boolean;
+  /** 介護認定区分 — intake.care_level から自動判定 */
+  careLevelCategory?: 'care_required' | 'support_required' | null;
 };
 
 export type BillingCandidateSpec = {

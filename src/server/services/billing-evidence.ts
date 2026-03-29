@@ -1246,6 +1246,14 @@ export async function upsertBillingEvidenceForVisit(
       id: true,
       medical_insurance_number: true,
       care_insurance_number: true,
+      birth_date: true,
+      cases: {
+        where: { id: visitRecord.schedule.case_id },
+        select: {
+          required_visit_support: true,
+        },
+        take: 1,
+      },
     },
   });
   if (!patient) {
@@ -1381,6 +1389,65 @@ export async function upsertBillingEvidenceForVisit(
 
   const claimable = exclusionReason == null;
 
+  // ── 患者データからの算定条件自動判定 ──
+  const visitDate = visitRecord.visit_date;
+
+  // 乳幼児判定 (6歳未満)
+  let infantEligible = false;
+  if (patient.birth_date) {
+    const bd = new Date(patient.birth_date);
+    const ageYears = visitDate.getFullYear() - bd.getFullYear();
+    const hadBirthday =
+      visitDate.getMonth() > bd.getMonth() ||
+      (visitDate.getMonth() === bd.getMonth() && visitDate.getDate() >= bd.getDate());
+    infantEligible = hadBirthday ? ageYears < 6 : ageYears - 1 < 6;
+  }
+
+  // 小児特定加算判定 (18歳未満 — 障害児判定は手動のため候補提示のみ)
+  let pediatricAge = false;
+  if (patient.birth_date) {
+    const bd = new Date(patient.birth_date);
+    const ageYears = visitDate.getFullYear() - bd.getFullYear();
+    const hadBirthday =
+      visitDate.getMonth() > bd.getMonth() ||
+      (visitDate.getMonth() === bd.getMonth() && visitDate.getDate() >= bd.getDate());
+    pediatricAge = hadBirthday ? ageYears < 18 : ageYears - 1 < 18;
+  }
+
+  // 介護認定レベル判定 (intake の care_level から)
+  const caseData = patient.cases?.[0] ?? null;
+  const intakeJson = (caseData?.required_visit_support as Record<string, unknown> | null)
+    ?.home_visit_intake as Record<string, unknown> | null;
+  const careLevel = (intakeJson?.care_level as string) ?? null;
+  const careLevelCategory = careLevel
+    ? careLevel.startsWith('support_') ? 'support_required' as const
+      : careLevel.startsWith('care_') ? 'care_required' as const
+      : null
+    : null;
+
+  // 麻薬関連フラグ (intake から)
+  const narcoticsBase = intakeJson?.narcotics_base === true;
+  const narcoticsRescue = intakeJson?.narcotics_rescue === true;
+  const narcoticRequired = narcoticsBase || narcoticsRescue;
+
+  // 特別な医療処置 (intake から)
+  const specialProcedures = Array.isArray(intakeJson?.special_medical_procedures)
+    ? (intakeJson.special_medical_procedures as string[])
+    : [];
+  const centralVenousRequired = specialProcedures.some(p =>
+    p === 'tpn' || p === 'cv_port' || p === 'central_venous'
+  );
+  const narcoticInjectionRequired = specialProcedures.includes('narcotics_injection');
+  const enteralRequired = specialProcedures.includes('tube_feeding') ||
+    (Array.isArray(intakeJson?.medication_support_methods) &&
+     (intakeJson.medication_support_methods as string[]).includes('tube'));
+
+  // ENT処方 (intake から)
+  const entPrescription = intakeJson?.ent_prescription === true;
+
+  // 特別上限対象 (末期悪性腫瘍 OR 麻薬注射 OR 中心静脈栄養)
+  const specialCapEligible = narcoticInjectionRequired || centralVenousRequired || entPrescription;
+
   await ensureHomeCareBillingSsot(tx, args.orgId);
 
   const billingServiceType =
@@ -1396,10 +1463,18 @@ export async function upsertBillingEvidenceForVisit(
     weeklyVisitCount,
     claimable,
     exclusionReason,
-    specialCapEligible: false,
+    specialCapEligible,
     onlineEligible: false,
     regionAddOnEligible: [],
     visitType: visitRecord.schedule.visit_type,
+    // 自動判定された患者条件
+    infantEligible,
+    pediatricAge,
+    narcoticRequired,
+    narcoticInjectionRequired,
+    centralVenousRequired,
+    enteralRequired,
+    careLevelCategory,
   });
 
   const evidence = await tx.billingEvidence.upsert({

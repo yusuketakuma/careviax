@@ -191,7 +191,27 @@ export async function buildBillingCandidateSpecs(
     const conditions = (manualRule.conditions ?? {}) as Record<string, unknown>;
     const regionKey = String(conditions.region_add_on ?? '');
     const requiresOnline = conditions.requires_online_visit === true;
+    // 患者データから自動判定された条件でフィルタリング
+    const narcoticMatch =
+      conditions.requires_narcotic_management !== true || context.narcoticRequired === true;
+    const narcoticPrescriptionMatch =
+      conditions.requires_narcotic_prescription !== true || context.narcoticRequired === true;
+    const narcoticInjectionMatch =
+      conditions.requires_narcotic_continuous_injection !== true || context.narcoticInjectionRequired === true;
+    const centralVenousMatch =
+      conditions.requires_central_venous_nutrition !== true || context.centralVenousRequired === true;
+    const infantMatch =
+      conditions.requires_infant_eligibility !== true || context.infantEligible === true;
+    const pediatricMatch =
+      conditions.requires_pediatric_special_eligibility !== true || context.pediatricAge === true;
+    const enteralMatch =
+      conditions.requires_enteral_feeding !== true || context.enteralRequired === true;
+    const patientConditionsMet =
+      narcoticMatch && narcoticPrescriptionMatch && narcoticInjectionMatch &&
+      centralVenousMatch && infantMatch && pediatricMatch && enteralMatch;
+
     const suggested =
+      patientConditionsMet &&
       (regionKey.length === 0 || hasRegionAddOn(context.regionAddOnEligible, regionKey)) &&
       (!requiresOnline || context.onlineEligible);
 
