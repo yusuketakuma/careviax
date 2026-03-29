@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/api/rate-limit';
+import { logSecurityEvent } from '@/lib/auth/security-events';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -44,13 +45,24 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Skip SSE stream endpoints (long-lived)
+  // Skip SSE stream endpoints (long-lived connections; connection count is
+  // gated separately inside the stream route handler via acquireSseConnection).
   if (request.nextUrl.pathname.endsWith('/stream')) {
     return NextResponse.next();
   }
 
   // CSRF protection: validate Origin/Referer for state-changing methods
   if (!isValidOrigin(request)) {
+    logSecurityEvent({
+      event_type: 'csrf_rejected',
+      ip_address: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? undefined,
+      path: request.nextUrl.pathname,
+      method: request.method,
+      details: {
+        origin: request.headers.get('origin') ?? undefined,
+        referer: request.headers.get('referer') ?? undefined,
+      },
+    });
     return NextResponse.json(
       { code: 'CSRF_VALIDATION_FAILED', message: 'リクエストの送信元が不正です' },
       { status: 403 }
@@ -61,9 +73,19 @@ export function proxy(request: NextRequest) {
     request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
     'unknown';
 
-  const result = checkRateLimit(identifier, request.nextUrl.pathname);
+  // Pass the HTTP method so GET requests get a higher budget than writes.
+  const result = checkRateLimit(identifier, request.nextUrl.pathname, request.method);
 
   if (!result.allowed) {
+    logSecurityEvent({
+      event_type: 'rate_limit_exceeded',
+      ip_address: identifier !== 'unknown' ? identifier : undefined,
+      path: request.nextUrl.pathname,
+      method: request.method,
+      details: {
+        reset_at: result.resetAt,
+      },
+    });
     return NextResponse.json(
       { code: 'RATE_LIMIT_EXCEEDED', message: 'リクエスト数が上限に達しました' },
       {

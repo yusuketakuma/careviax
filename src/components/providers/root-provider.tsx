@@ -37,13 +37,20 @@ function OfflineCacheBootstrap() {
   return null;
 }
 
-export function RootProvider({ children }: { children: React.ReactNode }) {
+type RootProviderProps = {
+  children: React.ReactNode;
+  /** CSP nonce forwarded from middleware via the x-nonce request header. */
+  nonce?: string;
+};
+
+export function RootProvider({ children, nonce }: RootProviderProps) {
   return (
     <ThemeProvider
       attribute="class"
       defaultTheme="system"
       enableSystem
       disableTransitionOnChange
+      nonce={nonce}
     >
       <ThemeStoreBridge />
       <OfflineCacheBootstrap />

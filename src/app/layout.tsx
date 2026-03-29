@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Geist_Mono, Noto_Sans_JP } from 'next/font/google';
+import { headers } from 'next/headers';
 import { RootProvider } from '@/components/providers/root-provider';
 import './globals.css';
 
@@ -24,11 +25,16 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Read the nonce injected by src/middleware.ts so it can be forwarded to
+  // any server-rendered <script> or <style> elements that need a CSP nonce.
+  const headersList = await headers();
+  const nonce = headersList.get('x-nonce') ?? undefined;
+
   return (
     <html
       lang="ja"
@@ -36,7 +42,7 @@ export default function RootLayout({
       className={`${notoSansJP.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <RootProvider>{children}</RootProvider>
+        <RootProvider nonce={nonce}>{children}</RootProvider>
       </body>
     </html>
   );

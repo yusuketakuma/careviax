@@ -4,6 +4,7 @@ import {
   type RequestAuthContext,
 } from '@/lib/auth/request-context';
 import { prisma } from './client';
+import { logSecurityEvent } from '@/lib/auth/security-events';
 
 // cuid v2 format: starts with 'c', 24-28 alphanumeric chars
 // cuid v1 format: starts with 'c', followed by 24 lowercase alphanumeric chars
@@ -40,6 +41,16 @@ export async function withOrgContext<T>(
 ): Promise<T> {
   validateOrgId(orgId);
   const requestContext = options?.requestContext ?? getRequestAuthContext();
+
+  if (!requestContext) {
+    logSecurityEvent({
+      event_type: 'rls_context_missing',
+      org_id: orgId,
+      path: 'db/withOrgContext',
+      method: 'INTERNAL',
+      details: { org_id: orgId },
+    });
+  }
 
   return prisma.$transaction(async (tx) => {
     await setLocalConfig(tx, 'app.current_org_id', orgId);

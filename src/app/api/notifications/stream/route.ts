@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
+import { acquireSseConnection, releaseSseConnection } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -10,6 +11,17 @@ export async function GET(req: NextRequest) {
   if ('response' in authResult) return authResult.response;
 
   const { orgId, userId } = authResult.ctx;
+
+  // Gate the number of concurrent SSE connections per user to prevent
+  // connection storms (e.g., many open tabs or a runaway client).
+  const sseResult = acquireSseConnection(userId);
+  if (!sseResult.allowed) {
+    return new Response(
+      JSON.stringify({ code: 'SSE_CONNECTION_LIMIT', message: '同時接続数の上限に達しました' }),
+      { status: 429, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
   const encoder = new TextEncoder();
   let lastCheckAt = new Date();
 
@@ -56,6 +68,7 @@ export async function GET(req: NextRequest) {
       req.signal.addEventListener('abort', () => {
         stopped = true;
         if (timer) clearTimeout(timer);
+        releaseSseConnection(userId);
         controller.close();
       });
     },

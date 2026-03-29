@@ -11,6 +11,7 @@ import {
   type RequestAuthContext,
 } from './request-context';
 import { withRoutePerformance } from '@/lib/utils/performance';
+import { logSecurityEvent } from './security-events';
 
 export type AuthContext = RequestAuthContext;
 
@@ -83,8 +84,23 @@ export async function requireAuthContext(
         })
       : null;
 
+  const ipAddress =
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    request.headers.get('x-real-ip') ??
+    undefined;
+  const userAgent = request.headers.get('user-agent') ?? undefined;
+  const path = request.nextUrl.pathname;
+  const method = request.method;
+
   const userId = session?.user?.id ?? resolvedUser?.id;
   if (!userId) {
+    logSecurityEvent({
+      event_type: 'auth_failure',
+      ip_address: ipAddress,
+      path,
+      method,
+      details: { reason: 'no_user_identity' },
+    });
     return {
       response: await unauthorized(),
     };
@@ -92,6 +108,14 @@ export async function requireAuthContext(
 
   const orgId = requestedOrgId || resolvedUser?.org_id;
   if (!orgId) {
+    logSecurityEvent({
+      event_type: 'auth_failure',
+      ip_address: ipAddress,
+      user_id: userId,
+      path,
+      method,
+      details: { reason: 'no_org_id' },
+    });
     return {
       response: await authNoOrg(),
     };
@@ -99,16 +123,19 @@ export async function requireAuthContext(
 
   const membership = await getMembership(userId, orgId);
   if (!membership) {
+    logSecurityEvent({
+      event_type: 'unauthorized_access',
+      ip_address: ipAddress,
+      user_id: userId,
+      org_id: orgId,
+      path,
+      method,
+      details: { reason: 'no_membership' },
+    });
     return {
       response: await forbiddenResponse('この組織へのアクセス権限がありません'),
     };
   }
-
-  const ipAddress =
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    request.headers.get('x-real-ip') ??
-    undefined;
-  const userAgent = request.headers.get('user-agent') ?? undefined;
 
   const ctx: AuthContext = {
     userId,
@@ -120,6 +147,15 @@ export async function requireAuthContext(
 
   if (options?.permission) {
     if (!hasPermission(ctx.role, options.permission)) {
+      logSecurityEvent({
+        event_type: 'unauthorized_access',
+        ip_address: ipAddress,
+        user_id: userId,
+        org_id: orgId,
+        path,
+        method,
+        details: { reason: 'insufficient_permission', required: options.permission, role: ctx.role },
+      });
       return {
         response: await forbiddenResponse(options.message ?? '権限がありません'),
       };
