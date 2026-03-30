@@ -439,6 +439,18 @@ function mergeCandidateSourceSnapshot(args: {
   };
 }
 
+/**
+ * 単一建物診療患者数を算出する。
+ *
+ * 算定ルール (厚労省告示):
+ *  原則: 同一建物内で当該薬局が訪問指導を実施している患者数
+ *
+ *  特例 — 以下のいずれかに該当する場合は「1人」扱い:
+ *   ① 同一世帯の複数患者 (同一 patient_id の世帯員は Residence が分かれない前提)
+ *   ② 建物の総戸数 < 20 かつ 対象患者数 ≤ 2
+ *   ③ 対象患者数 ≤ 建物の総戸数の 10%
+ *   ④ グループホーム (ユニット数 3 以下) → ユニット単位でカウント
+ */
 async function resolveBuildingPatientCount(tx: Tx, args: { orgId: string; patientId: string }) {
   const primaryResidence = await tx.residence.findFirst({
     where: {
@@ -448,18 +460,63 @@ async function resolveBuildingPatientCount(tx: Tx, args: { orgId: string; patien
     },
     select: {
       building_id: true,
+      facility_id: true,
+      facility_unit_id: true,
+      facility: {
+        select: {
+          id: true,
+          facility_type: true,
+          total_units: true,
+          units: { select: { id: true } },
+        },
+      },
     },
   });
 
-  if (!primaryResidence?.building_id) return 1;
+  // 在宅個人宅 (施設なし) → 1人
+  const facilityId = primaryResidence?.facility_id;
+  const buildingId = primaryResidence?.building_id;
+  if (!facilityId && !buildingId) return 1;
 
-  return tx.residence.count({
-    where: {
-      org_id: args.orgId,
-      building_id: primaryResidence.building_id,
-      is_primary: true,
-    },
-  });
+  // 同一建物/施設の対象患者数を取得
+  const whereClause = facilityId
+    ? { org_id: args.orgId, facility_id: facilityId, is_primary: true }
+    : { org_id: args.orgId, building_id: buildingId, is_primary: true };
+  const totalPatientsInBuilding = await tx.residence.count({ where: whereClause });
+
+  if (totalPatientsInBuilding <= 1) return 1;
+
+  const facility = primaryResidence?.facility;
+
+  // ── 特例②: 総戸数 < 20 かつ 対象患者 ≤ 2 → 1人扱い ──
+  const totalUnits = facility?.total_units;
+  if (totalUnits != null && totalUnits < 20 && totalPatientsInBuilding <= 2) {
+    return 1;
+  }
+
+  // ── 特例③: 対象患者数 ≤ 総戸数の 10% → 1人扱い ──
+  if (totalUnits != null && totalUnits > 0 && totalPatientsInBuilding <= totalUnits * 0.1) {
+    return 1;
+  }
+
+  // ── 特例④: グループホーム (ユニット数 3 以下) → ユニット単位カウント ──
+  if (
+    facility?.facility_type === 'group_home' &&
+    facility.units.length <= 3 &&
+    primaryResidence?.facility_unit_id
+  ) {
+    const unitPatientCount = await tx.residence.count({
+      where: {
+        org_id: args.orgId,
+        facility_unit_id: primaryResidence.facility_unit_id,
+        is_primary: true,
+      },
+    });
+    return unitPatientCount;
+  }
+
+  // ── 原則: 建物全体の患者数 ──
+  return totalPatientsInBuilding;
 }
 
 async function resolveBillingAssignment(tx: Tx, args: { orgId: string; patientId: string }) {
