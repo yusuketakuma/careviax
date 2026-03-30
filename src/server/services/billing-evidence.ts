@@ -1481,7 +1481,7 @@ export async function upsertBillingEvidenceForVisit(
   // ── 薬局情報から体制加算を判定 ──
   const siteId = visitRecord.schedule.site_id;
   if (siteId) {
-    const siteConfig = await tx.pharmacySiteInsuranceConfig.findFirst({
+    const siteConfigRow = await tx.pharmacySiteInsuranceConfig.findFirst({
       where: {
         org_id: args.orgId,
         site_id: siteId,
@@ -1492,9 +1492,12 @@ export async function upsertBillingEvidenceForVisit(
       orderBy: { effective_from: 'desc' },
     });
 
-    if (siteConfig && payerBasis === 'medical') {
+    const config = (siteConfigRow?.config ?? {}) as Record<string, unknown>;
+
+    if (siteConfigRow && payerBasis === 'medical') {
       // 在宅薬学総合体制加算 (level_2: 50点 > level_1: 15点、排他)
-      if (siteConfig.home_comprehensive_level === 'level_2') {
+      const homeLevel = config.home_comprehensive_level as string | undefined;
+      if (homeLevel === 'level_2') {
         candidateSpecs.push({
           ssotKey: 'site.medical.home_comprehensive_2',
           code: 'MED_ADD_HOME_COMPREHENSIVE_2',
@@ -1503,9 +1506,9 @@ export async function upsertBillingEvidenceForVisit(
           points: 50,
           exclusionReason: claimable ? null : (exclusionReason ?? null),
           calculationBreakdown: { source: 'pharmacy_site_insurance_config', site_id: siteId },
-          sourceSnapshot: { revision_code: siteConfig.revision_code, level: 'level_2' },
+          sourceSnapshot: { revision_code: siteConfigRow.revision_code, level: homeLevel },
         });
-      } else if (siteConfig.home_comprehensive_level === 'level_1') {
+      } else if (homeLevel === 'level_1') {
         candidateSpecs.push({
           ssotKey: 'site.medical.home_comprehensive_1',
           code: 'MED_ADD_HOME_COMPREHENSIVE_1',
@@ -1514,18 +1517,17 @@ export async function upsertBillingEvidenceForVisit(
           points: 15,
           exclusionReason: claimable ? null : (exclusionReason ?? null),
           calculationBreakdown: { source: 'pharmacy_site_insurance_config', site_id: siteId },
-          sourceSnapshot: { revision_code: siteConfig.revision_code, level: 'level_1' },
+          sourceSnapshot: { revision_code: siteConfigRow.revision_code, level: homeLevel },
         });
       }
     }
 
     // 介護保険の地域加算を薬局情報から自動判定
-    if (siteConfig && payerBasis === 'care') {
+    if (siteConfigRow && payerBasis === 'care') {
       const regionAddOns: Array<'special_15' | 'small_office_10' | 'resident_5'> = [];
-      if (siteConfig.region_special_15) regionAddOns.push('special_15');
-      if (siteConfig.region_small_office_10) regionAddOns.push('small_office_10');
-      if (siteConfig.region_resident_5) regionAddOns.push('resident_5');
-      // 地域加算が薬局情報に設定されていれば、候補スペックの region を上書き
+      if (config.region_special_15) regionAddOns.push('special_15');
+      if (config.region_small_office_10) regionAddOns.push('small_office_10');
+      if (config.region_resident_5) regionAddOns.push('resident_5');
       if (regionAddOns.length > 0) {
         for (const spec of candidateSpecs) {
           const cond = spec.calculationBreakdown as Record<string, unknown>;

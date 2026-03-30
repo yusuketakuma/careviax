@@ -1,4 +1,5 @@
 -- PharmacySiteInsuranceConfig: 薬局情報 — 保険種別×改定年度ごとの算定設定
+-- config (JSONB) に改定固有の項目を格納。TypeScript 側で型安全に管理。
 CREATE TABLE "PharmacySiteInsuranceConfig" (
     "id" TEXT NOT NULL,
     "org_id" TEXT NOT NULL,
@@ -8,28 +9,7 @@ CREATE TABLE "PharmacySiteInsuranceConfig" (
     "revision_label" TEXT,
     "effective_from" DATE NOT NULL,
     "effective_to" DATE,
-
-    -- 医療保険: 調剤基本料
-    "dispensing_fee_category" TEXT,
-
-    -- 医療保険: 体制加算
-    "regional_support_level" TEXT,
-    "generic_dispensing_level" TEXT,
-    "cooperation_enhancement" BOOLEAN NOT NULL DEFAULT false,
-    "medical_dx_promotion" BOOLEAN NOT NULL DEFAULT false,
-
-    -- 医療保険: 在宅関連体制加算
-    "home_comprehensive_level" TEXT,
-
-    -- 共通: 免許・許可
-    "narcotic_dealer_license" BOOLEAN NOT NULL DEFAULT false,
-    "high_care_medical_device_license" BOOLEAN NOT NULL DEFAULT false,
-
-    -- 介護保険: 地域加算
-    "region_special_15" BOOLEAN NOT NULL DEFAULT false,
-    "region_small_office_10" BOOLEAN NOT NULL DEFAULT false,
-    "region_resident_5" BOOLEAN NOT NULL DEFAULT false,
-
+    "config" JSONB NOT NULL DEFAULT '{}',
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 

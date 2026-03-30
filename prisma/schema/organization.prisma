@@ -101,6 +101,11 @@ model PharmacySite {
 /// 薬局情報 — 保険種別×改定年度ごとの算定設定
 /// 調剤基本料、各種体制加算、施設基準に基づく届出状況を期間付きで管理。
 /// 改定年度ごとにレコードを作成し、effective_from/to で自動切り替え。
+///
+/// config (Json) の型は TypeScript 側で改定年度ごとに定義:
+///   medical: MedicalSiteConfig2024 (types.ts)
+///   care:    CareSiteConfig2024    (types.ts)
+/// DB スキーマを改定ごとに変更する必要がない設計。
 model PharmacySiteInsuranceConfig {
   id               String       @id @default(cuid())
   org_id           String
@@ -119,48 +124,8 @@ model PharmacySiteInsuranceConfig {
   /// 終了日 (null = 現行)
   effective_to     DateTime?    @db.Date
 
-  // ════════════════════════════════════════════
-  // 医療保険: 調剤基本料（処方箋受付1回につき）
-  // ════════════════════════════════════════════
-  /// 調剤基本料区分: basic_1(45点) / basic_2(29点) / basic_3_i(24点) /
-  ///   basic_3_ro(19点) / basic_3_ha(35点) / special_a(5点) / special_b(3点)
-  dispensing_fee_category  String?
-
-  // ════════════════════════════════════════════
-  // 医療保険: 体制加算（処方箋受付1回につき）
-  // ════════════════════════════════════════════
-  /// 地域支援体制加算: none / level_1(32点) / level_2(40点) / level_3(10点) / level_4(32点)
-  regional_support_level   String?
-  /// 後発医薬品調剤体制加算: none / level_1(21点) / level_2(28点) / level_3(30点)
-  generic_dispensing_level  String?
-  /// 連携強化加算 (5点)
-  cooperation_enhancement   Boolean @default(false)
-  /// 医療DX推進体制整備加算 (4点)
-  medical_dx_promotion      Boolean @default(false)
-
-  // ════════════════════════════════════════════
-  // 医療保険: 在宅関連体制加算（訪問1回につき）
-  // ════════════════════════════════════════════
-  /// 在宅薬学総合体制加算: none / level_1(15点) / level_2(50点)
-  home_comprehensive_level  String?
-
-  // ════════════════════════════════════════════
-  // 共通: 免許・許可
-  // ════════════════════════════════════════════
-  /// 麻薬小売業者の免許
-  narcotic_dealer_license          Boolean @default(false)
-  /// 高度管理医療機器販売業の許可
-  high_care_medical_device_license Boolean @default(false)
-
-  // ════════════════════════════════════════════
-  // 介護保険: 地域加算
-  // ════════════════════════════════════════════
-  /// 特別地域加算 (15%) の対象
-  region_special_15       Boolean @default(false)
-  /// 中山間地域等における小規模事業所加算 (10%)
-  region_small_office_10  Boolean @default(false)
-  /// 中山間地域等に居住する者へのサービス提供加算 (5%)
-  region_resident_5       Boolean @default(false)
+  /// 改定固有の設定 (TypeScript 側で改定年度ごとの型を適用)
+  config           Json         @default("{}")
 
   created_at       DateTime     @default(now())
   updated_at       DateTime     @updatedAt

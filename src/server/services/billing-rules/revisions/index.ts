@@ -19,6 +19,12 @@ import { MEDICAL_REVISION as MEDICAL_2024, MEDICAL_RULES_2024 } from './medical/
 // ── 介護保険 (介護報酬改定: 3年ごと) ──
 import { CARE_REVISION as CARE_2024, CARE_RULES_2024 } from './care/2024';
 
+// ── 薬局情報の改定別 config 型 ──
+export type { MedicalSiteConfig2024 } from './medical/site-config-2024';
+export { resolveHomeComprehensivePoints, HOME_COMPREHENSIVE_POINTS_2024, DISPENSING_FEE_POINTS_2024, REGIONAL_SUPPORT_POINTS_2024, GENERIC_DISPENSING_POINTS_2024 } from './medical/site-config-2024';
+export type { CareSiteConfig2024 } from './care/site-config-2024';
+export { resolveRegionAddOns } from './care/site-config-2024';
+
 // Re-export individual revisions for direct access
 export { MEDICAL_2024, MEDICAL_RULES_2024 };
 export { CARE_2024, CARE_RULES_2024 };
