@@ -1228,6 +1228,7 @@ export async function upsertBillingEvidenceForVisit(
           case_id: true,
           pharmacist_id: true,
           visit_type: true,
+          site_id: true,
         },
       },
     },
@@ -1476,6 +1477,45 @@ export async function upsertBillingEvidenceForVisit(
     enteralRequired,
     careLevelCategory,
   });
+
+  // ── 薬局マスターから在宅薬学総合体制加算を判定 ──
+  const siteId = visitRecord.schedule.site_id;
+  if (siteId && payerBasis === 'medical') {
+    const siteBillingConfig = await tx.pharmacySiteBillingConfig.findFirst({
+      where: {
+        org_id: args.orgId,
+        site_id: siteId,
+        insurance_type: 'medical',
+        effective_from: { lte: visitDate },
+        OR: [{ effective_to: null }, { effective_to: { gt: visitDate } }],
+      },
+      orderBy: { effective_from: 'desc' },
+    });
+
+    if (siteBillingConfig?.home_comprehensive_2) {
+      candidateSpecs.push({
+        ssotKey: 'site.medical.home_comprehensive_2',
+        code: 'MED_ADD_HOME_COMPREHENSIVE_2',
+        name: '在宅薬学総合体制加算2',
+        status: claimable ? 'confirmed' : 'excluded',
+        points: 50,
+        exclusionReason: claimable ? null : (exclusionReason ?? null),
+        calculationBreakdown: { source: 'pharmacy_site_billing_config', site_id: siteId },
+        sourceSnapshot: { revision_code: siteBillingConfig.revision_code, facility_standard: 'home_comprehensive_2' },
+      });
+    } else if (siteBillingConfig?.home_comprehensive_1) {
+      candidateSpecs.push({
+        ssotKey: 'site.medical.home_comprehensive_1',
+        code: 'MED_ADD_HOME_COMPREHENSIVE_1',
+        name: '在宅薬学総合体制加算1',
+        status: claimable ? 'confirmed' : 'excluded',
+        points: 15,
+        exclusionReason: claimable ? null : (exclusionReason ?? null),
+        calculationBreakdown: { source: 'pharmacy_site_billing_config', site_id: siteId },
+        sourceSnapshot: { revision_code: siteBillingConfig.revision_code, facility_standard: 'home_comprehensive_1' },
+      });
+    }
+  }
 
   const evidence = await tx.billingEvidence.upsert({
     where: {

@@ -93,8 +93,58 @@ model PharmacySite {
   visit_schedules      VisitSchedule[]
   visit_schedule_proposals VisitScheduleProposal[]
   business_holidays    BusinessHoliday[]
+  billing_configs      PharmacySiteBillingConfig[]
 
   @@index([org_id])
+}
+
+/// 薬局×改定年度ごとの算定設定
+/// 在宅薬学総合体制加算など薬局固有の届出状況に基づく点数を管理する。
+/// 改定年度ごとにレコードを作成し、有効期間で切り替える。
+model PharmacySiteBillingConfig {
+  id               String       @id @default(cuid())
+  org_id           String
+  site_id          String
+  site             PharmacySite @relation(fields: [site_id], references: [id])
+
+  /// 保険種別: medical(医療保険) / care(介護保険)
+  insurance_type   String       // 'medical' | 'care'
+  /// 改定年度コード (e.g., '2024')
+  revision_code    String
+  /// 改定名称 (e.g., '令和6年度 診療報酬改定')
+  revision_label   String?
+
+  /// 施行日
+  effective_from   DateTime     @db.Date
+  /// 終了日 (null = 現行)
+  effective_to     DateTime?    @db.Date
+
+  // ── 医療保険: 在宅薬学総合体制加算 ──
+  /// 加算1 (15点) の届出有無
+  home_comprehensive_1  Boolean @default(false)
+  /// 加算2 (50点) の届出有無
+  home_comprehensive_2  Boolean @default(false)
+
+  // ── 共通: 免許・許可 ──
+  /// 麻薬小売業者の免許
+  narcotic_dealer_license          Boolean @default(false)
+  /// 高度管理医療機器販売業の許可
+  high_care_medical_device_license Boolean @default(false)
+
+  // ── 共通: 地域加算の適用 ──
+  /// 特別地域加算 (15%) の対象
+  region_special_15       Boolean @default(false)
+  /// 中山間地域等における小規模事業所加算 (10%)
+  region_small_office_10  Boolean @default(false)
+  /// 中山間地域等に居住する者へのサービス提供加算 (5%)
+  region_resident_5       Boolean @default(false)
+
+  created_at       DateTime     @default(now())
+  updated_at       DateTime     @updatedAt
+
+  @@unique([org_id, site_id, insurance_type, revision_code])
+  @@index([org_id])
+  @@index([site_id])
 }
 
 model User {

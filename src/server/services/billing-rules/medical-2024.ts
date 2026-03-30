@@ -489,42 +489,12 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
   },
 
   // ── 在宅薬学総合体制加算 ──
-  {
-    ssot_key: 'medical.addition.home_comprehensive_1',
-    rule_type: 'addition',
-    service_type: 'medical_home_visit',
-    payer_basis: 'medical',
-    provider_scope: 'pharmacy',
-    selection_mode: 'auto',
-    calculation_unit: 'point',
-    display_order: 160,
-    name: '在宅薬学総合体制加算1',
-    code: 'MED_ADD_HOME_COMPREHENSIVE_1',
-    amount: 15,
-    conditions: {
-      facility_standard_required: 'home_comprehensive_1',
-    },
-    source_url: MEDICAL_SOURCE_URL,
-    source_note: '調剤報酬点数表 区分15 在宅薬学総合体制加算1 15点（施設基準届出要）',
-  },
-  {
-    ssot_key: 'medical.addition.home_comprehensive_2',
-    rule_type: 'addition',
-    service_type: 'medical_home_visit',
-    payer_basis: 'medical',
-    provider_scope: 'pharmacy',
-    selection_mode: 'auto',
-    calculation_unit: 'point',
-    display_order: 165,
-    name: '在宅薬学総合体制加算2',
-    code: 'MED_ADD_HOME_COMPREHENSIVE_2',
-    amount: 50,
-    conditions: {
-      facility_standard_required: 'home_comprehensive_2',
-    },
-    source_url: MEDICAL_SOURCE_URL,
-    source_note: '調剤報酬点数表 区分15 在宅薬学総合体制加算2 50点（施設基準届出要）',
-  },
+  // 薬局ごとの届出状況で適用が異なるため、SSOTルールではなく
+  // PharmacySiteBillingConfig (薬局マスター) で管理する。
+  // 加算1: 15点 / 加算2: 50点 (施設基準届出要)
+  // → billing-evidence.ts の upsertBillingEvidenceForVisit で
+  //    PharmacySiteBillingConfig.home_comprehensive_1/2 を参照して
+  //    候補を直接生成する。
 
   // ── 在宅移行初期管理料（令和6年新設） ──
   {
