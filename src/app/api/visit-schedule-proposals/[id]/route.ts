@@ -523,6 +523,15 @@ export async function PATCH(
       case_: {
         select: {
           patient_id: true,
+          patient: {
+            select: {
+              residences: {
+                where: { is_primary: true },
+                take: 1,
+                select: { facility_unit_id: true },
+              },
+            },
+          },
         },
       },
     },
@@ -778,6 +787,7 @@ export async function PATCH(
         case_id: existing.case_id,
         cycle_id: existing.cycle_id ?? null,
         site_id: existing.site_id ?? null,
+        facility_unit_id: existing.case_.patient?.residences[0]?.facility_unit_id ?? null,
         visit_type: existing.visit_type,
         priority: existing.priority,
         schedule_status: 'planned',

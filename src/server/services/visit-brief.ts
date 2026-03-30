@@ -13,6 +13,7 @@ import type {
   VisitBriefDeliveryItem,
   VisitBriefDispensingItem,
   VisitBriefDosageFormCandidate,
+  VisitBriefFacilityContext,
   VisitBriefMedicationChange,
   VisitBriefMedicationItem,
   VisitBriefRuleSummary,
@@ -70,6 +71,13 @@ const SET_AUDIT_LABELS: Record<string, string> = {
 
 function isoOrNull(value: Date | null | undefined) {
   return value ? value.toISOString() : null;
+}
+
+function timeToHHMM(value: Date | null | undefined): string | null {
+  if (!value) return null;
+  const h = String(value.getHours()).padStart(2, '0');
+  const m = String(value.getMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
 }
 
 function severityFromPriority(priority: string | null | undefined): VisitBriefSeverity {
@@ -741,6 +749,7 @@ export async function getPatientVisitBrief(
     previousVisit,
     activeCase,
     recentConferenceNotes,
+    facilityResidence,
   ] = await Promise.all([
     db.patient.findFirst({
       where: {
@@ -1018,6 +1027,23 @@ export async function getPatientVisitBrief(
             action_items: true,
           },
         }),
+    db.residence.findFirst({
+      where: {
+        org_id: args.orgId,
+        patient_id: args.patientId,
+        is_primary: true,
+        facility_id: { not: null },
+      },
+      select: {
+        facility: {
+          select: {
+            acceptance_time_from: true,
+            acceptance_time_to: true,
+            notes: true,
+          },
+        },
+      },
+    }),
   ]);
 
   if (!patient) {
@@ -1187,6 +1213,15 @@ export async function getPatientVisitBrief(
     rule_summary: ruleSummary,
     ai_summary: hydratedAiSummary,
     conference_summary: conferenceSummary,
+    facility_context: ((): VisitBriefFacilityContext | null => {
+      const f = facilityResidence?.facility;
+      if (!f) return null;
+      return {
+        acceptance_time_from: timeToHHMM(f.acceptance_time_from),
+        acceptance_time_to: timeToHHMM(f.acceptance_time_to),
+        notes: f.notes ?? null,
+      };
+    })(),
   };
 }
 

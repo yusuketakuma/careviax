@@ -92,6 +92,8 @@ model VisitSchedule {
   recurrence_parent_id          String? // 繰返しの親スケジュールID
   facility_batch_id             String?
   facility_batch                FacilityVisitBatch? @relation(fields: [facility_batch_id], references: [id])
+  facility_unit_id              String?
+  facility_unit                 FacilityUnit?       @relation(fields: [facility_unit_id], references: [id])
   time_constraint_start         DateTime?        @db.Time()
   time_constraint_end           DateTime?        @db.Time()
   medication_start_date         DateTime?        @db.Date
@@ -117,17 +119,21 @@ model VisitSchedule {
   @@index([schedule_status])
   @@index([case_id])
   @@index([site_id, scheduled_date])
+  @@index([facility_unit_id])
 }
 
 model FacilityVisitBatch {
   id                    String   @id @default(cuid())
   org_id                String
   facility_id           String // 施設ID
+  facility_unit_id      String? // ユニットID（ユニット単位グルーピング時）
+  facility_unit         FacilityUnit? @relation(fields: [facility_unit_id], references: [id])
   scheduled_date        DateTime @db.Date
   pharmacist_id         String
   patient_ids           Json // String[]
   estimated_duration    Int? // 分
   route_from_pharmacy   Json? // ルート情報
+  notes                 String? // 施設共通注意事項
   created_at            DateTime @default(now())
   updated_at            DateTime @updatedAt
 
@@ -135,6 +141,7 @@ model FacilityVisitBatch {
 
   @@index([org_id])
   @@index([scheduled_date])
+  @@index([facility_unit_id])
 }
 
 model VisitRecord {

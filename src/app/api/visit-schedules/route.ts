@@ -293,6 +293,15 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     select: {
       patient_id: true,
       primary_pharmacist_id: true,
+      patient: {
+        select: {
+          residences: {
+            where: { is_primary: true },
+            take: 1,
+            select: { facility_unit_id: true },
+          },
+        },
+      },
     },
   });
   if (!careCase) {
@@ -309,12 +318,15 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     return validationError(formatVisitWorkflowGateIssues(gate.issues));
   }
 
+  const facilityUnitId = careCase.patient?.residences[0]?.facility_unit_id ?? null;
+
   const schedule = await withOrgContext(req.orgId, async (tx) => {
     return tx.visitSchedule.create({
       data: {
         org_id: req.orgId,
         site_id: site_id ?? null,
         priority: priority ?? 'normal',
+        facility_unit_id: facilityUnitId,
         assignment_mode:
           careCase?.primary_pharmacist_id &&
           careCase.primary_pharmacist_id === rest.pharmacist_id

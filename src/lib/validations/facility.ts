@@ -39,6 +39,24 @@ export const createFacilitySchema = z.object({
   contacts: z.array(facilityContactSchema).default([]),
 });
 
+export const createFacilityUnitSchema = z.object({
+  name: z.string().trim().min(1, 'ユニット名は必須です'),
+  floor: z.string().trim().optional(),
+  unit_type: z.enum(['floor', 'wing', 'unit']).default('unit'),
+  capacity: z.number().int().min(0).optional(),
+  notes: z.string().trim().optional(),
+  display_order: z.number().int().min(0).default(0),
+});
+
+export const updateFacilityUnitSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  floor: z.string().trim().nullable().optional(),
+  unit_type: z.enum(['floor', 'wing', 'unit']).optional(),
+  capacity: z.number().int().min(0).nullable().optional(),
+  notes: z.string().trim().nullable().optional(),
+  display_order: z.number().int().min(0).optional(),
+});
+
 export const updateFacilitySchema = z.object({
   name: z.string().trim().min(1).optional(),
   facility_type: facilityTypeSchema.optional(),

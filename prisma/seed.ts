@@ -88,6 +88,20 @@ async function main() {
     })),
   });
 
+  // 配薬方法マスタ
+  await prisma.packagingMethodMaster.createMany({
+    data: [
+      { org_id: org.id, name: 'お薬BOX', description: '仕切り付きBOXに曜日・時間帯別に収納', icon_key: 'box', sort_order: 0, is_active: true },
+      { org_id: org.id, name: 'お薬カレンダー', description: '壁掛けカレンダー型ポケットに収納', icon_key: 'calendar', sort_order: 1, is_active: true },
+      { org_id: org.id, name: '一包化', description: '服用タイミングごとに自動分包', icon_key: 'pack', sort_order: 2, is_active: true },
+      { org_id: org.id, name: 'ホッチキス止め', description: '分包紙をホッチキスで綴じる', icon_key: 'staple', sort_order: 3, is_active: true },
+      { org_id: org.id, name: 'テープ止め', description: '分包紙をテープで綴じる', icon_key: 'tape', sort_order: 4, is_active: true },
+      { org_id: org.id, name: '分包紙', description: '薬を個別分包紙に入れて提供', icon_key: 'envelope', sort_order: 5, is_active: true },
+      { org_id: org.id, name: 'PTPシート', description: 'メーカー出荷時のシートのまま提供', icon_key: 'blister', sort_order: 6, is_active: true },
+      { org_id: org.id, name: '液剤ボトル', description: '液剤をボトルに入れて提供', icon_key: 'bottle', sort_order: 7, is_active: true },
+    ],
+  });
+
   // ユーザー（管理者薬剤師）
   const user = await prisma.user.create({
     data: {

@@ -20,6 +20,7 @@ export const GET = withAuthContext<{ id: string }>(async (_req, ctx, routeContex
     select: {
       id: true,
       unit_name: true,
+      facility_unit_id: true,
       patient: {
         select: {
           id: true,
@@ -47,6 +48,7 @@ export const GET = withAuthContext<{ id: string }>(async (_req, ctx, routeContex
       patient_name_kana: residence.patient.name_kana,
       phone: residence.patient.phone,
       unit_name: residence.unit_name,
+      facility_unit_id: residence.facility_unit_id,
       case_id: residence.patient.cases[0]?.id ?? null,
       case_status: residence.patient.cases[0]?.status ?? null,
     }))

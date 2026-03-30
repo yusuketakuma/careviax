@@ -120,6 +120,12 @@ export type VisitBriefConferenceSummary = {
   last_conference_type: string | null;
 };
 
+export type VisitBriefFacilityContext = {
+  acceptance_time_from: string | null;
+  acceptance_time_to: string | null;
+  notes: string | null;
+};
+
 export type VisitBrief = {
   patient: {
     id: string;
@@ -140,4 +146,38 @@ export type VisitBrief = {
   rule_summary: VisitBriefRuleSummary;
   ai_summary: VisitBriefAiSummary;
   conference_summary: VisitBriefConferenceSummary | null;
+  facility_context: VisitBriefFacilityContext | null;
+};
+
+// ─── CareTrend ────────────────────────────────────────────────────────────────
+
+export type CareTrendEntry = {
+  visit_date: string;
+  value: number;
+  label: string | null;
+};
+
+export type CareTrend = {
+  residual_trend: CareTrendEntry[];
+  residual_direction: 'increasing' | 'stable' | 'decreasing';
+  issue_timeline: {
+    id: string;
+    title: string;
+    status: string;
+    identified_at: string;
+    resolved_at: string | null;
+  }[];
+};
+
+// ─── VisitHandoff ─────────────────────────────────────────────────────────────
+
+export type VisitHandoff = {
+  next_check_items: string[];
+  ongoing_monitoring: string[];
+  decision_rationale: string | null;
+  ai_extracted: boolean;
+  ai_confidence: number | null;
+  confirmed_by: string | null;
+  confirmed_at: string | null;
+  extracted_at: string | null;
 };

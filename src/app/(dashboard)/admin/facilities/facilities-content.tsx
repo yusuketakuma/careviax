@@ -67,6 +67,7 @@ type FacilityPatient = {
   patient_name_kana: string;
   phone: string | null;
   unit_name: string | null;
+  facility_unit_id: string | null;
   case_id: string | null;
   case_status: string | null;
 };

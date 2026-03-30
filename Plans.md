@@ -1305,12 +1305,12 @@ flowchart LR
 > DoD: 「この患者はお薬BOXの朝青・昼黄に入れてホッチキス止め」が画面で分かり、印刷できる
 
 **2b-3a. 配薬方法マスタ + 患者固有設定:**
-- [ ] `PackagingMethod` マスタテーブル追加（prisma/schema/medication.prisma）
+- [x] `PackagingMethod` マスタテーブル追加（prisma/schema/medication.prisma） `cc:完了` (2026-03-31)
   ```
   id, org_id, name, description, icon_key, sort_order, is_active
   初期データ: お薬BOX / お薬カレンダー / 一包化 / ホッチキス止め / テープ止め / 分包紙 / PTPシート / 液剤ボトル
   ```
-- [ ] `Patient.packaging_preferences` JSON フィールド追加（prisma/schema/patient.prisma）
+- [x] `Patient.packaging_preferences` JSON フィールド追加（prisma/schema/patient.prisma） `cc:完了` (2026-03-31)
   ```json
   {
     "default_method_id": "uuid",
@@ -1867,9 +1867,9 @@ PrescriptionIntake
 - [x] 2c-1a: FacilityUnit モデル + Residence FK + 単一建物特例ルール (`9877f2f`)
   FacilityUnit 新設、Residence.facility_id/facility_unit_id FK 追加、
   resolveBuildingPatientCount に厚労省4特例ルール実装済み
-- [ ] 2c-1b: VisitSchedule / FacilityVisitBatch にユニット単位のグルーピング
+- [x] 2c-1b: VisitSchedule / FacilityVisitBatch にユニット単位のグルーピング `cc:完了` (2026-03-31)
   `facility_unit_id` 追加。同一ユニット患者を自動グルーピングして一括訪問
-- [ ] 2c-1c: 施設管理 UI にユニット CRUD 追加
+- [x] 2c-1c: 施設管理 UI にユニット CRUD 追加 `cc:完了` (2026-03-31)
   `/admin/facilities/[id]` にユニット一覧タブ + 患者マッピング表示
 - [ ] 2c-1d: 患者登録時に施設→ユニット選択 UI
   Residence 入力で施設選択 → ユニット選択 → 部屋番号入力のカスケードUI
@@ -1963,7 +1963,7 @@ PrescriptionIntake
   PrescriptionIntake で選択した PrescriberInstitution を、
   CommunicationRequest の疑義照会先、CareReport の既定宛先、
   ConferenceNote の参加者候補へ自動反映
-- [ ] 2c-9c: 施設運用情報の横展開
+- [x] 2c-9c: 施設運用情報の横展開 `cc:完了` (2026-03-31)
   Facility の受入時間・定期訪問曜日・主要連絡先・施設共通注意事項を、
   VisitScheduleProposal / FacilityVisitBatch / VisitBrief / ConferenceNote の初期値に反映
 - [x] 2c-9d: 他職種情報の横展開 `cc:完了` (2026-03-30)

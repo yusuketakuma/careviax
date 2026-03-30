@@ -4,7 +4,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { updatePatientSchema } from '@/lib/validations/patient';
 import { prisma } from '@/lib/db/client';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import {
   assertFacilityReference,
   getFacilityVisitDefaults,
@@ -567,6 +567,9 @@ export async function PATCH(
     unit_name,
     contacts,
     conditions,
+    packaging_preferences,
+    requester: _requester,
+    intake: _intake,
     ...rest
   } = parsed.data;
 
@@ -584,8 +587,11 @@ export async function PATCH(
       where: { id },
       data: {
         ...(birth_date ? { birth_date: new Date(birth_date) } : {}),
+        ...(packaging_preferences !== undefined
+          ? { packaging_preferences: (packaging_preferences ?? null) as Prisma.InputJsonValue | null }
+          : {}),
         ...rest,
-      },
+      } as Prisma.PatientUpdateInput,
     });
 
     if (

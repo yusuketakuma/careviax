@@ -68,6 +68,7 @@ model Patient {
   billing_support_flag     Boolean  @default(false) // 請求支援フラグ
   allergy_info             Json? // アレルギー情報
   notes                    String?
+  packaging_preferences    Json? // 配薬方法個別設定 { default_method_id, box_config, special_instructions, ... }
   created_at               DateTime @default(now())
   updated_at               DateTime @updatedAt
 

@@ -162,3 +162,18 @@ model FirstVisitDocument {
   @@index([org_id])
   @@index([patient_id])
 }
+
+model PackagingMethodMaster {
+  id          String   @id @default(cuid())
+  org_id      String
+  name        String
+  description String?
+  icon_key    String?
+  sort_order  Int      @default(0)
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@index([org_id])
+  @@index([org_id, sort_order])
+}

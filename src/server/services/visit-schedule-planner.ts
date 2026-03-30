@@ -445,6 +445,15 @@ export async function generateVisitScheduleProposalDrafts(
           residences: {
             where: { is_primary: true },
             take: 1,
+            include: {
+              facility: {
+                select: {
+                  acceptance_time_from: true,
+                  acceptance_time_to: true,
+                  regular_visit_weekdays: true,
+                },
+              },
+            },
           },
           scheduling_preference: true,
         },
@@ -466,9 +475,15 @@ export async function generateVisitScheduleProposalDrafts(
   }
 
   const schedulingPreference = careCase.patient.scheduling_preference;
+  const primaryFacility = careCase.patient.residences[0]?.facility ?? null;
   const preferredWeekdays = normalizeWeekdays(
     schedulingPreference?.preferred_weekdays as Prisma.JsonValue | null | undefined
   );
+  const facilityVisitWeekdays = normalizeWeekdays(
+    primaryFacility?.regular_visit_weekdays as Prisma.JsonValue | null | undefined
+  );
+  // Patient preference takes priority; fall back to facility's regular visit days
+  const effectiveWeekdays = preferredWeekdays.length > 0 ? preferredWeekdays : facilityVisitWeekdays;
   const mergedVisitWindow = intersectWindows(
     {
       from: params.preferredTimeFrom,
@@ -481,11 +496,20 @@ export async function generateVisitScheduleProposalDrafts(
     {
       from: readTimeString(schedulingPreference?.facility_time_from),
       to: readTimeString(schedulingPreference?.facility_time_to),
+    },
+    {
+      from: readTimeString(primaryFacility?.acceptance_time_from),
+      to: readTimeString(primaryFacility?.acceptance_time_to),
     }
   );
   const preferenceNotes: string[] = [];
   if (preferredWeekdays.length > 0) {
     preferenceNotes.push(`患者希望曜日 ${preferredWeekdays.join('/')}`);
+  } else if (facilityVisitWeekdays.length > 0) {
+    preferenceNotes.push(`施設定期訪問曜日 ${facilityVisitWeekdays.join('/')} を適用`);
+  }
+  if (primaryFacility?.acceptance_time_from || primaryFacility?.acceptance_time_to) {
+    preferenceNotes.push('施設受入時間帯を反映');
   }
   if (schedulingPreference?.family_presence_required) {
     preferenceNotes.push('家族同席条件あり');
@@ -656,8 +680,8 @@ export async function generateVisitScheduleProposalDrafts(
     }
     if (shift.date > visitDeadlineDate) return false;
     if (
-      preferredWeekdays.length > 0 &&
-      !preferredWeekdays.includes(getDay(shift.date))
+      effectiveWeekdays.length > 0 &&
+      !effectiveWeekdays.includes(getDay(shift.date))
     ) {
       return false;
     }
@@ -738,6 +762,11 @@ export async function generateVisitScheduleProposalDrafts(
 
         const sameFacilityVisits = schedulesForShift.filter((schedule) => {
           const scheduleResidence = schedule.case_.patient.residences[0];
+          // Unit-level match takes priority over building/address
+          const candidateUnitId = primaryResidence?.facility_unit_id;
+          if (candidateUnitId && scheduleResidence?.facility_unit_id) {
+            return scheduleResidence.facility_unit_id === candidateUnitId;
+          }
           const candidateBuilding = primaryResidence?.building_id;
           if (candidateBuilding && scheduleResidence?.building_id) {
             return scheduleResidence.building_id === candidateBuilding;

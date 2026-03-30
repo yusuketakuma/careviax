@@ -194,3 +194,87 @@ export async function generateVisitBriefAiSummary(
     };
   }
 }
+
+// ─── extractHandoffFromSoap ─────────────────────────────────────────────────
+
+type ExtractHandoffInput = {
+  patientName: string;
+  soapAssessment: string;
+  soapPlan: string;
+  structuredAssessment: unknown;
+  structuredPlan: unknown;
+  previousHandoff: unknown;
+};
+
+type ExtractHandoffResult = {
+  next_check_items: string[];
+  ongoing_monitoring: string[];
+  decision_rationale: string | null;
+  confidence: number;
+  extracted_at: string;
+};
+
+/**
+ * Extract handoff data from structured SOAP notes.
+ * Rule-based extraction — pulls items from structured assessment/plan fields.
+ */
+export async function extractHandoffFromSoap(
+  input: ExtractHandoffInput
+): Promise<ExtractHandoffResult> {
+  const nextCheckItems: string[] = [];
+  const ongoingMonitoring: string[] = [];
+  let decisionRationale: string | null = null;
+
+  // Extract from structured plan
+  const plan = input.structuredPlan as Record<string, unknown> | null;
+  if (plan && typeof plan === 'object') {
+    if (Array.isArray(plan.followup_items)) {
+      nextCheckItems.push(
+        ...plan.followup_items.filter((i): i is string => typeof i === 'string').slice(0, 5)
+      );
+    }
+    if (Array.isArray(plan.monitoring_items)) {
+      ongoingMonitoring.push(
+        ...plan.monitoring_items.filter((i): i is string => typeof i === 'string').slice(0, 5)
+      );
+    }
+    if (typeof plan.rationale === 'string' && plan.rationale.trim()) {
+      decisionRationale = plan.rationale.trim();
+    }
+  }
+
+  // Extract from structured assessment
+  const assessment = input.structuredAssessment as Record<string, unknown> | null;
+  if (assessment && typeof assessment === 'object') {
+    if (Array.isArray(assessment.issues) && nextCheckItems.length === 0) {
+      nextCheckItems.push(
+        ...assessment.issues
+          .filter((i): i is string => typeof i === 'string')
+          .slice(0, 3)
+      );
+    }
+  }
+
+  // Carry over previous handoff items if no new ones found
+  const prev = input.previousHandoff as Record<string, unknown> | null;
+  if (prev && typeof prev === 'object') {
+    if (ongoingMonitoring.length === 0 && Array.isArray(prev.ongoing_monitoring)) {
+      ongoingMonitoring.push(
+        ...prev.ongoing_monitoring.filter((i): i is string => typeof i === 'string').slice(0, 5)
+      );
+    }
+  }
+
+  // Fallback from SOAP text
+  if (nextCheckItems.length === 0 && input.soapPlan.trim()) {
+    nextCheckItems.push(input.soapPlan.trim().slice(0, 200));
+  }
+
+  return {
+    next_check_items: nextCheckItems,
+    ongoing_monitoring: ongoingMonitoring,
+    decision_rationale: decisionRationale,
+    confidence: nextCheckItems.length > 0 ? 0.7 : 0.3,
+    extracted_at: new Date().toISOString(),
+  };
+}

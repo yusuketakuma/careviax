@@ -140,6 +140,7 @@ export const POST = withAuth(
                     take: 1,
                     select: {
                       facility_id: true,
+                      facility_unit_id: true,
                       address: true,
                       building_id: true,
                       unit_name: true,
@@ -191,6 +192,13 @@ export const POST = withAuth(
         };
       }
 
+      const facilityUnitIdSet = new Set(
+        schedules
+          .map((schedule) => schedule.case_.patient.residences[0]?.facility_unit_id)
+          .filter((value): value is string => value != null)
+      );
+      const facilityUnitId = facilityUnitIdSet.size === 1 ? Array.from(facilityUnitIdSet)[0] : null;
+
       const existingBatchIds = Array.from(
         new Set(
           schedules
@@ -215,6 +223,7 @@ export const POST = withAuth(
               where: { id: existingBatchIds[0] },
               data: {
                 facility_id: Array.from(facilityLabels)[0],
+                facility_unit_id: facilityUnitId,
                 scheduled_date: schedules[0].scheduled_date,
                 pharmacist_id: schedules[0].pharmacist_id,
                 patient_ids: orderedSchedules.map((schedule) => schedule.case_.patient.id),
@@ -224,6 +233,7 @@ export const POST = withAuth(
               data: {
                 org_id: req.orgId,
                 facility_id: Array.from(facilityLabels)[0],
+                facility_unit_id: facilityUnitId,
                 scheduled_date: schedules[0].scheduled_date,
                 pharmacist_id: schedules[0].pharmacist_id,
                 patient_ids: orderedSchedules.map((schedule) => schedule.case_.patient.id),
