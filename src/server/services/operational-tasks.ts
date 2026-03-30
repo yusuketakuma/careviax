@@ -250,6 +250,12 @@ export function describeOperationalTask(task: {
         actionLabel: '報告送達を確認',
         queueLabel: '報告送達',
       };
+    case 'report_response_followup':
+      return {
+        actionHref: '/reports',
+        actionLabel: '未確認報告を確認',
+        queueLabel: '報告返信待ち',
+      };
     case 'tracing_report_followup':
       return {
         actionHref: '/workflow',

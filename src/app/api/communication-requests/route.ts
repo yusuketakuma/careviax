@@ -5,6 +5,8 @@ import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
+import { pickCommunicationRecipientCandidate } from '@/lib/contact-profiles';
+import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/prescriber-institutions';
 
 const createCommunicationRequestSchema = z.object({
   patient_id: z.string().optional(),
@@ -135,6 +137,52 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     status,
   } = parsed.data;
 
+  const suggestedInstitution =
+    !recipient_name && (patient_id || case_id)
+      ? await findLatestPrescriberInstitutionSuggestion(prisma, req.orgId, {
+          caseId: case_id,
+          patientId: patient_id,
+        })
+      : null;
+  const suggestedProfessional =
+    !recipient_name && !suggestedInstitution && (patient_id || case_id)
+      ? await pickCommunicationRecipientCandidate(prisma, req.orgId, {
+          caseId: case_id,
+          patientId: patient_id,
+          requestType: request_type,
+        })
+      : null;
+  const effectiveRecipientName =
+    recipient_name ??
+    suggestedInstitution?.prescriber_name ??
+    suggestedInstitution?.name ??
+    suggestedProfessional?.name ??
+    null;
+  const effectiveRecipientRole =
+    recipient_role ??
+    (suggestedInstitution
+      ? '処方元医療機関'
+      : suggestedProfessional?.organization_name ?? suggestedProfessional?.profession_type ?? null);
+  const effectiveContextSnapshot = {
+    ...(context_snapshot ?? {}),
+    ...(suggestedInstitution
+      ? {
+          prescriber_institution_id: suggestedInstitution.id,
+          prescriber_institution_name: suggestedInstitution.name,
+        }
+      : {}),
+    ...(suggestedProfessional
+      ? {
+          external_professional_id: suggestedProfessional.id,
+          external_professional_name: suggestedProfessional.name,
+          external_professional_profession_type: suggestedProfessional.profession_type,
+          preferred_contact_method: suggestedProfessional.preferred_contact_method,
+          preferred_contact_time: suggestedProfessional.preferred_contact_time,
+          recommended_channels: suggestedProfessional.recommended_channels,
+        }
+      : {}),
+  };
+
   const result = await withOrgContext(req.orgId, async (tx) => {
     return tx.communicationRequest.create({
       data: {
@@ -143,11 +191,11 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         case_id: case_id ?? null,
         request_type,
         template_key: template_key ?? null,
-        recipient_name: recipient_name ?? null,
-        recipient_role: recipient_role ?? null,
+        recipient_name: effectiveRecipientName,
+        recipient_role: effectiveRecipientRole,
         related_entity_type: related_entity_type ?? null,
         related_entity_id: related_entity_id ?? null,
-        context_snapshot: (context_snapshot as Prisma.InputJsonValue) ?? undefined,
+        context_snapshot: effectiveContextSnapshot as Prisma.InputJsonValue,
         status: status ?? 'draft',
         subject,
         content,

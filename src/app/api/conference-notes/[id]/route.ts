@@ -1,0 +1,231 @@
+import { Prisma } from '@prisma/client';
+import { withAuthContext } from '@/lib/auth/context';
+import { success, validationError, notFound } from '@/lib/api/response';
+import { withOrgContext } from '@/lib/db/rls';
+import { prisma } from '@/lib/db/client';
+import { ConferenceDataSyncService } from '@/server/services/conference-data-sync';
+import {
+  buildConferenceContent,
+  buildConferenceMetadata,
+  createConferenceNoteSchema,
+  normalizeConferenceStructuredContent,
+  resolveConferenceNoteType,
+  updateConferenceNoteSchema,
+} from '@/lib/validations/conference';
+
+export const PATCH = withAuthContext<{ id: string }>(
+  async (req, ctx, routeContext) => {
+    const { id } = await routeContext.params;
+    const body = await req.json().catch(() => null);
+    if (!body) return validationError('リクエストボディが不正です');
+
+    const parsed = updateConferenceNoteSchema.safeParse(body);
+    if (!parsed.success) {
+      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    }
+
+    const existing = await prisma.conferenceNote.findFirst({
+      where: {
+        id,
+        org_id: ctx.orgId,
+      },
+      select: {
+        id: true,
+        case_id: true,
+        patient_id: true,
+        facility_id: true,
+        note_type: true,
+        title: true,
+        content: true,
+        structured_content: true,
+        metadata: true,
+        billing_eligible: true,
+        billing_code: true,
+        follow_up_date: true,
+        follow_up_completed: true,
+        generated_report_id: true,
+        participants: true,
+        conference_date: true,
+        action_items: true,
+      },
+    });
+
+    if (!existing) {
+      return notFound('カンファレンス記録が見つかりません');
+    }
+
+    const hasRequestedNoteType =
+      parsed.data.note_type !== undefined || parsed.data.conference_type !== undefined;
+    const candidateNoteType = hasRequestedNoteType
+      ? resolveConferenceNoteType(parsed.data)
+      : undefined;
+    if (candidateNoteType === null) {
+      return validationError('conference_type と note_type が一致していません');
+    }
+
+    const mergedPayload = {
+      case_id: existing.case_id ?? undefined,
+      patient_id: parsed.data.patient_id ?? existing.patient_id ?? undefined,
+      facility_id: parsed.data.facility_id ?? existing.facility_id ?? undefined,
+      note_type: candidateNoteType ?? existing.note_type,
+      title: parsed.data.title ?? existing.title,
+      content: parsed.data.content ?? existing.content,
+      structured_content:
+        parsed.data.structured_content ??
+        (existing.structured_content &&
+        typeof existing.structured_content === 'object' &&
+        !Array.isArray(existing.structured_content)
+          ? existing.structured_content
+          : undefined),
+      metadata:
+        parsed.data.metadata ??
+        (existing.metadata && typeof existing.metadata === 'object' && !Array.isArray(existing.metadata)
+          ? existing.metadata
+          : undefined),
+      billing_eligible: parsed.data.billing_eligible ?? existing.billing_eligible,
+      billing_code: parsed.data.billing_code ?? existing.billing_code ?? undefined,
+      follow_up_date:
+        parsed.data.follow_up_date ??
+        (existing.follow_up_date ? existing.follow_up_date.toISOString() : undefined),
+      follow_up_completed:
+        parsed.data.follow_up_completed ?? existing.follow_up_completed,
+      participants:
+        parsed.data.participants ??
+        (Array.isArray(existing.participants) ? existing.participants : []),
+      conference_date:
+        parsed.data.conference_date ?? existing.conference_date.toISOString(),
+      action_items:
+        parsed.data.action_items ??
+        (Array.isArray(existing.action_items) ? existing.action_items : undefined),
+    };
+
+    const mergedValidation = createConferenceNoteSchema.safeParse(mergedPayload);
+    if (!mergedValidation.success) {
+      return validationError('入力値が不正です', mergedValidation.error.issues);
+    }
+
+    const resolvedNoteType = resolveConferenceNoteType(mergedValidation.data);
+    if (!resolvedNoteType) {
+      return validationError('conference_type と note_type が一致していません');
+    }
+
+    const normalizedContent = buildConferenceContent(
+      mergedValidation.data.content,
+      mergedValidation.data.structured_content
+    );
+    const normalizedMetadata = buildConferenceMetadata(
+      resolvedNoteType,
+      mergedValidation.data.metadata
+    );
+    const normalizedStructuredContent = normalizeConferenceStructuredContent(
+      resolvedNoteType,
+      mergedValidation.data.structured_content
+    );
+    const existingMetadataExtras =
+      existing.metadata && typeof existing.metadata === 'object' && !Array.isArray(existing.metadata)
+        ? Object.fromEntries(
+            Object.entries(existing.metadata as Record<string, unknown>).filter(
+              ([key]) =>
+                key !== 'billing' &&
+                key !== 'visit_brief' &&
+                key !== 'generated_report_id'
+            )
+          )
+        : null;
+
+    const { note: updated, sync } = await withOrgContext(ctx.orgId, async (tx) => {
+      const careCase = mergedValidation.data.case_id
+        ? await tx.careCase.findFirst({
+            where: {
+              id: mergedValidation.data.case_id,
+              org_id: ctx.orgId,
+            },
+            select: {
+              patient_id: true,
+            },
+          })
+        : null;
+      const resolvedPatientId =
+        mergedValidation.data.patient_id ??
+        careCase?.patient_id ??
+        (mergedValidation.data.metadata?.visit_brief?.patient_id?.trim()
+          ? mergedValidation.data.metadata.visit_brief.patient_id.trim()
+          : null);
+      const primaryResidence = resolvedPatientId
+        ? await tx.residence.findFirst({
+            where: {
+              org_id: ctx.orgId,
+              patient_id: resolvedPatientId,
+              is_primary: true,
+            },
+            select: {
+              facility_id: true,
+            },
+          })
+        : null;
+      const metadataBilling =
+        normalizedMetadata?.billing && typeof normalizedMetadata.billing === 'object'
+          ? normalizedMetadata.billing
+          : undefined;
+      const resolvedBillingEligible =
+        mergedValidation.data.billing_eligible ??
+        (resolvedNoteType === 'service_manager' ||
+          metadataBilling?.link_status === 'candidate' ||
+          metadataBilling?.link_status === 'linked');
+      const resolvedBillingCode =
+        mergedValidation.data.billing_code?.trim() ||
+        metadataBilling?.code?.trim() ||
+        null;
+      const saved = await tx.conferenceNote.update({
+        where: { id },
+        data: {
+          patient_id: resolvedPatientId,
+          facility_id: mergedValidation.data.facility_id ?? primaryResidence?.facility_id ?? null,
+          note_type: resolvedNoteType,
+          title: mergedValidation.data.title,
+          content: normalizedContent,
+          structured_content: normalizedStructuredContent
+            ? (normalizedStructuredContent as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
+          metadata:
+            normalizedMetadata || existingMetadataExtras
+              ? ({
+                  ...(existingMetadataExtras ?? {}),
+                  ...(normalizedMetadata ?? {}),
+                } as Prisma.InputJsonValue)
+              : Prisma.JsonNull,
+          billing_eligible: resolvedBillingEligible,
+          billing_code: resolvedBillingCode,
+          follow_up_date: mergedValidation.data.follow_up_date
+            ? new Date(mergedValidation.data.follow_up_date)
+            : null,
+          follow_up_completed: mergedValidation.data.follow_up_completed ?? false,
+          generated_report_id: existing.generated_report_id,
+          participants: mergedValidation.data.participants as Prisma.InputJsonValue,
+          conference_date: new Date(mergedValidation.data.conference_date),
+          action_items:
+            mergedValidation.data.action_items !== undefined
+              ? (mergedValidation.data.action_items as Prisma.InputJsonValue)
+              : Prisma.JsonNull,
+        },
+      });
+
+      return ConferenceDataSyncService.syncSavedNote(tx, ctx.orgId, ctx.userId, saved, {
+        mode: 'update',
+      });
+    });
+
+    return success({
+      data: {
+        ...updated,
+        conference_type: updated.note_type,
+        generated_report_id: updated.generated_report_id,
+      },
+      sync,
+    });
+  },
+  {
+    permission: 'canReport',
+    message: 'カンファレンス記録の更新権限がありません',
+  }
+);

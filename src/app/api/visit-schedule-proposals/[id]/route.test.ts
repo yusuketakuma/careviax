@@ -5,9 +5,11 @@ const {
   requireAuthContextMock,
   withOrgContextMock,
   proposalFindFirstMock,
+  proposalFindManyMock,
   proposalUpdateMock,
   proposalUpdateManyMock,
   scheduleFindFirstMock,
+  scheduleFindManyMock,
   scheduleUpdateManyMock,
   scheduleCreateMock,
   contactLogCreateMock,
@@ -15,15 +17,19 @@ const {
   auditLogCreateMock,
   overrideUpdateMock,
   evaluateVisitWorkflowGateMock,
+  userFindManyMock,
+  computeOptimizedVisitRouteMock,
   upsertOperationalTaskMock,
   resolveOperationalTasksMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   proposalFindFirstMock: vi.fn(),
+  proposalFindManyMock: vi.fn(),
   proposalUpdateMock: vi.fn(),
   proposalUpdateManyMock: vi.fn(),
   scheduleFindFirstMock: vi.fn(),
+  scheduleFindManyMock: vi.fn(),
   scheduleUpdateManyMock: vi.fn(),
   scheduleCreateMock: vi.fn(),
   contactLogCreateMock: vi.fn(),
@@ -31,6 +37,8 @@ const {
   auditLogCreateMock: vi.fn(),
   overrideUpdateMock: vi.fn(),
   evaluateVisitWorkflowGateMock: vi.fn(),
+  userFindManyMock: vi.fn(),
+  computeOptimizedVisitRouteMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
 }));
@@ -43,6 +51,13 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     visitScheduleProposal: {
       findFirst: proposalFindFirstMock,
+      findMany: proposalFindManyMock,
+    },
+    visitSchedule: {
+      findMany: scheduleFindManyMock,
+    },
+    user: {
+      findMany: userFindManyMock,
     },
   },
 }));
@@ -61,9 +76,13 @@ vi.mock('@/server/services/operational-tasks', () => ({
   resolveOperationalTasks: resolveOperationalTasksMock,
 }));
 
-import { PATCH } from './route';
+vi.mock('@/server/services/google-routes', () => ({
+  computeOptimizedVisitRoute: computeOptimizedVisitRouteMock,
+}));
 
-function createRequest(body: unknown, headers?: Record<string, string>) {
+import { GET, PATCH } from './route';
+
+function createRequest(body?: unknown, headers?: Record<string, string>) {
   return {
     headers: {
       get: (key: string) => headers?.[key] ?? null,
@@ -92,6 +111,7 @@ function buildProposal(overrides?: Record<string, unknown>) {
     medication_end_date: new Date('2026-03-31T00:00:00.000Z'),
     visit_deadline_date: new Date('2026-03-30T00:00:00.000Z'),
     escalation_reason: null,
+    suggested_recurrence_rule: null,
     finalized_schedule_id: null,
     reschedule_source_schedule_id: null,
     case_: {
@@ -112,9 +132,11 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       },
     });
     proposalFindFirstMock.mockResolvedValue(buildProposal());
+    proposalFindManyMock.mockResolvedValue([]);
     proposalUpdateMock.mockResolvedValue({ id: 'proposal_1' });
     proposalUpdateManyMock.mockResolvedValue({ count: 2 });
     scheduleFindFirstMock.mockResolvedValue(null);
+    scheduleFindManyMock.mockResolvedValue([]);
     scheduleUpdateManyMock.mockResolvedValue({ count: 1 });
     scheduleCreateMock.mockResolvedValue({
       id: 'schedule_1',
@@ -143,6 +165,36 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       consentId: 'consent_1',
       managementPlanId: 'plan_1',
     });
+    userFindManyMock.mockResolvedValue([
+      { id: 'pharmacist_1', name: '薬剤師A', name_kana: 'ヤクザイシA' },
+      { id: 'pharmacist_2', name: '薬剤師B', name_kana: 'ヤクザイシB' },
+    ]);
+    computeOptimizedVisitRouteMock.mockResolvedValue({
+      status: 'ok',
+      note: null,
+      travelMode: 'DRIVE',
+      origin: { lat: 35.1, lng: 139.1, label: '拠点A' },
+      encodedPath: 'encoded',
+      orderedScheduleIds: ['schedule_1', 'proposal:proposal_1'],
+      totalDistanceMeters: 1200,
+      totalDurationSeconds: 900,
+      stopSummaries: [
+        {
+          scheduleId: 'schedule_1',
+          optimizedOrder: 1,
+          arrivalOffsetSeconds: 300,
+          distanceFromPreviousMeters: 500,
+          durationFromPreviousSeconds: 300,
+        },
+        {
+          scheduleId: 'proposal:proposal_1',
+          optimizedOrder: 2,
+          arrivalOffsetSeconds: 900,
+          distanceFromPreviousMeters: 700,
+          durationFromPreviousSeconds: 600,
+        },
+      ],
+    });
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -167,6 +219,129 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         },
       })
     );
+  });
+
+  it('returns proposal detail with related candidates and route preview', async () => {
+    proposalFindFirstMock.mockResolvedValueOnce({
+      ...buildProposal({
+        created_at: new Date('2026-03-26T09:00:00.000Z'),
+        case_: {
+          patient: {
+            name: '患者A',
+            residences: [
+              {
+                address: '東京都千代田区1-1-1',
+                lat: 35.2,
+                lng: 139.2,
+              },
+            ],
+          },
+        },
+        site: {
+          id: 'site_1',
+          name: '拠点A',
+          address: '東京都千代田区2-2-2',
+          lat: 35.1,
+          lng: 139.1,
+        },
+        contact_logs: [
+          {
+            id: 'log_1',
+            outcome: 'attempted',
+            contact_method: 'phone',
+            contact_name: '本人',
+            contact_phone: '090-0000-0000',
+            note: '折返し待ち',
+            callback_due_at: null,
+            called_at: new Date('2026-03-26T10:00:00.000Z'),
+            called_by: 'user_1',
+          },
+        ],
+        finalized_schedule: null,
+        reschedule_source_schedule: null,
+      }),
+    });
+    proposalFindManyMock.mockResolvedValueOnce([
+      {
+        ...buildProposal({
+          id: 'proposal_2',
+          proposed_pharmacist_id: 'pharmacist_2',
+          route_distance_score: 3.5,
+          proposed_date: new Date('2026-03-28T00:00:00.000Z'),
+          case_: {
+            patient: {
+              name: '患者A',
+              residences: [
+                {
+                  address: '東京都千代田区1-1-1',
+                  lat: 35.2,
+                  lng: 139.2,
+                },
+              ],
+            },
+          },
+          site: {
+            id: 'site_1',
+            name: '拠点A',
+            address: '東京都千代田区2-2-2',
+            lat: 35.1,
+            lng: 139.1,
+          },
+        }),
+      },
+    ]);
+    scheduleFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'schedule_1',
+        visit_type: 'regular',
+        priority: 'normal',
+        schedule_status: 'planned',
+        route_order: 1,
+        scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
+        time_window_start: new Date('1970-01-01T08:30:00.000Z'),
+        time_window_end: new Date('1970-01-01T09:00:00.000Z'),
+        case_: {
+          patient: {
+            name: '患者B',
+            residences: [
+              {
+                address: '東京都港区3-3-3',
+                lat: 35.3,
+                lng: 139.3,
+              },
+            ],
+          },
+        },
+        site: {
+          id: 'site_1',
+          name: '拠点A',
+          address: '東京都千代田区2-2-2',
+          lat: 35.1,
+          lng: 139.1,
+        },
+      },
+    ]);
+
+    const response = await GET(createRequest(undefined, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: expect.objectContaining({
+        id: 'proposal_1',
+        related_proposals: [expect.objectContaining({ id: 'proposal_2' })],
+        route_preview: expect.objectContaining({
+          plan: expect.objectContaining({
+            orderedScheduleIds: ['schedule_1', 'proposal:proposal_1'],
+          }),
+          points: expect.arrayContaining([
+            expect.objectContaining({ point_kind: 'proposal', schedule_id: 'proposal:proposal_1' }),
+          ]),
+        }),
+      }),
+    });
   });
 
   it('rejects confirmation before approval and patient contact', async () => {
@@ -225,6 +400,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         {
           action: 'contact_attempt',
           outcome: 'confirmed',
+          contact_method: 'phone',
           contact_name: '本人',
           note: '了承済み',
         },
@@ -241,6 +417,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         proposal_id: 'proposal_1',
         patient_id: 'patient_1',
         outcome: 'confirmed',
+        contact_method: 'phone',
         contact_name: '本人',
         note: '了承済み',
       }),
@@ -252,6 +429,46 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         patient_contact_status: 'confirmed',
       }),
     });
+  });
+
+  it('records change_requested outcomes as rejected proposals', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'pending',
+      })
+    );
+
+    const response = await PATCH(
+      createRequest(
+        {
+          action: 'contact_attempt',
+          outcome: 'change_requested',
+          contact_method: 'email',
+          note: '午前帯のみ希望',
+        },
+        { 'x-org-id': 'org_1' }
+      ),
+      { params: Promise.resolve({ id: 'proposal_1' }) }
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(proposalUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'proposal_1' },
+      data: expect.objectContaining({
+        proposal_status: 'rejected',
+        patient_contact_status: 'change_requested',
+      }),
+    });
+    expect(resolveOperationalTasksMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        dedupeKey: 'visit-contact-followup:proposal_1',
+        status: 'completed',
+      })
+    );
   });
 
   it('finalizes the proposal into a confirmed visit and supersedes sibling drafts', async () => {
@@ -312,6 +529,32 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       data: {
         schedule_id: 'schedule_1',
       },
+    });
+  });
+
+  it('copies a suggested recurrence rule into the finalized visit schedule', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        suggested_recurrence_rule: 'FREQ=WEEKLY;INTERVAL=2;BYDAY=TU',
+      })
+    );
+
+    const response = await PATCH(
+      createRequest(
+        { action: 'confirm' },
+        { 'x-org-id': 'org_1' }
+      ),
+      { params: Promise.resolve({ id: 'proposal_1' }) }
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(scheduleCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=2;BYDAY=TU',
+      }),
     });
   });
 });

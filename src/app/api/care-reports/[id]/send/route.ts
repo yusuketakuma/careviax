@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { upsertBillingEvidenceForVisit } from '@/server/services/billing-evidence';
 import { resolveOperationalTasks } from '@/server/services/operational-tasks';
 import { sendCareReportEmail } from '@/server/services/report-delivery';
+import { learnContactProfileFromCommunication } from '@/lib/contact-profiles';
 
 function toPrimaryCommunicationEventType(reportType: string) {
   switch (reportType) {
@@ -65,6 +66,7 @@ export async function POST(
       case_id: true,
       status: true,
       visit_record_id: true,
+      content: true,
       report_type: true,
       pdf_url: true,
     },
@@ -115,6 +117,15 @@ export async function POST(
             subject: existing.report_type,
             content: failureReason,
           },
+        });
+
+        await learnContactProfileFromCommunication(tx, {
+          orgId: ctx.orgId,
+          counterpartName: parsed.data.recipient_name,
+          counterpartContact: parsed.data.recipient_contact,
+          channel: parsed.data.channel,
+          occurredAt: new Date(),
+          markSuccess: false,
         });
       }, { requestContext: ctx });
 
@@ -169,6 +180,15 @@ export async function POST(
         },
       });
     }
+
+    await learnContactProfileFromCommunication(tx, {
+      orgId: ctx.orgId,
+      counterpartName: parsed.data.recipient_name,
+      counterpartContact: parsed.data.recipient_contact,
+      channel: parsed.data.channel,
+      occurredAt: new Date(),
+      markSuccess: true,
+    });
 
     if (existing.visit_record_id) {
       const schedule = await tx.visitRecord.findFirst({
@@ -226,6 +246,67 @@ export async function POST(
             orgId: ctx.orgId,
             visitRecordId: existing.visit_record_id,
           });
+        }
+      }
+    } else {
+      const conferenceNoteId =
+        existing.content &&
+        typeof existing.content === 'object' &&
+        !Array.isArray(existing.content) &&
+        typeof existing.content.conference_note_id === 'string'
+          ? existing.content.conference_note_id
+          : null;
+
+      if (conferenceNoteId) {
+        const conferenceNote = await tx.conferenceNote.findFirst({
+          where: {
+            id: conferenceNoteId,
+            org_id: ctx.orgId,
+          },
+          select: {
+            case_id: true,
+            conference_date: true,
+          },
+        });
+
+        if (conferenceNote?.case_id) {
+          const monthStart = new Date(
+            conferenceNote.conference_date.getFullYear(),
+            conferenceNote.conference_date.getMonth(),
+            1
+          );
+          const monthEnd = new Date(
+            conferenceNote.conference_date.getFullYear(),
+            conferenceNote.conference_date.getMonth() + 1,
+            0,
+            23,
+            59,
+            59,
+            999
+          );
+          const relatedVisitRecords = await tx.visitRecord.findMany({
+            where: {
+              org_id: ctx.orgId,
+              patient_id: existing.patient_id,
+              visit_date: {
+                gte: monthStart,
+                lte: monthEnd,
+              },
+              schedule: {
+                case_id: conferenceNote.case_id,
+              },
+            },
+            select: {
+              id: true,
+            },
+          });
+
+          for (const visitRecord of relatedVisitRecords) {
+            await upsertBillingEvidenceForVisit(tx, {
+              orgId: ctx.orgId,
+              visitRecordId: visitRecord.id,
+            });
+          }
         }
       }
     }

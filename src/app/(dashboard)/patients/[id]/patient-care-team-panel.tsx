@@ -1,12 +1,20 @@
 'use client';
 
 import { useMemo, useState, type ReactNode } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -20,6 +28,7 @@ import { Textarea } from '@/components/ui/textarea';
 
 type CareTeamRow = {
   id?: string;
+  external_professional_id?: string;
   role: 'physician' | 'nurse' | 'care_manager' | 'pharmacist' | 'other';
   name: string;
   organization_name: string;
@@ -29,6 +38,31 @@ type CareTeamRow = {
   fax: string;
   address: string;
   is_primary: boolean;
+  notes: string;
+};
+
+type ExternalProfessionalOption = {
+  id: string;
+  profession_type: string;
+  name: string;
+  organization_name: string | null;
+  department: string | null;
+  phone: string | null;
+  email: string | null;
+  fax: string | null;
+  address: string | null;
+  notes: string | null;
+};
+
+type ExternalProfessionalDraft = {
+  profession_type: string;
+  name: string;
+  organization_name: string;
+  department: string;
+  phone: string;
+  email: string;
+  fax: string;
+  address: string;
   notes: string;
 };
 
@@ -52,6 +86,7 @@ export function PatientCareTeamPanel({
     status: string;
     care_team_links: Array<{
       id: string;
+      external_professional_id?: string | null;
       role: string;
       name: string;
       organization_name: string | null;
@@ -69,12 +104,25 @@ export function PatientCareTeamPanel({
   const defaultCaseId =
     cases.find((careCase) => careCase.status === 'active')?.id ?? cases[0]?.id ?? '';
   const [selectedCaseId, setSelectedCaseId] = useState(defaultCaseId);
+  const [quickCreateRowIndex, setQuickCreateRowIndex] = useState<number | null>(null);
+  const [quickCreateDraft, setQuickCreateDraft] = useState<ExternalProfessionalDraft>({
+    profession_type: 'physician',
+    name: '',
+    organization_name: '',
+    department: '',
+    phone: '',
+    email: '',
+    fax: '',
+    address: '',
+    notes: '',
+  });
   const [drafts, setDrafts] = useState<Record<string, CareTeamRow[]>>(() =>
     Object.fromEntries(
       cases.map((careCase) => [
         careCase.id,
         careCase.care_team_links.map((link) => ({
           id: link.id,
+          external_professional_id: link.external_professional_id ?? undefined,
           role: (['physician', 'nurse', 'care_manager', 'pharmacist', 'other'].includes(link.role)
             ? link.role
             : 'other') as CareTeamRow['role'],
@@ -93,6 +141,48 @@ export function PatientCareTeamPanel({
   );
 
   const rows = drafts[selectedCaseId] ?? [];
+  const { data: professionalOptionsResponse } = useQuery({
+    queryKey: ['external-professional-options', orgId],
+    queryFn: async () => {
+      const response = await fetch('/api/admin/external-professionals', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!response.ok) throw new Error('他職種マスターの取得に失敗しました');
+      return response.json() as Promise<{ data: ExternalProfessionalOption[] }>;
+    },
+    enabled: !!orgId,
+  });
+  const professionalOptions = professionalOptionsResponse?.data ?? [];
+
+  const quickCreateMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch('/api/admin/external-professionals', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify(quickCreateDraft),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error((payload as { message?: string }).message ?? '他職種マスターの登録に失敗しました');
+      }
+      return payload as { data: ExternalProfessionalOption };
+    },
+    onSuccess: async (payload) => {
+      toast.success('他職種マスターを登録しました');
+      await queryClient.invalidateQueries({ queryKey: ['external-professional-options', orgId] });
+      if (quickCreateRowIndex != null) {
+        applyExternalProfessional(quickCreateRowIndex, payload.data.id, payload.data);
+      }
+      setQuickCreateRowIndex(null);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '他職種マスターの登録に失敗しました');
+    },
+  });
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/patients/${patientId}/care-team`, {
@@ -106,6 +196,7 @@ export function PatientCareTeamPanel({
           links: rows
             .filter((row) => row.name.trim())
             .map((row) => ({
+              external_professional_id: row.external_professional_id,
               role: row.role,
               name: row.name.trim(),
               organization_name: row.organization_name || undefined,
@@ -144,6 +235,60 @@ export function PatientCareTeamPanel({
       ...current,
       [selectedCaseId]: nextRows,
     }));
+  }
+
+  function updateRowAt(index: number, updater: (row: CareTeamRow) => CareTeamRow) {
+    updateRows(rows.map((item, itemIndex) => (itemIndex === index ? updater(item) : item)));
+  }
+
+  function applyExternalProfessional(
+    index: number,
+    externalProfessionalId: string,
+    selectedProfessionalOverride?: ExternalProfessionalOption,
+  ) {
+    const selectedProfessional =
+      selectedProfessionalOverride ??
+      professionalOptions.find((item) => item.id === externalProfessionalId);
+    updateRows(
+      rows.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        if (!selectedProfessional) {
+          return {
+            ...item,
+            external_professional_id: undefined,
+          };
+        }
+        return {
+          ...item,
+          external_professional_id: selectedProfessional.id,
+          role: mapProfessionToCareTeamRole(selectedProfessional.profession_type),
+          name: selectedProfessional.name,
+          organization_name: selectedProfessional.organization_name ?? '',
+          department: selectedProfessional.department ?? '',
+          phone: selectedProfessional.phone ?? '',
+          email: selectedProfessional.email ?? '',
+          fax: selectedProfessional.fax ?? '',
+          address: selectedProfessional.address ?? '',
+          notes: item.notes || selectedProfessional.notes || '',
+        };
+      }),
+    );
+  }
+
+  function openQuickCreateDialog(index: number) {
+    const row = rows[index];
+    setQuickCreateRowIndex(index);
+    setQuickCreateDraft({
+      profession_type: mapCareTeamRoleToProfession(row.role),
+      name: row.name,
+      organization_name: row.organization_name,
+      department: row.department,
+      phone: row.phone,
+      email: row.email,
+      fax: row.fax,
+      address: row.address,
+      notes: row.notes,
+    });
   }
 
   if (cases.length === 0) {
@@ -187,16 +332,30 @@ export function PatientCareTeamPanel({
           {rows.map((row, index) => (
             <div key={row.id ?? `care-team-${index}`} className="rounded-lg border p-3">
               <div className="grid gap-3 md:grid-cols-2">
+                <Field label="他職種マスター">
+                  <Select
+                    value={row.external_professional_id ?? 'manual'}
+                    onValueChange={(value) =>
+                      applyExternalProfessional(index, !value || value === 'manual' ? '' : value)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="手入力または登録済みから選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="manual">手入力</SelectItem>
+                      {professionalOptions.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.name} / {item.organization_name ?? professionLabel(item.profession_type)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
                 <Field label="役割">
                   <Select
                     value={row.role}
-                    onValueChange={(value) =>
-                      updateRows(
-                        rows.map((item, itemIndex) =>
-                          itemIndex === index ? { ...item, role: value as CareTeamRow['role'] } : item,
-                        ),
-                      )
-                    }
+                    onValueChange={(value) => updateRowAt(index, (item) => ({ ...item, role: value as CareTeamRow['role'] }))}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -212,27 +371,40 @@ export function PatientCareTeamPanel({
                 </Field>
                 <Field label="氏名">
                   <Input
+                    list={`external-professional-suggestions-${index}`}
                     value={row.name}
-                    onChange={(event) =>
-                      updateRows(
-                        rows.map((item, itemIndex) =>
-                          itemIndex === index ? { ...item, name: event.target.value } : item,
-                        ),
-                      )
-                    }
+                    onChange={(event) => {
+                      const matchedProfessional = professionalOptions.find(
+                        (item) => item.name === event.target.value,
+                      );
+                      if (matchedProfessional) {
+                        applyExternalProfessional(index, matchedProfessional.id, matchedProfessional);
+                        return;
+                      }
+                      updateRowAt(index, (item) => ({
+                        ...item,
+                        external_professional_id: undefined,
+                        name: event.target.value,
+                      }));
+                    }}
                   />
+                  <datalist id={`external-professional-suggestions-${index}`}>
+                    {professionalOptions.map((item) => (
+                      <option key={item.id} value={item.name}>
+                        {item.organization_name ?? professionLabel(item.profession_type)}
+                      </option>
+                    ))}
+                  </datalist>
                 </Field>
                 <Field label="所属">
                   <Input
                     value={row.organization_name}
                     onChange={(event) =>
-                      updateRows(
-                        rows.map((item, itemIndex) =>
-                          itemIndex === index
-                            ? { ...item, organization_name: event.target.value }
-                            : item,
-                        ),
-                      )
+                      updateRowAt(index, (item) => ({
+                        ...item,
+                        external_professional_id: undefined,
+                        organization_name: event.target.value,
+                      }))
                     }
                   />
                 </Field>
@@ -240,11 +412,11 @@ export function PatientCareTeamPanel({
                   <Input
                     value={row.department}
                     onChange={(event) =>
-                      updateRows(
-                        rows.map((item, itemIndex) =>
-                          itemIndex === index ? { ...item, department: event.target.value } : item,
-                        ),
-                      )
+                      updateRowAt(index, (item) => ({
+                        ...item,
+                        external_professional_id: undefined,
+                        department: event.target.value,
+                      }))
                     }
                   />
                 </Field>
@@ -252,11 +424,11 @@ export function PatientCareTeamPanel({
                   <Input
                     value={row.phone}
                     onChange={(event) =>
-                      updateRows(
-                        rows.map((item, itemIndex) =>
-                          itemIndex === index ? { ...item, phone: event.target.value } : item,
-                        ),
-                      )
+                      updateRowAt(index, (item) => ({
+                        ...item,
+                        external_professional_id: undefined,
+                        phone: event.target.value,
+                      }))
                     }
                   />
                 </Field>
@@ -264,11 +436,11 @@ export function PatientCareTeamPanel({
                   <Input
                     value={row.email}
                     onChange={(event) =>
-                      updateRows(
-                        rows.map((item, itemIndex) =>
-                          itemIndex === index ? { ...item, email: event.target.value } : item,
-                        ),
-                      )
+                      updateRowAt(index, (item) => ({
+                        ...item,
+                        external_professional_id: undefined,
+                        email: event.target.value,
+                      }))
                     }
                   />
                 </Field>
@@ -276,11 +448,11 @@ export function PatientCareTeamPanel({
                   <Input
                     value={row.fax}
                     onChange={(event) =>
-                      updateRows(
-                        rows.map((item, itemIndex) =>
-                          itemIndex === index ? { ...item, fax: event.target.value } : item,
-                        ),
-                      )
+                      updateRowAt(index, (item) => ({
+                        ...item,
+                        external_professional_id: undefined,
+                        fax: event.target.value,
+                      }))
                     }
                   />
                 </Field>
@@ -288,11 +460,11 @@ export function PatientCareTeamPanel({
                   <Input
                     value={row.address}
                     onChange={(event) =>
-                      updateRows(
-                        rows.map((item, itemIndex) =>
-                          itemIndex === index ? { ...item, address: event.target.value } : item,
-                        ),
-                      )
+                      updateRowAt(index, (item) => ({
+                        ...item,
+                        external_professional_id: undefined,
+                        address: event.target.value,
+                      }))
                     }
                   />
                 </Field>
@@ -301,11 +473,11 @@ export function PatientCareTeamPanel({
                     rows={2}
                     value={row.notes}
                     onChange={(event) =>
-                      updateRows(
-                        rows.map((item, itemIndex) =>
-                          itemIndex === index ? { ...item, notes: event.target.value } : item,
-                        ),
-                      )
+                      updateRowAt(index, (item) => ({
+                        ...item,
+                        external_professional_id: undefined,
+                        notes: event.target.value,
+                      }))
                     }
                   />
                 </Field>
@@ -315,61 +487,194 @@ export function PatientCareTeamPanel({
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
                     checked={row.is_primary}
-                    onCheckedChange={(checked) =>
-                      updateRows(
-                        rows.map((item, itemIndex) =>
-                          itemIndex === index ? { ...item, is_primary: Boolean(checked) } : item,
-                        ),
-                      )
-                    }
+                    onCheckedChange={(checked) => updateRowAt(index, (item) => ({ ...item, is_primary: Boolean(checked) }))}
                   />
                   <span>主要担当</span>
                 </label>
 
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => updateRows(rows.filter((_, itemIndex) => itemIndex !== index))}
-                >
-                  <Trash2 className="mr-1 size-4" />
-                  削除
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => openQuickCreateDialog(index)}
+                  >
+                    新規登録
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => updateRows(rows.filter((_, itemIndex) => itemIndex !== index))}
+                  >
+                    <Trash2 className="mr-1 size-4" />
+                    削除
+                  </Button>
+                </div>
               </div>
             </div>
           ))}
         </div>
 
         <div className="flex flex-wrap justify-between gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() =>
-              updateRows([
-                ...rows,
-                {
-                  role: 'physician',
-                  name: '',
-                  organization_name: '',
-                  department: '',
-                  phone: '',
-                  email: '',
-                  fax: '',
-                  address: '',
-                  is_primary: rows.length === 0,
-                  notes: '',
-                },
-              ])
-            }
-          >
-            <Plus className="mr-1 size-4" />
-            行追加
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                updateRows([
+                  ...rows,
+                  {
+                    role: 'physician',
+                    external_professional_id: undefined,
+                    name: '',
+                    organization_name: '',
+                    department: '',
+                    phone: '',
+                    email: '',
+                    fax: '',
+                    address: '',
+                    is_primary: rows.length === 0,
+                    notes: '',
+                  },
+                ])
+              }
+            >
+              <Plus className="mr-1 size-4" />
+              行追加
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => window.open('/admin/external-professionals', '_blank', 'noopener,noreferrer')}
+            >
+              他職種マスターを開く
+            </Button>
+          </div>
           <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !selectedCaseId}>
             {saveMutation.isPending ? '保存中...' : '保存'}
           </Button>
         </div>
       </CardContent>
+
+      <Dialog open={quickCreateRowIndex != null} onOpenChange={(open) => (!open ? setQuickCreateRowIndex(null) : null)}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>他職種マスターに追加</DialogTitle>
+            <DialogDescription>
+              入力中の連携先をマスター登録し、この行へ自動反映します。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field label="職種">
+              <Select
+                value={quickCreateDraft.profession_type}
+                onValueChange={(value) =>
+                  setQuickCreateDraft((current) => ({
+                    ...current,
+                    profession_type: value ?? current.profession_type,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PROFESSION_OPTIONS.map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="氏名">
+              <Input
+                value={quickCreateDraft.name}
+                onChange={(event) =>
+                  setQuickCreateDraft((current) => ({ ...current, name: event.target.value }))
+                }
+              />
+            </Field>
+            <Field label="所属">
+              <Input
+                value={quickCreateDraft.organization_name}
+                onChange={(event) =>
+                  setQuickCreateDraft((current) => ({
+                    ...current,
+                    organization_name: event.target.value,
+                  }))
+                }
+              />
+            </Field>
+            <Field label="部署">
+              <Input
+                value={quickCreateDraft.department}
+                onChange={(event) =>
+                  setQuickCreateDraft((current) => ({ ...current, department: event.target.value }))
+                }
+              />
+            </Field>
+            <Field label="電話">
+              <Input
+                value={quickCreateDraft.phone}
+                onChange={(event) =>
+                  setQuickCreateDraft((current) => ({ ...current, phone: event.target.value }))
+                }
+              />
+            </Field>
+            <Field label="メール">
+              <Input
+                value={quickCreateDraft.email}
+                onChange={(event) =>
+                  setQuickCreateDraft((current) => ({ ...current, email: event.target.value }))
+                }
+              />
+            </Field>
+            <Field label="FAX">
+              <Input
+                value={quickCreateDraft.fax}
+                onChange={(event) =>
+                  setQuickCreateDraft((current) => ({ ...current, fax: event.target.value }))
+                }
+              />
+            </Field>
+            <Field label="住所">
+              <Input
+                value={quickCreateDraft.address}
+                onChange={(event) =>
+                  setQuickCreateDraft((current) => ({ ...current, address: event.target.value }))
+                }
+              />
+            </Field>
+            <Field label="メモ" className="md:col-span-2">
+              <Textarea
+                rows={3}
+                value={quickCreateDraft.notes}
+                onChange={(event) =>
+                  setQuickCreateDraft((current) => ({ ...current, notes: event.target.value }))
+                }
+              />
+            </Field>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setQuickCreateRowIndex(null)}
+            >
+              キャンセル
+            </Button>
+            <Button
+              type="button"
+              onClick={() => quickCreateMutation.mutate()}
+              disabled={quickCreateMutation.isPending}
+            >
+              {quickCreateMutation.isPending ? '登録中...' : '登録して反映'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
@@ -389,4 +694,77 @@ function Field({
       {children}
     </div>
   );
+}
+
+function professionLabel(value: string) {
+  switch (value) {
+    case 'physician':
+      return '医師';
+    case 'nurse':
+      return '看護師';
+    case 'care_manager':
+      return 'ケアマネジャー';
+    case 'medical_social_worker':
+      return '医療ソーシャルワーカー';
+    case 'physical_therapist':
+      return '理学療法士';
+    case 'occupational_therapist':
+      return '作業療法士';
+    case 'speech_therapist':
+      return '言語聴覚士';
+    case 'registered_dietitian':
+      return '管理栄養士';
+    case 'dentist':
+      return '歯科医師';
+    case 'dental_hygienist':
+      return '歯科衛生士';
+    case 'home_helper':
+      return 'ホームヘルパー';
+    case 'care_staff':
+      return '介護職';
+    default:
+      return 'その他';
+  }
+}
+
+function mapProfessionToCareTeamRole(value: string): CareTeamRow['role'] {
+  switch (value) {
+    case 'physician':
+      return 'physician';
+    case 'nurse':
+      return 'nurse';
+    case 'care_manager':
+      return 'care_manager';
+    default:
+      return 'other';
+  }
+}
+
+const PROFESSION_OPTIONS = [
+  ['physician', '医師'],
+  ['nurse', '看護師'],
+  ['care_manager', 'ケアマネジャー'],
+  ['medical_social_worker', '医療ソーシャルワーカー'],
+  ['physical_therapist', '理学療法士'],
+  ['occupational_therapist', '作業療法士'],
+  ['speech_therapist', '言語聴覚士'],
+  ['registered_dietitian', '管理栄養士'],
+  ['dentist', '歯科医師'],
+  ['dental_hygienist', '歯科衛生士'],
+  ['home_helper', 'ホームヘルパー'],
+  ['care_staff', '介護職'],
+  ['other', 'その他'],
+] as const;
+
+function mapCareTeamRoleToProfession(value: CareTeamRow['role']) {
+  switch (value) {
+    case 'physician':
+      return 'physician';
+    case 'nurse':
+      return 'nurse';
+    case 'care_manager':
+      return 'care_manager';
+    default:
+      return 'other';
+  }
 }

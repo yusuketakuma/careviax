@@ -2,32 +2,68 @@ import { notFound, success, validationError } from '@/lib/api/response';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
-import { z } from 'zod';
+import { assertFacilityReference } from '@/lib/patient/facility-reference';
+import { updateExternalProfessionalSchema } from '@/lib/validations/external-professional';
 
-const patchExternalProfessionalSchema = z.object({
-  profession_type: z.enum([
-    'physician',
-    'nurse',
-    'care_manager',
-    'medical_social_worker',
-    'physical_therapist',
-    'occupational_therapist',
-    'speech_therapist',
-    'registered_dietitian',
-    'dentist',
-    'dental_hygienist',
-    'home_helper',
-    'care_staff',
-    'other',
-  ]).optional(),
-  name: z.string().trim().min(1).optional(),
-  organization_name: z.string().trim().nullable().optional(),
-  department: z.string().trim().nullable().optional(),
-  phone: z.string().trim().nullable().optional(),
-  email: z.string().trim().email('メール形式が不正です').optional().or(z.literal('')).nullable(),
-  fax: z.string().trim().nullable().optional(),
-  address: z.string().trim().nullable().optional(),
-  notes: z.string().trim().nullable().optional(),
+function toResponse(item: {
+  id: string;
+  profession_type: string;
+  name: string;
+  facility_id: string | null;
+  facility?: {
+    name: string;
+  } | null;
+  organization_name: string | null;
+  department: string | null;
+  phone: string | null;
+  email: string | null;
+  fax: string | null;
+  preferred_contact_method: string | null;
+  preferred_contact_time: string | null;
+  last_contacted_at: Date | null;
+  last_success_channel: string | null;
+  address: string | null;
+  notes: string | null;
+  created_at: Date;
+  updated_at: Date;
+  _count?: {
+    care_team_links: number;
+  };
+}) {
+  return {
+    ...item,
+    facility_name: item.facility?.name ?? null,
+    patient_count: item._count?.care_team_links ?? 0,
+    last_contacted_at: item.last_contacted_at?.toISOString() ?? null,
+    created_at: item.created_at.toISOString(),
+    updated_at: item.updated_at.toISOString(),
+  };
+}
+
+export const GET = withAuthContext<{ id: string }>(async (_req, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
+  const { id } = await routeContext.params;
+
+  const item = await prisma.externalProfessional.findFirst({
+    where: { id, org_id: ctx.orgId },
+    include: {
+      facility: {
+        select: {
+          name: true,
+        },
+      },
+      _count: {
+        select: {
+          care_team_links: true,
+        },
+      },
+    },
+  });
+  if (!item) return notFound('他職種が見つかりません');
+
+  return success({ data: toResponse(item) });
+}, {
+  permission: 'canReport',
+  message: '他職種マスターの閲覧権限がありません',
 });
 
 export const PATCH = withAuthContext<{ id: string }>(async (req, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
@@ -35,7 +71,7 @@ export const PATCH = withAuthContext<{ id: string }>(async (req, ctx, routeConte
   const body = await req.json().catch(() => null);
   if (!body) return validationError('リクエストボディが不正です');
 
-  const parsed = patchExternalProfessionalSchema.safeParse(body);
+  const parsed = updateExternalProfessionalSchema.safeParse(body);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
@@ -47,31 +83,45 @@ export const PATCH = withAuthContext<{ id: string }>(async (req, ctx, routeConte
   if (!existing) return notFound('他職種が見つかりません');
 
   const updated = await withOrgContext(ctx.orgId, async (tx) =>
-    tx.externalProfessional.update({
-      where: { id },
-      data: {
-        ...(parsed.data.profession_type !== undefined ? { profession_type: parsed.data.profession_type } : {}),
-        ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
-        ...(parsed.data.organization_name !== undefined
-          ? { organization_name: parsed.data.organization_name || null }
-          : {}),
-        ...(parsed.data.department !== undefined ? { department: parsed.data.department || null } : {}),
-        ...(parsed.data.phone !== undefined ? { phone: parsed.data.phone || null } : {}),
-        ...(parsed.data.email !== undefined ? { email: parsed.data.email || null } : {}),
-        ...(parsed.data.fax !== undefined ? { fax: parsed.data.fax || null } : {}),
-        ...(parsed.data.address !== undefined ? { address: parsed.data.address || null } : {}),
-        ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes || null } : {}),
-      },
-    }),
+    {
+      if (parsed.data.facility_id !== undefined) {
+        await assertFacilityReference(tx, ctx.orgId, parsed.data.facility_id || null);
+      }
+
+      return tx.externalProfessional.update({
+        where: { id },
+        data: {
+          ...(parsed.data.profession_type !== undefined ? { profession_type: parsed.data.profession_type } : {}),
+          ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
+          ...(parsed.data.facility_id !== undefined ? { facility_id: parsed.data.facility_id || null } : {}),
+          ...(parsed.data.organization_name !== undefined
+            ? { organization_name: parsed.data.organization_name || null }
+            : {}),
+          ...(parsed.data.department !== undefined ? { department: parsed.data.department || null } : {}),
+          ...(parsed.data.phone !== undefined ? { phone: parsed.data.phone || null } : {}),
+          ...(parsed.data.email !== undefined ? { email: parsed.data.email || null } : {}),
+          ...(parsed.data.fax !== undefined ? { fax: parsed.data.fax || null } : {}),
+          ...(parsed.data.preferred_contact_method !== undefined
+            ? { preferred_contact_method: parsed.data.preferred_contact_method || null }
+            : {}),
+          ...(parsed.data.preferred_contact_time !== undefined
+            ? { preferred_contact_time: parsed.data.preferred_contact_time || null }
+            : {}),
+          ...(parsed.data.address !== undefined ? { address: parsed.data.address || null } : {}),
+          ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes || null } : {}),
+        },
+        include: {
+          facility: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      });
+    },
   );
 
-  return success({
-    data: {
-      ...updated,
-      created_at: updated.created_at.toISOString(),
-      updated_at: updated.updated_at.toISOString(),
-    },
-  });
+  return success({ data: toResponse(updated) });
 }, {
   permission: 'canAdmin',
   message: '他職種マスターの更新権限がありません',

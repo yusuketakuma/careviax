@@ -55,7 +55,7 @@ describe('/api/facility-visit-batches POST', () => {
                 patient: {
                   id: 'patient_1',
                   name: '山田 太郎',
-                  residences: [{ building_id: 'facility_a', address: '東京都港区1-1-1', unit_name: '101' }],
+                  residences: [{ facility_id: 'facility_a', building_id: 'facility_a', address: '東京都港区1-1-1', unit_name: '101' }],
                 },
               },
             },
@@ -71,7 +71,7 @@ describe('/api/facility-visit-batches POST', () => {
                 patient: {
                   id: 'patient_2',
                   name: '山田 花子',
-                  residences: [{ building_id: 'facility_b', address: '東京都港区2-2-2', unit_name: '102' }],
+                  residences: [{ facility_id: 'facility_b', building_id: 'facility_b', address: '東京都港区2-2-2', unit_name: '102' }],
                 },
               },
             },
@@ -130,7 +130,7 @@ describe('/api/facility-visit-batches POST', () => {
                 patient: {
                   id: 'patient_1',
                   name: '山田 太郎',
-                  residences: [{ building_id: 'facility_a', address: '東京都港区1-1-1', unit_name: '201' }],
+                  residences: [{ facility_id: 'facility_a', building_id: 'facility_a', address: '東京都港区1-1-1', unit_name: '201' }],
                 },
               },
             },
@@ -155,7 +155,7 @@ describe('/api/facility-visit-batches POST', () => {
                 patient: {
                   id: 'patient_2',
                   name: '山田 花子',
-                  residences: [{ building_id: 'facility_a', address: '東京都港区1-1-1', unit_name: '105' }],
+                  residences: [{ facility_id: 'facility_a', building_id: 'facility_a', address: '東京都港区1-1-1', unit_name: '105' }],
                 },
               },
             },
@@ -205,5 +205,84 @@ describe('/api/facility-visit-batches POST', () => {
     expect(batchCreateMock).toHaveBeenCalledTimes(1);
     expect(scheduleUpdateMock).toHaveBeenCalledTimes(2);
     expect(preparationUpsertMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('auto-loads facility schedules when facility_id, scheduled_date, and pharmacist_id are given', async () => {
+    const batchCreateMock = vi.fn().mockResolvedValue({ id: 'batch_auto_1' });
+    const scheduleUpdateMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        visitSchedule: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'schedule_auto_1',
+              site_id: 'site_1',
+              pharmacist_id: 'ph_1',
+              scheduled_date: new Date('2026-03-28T00:00:00Z'),
+              facility_batch_id: null,
+              case_id: 'case_1',
+              preparation: null,
+              case_: {
+                patient: {
+                  id: 'patient_1',
+                  name: '山田 太郎',
+                  residences: [{ facility_id: 'facility_a', building_id: 'facility_a', address: '東京都港区1-1-1', unit_name: '201' }],
+                },
+              },
+            },
+            {
+              id: 'schedule_auto_2',
+              site_id: 'site_1',
+              pharmacist_id: 'ph_1',
+              scheduled_date: new Date('2026-03-28T00:00:00Z'),
+              facility_batch_id: null,
+              case_id: 'case_2',
+              preparation: null,
+              case_: {
+                patient: {
+                  id: 'patient_2',
+                  name: '山田 花子',
+                  residences: [{ facility_id: 'facility_a', building_id: 'facility_a', address: '東京都港区1-1-1', unit_name: '105' }],
+                },
+              },
+            },
+          ]),
+          update: scheduleUpdateMock,
+        },
+        facilityVisitBatch: {
+          create: batchCreateMock,
+          update: vi.fn(),
+        },
+        visitPreparation: {
+          upsert: vi.fn(),
+        },
+      })
+    );
+
+    const response = await POST(
+      createRequest({
+        facility_id: 'facility_a',
+        scheduled_date: '2026-03-28',
+        pharmacist_id: 'ph_1',
+      })
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      batch_id: 'batch_auto_1',
+      facility_label: 'facility_a',
+      patient_count: 2,
+    });
+    expect(batchCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          facility_id: 'facility_a',
+          pharmacist_id: 'ph_1',
+          patient_ids: ['patient_2', 'patient_1'],
+        }),
+      })
+    );
   });
 });

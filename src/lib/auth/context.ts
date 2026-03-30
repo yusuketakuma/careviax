@@ -30,6 +30,23 @@ type RequireApiKeyOrAuthContextOptions = RequireAuthContextOptions & {
   apiKeyHeader?: string;
 };
 
+function resolveRequestPath(request: NextRequest): string {
+  if (request.nextUrl?.pathname) {
+    return request.nextUrl.pathname;
+  }
+
+  const requestUrl =
+    typeof request.url === 'string' && request.url.length > 0
+      ? request.url
+      : 'http://localhost/';
+
+  try {
+    return new URL(requestUrl).pathname;
+  } catch {
+    return '/';
+  }
+}
+
 export async function getAuthContext(request: NextRequest): Promise<AuthContext | null> {
   const session = await auth();
   const requestedOrgId = request.headers.get('x-org-id');
@@ -87,8 +104,8 @@ export async function requireAuthContext(
 
   const ipAddress = getClientIp(request);
   const userAgent = request.headers.get('user-agent') ?? undefined;
-  const path = request.nextUrl.pathname;
-  const method = request.method;
+  const path = resolveRequestPath(request);
+  const method = request.method || 'GET';
 
   const userId = session?.user?.id ?? resolvedUser?.id;
   if (!userId) {

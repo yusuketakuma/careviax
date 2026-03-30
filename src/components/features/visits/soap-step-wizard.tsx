@@ -25,6 +25,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ResidualMedicationForm } from '@/components/features/visits/residual-medication-form';
+import { SoapVoiceFieldToggle } from '@/components/features/visits/soap-voice-field-toggle';
+import type { SoapVoiceField } from '@/lib/voice-recognition';
 
 const STEPS = [
   { key: 'S', label: '主観', icon: MessageSquare, color: 'text-blue-500' },
@@ -49,12 +51,21 @@ interface SoapStepWizardProps {
   isPending: boolean;
   recurrenceRule?: string | null;
   attachmentsContent?: ReactNode;
+  voiceInput: {
+    activeField: SoapVoiceField | null;
+    error: string | null;
+    interimTranscript: string;
+    isOffline: boolean;
+    isSupported: boolean;
+    onToggle: (field: SoapVoiceField) => void;
+  };
 }
 
 export function SoapStepWizard({
   isPending,
   recurrenceRule,
   attachmentsContent,
+  voiceInput,
 }: SoapStepWizardProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const form = useFormContext();
@@ -128,9 +139,21 @@ export function SoapStepWizard({
       <div className="flex-1 space-y-4">
         {currentStep === 0 && (
           <div className="space-y-1.5">
-            <Label htmlFor="soap_subjective_mobile">
-              患者の訴え・服薬状況
-            </Label>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label htmlFor="soap_subjective_mobile">
+                患者の訴え・服薬状況
+              </Label>
+              <SoapVoiceFieldToggle
+                field="soap_subjective"
+                activeField={voiceInput.activeField}
+                disabled={isPending}
+                error={voiceInput.error}
+                interimTranscript={voiceInput.interimTranscript}
+                isOffline={voiceInput.isOffline}
+                isSupported={voiceInput.isSupported}
+                onToggle={voiceInput.onToggle}
+              />
+            </div>
             <Textarea
               id="soap_subjective_mobile"
               placeholder="患者・家族からの訴え、服薬状況の自己申告など"
@@ -144,9 +167,21 @@ export function SoapStepWizard({
         {currentStep === 1 && (
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="soap_objective_mobile">
-                観察・計測所見
-              </Label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label htmlFor="soap_objective_mobile">
+                  観察・計測所見
+                </Label>
+                <SoapVoiceFieldToggle
+                  field="soap_objective"
+                  activeField={voiceInput.activeField}
+                  disabled={isPending}
+                  error={voiceInput.error}
+                  interimTranscript={voiceInput.interimTranscript}
+                  isOffline={voiceInput.isOffline}
+                  isSupported={voiceInput.isSupported}
+                  onToggle={voiceInput.onToggle}
+                />
+              </div>
               <Textarea
                 id="soap_objective_mobile"
                 placeholder="残薬確認、保管状況、副作用観察、バイタル、介助者の様子など"
@@ -163,9 +198,21 @@ export function SoapStepWizard({
 
         {currentStep === 2 && (
           <div className="space-y-1.5">
-            <Label htmlFor="soap_assessment_mobile">
-              薬学的評価
-            </Label>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label htmlFor="soap_assessment_mobile">
+                薬学的評価
+              </Label>
+              <SoapVoiceFieldToggle
+                field="soap_assessment"
+                activeField={voiceInput.activeField}
+                disabled={isPending}
+                error={voiceInput.error}
+                interimTranscript={voiceInput.interimTranscript}
+                isOffline={voiceInput.isOffline}
+                isSupported={voiceInput.isSupported}
+                onToggle={voiceInput.onToggle}
+              />
+            </div>
             <Textarea
               id="soap_assessment_mobile"
               placeholder="処方の適正評価、相互作用、副作用リスク、アドヒアランス評価など"
@@ -179,9 +226,21 @@ export function SoapStepWizard({
         {currentStep === 3 && (
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="soap_plan_mobile">
-                介入内容・次回対応
-              </Label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label htmlFor="soap_plan_mobile">
+                  介入内容・次回対応
+                </Label>
+                <SoapVoiceFieldToggle
+                  field="soap_plan"
+                  activeField={voiceInput.activeField}
+                  disabled={isPending}
+                  error={voiceInput.error}
+                  interimTranscript={voiceInput.interimTranscript}
+                  isOffline={voiceInput.isOffline}
+                  isSupported={voiceInput.isSupported}
+                  onToggle={voiceInput.onToggle}
+                />
+              </div>
               <Textarea
                 id="soap_plan_mobile"
                 placeholder="介入内容、次回対応事項、多職種連携の要否、処方医への報告など"

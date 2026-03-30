@@ -1091,26 +1091,26 @@ flowchart LR
 > 2026-03-28 GAP分析: 157ルート中79ルート（50.4%）が未テスト
 
 **T-01: 薬剤マスタ系（15ルート未テスト — 最優先）:**
-- [ ] `drug-masters/route.ts`, `drug-masters/[id]/route.ts`, `drug-masters/batch/route.ts`
-- [ ] `drug-master-import-logs/route.ts`
-- [ ] `drug-master-imports/ssk/route.ts`, `hot/route.ts`, `pmda/route.ts`
-- [ ] `drug-master-imports/mhlw-price/route.ts`, `mhlw-generic/route.ts`, `manual-clinical/route.ts`
-- [ ] `pharmacy-drug-stocks/route.ts`
+- [x] `drug-masters/route.ts`, `drug-masters/[id]/route.ts`, `drug-masters/batch/route.ts` `cc:完了` (2026-03-30)
+- [x] `drug-master-import-logs/route.ts` `cc:完了` (2026-03-30)
+- [x] `drug-master-imports/ssk/route.ts`, `hot/route.ts`, `pmda/route.ts` `cc:完了` (2026-03-30)
+- [x] `drug-master-imports/mhlw-price/route.ts`, `mhlw-generic/route.ts`, `manual-clinical/route.ts` `cc:完了` (2026-03-30)
+- [x] `pharmacy-drug-stocks/route.ts` `cc:完了` (2026-03-30)
 
 **T-02: 訪問管理系（6ルート未テスト）:**
-- [ ] `visit-schedules/route.ts`, `visit-schedules/today/route.ts`
-- [ ] `visit-schedules/[id]/reschedule/approve/route.ts`
-- [ ] `visit-schedule-proposals/route.ts`
-- [ ] `care-reports/generate-from-visit/route.ts`
-- [ ] `visit-brief-feedback/route.ts`
+- [x] `visit-schedules/route.ts`, `visit-schedules/today/route.ts` `cc:完了` (2026-03-30)
+- [x] `visit-schedules/[id]/reschedule/approve/route.ts` `cc:完了` (2026-03-30)
+- [x] `visit-schedule-proposals/route.ts` `cc:完了` (2026-03-30)
+- [x] `care-reports/generate-from-visit/route.ts` `cc:完了` (2026-03-30)
+- [x] `visit-brief-feedback/route.ts` `cc:完了` (2026-03-30)
 
 **T-03: 患者管理系（4ルート未テスト）:**
-- [ ] `patients/route.ts`, `patients/check-duplicate/route.ts`
-- [ ] `patients/[id]/prescriptions/route.ts`, `patients/[id]/visit-constraints/route.ts`
+- [x] `patients/route.ts`, `patients/check-duplicate/route.ts` `cc:完了` (2026-03-30)
+- [x] `patients/[id]/prescriptions/route.ts`, `patients/[id]/visit-constraints/route.ts` `cc:完了` (2026-03-30)
 
 **T-04: MedicationCycle / Issues（4ルート未テスト）:**
-- [ ] `medication-cycles/route.ts`, `medication-cycles/[id]/transition/route.ts`
-- [ ] `medication-issues/route.ts`, `medication-issues/[id]/route.ts`
+- [x] `medication-cycles/route.ts`, `medication-cycles/[id]/transition/route.ts` `cc:完了` (2026-03-30)
+- [x] `medication-issues/route.ts`, `medication-issues/[id]/route.ts` `cc:完了` (2026-03-30)
 
 **T-05: 認証・ユーザー設定系（6ルート未テスト）:**
 - [ ] `auth/[...nextauth]/route.ts`
@@ -1128,8 +1128,8 @@ flowchart LR
 - [ ] 調剤系: `dispense-queue`, `dispense-results/[id]`, `dispense-tasks/[id]/verify-barcode`
 - [ ] ケース系: `cases/route.ts`, `cases/[id]/route.ts`, `cases/[id]/transition`
 - [ ] 通信系: `communication-requests/route.ts`, `[id]/responses`, `communication-events`
-- [ ] 管理系: `notification-rules`, `pharmacist-shifts`, `pharmacy-sites`, `consent-records`
-- [ ] その他: `business-holidays`, `conference-notes`, `community-activities`, `external-access`, `templates`, `settings`
+- [x] 管理系: `notification-rules`, `pharmacist-shifts`, `pharmacy-sites`, `consent-records` `cc:完了` (2026-03-30)
+- [x] その他: `business-holidays`, `conference-notes`, `community-activities`, `external-access`, `templates`, `settings` `cc:完了` (2026-03-30)
 
 ### 1b-8. 機能的ギャップ修正 `cc:TODO`
 > 2026-03-28 GAP分析: ワークフロー横断で検出した機能的な隙間
@@ -1272,7 +1272,7 @@ flowchart LR
 > DoD: 管理者/薬剤師が「今日対応すべき患者」を即座に絞り込める
 
 **2b-2a. 高度フィルタ（API + UI）:**
-- [ ] API フィルタ拡張（`GET /api/patients`）
+- [x] API フィルタ拡張（`GET /api/patients`）
   - ケース状態（active/on_hold/discharged/terminated）
   - 担当薬剤師（CareTeamLink.user_id where role='pharmacist'）
   - 施設/建物（Residence.building_id）
@@ -1281,25 +1281,25 @@ flowchart LR
   - 最終訪問日の範囲（VisitRecord.visited_at）
   - 同意状態（ConsentRecord の未取得/期限切れ）
   - 請求支援フラグ（Patient.billing_support_needed）
-- [ ] フィルタバー UI（patients-table.tsx 拡張）
+- [x] フィルタバー UI（patients-table.tsx 拡張）
   - マルチセレクト + 日付範囲ピッカー + リセットボタン
   - フィルタ適用数バッジ表示
 
 **2b-2b. 一覧表示の情報密度向上:**
-- [ ] 追加列（切替可能）
+- [x] 追加列（切替可能）
   - 担当薬剤師名、リスクレベルバッジ（stable/watch/high）、最終訪問日、次回訪問予定
   - 未解決課題数、服薬中薬剤数、アクティブケース有無
   - 既存データソース: `GET /api/patients/[id]` の risk_summary / schedules を一覧 API にサマリー追加
-- [ ] カラム表示/非表示切替
+- [x] カラム表示/非表示切替
   - DataTable の columnVisibility を活用（`src/components/ui/data-table.tsx` に既存機能あり）
 
 **2b-2c. クイックアクション・エクスポート:**
-- [ ] 行アクション: 患者詳細へ遷移 / 訪問予定作成 / ケース状態変更
-- [ ] CSV/Excel エクスポート（フィルタ適用済み一覧）
+- [x] 行アクション: 患者詳細へ遷移 / 訪問予定作成 / ケース状態変更
+- [x] CSV/Excel エクスポート（フィルタ適用済み一覧）
   - 既存基盤: `billing-candidates/export` のパターンを流用
-- [ ] お気に入り/最近表示した患者（Zustand + localStorage）
+- [x] お気に入り/最近表示した患者（Zustand + localStorage）
 
-### 2b-3. セット機能の実務拡張 `cc:TODO`
+### 2b-3. セット機能の実務拡張 `cc:WIP`
 > 既存: SetPlan(4方式)/SetBatch(グリッド)/SetAudit(承認/部分/差戻し)/持参パック/冷所・麻薬検知
 > 不足: 患者固有の配薬方法、物理的なセット形態の表現、セット変更履歴
 > DoD: 「この患者はお薬BOXの朝青・昼黄に入れてホッチキス止め」が画面で分かり、印刷できる
@@ -1321,7 +1321,7 @@ flowchart LR
     "label_font_size": "large"
   }
   ```
-- [ ] 患者詳細画面に「配薬方法」設定パネル追加
+- [x] 患者詳細画面に「配薬方法」設定パネル追加
   - 配薬方法選択（マスタから）+ BOX色設定 + 特記事項テキスト
   - 設定は CareCase or Patient に紐付け
 
@@ -1347,30 +1347,30 @@ flowchart LR
 > DoD: 「来週の訪問予定を自動提案→確認→患者連絡→確定」のフローが UI で完結する
 
 **2b-4a. スケジュール提案ダッシュボード（`/schedules/proposals`）:**
-- [ ] 提案一覧画面
+- [x] 提案一覧画面 `cc:完了` (2026-03-30)
   - 状態別タブ: 未承認 / 患者連絡中 / 確定済み / 却下
   - 各提案カード: 患者名、候補日時、担当薬剤師、スコア、提案理由
   - 一括承認 / 一括却下アクション
   - 既存 API: `GET /api/visit-schedule-proposals`
-- [ ] 提案詳細ビュー
+- [x] 提案詳細ビュー `cc:完了` (2026-03-30)
   - 候補一覧（1-5件）のランキング表示（スコア内訳: 移動コスト/薬剤師適合度/日付距離）
   - 地図上で訪問順ルートプレビュー（既存 `google-routes.ts` 連携）
   - 薬剤師のその日のスケジュールとの並び表示
   - 既存 API: `GET/PATCH /api/visit-schedule-proposals/[id]`
 
 **2b-4b. 患者連絡ワークフロー:**
-- [ ] 提案承認 → 患者連絡タスク自動生成
+- [x] 提案承認 → 患者連絡タスク自動生成 `cc:完了` (2026-03-30)
   - 連絡方法選択（電話/FAX/メール）、連絡結果記録（確認済/不在/拒否/変更希望）
   - 既存: `contact_attempt` action は API 実装済み → UI 連携のみ
-- [ ] 変更希望時の再提案フロー
+- [x] 変更希望時の再提案フロー `cc:完了` (2026-03-30)
   - 患者の希望日時を制約に追加 → `generateVisitScheduleProposalDrafts()` 再実行
 
 **2b-4c. 週間最適化ビュー:**
-- [ ] 週単位の訪問予定最適化画面
+- [x] 週単位の訪問予定最適化画面 `cc:完了` (2026-03-30)
   - 薬剤師 × 日のガントチャート（既存 day-view.tsx のタブレット週表示を拡張）
   - ドラッグ&ドロップで訪問の日付/薬剤師変更 → 再スコアリング
   - 空きスロットへの「この枠に提案」ボタン
-- [ ] 施設一括訪問の自動グループ化
+- [x] 施設一括訪問の自動グループ化 `cc:完了` (2026-03-30)
   - 同一施設患者を同日に集約する提案（既存 `same_facility_bonus` スコアを活用）
 
 ### 2b-5. 報告書検索機能 `cc:TODO`
@@ -1379,32 +1379,32 @@ flowchart LR
 > DoD: 「3月に○○医師に送った報告書で未確認のもの」が即座に検索できる
 
 **2b-5a. API 検索拡張（`GET /api/care-reports`）:**
-- [ ] 日付範囲フィルタ（created_at / sent_at）
-- [ ] 報告書種別フィルタ（report_type — 現在クライアントサイドのみ → API に移行）
-- [ ] 送達状態フィルタ（DeliveryRecord.status: sent/failed/confirmed/response_waiting）
-- [ ] 送付先名検索（DeliveryRecord.recipient_name 部分一致）
-- [ ] 患者名検索（Patient.name / name_kana 部分一致 — 現在は patient_id のみ）
-- [ ] 全文キーワード検索（CareReport.content JSON 内の SOAP テキスト）
+- [x] 日付範囲フィルタ（created_at / sent_at）
+- [x] 報告書種別フィルタ（report_type — 現在クライアントサイドのみ → API に移行）
+- [x] 送達状態フィルタ（DeliveryRecord.status: sent/failed/confirmed/response_waiting）
+- [x] 送付先名検索（DeliveryRecord.recipient_name 部分一致）
+- [x] 患者名検索（Patient.name / name_kana 部分一致 — 現在は patient_id のみ）
+- [x] 全文キーワード検索（CareReport.content JSON 内の SOAP テキスト）
   - PostgreSQL `to_tsvector('japanese', ...)` or `ILIKE` でキーワードヒット
 
 **2b-5b. 報告書一覧 UI 拡張（reports-table.tsx）:**
-- [ ] フィルタバー: 日付範囲 + 患者名 + 種別 + 送達状態 + キーワード
-- [ ] 追加列: 患者名（現在 patient_id のみ）、送付先名、送付日、送達チャネル
-- [ ] 送達状態バッジの色分け（sent=青、confirmed=緑、failed=赤、waiting=橙）
-- [ ] 行展開: 送達履歴タイムライン（DeliveryRecord の送付/リトライ/確認の時系列）
+- [x] フィルタバー: 日付範囲 + 患者名 + 種別 + 送達状態 + キーワード
+- [x] 追加列: 患者名（現在 patient_id のみ）、送付先名、送付日、送達チャネル
+- [x] 送達状態バッジの色分け（sent=青、confirmed=緑、failed=赤、waiting=橙）
+- [x] 行展開: 送達履歴タイムライン（DeliveryRecord の送付/リトライ/確認の時系列）
 
 **2b-5c. 報告書分析:**
-- [ ] 送達成功率ダッシュボード（月別/医師別/チャネル別）
+- [x] 送達成功率ダッシュボード（月別/医師別/チャネル別） `cc:完了` (2026-03-30)
   - 既存 `billing-evidence/analytics` のパターンを流用
-- [ ] 未確認報告書一覧（response_waiting が N日超）→ リマインドタスク自動生成
+- [x] 未確認報告書一覧（response_waiting が N日超）→ リマインドタスク自動生成 `cc:完了` (2026-03-30)
 
-### 2b-6. 訪問時音声認識機能 `cc:TODO`
+### 2b-6. 訪問時音声認識機能 `cc:完了` (2026-03-30)
 > 既存: SOAP テキスト入力（Textarea）、ステップウィザード（S→O→A→P）、IndexedDB ドラフト保存
 > 不足: Web Speech API 統合がゼロ。マイク参照は QR スキャンのカメラのみ
 > DoD: 訪問先でスマホに向かって話すと SOAP テキストに変換され、編集→保存できる
 
 **2b-6a. Web Speech API 統合:**
-- [ ] `src/lib/hooks/use-speech-recognition.ts` 新規作成
+- [x] `src/lib/hooks/use-speech-recognition.ts` 新規作成 `cc:完了` (2026-03-30)
   - `webkitSpeechRecognition` / `SpeechRecognition` のブラウザ検出
   - 言語: `ja-JP`（日本語）固定、将来 `en-US` 切替対応
   - 設定: `continuous: true`（連続認識）、`interimResults: true`（中間結果表示）
@@ -1412,35 +1412,35 @@ flowchart LR
   - マイク権限リクエスト + 権限拒否時のフォールバック UI
 
 **2b-6b. SOAP 入力への統合:**
-- [ ] 各 SOAP セクションに「音声入力」トグルボタン追加
+- [x] 各 SOAP セクションに「音声入力」トグルボタン追加 `cc:完了` (2026-03-30)
   - `visit-record-form.tsx` の Textarea 横にマイクアイコンボタン
   - `soap-step-wizard.tsx`（モバイル版）の各ステップにも同様追加
   - 録音中: ボタン赤点滅 + 中間テキストをリアルタイム表示（灰色イタリック）
   - 確定テキスト: Textarea に追記（既存テキストの末尾に append）
-- [ ] 音声→テキスト変換の後処理
+- [x] 音声→テキスト変換の後処理 `cc:完了` (2026-03-30)
   - 句読点自動挿入（日本語の場合「。」「、」の補完）
   - 医療用語の変換補正（「ないふく」→「内服」等）は Phase 3 で AI 補正として検討
-- [ ] IndexedDB ドラフト連携
+- [x] IndexedDB ドラフト連携 `cc:完了` (2026-03-30)
   - 音声入力テキストも既存 `use-soap-draft.ts` の autosave に統合
   - オフライン時: Web Speech API はオンライン必須のため、オフライン時はボタン非活性 + ガイド表示
 
 **2b-6c. 対応デバイス・制約:**
-- [ ] ブラウザ対応マトリクス
+- [x] ブラウザ対応マトリクス `cc:完了` (2026-03-30)
   - Chrome/Edge: `webkitSpeechRecognition` サポート済み（主要ターゲット）
   - Safari (iOS): `SpeechRecognition` サポート済み（iOS 14.5+）
   - Firefox: 未サポート → フォールバック（ボタン非表示 + 手動入力のみ）
-- [ ] PWA 制約
+- [x] PWA 制約 `cc:完了` (2026-03-30)
   - HTTPS 必須（既に対応済み）
   - マイク権限は初回利用時に1回だけリクエスト
   - バックグラウンド時の録音停止ハンドリング
 
-### 2b-7. 施設マスター `cc:TODO`
+### 2b-7. 施設マスター `cc:WIP`
 > 既存: Residence.building_id（文字列のみ）、FacilityVisitBatch.facility_id（FK なし）、PharmacySite（自薬局のみ）
 > 不足: Facility テーブルが存在しない。施設情報は患者住所やケアチームに散在し、一元管理できない
 > DoD: 施設の基本情報・受入時間・担当者・所属患者を1画面で管理でき、訪問計画/請求に連動する
 
 **2b-7a. Facility モデル新設（prisma/schema/organization.prisma）:**
-- [ ] `Facility` テーブル追加
+- [x] `Facility` テーブル追加
   ```
   id, org_id, name, name_kana, facility_type(ENUM), postal_code, address, lat, lng
   phone, fax, email, representative_name
@@ -1449,20 +1449,20 @@ flowchart LR
   max_patients_per_visit                    // 1回あたり最大患者数
   notes, is_active
   ```
-- [ ] `FacilityType` ENUM
+- [x] `FacilityType` ENUM
   ```
   hospital / clinic / nursing_home / group_home / special_nursing_home
   / rehabilitation_facility / home_care_support_clinic / other
   ```
   （病院 / 診療所 / 老人ホーム / グループホーム / 特養 / リハ施設 / 在宅療養支援診療所 / その他）
-- [ ] リレーション追加
+- [x] リレーション追加
   - `Residence.facility_id` → `Facility` FK（既存 `building_id` を置換）
   - `FacilityVisitBatch.facility_id` → `Facility` FK（既存文字列を置換）
   - `Facility` → `patients[]`（Residence 経由の逆参照）
   - `Facility` → `facilityContacts[]`（施設担当者）
 
 **2b-7b. 施設担当者モデル（FacilityContact）:**
-- [ ] `FacilityContact` テーブル追加
+- [x] `FacilityContact` テーブル追加
   ```
   id, org_id, facility_id, name, role(施設看護師/施設管理者/施設相談員/その他)
   phone, email, fax, department, is_primary, notes
@@ -1470,35 +1470,35 @@ flowchart LR
   - 施設側の連絡窓口を管理（患者の ContactParty とは別レイヤー）
 
 **2b-7c. 施設管理 API:**
-- [ ] `GET/POST /api/facilities` — 施設一覧・新規登録
-- [ ] `GET/PATCH/DELETE /api/facilities/[id]` — 施設詳細・更新・無効化
-- [ ] `GET/PUT /api/facilities/[id]/contacts` — 施設担当者の管理
-- [ ] `GET /api/facilities/[id]/patients` — 施設所属患者一覧
-- [ ] バリデーション: `src/lib/validations/facility.ts` 新設
+- [x] `GET/POST /api/facilities` — 施設一覧・新規登録 `cc:完了` (2026-03-30)
+- [x] `GET/PATCH/DELETE /api/facilities/[id]` — 施設詳細・更新・無効化
+- [x] `GET/PUT /api/facilities/[id]/contacts` — 施設担当者の管理
+- [x] `GET /api/facilities/[id]/patients` — 施設所属患者一覧
+- [x] バリデーション: `src/lib/validations/facility.ts` 新設
 
 **2b-7d. 施設管理 UI（`/admin/facilities`）:**
-- [ ] 施設一覧テーブル（DataTable）
+- [x] 施設一覧テーブル（DataTable）
   - 列: 名称/種別/住所/電話/受入時間/所属患者数/アクティブ
   - フィルタ: 種別、エリア、アクティブ状態
-- [ ] 施設詳細ページ
+- [x] 施設詳細ページ `cc:完了` (2026-03-30)
   - 基本情報編集 + 受入時間 + 定期訪問曜日
   - 施設担当者一覧（CRUD）
   - 所属患者一覧（Residence 経由）
   - 施設訪問履歴（FacilityVisitBatch 一覧）
 
 **2b-7e. 既存機能との連動:**
-- [ ] 患者登録時: 施設選択 → Residence.facility_id 自動設定 + 住所/座標自動入力
-- [ ] 訪問計画: Facility.acceptance_time_from/to → PatientSchedulePreference.facility_time_from/to に自動反映
-- [ ] 施設一括訪問: FacilityVisitBatch 作成時に Facility マスタから患者リストを自動取得
-- [ ] 請求: BillingEvidence.building_patient_count を Facility.patients から正確に集計
+- [x] 患者登録時: 施設選択 → Residence.facility_id 自動設定 + 住所/座標自動入力 `cc:完了` (2026-03-30)
+- [x] 訪問計画: Facility.acceptance_time_from/to → PatientSchedulePreference.facility_time_from/to に自動反映 `cc:完了` (2026-03-30)
+- [x] 施設一括訪問: FacilityVisitBatch 作成時に Facility マスタから患者リストを自動取得 `cc:完了` (2026-03-30)
+- [x] 請求: BillingEvidence.building_patient_count を Facility.patients から正確に集計 `cc:完了` (2026-03-30)
 
-### 2b-8. 他職種マスター `cc:TODO`
+### 2b-8. 他職種マスター `cc:WIP`
 > 既存: CareTeamLink（ケース単位、5ロール、自由テキスト）、ContactParty（patient単位、facility_staff含む）
 > 不足: 他職種の情報がケース/患者に散在し、同じ医師が複数患者に紐づく場合に重複入力が発生する
 > DoD: 地域の医師・看護師・ケアマネを一元管理し、患者ケアチーム登録時に選択できる
 
 **2b-8a. ExternalProfessional モデル新設（prisma/schema/organization.prisma）:**
-- [ ] `ExternalProfessional` テーブル追加
+- [x] `ExternalProfessional` テーブル追加
   ```
   id, org_id, name, name_kana, profession_type(ENUM)
   organization_name, department, title
@@ -1509,7 +1509,7 @@ flowchart LR
   preferred_contact_time (String)        // 連絡希望時間帯
   notes, is_active
   ```
-- [ ] `ProfessionType` ENUM
+- [x] `ProfessionType` ENUM
   ```
   physician / dentist / nurse / visiting_nurse / care_manager
   / social_worker / physical_therapist / occupational_therapist
@@ -1518,29 +1518,29 @@ flowchart LR
   （医師/歯科医師/看護師/訪問看護師/ケアマネ/MSW/PT/OT/ST/管理栄養士/外部薬剤師/ヘルパー/その他）
 
 **2b-8b. CareTeamLink との連携:**
-- [ ] `CareTeamLink.external_professional_id` FK 追加（optional）
+- [x] `CareTeamLink.external_professional_id` FK 追加（optional）
   - 既存の自由テキスト（name/organization_name/phone 等）はフォールバックとして残す
   - ExternalProfessional 選択時は FK から自動入力 + 同期
   - FK なしの場合は従来通り自由テキスト入力（未登録の職種にも対応）
 
 **2b-8c. 他職種マスター API:**
-- [ ] `GET/POST /api/external-professionals` — 一覧・新規登録
+- [x] `GET/POST /api/external-professionals` — 一覧・新規登録 `cc:完了` (2026-03-30)
   - 検索: 名前/カナ/職種/所属施設で検索
-- [ ] `GET/PATCH/DELETE /api/external-professionals/[id]` — 詳細・更新・無効化
-- [ ] `GET /api/external-professionals/[id]/patients` — 担当患者一覧（CareTeamLink 逆参照）
-- [ ] バリデーション: `src/lib/validations/external-professional.ts` 新設
+- [x] `GET/PATCH/DELETE /api/external-professionals/[id]` — 詳細・更新・無効化
+- [x] `GET /api/external-professionals/[id]/patients` — 担当患者一覧（CareTeamLink 逆参照）
+- [x] バリデーション: `src/lib/validations/external-professional.ts` 新設
 
 **2b-8d. 他職種マスター UI（`/admin/professionals`）:**
-- [ ] 他職種一覧テーブル（DataTable）
+- [x] 他職種一覧テーブル（DataTable）
   - 列: 名前/カナ/職種/所属施設・組織/電話/メール/担当患者数
   - フィルタ: 職種、所属施設、アクティブ状態
-- [ ] 他職種詳細パネル
+- [x] 他職種詳細パネル `cc:完了` (2026-03-30)
   - 基本情報編集 + 所属施設選択（Facility マスタ連動）
   - 担当患者一覧（CareTeamLink 逆参照）
   - 連絡履歴（CommunicationEvent/CommunicationRequest で counterpart 検索）
 
 **2b-8e. ケアチーム登録 UI の改善:**
-- [ ] `patient-care-team-panel.tsx` の入力改善
+- [x] `patient-care-team-panel.tsx` の入力改善
   - 現在: 全フィールド手入力 → 改善: 名前入力時に ExternalProfessional をサジェスト
   - 選択すると組織名/電話/FAX/メール/所属施設を自動入力
   - 「新規登録」ボタンで ExternalProfessional を即時追加
@@ -1582,7 +1582,7 @@ ConferenceNote ─────┼─→ [報告書] CareReport + DeliveryRecord
   follow_up_completed         Boolean @default(false)
   generated_report_id         String? // 生成した CareReport の ID（traceability）
   ```
-- [ ] `participants` JSON の構造化強化
+- [x] `participants` JSON の構造化強化 `cc:完了` (2026-03-30)
   ```json
   [
     { "name": "田中太郎", "role": "physician", "organization": "○○クリニック",
@@ -1677,27 +1677,27 @@ ConferenceNote ─────┼─→ [報告書] CareReport + DeliveryRecord
   - `lessons_learned` → 将来の類似ケースの visit-brief に参照表示（Phase 3）
 
 **2b-9e. 算定連携の実装詳細:**
-- [ ] BillingEvidence モデル拡張
+- [x] BillingEvidence モデル拡張 `cc:完了` (2026-03-30)
   - `conference_note_ref String?` 追加（ConferenceNote.id を格納）
   - 既存パターン踏襲: `report_delivery_ref` と同様に CSV 形式で複数会議対応
-- [ ] SSOT ルール追加（`home-care-billing-ssot.ts`）
+- [x] SSOT ルール追加（`home-care-billing-ssot.ts`） `cc:完了` (2026-03-30)
   ```
   medical.conference.discharge_joint_guidance    退院時共同指導料          600点  manual  要件: 入院中共同指導+文書提供
   medical.addition.terminal_care                 在宅ターミナルケア加算    2500点  manual  要件: 死亡前14日以内に2回以上訪問
   medical.conference.emergency_joint_guidance     在宅患者緊急時等共同指導料 700点  manual  要件: 急変時の多職種共同指導
   ```
   - 既存の `medical.information_provision.2_care_manager`（20点）は担当者会議で自動候補化
-- [ ] `billing-evidence.ts` の `upsertBillingEvidenceForVisit` 拡張
+- [x] `billing-evidence.ts` の `upsertBillingEvidenceForVisit` 拡張 `cc:完了` (2026-03-30)
   - 同月の ConferenceNote（`billing_eligible=true`）を検索
   - `conference_note_ref` に格納
   - 算定要件チェック: participants の attended 数、document_provided フラグ、死亡前訪問回数
   - `recommended_rule_keys` に該当ルールを追加（manual selection_mode → 手動確認）
-- [ ] BillingCandidate 生成
+- [x] BillingCandidate 生成 `cc:完了` (2026-03-30)
   - `dedupe_key`: `{org_id}:{patient_id}:{billing_code}:{billing_month}:{conference_note_id}`
   - `source_snapshot` に会議情報のスナップショットを保持（監査証跡）
 
 **2b-9f. 報告書生成の実装詳細:**
-- [ ] `POST /api/conference-notes/[id]/generate-report` 新設
+- [x] `POST /api/conference-notes/[id]/generate-report` 新設 `cc:完了` (2026-03-30)
   - 入力: `{ report_type, include_structured_content, auto_send }`
   - 処理フロー:
     1. ConferenceNote + Patient + CareTeamLink を取得
@@ -1708,7 +1708,7 @@ ConferenceNote ─────┼─→ [報告書] CareReport + DeliveryRecord
     3. CareReport を `draft` で作成、`generated_report_id` を ConferenceNote に書戻し
     4. `auto_send=true` の場合: participants の `is_report_recipient=true` に対して DeliveryRecord を自動生成
   - 既存の `care-reports/[id]/send` API で送付（既存フローに合流）
-- [ ] 報告書 → BillingEvidence の自動連動
+- [x] 報告書 → BillingEvidence の自動連動 `cc:完了` (2026-03-30)
   - 送付完了 → `report_delivery_ref` 更新 → 算定ブロッカー「報告書未送付」解消
   - 退院時共同指導: 文書提供の evidence として DeliveryRecord を参照
 
@@ -1734,34 +1734,45 @@ ConferenceNote ─────┼─→ [報告書] CareReport + DeliveryRecord
       → Task 生成（improvement_actions → 組織改善タスク）
       → 品質指標蓄積（quality_indicators → 月次ジョブで集計）
     ```
-- [ ] visit-brief への会議情報統合
+  - [x] pre_discharge: `medication_changes_on_discharge` から `MedicationIssue` を起票 `cc:完了` (2026-03-30)
+  - [x] pre_discharge: `target_discharge_date + 3日` を優先した `VisitScheduleProposal` 起票 `cc:完了` (2026-03-30)
+  - [x] pre_discharge: 管理計画書更新リマインド Task 生成 `cc:完了` (2026-03-30)
+  - [x] pre_discharge: 退院先施設から `PatientSchedulePreference.facility_time` 反映 `cc:完了` (2026-03-30)
+  - [x] service_manager: `VisitSchedule.recurrence_rule` 変更提案の本実装 `cc:完了` (2026-03-30)
+  - [x] service_manager: `medication_related_items` から `MedicationIssue` を起票 `cc:完了` (2026-03-30)
+  - [x] service_manager: `agreed_actions` から Task 生成 `cc:完了` (2026-03-30)
+  - [x] service_manager: `next_meeting_date` の日次リマインド通知 `cc:完了` (2026-03-30)
+  - [x] death_conference: ケース終結レビュー Task で terminated 遷移提案 `cc:完了` (2026-03-30)
+  - [x] death_conference: `improvement_actions` から組織改善 Task 生成 `cc:完了` (2026-03-30)
+  - [x] death_conference: `quality_indicators` を月次ジョブで集計 `cc:完了` (2026-03-30)
+- [x] visit-brief への会議情報統合 `cc:完了` (2026-03-30)
   - `src/server/services/visit-brief.ts` の集約に `recent_conferences` セクション追加
   - 患者の直近30日のカンファレンス（退院前/担当者会議）を要約表示
   - 未完了の follow_up_date がある会議をハイライト
-- [ ] workflow ダッシュボードへの統合
+- [x] workflow ダッシュボードへの統合 `cc:完了` (2026-03-30)
   - `GET /api/dashboard/workflow` に「会議フォローアップ未完了」セクション追加
   - follow_up_date 超過 → ダッシュボードに警告
 
 **2b-9h. カンファレンス API:**
-- [ ] `GET /api/conference-notes` フィルタ追加
+- [x] `GET /api/conference-notes` フィルタ追加 `cc:完了` (2026-03-30)
   - `conference_type`, `patient_id`, `facility_id`, `date_from`, `date_to`, `billing_eligible`
-- [ ] `POST /api/conference-notes` バリデーション拡張
+- [x] `POST /api/conference-notes` バリデーション拡張 `cc:完了` (2026-03-30)
   - `conference_type` 必須、種別に応じた `structured_content` の Zod スキーマ検証
   - 保存時に `conference-data-sync` サービスを呼出し（情報活用フック）
-- [ ] `PATCH /api/conference-notes/[id]` 新設（編集対応）
-- [ ] `POST /api/conference-notes/[id]/generate-report` 新設（報告書生成）
-- [ ] バリデーション: `src/lib/validations/conference.ts` 新設
+- [x] `PATCH /api/conference-notes/[id]` 新設（編集対応） `cc:完了` (2026-03-30)
+- [x] `POST /api/conference-notes/[id]/generate-report` 新設（報告書生成） `cc:完了` (2026-03-30)
+- [x] バリデーション: `src/lib/validations/conference.ts` 新設 `cc:完了` (2026-03-30)
 
 **2b-9i. カンファレンス UI 拡張（conferences-content.tsx）:**
-- [ ] 種別タブ: 全て / 退院前 / 担当者会議 / デスカンファ / その他
-- [ ] 種別別の作成フォーム（種別選択 → 動的フィールド表示）
-- [ ] 参加者入力: ExternalProfessional サジェスト + 出欠チェック + 報告書送付対象チェック
-- [ ] 会議保存後のアクションパネル:
+- [x] 種別タブ: 全て / 退院前 / 担当者会議 / デスカンファ / その他 `cc:完了` (2026-03-30)
+- [x] 種別別の作成フォーム（種別選択 → 動的フィールド表示） `cc:完了` (2026-03-30)
+- [x] 参加者入力: ExternalProfessional サジェスト + 出欠チェック + 報告書送付対象チェック
+- [x] 会議保存後のアクションパネル `cc:完了` (2026-03-30):
   - 「報告書を生成」ボタン → report_type 選択 → 送付先自動入力
   - 「算定候補を確認」リンク → billing candidates 画面へ遷移
   - 「フォローアップ項目」一覧 → Task / MedicationIssue / VisitSchedule への反映状態表示
-- [ ] カンファレンスカレンダービュー（月単位で会議一覧）
-- [ ] 印刷/PDF 出力（退院時共同指導の文書 / 担当者会議議事録）
+- [x] カンファレンスカレンダービュー（月単位で会議一覧） `cc:完了` (2026-03-30)
+- [x] 印刷/PDF 出力（退院時共同指導の文書 / 担当者会議議事録） `cc:完了` (2026-03-30)
 
 ### 2b-10. ダッシュボード リデザイン + 処方到着動線 + パフォーマンス最適化 `cc:TODO`
 > 2026-03-28 立案
@@ -1779,9 +1790,9 @@ ConferenceNote ─────┼─→ [報告書] CareReport + DeliveryRecord
 | **下段: 患者カード一覧** | 全アクティブ患者をリスクスコア順にカードグリッド表示。検索・ソート・ページネーション。各カードに「処方受付」ボタン | 既存 `listPatientRiskSummaries()` を再利用 |
 
 **処方到着動線の改善:**
-- [ ] 患者カードの「処方受付」ボタン → `/prescriptions/new?patient_id=...&case_id=...` で患者自動選択
-- [ ] `prescription-intakes/route.ts` POST: 疑義照会なしの場合 DispenseTask を自動生成（overall_status → dispensing）
-- [ ] `sidebar.tsx` に「処方受付」リンク（`ClipboardPlus`, `/prescriptions/new`）追加
+- [x] 患者カードの「処方受付」ボタン → `/prescriptions/new?patient_id=...&case_id=...` で患者自動選択 `cc:完了` (2026-03-30)
+- [x] `prescription-intakes/route.ts` POST: 疑義照会なしの場合 DispenseTask を自動生成（overall_status → dispensing） `cc:完了` (2026-03-30)
+- [x] `sidebar.tsx` に「処方受付」リンク（`ClipboardPlus`, `/prescriptions/new`）追加 `cc:完了` (2026-03-30)
 
 **パフォーマンス最適化:**
 - [ ] セクション分離: schedule/actions/patients を独立 `useQuery` に（1セクション遅延が全体をブロックしない）
@@ -1880,13 +1891,13 @@ PrescriptionIntake
 > 処方元の構造化管理。報告書宛先・疑義照会先として参照。depends: 2c-2
 > DoD: 医療機関を登録でき、処方受付時に選択でき、報告書宛先として参照されること。
 
-- [ ] 2c-3a: PrescriberInstitution モデル新設
+- [x] 2c-3a: PrescriberInstitution モデル新設 `cc:完了` (2026-03-30)
   `id, org_id, name, institution_code, address, phone, fax, notes`
-- [ ] 2c-3b: PrescriptionIntake.prescriber_institution_id FK 追加
+- [x] 2c-3b: PrescriptionIntake.prescriber_institution_id FK 追加 `cc:完了` (2026-03-30)
   既存 `prescriber_institution` テキストとの後方互換維持
-- [ ] 2c-3c: CareReport 送達先に医療機関マスターを参照
+- [x] 2c-3c: CareReport 送達先に医療機関マスターを参照 `cc:完了` (2026-03-30)
   報告書の宛先選択で PrescriberInstitution を候補表示
-- [ ] 2c-3d: 医療機関マスター管理 UI (`/admin/institutions`)
+- [x] 2c-3d: 医療機関マスター管理 UI (`/admin/institutions`) `cc:完了` (2026-03-30)
   CRUD + 処方実績の集計表示
 
 ### 2c-4. 報告・連携テンプレート拡張 `cc:TODO`
@@ -1939,6 +1950,29 @@ PrescriptionIntake
   scope 別フィルタ (org/site/user) + JSON エディタ
 - [ ] 2c-8b: IntegrationJob 監視 UI (`/admin/jobs`)
   実行状況一覧 + エラーログ + 手動再実行
+
+### 2c-9. マスタ起点の横展開・共有最適化 `cc:TODO`
+> 患者起点だけでなく、施設・他職種・処方元医療機関・送達実績を横断利用して重複入力と連絡漏れを減らす。
+> DoD: 一度登録した連携先情報が、報告書送付・疑義照会・会議参加者設定・訪問計画に自動提案されること。
+
+- [x] 2c-9a: 連携先プロファイル集約ビュー `cc:完了` (2026-03-30)
+  FacilityContact / ExternalProfessional / PrescriberInstitution ごとに、
+  `preferred_contact_method`, `preferred_contact_time`, `last_contacted_at`,
+  `last_success_channel`, `active_patient_count`, `pending_response_count` を集約表示
+- [x] 2c-9b: 処方元医療機関情報の横展開 `cc:完了` (2026-03-30)
+  PrescriptionIntake で選択した PrescriberInstitution を、
+  CommunicationRequest の疑義照会先、CareReport の既定宛先、
+  ConferenceNote の参加者候補へ自動反映
+- [ ] 2c-9c: 施設運用情報の横展開
+  Facility の受入時間・定期訪問曜日・主要連絡先・施設共通注意事項を、
+  VisitScheduleProposal / FacilityVisitBatch / VisitBrief / ConferenceNote の初期値に反映
+- [x] 2c-9d: 他職種情報の横展開 `cc:完了` (2026-03-30)
+  ExternalProfessional の所属施設・専門分野・希望連絡チャネル・過去連携タイムラインを、
+  CareTeamLink 選択、CareReport 送付先候補、CommunicationRequest 連絡先候補で共通利用
+- [x] 2c-9e: 送達結果からの自動学習 `cc:完了` (2026-03-30)
+  DeliveryRecord / CommunicationEvent の成功・失敗チャネルを集計し、
+  FacilityContact / ExternalProfessional / PrescriberInstitution の
+  既定連絡チャネル候補とフォールバック順に反映
 
 ---
 

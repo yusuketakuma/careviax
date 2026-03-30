@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import { type Metadata } from 'next';
+import { ReportDeliveryDashboard } from './report-delivery-dashboard';
 import { ReportsTable } from './reports-table';
 import { Loading } from '@/components/ui/loading';
 
@@ -13,7 +14,10 @@ export default function ReportsPage() {
         <p className="mt-1 text-sm text-muted-foreground">報告書の一覧と送付状態を管理します</p>
       </div>
       <Suspense fallback={<Loading />}>
-        <ReportsTable />
+        <div className="space-y-6">
+          <ReportDeliveryDashboard />
+          <ReportsTable />
+        </div>
       </Suspense>
     </div>
   );

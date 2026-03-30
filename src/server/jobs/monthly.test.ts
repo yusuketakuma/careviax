@@ -1,25 +1,22 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
-  visitRecordFindManyMock,
-  prescriptionIntakeFindManyMock,
-  visitRecordGroupByMock,
+  conferenceNoteFindManyMock,
+  settingUpsertMock,
   runJobMock,
 } = vi.hoisted(() => ({
-  visitRecordFindManyMock: vi.fn(),
-  prescriptionIntakeFindManyMock: vi.fn(),
-  visitRecordGroupByMock: vi.fn(),
+  conferenceNoteFindManyMock: vi.fn(),
+  settingUpsertMock: vi.fn(),
   runJobMock: vi.fn(async (_jobType: string, fn: () => Promise<unknown>) => fn()),
 }));
 
 vi.mock('@/lib/db', () => ({
   prisma: {
-    visitRecord: {
-      findMany: visitRecordFindManyMock,
-      groupBy: visitRecordGroupByMock,
+    conferenceNote: {
+      findMany: conferenceNoteFindManyMock,
     },
-    prescriptionIntake: {
-      findMany: prescriptionIntakeFindManyMock,
+    setting: {
+      upsert: settingUpsertMock,
     },
   },
 }));
@@ -28,124 +25,76 @@ vi.mock('./runner', () => ({
   runJob: runJobMock,
 }));
 
-import { generateMonthlyMetrics, generateMonthlyVisitReport } from './monthly';
+import { aggregateConferenceQualityIndicators } from './monthly';
 
-describe('generateMonthlyVisitReport', () => {
+describe('aggregateConferenceQualityIndicators', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  it('returns under/within/over limit summaries per org', async () => {
-    visitRecordFindManyMock.mockResolvedValue([
-      ...Array.from({ length: 5 }, (_, index) => ({
-        id: `medical_${index}`,
-        org_id: 'org_1',
-        patient_id: 'patient_over',
-        schedule: {
-          visit_type: 'regular',
-          case_: {
-            patient: {
-              id: 'patient_over',
-              name: 'Over',
-              medical_insurance_number: 'med_1',
-              care_insurance_number: null,
-            },
-          },
-        },
-      })),
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-15T00:00:00.000Z'));
+    conferenceNoteFindManyMock.mockResolvedValue([
       {
-        id: 'care_under',
+        id: 'note_1',
         org_id: 'org_1',
-        patient_id: 'patient_under',
-        schedule: {
-          visit_type: 'regular',
-          case_: {
-            patient: {
-              id: 'patient_under',
-              name: 'Under',
-              medical_insurance_number: null,
-              care_insurance_number: 'care_1',
+        structured_content: {
+          sections: [
+            {
+              key: 'quality_indicators',
+              label: '品質指標',
+              body: '看取り後カンファ実施\n家族説明記録完備',
             },
-          },
+          ],
         },
       },
-      ...Array.from({ length: 4 }, (_, index) => ({
-        id: `both_${index}`,
+      {
+        id: 'note_2',
         org_id: 'org_1',
-        patient_id: 'patient_within',
-        schedule: {
-          visit_type: 'regular',
-          case_: {
-            patient: {
-              id: 'patient_within',
-              name: 'Within',
-              medical_insurance_number: 'med_2',
-              care_insurance_number: 'care_2',
+        structured_content: {
+          sections: [
+            {
+              key: 'quality_indicators',
+              label: '品質指標',
+              body: '看取り後カンファ実施',
             },
-          },
+          ],
         },
-      })),
+      },
     ]);
-
-    const result = await generateMonthlyVisitReport();
-
-    expect(result).toMatchObject({
-      processedCount: 3,
-      patientSummaries: {
-        org_1: {
-          totalPatients: 3,
-          overLimit: [
-            expect.objectContaining({
-              patientId: 'patient_over',
-              count: 5,
-              monthlyLimit: 4,
-            }),
-          ],
-          underLimit: [
-            expect.objectContaining({
-              patientId: 'patient_under',
-              count: 1,
-              monthlyLimit: 2,
-            }),
-          ],
-          withinLimit: [
-            expect.objectContaining({
-              patientId: 'patient_within',
-              count: 4,
-              monthlyLimit: 4,
-            }),
-          ],
-        },
-      },
-    });
-  });
-});
-
-describe('generateMonthlyMetrics', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+    settingUpsertMock.mockResolvedValue({});
   });
 
-  it('returns month snapshots for concentration and visit counts', async () => {
-    prescriptionIntakeFindManyMock.mockResolvedValue([
-      { org_id: 'org_1', prescriber_institution: 'clinic_a' },
-      { org_id: 'org_1', prescriber_institution: 'clinic_a' },
-      { org_id: 'org_1', prescriber_institution: 'clinic_b' },
-    ]);
-    visitRecordGroupByMock.mockResolvedValue([
-      { org_id: 'org_1', _count: 12 },
-    ]);
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
-    const result = await generateMonthlyMetrics();
+  it('aggregates death conference quality indicator lines into a monthly organization setting', async () => {
+    const result = await aggregateConferenceQualityIndicators();
 
     expect(result).toMatchObject({
-      processedCount: 2,
-      concentrationRates: {
-        org_1: 67,
-      },
-      homeVisitCounts: {
-        org_1: 12,
-      },
+      processedCount: 1,
+      month: '2026-03',
     });
+    expect(settingUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          scope_scope_id_key: {
+            scope: 'organization',
+            scope_id: 'org_1',
+            key: 'conference_quality_indicators:2026-03',
+          },
+        },
+        create: expect.objectContaining({
+          value: expect.objectContaining({
+            month: '2026-03',
+            total_notes: 2,
+            total_indicators: 3,
+            indicator_counts: {
+              看取り後カンファ実施: 2,
+              家族説明記録完備: 1,
+            },
+          }),
+        }),
+      })
+    );
   });
 });

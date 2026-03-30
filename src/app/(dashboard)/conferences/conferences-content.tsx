@@ -1,10 +1,33 @@
 'use client';
 
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { format, parseISO } from 'date-fns';
+import {
+  addMonths,
+  eachDayOfInterval,
+  endOfMonth,
+  endOfWeek,
+  format,
+  isSameDay,
+  isSameMonth,
+  parseISO,
+  startOfMonth,
+  startOfWeek,
+  subMonths,
+} from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Plus, Users, ArrowRight, Calendar, ListChecks } from 'lucide-react';
+import {
+  Plus,
+  Users,
+  ArrowRight,
+  Calendar,
+  ListChecks,
+  FilePlus2,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,12 +42,50 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type Participant = {
   name: string;
   role: string;
+  external_professional_id?: string;
+  attended?: boolean;
+  is_report_recipient?: boolean;
+  email?: string;
+  fax?: string;
+};
+
+type ParticipantDraft = Participant & {
+  external_professional_id?: string;
+};
+
+type ExternalProfessionalOption = {
+  id: string;
+  profession_type: string;
+  name: string;
+  organization_name: string | null;
+  department: string | null;
+  phone: string | null;
+  email: string | null;
+  fax: string | null;
+};
+
+type PrescriberInstitutionSuggestion = {
+  id: string;
+  name: string;
+  phone: string | null;
+  fax: string | null;
+  address: string | null;
+  prescribed_date: string;
+  prescriber_name: string | null;
 };
 
 type ActionItem = {
@@ -34,14 +95,37 @@ type ActionItem = {
   converted_at?: string;
 };
 
+type StructuredSectionDraft = {
+  key: string;
+  label: string;
+  body: string;
+  placeholder?: string;
+  rows?: number;
+};
+
 type ConferenceNote = {
   id: string;
+  note_type:
+    | 'regular'
+    | 'pre_discharge'
+    | 'service_manager'
+    | 'care_team'
+    | 'emergency'
+    | 'death_conference';
   title: string;
   content: string;
   participants: Participant[];
   conference_date: string;
   action_items: ActionItem[] | null;
   case_id: string | null;
+  sync_summary?: {
+    report_draft_ids?: string[];
+    billing_candidate_id?: string | null;
+    visit_proposal_id?: string | null;
+    tasks_created?: number;
+    medication_issues_created?: number;
+  } | null;
+  generated_report_id?: string | null;
   created_at: string;
 };
 
@@ -60,12 +144,197 @@ type CommunityActivity = {
   created_at: string;
 };
 
+const PROFESSION_LABELS: Record<string, string> = {
+  physician: '医師',
+  nurse: '看護師',
+  care_manager: 'ケアマネジャー',
+  medical_social_worker: '医療ソーシャルワーカー',
+  physical_therapist: '理学療法士',
+  occupational_therapist: '作業療法士',
+  speech_therapist: '言語聴覚士',
+  registered_dietitian: '管理栄養士',
+  dentist: '歯科医師',
+  dental_hygienist: '歯科衛生士',
+  home_helper: 'ホームヘルパー',
+  care_staff: '介護職',
+  other: 'その他',
+};
+
+function sectionTemplatesFor(
+  noteType: ConferenceNote['note_type']
+): StructuredSectionDraft[] {
+  switch (noteType) {
+    case 'pre_discharge':
+      return [
+        {
+          key: 'discharge_background',
+          label: '退院背景',
+          body: '',
+          placeholder: '退院予定日、入院経過、在宅移行時の留意点',
+          rows: 3,
+        },
+        {
+          key: 'target_discharge_date',
+          label: '退院予定日',
+          body: '',
+          placeholder: 'YYYY-MM-DD 形式で入力',
+          rows: 2,
+        },
+        {
+          key: 'medication_changes_on_discharge',
+          label: '退院時薬剤変更',
+          body: '',
+          placeholder: '1行1変更で入力すると MedicationIssue に反映されます',
+          rows: 4,
+        },
+        {
+          key: 'next_visit_plan',
+          label: '次回訪問計画',
+          body: '',
+          placeholder: '初回訪問候補日、初回確認事項、必要準備',
+          rows: 3,
+        },
+        {
+          key: 'team_roles',
+          label: '退院後の役割分担',
+          body: '',
+          placeholder: '薬局・訪看・主治医・家族の役割整理',
+          rows: 3,
+        },
+      ];
+    case 'service_manager':
+      return [
+        {
+          key: 'meeting_purpose',
+          label: '会議目的',
+          body: '',
+          placeholder: 'ケアプラン見直し、服薬支援強化など',
+          rows: 3,
+        },
+        {
+          key: 'care_plan_changes',
+          label: 'ケアプラン変更点',
+          body: '',
+          placeholder: '変更前後の要約、背景、判断理由',
+          rows: 3,
+        },
+        {
+          key: 'service_adjustments',
+          label: 'サービス調整',
+          body: '',
+          placeholder: '例: 訪問薬剤管理 月2回→月4回 / 理由: 服薬支援強化',
+          rows: 4,
+        },
+        {
+          key: 'medication_related_items',
+          label: '服薬関連項目',
+          body: '',
+          placeholder: '1行1項目で入力すると MedicationIssue に反映されます',
+          rows: 4,
+        },
+        {
+          key: 'agreed_actions',
+          label: '合意アクション',
+          body: '',
+          placeholder: '1行1アクションで入力するとフォローアップ Task を生成します',
+          rows: 4,
+        },
+        {
+          key: 'next_meeting_date',
+          label: '次回会議日',
+          body: '',
+          placeholder: 'YYYY-MM-DD 形式で入力',
+          rows: 2,
+        },
+      ];
+    case 'care_team':
+      return [
+        {
+          key: 'discussion_summary',
+          label: '討議要約',
+          body: '',
+          placeholder: '会議で共有した状況、判断、宿題',
+          rows: 3,
+        },
+        {
+          key: 'medication_issues',
+          label: '薬学課題',
+          body: '',
+          placeholder: '1行1課題で入力すると MedicationIssue に反映されます',
+          rows: 4,
+        },
+      ];
+    case 'death_conference':
+      return [
+        {
+          key: 'billing_confirmation',
+          label: '算定根拠確認',
+          body: '',
+          placeholder: '死亡前14日以内の訪問実績、記録の確認内容',
+          rows: 3,
+        },
+        {
+          key: 'timeline_summary',
+          label: '経過要約',
+          body: '',
+          placeholder: '導入から看取りまでの経過を時系列で記録',
+          rows: 4,
+        },
+        {
+          key: 'improvement_actions',
+          label: '改善アクション',
+          body: '',
+          placeholder: '再発防止や運用改善を1行ずつ記録',
+          rows: 4,
+        },
+        {
+          key: 'quality_indicators',
+          label: '品質指標',
+          body: '',
+          placeholder: '1行1指標で入力すると月次集計対象になります',
+          rows: 3,
+        },
+      ];
+    case 'emergency':
+      return [
+        {
+          key: 'emergency_context',
+          label: '緊急経緯',
+          body: '',
+          placeholder: '急変内容、対応時刻、初動',
+          rows: 3,
+        },
+        {
+          key: 'urgent_actions',
+          label: '当面の対応',
+          body: '',
+          placeholder: '当日中の連携事項、観察ポイント',
+          rows: 3,
+        },
+      ];
+    default:
+      return [
+        {
+          key: 'summary',
+          label: '会議要約',
+          body: '',
+          placeholder: '共有事項、決定事項、次回までの宿題',
+          rows: 4,
+        },
+      ];
+  }
+}
+
 function NoteCard({
   note,
   onConvertToTask,
+  onGenerateReport,
+  generating,
 }: {
   note: ConferenceNote;
   onConvertToTask: (note: ConferenceNote, item: ActionItem) => void;
+  onGenerateReport: (note: ConferenceNote) => void;
+  generating: boolean;
 }) {
   const dateStr = format(parseISO(note.conference_date), 'yyyy年M月d日(E) HH:mm', {
     locale: ja,
@@ -150,6 +419,83 @@ function NoteCard({
             </ul>
           </div>
         ) : null}
+
+        {(note.note_type === 'pre_discharge' ||
+          note.note_type === 'service_manager' ||
+          note.note_type === 'death_conference' ||
+          note.note_type === 'care_team') ? (
+          <div className="space-y-3">
+            {note.sync_summary || note.generated_report_id ? (
+              <div className="rounded-md border border-sky-200 bg-sky-50/50 p-3">
+                <p className="text-xs font-medium text-sky-900">保存後アクション</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <Badge variant="outline">
+                    報告書ドラフト {
+                      new Set([
+                        ...(note.sync_summary?.report_draft_ids ?? []),
+                        ...(note.generated_report_id ? [note.generated_report_id] : []),
+                      ]).size
+                    }件
+                  </Badge>
+                  <Badge variant="outline">
+                    タスク化 {note.sync_summary?.tasks_created ?? 0}件
+                  </Badge>
+                  <Badge variant="outline">
+                    薬学課題 {note.sync_summary?.medication_issues_created ?? 0}件
+                  </Badge>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {note.generated_report_id || note.sync_summary?.report_draft_ids?.length ? (
+                    <Link
+                      href="/reports"
+                      className="inline-flex rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                    >
+                      報告書を確認
+                    </Link>
+                  ) : null}
+                  {note.sync_summary?.billing_candidate_id ? (
+                    <Link
+                      href="/billing/candidates"
+                      className="inline-flex rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                    >
+                      算定候補を確認
+                    </Link>
+                  ) : null}
+                  {note.sync_summary?.visit_proposal_id ? (
+                    <Link
+                      href="/schedules/proposals"
+                      className="inline-flex rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                    >
+                      訪問候補を確認
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="flex justify-end">
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href={`/api/conference-notes/${note.id}/pdf`}
+                  target="_blank"
+                  className="inline-flex h-7 items-center rounded-md border border-border px-2 text-xs font-medium hover:bg-muted"
+                >
+                  PDF
+                </Link>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => onGenerateReport(note)}
+                  disabled={generating}
+                >
+                  <FilePlus2 className="mr-1 size-3.5" aria-hidden="true" />
+                  {generating ? '生成中...' : '報告書を生成'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -211,14 +557,44 @@ function ActivityCard({ activity }: { activity: CommunityActivity }) {
 
 export function ConferencesContent() {
   const orgId = useOrgId();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
+  const contextPatientId = searchParams.get('patient_id')?.trim() || '';
+  const contextCaseId = searchParams.get('case_id')?.trim() || '';
   const [newNoteOpen, setNewNoteOpen] = useState(false);
   const [newActivityOpen, setNewActivityOpen] = useState(false);
+  const [reportDialogNote, setReportDialogNote] = useState<ConferenceNote | null>(null);
+  const [reportTypeDraft, setReportTypeDraft] = useState('internal_record');
+  const [autoSendReport, setAutoSendReport] = useState(false);
+  const [includeStructuredInReport, setIncludeStructuredInReport] = useState(true);
+  const [noteViewMode, setNoteViewMode] = useState<'list' | 'calendar'>('list');
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date());
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | null>(null);
+  const [selectedNoteType, setSelectedNoteType] = useState<
+    'all' | 'pre_discharge' | 'service_manager' | 'death_conference' | 'care_team'
+  >('all');
+  const [lastSyncSummary, setLastSyncSummary] = useState<{
+    title: string;
+    reportDraftIds?: string[];
+    billingCandidateId?: string;
+    visitProposalId?: string;
+    tasksCreated?: number;
+    medicationIssuesCreated?: number;
+  } | null>(null);
 
+  const [noteType, setNoteType] = useState<ConferenceNote['note_type']>('regular');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [conferenceDate, setConferenceDate] = useState('');
-  const [participantsRaw, setParticipantsRaw] = useState('');
+  const [structuredSectionDraftStore, setStructuredSectionDraftStore] = useState<
+    Partial<Record<ConferenceNote['note_type'], Record<string, string>>>
+  >({});
+  const [structuredSectionDrafts, setStructuredSectionDrafts] = useState<StructuredSectionDraft[]>(
+    () => sectionTemplatesFor('regular')
+  );
+  const [participantDrafts, setParticipantDrafts] = useState<ParticipantDraft[]>([
+    { name: '', role: '', attended: true, is_report_recipient: false },
+  ]);
   const [actionItemsRaw, setActionItemsRaw] = useState('');
 
   const [activityType, setActivityType] = useState('');
@@ -232,9 +608,19 @@ export function ConferencesContent() {
   const [outcomeSummary, setOutcomeSummary] = useState('');
 
   const notesQuery = useQuery({
-    queryKey: ['conference-notes', orgId],
+    queryKey: ['conference-notes', orgId, selectedNoteType, contextPatientId, contextCaseId],
     queryFn: async () => {
-      const response = await fetch('/api/conference-notes?limit=20', {
+      const params = new URLSearchParams({ limit: '20' });
+      if (selectedNoteType !== 'all') {
+        params.set('conference_type', selectedNoteType);
+      }
+      if (contextPatientId) {
+        params.set('patient_id', contextPatientId);
+      }
+      if (contextCaseId) {
+        params.set('case_id', contextCaseId);
+      }
+      const response = await fetch(`/api/conference-notes?${params.toString()}`, {
         headers: { 'x-org-id': orgId },
       });
       if (!response.ok) throw new Error('カンファレンスノートの取得に失敗しました');
@@ -255,6 +641,77 @@ export function ConferencesContent() {
     enabled: !!orgId,
   });
 
+  const externalProfessionalsQuery = useQuery({
+    queryKey: ['conference-external-professionals', orgId],
+    queryFn: async () => {
+      const response = await fetch('/api/admin/external-professionals', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!response.ok) throw new Error('他職種マスターの取得に失敗しました');
+      return response.json() as Promise<{ data: ExternalProfessionalOption[] }>;
+    },
+    enabled: !!orgId,
+  });
+
+  const conferenceCalendarQuery = useQuery({
+    queryKey: [
+      'conference-notes-calendar',
+      orgId,
+      selectedNoteType,
+      contextPatientId,
+      contextCaseId,
+      format(calendarMonth, 'yyyy-MM'),
+    ],
+    queryFn: async () => {
+      const monthStart = startOfMonth(calendarMonth);
+      const monthEnd = endOfMonth(calendarMonth);
+      const params = new URLSearchParams({
+        date_from: format(monthStart, 'yyyy-MM-dd'),
+        date_to: format(monthEnd, 'yyyy-MM-dd'),
+        limit: '200',
+      });
+      if (selectedNoteType !== 'all') {
+        params.set('conference_type', selectedNoteType);
+      }
+      if (contextPatientId) {
+        params.set('patient_id', contextPatientId);
+      }
+      if (contextCaseId) {
+        params.set('case_id', contextCaseId);
+      }
+      const response = await fetch(`/api/conference-notes?${params.toString()}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!response.ok) throw new Error('カレンダー用カンファレンス記録の取得に失敗しました');
+      return response.json() as Promise<{ data: ConferenceNote[] }>;
+    },
+    enabled: !!orgId,
+  });
+
+  const prescriberInstitutionSuggestionQuery = useQuery({
+    queryKey: [
+      'conference-prescriber-institution-suggestion',
+      orgId,
+      contextPatientId,
+      contextCaseId,
+    ],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (contextPatientId) {
+        params.set('patient_id', contextPatientId);
+      }
+      if (contextCaseId) {
+        params.set('case_id', contextCaseId);
+      }
+      const response = await fetch(`/api/prescriber-institutions/suggestion?${params.toString()}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!response.ok) throw new Error('処方元医療機関候補の取得に失敗しました');
+      return response.json() as Promise<{ data: PrescriberInstitutionSuggestion | null }>;
+    },
+    enabled: !!orgId && (!!contextPatientId || !!contextCaseId),
+  });
+
   const createNoteMutation = useMutation({
     mutationFn: async (payload: object) => {
       const response = await fetch('/api/conference-notes', {
@@ -263,13 +720,31 @@ export function ConferencesContent() {
         body: JSON.stringify(payload),
       });
       if (!response.ok) throw new Error('作成に失敗しました');
-      return response.json();
+      return response.json() as Promise<{
+        data: ConferenceNote;
+        sync?: {
+          report_draft_ids?: string[];
+          billing_candidate_id?: string;
+          visit_proposal_id?: string;
+          tasks_created?: number;
+          medication_issues_created?: number;
+        };
+      }>;
     },
-    onSuccess: () => {
+    onSuccess: (payload) => {
       queryClient.invalidateQueries({ queryKey: ['conference-notes', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['conference-notes-calendar', orgId] });
       setNewNoteOpen(false);
       resetNoteForm();
       toast.success('カンファレンスノートを作成しました');
+      setLastSyncSummary({
+        title: payload.data.title,
+        reportDraftIds: payload.sync?.report_draft_ids,
+        billingCandidateId: payload.sync?.billing_candidate_id,
+        visitProposalId: payload.sync?.visit_proposal_id,
+        tasksCreated: payload.sync?.tasks_created,
+        medicationIssuesCreated: payload.sync?.medication_issues_created,
+      });
     },
     onError: () => toast.error('カンファレンスノートの作成に失敗しました'),
   });
@@ -314,18 +789,90 @@ export function ConferencesContent() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['conference-notes', orgId] });
+      await queryClient.invalidateQueries({ queryKey: ['conference-notes-calendar', orgId] });
       await queryClient.invalidateQueries({ queryKey: ['tasks', orgId] });
       toast.success('アクションアイテムをタスク化しました');
     },
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const generateReportMutation = useMutation({
+    mutationFn: async ({
+      note,
+      reportType,
+      autoSend,
+      includeStructuredContent,
+    }: {
+      note: ConferenceNote;
+      reportType: string;
+      autoSend: boolean;
+      includeStructuredContent: boolean;
+    }) => {
+      const response = await fetch(`/api/conference-notes/${note.id}/generate-report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify({
+          report_type: reportType,
+          auto_send: autoSend,
+          include_structured_content: includeStructuredContent,
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.message ?? '報告書生成に失敗しました');
+      }
+      return response.json() as Promise<{
+        data: {
+          report_draft_ids: string[];
+          queued_recipients?: Array<{
+            report_id: string;
+            name: string;
+            channel: string;
+          }>;
+        };
+      }>;
+    },
+    onSuccess: (payload) => {
+      toast.success(
+        `報告書ドラフトを${payload.data.report_draft_ids.length}件生成しました${
+          payload.data.queued_recipients?.length ? ` / 送付下書き ${payload.data.queued_recipients.length}件` : ''
+        }`,
+      );
+      setReportDialogNote(null);
+      queryClient.invalidateQueries({ queryKey: ['conference-notes', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['conference-notes-calendar', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['care-reports', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['care-report-analytics', orgId] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   function resetNoteForm() {
+    setNoteType('regular');
     setTitle('');
     setContent('');
     setConferenceDate('');
-    setParticipantsRaw('');
+    setStructuredSectionDraftStore({});
+    setStructuredSectionDrafts(sectionTemplatesFor('regular'));
+    setParticipantDrafts([{ name: '', role: '', attended: true, is_report_recipient: false }]);
     setActionItemsRaw('');
+  }
+
+  function handleNoteTypeChange(value: ConferenceNote['note_type']) {
+    const nextDraftStore = {
+      ...structuredSectionDraftStore,
+      [noteType]: Object.fromEntries(
+        structuredSectionDrafts.map((section) => [section.key, section.body])
+      ),
+    };
+    setNoteType(value);
+    setStructuredSectionDraftStore(nextDraftStore);
+    setStructuredSectionDrafts(
+      sectionTemplatesFor(value).map((section) => ({
+        ...section,
+        body: nextDraftStore[value]?.[section.key] ?? '',
+      }))
+    );
   }
 
   function resetActivityForm() {
@@ -341,19 +888,30 @@ export function ConferencesContent() {
   }
 
   function handleCreateNote() {
-    if (!title.trim() || !content.trim() || !conferenceDate) {
-      toast.error('タイトル・内容・日時は必須です');
+    const structuredSections = structuredSectionDrafts
+      .map((section) => ({
+        key: section.key,
+        label: section.label,
+        body: section.body.trim(),
+      }))
+      .filter((section) => section.body.length > 0);
+
+    if (!title.trim() || !conferenceDate || (!content.trim() && structuredSections.length === 0)) {
+      toast.error('タイトル・日時・内容または構造化項目を入力してください');
       return;
     }
 
-    const participants: Participant[] = participantsRaw
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [name, role] = line.split('/').map((item) => item.trim());
-        return { name: name ?? line, role: role ?? '' };
-      });
+    const participants: Participant[] = participantDrafts
+      .map((item) => ({
+        name: item.name.trim(),
+        role: item.role.trim(),
+        attended: item.attended ?? true,
+        is_report_recipient: item.is_report_recipient ?? false,
+        external_professional_id: item.external_professional_id,
+        email: item.email?.trim() || undefined,
+        fax: item.fax?.trim() || undefined,
+      }))
+      .filter((item) => item.name);
 
     const actionItems: ActionItem[] = actionItemsRaw
       .split('\n')
@@ -368,10 +926,22 @@ export function ConferencesContent() {
       });
 
     createNoteMutation.mutate({
+      note_type: noteType,
+      conference_type: noteType,
       title,
-      content,
+      ...(contextPatientId ? { patient_id: contextPatientId } : {}),
+      ...(contextCaseId ? { case_id: contextCaseId } : {}),
+      ...(content.trim() ? { content } : {}),
       conference_date: new Date(conferenceDate).toISOString(),
       participants,
+      ...(structuredSections.length > 0
+        ? {
+            structured_content: {
+              template: noteType,
+              sections: structuredSections,
+            },
+          }
+        : {}),
       ...(actionItems.length > 0 ? { action_items: actionItems } : {}),
     });
   }
@@ -416,8 +986,126 @@ export function ConferencesContent() {
     });
   }
 
+  function reportTypeOptions(note: ConferenceNote) {
+    switch (note.note_type) {
+      case 'pre_discharge':
+        return [{ value: 'physician_report', label: '医師向け報告書' }];
+      case 'service_manager':
+        return [{ value: 'care_manager_report', label: 'ケアマネ向け報告書' }];
+      case 'emergency':
+        return [
+          { value: 'physician_report', label: '医師向け報告書' },
+          { value: 'internal_record', label: '内部記録' },
+        ];
+      default:
+        return [{ value: 'internal_record', label: '内部記録' }];
+    }
+  }
+
+  function handleGenerateReport(note: ConferenceNote) {
+    const options = reportTypeOptions(note);
+    setReportTypeDraft(options[0]?.value ?? 'internal_record');
+    setAutoSendReport(false);
+    setIncludeStructuredInReport(true);
+    setReportDialogNote(note);
+  }
+
+  function handleConfirmGenerateReport() {
+    if (!reportDialogNote) return;
+    generateReportMutation.mutate({
+      note: reportDialogNote,
+      reportType: reportTypeDraft,
+      autoSend: autoSendReport,
+      includeStructuredContent: includeStructuredInReport,
+    });
+  }
+
   const notes = notesQuery.data?.data ?? [];
+  const calendarNotes = conferenceCalendarQuery.data?.data ?? [];
   const activities = activitiesQuery.data?.data ?? [];
+  const externalProfessionals = externalProfessionalsQuery.data?.data ?? [];
+  const prescriberInstitutionSuggestion =
+    prescriberInstitutionSuggestionQuery.data?.data ?? null;
+  const calendarMonthStart = startOfMonth(calendarMonth);
+  const calendarMonthEnd = endOfMonth(calendarMonth);
+  const calendarDays = eachDayOfInterval({
+    start: startOfWeek(calendarMonthStart, { weekStartsOn: 1 }),
+    end: endOfWeek(calendarMonthEnd, { weekStartsOn: 1 }),
+  });
+  const calendarNotesByDate = new Map<string, ConferenceNote[]>();
+  for (const note of calendarNotes) {
+    const key = note.conference_date.slice(0, 10);
+    const bucket = calendarNotesByDate.get(key);
+    if (bucket) {
+      bucket.push(note);
+    } else {
+      calendarNotesByDate.set(key, [note]);
+    }
+  }
+  const selectedCalendarNotes = selectedCalendarDate
+    ? calendarNotesByDate.get(format(selectedCalendarDate, 'yyyy-MM-dd')) ?? []
+    : [];
+
+  function updateParticipantAt(index: number, updater: (draft: ParticipantDraft) => ParticipantDraft) {
+    setParticipantDrafts((current) =>
+      current.map((draft, draftIndex) => (draftIndex === index ? updater(draft) : draft)),
+    );
+  }
+
+  function applyExternalProfessional(index: number, externalProfessionalId: string) {
+    const match = externalProfessionals.find((item) => item.id === externalProfessionalId);
+    if (!match) {
+      updateParticipantAt(index, (draft) => ({
+        ...draft,
+        external_professional_id: undefined,
+        ...(externalProfessionalId
+          ? {}
+          : {
+              name: '',
+              role: '',
+              email: undefined,
+              fax: undefined,
+            }),
+      }));
+      return;
+    }
+
+    updateParticipantAt(index, (draft) => ({
+      ...draft,
+      external_professional_id: match.id,
+      name: match.name,
+      role: conferenceRoleLabel(match.profession_type, match.organization_name),
+      email: match.email ?? undefined,
+      fax: match.fax ?? undefined,
+    }));
+  }
+
+  function appendPrescriberInstitutionParticipant() {
+    if (!prescriberInstitutionSuggestion) return;
+
+    const suggestedName =
+      prescriberInstitutionSuggestion.prescriber_name ?? prescriberInstitutionSuggestion.name;
+    const alreadyExists = participantDrafts.some(
+      (participant) =>
+        participant.name.trim() === suggestedName &&
+        (participant.fax?.trim() || '') === (prescriberInstitutionSuggestion.fax ?? '')
+    );
+    if (alreadyExists) {
+      toast.info('処方元医療機関候補は既に参加者に追加されています');
+      return;
+    }
+
+    setParticipantDrafts((current) => [
+      ...current,
+      {
+        name: suggestedName,
+        role: `処方元医療機関 / ${prescriberInstitutionSuggestion.name}`,
+        attended: true,
+        is_report_recipient: false,
+        fax: prescriberInstitutionSuggestion.fax ?? undefined,
+      },
+    ]);
+  }
 
   return (
     <div className="space-y-6">
@@ -455,7 +1143,9 @@ export function ConferencesContent() {
         </Card>
       </div>
 
-      {notesQuery.isLoading || activitiesQuery.isLoading ? (
+      {notesQuery.isLoading ||
+      activitiesQuery.isLoading ||
+      (noteViewMode === 'calendar' && conferenceCalendarQuery.isLoading) ? (
         <div className="space-y-2">
           {[1, 2].map((item) => (
             <div key={item} className="h-32 animate-pulse rounded-lg bg-muted" />
@@ -464,21 +1154,215 @@ export function ConferencesContent() {
       ) : null}
 
       <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-foreground">カンファレンス記録</h2>
-          <p className="text-sm text-muted-foreground">{notes.length}件</p>
-        </div>
-        <div className="space-y-4">
-          {notes.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-              カンファレンス記録はまだありません
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">カンファレンス記録</h2>
+            <p className="text-sm text-muted-foreground">
+              {noteViewMode === 'calendar' ? `${calendarNotes.length}件` : `${notes.length}件`}
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 sm:items-end">
+            <div className="flex rounded-lg border border-border bg-background p-1">
+              <button
+                type="button"
+                className={`rounded-md px-3 py-1 text-xs font-medium ${
+                  noteViewMode === 'list' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
+                }`}
+                onClick={() => setNoteViewMode('list')}
+              >
+                一覧
+              </button>
+              <button
+                type="button"
+                className={`rounded-md px-3 py-1 text-xs font-medium ${
+                  noteViewMode === 'calendar'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground'
+                }`}
+                onClick={() => setNoteViewMode('calendar')}
+              >
+                カレンダー
+              </button>
             </div>
-          ) : (
-            notes.map((note) => (
-              <NoteCard key={note.id} note={note} onConvertToTask={handleConvertToTask} />
-            ))
-          )}
+            <Tabs
+              value={selectedNoteType}
+              onValueChange={(value) =>
+                setSelectedNoteType(value as typeof selectedNoteType)
+              }
+            >
+              <TabsList variant="line">
+                <TabsTrigger value="all">全て</TabsTrigger>
+                <TabsTrigger value="pre_discharge">退院前</TabsTrigger>
+                <TabsTrigger value="service_manager">担当者会議</TabsTrigger>
+                <TabsTrigger value="death_conference">デスカンファ</TabsTrigger>
+                <TabsTrigger value="care_team">その他</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
         </div>
+        {noteViewMode === 'list' ? (
+          <div className="space-y-4">
+            {notes.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                カンファレンス記録はまだありません
+              </div>
+            ) : (
+              notes.map((note) => (
+                <NoteCard
+                  key={note.id}
+                  note={note}
+                  onConvertToTask={handleConvertToTask}
+                  onGenerateReport={handleGenerateReport}
+                  generating={generateReportMutation.isPending}
+                />
+              ))
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium text-foreground">
+                {format(calendarMonth, 'yyyy年M月', { locale: ja })}
+              </h3>
+              <div className="flex gap-1">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-8"
+                  onClick={() => {
+                    setCalendarMonth((current) => subMonths(current, 1));
+                    setSelectedCalendarDate(null);
+                  }}
+                >
+                  <ChevronLeft className="size-4" aria-hidden="true" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8"
+                  onClick={() => {
+                    setCalendarMonth(new Date());
+                    setSelectedCalendarDate(null);
+                  }}
+                >
+                  今月
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-8"
+                  onClick={() => {
+                    setCalendarMonth((current) => addMonths(current, 1));
+                    setSelectedCalendarDate(null);
+                  }}
+                >
+                  <ChevronRight className="size-4" aria-hidden="true" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-lg border border-border">
+              <div className="grid grid-cols-7 border-b bg-muted/50">
+                {['月', '火', '水', '木', '金', '土', '日'].map((label) => (
+                  <div
+                    key={label}
+                    className="py-2 text-center text-xs font-medium text-muted-foreground"
+                  >
+                    {label}
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-7">
+                {calendarDays.map((day) => {
+                  const key = format(day, 'yyyy-MM-dd');
+                  const dayNotes = calendarNotesByDate.get(key) ?? [];
+                  const isSelected =
+                    selectedCalendarDate !== null && isSameDay(selectedCalendarDate, day);
+                  const visibleNotes = dayNotes.slice(0, 2);
+                  const overflowCount = dayNotes.length - visibleNotes.length;
+
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() =>
+                        setSelectedCalendarDate((current) =>
+                          current && isSameDay(current, day) ? null : day
+                        )
+                      }
+                      className={`min-h-[110px] border-b border-r p-2 text-left align-top last:border-r-0 ${
+                        isSameMonth(day, calendarMonth) ? 'bg-background' : 'bg-muted/20'
+                      } ${isSelected ? 'ring-2 ring-inset ring-primary' : ''}`}
+                    >
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          {format(day, 'd')}
+                        </span>
+                        {dayNotes.length > 0 ? (
+                          <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+                            {dayNotes.length}件
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <div className="space-y-1">
+                        {visibleNotes.map((note) => (
+                          <div
+                            key={note.id}
+                            className="truncate rounded bg-sky-50 px-1.5 py-1 text-[11px] text-sky-900"
+                          >
+                            {format(parseISO(note.conference_date), 'HH:mm')} {note.title}
+                          </div>
+                        ))}
+                        {overflowCount > 0 ? (
+                          <div className="text-[11px] text-muted-foreground">
+                            ほか {overflowCount} 件
+                          </div>
+                        ) : null}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {selectedCalendarDate ? (
+              <div className="space-y-3 rounded-lg border border-border p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">
+                      {format(selectedCalendarDate, 'yyyy年M月d日(E)', { locale: ja })}
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      {selectedCalendarNotes.length}件の会議
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setSelectedCalendarDate(null)}
+                  >
+                    閉じる
+                  </Button>
+                </div>
+                {selectedCalendarNotes.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">この日の会議はありません</div>
+                ) : (
+                  <div className="space-y-3">
+                    {selectedCalendarNotes.map((note) => (
+                      <NoteCard
+                        key={note.id}
+                        note={note}
+                        onConvertToTask={handleConvertToTask}
+                        onGenerateReport={handleGenerateReport}
+                        generating={generateReportMutation.isPending}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        )}
       </section>
 
       <section className="space-y-4">
@@ -499,12 +1383,78 @@ export function ConferencesContent() {
         </div>
       </section>
 
-      <Dialog open={newNoteOpen} onOpenChange={setNewNoteOpen}>
+      {lastSyncSummary ? (
+        <Card className="border-sky-200 bg-sky-50/60">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">保存後アクション</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-slate-700">
+              「{lastSyncSummary.title}」の保存に連動して、必要な後続処理を作成しました。
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline">報告書ドラフト {lastSyncSummary.reportDraftIds?.length ?? 0}件</Badge>
+              <Badge variant="outline">タスク化 {lastSyncSummary.tasksCreated ?? 0}件</Badge>
+              <Badge variant="outline">薬学課題 {lastSyncSummary.medicationIssuesCreated ?? 0}件</Badge>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/reports" className="inline-flex rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted">
+                報告書を確認
+              </Link>
+              {lastSyncSummary.billingCandidateId ? (
+                <Link
+                  href="/billing/candidates"
+                  className="inline-flex rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
+                >
+                  算定候補を確認
+                </Link>
+              ) : null}
+              {lastSyncSummary.visitProposalId ? (
+                <Link
+                  href="/schedules/proposals"
+                  className="inline-flex rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
+                >
+                  訪問候補を確認
+                </Link>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <Dialog
+        open={newNoteOpen}
+        onOpenChange={(open) => {
+          setNewNoteOpen(open);
+          if (!open) {
+            resetNoteForm();
+          }
+        }}
+      >
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>カンファレンスノート新規作成</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="conf-type">会議種別</Label>
+              <Select
+                value={noteType}
+                onValueChange={(value) => handleNoteTypeChange(value as ConferenceNote['note_type'])}
+              >
+                <SelectTrigger id="conf-type" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="regular">定例会議</SelectItem>
+                  <SelectItem value="pre_discharge">退院前カンファ</SelectItem>
+                  <SelectItem value="service_manager">担当者会議</SelectItem>
+                  <SelectItem value="care_team">多職種カンファ</SelectItem>
+                  <SelectItem value="death_conference">デスカンファ</SelectItem>
+                  <SelectItem value="emergency">緊急カンファ</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="conf-title">タイトル</Label>
               <Input
@@ -524,17 +1474,194 @@ export function ConferencesContent() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="conf-participants">
-                参加者
-                <span className="ml-1 text-xs text-muted-foreground">（1行1人、名前/役割）</span>
-              </Label>
-              <Textarea
-                id="conf-participants"
-                value={participantsRaw}
-                onChange={(event) => setParticipantsRaw(event.target.value)}
-                placeholder={'鈴木薬剤師/薬剤師\n田中CM/ケアマネジャー'}
-                rows={3}
-              />
+              <div className="flex items-center justify-between">
+                <Label>参加者</Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    setParticipantDrafts((current) => [
+                      ...current,
+                      { name: '', role: '', attended: true, is_report_recipient: false },
+                    ])
+                  }
+                >
+                  <Plus className="mr-1 size-3.5" aria-hidden="true" />
+                  参加者を追加
+                </Button>
+              </div>
+              {prescriberInstitutionSuggestion ? (
+                <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-3 text-sm">
+                  <p className="font-medium text-sky-900">
+                    処方元医療機関候補: {prescriberInstitutionSuggestion.name}
+                  </p>
+                  <p className="mt-1 text-xs text-sky-800">
+                    {prescriberInstitutionSuggestion.prescriber_name
+                      ? `主担当: ${prescriberInstitutionSuggestion.prescriber_name}`
+                      : '医療機関名を参加者候補として利用できます'}
+                    {prescriberInstitutionSuggestion.fax
+                      ? ` / FAX ${prescriberInstitutionSuggestion.fax}`
+                      : prescriberInstitutionSuggestion.phone
+                        ? ` / TEL ${prescriberInstitutionSuggestion.phone}`
+                        : ''}
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="mt-3"
+                    onClick={appendPrescriberInstitutionParticipant}
+                  >
+                    参加者に追加
+                  </Button>
+                </div>
+              ) : null}
+              <div className="space-y-3">
+                {participantDrafts.map((participant, index) => (
+                  <div key={`participant-${index}`} className="rounded-lg border p-3">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label>登録済み他職種</Label>
+                        <Select
+                          value={participant.external_professional_id ?? 'manual'}
+                          onValueChange={(value) =>
+                            applyExternalProfessional(index, !value || value === 'manual' ? '' : value)
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="手入力または登録済みから選択" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="manual">手入力</SelectItem>
+                            {externalProfessionals.map((item) => (
+                              <SelectItem key={item.id} value={item.id}>
+                                {item.name} / {item.organization_name ?? item.profession_type}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>氏名</Label>
+                        <Input
+                          list={`conference-participant-suggestions-${index}`}
+                          value={participant.name}
+                          onChange={(event) => {
+                            const matched = externalProfessionals.find((item) => item.name === event.target.value);
+                            if (matched) {
+                              applyExternalProfessional(index, matched.id);
+                              return;
+                            }
+                            updateParticipantAt(index, (draft) => ({
+                              ...draft,
+                              external_professional_id: undefined,
+                              name: event.target.value,
+                              ...(draft.external_professional_id
+                                ? {
+                                    role: '',
+                                    email: undefined,
+                                    fax: undefined,
+                                  }
+                                : {}),
+                            }));
+                          }}
+                        />
+                        <datalist id={`conference-participant-suggestions-${index}`}>
+                          {externalProfessionals.map((item) => (
+                            <option key={item.id} value={item.name}>
+                              {item.organization_name ?? item.profession_type}
+                            </option>
+                          ))}
+                        </datalist>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>役割・所属</Label>
+                        <Input
+                          value={participant.role}
+                          onChange={(event) =>
+                            updateParticipantAt(index, (draft) => ({
+                              ...draft,
+                              external_professional_id: undefined,
+                              role: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>メール</Label>
+                        <Input
+                          value={participant.email ?? ''}
+                          onChange={(event) =>
+                            updateParticipantAt(index, (draft) => ({
+                              ...draft,
+                              external_professional_id: undefined,
+                              email: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>FAX</Label>
+                        <Input
+                          value={participant.fax ?? ''}
+                          onChange={(event) =>
+                            updateParticipantAt(index, (draft) => ({
+                              ...draft,
+                              external_professional_id: undefined,
+                              fax: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex flex-wrap gap-4">
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={participant.attended ?? true}
+                            onChange={(event) =>
+                              updateParticipantAt(index, (draft) => ({
+                                ...draft,
+                                attended: event.target.checked,
+                              }))
+                            }
+                          />
+                          <span>出席</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={participant.is_report_recipient ?? false}
+                            onChange={(event) =>
+                              updateParticipantAt(index, (draft) => ({
+                                ...draft,
+                                is_report_recipient: event.target.checked,
+                              }))
+                            }
+                          />
+                          <span>報告書送付対象</span>
+                        </label>
+                      </div>
+                      {participantDrafts.length > 1 ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            setParticipantDrafts((current) =>
+                              current.filter((_, draftIndex) => draftIndex !== index),
+                            )
+                          }
+                        >
+                          削除
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="conf-content">内容</Label>
@@ -545,6 +1672,32 @@ export function ConferencesContent() {
                 placeholder="カンファレンスの内容・決定事項を記録"
                 rows={5}
               />
+            </div>
+            <div className="space-y-3">
+              <Label>構造化項目</Label>
+              <div className="space-y-3">
+                {structuredSectionDrafts.map((section) => (
+                  <div key={section.key} className="space-y-1.5">
+                    <Label htmlFor={`conf-section-${section.key}`}>{section.label}</Label>
+                    <Textarea
+                      id={`conf-section-${section.key}`}
+                      value={section.body}
+                      onChange={(event) =>
+                        setStructuredSectionDrafts((current) =>
+                          current.map((item) =>
+                            item.key === section.key ? { ...item, body: event.target.value } : item
+                          )
+                        )
+                      }
+                      placeholder={section.placeholder}
+                      rows={section.rows ?? 3}
+                    />
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                種別別の構造化項目は、報告書生成・算定候補・後続タスク/訪問候補の判断材料として利用されます。
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="conf-actions">
@@ -677,6 +1830,68 @@ export function ConferencesContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!reportDialogNote} onOpenChange={(open) => (!open ? setReportDialogNote(null) : null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>報告書を生成</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>報告書種別</Label>
+              <Select value={reportTypeDraft} onValueChange={(value) => setReportTypeDraft(value ?? reportTypeDraft)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {reportDialogNote
+                    ? reportTypeOptions(reportDialogNote).map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))
+                    : null}
+                </SelectContent>
+              </Select>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={autoSendReport}
+                onChange={(event) => setAutoSendReport(event.target.checked)}
+              />
+              <span>送付対象に送達下書きも作成する</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={includeStructuredInReport}
+                onChange={(event) => setIncludeStructuredInReport(event.target.checked)}
+              />
+              <span>構造化項目を報告書本文に含める</span>
+            </label>
+            <p className="text-xs text-muted-foreground">
+              `is_report_recipient` が付いた参加者に、メールまたは FAX の送付下書きを自動起票します。
+            </p>
+          </div>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" size="sm" />}>キャンセル</DialogClose>
+            <Button
+              size="sm"
+              onClick={handleConfirmGenerateReport}
+              disabled={generateReportMutation.isPending}
+            >
+              {generateReportMutation.isPending ? '生成中...' : '生成する'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+function conferenceRoleLabel(professionType: string, organizationName: string | null) {
+  const professionLabel = PROFESSION_LABELS[professionType] ?? professionType;
+
+  return organizationName ? `${organizationName} / ${professionLabel}` : professionLabel;
 }

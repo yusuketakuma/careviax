@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 
 const {
   facilityFindFirstMock,
+  residenceCountMock,
   residenceFindFirstMock,
   facilityUpdateMock,
   facilityDeleteMock,
@@ -10,6 +11,7 @@ const {
   withOrgContextMock,
 } = vi.hoisted(() => ({
   facilityFindFirstMock: vi.fn(),
+  residenceCountMock: vi.fn(),
   residenceFindFirstMock: vi.fn(),
   facilityUpdateMock: vi.fn(),
   facilityDeleteMock: vi.fn(),
@@ -29,6 +31,9 @@ vi.mock('@/lib/db/client', () => ({
     facility: {
       findFirst: facilityFindFirstMock,
     },
+    residence: {
+      count: residenceCountMock,
+    },
   },
 }));
 
@@ -36,7 +41,7 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-import { DELETE, PATCH } from './route';
+import { DELETE, GET, PATCH } from './route';
 
 function createRequest(body?: unknown) {
   return {
@@ -55,6 +60,9 @@ describe('/api/admin/facilities/[id]', () => {
       address: '東京都千代田区1-1-1',
       phone: '03-1111-2222',
       fax: null,
+      acceptance_time_from: new Date('1970-01-01T09:30:00.000Z'),
+      acceptance_time_to: new Date('1970-01-01T15:30:00.000Z'),
+      regular_visit_weekdays: [1, 3, 5],
       notes: '更新メモ',
       contacts: [
         {
@@ -71,6 +79,7 @@ describe('/api/admin/facilities/[id]', () => {
       ],
     });
     facilityDeleteMock.mockResolvedValue({ id: 'facility_1' });
+    residenceCountMock.mockResolvedValue(2);
     residenceFindFirstMock.mockResolvedValue(null);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -94,6 +103,9 @@ describe('/api/admin/facilities/[id]', () => {
         name: 'あおば苑',
         facility_type: 'group_home',
         address: '東京都千代田区1-1-1',
+        acceptance_time_from: '09:30',
+        acceptance_time_to: '15:30',
+        regular_visit_weekdays: [1, 3, 5],
         notes: '更新メモ',
         contacts: [
           {
@@ -118,6 +130,9 @@ describe('/api/admin/facilities/[id]', () => {
         data: expect.objectContaining({
           name: 'あおば苑',
           facility_type: 'group_home',
+          acceptance_time_from: new Date('1970-01-01T09:30:00.000Z'),
+          acceptance_time_to: new Date('1970-01-01T15:30:00.000Z'),
+          regular_visit_weekdays: [1, 3, 5],
           contacts: {
             create: [
               expect.objectContaining({
@@ -130,6 +145,59 @@ describe('/api/admin/facilities/[id]', () => {
         }),
       }),
     );
+  });
+
+  it('returns facility detail with patient count', async () => {
+    facilityFindFirstMock.mockResolvedValueOnce({
+      id: 'facility_1',
+      name: 'あおば苑',
+      facility_type: 'group_home',
+      address: '東京都千代田区1-1-1',
+      phone: '03-1111-2222',
+      fax: null,
+      acceptance_time_from: new Date('1970-01-01T09:30:00.000Z'),
+      acceptance_time_to: new Date('1970-01-01T15:30:00.000Z'),
+      regular_visit_weekdays: [1, 3, 5],
+      notes: '更新メモ',
+      _count: {
+        residences: 2,
+      },
+      contacts: [
+        {
+          id: 'contact_1',
+          name: '相談員A',
+          role: '相談員',
+          phone: '03-3333-4444',
+          email: null,
+          fax: null,
+          is_primary: true,
+          notes: null,
+        },
+      ],
+    });
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'facility_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(residenceCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        facility_id: 'facility_1',
+        is_primary: true,
+      },
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'facility_1',
+        patient_count: 2,
+        acceptance_time_from: '09:30',
+        acceptance_time_to: '15:30',
+        regular_visit_weekdays: [1, 3, 5],
+      },
+    });
   });
 
   it('deletes a facility', async () => {
@@ -153,6 +221,15 @@ describe('/api/admin/facilities/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expect(residenceFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        facility_id: 'facility_1',
+      },
+      select: {
+        id: true,
+      },
+    });
     expect(facilityDeleteMock).not.toHaveBeenCalled();
   });
 });

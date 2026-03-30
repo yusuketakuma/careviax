@@ -5,6 +5,10 @@ import { success, validationError, notFound } from '@/lib/api/response';
 import { updatePrescriptionIntakeSchema } from '@/lib/validations/prescription';
 import { prisma } from '@/lib/db/client';
 import { resolveOperationalTasks } from '@/server/services/operational-tasks';
+import {
+  PrescriberInstitutionReferenceValidationError,
+  resolvePrescriberInstitutionFields,
+} from '@/lib/prescriptions/prescriber-institutions';
 
 export async function GET(
   req: NextRequest,
@@ -24,6 +28,15 @@ export async function GET(
     include: {
       lines: {
         orderBy: { line_number: 'asc' },
+      },
+      prescriber_institution_ref: {
+        select: {
+          id: true,
+          name: true,
+          institution_code: true,
+          phone: true,
+          fax: true,
+        },
       },
       cycle: {
         select: {
@@ -80,6 +93,7 @@ export async function PATCH(
     split_dispense_total,
     split_dispense_current,
     split_next_dispense_date,
+    prescriber_institution_id,
     ...rest
   } = parsed.data;
 
@@ -109,11 +123,27 @@ export async function PATCH(
     }
   }
 
-  const intake = await withOrgContext(ctx.orgId, async (tx) => {
-    const updated = await tx.prescriptionIntake.update({
+  let intake;
+  try {
+    intake = await withOrgContext(ctx.orgId, async (tx) => {
+      const resolvedInstitution =
+        prescriber_institution_id !== undefined || rest.prescriber_institution !== undefined
+          ? await resolvePrescriberInstitutionFields(tx, ctx.orgId, {
+              prescriber_institution_id: prescriber_institution_id ?? null,
+              prescriber_institution: rest.prescriber_institution,
+            })
+          : null;
+
+      const updated = await tx.prescriptionIntake.update({
       where: { id },
       data: {
         ...rest,
+        ...(resolvedInstitution
+          ? {
+              prescriber_institution_id: resolvedInstitution.prescriber_institution_id,
+              prescriber_institution: resolvedInstitution.prescriber_institution,
+            }
+          : {}),
         ...(refill_next_dispense_date
           ? { refill_next_dispense_date: new Date(refill_next_dispense_date) }
           : {}),
@@ -144,8 +174,14 @@ export async function PATCH(
       });
     }
 
-    return updated;
-  });
+      return updated;
+    });
+  } catch (error) {
+    if (error instanceof PrescriberInstitutionReferenceValidationError) {
+      return validationError(error.message);
+    }
+    throw error;
+  }
 
   return success(intake);
 }

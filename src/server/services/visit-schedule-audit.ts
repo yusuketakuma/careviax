@@ -48,6 +48,7 @@ export async function createVisitScheduleContactLog(
     patientId: string;
     caseId: string;
     outcome: PatientContactStatus;
+    contactMethod?: string | null;
     contactName?: string | null;
     contactPhone?: string | null;
     note?: string | null;
@@ -64,6 +65,7 @@ export async function createVisitScheduleContactLog(
       patient_id: params.patientId,
       case_id: params.caseId,
       outcome: params.outcome,
+      contact_method: params.contactMethod ?? null,
       contact_name: params.contactName ?? null,
       contact_phone: params.contactPhone ?? null,
       note: params.note ?? null,

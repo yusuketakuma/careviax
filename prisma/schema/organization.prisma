@@ -62,6 +62,7 @@ model Organization {
   memberships           Membership[]
   facilities            Facility[]
   external_professionals ExternalProfessional[]
+  prescriber_institutions PrescriberInstitution[]
 
   @@index([name])
 }
@@ -289,23 +290,27 @@ model BusinessHoliday {
 // model PharmacyDrugStock は他ファイルで定義
 
 model Facility {
-  id            String          @id @default(cuid())
-  org_id        String
-  org           Organization    @relation(fields: [org_id], references: [id])
-  name          String
-  facility_type FacilityTypeEnum
-  address       String?
-  phone         String?
-  fax           String?
-  notes         String?
+  id                     String          @id @default(cuid())
+  org_id                 String
+  org                    Organization    @relation(fields: [org_id], references: [id])
+  name                   String
+  facility_type          FacilityTypeEnum
+  address                String?
+  phone                  String?
+  fax                    String?
+  acceptance_time_from   DateTime?       @db.Time()
+  acceptance_time_to     DateTime?       @db.Time()
+  regular_visit_weekdays Json?
+  notes                  String?
   /// 総戸数（マンション）またはユニット数（施設）。特例判定に使用
-  total_units   Int?
-  created_at    DateTime        @default(now())
-  updated_at    DateTime        @default(now()) @updatedAt
+  total_units            Int?
+  created_at             DateTime        @default(now())
+  updated_at             DateTime        @default(now()) @updatedAt
 
   contacts   FacilityContact[]
   units      FacilityUnit[]
   residences Residence[]
+  external_professionals ExternalProfessional[]
 
   @@unique([org_id, name])
   @@index([org_id])
@@ -336,40 +341,76 @@ model FacilityUnit {
 }
 
 model FacilityContact {
-  id          String   @id @default(cuid())
-  org_id      String
-  facility_id String
-  facility    Facility @relation(fields: [facility_id], references: [id], onDelete: Cascade)
-  name        String
-  role        String?
-  phone       String?
-  email       String?
-  fax         String?
-  is_primary  Boolean  @default(false)
-  notes       String?
-  created_at  DateTime @default(now())
-  updated_at  DateTime @default(now()) @updatedAt
+  id                     String               @id @default(cuid())
+  org_id                 String
+  facility_id            String
+  facility               Facility             @relation(fields: [facility_id], references: [id], onDelete: Cascade)
+  name                   String
+  role                   String?
+  phone                  String?
+  email                  String?
+  fax                    String?
+  preferred_contact_method CommunicationChannel?
+  preferred_contact_time String?
+  last_contacted_at      DateTime?
+  last_success_channel   CommunicationChannel?
+  is_primary             Boolean              @default(false)
+  notes                  String?
+  created_at             DateTime             @default(now())
+  updated_at             DateTime             @default(now()) @updatedAt
 
   @@index([org_id])
   @@index([facility_id])
 }
 
 model ExternalProfessional {
-  id                String             @id @default(cuid())
-  org_id            String
-  org               Organization       @relation(fields: [org_id], references: [id])
-  profession_type   ProfessionTypeEnum
-  name              String
-  organization_name String?
-  department        String?
-  phone             String?
-  email             String?
-  fax               String?
-  address           String?
-  notes             String?
-  created_at        DateTime           @default(now())
-  updated_at        DateTime           @default(now()) @updatedAt
+  id                       String               @id @default(cuid())
+  org_id                   String
+  org                      Organization         @relation(fields: [org_id], references: [id])
+  profession_type          ProfessionTypeEnum
+  name                     String
+  organization_name        String?
+  department               String?
+  facility_id              String?
+  facility                 Facility?            @relation(fields: [facility_id], references: [id])
+  phone                    String?
+  email                    String?
+  fax                      String?
+  preferred_contact_method CommunicationChannel?
+  preferred_contact_time   String?
+  last_contacted_at        DateTime?
+  last_success_channel     CommunicationChannel?
+  address                  String?
+  notes                    String?
+  created_at               DateTime             @default(now())
+  updated_at               DateTime             @default(now()) @updatedAt
+  care_team_links          CareTeamLink[]
 
   @@index([org_id])
   @@index([profession_type])
+  @@index([facility_id])
+}
+
+model PrescriberInstitution {
+  id                       String               @id @default(cuid())
+  org_id                   String
+  org                      Organization         @relation(fields: [org_id], references: [id])
+  name                     String
+  institution_code         String?
+  address                  String?
+  phone                    String?
+  fax                      String?
+  preferred_contact_method CommunicationChannel?
+  preferred_contact_time   String?
+  last_contacted_at        DateTime?
+  last_success_channel     CommunicationChannel?
+  notes                    String?
+  created_at               DateTime             @default(now())
+  updated_at               DateTime             @default(now()) @updatedAt
+
+  prescription_intakes PrescriptionIntake[]
+
+  @@unique([org_id, name])
+  @@index([org_id])
+  @@index([institution_code])
 }

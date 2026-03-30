@@ -81,7 +81,13 @@ type Proposal = {
     | 'superseded'
     | 'expired'
     | 'reschedule_pending';
-  patient_contact_status: 'pending' | 'attempted' | 'confirmed' | 'declined' | 'unreachable';
+  patient_contact_status:
+    | 'pending'
+    | 'attempted'
+    | 'confirmed'
+    | 'declined'
+    | 'change_requested'
+    | 'unreachable';
   assignment_mode: 'primary' | 'fallback';
   route_distance_score: number | null;
   proposal_reason: string;
@@ -524,6 +530,8 @@ export default function PerformancePage() {
                       ? '患者電話確認済み'
                       : proposal.patient_contact_status === 'declined'
                         ? '患者辞退'
+                        : proposal.patient_contact_status === 'change_requested'
+                          ? '変更希望'
                         : proposal.patient_contact_status === 'unreachable'
                           ? '不通'
                           : '確認待ち'}

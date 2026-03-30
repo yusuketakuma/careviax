@@ -13,6 +13,7 @@ import { formatVisitWorkflowGateIssues, type VisitWorkflowGateIssue } from '@/se
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const { searchParams } = new URL(req.url);
   const caseId = searchParams.get('case_id');
+  const patientId = searchParams.get('patient_id');
   const status = searchParams.get('status');
   const dateFrom = searchParams.get('date_from');
   const dateTo = searchParams.get('date_to');
@@ -30,6 +31,15 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     where: {
       org_id: req.orgId,
       ...(caseId ? { case_id: caseId } : {}),
+      ...(patientId
+        ? {
+            case_: {
+              is: {
+                patient_id: patientId,
+              },
+            },
+          }
+        : {}),
       ...(parsedStatus ? { proposal_status: parsedStatus } : {}),
       ...(dateFrom || dateTo
         ? {
@@ -58,6 +68,8 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
           id: true,
           name: true,
           address: true,
+          lat: true,
+          lng: true,
         },
       },
       finalized_schedule: {
@@ -134,6 +146,9 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
   const refResult = await validateOrgReferences(req.orgId, {
     case_id: parsed.data.case_id,
+    ...(parsed.data.preferred_pharmacist_id
+      ? { pharmacist_id: parsed.data.preferred_pharmacist_id }
+      : {}),
     ...(parsed.data.reschedule_source_schedule_id
       ? { schedule_id: parsed.data.reschedule_source_schedule_id }
       : {}),
@@ -149,8 +164,10 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       priority: parsed.data.priority,
       candidateCount: parsed.data.candidate_count,
       startDate: parsed.data.start_date ? new Date(parsed.data.start_date) : undefined,
+      lockedDate: parsed.data.locked_date ? new Date(parsed.data.locked_date) : undefined,
       preferredTimeFrom: parsed.data.preferred_time_from,
       preferredTimeTo: parsed.data.preferred_time_to,
+      preferredPharmacistId: parsed.data.preferred_pharmacist_id,
       rescheduleSourceScheduleId: parsed.data.reschedule_source_schedule_id,
     });
   } catch (error) {

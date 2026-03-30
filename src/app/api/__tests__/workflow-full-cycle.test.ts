@@ -944,7 +944,7 @@ describe('workflow full-cycle integration', () => {
     );
 
     expect(intakeResponse?.status).toBe(201);
-    expect(state.cycle.overall_status).toBe('intake_received');
+    expect(state.cycle.overall_status).toBe('dispensing');
     expect(state.intake?.lines[0]?.drug_name).toBe('アムロジピン錠5mg');
 
     const inquiryResponse = await updateInquiryRecord(

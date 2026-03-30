@@ -8,6 +8,7 @@ const {
   sendCareReportEmailMock,
   upsertBillingEvidenceForVisitMock,
   resolveOperationalTasksMock,
+  learnContactProfileFromCommunicationMock,
   communicationEventCreateMock,
   txMock,
 } = vi.hoisted(() => ({
@@ -17,6 +18,7 @@ const {
   sendCareReportEmailMock: vi.fn(),
   upsertBillingEvidenceForVisitMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
+  learnContactProfileFromCommunicationMock: vi.fn(),
   communicationEventCreateMock: vi.fn(),
   txMock: {
     deliveryRecord: {
@@ -26,8 +28,12 @@ const {
       update: vi.fn(),
       findMany: vi.fn(),
     },
+    conferenceNote: {
+      findFirst: vi.fn(),
+    },
     visitRecord: {
       findFirst: vi.fn(),
+      findMany: vi.fn(),
     },
     medicationCycle: {
       updateMany: vi.fn(),
@@ -66,6 +72,10 @@ vi.mock('@/server/services/operational-tasks', () => ({
   resolveOperationalTasks: resolveOperationalTasksMock,
 }));
 
+vi.mock('@/lib/contact-profiles', () => ({
+  learnContactProfileFromCommunication: learnContactProfileFromCommunicationMock,
+}));
+
 import { POST } from './route';
 
 function createRequest(body: unknown) {
@@ -93,6 +103,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       case_id: 'case_1',
       status: 'draft',
       visit_record_id: null,
+      content: {},
       report_type: 'physician_report',
       pdf_url: 'https://example.com/report.pdf',
     });
@@ -108,13 +119,16 @@ describe('/api/care-reports/[id]/send POST', () => {
       id: 'report_1',
       status: 'sent',
     });
+    txMock.conferenceNote.findFirst.mockResolvedValue(null);
     txMock.visitRecord.findFirst.mockResolvedValue(null);
+    txMock.visitRecord.findMany.mockResolvedValue([]);
     txMock.careReport.findMany.mockResolvedValue([]);
     txMock.medicationCycle.updateMany.mockResolvedValue({ count: 0 });
     txMock.communicationEvent.create = communicationEventCreateMock;
     communicationEventCreateMock.mockResolvedValue({ id: 'event_1' });
     upsertBillingEvidenceForVisitMock.mockResolvedValue(undefined);
     resolveOperationalTasksMock.mockResolvedValue(undefined);
+    learnContactProfileFromCommunicationMock.mockResolvedValue(undefined);
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
   });
 
@@ -172,6 +186,14 @@ describe('/api/care-reports/[id]/send POST', () => {
         }),
       })
     );
+    expect(learnContactProfileFromCommunicationMock).toHaveBeenCalledWith(txMock, {
+      orgId: 'org_1',
+      counterpartName: '山田 太郎',
+      counterpartContact: 'doctor@example.com',
+      channel: 'email',
+      occurredAt: expect.any(Date),
+      markSuccess: true,
+    });
   });
 
   it('marks the delivery as failed when SES send fails', async () => {
@@ -201,6 +223,14 @@ describe('/api/care-reports/[id]/send POST', () => {
       where: { id: 'report_1' },
       data: { status: 'failed' },
     });
+    expect(learnContactProfileFromCommunicationMock).toHaveBeenCalledWith(txMock, {
+      orgId: 'org_1',
+      counterpartName: '山田 太郎',
+      counterpartContact: 'doctor@example.com',
+      channel: 'email',
+      occurredAt: expect.any(Date),
+      markSuccess: false,
+    });
     expect(communicationEventCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -222,6 +252,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       case_id: 'case_1',
       status: 'failed',
       visit_record_id: null,
+      content: {},
       report_type: 'care_manager_report',
       pdf_url: 'https://example.com/report.pdf',
     });
@@ -255,6 +286,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       case_id: 'case_1',
       status: 'draft',
       visit_record_id: null,
+      content: {},
       report_type: 'facility_handoff',
       pdf_url: 'https://example.com/report.pdf',
     });
@@ -271,5 +303,75 @@ describe('/api/care-reports/[id]/send POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('refreshes billing evidence for same-month visits when sending a conference-generated report', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'draft',
+      visit_record_id: null,
+      content: {
+        conference_note_id: 'note_conf_1',
+      },
+      report_type: 'physician_report',
+      pdf_url: 'https://example.com/report.pdf',
+    });
+    txMock.conferenceNote.findFirst.mockResolvedValue({
+      case_id: 'case_1',
+      conference_date: new Date('2026-03-18T10:00:00.000Z'),
+    });
+    txMock.visitRecord.findMany.mockResolvedValue([
+      { id: 'visit_1' },
+      { id: 'visit_2' },
+    ]);
+
+    const response = await POST(
+      createRequest({
+        channel: 'fax',
+        recipient_name: '主治医',
+        recipient_contact: '03-1234-5678',
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) }
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(txMock.conferenceNote.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'note_conf_1',
+        org_id: 'org_1',
+      },
+      select: {
+        case_id: true,
+        conference_date: true,
+      },
+    });
+    expect(txMock.visitRecord.findMany).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        visit_date: {
+          gte: new Date('2026-02-28T15:00:00.000Z'),
+          lte: new Date('2026-03-31T14:59:59.999Z'),
+        },
+        schedule: {
+          case_id: 'case_1',
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+    expect(upsertBillingEvidenceForVisitMock).toHaveBeenCalledTimes(2);
+    expect(upsertBillingEvidenceForVisitMock).toHaveBeenNthCalledWith(1, txMock, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_1',
+    });
+    expect(upsertBillingEvidenceForVisitMock).toHaveBeenNthCalledWith(2, txMock, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_2',
+    });
   });
 });

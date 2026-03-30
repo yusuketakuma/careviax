@@ -111,6 +111,7 @@ model BillingEvidence {
   consent_ref                String?
   management_plan_ref        String?
   report_delivery_ref        String?
+  conference_note_ref        String?
   visit_record_ref           String?
   building_patient_count     Int?
   monthly_count_snapshot     Int?

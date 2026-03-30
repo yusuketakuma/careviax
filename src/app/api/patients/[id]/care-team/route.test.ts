@@ -10,6 +10,7 @@ const {
   deleteManyMock,
   createManyMock,
   findManyMock,
+  externalProfessionalFindManyMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
@@ -19,6 +20,7 @@ const {
   deleteManyMock: vi.fn(),
   createManyMock: vi.fn(),
   findManyMock: vi.fn(),
+  externalProfessionalFindManyMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -69,7 +71,14 @@ describe('/api/patients/[id]/care-team', () => {
         id: 'case_active',
         status: 'active',
         created_at: new Date('2026-03-01'),
-        care_team_links: [{ id: 'link_1', role: 'physician', name: '佐藤医師' }],
+        care_team_links: [
+          {
+            id: 'link_1',
+            external_professional_id: 'external_1',
+            role: 'physician',
+            name: '佐藤医師',
+          },
+        ],
       },
       {
         id: 'case_old',
@@ -80,8 +89,12 @@ describe('/api/patients/[id]/care-team', () => {
     ]);
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_active' });
     findManyMock.mockResolvedValue([{ id: 'link_1', role: 'physician', name: '佐藤医師' }]);
+    externalProfessionalFindManyMock.mockResolvedValue([{ id: 'external_1' }]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        externalProfessional: {
+          findMany: externalProfessionalFindManyMock,
+        },
         careTeamLink: {
           deleteMany: deleteManyMock,
           createMany: createManyMock,
@@ -121,6 +134,7 @@ describe('/api/patients/[id]/care-team', () => {
           case_id: 'case_active',
           links: [
             {
+              external_professional_id: 'external_1',
               role: 'nurse',
               name: '山田看護師',
               organization_name: '訪問看護ステーションA',
@@ -149,6 +163,7 @@ describe('/api/patients/[id]/care-team', () => {
         {
           org_id: 'corg1234567890123456789012',
           case_id: 'case_active',
+          external_professional_id: 'external_1',
           role: 'nurse',
           name: '山田看護師',
           organization_name: '訪問看護ステーションA',
@@ -161,6 +176,43 @@ describe('/api/patients/[id]/care-team', () => {
           notes: '月水金に訪問',
         },
       ],
+    });
+    expect(externalProfessionalFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'corg1234567890123456789012',
+        id: { in: ['external_1'] },
+      },
+      select: { id: true },
+    });
+  });
+
+  it('rejects external professionals outside the current org', async () => {
+    externalProfessionalFindManyMock.mockResolvedValue([]);
+
+    const response = await PUT(
+      createRequest(
+        'http://localhost/api/patients/patient_1/care-team',
+        {
+          case_id: 'case_active',
+          links: [
+            {
+              external_professional_id: 'external_other_org',
+              role: 'physician',
+              name: '他院医師',
+              is_primary: true,
+            },
+          ],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' }
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) }
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(createManyMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      message: '他組織の他職種はケアチームに登録できません',
     });
   });
 });

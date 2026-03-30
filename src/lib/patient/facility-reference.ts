@@ -28,3 +28,24 @@ export async function assertFacilityReference(
     throw new FacilityReferenceValidationError();
   }
 }
+
+export async function getFacilityVisitDefaults(
+  tx: Prisma.TransactionClient,
+  orgId: string,
+  facilityId: string | null | undefined
+) {
+  if (!facilityId) return null;
+
+  return tx.facility.findFirst({
+    where: {
+      id: facilityId,
+      org_id: orgId,
+    },
+    select: {
+      id: true,
+      acceptance_time_from: true,
+      acceptance_time_to: true,
+      regular_visit_weekdays: true,
+    },
+  });
+}

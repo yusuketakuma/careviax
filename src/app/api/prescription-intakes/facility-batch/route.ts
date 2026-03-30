@@ -7,6 +7,10 @@ import {
   collectDuplicatePrescriptionLines,
   collectStructuringBlockedLines,
 } from '../shared';
+import {
+  PrescriberInstitutionReferenceValidationError,
+  resolvePrescriberInstitutionFields,
+} from '@/lib/prescriptions/prescriber-institutions';
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
@@ -22,6 +26,7 @@ export const POST = withAuth(
       source_type,
       prescribed_date,
       prescriber_name,
+      prescriber_institution_id,
       prescriber_institution,
       original_document_url,
       entries,
@@ -42,8 +47,10 @@ export const POST = withAuth(
       });
     }
 
-    const result = await withOrgContext(req.orgId, async (tx) => {
-      const cases = await tx.careCase.findMany({
+    let result;
+    try {
+      result = await withOrgContext(req.orgId, async (tx) => {
+        const cases = await tx.careCase.findMany({
         where: {
           org_id: req.orgId,
           id: {
@@ -125,6 +132,11 @@ export const POST = withAuth(
         };
       }
 
+      const resolvedInstitution = await resolvePrescriberInstitutionFields(tx, req.orgId, {
+        prescriber_institution_id,
+        prescriber_institution,
+      });
+
       const createdEntries = [];
       for (const entry of entries) {
         const careCase = caseById.get(entry.case_id)!;
@@ -146,7 +158,8 @@ export const POST = withAuth(
             prescribed_date: prescribedDate,
             prescription_expiry_date: expiryDate,
             ...(prescriber_name ? { prescriber_name } : {}),
-            ...(prescriber_institution ? { prescriber_institution } : {}),
+            prescriber_institution_id: resolvedInstitution.prescriber_institution_id,
+            prescriber_institution: resolvedInstitution.prescriber_institution,
             ...(original_document_url ? { original_document_url } : {}),
             lines: {
               create: entry.lines.map((line) => ({
@@ -174,12 +187,18 @@ export const POST = withAuth(
         });
       }
 
-      return {
-        facility_label: Array.from(facilityLabels)[0] ?? null,
-        patient_count: createdEntries.length,
-        entries: createdEntries,
-      };
-    });
+        return {
+          facility_label: Array.from(facilityLabels)[0] ?? null,
+          patient_count: createdEntries.length,
+          entries: createdEntries,
+        };
+      });
+    } catch (error) {
+      if (error instanceof PrescriberInstitutionReferenceValidationError) {
+        return validationError(error.message);
+      }
+      throw error;
+    }
 
     if ('error' in result) {
       if (result.error === 'missing_case') {

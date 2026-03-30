@@ -6,34 +6,54 @@ const {
   withOrgContextMock,
   conferenceNoteFindManyMock,
   conferenceNoteCreateMock,
+  conferenceNoteUpdateMock,
   careCaseFindManyMock,
   // sync-related mocks
-  taskUpsertMock,
+  taskFindManyMock,
+  taskCreateManyMock,
   billingCandidateUpsertMock,
   visitScheduleProposalFindFirstMock,
   visitScheduleProposalCreateMock,
-  careReportFindFirstMock,
-  careReportCreateMock,
-  medicationIssueCreateMock,
+  visitScheduleProposalUpdateMock,
+  visitScheduleFindFirstMock,
+  careReportFindManyMock,
+  careReportCreateManyMock,
+  medicationIssueFindManyMock,
+  medicationIssueCreateManyMock,
   careCaseFindFirstMock,
+  residenceFindFirstMock,
+  facilityFindFirstMock,
+  patientSchedulePreferenceUpsertMock,
   consentRecordFindFirstMock,
   managementPlanFindFirstMock,
+  upsertOperationalTaskMock,
+  resolveOperationalTasksMock,
 } = vi.hoisted(() => ({
   withAuthMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   conferenceNoteFindManyMock: vi.fn(),
   conferenceNoteCreateMock: vi.fn(),
+  conferenceNoteUpdateMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
-  taskUpsertMock: vi.fn(),
+  taskFindManyMock: vi.fn(),
+  taskCreateManyMock: vi.fn(),
   billingCandidateUpsertMock: vi.fn(),
   visitScheduleProposalFindFirstMock: vi.fn(),
   visitScheduleProposalCreateMock: vi.fn(),
-  careReportFindFirstMock: vi.fn(),
-  careReportCreateMock: vi.fn(),
-  medicationIssueCreateMock: vi.fn(),
+  visitScheduleProposalUpdateMock: vi.fn(),
+  visitScheduleFindFirstMock: vi.fn(),
+  careReportFindManyMock: vi.fn(),
+  careReportCreateManyMock: vi.fn(),
+  medicationIssueFindManyMock: vi.fn(),
+  medicationIssueCreateManyMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
+  residenceFindFirstMock: vi.fn(),
+  facilityFindFirstMock: vi.fn(),
+  patientSchedulePreferenceUpsertMock: vi.fn(),
   consentRecordFindFirstMock: vi.fn(),
   managementPlanFindFirstMock: vi.fn(),
+  upsertOperationalTaskMock: vi.fn(),
+  resolveOperationalTasksMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
@@ -47,6 +67,11 @@ vi.mock('@/lib/auth/middleware', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/server/services/operational-tasks', () => ({
+  upsertOperationalTask: upsertOperationalTaskMock,
+  resolveOperationalTasks: resolveOperationalTasksMock,
 }));
 
 import { GET, POST } from './route';
@@ -78,13 +103,15 @@ function buildTxMock() {
     conferenceNote: {
       findMany: conferenceNoteFindManyMock,
       create: conferenceNoteCreateMock,
+      update: conferenceNoteUpdateMock,
     },
     careCase: {
       findMany: careCaseFindManyMock,
       findFirst: careCaseFindFirstMock,
     },
     task: {
-      upsert: taskUpsertMock,
+      findMany: taskFindManyMock,
+      createMany: taskCreateManyMock,
     },
     billingCandidate: {
       upsert: billingCandidateUpsertMock,
@@ -92,19 +119,33 @@ function buildTxMock() {
     visitScheduleProposal: {
       findFirst: visitScheduleProposalFindFirstMock,
       create: visitScheduleProposalCreateMock,
+      update: visitScheduleProposalUpdateMock,
+    },
+    visitSchedule: {
+      findFirst: visitScheduleFindFirstMock,
     },
     careReport: {
-      findFirst: careReportFindFirstMock,
-      create: careReportCreateMock,
+      findMany: careReportFindManyMock,
+      createMany: careReportCreateManyMock,
     },
     medicationIssue: {
-      create: medicationIssueCreateMock,
+      findMany: medicationIssueFindManyMock,
+      createMany: medicationIssueCreateManyMock,
     },
     consentRecord: {
       findFirst: consentRecordFindFirstMock,
     },
     managementPlan: {
       findFirst: managementPlanFindFirstMock,
+    },
+    residence: {
+      findFirst: residenceFindFirstMock,
+    },
+    facility: {
+      findFirst: facilityFindFirstMock,
+    },
+    patientSchedulePreference: {
+      upsert: patientSchedulePreferenceUpsertMock,
     },
   };
 }
@@ -122,15 +163,68 @@ describe('/api/conference-notes', () => {
       patient_id: 'patient_1',
       primary_pharmacist_id: 'pharm_1',
     });
-    taskUpsertMock.mockResolvedValue({ id: 'task_new' });
+    taskFindManyMock.mockResolvedValue([]);
+    taskCreateManyMock.mockResolvedValue({ count: 2 });
+    conferenceNoteUpdateMock.mockImplementation(async (args?: { where?: { id?: string }; data?: { metadata?: unknown } }) => ({
+      id: args?.where?.id ?? 'note_updated',
+      case_id: 'case_1',
+      note_type: 'pre_discharge',
+      title: '退院前カンファレンス',
+      content: '退院背景: 来週火曜に退院予定',
+      structured_content: null,
+      metadata: args?.data?.metadata ?? null,
+      participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
+      conference_date: new Date('2026-03-28T01:00:00.000Z'),
+      action_items: [],
+      created_at: new Date('2026-03-28T02:00:00.000Z'),
+      updated_at: new Date('2026-03-28T02:00:00.000Z'),
+    }));
     billingCandidateUpsertMock.mockResolvedValue({ id: 'billing_new' });
     visitScheduleProposalFindFirstMock.mockResolvedValue(null);
     visitScheduleProposalCreateMock.mockResolvedValue({ id: 'proposal_new' });
-    careReportFindFirstMock.mockResolvedValue(null);
-    careReportCreateMock.mockResolvedValue({ id: 'report_new' });
-    medicationIssueCreateMock.mockResolvedValue({ id: 'issue_new' });
+    visitScheduleProposalUpdateMock.mockResolvedValue({ id: 'proposal_existing' });
+    visitScheduleFindFirstMock.mockResolvedValue({
+      id: 'schedule_latest',
+      cycle_id: 'cycle_1',
+      site_id: 'site_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      scheduled_date: new Date('2026-03-25T00:00:00.000Z'),
+      time_window_start: new Date('1970-01-01T09:00:00.000Z'),
+      time_window_end: new Date('1970-01-01T10:00:00.000Z'),
+      medication_end_date: null,
+      visit_deadline_date: null,
+      route_order: 1,
+      recurrence_rule: 'FREQ=WEEKLY;INTERVAL=2;BYDAY=TU',
+    });
+    careReportFindManyMock.mockImplementation(
+      async (args?: {
+        where?: {
+          report_type?: { in?: string[] };
+          content?: { equals?: string };
+        };
+      }) => {
+        if (args?.where?.report_type?.in?.length) {
+          return [{ id: 'report_new', report_type: args.where.report_type.in[0] }];
+        }
+        return [];
+      }
+    );
+    careReportCreateManyMock.mockResolvedValue({ count: 1 });
+    medicationIssueFindManyMock.mockResolvedValue([]);
+    medicationIssueCreateManyMock.mockResolvedValue({ count: 2 });
+    residenceFindFirstMock.mockResolvedValue({
+      facility_id: 'facility_1',
+    });
+    facilityFindFirstMock.mockResolvedValue({
+      acceptance_time_from: new Date('1970-01-01T09:00:00.000Z'),
+      acceptance_time_to: new Date('1970-01-01T17:00:00.000Z'),
+    });
+    patientSchedulePreferenceUpsertMock.mockResolvedValue({ id: 'pref_1' });
     consentRecordFindFirstMock.mockResolvedValue({ id: 'consent_1' });
     managementPlanFindFirstMock.mockResolvedValue({ id: 'plan_1' });
+    upsertOperationalTaskMock.mockResolvedValue({});
+    resolveOperationalTasksMock.mockResolvedValue({ count: 0 });
   });
 
   // ─── GET ─────────────────────────────────────────────────────────────────
@@ -141,6 +235,8 @@ describe('/api/conference-notes', () => {
         id: 'note_1',
         org_id: 'org_1',
         case_id: 'case_1',
+        patient_id: null,
+        facility_id: null,
         note_type: 'pre_discharge',
         title: '退院前カンファ',
         content: '退院背景: 週内退院予定',
@@ -159,6 +255,11 @@ describe('/api/conference-notes', () => {
           },
         },
         participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
+        billing_eligible: true,
+        billing_code: 'B011-6',
+        follow_up_date: new Date('2026-04-05T00:00:00.000Z'),
+        follow_up_completed: false,
+        generated_report_id: 'report_generated_1',
         conference_date: new Date('2026-03-28T01:00:00.000Z'),
         action_items: [],
         created_at: new Date('2026-03-28T02:00:00.000Z'),
@@ -188,6 +289,8 @@ describe('/api/conference-notes', () => {
         expect.objectContaining({
           id: 'note_1',
           note_type: 'pre_discharge',
+          billing_code: 'B011-6',
+          generated_report_id: 'report_generated_1',
           structured_content: expect.objectContaining({
             template: 'pre_discharge',
           }),
@@ -197,6 +300,89 @@ describe('/api/conference-notes', () => {
               points: 600,
             }),
           }),
+        }),
+      ],
+    });
+  });
+
+  it('supports conference filters including conference_type and billing_eligible', async () => {
+    conferenceNoteFindManyMock.mockResolvedValue([
+      {
+        id: 'note_service_1',
+        org_id: 'org_1',
+        case_id: 'case_service_1',
+        patient_id: 'patient_1',
+        facility_id: 'facility_1',
+        note_type: 'service_manager',
+        title: '担当者会議',
+        content: '会議目的: 訪問頻度の見直し',
+        structured_content: null,
+        metadata: {
+          billing: {
+            link_status: 'candidate',
+            label: '服薬情報等提供料2 ハ',
+            points: 20,
+          },
+        },
+        participants: [{ name: '佐藤CM', role: 'care_manager' }],
+        billing_eligible: true,
+        billing_code: 'MED_INFO_PROVISION_2_HA',
+        follow_up_date: null,
+        follow_up_completed: false,
+        generated_report_id: null,
+        conference_date: new Date('2026-03-29T01:00:00.000Z'),
+        action_items: [],
+        created_at: new Date('2026-03-29T02:00:00.000Z'),
+        updated_at: new Date('2026-03-29T02:00:00.000Z'),
+      },
+    ]);
+    careCaseFindManyMock
+      .mockResolvedValueOnce([{ id: 'case_service_1' }])
+      .mockResolvedValueOnce([
+        {
+          id: 'case_service_1',
+          patient_id: 'patient_1',
+          patient: {
+            name: '山田 太郎',
+            residences: [{ facility_id: 'facility_1' }],
+          },
+        },
+      ]);
+
+    const response = await GET(
+      createRequest({
+        url: 'http://localhost/api/conference-notes?conference_type=service_manager&facility_id=facility_1&billing_eligible=true',
+      })
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(conferenceNoteFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          note_type: 'service_manager',
+          AND: expect.arrayContaining([
+            expect.objectContaining({
+              OR: expect.arrayContaining([
+                { facility_id: 'facility_1' },
+                {
+                  case_id: { in: ['case_service_1'] },
+                },
+              ]),
+            }),
+          ]),
+        }),
+      })
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        expect.objectContaining({
+          id: 'note_service_1',
+          conference_type: 'service_manager',
+          billing_eligible: true,
+          billing_code: 'MED_INFO_PROVISION_2_HA',
+          facility_id: 'facility_1',
+          facility_ids: ['facility_1'],
         }),
       ],
     });
@@ -220,6 +406,8 @@ describe('/api/conference-notes', () => {
         method: 'POST',
         body: {
           note_type: 'pre_discharge',
+          patient_id: 'patient_1',
+          facility_id: 'facility_1',
           title: '退院前カンファ',
           structured_content: {
             sections: [
@@ -235,7 +423,17 @@ describe('/api/conference-notes', () => {
               },
             ],
           },
-          participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
+          participants: [
+            {
+              name: '鈴木薬剤師',
+              role: '薬剤師',
+              external_professional_id: 'external_1',
+            },
+          ],
+          billing_eligible: true,
+          billing_code: 'B011-6',
+          follow_up_date: '2026-04-05T00:00:00.000Z',
+          follow_up_completed: false,
           conference_date: '2026-03-28T01:00:00.000Z',
         },
       })
@@ -246,6 +444,8 @@ describe('/api/conference-notes', () => {
     expect(conferenceNoteCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
+        patient_id: 'patient_1',
+        facility_id: 'facility_1',
         note_type: 'pre_discharge',
         title: '退院前カンファ',
         content:
@@ -267,8 +467,59 @@ describe('/api/conference-notes', () => {
             points: 600,
           }),
         }),
+        participants: [
+          expect.objectContaining({
+            name: '鈴木薬剤師',
+            external_professional_id: 'external_1',
+          }),
+        ],
+        billing_eligible: true,
+        billing_code: 'B011-6',
+        follow_up_date: new Date('2026-04-05T00:00:00.000Z'),
+        follow_up_completed: false,
       }),
     });
+  });
+
+  it('rejects conference note creation when conference type is omitted', async () => {
+    const response = await POST(
+      createRequest({
+        method: 'POST',
+        body: {
+          title: '会議種別なし',
+          content: '内容だけ入力',
+          participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
+          conference_date: '2026-03-28T01:00:00.000Z',
+        },
+      })
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(conferenceNoteCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects service_manager notes without the required structured sections', async () => {
+    const response = await POST(
+      createRequest({
+        method: 'POST',
+        body: {
+          conference_type: 'service_manager',
+          title: '担当者会議',
+          structured_content: {
+            sections: [
+              { key: 'service_adjustments', label: 'サービス調整', body: '訪問頻度の見直し' },
+            ],
+          },
+          participants: [{ name: '佐藤CM', role: 'care_manager', attended: true }],
+          conference_date: '2026-03-28T01:00:00.000Z',
+        },
+      })
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(conferenceNoteCreateMock).not.toHaveBeenCalled();
   });
 
   // ─── Sync: pre_discharge ─────────────────────────────────────────────────
@@ -281,6 +532,12 @@ describe('/api/conference-notes', () => {
       structured_content: {
         sections: [
           { key: 'discharge_background', label: '退院背景', body: '来週火曜に退院予定' },
+          { key: 'target_discharge_date', label: '退院予定日', body: '2026-03-30' },
+          {
+            key: 'medication_changes_on_discharge',
+            label: '退院時薬剤変更',
+            body: '退院後は夕食後へ変更\n頓服の使用方法を再説明',
+          },
           { key: 'next_visit_plan', label: '次回訪問計画', body: '退院翌週に初回訪問予定' },
           { key: 'team_roles', label: '役割分担', body: '薬局担当: 服薬確認' },
         ],
@@ -305,6 +562,12 @@ describe('/api/conference-notes', () => {
           template: 'pre_discharge',
           sections: [
             { key: 'discharge_background', label: '退院背景', body: '来週火曜に退院予定' },
+            { key: 'target_discharge_date', label: '退院予定日', body: '2026-03-30' },
+            {
+              key: 'medication_changes_on_discharge',
+              label: '退院時薬剤変更',
+              body: '退院後は夕食後へ変更\n頓服の使用方法を再説明',
+            },
             { key: 'next_visit_plan', label: '次回訪問計画', body: '退院翌週に初回訪問予定' },
           ],
         },
@@ -324,34 +587,21 @@ describe('/api/conference-notes', () => {
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(201);
 
-      // Two action items → two task upsert calls
-      expect(taskUpsertMock).toHaveBeenCalledTimes(2);
-      expect(taskUpsertMock).toHaveBeenCalledWith(
+      expect(taskFindManyMock).toHaveBeenCalledTimes(1);
+      expect(taskCreateManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: {
-            org_id_dedupe_key: {
+          data: expect.arrayContaining([
+            expect.objectContaining({
               org_id: 'org_1',
+              task_type: 'conference_action_item',
+              title: '服薬管理計画書を作成する',
               dedupe_key: 'conference-action-item:note_pre1:0',
-            },
-          },
-          create: expect.objectContaining({
-            org_id: 'org_1',
-            task_type: 'conference_action_item',
-            title: '服薬管理計画書を作成する',
-          }),
-        })
-      );
-      expect(taskUpsertMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: {
-            org_id_dedupe_key: {
-              org_id: 'org_1',
+            }),
+            expect.objectContaining({
+              title: 'かかりつけ医に連絡する',
               dedupe_key: 'conference-action-item:note_pre1:1',
-            },
-          },
-          create: expect.objectContaining({
-            title: 'かかりつけ医に連絡する',
-          }),
+            }),
+          ]),
         })
       );
     });
@@ -370,7 +620,8 @@ describe('/api/conference-notes', () => {
           where: {
             org_id_dedupe_key: {
               org_id: 'org_1',
-              dedupe_key: 'conference-billing:note_pre1',
+              dedupe_key:
+                'conference-billing:org_1:patient_1:B011-6:2026-02-28:note_pre1',
             },
           },
           create: expect.objectContaining({
@@ -403,10 +654,18 @@ describe('/api/conference-notes', () => {
             priority: 'normal',
             proposal_status: 'proposed',
             proposed_pharmacist_id: 'pharm_1',
+            proposed_date: expect.any(Date),
             proposal_reason: 'conference-visit-proposal:note_pre1',
           }),
         })
       );
+      expect(
+        (
+          visitScheduleProposalCreateMock.mock.calls[0]?.[0] as {
+            data?: { proposed_date?: Date };
+          }
+        ).data?.proposed_date?.toISOString().slice(0, 10)
+      ).toBe('2026-04-02');
     });
 
     it('does NOT create VisitScheduleProposal when next_visit_plan section is absent', async () => {
@@ -458,23 +717,69 @@ describe('/api/conference-notes', () => {
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(201);
 
-      expect(careReportCreateMock).toHaveBeenCalledTimes(1);
-      expect(careReportCreateMock).toHaveBeenCalledWith(
+      expect(careReportCreateManyMock).toHaveBeenCalledTimes(1);
+      expect(careReportCreateManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
-            org_id: 'org_1',
-            patient_id: 'patient_1',
-            case_id: 'case_1',
-            report_type: 'physician_report',
-            status: 'draft',
-            created_by: 'user_1',
-            content: expect.objectContaining({
-              conference_note_id: 'note_pre1',
-              note_type: 'pre_discharge',
+          data: expect.arrayContaining([
+            expect.objectContaining({
+              org_id: 'org_1',
+              patient_id: 'patient_1',
+              case_id: 'case_1',
+              report_type: 'physician_report',
+              status: 'draft',
+              created_by: 'user_1',
+              content: expect.objectContaining({
+                conference_note_id: 'note_pre1',
+                note_type: 'pre_discharge',
+              }),
             }),
-          }),
+          ]),
         })
       );
+    });
+
+    it('creates discharge medication issues and a management plan review task on POST pre_discharge', async () => {
+      const response = await POST(
+        createRequest({ method: 'POST', body: preDischargeSectionsBody })
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(201);
+      expect(medicationIssueCreateManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.arrayContaining([
+            expect.objectContaining({
+              title: '退院後は夕食後へ変更',
+            }),
+            expect.objectContaining({
+              title: '頓服の使用方法を再説明',
+            }),
+          ]),
+        })
+      );
+      expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          orgId: 'org_1',
+          taskType: 'management_plan_review',
+          dedupeKey: 'conference-management-plan-review:note_pre1',
+        })
+      );
+      expect(patientSchedulePreferenceUpsertMock).toHaveBeenCalledWith({
+        where: {
+          patient_id: 'patient_1',
+        },
+        create: {
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          facility_time_from: new Date('1970-01-01T09:00:00.000Z'),
+          facility_time_to: new Date('1970-01-01T17:00:00.000Z'),
+        },
+        update: {
+          facility_time_from: new Date('1970-01-01T09:00:00.000Z'),
+          facility_time_to: new Date('1970-01-01T17:00:00.000Z'),
+        },
+      });
     });
 
     it('exposes sync result in the response body', async () => {
@@ -488,10 +793,145 @@ describe('/api/conference-notes', () => {
 
       expect(body).toHaveProperty('sync');
       expect(body.sync).toMatchObject({
-        tasks_created: 2,
+        tasks_created: 3,
         billing_candidate_id: 'billing_new',
         visit_proposal_id: 'proposal_new',
         report_draft_ids: ['report_new'],
+      });
+      expect(conferenceNoteUpdateMock).toHaveBeenCalledWith({
+        where: { id: 'note_pre1' },
+        data: {
+          metadata: expect.objectContaining({
+            sync_summary: expect.objectContaining({
+              tasks_created: 3,
+              billing_candidate_id: 'billing_new',
+              visit_proposal_id: 'proposal_new',
+              report_draft_ids: ['report_new'],
+            }),
+          }),
+        },
+      });
+    });
+  });
+
+  describe('POST service_manager — sync side-effects', () => {
+    beforeEach(() => {
+      conferenceNoteCreateMock.mockResolvedValue({
+        id: 'note_service_1',
+        case_id: 'case_1',
+        note_type: 'service_manager',
+        title: '担当者会議',
+        conference_date: new Date('2026-03-28T01:00:00.000Z'),
+        participants: [{ name: '佐藤CM', role: 'care_manager', attended: true }],
+        structured_content: {
+          template: 'service_manager',
+          sections: [
+            { key: 'meeting_purpose', label: '会議目的', body: '訪問頻度の見直し' },
+            {
+              key: 'service_adjustments',
+              label: 'サービス調整',
+              body: '訪問薬剤管理 月2回→月4回',
+            },
+            {
+              key: 'medication_related_items',
+              label: '服薬関連項目',
+              body: '飲み忘れが増えている\n一包化の再調整が必要',
+            },
+            {
+              key: 'agreed_actions',
+              label: '合意アクション',
+              body: '訪問回数変更を反映\n家族へ説明する',
+            },
+            { key: 'next_meeting_date', label: '次回会議日', body: '2026-04-15' },
+          ],
+        },
+        metadata: null,
+        action_items: null,
+      });
+    });
+
+    it('creates BillingCandidate and CareReport draft for service_manager conferences', async () => {
+      const response = await POST(
+        createRequest({
+          method: 'POST',
+          body: {
+            conference_type: 'service_manager',
+            case_id: 'case_1',
+            title: '担当者会議',
+            structured_content: {
+              sections: [
+                { key: 'meeting_purpose', label: '会議目的', body: '訪問頻度の見直し' },
+                {
+                  key: 'service_adjustments',
+                  label: 'サービス調整',
+                  body: '訪問薬剤管理 月2回→月4回',
+                },
+                {
+                  key: 'medication_related_items',
+                  label: '服薬関連項目',
+                  body: '飲み忘れが増えている\n一包化の再調整が必要',
+                },
+                {
+                  key: 'agreed_actions',
+                  label: '合意アクション',
+                  body: '訪問回数変更を反映\n家族へ説明する',
+                },
+                { key: 'next_meeting_date', label: '次回会議日', body: '2026-04-15' },
+              ],
+            },
+            participants: [{ name: '佐藤CM', role: 'care_manager', attended: true }],
+            conference_date: '2026-03-28T01:00:00.000Z',
+          },
+        })
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(201);
+      expect(billingCandidateUpsertMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            billing_code: 'MED_INFO_PROVISION_2_HA',
+            billing_name: '服薬情報等提供料2 ハ',
+            points: 20,
+          }),
+        })
+      );
+      expect(careReportCreateManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.arrayContaining([
+            expect.objectContaining({
+              report_type: 'care_manager_report',
+            }),
+          ]),
+        })
+      );
+      expect(medicationIssueCreateManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.arrayContaining([
+            expect.objectContaining({ title: '飲み忘れが増えている' }),
+            expect.objectContaining({ title: '一包化の再調整が必要' }),
+          ]),
+        })
+      );
+      expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          taskType: 'conference_action_item',
+          title: '担当者会議アクション: 訪問回数変更を反映',
+        })
+      );
+      expect(visitScheduleProposalCreateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            proposal_reason: 'conference-recurrence-proposal:note_service_1',
+            suggested_recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+          }),
+        })
+      );
+      await expect(response.json()).resolves.toMatchObject({
+        sync: expect.objectContaining({
+          visit_proposal_id: 'proposal_new',
+        }),
       });
     });
   });
@@ -514,6 +954,16 @@ describe('/api/conference-notes', () => {
               key: 'billing_confirmation',
               label: '請求根拠確認',
               body: 'ターミナルケア管理料算定要件を確認。在宅での最期を患者・家族が希望し、薬剤師が継続支援した記録あり。',
+            },
+            {
+              key: 'improvement_actions',
+              label: '改善アクション',
+              body: '看取り後説明フローを見直す\n関係者連絡テンプレートを更新する',
+            },
+            {
+              key: 'quality_indicators',
+              label: '品質指標',
+              body: '看取り後カンファ実施',
             },
           ],
         },
@@ -554,7 +1004,8 @@ describe('/api/conference-notes', () => {
           where: {
             org_id_dedupe_key: {
               org_id: 'org_1',
-              dedupe_key: 'conference-billing:note_death1',
+              dedupe_key:
+                'conference-billing:org_1:patient_1:C013:2026-02-28:note_death1',
             },
           },
           create: expect.objectContaining({
@@ -595,19 +1046,21 @@ describe('/api/conference-notes', () => {
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(201);
 
-      expect(careReportCreateMock).toHaveBeenCalledTimes(1);
-      expect(careReportCreateMock).toHaveBeenCalledWith(
+      expect(careReportCreateManyMock).toHaveBeenCalledTimes(1);
+      expect(careReportCreateManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
-            org_id: 'org_1',
-            patient_id: 'patient_1',
-            report_type: 'internal_record',
-            status: 'draft',
-            content: expect.objectContaining({
-              conference_note_id: 'note_death1',
-              note_type: 'death_conference',
+          data: expect.arrayContaining([
+            expect.objectContaining({
+              org_id: 'org_1',
+              patient_id: 'patient_1',
+              report_type: 'internal_record',
+              status: 'draft',
+              content: expect.objectContaining({
+                conference_note_id: 'note_death1',
+                note_type: 'death_conference',
+              }),
             }),
-          }),
+          ]),
         })
       );
     });
@@ -634,6 +1087,53 @@ describe('/api/conference-notes', () => {
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(201);
       expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    });
+
+    it('creates case review and improvement tasks for death_conference', async () => {
+      const response = await POST(
+        createRequest({
+          method: 'POST',
+          body: {
+            note_type: 'death_conference',
+            case_id: 'case_1',
+            title: 'デスカンファレンス',
+            structured_content: {
+              sections: [
+                { key: 'billing_confirmation', label: '請求根拠確認', body: '算定要件確認済み' },
+                {
+                  key: 'improvement_actions',
+                  label: '改善アクション',
+                  body: '看取り後説明フローを見直す\n関係者連絡テンプレートを更新する',
+                },
+                {
+                  key: 'quality_indicators',
+                  label: '品質指標',
+                  body: '看取り後カンファ実施',
+                },
+              ],
+            },
+            participants: [],
+            conference_date: '2026-03-25T01:00:00.000Z',
+          },
+        })
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(201);
+      expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          taskType: 'conference_case_status_review',
+          dedupeKey: 'conference-case-termination:note_death1',
+        })
+      );
+      expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          taskType: 'conference_quality_improvement',
+          title: '改善アクション: 看取り後説明フローを見直す',
+        })
+      );
     });
   });
 
@@ -689,26 +1189,23 @@ describe('/api/conference-notes', () => {
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(201);
 
-      // Two issue titles from the newline-separated body
-      expect(medicationIssueCreateMock).toHaveBeenCalledTimes(2);
-      expect(medicationIssueCreateMock).toHaveBeenCalledWith(
+      expect(medicationIssueCreateManyMock).toHaveBeenCalledTimes(1);
+      expect(medicationIssueCreateManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
-            org_id: 'org_1',
-            patient_id: 'patient_1',
-            case_id: 'case_1',
-            title: 'アドヒアランス低下を確認',
-            status: 'open',
-            priority: 'medium',
-            identified_by: 'user_1',
-          }),
-        })
-      );
-      expect(medicationIssueCreateMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            title: 'ポリファーマシー対応が必要',
-          }),
+          data: expect.arrayContaining([
+            expect.objectContaining({
+              org_id: 'org_1',
+              patient_id: 'patient_1',
+              case_id: 'case_1',
+              title: 'アドヒアランス低下を確認',
+              status: 'open',
+              priority: 'medium',
+              identified_by: 'user_1',
+            }),
+            expect.objectContaining({
+              title: 'ポリファーマシー対応が必要',
+            }),
+          ]),
         })
       );
     });
@@ -739,17 +1236,19 @@ describe('/api/conference-notes', () => {
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(201);
 
-      expect(careReportCreateMock).toHaveBeenCalledTimes(1);
-      expect(careReportCreateMock).toHaveBeenCalledWith(
+      expect(careReportCreateManyMock).toHaveBeenCalledTimes(1);
+      expect(careReportCreateManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
-            report_type: 'internal_record',
-            status: 'draft',
-            content: expect.objectContaining({
-              conference_note_id: 'note_care1',
-              note_type: 'care_team',
+          data: expect.arrayContaining([
+            expect.objectContaining({
+              report_type: 'internal_record',
+              status: 'draft',
+              content: expect.objectContaining({
+                conference_note_id: 'note_care1',
+                note_type: 'care_team',
+              }),
             }),
-          }),
+          ]),
         })
       );
     });
@@ -764,7 +1263,7 @@ describe('/api/conference-notes', () => {
         participants: [],
         structured_content: {
           template: 'care_team',
-          sections: [{ key: 'discussion', label: '討議', body: '情報共有のみ' }],
+          sections: [{ key: 'discussion_summary', label: '討議要約', body: '情報共有のみ' }],
         },
         metadata: null,
         action_items: null,
@@ -778,7 +1277,7 @@ describe('/api/conference-notes', () => {
             case_id: 'case_1',
             title: '薬剤師間カンファレンス（課題なし）',
             structured_content: {
-              sections: [{ key: 'discussion', label: '討議', body: '情報共有のみ' }],
+              sections: [{ key: 'discussion_summary', label: '討議要約', body: '情報共有のみ' }],
             },
             participants: [],
             conference_date: '2026-03-29T01:00:00.000Z',
@@ -788,7 +1287,7 @@ describe('/api/conference-notes', () => {
 
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(201);
-      expect(medicationIssueCreateMock).not.toHaveBeenCalled();
+      expect(medicationIssueCreateManyMock).not.toHaveBeenCalled();
     });
 
     it('does NOT create BillingCandidate for care_team note type', async () => {
@@ -829,6 +1328,7 @@ describe('/api/conference-notes', () => {
       structured_content: {
         template: 'pre_discharge',
         sections: [
+          { key: 'discharge_background', label: '退院背景', body: '退院調整済み' },
           { key: 'next_visit_plan', label: '次回訪問計画', body: '退院翌週に初回訪問' },
         ],
       },
@@ -848,6 +1348,7 @@ describe('/api/conference-notes', () => {
           title: '退院前カンファ（重複）',
           structured_content: {
             sections: [
+              { key: 'discharge_background', label: '退院背景', body: '退院調整済み' },
               { key: 'next_visit_plan', label: '次回訪問計画', body: '退院翌週に初回訪問' },
             ],
           },

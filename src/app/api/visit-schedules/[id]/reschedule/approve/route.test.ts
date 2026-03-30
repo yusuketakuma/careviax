@@ -6,6 +6,7 @@ const {
   visitScheduleOverrideFindFirstMock,
   visitScheduleOverrideUpdateMock,
   visitScheduleUpdateMock,
+  contactPartyFindManyMock,
   withOrgContextMock,
   dispatchNotificationEventMock,
   resolveOperationalTasksMock,
@@ -14,6 +15,7 @@ const {
   visitScheduleOverrideFindFirstMock: vi.fn(),
   visitScheduleOverrideUpdateMock: vi.fn(),
   visitScheduleUpdateMock: vi.fn(),
+  contactPartyFindManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
@@ -69,6 +71,7 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
     visitScheduleOverrideUpdateMock.mockResolvedValue({
       id: 'override_1',
     });
+    contactPartyFindManyMock.mockResolvedValue([]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitScheduleOverride: {
@@ -76,6 +79,9 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
         },
         visitSchedule: {
           update: visitScheduleUpdateMock,
+        },
+        contactParty: {
+          findMany: contactPartyFindManyMock,
         },
       }),
     );
@@ -108,5 +114,24 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
     expect(visitScheduleUpdateMock).toHaveBeenCalled();
     expect(resolveOperationalTasksMock).toHaveBeenCalledTimes(2);
     expect(dispatchNotificationEventMock).toHaveBeenCalled();
+    expect(contactPartyFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        is_emergency_contact: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        relation: true,
+        phone: true,
+        email: true,
+        fax: true,
+        is_primary: true,
+        organization_name: true,
+        notes: true,
+      },
+      orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+    });
   });
 });

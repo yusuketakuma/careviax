@@ -52,6 +52,7 @@ type DeliveryRecord = {
 type CareReport = {
   id: string;
   patient_id: string;
+  case_id?: string | null;
   report_type: string;
   status: string;
   content: PhysicianReportContent | CareManagerReportContent;
@@ -60,12 +61,39 @@ type CareReport = {
   created_at: string;
   updated_at: string;
   delivery_records: DeliveryRecord[];
+  prescriber_institution_suggestion?: {
+    id: string;
+    name: string;
+    phone: string | null;
+    fax: string | null;
+    address: string | null;
+    recommended_channels: string[];
+    prescribed_date: string;
+    prescriber_name: string | null;
+  } | null;
 };
 
 type SendFormData = {
   channel: string;
   recipient_name: string;
   recipient_contact: string;
+};
+
+type ExternalProfessionalSuggestion = {
+  id: string;
+  name: string;
+  profession_type: string;
+  organization_name: string | null;
+  department: string | null;
+  phone: string | null;
+  email: string | null;
+  fax: string | null;
+  preferred_contact_method: string | null;
+  preferred_contact_time: string | null;
+  last_contacted_at: string | null;
+  last_success_channel: string | null;
+  recommended_channels: string[];
+  is_primary: boolean;
 };
 
 // --- Main ---
@@ -97,6 +125,24 @@ export default function ReportDetailPage() {
   });
 
   const report = data?.data;
+  const externalProfessionalSuggestionsQuery = useQuery({
+    queryKey: ['care-report-external-professionals', id, orgId, report?.patient_id, report?.case_id],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (report?.patient_id) {
+        params.set('patient_id', report.patient_id);
+      }
+      if (report?.case_id) {
+        params.set('case_id', report.case_id);
+      }
+      const res = await fetch(`/api/external-professionals/suggestions?${params.toString()}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('他職種候補の取得に失敗しました');
+      return res.json() as Promise<{ data: ExternalProfessionalSuggestion[] }>;
+    },
+    enabled: !!orgId && !!report?.patient_id,
+  });
 
   const sendMutation = useMutation({
     mutationFn: async (formData: SendFormData) => {
@@ -152,6 +198,55 @@ export default function ReportDetailPage() {
 
   const warnings =
     (report.content as { warnings?: string[] }).warnings ?? [];
+  const prescriberInstitutionSuggestion = report.prescriber_institution_suggestion;
+  const externalProfessionalSuggestions = externalProfessionalSuggestionsQuery.data?.data ?? [];
+
+  function applyInstitutionSuggestion() {
+    const suggestion = prescriberInstitutionSuggestion;
+    if (!suggestion) return;
+
+    const fallbackChannel =
+      suggestion.recommended_channels.find((channel) =>
+        channel === 'fax' ? Boolean(suggestion.fax) : channel === 'phone' ? Boolean(suggestion.phone) : false
+      ) ?? (suggestion.fax ? 'fax' : 'phone');
+    const fallbackContact = fallbackChannel === 'fax' ? suggestion.fax ?? '' : suggestion.phone ?? '';
+    setSendForm({
+      channel: fallbackChannel,
+      recipient_name: suggestion.prescriber_name ?? suggestion.name,
+      recipient_contact: fallbackContact,
+    });
+  }
+
+  function applyExternalProfessionalSuggestion(suggestion: ExternalProfessionalSuggestion) {
+    const fallbackChannel =
+      suggestion.recommended_channels.find((channel) =>
+        channel === 'email' || channel === 'ses'
+          ? Boolean(suggestion.email)
+          : channel === 'fax'
+            ? Boolean(suggestion.fax)
+            : channel === 'phone'
+              ? Boolean(suggestion.phone)
+              : false
+      ) ??
+      suggestion.preferred_contact_method ??
+      (suggestion.email ? 'email' : suggestion.fax ? 'fax' : suggestion.phone ? 'phone' : 'email');
+    const fallbackContact =
+      (fallbackChannel === 'email' || fallbackChannel === 'ses'
+        ? suggestion.email
+        : fallbackChannel === 'fax'
+          ? suggestion.fax
+          : suggestion.phone) ??
+      suggestion.email ??
+      suggestion.fax ??
+      suggestion.phone ??
+      '';
+
+    setSendForm({
+      channel: fallbackChannel,
+      recipient_name: suggestion.name,
+      recipient_contact: fallbackContact,
+    });
+  }
 
   return (
     <div className="p-4 md:p-6">
@@ -203,7 +298,15 @@ export default function ReportDetailPage() {
               印刷ビュー
             </Button>
           </Link>
-          <Button size="sm" onClick={() => setSendDialogOpen(true)}>
+          <Button
+            size="sm"
+            onClick={() => {
+              if (prescriberInstitutionSuggestion) {
+                applyInstitutionSuggestion();
+              }
+              setSendDialogOpen(true);
+            }}
+          >
             <Send className="mr-1.5 size-3.5" aria-hidden="true" />
             送付
           </Button>
@@ -350,6 +453,53 @@ export default function ReportDetailPage() {
           </DialogHeader>
 
           <div className="space-y-4 py-2">
+            {prescriberInstitutionSuggestion ? (
+              <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-3 text-sm">
+                <p className="font-medium text-sky-900">
+                  処方元医療機関候補: {prescriberInstitutionSuggestion.name}
+                </p>
+                <p className="mt-1 text-xs text-sky-800">
+                  最新処方日 {format(new Date(prescriberInstitutionSuggestion.prescribed_date), 'yyyy/MM/dd', { locale: ja })}
+                  {prescriberInstitutionSuggestion.fax
+                    ? ` / FAX ${prescriberInstitutionSuggestion.fax}`
+                    : prescriberInstitutionSuggestion.phone
+                      ? ` / TEL ${prescriberInstitutionSuggestion.phone}`
+                      : ''}
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={applyInstitutionSuggestion}
+                >
+                  候補を適用
+                </Button>
+              </div>
+            ) : null}
+
+            {externalProfessionalSuggestions.length > 0 ? (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-3 text-sm">
+                <p className="font-medium text-emerald-900">ケアチーム送付候補</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {externalProfessionalSuggestions.map((suggestion) => (
+                    <Button
+                      key={suggestion.id}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => applyExternalProfessionalSuggestion(suggestion)}
+                    >
+                      {suggestion.name}
+                    </Button>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-emerald-800">
+                  他職種マスターの希望チャネルに加えて、送達実績から学習した優先順で送付先を補完します。
+                </p>
+              </div>
+            ) : null}
+
             <div className="space-y-1.5">
               <Label htmlFor="send-channel">送付チャネル</Label>
               <Select

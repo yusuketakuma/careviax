@@ -1,15 +1,28 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { buildIntakeBadges, getHomeVisitIntake } from '@/lib/patient/intake-display';
+
+type FacilityOption = {
+  id: string;
+  name: string;
+  address: string | null;
+};
 
 type PatientMasterCardProps = {
   orgId: string;
@@ -28,6 +41,7 @@ type PatientMasterCardProps = {
       id: string;
       address: string;
       building_id: string | null;
+      facility_id?: string | null;
       unit_name: string | null;
       is_primary: boolean;
     }>;
@@ -45,6 +59,18 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
   const intakeCase = patient.cases?.find((c) => getHomeVisitIntake(c.required_visit_support)) ?? null;
   const intake = intakeCase ? getHomeVisitIntake(intakeCase.required_visit_support) : null;
   const intakeBadges = buildIntakeBadges(intake);
+  const facilitiesQuery = useQuery({
+    queryKey: ['patient-master-facilities', orgId],
+    queryFn: async () => {
+      const response = await fetch('/api/facilities', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!response.ok) throw new Error('施設マスターの取得に失敗しました');
+      return response.json() as Promise<{ data: FacilityOption[] }>;
+    },
+    enabled: !!orgId,
+  });
+
   const [form, setForm] = useState({
     name: patient.name,
     name_kana: patient.name_kana,
@@ -54,6 +80,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
     medical_insurance_number: patient.medical_insurance_number ?? '',
     care_insurance_number: patient.care_insurance_number ?? '',
     address: primaryResidence?.address ?? '',
+    facility_id: primaryResidence?.facility_id ?? '',
     building_id: primaryResidence?.building_id ?? '',
     unit_name: primaryResidence?.unit_name ?? '',
     allergy_info: patient.allergy_info?.join('\n') ?? '',
@@ -77,6 +104,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
           medical_insurance_number: form.medical_insurance_number || undefined,
           care_insurance_number: form.care_insurance_number || undefined,
           address: form.address || undefined,
+          facility_id: form.facility_id || undefined,
           building_id: form.building_id || undefined,
           unit_name: form.unit_name || undefined,
           allergy_info: form.allergy_info
@@ -166,6 +194,38 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
                 setForm((current) => ({ ...current, address: event.target.value }))
               }
             />
+          </Field>
+          <Field label="施設">
+            <Select
+              value={form.facility_id || 'home'}
+              onValueChange={(value) => {
+                if (!value || value === 'home') {
+                  setForm((current) => ({
+                    ...current,
+                    facility_id: '',
+                  }));
+                  return;
+                }
+                const selectedFacility = facilitiesQuery.data?.data.find((item) => item.id === value);
+                setForm((current) => ({
+                  ...current,
+                  facility_id: value,
+                  address: selectedFacility?.address ?? current.address,
+                }));
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="自宅または施設を選択" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="home">自宅・手入力</SelectItem>
+                {(facilitiesQuery.data?.data ?? []).map((facility) => (
+                  <SelectItem key={facility.id} value={facility.id}>
+                    {facility.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
           <Field label="建物ID">
             <Input

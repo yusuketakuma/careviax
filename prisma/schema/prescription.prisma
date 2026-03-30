@@ -74,6 +74,8 @@ model PrescriptionIntake {
   source_type               PrescriptionSourceType
   prescribed_date           DateTime
   prescriber_name           String?
+  prescriber_institution_id String?
+  prescriber_institution_ref PrescriberInstitution? @relation(fields: [prescriber_institution_id], references: [id])
   prescriber_institution    String?
   original_document_url     String? // S3
   original_collected_at     DateTime?
@@ -91,6 +93,7 @@ model PrescriptionIntake {
 
   @@index([org_id])
   @@index([cycle_id])
+  @@index([prescriber_institution_id])
 }
 
 model PrescriptionLine {

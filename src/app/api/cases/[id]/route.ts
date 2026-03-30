@@ -86,15 +86,18 @@ export async function PATCH(
   });
   if (!existing) return notFound('ケースが見つかりません');
 
+  const {
+    start_date,
+    end_date,
+    required_visit_support,
+    primary_pharmacist_id,
+    backup_pharmacist_id,
+    ...rest
+  } = parsed.data;
   const normalizedPrimaryPharmacistId =
-    parsed.data.primary_pharmacist_id === ''
-      ? null
-      : parsed.data.primary_pharmacist_id;
+    primary_pharmacist_id === '' ? null : primary_pharmacist_id;
   const normalizedBackupPharmacistId =
-    parsed.data.backup_pharmacist_id === ''
-      ? null
-      : parsed.data.backup_pharmacist_id;
-  const { start_date, end_date, required_visit_support, ...rest } = parsed.data;
+    backup_pharmacist_id === '' ? null : backup_pharmacist_id;
 
   const refResult = await validateOrgReferences(ctx.orgId, {
     ...(normalizedPrimaryPharmacistId

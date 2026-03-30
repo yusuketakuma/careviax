@@ -5,6 +5,10 @@ import { success, validationError, notFound } from '@/lib/api/response';
 import { updatePatientSchema } from '@/lib/validations/patient';
 import { prisma } from '@/lib/db/client';
 import type { Prisma } from '@prisma/client';
+import {
+  assertFacilityReference,
+  getFacilityVisitDefaults,
+} from '@/lib/patient/facility-reference';
 import { listCommunicationQueue } from '@/server/services/communication-queue';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
 import { getPatientHomeCareFeatureSummary } from '@/server/services/home-care-ops';
@@ -439,7 +443,7 @@ export async function GET(
       occurred_at: item.occurred_at,
       title: item.subject || item.event_type,
       summary: `${item.direction} / ${item.channel}${item.counterpart_name ? ` / ${item.counterpart_name}` : ''}`,
-      href: '/conferences',
+      href: `/conferences?patient_id=${id}`,
     })),
     ...selfReports.map((item) => ({
       id: `self_report:${item.id}`,
@@ -554,9 +558,28 @@ export async function PATCH(
   });
   if (!existing) return notFound('患者が見つかりません');
 
-  const { address, birth_date, building_id, unit_name, contacts, conditions, ...rest } = parsed.data;
+  const {
+    address,
+    birth_date,
+    building_id,
+    facility_id,
+    facility_unit_id,
+    unit_name,
+    contacts,
+    conditions,
+    ...rest
+  } = parsed.data;
 
   const patient = await withOrgContext(ctx.orgId, async (tx) => {
+    const facilityVisitDefaults =
+      facility_id !== undefined
+        ? await getFacilityVisitDefaults(tx, ctx.orgId, facility_id || null)
+        : null;
+
+    if (facility_id !== undefined) {
+      await assertFacilityReference(tx, ctx.orgId, facility_id || null);
+    }
+
     const updated = await tx.patient.update({
       where: { id },
       data: {
@@ -565,7 +588,13 @@ export async function PATCH(
       },
     });
 
-    if (address !== undefined || building_id !== undefined || unit_name !== undefined) {
+    if (
+      address !== undefined ||
+      building_id !== undefined ||
+      facility_id !== undefined ||
+      facility_unit_id !== undefined ||
+      unit_name !== undefined
+    ) {
       const primary = await tx.residence.findFirst({
         where: { patient_id: id, is_primary: true },
       });
@@ -575,6 +604,8 @@ export async function PATCH(
           data: {
             ...(address !== undefined ? { address } : {}),
             ...(building_id !== undefined ? { building_id: building_id || null } : {}),
+            ...(facility_id !== undefined ? { facility_id: facility_id || null } : {}),
+            ...(facility_unit_id !== undefined ? { facility_unit_id: facility_unit_id || null } : {}),
             ...(unit_name !== undefined ? { unit_name: unit_name || null } : {}),
           },
         });
@@ -585,6 +616,8 @@ export async function PATCH(
             patient_id: id,
             address: address ?? '',
             building_id: building_id || null,
+            facility_id: facility_id || null,
+            facility_unit_id: facility_unit_id || null,
             unit_name: unit_name || null,
             is_primary: true,
           },
@@ -633,6 +666,40 @@ export async function PATCH(
             noted_at: condition.noted_at ? new Date(condition.noted_at) : null,
             notes: condition.notes || null,
           })),
+        });
+      }
+    }
+
+    if (facility_id !== undefined) {
+      if (
+        facilityVisitDefaults?.acceptance_time_from ||
+        facilityVisitDefaults?.acceptance_time_to
+      ) {
+        await tx.patientSchedulePreference.upsert({
+          where: {
+            patient_id: id,
+          },
+          create: {
+            org_id: ctx.orgId,
+            patient_id: id,
+            facility_time_from: facilityVisitDefaults.acceptance_time_from,
+            facility_time_to: facilityVisitDefaults.acceptance_time_to,
+          },
+          update: {
+            facility_time_from: facilityVisitDefaults.acceptance_time_from,
+            facility_time_to: facilityVisitDefaults.acceptance_time_to,
+          },
+        });
+      } else {
+        await tx.patientSchedulePreference.updateMany({
+          where: {
+            org_id: ctx.orgId,
+            patient_id: id,
+          },
+          data: {
+            facility_time_from: null,
+            facility_time_to: null,
+          },
         });
       }
     }

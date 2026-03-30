@@ -19,6 +19,7 @@ export const patientContactStatusValues = [
   'attempted',
   'confirmed',
   'declined',
+  'change_requested',
   'unreachable',
 ] as const;
 
@@ -30,9 +31,14 @@ export const generateVisitScheduleProposalSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
     .optional(),
+  locked_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
+    .optional(),
   candidate_count: z.number().int().min(1).max(5).default(3),
   preferred_time_from: z.string().optional(),
   preferred_time_to: z.string().optional(),
+  preferred_pharmacist_id: z.string().optional(),
   reschedule_source_schedule_id: z.string().optional(),
 });
 
@@ -48,7 +54,8 @@ export const updateVisitScheduleProposalSchema = z.discriminatedUnion('action', 
   }),
   z.object({
     action: z.literal('contact_attempt'),
-    outcome: z.enum(['attempted', 'unreachable', 'declined', 'confirmed']),
+    outcome: z.enum(['attempted', 'unreachable', 'declined', 'change_requested', 'confirmed']),
+    contact_method: z.enum(['phone', 'fax', 'email']).default('phone'),
     contact_name: z.string().optional(),
     contact_phone: z.string().optional(),
     note: z.string().optional(),

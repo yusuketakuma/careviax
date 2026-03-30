@@ -328,7 +328,9 @@ export function ScheduleDayView() {
   });
   const [contactLogTarget, setContactLogTarget] = useState<Proposal | null>(null);
   const [contactLogForm, setContactLogForm] = useState({
-    outcome: 'attempted' as 'attempted' | 'unreachable' | 'declined' | 'confirmed',
+    outcome:
+      'attempted' as 'attempted' | 'unreachable' | 'declined' | 'change_requested' | 'confirmed',
+    contact_method: 'phone' as 'phone' | 'fax' | 'email',
     contact_name: '',
     contact_phone: '',
     note: '',
@@ -1295,9 +1297,15 @@ export function ScheduleDayView() {
           ? 'confirmed'
           : proposal.patient_contact_status === 'declined'
             ? 'declined'
+            : proposal.patient_contact_status === 'change_requested'
+              ? 'change_requested'
             : proposal.patient_contact_status === 'unreachable'
               ? 'unreachable'
               : 'attempted',
+      contact_method:
+        latestLog?.contact_method === 'fax' || latestLog?.contact_method === 'email'
+          ? latestLog.contact_method
+          : 'phone',
       contact_name: latestLog?.contact_name ?? '',
       contact_phone: latestLog?.contact_phone ?? '',
       note: '',
@@ -1411,7 +1419,8 @@ export function ScheduleDayView() {
         | { action: 'reject' }
         | {
             action: 'contact_attempt';
-            outcome: 'attempted' | 'declined' | 'unreachable' | 'confirmed';
+            outcome: 'attempted' | 'declined' | 'change_requested' | 'unreachable' | 'confirmed';
+            contact_method: 'phone' | 'fax' | 'email';
             contact_name?: string;
             contact_phone?: string;
             note?: string;
@@ -1440,6 +1449,8 @@ export function ScheduleDayView() {
             ? '電話確認が完了し、訪問予定を確定しました'
             : variables.payload.action === 'reject'
               ? '候補を却下しました'
+              : variables.payload.outcome === 'change_requested'
+                ? '変更希望として記録しました'
               : variables.payload.outcome === 'declined'
                 ? '患者辞退として記録しました'
               : variables.payload.outcome === 'unreachable'
@@ -3041,6 +3052,7 @@ export function ScheduleDayView() {
                                   payload: {
                                     action: 'contact_attempt',
                                     outcome: 'declined',
+                                    contact_method: 'phone',
                                   },
                                 })
                               }
@@ -3997,6 +4009,28 @@ export function ScheduleDayView() {
             )}
 
             <div className="space-y-1.5">
+              <Label htmlFor="contact-log-method">連絡方法</Label>
+              <Select
+                value={contactLogForm.contact_method}
+                onValueChange={(value) =>
+                  setContactLogForm((current) => ({
+                    ...current,
+                    contact_method: value as typeof current.contact_method,
+                  }))
+                }
+              >
+                <SelectTrigger id="contact-log-method" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="phone">電話</SelectItem>
+                  <SelectItem value="fax">FAX</SelectItem>
+                  <SelectItem value="email">メール</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
               <Label htmlFor="contact-log-outcome">架電結果</Label>
               <Select
                 value={contactLogForm.outcome}
@@ -4017,6 +4051,7 @@ export function ScheduleDayView() {
                   <SelectItem value="confirmed">患者確認済み</SelectItem>
                   <SelectItem value="unreachable">不通</SelectItem>
                   <SelectItem value="declined">辞退</SelectItem>
+                  <SelectItem value="change_requested">変更希望</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -4099,6 +4134,7 @@ export function ScheduleDayView() {
                   payload: {
                     action: 'contact_attempt',
                     outcome: contactLogForm.outcome,
+                    contact_method: contactLogForm.contact_method,
                     contact_name: contactLogForm.contact_name || undefined,
                     contact_phone: contactLogForm.contact_phone || undefined,
                     note: contactLogForm.note || undefined,

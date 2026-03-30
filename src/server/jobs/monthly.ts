@@ -2,6 +2,38 @@ import { startOfMonth, subMonths, endOfMonth } from 'date-fns';
 import { prisma } from '@/lib/db';
 import { runJob } from './runner';
 
+function parseConferenceSections(structuredContent: unknown) {
+  if (
+    typeof structuredContent !== 'object' ||
+    structuredContent === null ||
+    !('sections' in structuredContent)
+  ) {
+    return [] as Array<{ key: string; body?: string }>;
+  }
+
+  const sections = (structuredContent as { sections?: unknown }).sections;
+  if (!Array.isArray(sections)) return [];
+  return sections.filter(
+    (section): section is { key: string; body?: string } =>
+      typeof section === 'object' && section !== null && 'key' in section
+  );
+}
+
+function parseSectionLines(body?: string) {
+  if (!body?.trim()) return [];
+
+  return body
+    .split('\n')
+    .map((line) => line.replace(/^[\s\-*・]+/, '').trim())
+    .filter((line) => line.length > 0);
+}
+
+function formatMonthKey(value: Date) {
+  const year = value.getFullYear();
+  const month = `${value.getMonth() + 1}`.padStart(2, '0');
+  return `${year}-${month}`;
+}
+
 /**
  * Generate monthly visit report: patient x insurance type visit count aggregation.
  */
@@ -170,11 +202,105 @@ export async function generateMonthlyMetrics() {
   });
 }
 
+export async function aggregateConferenceQualityIndicators() {
+  return runJob('conference_quality_metrics', async () => {
+    const lastMonth = subMonths(new Date(), 1);
+    const monthStart = startOfMonth(lastMonth);
+    const monthEnd = endOfMonth(lastMonth);
+    const monthKey = formatMonthKey(monthStart);
+
+    const notes = await prisma.conferenceNote.findMany({
+      where: {
+        note_type: 'death_conference',
+        conference_date: {
+          gte: monthStart,
+          lte: monthEnd,
+        },
+      },
+      select: {
+        id: true,
+        org_id: true,
+        structured_content: true,
+      },
+    });
+
+    const aggregation = new Map<
+      string,
+      {
+        totalNotes: number;
+        totalIndicators: number;
+        indicatorCounts: Map<string, number>;
+      }
+    >();
+
+    for (const note of notes) {
+      const qualityIndicators = parseSectionLines(
+        parseConferenceSections(note.structured_content).find(
+          (section) => section.key === 'quality_indicators'
+        )?.body
+      );
+      if (qualityIndicators.length === 0) continue;
+
+      const current = aggregation.get(note.org_id) ?? {
+        totalNotes: 0,
+        totalIndicators: 0,
+        indicatorCounts: new Map<string, number>(),
+      };
+      current.totalNotes += 1;
+      current.totalIndicators += qualityIndicators.length;
+      for (const indicator of qualityIndicators) {
+        current.indicatorCounts.set(
+          indicator,
+          (current.indicatorCounts.get(indicator) ?? 0) + 1
+        );
+      }
+      aggregation.set(note.org_id, current);
+    }
+
+    for (const [orgId, summary] of aggregation) {
+      await prisma.setting.upsert({
+        where: {
+          scope_scope_id_key: {
+            scope: 'organization',
+            scope_id: orgId,
+            key: `conference_quality_indicators:${monthKey}`,
+          },
+        },
+        create: {
+          scope: 'organization',
+          scope_id: orgId,
+          key: `conference_quality_indicators:${monthKey}`,
+          value: {
+            month: monthKey,
+            total_notes: summary.totalNotes,
+            total_indicators: summary.totalIndicators,
+            indicator_counts: Object.fromEntries(summary.indicatorCounts),
+          },
+        },
+        update: {
+          value: {
+            month: monthKey,
+            total_notes: summary.totalNotes,
+            total_indicators: summary.totalIndicators,
+            indicator_counts: Object.fromEntries(summary.indicatorCounts),
+          },
+        },
+      });
+    }
+
+    return {
+      processedCount: aggregation.size,
+      month: monthKey,
+    };
+  });
+}
+
 export async function runMonthlyOperations() {
   return runJob('monthly', async () => {
     const results = await Promise.all([
       generateMonthlyVisitReport(),
       generateMonthlyMetrics(),
+      aggregateConferenceQualityIndicators(),
     ]);
 
     return {

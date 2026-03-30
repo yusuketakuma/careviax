@@ -25,6 +25,7 @@ export type PatientContactStatus =
   | 'attempted'
   | 'confirmed'
   | 'declined'
+  | 'change_requested'
   | 'unreachable';
 export type AssignmentMode = 'primary' | 'fallback';
 export type ScheduleStatus =
@@ -65,6 +66,7 @@ export type Pharmacist = {
 export type ProposalContactLog = {
   id: string;
   outcome: PatientContactStatus;
+  contact_method: string | null;
   contact_name: string | null;
   contact_phone: string | null;
   note: string | null;
@@ -387,6 +389,7 @@ export const CONTACT_STATUS_LABELS: Record<PatientContactStatus, string> = {
   attempted: '架電済み',
   confirmed: '患者確認済み',
   declined: '辞退',
+  change_requested: '変更希望',
   unreachable: '不通',
 };
 

@@ -20,15 +20,17 @@ import { ManagementPlanPanel } from './management-plan-panel';
 import { MedicationsContent } from './medications/medications-content';
 import { PatientCareTeamPanel } from './patient-care-team-panel';
 import { PatientConditionsCard } from './patient-conditions-card';
+import { PatientIntakeSummaryCard } from './patient-intake-summary-card';
 import { PatientContactsPanel } from './patient-contacts-panel';
 import { PatientMasterCard } from './patient-master-card';
+import { PatientPackagingCard } from './patient-packaging-card';
 import { PrescriptionHistoryContent } from './prescriptions/prescription-history-content';
 import { ExternalShareContent } from './share/external-share-content';
 import { VisitConstraintsCard } from './visit-constraints-card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import type { HomeCareFeatureSummary } from '@/types/home-care';
 import type { VisitBrief } from '@/types/visit-brief';
-import { FileDown, FileQuestion, Printer } from 'lucide-react';
+import { ClipboardPlus, FileDown, FileQuestion, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 
 type Patient = {
@@ -46,6 +48,7 @@ type Patient = {
     id: string;
     address: string;
     building_id: string | null;
+    facility_id: string | null;
     unit_name: string | null;
     is_primary: boolean;
   }>;
@@ -96,6 +99,7 @@ type Patient = {
     required_visit_support: Record<string, unknown> | null;
     care_team_links: Array<{
       id: string;
+      external_professional_id?: string | null;
       role: string;
       name: string;
       organization_name: string | null;
@@ -376,13 +380,27 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
   const age = differenceInYears(new Date(), new Date(patient.birth_date));
   const activeTabMeta =
     PATIENT_DETAIL_TABS.find((tab) => tab.value === activeTab) ?? PATIENT_DETAIL_TABS[0];
+  const activeCase =
+    patient.cases.find((item) => item.status === 'active') ?? patient.cases[0] ?? null;
+  const prescriptionIntakeHref = activeCase
+    ? `/prescriptions/new?patient_id=${patient.id}&case_id=${activeCase.id}`
+    : `/prescriptions/new?patient_id=${patient.id}`;
 
   return (
     <div className="space-y-6">
       {/* Patient header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">{patient.name}</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">{patient.name_kana}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">{patient.name}</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">{patient.name_kana}</p>
+        </div>
+        <Link
+          href={prescriptionIntakeHref}
+          className={buttonVariants({ size: 'sm' })}
+        >
+          <ClipboardPlus className="mr-1.5 size-4" aria-hidden="true" />
+          処方受付
+        </Link>
       </div>
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as PatientDetailTabValue)}>
@@ -517,8 +535,10 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
             {/* 基本情報タブ */}
             <TabsContent value="basic">
               <div className="grid gap-4 lg:grid-cols-2">
+                <PatientIntakeSummaryCard patient={patient} />
                 <PatientMasterCard patient={patient} orgId={orgId} />
                 <PatientRiskCard riskSummary={patient.risk_summary} />
+                <PatientPackagingCard patientId={patient.id} orgId={orgId} />
 
                 <Card>
                   <CardHeader>

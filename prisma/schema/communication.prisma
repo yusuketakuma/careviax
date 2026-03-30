@@ -172,11 +172,18 @@ model ConferenceNote {
   id                 String             @id @default(cuid())
   org_id             String
   case_id            String?
+  patient_id         String?
+  facility_id        String?
   note_type          ConferenceNoteType @default(regular)
   title              String
   content            String
   structured_content Json?
   metadata           Json?
+  billing_eligible   Boolean            @default(false)
+  billing_code       String?
+  follow_up_date     DateTime?
+  follow_up_completed Boolean           @default(false)
+  generated_report_id String?
   participants       Json // [{name, role}]
   conference_date    DateTime
   action_items       Json? // Task 変換用
@@ -185,7 +192,10 @@ model ConferenceNote {
 
   @@index([org_id])
   @@index([case_id])
+  @@index([patient_id])
+  @@index([facility_id])
   @@index([note_type])
+  @@index([follow_up_date])
 }
 
 model EscalationRule {

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   Home,
   Users,
+  ClipboardPlus,
   Calendar,
   Pill,
   ClipboardCheck,
@@ -14,6 +15,9 @@ import {
   Settings,
   Database,
   ScrollText,
+  Building2,
+  Hospital,
+  Stethoscope,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
@@ -33,6 +37,7 @@ interface NavItem {
 const mainNavItems: NavItem[] = [
   { label: 'ホーム', href: '/dashboard', icon: Home },
   { label: '患者', href: '/patients', icon: Users },
+  { label: '処方受付', href: '/prescriptions/new', icon: ClipboardPlus },
   { label: 'スケジュール', href: '/schedules', icon: Calendar },
   { label: '調剤', href: '/dispensing', icon: Pill },
   { label: '鑑査', href: '/auditing', icon: ClipboardCheck },
@@ -43,6 +48,11 @@ const mainNavItems: NavItem[] = [
 
 const adminNavItems: NavItem[] = [
   { label: '設定', href: '/admin/settings', icon: Settings },
+  { label: '施設', href: '/admin/facilities', icon: Building2 },
+  { label: '医療機関', href: '/admin/institutions', icon: Hospital },
+  { label: '他職種', href: '/admin/external-professionals', icon: Stethoscope },
+  { label: '連携先', href: '/admin/contact-profiles', icon: Users },
+  { label: 'データ探索', href: '/admin/data-explorer', icon: Database },
   { label: '文書テンプレート', href: '/admin/document-templates', icon: FileText },
   { label: 'マスタ', href: '/admin/drug-masters', icon: Database },
   { label: '監査ログ', href: '/admin/audit-logs', icon: ScrollText },

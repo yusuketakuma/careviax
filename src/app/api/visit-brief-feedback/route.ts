@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
-import { prisma } from '@/lib/db/client';
+import { withOrgContext } from '@/lib/db/rls';
 
 const feedbackSchema = z.object({
   patient_id: z.string().min(1),
@@ -33,28 +33,32 @@ export async function POST(req: NextRequest) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  await prisma.auditLog.create({
-    data: {
-      org_id: ctx.orgId,
-      actor_id: ctx.userId,
-      action:
-        parsed.data.rating === 'helpful'
-          ? 'visit_brief_feedback_helpful'
-          : 'visit_brief_feedback_needs_review',
-      target_type: 'visit_brief_feedback',
-      target_id: parsed.data.generation_id,
-      changes: {
-        patient_id: parsed.data.patient_id,
-        context: parsed.data.context,
-        summary_kind: parsed.data.summary_kind,
-        rating: parsed.data.rating,
-        comment: parsed.data.comment ?? null,
-        provider: parsed.data.provider ?? null,
-        requested_provider: parsed.data.requested_provider ?? null,
-        model: parsed.data.model ?? null,
-        is_fallback: parsed.data.is_fallback ?? false,
+  await withOrgContext(ctx.orgId, async (tx) => {
+    await tx.auditLog.create({
+      data: {
+        org_id: ctx.orgId,
+        actor_id: ctx.userId,
+        action:
+          parsed.data.rating === 'helpful'
+            ? 'visit_brief_feedback_helpful'
+            : 'visit_brief_feedback_needs_review',
+        target_type: 'visit_brief_feedback',
+        target_id: parsed.data.generation_id,
+        changes: {
+          patient_id: parsed.data.patient_id,
+          context: parsed.data.context,
+          summary_kind: parsed.data.summary_kind,
+          rating: parsed.data.rating,
+          comment: parsed.data.comment ?? null,
+          provider: parsed.data.provider ?? null,
+          requested_provider: parsed.data.requested_provider ?? null,
+          model: parsed.data.model ?? null,
+          is_fallback: parsed.data.is_fallback ?? false,
+        },
       },
-    },
+    });
+  }, {
+    requestContext: ctx,
   });
 
   return success({ ok: true }, 201);

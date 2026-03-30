@@ -20,9 +20,7 @@ async function loadPatientCases(orgId: string, patientId: string) {
   });
 }
 
-function pickDefaultCaseId(
-  cases: Array<{ id: string; status: string; created_at: Date }>
-) {
+function pickDefaultCaseId(cases: Array<{ id: string; status: string; created_at: Date }>) {
   return (
     cases.find((careCase) => careCase.status === 'active')?.id ??
     cases[0]?.id ??
@@ -97,34 +95,60 @@ export async function PUT(
   });
   if (!careCase) return notFound('対象ケースが見つかりません');
 
-  const data = await withOrgContext(ctx.orgId, async (tx) => {
-    await tx.careTeamLink.deleteMany({
-      where: { org_id: ctx.orgId, case_id: careCase.id },
-    });
-    if (parsed.data.links.length === 0) return [];
+  try {
+    const data = await withOrgContext(ctx.orgId, async (tx) => {
+      const externalProfessionalIds = parsed.data.links
+        .map((link) => link.external_professional_id)
+        .filter((value): value is string => Boolean(value));
 
-    await tx.careTeamLink.createMany({
-      data: parsed.data.links.map((link) => ({
-        org_id: ctx.orgId,
-        case_id: careCase.id,
-        role: link.role,
-        name: link.name,
-        organization_name: link.organization_name || null,
-        department: link.department || null,
-        phone: link.phone || null,
-        email: link.email || null,
-        fax: link.fax || null,
-        address: link.address || null,
-        is_primary: link.is_primary,
-        notes: link.notes || null,
-      })),
+      if (externalProfessionalIds.length > 0) {
+        const items = await tx.externalProfessional.findMany({
+          where: {
+            org_id: ctx.orgId,
+            id: { in: externalProfessionalIds },
+          },
+          select: { id: true },
+        });
+
+        if (items.length !== new Set(externalProfessionalIds).size) {
+          throw new Error('INVALID_EXTERNAL_PROFESSIONAL');
+        }
+      }
+
+      await tx.careTeamLink.deleteMany({
+        where: { org_id: ctx.orgId, case_id: careCase.id },
+      });
+      if (parsed.data.links.length === 0) return [];
+
+      await tx.careTeamLink.createMany({
+        data: parsed.data.links.map((link) => ({
+          org_id: ctx.orgId,
+          case_id: careCase.id,
+          external_professional_id: link.external_professional_id || null,
+          role: link.role,
+          name: link.name,
+          organization_name: link.organization_name || null,
+          department: link.department || null,
+          phone: link.phone || null,
+          email: link.email || null,
+          fax: link.fax || null,
+          address: link.address || null,
+          is_primary: link.is_primary,
+          notes: link.notes || null,
+        })),
+      });
+
+      return tx.careTeamLink.findMany({
+        where: { org_id: ctx.orgId, case_id: careCase.id },
+        orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+      });
     });
 
-    return tx.careTeamLink.findMany({
-      where: { org_id: ctx.orgId, case_id: careCase.id },
-      orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
-    });
-  });
-
-  return success({ case_id: careCase.id, data });
+    return success({ case_id: careCase.id, data });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'INVALID_EXTERNAL_PROFESSIONAL') {
+      return validationError('他組織の他職種はケアチームに登録できません');
+    }
+    throw error;
+  }
 }

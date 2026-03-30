@@ -81,7 +81,7 @@ describe('/api/care-reports GET', () => {
       orgId: 'org_1',
       userId: 'user_1',
       role: 'pharmacist',
-      url: 'http://localhost/api/care-reports?q=山田&report_type=physician_report&delivery_status=response_waiting&recipient=主治医&date_from=2026-03-01&date_to=2026-03-31',
+      url: 'http://localhost/api/care-reports?q=山田&keyword=眠気&report_type=physician_report&delivery_status=response_waiting&recipient=主治医&date_from=2026-03-01&date_to=2026-03-31&sent_from=2026-03-28&sent_to=2026-03-29',
       headers: { get: () => null },
     } as unknown as NextRequest & { orgId: string; userId: string; role?: string });
 
@@ -106,6 +106,7 @@ describe('/api/care-reports GET', () => {
       data: Array<{
         patient_name: string;
         latest_delivery_status: string | null;
+        latest_delivery_recipient_name: string | null;
         failed_delivery_count: number;
         pending_delivery_count: number;
       }>;
@@ -119,6 +120,7 @@ describe('/api/care-reports GET', () => {
     expect(payload.data[0]).toMatchObject({
       patient_name: '山田 太郎',
       latest_delivery_status: 'response_waiting',
+      latest_delivery_recipient_name: '在宅主治医',
       failed_delivery_count: 1,
       pending_delivery_count: 1,
     });

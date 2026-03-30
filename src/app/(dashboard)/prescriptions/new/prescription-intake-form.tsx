@@ -70,6 +70,14 @@ type PreviousPrescriptionIntake = {
   lines: PreviousPrescriptionLine[];
 };
 
+type PrescriberInstitutionOption = {
+  id: string;
+  name: string;
+  institution_code: string | null;
+  phone: string | null;
+  fax: string | null;
+};
+
 type GenericCandidate = {
   id: string;
   yj_code: string;
@@ -255,6 +263,7 @@ export function PrescriptionIntakeForm() {
   const [sourceType, setSourceType] = useState<string>('paper');
   const [prescribedDate, setPrescribedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [prescriberName, setPrescriberName] = useState('');
+  const [selectedPrescriberInstitutionId, setSelectedPrescriberInstitutionId] = useState('');
   const [prescriberInstitution, setPrescriberInstitution] = useState('');
   const [originalDocumentUrl, setOriginalDocumentUrl] = useState('');
   const [originalDocumentName, setOriginalDocumentName] = useState('');
@@ -314,6 +323,21 @@ export function PrescriptionIntakeForm() {
     enabled: !!orgId && !!selectedPatientId,
   });
 
+  const { data: prescriberInstitutionsData } = useQuery({
+    queryKey: ['prescriber-institutions', orgId, prescriberInstitution],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (prescriberInstitution.trim()) params.set('q', prescriberInstitution.trim());
+      const res = await fetch(`/api/prescriber-institutions?${params.toString()}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('医療機関マスターの取得に失敗しました');
+      return res.json() as Promise<{ data: PrescriberInstitutionOption[] }>;
+    },
+    enabled: !!orgId,
+    staleTime: 30_000,
+  });
+
   // Create cycle mutation
   const createCycleMutation = useMutation({
     mutationFn: async (caseId: string) => {
@@ -342,6 +366,7 @@ export function PrescriptionIntakeForm() {
           source_type: sourceType,
           prescribed_date: prescribedDate,
           prescriber_name: prescriberName || undefined,
+          prescriber_institution_id: selectedPrescriberInstitutionId || undefined,
           prescriber_institution: prescriberInstitution || undefined,
           original_document_url: originalDocumentUrl || undefined,
           refill_remaining_count:
@@ -371,6 +396,7 @@ export function PrescriptionIntakeForm() {
           source_type: 'facility_batch',
           prescribed_date: prescribedDate,
           prescriber_name: prescriberName || undefined,
+          prescriber_institution_id: selectedPrescriberInstitutionId || undefined,
           prescriber_institution: prescriberInstitution || undefined,
           original_document_url: originalDocumentUrl || undefined,
           entries: facilityBatchEntries.map((entry) => ({
@@ -619,6 +645,7 @@ export function PrescriptionIntakeForm() {
     submitFacilityBatchMutation.isPending;
   const isPdfDocument = /\.pdf$/i.test(originalDocumentName);
   const latestPreviousIntake = previousPrescriptionsData?.data?.[0] ?? null;
+  const prescriberInstitutions = prescriberInstitutionsData?.data ?? [];
 
   const prescriptionDiff = useMemo(() => {
     if (!latestPreviousIntake) return null;
@@ -814,6 +841,34 @@ export function PrescriptionIntakeForm() {
             />
           </div>
           <div>
+            <label htmlFor="prescriber-institution-master" className="mb-1 block text-sm font-medium">
+              医療機関マスター
+            </label>
+            <select
+              id="prescriber-institution-master"
+              value={selectedPrescriberInstitutionId || '__free__'}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value === '__free__') {
+                  setSelectedPrescriberInstitutionId('');
+                  return;
+                }
+                const selected = prescriberInstitutions.find((item) => item.id === value);
+                setSelectedPrescriberInstitutionId(value);
+                if (selected) {
+                  setPrescriberInstitution(selected.name);
+                }
+              }}
+              className="mb-3 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="__free__">手入力 / 未選択</option>
+              {prescriberInstitutions.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                  {item.institution_code ? ` (${item.institution_code})` : ''}
+                </option>
+              ))}
+            </select>
             <label htmlFor="prescriber-institution" className="mb-1 block text-sm font-medium">
               処方元機関
             </label>
@@ -821,7 +876,12 @@ export function PrescriptionIntakeForm() {
               id="prescriber-institution"
               type="text"
               value={prescriberInstitution}
-              onChange={(e) => setPrescriberInstitution(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                setPrescriberInstitution(value);
+                const matched = prescriberInstitutions.find((item) => item.name === value);
+                setSelectedPrescriberInstitutionId(matched?.id ?? '');
+              }}
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             />
           </div>

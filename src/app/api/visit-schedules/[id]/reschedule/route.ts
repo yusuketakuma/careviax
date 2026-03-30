@@ -850,21 +850,24 @@ export async function POST(
     const emergencyContacts = await fetchEmergencyContacts(tx, ctx.orgId, schedule.case_.patient_id);
 
     // FVD-01C: Fetch scheduling preference for UI-facing contact suggestion metadata
-    const schedulingPreferenceRecord = await tx.patientSchedulePreference.findFirst({
-      where: {
-        org_id: ctx.orgId,
-        patient_id: schedule.case_.patient_id,
-      },
-      select: {
-        preferred_contact_name: true,
-        preferred_contact_phone: true,
-        primary_contact_preference: true,
-        visit_before_contact_required: true,
-        mcs_linked: true,
-        phone_contact_from: true,
-        phone_contact_to: true,
-      },
-    });
+    const schedulingPreferenceRecord =
+      typeof tx.patientSchedulePreference?.findFirst === 'function'
+        ? await tx.patientSchedulePreference.findFirst({
+            where: {
+              org_id: ctx.orgId,
+              patient_id: schedule.case_.patient_id,
+            },
+            select: {
+              preferred_contact_name: true,
+              preferred_contact_phone: true,
+              primary_contact_preference: true,
+              visit_before_contact_required: true,
+              mcs_linked: true,
+              phone_contact_from: true,
+              phone_contact_to: true,
+            },
+          })
+        : null;
 
     return { proposals: createdProposals, emergencyContacts, schedulingPreferenceRecord };
   }, { requestContext: ctx });

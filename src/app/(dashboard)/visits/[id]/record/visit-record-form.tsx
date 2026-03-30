@@ -23,6 +23,7 @@ import { z } from 'zod';
 import { createVisitRecordSchema } from '@/lib/validations/visit-record';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useIsMobile } from '@/lib/hooks/use-media-query';
+import { useSpeechRecognition } from '@/lib/hooks/use-speech-recognition';
 import { useSoapDraft } from '@/lib/hooks/use-soap-draft';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import {
@@ -44,7 +45,9 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ResidualMedicationForm } from '@/components/features/visits/residual-medication-form';
+import { SoapVoiceFieldToggle } from '@/components/features/visits/soap-voice-field-toggle';
 import { SoapStepWizard } from '@/components/features/visits/soap-step-wizard';
+import { VoiceSoapAssist } from '@/components/features/visits/voice-soap-assist';
 import {
   VisitAttachmentsField,
   type VisitAttachmentDraft,
@@ -60,6 +63,7 @@ import {
   getVisitLocationTrackingPreference,
   type VisitGeoLog,
 } from '@/lib/visit-location';
+import { appendVoiceTranscript } from '@/lib/voice-recognition';
 
 type ScheduleDetail = {
   id: string;
@@ -803,6 +807,27 @@ export function VisitRecordForm({ id }: { id: string }) {
     />
   );
 
+  function handleAppendTranscript(
+    field: 'soap_subjective' | 'soap_objective' | 'soap_assessment' | 'soap_plan',
+    transcript: string
+  ) {
+    const currentValue = form.getValues(field) ?? '';
+    form.setValue(field, appendVoiceTranscript(currentValue, transcript), {
+      shouldDirty: true,
+      shouldTouch: true,
+    });
+  }
+
+  const voiceRecognition = useSpeechRecognition({
+    onTranscript: handleAppendTranscript,
+  });
+
+  useEffect(() => {
+    if ((createRecord.isPending || isOffline) && voiceRecognition.isListening) {
+      voiceRecognition.stopListening();
+    }
+  }, [createRecord.isPending, isOffline, voiceRecognition]);
+
   if (scheduleLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -1036,12 +1061,29 @@ export function VisitRecordForm({ id }: { id: string }) {
             </div>
           )}
 
+          <VoiceSoapAssist
+            activeField={voiceRecognition.activeField}
+            error={voiceRecognition.error}
+            interimTranscript={voiceRecognition.interimTranscript}
+            isOffline={isOffline}
+            isSupported={voiceRecognition.isSupported}
+            lastTranscript={voiceRecognition.transcript}
+          />
+
           {/* SOAP section: mobile step wizard vs desktop 2-column */}
           {isMobile ? (
             <SoapStepWizard
               isPending={createRecord.isPending}
               recurrenceRule={schedule?.recurrence_rule}
               attachmentsContent={attachmentsField}
+              voiceInput={{
+                activeField: voiceRecognition.activeField,
+                error: voiceRecognition.error,
+                interimTranscript: voiceRecognition.interimTranscript,
+                isOffline,
+                isSupported: voiceRecognition.isSupported,
+                onToggle: voiceRecognition.toggleListening,
+              }}
             />
           ) : (
             <>
@@ -1051,9 +1093,21 @@ export function VisitRecordForm({ id }: { id: string }) {
                 <div className="space-y-4">
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="flex items-center gap-2 text-sm">
-                        <MessageSquare className="size-4 text-blue-500" aria-hidden="true" />
-                        S — 主観情報（患者の訴え）
+                      <CardTitle className="flex items-center justify-between gap-2 text-sm">
+                        <span className="inline-flex items-center gap-2">
+                          <MessageSquare className="size-4 text-blue-500" aria-hidden="true" />
+                          S — 主観情報（患者の訴え）
+                        </span>
+                        <SoapVoiceFieldToggle
+                          field="soap_subjective"
+                          activeField={voiceRecognition.activeField}
+                          disabled={createRecord.isPending}
+                          error={voiceRecognition.error}
+                          interimTranscript={voiceRecognition.interimTranscript}
+                          isOffline={isOffline}
+                          isSupported={voiceRecognition.isSupported}
+                          onToggle={voiceRecognition.toggleListening}
+                        />
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -1069,9 +1123,21 @@ export function VisitRecordForm({ id }: { id: string }) {
 
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="flex items-center gap-2 text-sm">
-                        <Eye className="size-4 text-green-500" aria-hidden="true" />
-                        O — 客観情報（観察・計測）
+                      <CardTitle className="flex items-center justify-between gap-2 text-sm">
+                        <span className="inline-flex items-center gap-2">
+                          <Eye className="size-4 text-green-500" aria-hidden="true" />
+                          O — 客観情報（観察・計測）
+                        </span>
+                        <SoapVoiceFieldToggle
+                          field="soap_objective"
+                          activeField={voiceRecognition.activeField}
+                          disabled={createRecord.isPending}
+                          error={voiceRecognition.error}
+                          interimTranscript={voiceRecognition.interimTranscript}
+                          isOffline={isOffline}
+                          isSupported={voiceRecognition.isSupported}
+                          onToggle={voiceRecognition.toggleListening}
+                        />
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -1090,9 +1156,21 @@ export function VisitRecordForm({ id }: { id: string }) {
                 <div className="space-y-4">
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="flex items-center gap-2 text-sm">
-                        <Brain className="size-4 text-purple-500" aria-hidden="true" />
-                        A — 薬学的評価
+                      <CardTitle className="flex items-center justify-between gap-2 text-sm">
+                        <span className="inline-flex items-center gap-2">
+                          <Brain className="size-4 text-purple-500" aria-hidden="true" />
+                          A — 薬学的評価
+                        </span>
+                        <SoapVoiceFieldToggle
+                          field="soap_assessment"
+                          activeField={voiceRecognition.activeField}
+                          disabled={createRecord.isPending}
+                          error={voiceRecognition.error}
+                          interimTranscript={voiceRecognition.interimTranscript}
+                          isOffline={isOffline}
+                          isSupported={voiceRecognition.isSupported}
+                          onToggle={voiceRecognition.toggleListening}
+                        />
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -1108,9 +1186,21 @@ export function VisitRecordForm({ id }: { id: string }) {
 
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="flex items-center gap-2 text-sm">
-                        <ClipboardList className="size-4 text-orange-500" aria-hidden="true" />
-                        P — 計画・介入
+                      <CardTitle className="flex items-center justify-between gap-2 text-sm">
+                        <span className="inline-flex items-center gap-2">
+                          <ClipboardList className="size-4 text-orange-500" aria-hidden="true" />
+                          P — 計画・介入
+                        </span>
+                        <SoapVoiceFieldToggle
+                          field="soap_plan"
+                          activeField={voiceRecognition.activeField}
+                          disabled={createRecord.isPending}
+                          error={voiceRecognition.error}
+                          interimTranscript={voiceRecognition.interimTranscript}
+                          isOffline={isOffline}
+                          isSupported={voiceRecognition.isSupported}
+                          onToggle={voiceRecognition.toggleListening}
+                        />
                       </CardTitle>
                     </CardHeader>
                     <CardContent>

@@ -48,7 +48,12 @@ export function logSecurityEvent(event: SecurityEvent): void {
     }
   }
 
-  prisma.auditLog
+  const auditLogClient = (prisma as { auditLog?: typeof prisma.auditLog }).auditLog;
+  if (!auditLogClient?.create) {
+    return;
+  }
+
+  auditLogClient
     .create({
       data: {
         org_id: event.org_id ?? SYSTEM_ORG_ID,

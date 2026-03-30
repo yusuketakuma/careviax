@@ -4,6 +4,7 @@ import { success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
+import { learnContactProfileFromCommunication } from '@/lib/contact-profiles';
 
 const createCommunicationEventSchema = z.object({
   patient_id: z.string().optional(),
@@ -76,13 +77,24 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   const { occurred_at, ...rest } = parsed.data;
 
   const event = await withOrgContext(req.orgId, async (tx) => {
-    return tx.communicationEvent.create({
+    const created = await tx.communicationEvent.create({
       data: {
         org_id: req.orgId,
         ...(occurred_at ? { occurred_at: new Date(occurred_at) } : {}),
         ...rest,
       },
     });
+
+    await learnContactProfileFromCommunication(tx, {
+      orgId: req.orgId,
+      counterpartName: created.counterpart_name,
+      counterpartContact: created.counterpart_contact,
+      channel: created.channel,
+      occurredAt: created.occurred_at,
+      markSuccess: created.direction === 'outbound',
+    });
+
+    return created;
   });
 
   return success({ data: event }, 201);

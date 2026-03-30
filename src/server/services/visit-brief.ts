@@ -975,18 +975,33 @@ export async function getPatientVisitBrief(
         soap_plan: true,
       },
     }),
-    db.careCase.findFirst({
-      where: {
-        org_id: args.orgId,
-        patient_id: args.patientId,
-        status: { in: ['active', 'assessment'] },
-      },
-      orderBy: [{ start_date: 'desc' }, { created_at: 'desc' }],
-      select: {
-        required_visit_support: true,
-      },
-    }),
-    caseIds.length === 0
+    typeof db.careCase.findFirst === 'function'
+      ? db.careCase.findFirst({
+          where: {
+            org_id: args.orgId,
+            patient_id: args.patientId,
+            status: { in: ['active', 'assessment'] },
+          },
+          orderBy: [{ start_date: 'desc' }, { created_at: 'desc' }],
+          select: {
+            required_visit_support: true,
+          },
+        })
+      : db.careCase
+          .findMany({
+            where: {
+              org_id: args.orgId,
+              patient_id: args.patientId,
+              status: { in: ['active', 'assessment'] },
+            },
+            orderBy: [{ start_date: 'desc' }, { created_at: 'desc' }],
+            take: 1,
+            select: {
+              required_visit_support: true,
+            },
+          })
+          .then((cases) => cases[0] ?? null),
+    caseIds.length === 0 || typeof db.conferenceNote?.findMany !== 'function'
       ? Promise.resolve([])
       : db.conferenceNote.findMany({
           where: {

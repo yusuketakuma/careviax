@@ -5,6 +5,8 @@ import { conflict, success, validationError, notFound } from '@/lib/api/response
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
+import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/prescriber-institutions';
+import { getChannelStatsByName, getRecommendedChannels } from '@/lib/contact-profiles';
 
 const updateCareReportSchema = z.object({
   report_type: z
@@ -53,9 +55,41 @@ export async function GET(
 
   // case_id がある場合は intake baseline context を付加してUIでの表示に利用する
   const intakeBaselineContext = getHomeVisitIntake(report.case_?.required_visit_support ?? null);
-  const { case_: _case, ...reportData } = report;
+  const prescriberInstitutionSuggestion = await findLatestPrescriberInstitutionSuggestion(
+    prisma,
+    ctx.orgId,
+    {
+      caseId: report.case_id,
+      patientId: report.patient_id,
+    }
+  );
+  const prescriberInstitutionStats =
+    prescriberInstitutionSuggestion != null
+      ? await getChannelStatsByName(prisma, ctx.orgId, [prescriberInstitutionSuggestion.name])
+      : new Map();
 
-  return success({ data: { ...reportData, intake_baseline_context: intakeBaselineContext } });
+  const reportData = Object.fromEntries(
+    Object.entries(report).filter(([key]) => key !== 'case_')
+  );
+
+  return success({
+    data: {
+      ...reportData,
+      intake_baseline_context: intakeBaselineContext,
+      prescriber_institution_suggestion: prescriberInstitutionSuggestion
+        ? {
+            ...prescriberInstitutionSuggestion,
+            recommended_channels: getRecommendedChannels({
+              phone: prescriberInstitutionSuggestion.phone,
+              fax: prescriberInstitutionSuggestion.fax,
+              address: prescriberInstitutionSuggestion.address,
+              stats: prescriberInstitutionStats.get(prescriberInstitutionSuggestion.name),
+            }),
+            prescribed_date: prescriberInstitutionSuggestion.prescribed_date.toISOString(),
+          }
+        : null,
+    },
+  });
 }
 
 export async function PATCH(

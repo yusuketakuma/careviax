@@ -128,6 +128,24 @@ describe('/api/visit-schedule-proposals', () => {
     });
   });
 
+  it('filters proposals by patient_id when provided', async () => {
+    await GET(
+      createRequest('http://localhost/api/visit-schedule-proposals?patient_id=patient_1')
+    );
+
+    expect(visitScheduleProposalFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          case_: {
+            is: {
+              patient_id: 'patient_1',
+            },
+          },
+        }),
+      })
+    );
+  });
+
   it('creates proposal drafts and supersedes open proposals', async () => {
     const response = (await POST(
       createRequest('http://localhost/api/visit-schedule-proposals', {
@@ -144,5 +162,35 @@ describe('/api/visit-schedule-proposals', () => {
     expect(generateVisitScheduleProposalDraftsMock).toHaveBeenCalled();
     expect(visitScheduleProposalUpdateManyMock).toHaveBeenCalled();
     expect(visitScheduleProposalCreateMock).toHaveBeenCalled();
+  });
+
+  it('passes locked slot constraints to the planner when provided', async () => {
+    await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+        start_date: '2026-04-01',
+        locked_date: '2026-04-03',
+        preferred_time_from: '13:00',
+        preferred_time_to: '15:00',
+        preferred_pharmacist_id: 'user_2',
+      })
+    );
+
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
+      case_id: 'case_1',
+      pharmacist_id: 'user_2',
+    });
+    expect(generateVisitScheduleProposalDraftsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        caseId: 'case_1',
+        startDate: new Date('2026-04-01'),
+        lockedDate: new Date('2026-04-03'),
+        preferredTimeFrom: '13:00',
+        preferredTimeTo: '15:00',
+        preferredPharmacistId: 'user_2',
+      })
+    );
   });
 });

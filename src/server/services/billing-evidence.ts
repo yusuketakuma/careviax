@@ -141,6 +141,13 @@ const HOME_DUPLICATE_INTERACTION_RULES: Record<
   },
 };
 
+const CONFERENCE_BILLING_RULE_KEYS: Record<string, string> = {
+  'B011-6': 'medical.discharge_joint_guidance',
+  MED_INFO_PROVISION_2_HA: 'medical.information_provision.2_care_manager',
+  C013: 'medical.addition.terminal_care',
+  MED_EMERGENCY_JOINT_GUIDANCE: 'medical.emergency_joint_guidance',
+};
+
 export type BillingEvidenceBlocker = {
   key:
     | 'missing_visit_consent'
@@ -221,6 +228,29 @@ function buildBillingTaskKey(visitRecordId: string) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function csvFromUnique(values: Array<string | null | undefined>) {
+  const unique = Array.from(
+    new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))
+  );
+  return unique.length > 0 ? unique.join(',') : null;
+}
+
+function readConferenceCandidateLinkage(sourceSnapshot: Prisma.JsonValue | null) {
+  if (!isRecord(sourceSnapshot) || sourceSnapshot.source_type !== 'conference_note') {
+    return null;
+  }
+
+  const conferenceNoteId =
+    typeof sourceSnapshot.conference_note_id === 'string'
+      ? sourceSnapshot.conference_note_id
+      : null;
+  if (!conferenceNoteId) return null;
+
+  return {
+    conferenceNoteId,
+  };
 }
 
 function hasInitialHomeVisitAssessmentEvidence(record: {
@@ -1331,6 +1361,7 @@ export async function upsertBillingEvidenceForVisit(
     reports,
     deliveryRecords,
     initialHomeVisitAssessment,
+    conferenceCandidates,
   ] =
     await Promise.all([
     findActiveVisitConsent(tx, {
@@ -1406,17 +1437,110 @@ export async function upsertBillingEvidenceForVisit(
       patientId: visitRecord.patient_id,
       targetDate: visitRecord.visit_date,
     }),
+    tx.billingCandidate.findMany({
+      where: {
+        org_id: args.orgId,
+        patient_id: visitRecord.patient_id,
+        billing_month: billingMonth,
+      },
+      select: {
+        billing_code: true,
+        status: true,
+        source_snapshot: true,
+      },
+    }),
   ]);
+
+  const conferenceLinkages = conferenceCandidates
+    .map((candidate) => ({
+      ...candidate,
+      linkage: readConferenceCandidateLinkage(candidate.source_snapshot),
+    }))
+    .filter((candidate): candidate is typeof candidate & { linkage: { conferenceNoteId: string } } => Boolean(candidate.linkage));
+  const conferenceNoteIds = Array.from(
+    new Set(conferenceLinkages.map((candidate) => candidate.linkage.conferenceNoteId))
+  );
+  const conferenceNotes =
+    conferenceNoteIds.length > 0
+      ? await tx.conferenceNote.findMany({
+          where: {
+            org_id: args.orgId,
+            id: {
+              in: conferenceNoteIds,
+            },
+          },
+          select: {
+            id: true,
+            metadata: true,
+            generated_report_id: true,
+          },
+        })
+      : [];
+  const conferenceGeneratedReportIds = Array.from(
+    new Set(
+      conferenceNotes
+        .map((note) =>
+          note.generated_report_id ??
+          (isRecord(note.metadata) && typeof note.metadata.generated_report_id === 'string'
+            ? note.metadata.generated_report_id
+            : null)
+        )
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const [conferenceReports, conferenceDeliveryRecords] =
+    conferenceGeneratedReportIds.length > 0
+      ? await Promise.all([
+          tx.careReport.findMany({
+            where: {
+              org_id: args.orgId,
+              id: {
+                in: conferenceGeneratedReportIds,
+              },
+            },
+            select: {
+              id: true,
+              status: true,
+            },
+          }),
+          tx.deliveryRecord.findMany({
+            where: {
+              org_id: args.orgId,
+              report_id: {
+                in: conferenceGeneratedReportIds,
+              },
+            },
+            select: {
+              id: true,
+              report_id: true,
+              status: true,
+            },
+          }),
+        ])
+      : [[], []];
+  const conferenceRecommendedRuleKeys = Array.from(
+    new Set(
+      conferenceLinkages
+        .filter((candidate) => candidate.status !== 'excluded')
+        .map((candidate) => CONFERENCE_BILLING_RULE_KEYS[candidate.billing_code])
+        .filter((value): value is string => Boolean(value))
+    )
+  );
 
   const payerBasis = getPayerBasis({
     medicalInsuranceNumber: patient.medical_insurance_number,
     careInsuranceNumber: patient.care_insurance_number,
     visitType: visitRecord.schedule.visit_type,
   });
+  const hasVisitReports = reports.length > 0;
+  const hasConferenceReports = conferenceReports.length > 0;
   const allReportsDelivered =
-    reports.length > 0 &&
+    (hasVisitReports || hasConferenceReports) &&
     reports.every((report) => ['sent', 'confirmed'].includes(report.status)) &&
-    deliveryRecords.every((delivery) => ['sent', 'confirmed'].includes(delivery.status));
+    deliveryRecords.every((delivery) => ['sent', 'confirmed'].includes(delivery.status)) &&
+    conferenceReports.length === conferenceGeneratedReportIds.length &&
+    conferenceReports.every((report) => ['sent', 'confirmed'].includes(report.status)) &&
+    conferenceDeliveryRecords.every((delivery) => ['sent', 'confirmed'].includes(delivery.status));
 
   const exclusionFlags = {
     missing_visit_consent: !consent,
@@ -1620,8 +1744,11 @@ export async function upsertBillingEvidenceForVisit(
       exclusion_reason: exclusionReason,
       consent_ref: consent?.id ?? null,
       management_plan_ref: plan.current?.id ?? null,
-      report_delivery_ref:
-        deliveryRecords.length > 0 ? deliveryRecords.map((record) => record.id).join(',') : null,
+      report_delivery_ref: csvFromUnique([
+        ...deliveryRecords.map((record) => record.id),
+        ...conferenceDeliveryRecords.map((record) => record.id),
+      ]),
+      conference_note_ref: csvFromUnique(conferenceNoteIds),
       visit_record_ref: visitRecord.id,
       building_patient_count: buildingPatientCount,
       monthly_count_snapshot: monthlyVisitCount,
@@ -1629,9 +1756,14 @@ export async function upsertBillingEvidenceForVisit(
       applied_rule_keys: candidateSpecs
         .filter((spec) => spec.status === 'confirmed')
         .map((spec) => spec.ssotKey) as Prisma.InputJsonValue,
-      recommended_rule_keys: candidateSpecs
-        .filter((spec) => spec.status === 'candidate')
-        .map((spec) => spec.ssotKey) as Prisma.InputJsonValue,
+      recommended_rule_keys: Array.from(
+        new Set([
+          ...candidateSpecs
+            .filter((spec) => spec.status === 'candidate')
+            .map((spec) => spec.ssotKey),
+          ...conferenceRecommendedRuleKeys,
+        ])
+      ) as Prisma.InputJsonValue,
       calculation_context: {
         billing_service_type: billingServiceType,
         provider_scope: providerScope,
@@ -1659,8 +1791,11 @@ export async function upsertBillingEvidenceForVisit(
       exclusion_reason: exclusionReason,
       consent_ref: consent?.id ?? null,
       management_plan_ref: plan.current?.id ?? null,
-      report_delivery_ref:
-        deliveryRecords.length > 0 ? deliveryRecords.map((record) => record.id).join(',') : null,
+      report_delivery_ref: csvFromUnique([
+        ...deliveryRecords.map((record) => record.id),
+        ...conferenceDeliveryRecords.map((record) => record.id),
+      ]),
+      conference_note_ref: csvFromUnique(conferenceNoteIds),
       visit_record_ref: visitRecord.id,
       building_patient_count: buildingPatientCount,
       monthly_count_snapshot: monthlyVisitCount,
@@ -1668,9 +1803,14 @@ export async function upsertBillingEvidenceForVisit(
       applied_rule_keys: candidateSpecs
         .filter((spec) => spec.status === 'confirmed')
         .map((spec) => spec.ssotKey) as Prisma.InputJsonValue,
-      recommended_rule_keys: candidateSpecs
-        .filter((spec) => spec.status === 'candidate')
-        .map((spec) => spec.ssotKey) as Prisma.InputJsonValue,
+      recommended_rule_keys: Array.from(
+        new Set([
+          ...candidateSpecs
+            .filter((spec) => spec.status === 'candidate')
+            .map((spec) => spec.ssotKey),
+          ...conferenceRecommendedRuleKeys,
+        ])
+      ) as Prisma.InputJsonValue,
       calculation_context: {
         billing_service_type: billingServiceType,
         provider_scope: providerScope,

@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   prescriptionIntakeFindManyMock,
   visitScheduleFindManyMock,
+  conferenceNoteFindManyMock,
+  careCaseFindManyMock,
   membershipFindManyMock,
   notificationCreateMock,
   dispatchNotificationEventMock,
@@ -13,6 +15,8 @@ const {
 } = vi.hoisted(() => ({
   prescriptionIntakeFindManyMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
+  conferenceNoteFindManyMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
   membershipFindManyMock: vi.fn(),
   notificationCreateMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
@@ -29,6 +33,12 @@ vi.mock('@/lib/db', () => ({
     },
     visitSchedule: {
       findMany: visitScheduleFindManyMock,
+    },
+    conferenceNote: {
+      findMany: conferenceNoteFindManyMock,
+    },
+    careCase: {
+      findMany: careCaseFindManyMock,
     },
     membership: {
       findMany: membershipFindManyMock,
@@ -74,7 +84,11 @@ vi.mock('@/server/services/billing-evidence', () => ({
 }));
 
 import { evaluateInitialHomeVisitAssessmentRequirement } from '@/server/services/billing-evidence';
-import { checkInitialHomeVisitAssessmentBacklog, checkPrescriptionOriginalRetention } from './daily';
+import {
+  checkConferenceMeetingReminders,
+  checkInitialHomeVisitAssessmentBacklog,
+  checkPrescriptionOriginalRetention,
+} from './daily';
 
 describe('checkPrescriptionOriginalRetention', () => {
   beforeEach(() => {
@@ -223,6 +237,57 @@ describe('checkPrescriptionOriginalRetention', () => {
         orgId: 'org_1',
         eventType: 'billing_initial_assessment_due',
         explicitUserIds: ['pharmacist_1'],
+      })
+    );
+  });
+});
+
+describe('checkConferenceMeetingReminders', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-30T00:00:00.000Z'));
+    conferenceNoteFindManyMock.mockResolvedValue([
+      {
+        id: 'note_service_1',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        title: '担当者会議',
+        structured_content: {
+          sections: [
+            { key: 'meeting_purpose', label: '会議目的', body: '訪問頻度の見直し' },
+            { key: 'next_meeting_date', label: '次回会議日', body: '2026-03-31' },
+          ],
+        },
+      },
+    ]);
+    careCaseFindManyMock.mockResolvedValue([
+      {
+        id: 'case_1',
+        patient_id: 'patient_1',
+        primary_pharmacist_id: 'pharmacist_1',
+        patient: {
+          name: '山田 太郎',
+        },
+      },
+    ]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('dispatches reminders for service_manager conferences with a next meeting scheduled for tomorrow', async () => {
+    const result = await checkConferenceMeetingReminders();
+
+    expect(result).toMatchObject({ processedCount: 1 });
+    expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        eventType: 'conference_next_meeting_due',
+        explicitUserIds: ['pharmacist_1'],
+        dedupeKey: 'conference-next-meeting:note_service_1:2026-03-31',
       })
     );
   });

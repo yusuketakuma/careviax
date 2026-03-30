@@ -21,8 +21,10 @@ type GenerateProposalParams = {
   priority: VisitPriority;
   candidateCount: number;
   startDate?: Date;
+  lockedDate?: Date;
   preferredTimeFrom?: string;
   preferredTimeTo?: string;
+  preferredPharmacistId?: string;
   rescheduleSourceScheduleId?: string;
 };
 
@@ -426,6 +428,10 @@ export async function generateVisitScheduleProposalDrafts(
   const estimateRoadTravel = createRoadTravelEstimator();
   const planningStart = params.startDate ?? addDays(new Date(), 1);
   planningStart.setHours(0, 0, 0, 0);
+  const lockedDate = params.lockedDate ? new Date(params.lockedDate) : null;
+  if (lockedDate) {
+    lockedDate.setHours(0, 0, 0, 0);
+  }
 
   const careCase = await prisma.careCase.findFirst({
     where: {
@@ -521,13 +527,15 @@ export async function generateVisitScheduleProposalDrafts(
   const visitDeadlineDate = medicationEndDate
     ? addDays(medicationEndDate, -1)
     : addDays(planningStart, 14);
-  const planningEnd = addDays(
-    planningStart,
-    Math.min(
-      MAX_SEARCH_DAYS,
-      Math.max(0, differenceInCalendarDays(visitDeadlineDate, planningStart))
-    )
-  );
+  const planningEnd = lockedDate
+    ? lockedDate
+    : addDays(
+        planningStart,
+        Math.min(
+          MAX_SEARCH_DAYS,
+          Math.max(0, differenceInCalendarDays(visitDeadlineDate, planningStart))
+        )
+      );
 
   const shifts = await prisma.pharmacistShift.findMany({
     where: {
@@ -537,6 +545,7 @@ export async function generateVisitScheduleProposalDrafts(
         gte: planningStart,
         lte: planningEnd,
       },
+      ...(params.preferredPharmacistId ? { user_id: params.preferredPharmacistId } : {}),
     },
     include: {
       user: {
@@ -642,6 +651,9 @@ export async function generateVisitScheduleProposalDrafts(
   };
 
   const candidateShifts = shifts.filter((shift) => {
+    if (lockedDate && toDateKey(shift.date) !== toDateKey(lockedDate)) {
+      return false;
+    }
     if (shift.date > visitDeadlineDate) return false;
     if (
       preferredWeekdays.length > 0 &&

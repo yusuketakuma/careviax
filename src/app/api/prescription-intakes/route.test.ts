@@ -287,4 +287,75 @@ describe('/api/prescription-intakes POST', () => {
       message: '分割調剤の途中回は次回調剤予定日が必須です',
     });
   });
+
+  it('auto-creates a dispense task and moves the cycle to dispensing when no inquiry exists', async () => {
+    const cycleUpdateMock = vi.fn();
+    const intakeCreateMock = vi.fn().mockResolvedValue({
+      id: 'intake_1',
+      lines: [],
+    });
+    const dispenseTaskCreateMock = vi.fn().mockResolvedValue({ id: 'task_1' });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        medicationCycle: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'cycle_1',
+            patient_id: 'patient_1',
+            overall_status: 'new',
+            case_: {
+              primary_pharmacist_id: 'pharmacist_1',
+            },
+            prescription_intakes: [],
+            dispense_tasks: [],
+          }),
+          update: cycleUpdateMock,
+        },
+        prescriptionIntake: {
+          create: intakeCreateMock,
+        },
+        inquiryRecord: {
+          count: vi.fn().mockResolvedValue(0),
+        },
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: dispenseTaskCreateMock,
+        },
+      })
+    );
+
+    const response = await POST(
+      createRequest({
+        cycle_id: 'cycle_1',
+        source_type: 'paper',
+        prescribed_date: '2026-03-28',
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      })
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(dispenseTaskCreateMock).toHaveBeenCalledWith({
+      data: {
+        org_id: 'org_1',
+        cycle_id: 'cycle_1',
+        assigned_to: 'pharmacist_1',
+        priority: 'normal',
+        status: 'pending',
+      },
+    });
+    expect(cycleUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'cycle_1' },
+      data: { overall_status: 'dispensing' },
+    });
+  });
 });

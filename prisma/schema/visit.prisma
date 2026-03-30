@@ -42,6 +42,7 @@ enum PatientContactStatus {
   attempted
   confirmed
   declined
+  change_requested
   unreachable
 }
 
@@ -212,6 +213,7 @@ model VisitScheduleProposal {
   medication_end_date          DateTime?           @db.Date
   visit_deadline_date          DateTime?           @db.Date
   proposal_reason              String?
+  suggested_recurrence_rule    String?
   escalation_reason            String?
   approved_by                  String?
   approved_at                  DateTime?
@@ -241,6 +243,7 @@ model VisitScheduleContactLog {
   patient_id      String
   case_id         String
   outcome         PatientContactStatus
+  contact_method  String?
   contact_name    String?
   contact_phone   String?
   note            String?

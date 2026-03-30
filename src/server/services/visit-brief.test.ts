@@ -92,6 +92,19 @@ describe('getPatientVisitBrief', () => {
       careCase: {
         findMany: vi.fn().mockResolvedValue([{ id: 'case_1' }]),
       },
+      conferenceNote: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'conference_1',
+            title: '退院前カンファレンス',
+            conference_date: new Date('2026-03-20T00:00:00Z'),
+            action_items: [
+              { label: '訪問初回日の調整', converted_task_id: 'task_1' },
+              { label: '家族へ持参薬説明', converted_task_id: null },
+            ],
+          },
+        ]),
+      },
       patient: {
         findFirst: vi.fn().mockResolvedValue({ id: 'patient_1', name: '患者A' }),
       },
@@ -347,5 +360,12 @@ describe('getPatientVisitBrief', () => {
       limit: 6,
     });
     expect(result.ai_summary.headline).toBe('直近処方で 2 件の変更があります。');
+    expect(result.conference_summary).toEqual(
+      expect.objectContaining({
+        recent_conferences: 1,
+        pending_action_items: 1,
+        last_conference_type: '退院前カンファレンス',
+      })
+    );
   });
 });

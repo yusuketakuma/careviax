@@ -3,42 +3,29 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
-import { z } from 'zod';
+import { createFacilitySchema } from '@/lib/validations/facility';
 
-const facilityContactSchema = z.object({
-  id: z.string().optional(),
-  name: z.string().trim().min(1, '担当者名は必須です'),
-  role: z.string().trim().optional(),
-  phone: z.string().trim().optional(),
-  email: z.string().trim().email('メール形式が不正です').optional().or(z.literal('')),
-  fax: z.string().trim().optional(),
-  is_primary: z.boolean().default(false),
-  notes: z.string().trim().optional(),
-});
+function toTimeValue(value?: string | null) {
+  if (!value) return null;
+  const [hours = '0', minutes = '0'] = value.split(':');
+  return new Date(
+    Date.UTC(1970, 0, 1, Number.parseInt(hours, 10), Number.parseInt(minutes, 10))
+  );
+}
 
-const facilitySchema = z.object({
-  name: z.string().trim().min(1, '施設名は必須です'),
-  facility_type: z.enum([
-    'nursing_home',
-    'group_home',
-    'assisted_living',
-    'clinic',
-    'hospital',
-    'day_service',
-    'home',
-    'other',
-  ]),
-  address: z.string().trim().optional(),
-  phone: z.string().trim().optional(),
-  fax: z.string().trim().optional(),
-  notes: z.string().trim().optional(),
-  contacts: z.array(facilityContactSchema).default([]),
-});
+function formatTimeValue(value: Date | null) {
+  if (!value) return null;
+  const hours = `${value.getUTCHours()}`.padStart(2, '0');
+  const minutes = `${value.getUTCMinutes()}`.padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
 
 function toResponse(
   facility: Prisma.FacilityGetPayload<{
     include: { contacts: true };
-  }>,
+  }> & {
+    patient_count?: number;
+  },
 ) {
   return {
     id: facility.id,
@@ -47,6 +34,12 @@ function toResponse(
     address: facility.address,
     phone: facility.phone,
     fax: facility.fax,
+    acceptance_time_from: formatTimeValue(facility.acceptance_time_from),
+    acceptance_time_to: formatTimeValue(facility.acceptance_time_to),
+    regular_visit_weekdays: Array.isArray(facility.regular_visit_weekdays)
+      ? facility.regular_visit_weekdays
+      : [],
+    patient_count: facility.patient_count ?? 0,
     notes: facility.notes,
     contacts: facility.contacts.map((contact) => ({
       id: contact.id,
@@ -64,17 +57,44 @@ function toResponse(
 }
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
-  const facilities = await prisma.facility.findMany({
-    where: { org_id: req.orgId },
-    include: {
-      contacts: {
-        orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+  const [facilities, residenceCounts] = await Promise.all([
+    prisma.facility.findMany({
+      where: { org_id: req.orgId },
+      include: {
+        contacts: {
+          orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+        },
       },
-    },
-    orderBy: [{ name: 'asc' }],
-  });
+      orderBy: [{ name: 'asc' }],
+    }),
+    prisma.residence.groupBy({
+      by: ['facility_id'],
+      where: {
+        org_id: req.orgId,
+        is_primary: true,
+        facility_id: {
+          not: null,
+        },
+      },
+      _count: {
+        _all: true,
+      },
+    }),
+  ]);
+  const patientCountByFacilityId = new Map(
+    residenceCounts
+      .filter((item) => item.facility_id)
+      .map((item) => [item.facility_id as string, item._count._all])
+  );
 
-  return success({ data: facilities.map(toResponse) });
+  return success({
+    data: facilities.map((facility) =>
+      toResponse({
+        ...facility,
+        patient_count: patientCountByFacilityId.get(facility.id) ?? 0,
+      })
+    ),
+  });
 }, {
   permission: 'canVisit',
   message: '施設情報の閲覧権限がありません',
@@ -84,7 +104,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   const body = await req.json().catch(() => null);
   if (!body) return validationError('リクエストボディが不正です');
 
-  const parsed = facilitySchema.safeParse(body);
+  const parsed = createFacilitySchema.safeParse(body);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
@@ -98,6 +118,9 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         address: parsed.data.address || null,
         phone: parsed.data.phone || null,
         fax: parsed.data.fax || null,
+        acceptance_time_from: toTimeValue(parsed.data.acceptance_time_from),
+        acceptance_time_to: toTimeValue(parsed.data.acceptance_time_to),
+        regular_visit_weekdays: parsed.data.regular_visit_weekdays as Prisma.InputJsonValue,
         notes: parsed.data.notes || null,
         contacts: parsed.data.contacts.length
           ? {

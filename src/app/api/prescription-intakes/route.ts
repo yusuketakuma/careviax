@@ -9,6 +9,10 @@ import {
   collectDuplicatePrescriptionLines,
   collectStructuringBlockedLines,
 } from './shared';
+import {
+  PrescriberInstitutionReferenceValidationError,
+  resolvePrescriberInstitutionFields,
+} from '@/lib/prescriptions/prescriber-institutions';
 
 function validateSplitDispense(
   input: {
@@ -70,6 +74,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       source_type: true,
       prescribed_date: true,
       prescriber_name: true,
+      prescriber_institution_id: true,
       prescriber_institution: true,
       prescription_expiry_date: true,
       refill_remaining_count: true,
@@ -113,6 +118,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     split_dispense_current,
     split_next_dispense_date,
     lines,
+    prescriber_institution_id,
     ...rest
   } = parsed.data;
 
@@ -145,13 +151,20 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     }
   }
 
-  const result = await withOrgContext(req.orgId, async (tx) => {
-    // Verify cycle belongs to this org
-    const cycle = await tx.medicationCycle.findFirst({
+  let result;
+  try {
+    result = await withOrgContext(req.orgId, async (tx) => {
+      // Verify cycle belongs to this org
+      const cycle = await tx.medicationCycle.findFirst({
       where: { id: cycle_id, org_id: req.orgId },
       select: {
         id: true,
         patient_id: true,
+        case_: {
+          select: {
+            primary_pharmacist_id: true,
+          },
+        },
         prescription_intakes: {
           orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
           take: 1,
@@ -269,6 +282,11 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     }
 
     // Create PrescriptionIntake
+    const resolvedInstitution = await resolvePrescriberInstitutionFields(tx, req.orgId, {
+      prescriber_institution_id,
+      prescriber_institution: rest.prescriber_institution,
+    });
+
     const intake = await tx.prescriptionIntake.create({
       data: {
         org_id: req.orgId,
@@ -288,6 +306,8 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
           ? { split_next_dispense_date: new Date(split_next_dispense_date) }
           : {}),
         ...rest,
+        prescriber_institution_id: resolvedInstitution.prescriber_institution_id,
+        prescriber_institution: resolvedInstitution.prescriber_institution,
         lines: {
           create: lines.map((line) => ({
             org_id: req.orgId,
@@ -298,14 +318,64 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       include: { lines: true },
     });
 
-    // Update MedicationCycle status to intake_received
+    const unresolvedInquiryCount =
+      typeof tx.inquiryRecord?.count === 'function'
+        ? await tx.inquiryRecord.count({
+            where: {
+              org_id: req.orgId,
+              cycle_id,
+              resolved_at: null,
+            },
+          })
+        : 0;
+    const existingDispenseTask =
+      typeof tx.dispenseTask?.findFirst === 'function'
+        ? await tx.dispenseTask.findFirst({
+            where: {
+              org_id: req.orgId,
+              cycle_id,
+              status: {
+                in: ['pending', 'in_progress'],
+              },
+            },
+            select: { id: true },
+          })
+        : null;
+    const shouldMoveToDispensing = unresolvedInquiryCount === 0;
+    const shouldAutoCreateDispenseTask =
+      shouldMoveToDispensing && !existingDispenseTask;
+
+    if (
+      shouldAutoCreateDispenseTask &&
+      typeof tx.dispenseTask?.create === 'function'
+    ) {
+      await tx.dispenseTask.create({
+        data: {
+          org_id: req.orgId,
+          cycle_id,
+          assigned_to: cycle.case_?.primary_pharmacist_id ?? null,
+          priority: 'normal',
+          status: 'pending',
+        },
+      });
+    }
+
+    // Update MedicationCycle status to intake_received or dispensing
     await tx.medicationCycle.update({
       where: { id: cycle_id },
-      data: { overall_status: 'intake_received' },
+      data: {
+        overall_status: shouldMoveToDispensing ? 'dispensing' : 'intake_received',
+      },
     });
 
-    return intake;
-  });
+      return intake;
+    });
+  } catch (error) {
+    if (error instanceof PrescriberInstitutionReferenceValidationError) {
+      return validationError(error.message);
+    }
+    throw error;
+  }
 
   if (!result) {
     return validationError('指定されたサイクルが見つかりません');

@@ -92,6 +92,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         ...rest,
       },
       update: {
+        site_id: rest.site_id,
         ...(available_from !== undefined
           ? { available_from: available_from ? new Date(`1970-01-01T${available_from}`) : null }
           : {}),

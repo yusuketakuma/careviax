@@ -1,8 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { ensureHomeCareBillingSsotMock, buildBillingCandidateSpecsMock } = vi.hoisted(() => ({
+const {
+  ensureHomeCareBillingSsotMock,
+  buildBillingCandidateSpecsMock,
+  findActiveVisitConsentMock,
+  findCurrentManagementPlanMock,
+  upsertOperationalTaskMock,
+  resolveOperationalTasksMock,
+} = vi.hoisted(() => ({
   ensureHomeCareBillingSsotMock: vi.fn(),
   buildBillingCandidateSpecsMock: vi.fn(),
+  findActiveVisitConsentMock: vi.fn(),
+  findCurrentManagementPlanMock: vi.fn(),
+  upsertOperationalTaskMock: vi.fn(),
+  resolveOperationalTasksMock: vi.fn(),
 }));
 
 vi.mock('./home-care-billing-ssot', () => ({
@@ -11,16 +22,34 @@ vi.mock('./home-care-billing-ssot', () => ({
   HOME_CARE_BILLING_RULESET_VERSION: '2026-revision-v1',
 }));
 
+vi.mock('./management-plans', () => ({
+  findActiveVisitConsent: findActiveVisitConsentMock,
+  findCurrentManagementPlan: findCurrentManagementPlanMock,
+}));
+
+vi.mock('./operational-tasks', () => ({
+  upsertOperationalTask: upsertOperationalTaskMock,
+  resolveOperationalTasks: resolveOperationalTasksMock,
+}));
+
 import {
   closeBillingCandidatesForMonth,
   generateBillingCandidatesForMonth,
   getBillingCandidateWorkbenchSummary,
+  upsertBillingEvidenceForVisit,
 } from './billing-evidence';
 
 describe('billing-evidence service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     ensureHomeCareBillingSsotMock.mockResolvedValue(undefined);
+    findActiveVisitConsentMock.mockResolvedValue({ id: 'consent_1' });
+    findCurrentManagementPlanMock.mockResolvedValue({
+      current: { id: 'plan_1' },
+      reviewOverdue: false,
+    });
+    upsertOperationalTaskMock.mockResolvedValue(undefined);
+    resolveOperationalTasksMock.mockResolvedValue(undefined);
   });
 
   it('skips candidate creation for unclaimable billing evidence and removes stale non-exported rows', async () => {
@@ -360,6 +389,253 @@ describe('billing-evidence service', () => {
           patient_id: 'patient_other',
           billing_code: 'MED_HOME_DUPLICATE_PROPOSAL_RESIDUAL',
           exclusion_reason: null,
+        }),
+      })
+    );
+  });
+
+  it('links same-month conference candidates into billing evidence and carries conference delivery refs', async () => {
+    const upsertMock = vi.fn().mockResolvedValue({ id: 'evidence_1', claimable: true });
+    const visitRecordCountMock = vi.fn().mockResolvedValue(1);
+    const careReportFindManyMock = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'report_conf_1',
+          status: 'sent',
+        },
+      ]);
+    const deliveryRecordFindManyMock = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'delivery_conf_1',
+          report_id: 'report_conf_1',
+          status: 'sent',
+        },
+      ]);
+
+    buildBillingCandidateSpecsMock.mockResolvedValue([]);
+
+    const tx = {
+      visitRecord: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'visit_1',
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          visit_date: new Date('2026-03-20T09:00:00.000Z'),
+          outcome_status: 'completed',
+          schedule: {
+            cycle_id: 'cycle_1',
+            case_id: 'case_1',
+            pharmacist_id: 'pharm_1',
+            visit_type: 'regular',
+            site_id: null,
+          },
+        }),
+        count: visitRecordCountMock,
+      },
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          medical_insurance_number: 'med_1',
+          care_insurance_number: null,
+          birth_date: new Date('1960-01-01T00:00:00.000Z'),
+          cases: [
+            {
+              required_visit_support: null,
+            },
+          ],
+        }),
+      },
+      residence: {
+        findFirst: vi.fn().mockResolvedValue({
+          building_id: null,
+          facility_id: null,
+          facility_unit_id: null,
+          facility: null,
+          unit_name: null,
+        }),
+        count: vi.fn().mockResolvedValue(1),
+      },
+      careReport: {
+        findMany: careReportFindManyMock,
+      },
+      deliveryRecord: {
+        findMany: deliveryRecordFindManyMock,
+      },
+      billingCandidate: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            billing_code: 'MED_INFO_PROVISION_2_HA',
+            status: 'candidate',
+            source_snapshot: {
+              source_type: 'conference_note',
+              conference_note_id: 'note_conf_1',
+            },
+          },
+        ]),
+      },
+      conferenceNote: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'note_conf_1',
+            metadata: {
+              generated_report_id: 'report_conf_1',
+            },
+          },
+        ]),
+      },
+      pharmacySiteInsuranceConfig: {
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+      billingEvidence: {
+        upsert: upsertMock,
+      },
+    };
+
+    await upsertBillingEvidenceForVisit(tx as never, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_1',
+    });
+
+    expect(upsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          conference_note_ref: 'note_conf_1',
+          report_delivery_ref: 'delivery_conf_1',
+          recommended_rule_keys: ['medical.information_provision.2_care_manager'],
+        }),
+        update: expect.objectContaining({
+          conference_note_ref: 'note_conf_1',
+          report_delivery_ref: 'delivery_conf_1',
+          recommended_rule_keys: ['medical.information_provision.2_care_manager'],
+        }),
+      })
+    );
+    expect(buildBillingCandidateSpecsMock).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        claimable: true,
+        exclusionReason: null,
+      })
+    );
+  });
+
+  it('counts primary residents by facility_id when building patient count is calculated', async () => {
+    const upsertMock = vi.fn().mockResolvedValue({ id: 'evidence_1', claimable: true });
+    const residenceFindFirstMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        building_id: null,
+        facility_id: 'facility_1',
+        facility_unit_id: null,
+        facility: {
+          id: 'facility_1',
+          facility_type: 'nursing_home',
+          total_units: null,
+          units: [],
+        },
+        unit_name: null,
+      })
+      .mockResolvedValueOnce({
+        building_id: null,
+        unit_name: null,
+      });
+    const residenceCountMock = vi
+      .fn()
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(1);
+
+    buildBillingCandidateSpecsMock.mockResolvedValue([]);
+
+    const tx = {
+      visitRecord: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'visit_1',
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          visit_date: new Date('2026-03-20T09:00:00.000Z'),
+          outcome_status: 'completed',
+          schedule: {
+            cycle_id: 'cycle_1',
+            case_id: 'case_1',
+            pharmacist_id: 'pharm_1',
+            visit_type: 'regular',
+            site_id: null,
+          },
+        }),
+        count: vi.fn().mockResolvedValue(1),
+      },
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          medical_insurance_number: 'med_1',
+          care_insurance_number: null,
+          birth_date: new Date('1960-01-01T00:00:00.000Z'),
+          cases: [
+            {
+              required_visit_support: null,
+            },
+          ],
+        }),
+      },
+      residence: {
+        findFirst: residenceFindFirstMock,
+        count: residenceCountMock,
+      },
+      careReport: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'report_1',
+            status: 'sent',
+          },
+        ]),
+      },
+      deliveryRecord: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'delivery_1',
+            report_id: 'report_1',
+            status: 'sent',
+          },
+        ]),
+      },
+      billingCandidate: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      conferenceNote: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      pharmacySiteInsuranceConfig: {
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+      billingEvidence: {
+        upsert: upsertMock,
+      },
+    };
+
+    await upsertBillingEvidenceForVisit(tx as never, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_1',
+    });
+
+    expect(residenceCountMock).toHaveBeenNthCalledWith(1, {
+      where: {
+        org_id: 'org_1',
+        facility_id: 'facility_1',
+        is_primary: true,
+      },
+    });
+    expect(upsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          building_patient_count: 3,
+        }),
+        update: expect.objectContaining({
+          building_patient_count: 3,
         }),
       })
     );

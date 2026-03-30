@@ -653,18 +653,43 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         status: { notIn: ['completed', 'cancelled'] },
       },
     }),
-    prisma.$queryRaw<[{ count: bigint }]>`
-      SELECT COUNT(*)::bigint AS count
-      FROM "ConferenceNote"
-      WHERE org_id = ${req.orgId}
-        AND action_items IS NOT NULL
-        AND action_items != 'null'::jsonb
-        AND jsonb_array_length(action_items) > 0
-        AND EXISTS (
-          SELECT 1 FROM jsonb_array_elements(action_items) AS item
-          WHERE item->>'converted_task_id' IS NULL
-        )
-    `.then((rows) => Number(rows[0]?.count ?? 0)),
+    typeof prisma.$queryRaw === 'function'
+      ? prisma.$queryRaw<[{ count: bigint }]>`
+          SELECT COUNT(*)::bigint AS count
+          FROM "ConferenceNote"
+          WHERE org_id = ${req.orgId}
+            AND action_items IS NOT NULL
+            AND action_items != 'null'::jsonb
+            AND jsonb_array_length(action_items) > 0
+            AND EXISTS (
+              SELECT 1 FROM jsonb_array_elements(action_items) AS item
+              WHERE item->>'converted_task_id' IS NULL
+            )
+        `.then((rows) => Number(rows[0]?.count ?? 0))
+      : prisma.conferenceNote
+          .findMany({
+            where: {
+              org_id: req.orgId,
+            },
+            select: {
+              action_items: true,
+            },
+          })
+          .then((notes) =>
+            notes.filter((note) => {
+              const items = note.action_items;
+              return (
+                Array.isArray(items) &&
+                items.some(
+                  (item) =>
+                    typeof item === 'object' &&
+                    item !== null &&
+                    !('converted_task_id' in item) &&
+                    !('convertedTaskId' in item)
+                )
+              );
+            }).length
+          ),
   ]);
   const homeCareFeatureSummary = await getHomeCareFeatureSummary(prisma, {
     orgId: req.orgId,

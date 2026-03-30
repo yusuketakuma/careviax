@@ -41,6 +41,7 @@ export const patientContactSchema = z.object({
 
 export const careTeamLinkSchema = z.object({
   id: z.string().optional(),
+  external_professional_id: z.string().optional(),
   role: z.enum(['physician', 'nurse', 'care_manager', 'pharmacist', 'other']),
   name: z.string().min(1, '氏名は必須です'),
   organization_name: z.string().optional(),
@@ -144,6 +145,8 @@ export const createPatientSchema = z.object({
   care_insurance_number: z.string().optional(),
   address: z.string().optional(),
   building_id: z.string().optional(),
+  facility_id: z.string().optional(),
+  facility_unit_id: z.string().optional(),
   unit_name: z.string().optional(),
   allergy_info: z.array(z.string().min(1)).optional(),
   notes: z.string().optional(),

@@ -6,11 +6,13 @@ const {
   externalProfessionalUpdateMock,
   externalProfessionalDeleteMock,
   withOrgContextMock,
+  assertFacilityReferenceMock,
 } = vi.hoisted(() => ({
   externalProfessionalFindFirstMock: vi.fn(),
   externalProfessionalUpdateMock: vi.fn(),
   externalProfessionalDeleteMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  assertFacilityReferenceMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -32,7 +34,12 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-import { DELETE, PATCH } from './route';
+vi.mock('@/lib/patient/facility-reference', () => ({
+  FacilityReferenceValidationError: class FacilityReferenceValidationError extends Error {},
+  assertFacilityReference: assertFacilityReferenceMock,
+}));
+
+import { DELETE, GET, PATCH } from './route';
 
 describe('/api/admin/external-professionals/[id]', () => {
   beforeEach(() => {
@@ -42,13 +49,22 @@ describe('/api/admin/external-professionals/[id]', () => {
       id: 'external_1',
       profession_type: 'nurse',
       name: '訪問 看護',
+      facility_id: 'facility_1',
+      facility: { name: 'さくら荘' },
       organization_name: 'あおば訪看',
       department: null,
       phone: '03-1111-2222',
       email: null,
       fax: null,
+      preferred_contact_method: null,
+      preferred_contact_time: null,
+      last_contacted_at: null,
+      last_success_channel: null,
       address: null,
       notes: null,
+      _count: {
+        care_team_links: 1,
+      },
       created_at: new Date('2026-03-28T00:00:00.000Z'),
       updated_at: new Date('2026-03-28T00:00:00.000Z'),
     });
@@ -63,11 +79,51 @@ describe('/api/admin/external-professionals/[id]', () => {
     );
   });
 
+  it('returns an external professional detail row', async () => {
+    externalProfessionalFindFirstMock.mockResolvedValueOnce({
+      id: 'external_1',
+      profession_type: 'nurse',
+      name: '訪問 看護',
+      facility_id: 'facility_1',
+      facility: { name: 'さくら荘' },
+      organization_name: 'あおば訪看',
+      department: null,
+      phone: '03-1111-2222',
+      email: null,
+      fax: null,
+      preferred_contact_method: null,
+      preferred_contact_time: null,
+      last_contacted_at: null,
+      last_success_channel: null,
+      address: null,
+      notes: null,
+      _count: {
+        care_team_links: 3,
+      },
+      created_at: new Date('2026-03-28T00:00:00.000Z'),
+      updated_at: new Date('2026-03-28T00:00:00.000Z'),
+    });
+
+    const response = (await GET({} as NextRequest, {
+      params: Promise.resolve({ id: 'external_1' }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'external_1',
+        facility_name: 'さくら荘',
+        patient_count: 3,
+      },
+    });
+  });
+
   it('updates an external professional row', async () => {
     const response = (await PATCH({
       json: async () => ({
         profession_type: 'nurse',
         name: '訪問 看護',
+        facility_id: 'facility_1',
         organization_name: 'あおば訪看',
         phone: '03-1111-2222',
       }),
@@ -76,14 +132,29 @@ describe('/api/admin/external-professionals/[id]', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expect(assertFacilityReferenceMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        externalProfessional: expect.any(Object),
+      }),
+      'org_1',
+      'facility_1',
+    );
     expect(externalProfessionalUpdateMock).toHaveBeenCalledWith({
       where: { id: 'external_1' },
       data: expect.objectContaining({
         profession_type: 'nurse',
         name: '訪問 看護',
+        facility_id: 'facility_1',
         organization_name: 'あおば訪看',
         phone: '03-1111-2222',
       }),
+      include: {
+        facility: {
+          select: {
+            name: true,
+          },
+        },
+      },
     });
   });
 

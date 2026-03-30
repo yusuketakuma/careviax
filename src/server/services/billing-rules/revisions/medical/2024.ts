@@ -568,6 +568,28 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
     source_url: MEDICAL_TABLE_URL,
     source_note: '調剤報酬点数表 区分15の7 在宅患者緊急時等共同指導料 700点（月2回まで）',
   },
+  {
+    ssot_key: 'medical.addition.terminal_care',
+    rule_type: 'addition',
+    service_type: 'medical_home_visit',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 360,
+    name: '在宅ターミナルケア加算',
+    code: 'C013',
+    amount: 2500,
+    conditions: {
+      monthly_cap: 1,
+    },
+    evidence_requirements: {
+      requires_visit_documentation: true,
+      requires_written_report: true,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 C013 在宅患者訪問薬剤管理指導料 ターミナルケア加算 2500点',
+  },
 
   // ── 経管投薬支援料 ──
   {

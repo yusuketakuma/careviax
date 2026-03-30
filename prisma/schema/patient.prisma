@@ -170,6 +170,8 @@ model CareTeamLink {
   org_id            String
   case_id           String
   case_             CareCase @relation(fields: [case_id], references: [id])
+  external_professional_id String?
+  external_professional ExternalProfessional? @relation(fields: [external_professional_id], references: [id], onDelete: SetNull)
   role              String // physician/nurse/care_manager/pharmacist/other
   name              String
   organization_name String?
@@ -185,6 +187,7 @@ model CareTeamLink {
 
   @@index([org_id])
   @@index([case_id])
+  @@index([external_professional_id])
 }
 
 model PatientCondition {

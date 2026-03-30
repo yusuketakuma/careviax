@@ -15,6 +15,7 @@ import {
   evaluateInitialHomeVisitAssessmentRequirement,
   upsertBillingEvidenceForVisit,
 } from '@/server/services/billing-evidence';
+import { queueOverdueReportResponseReminders } from '@/server/services/report-reminders';
 
 const DOSAGE_SUPPORT_KEYWORDS = [
   '飲みにく',
@@ -47,6 +48,47 @@ function startOfDay(value = new Date()) {
   const next = new Date(value);
   next.setHours(0, 0, 0, 0);
   return next;
+}
+
+function parseConferenceSections(structuredContent: Prisma.JsonValue | null) {
+  if (
+    typeof structuredContent !== 'object' ||
+    structuredContent === null ||
+    !('sections' in structuredContent)
+  ) {
+    return [] as Array<{ key: string; body?: string }>;
+  }
+
+  const sections = (structuredContent as { sections?: unknown }).sections;
+  if (!Array.isArray(sections)) return [];
+  return sections.filter(
+    (section): section is { key: string; body?: string } =>
+      typeof section === 'object' && section !== null && 'key' in section
+  );
+}
+
+function parseDateFromConferenceText(body?: string) {
+  if (!body?.trim()) return null;
+
+  const match = body.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+  if (match) {
+    const [, year, month, day] = match;
+    const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+    parsed.setHours(0, 0, 0, 0);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const parsed = new Date(body.trim());
+  if (Number.isNaN(parsed.getTime())) return null;
+  parsed.setHours(0, 0, 0, 0);
+  return parsed;
+}
+
+function formatDateKey(value: Date) {
+  const year = value.getFullYear();
+  const month = `${value.getMonth() + 1}`.padStart(2, '0');
+  const day = `${value.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function hasAnyKeyword(values: Array<string | null | undefined>, keywords: readonly string[]) {
@@ -1415,6 +1457,88 @@ export async function checkCommunityFollowups() {
   });
 }
 
+export async function checkConferenceMeetingReminders() {
+  return runJob('conference_meeting_reminders', async () => {
+    const today = startOfDay(new Date());
+    const tomorrow = addDays(today, 1);
+
+    const notes = await prisma.conferenceNote.findMany({
+      where: {
+        note_type: 'service_manager',
+      },
+      select: {
+        id: true,
+        org_id: true,
+        case_id: true,
+        title: true,
+        structured_content: true,
+      },
+    });
+
+    const caseIds = Array.from(
+      new Set(notes.map((note) => note.case_id).filter((value): value is string => Boolean(value)))
+    );
+    const careCases =
+      caseIds.length > 0
+        ? await prisma.careCase.findMany({
+            where: {
+              id: { in: caseIds },
+            },
+            select: {
+              id: true,
+              patient_id: true,
+              primary_pharmacist_id: true,
+              patient: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          })
+        : [];
+    const careCaseById = new Map(careCases.map((careCase) => [careCase.id, careCase]));
+
+    let processedCount = 0;
+
+    for (const note of notes) {
+      if (!note.case_id) continue;
+
+      const sections = parseConferenceSections(note.structured_content);
+      const nextMeetingSection = sections.find((section) => section.key === 'next_meeting_date');
+      const meetingDate = parseDateFromConferenceText(nextMeetingSection?.body);
+      if (!meetingDate) continue;
+
+      const isReminderWindow =
+        meetingDate.getTime() === today.getTime() ||
+        meetingDate.getTime() === tomorrow.getTime();
+      if (!isReminderWindow) continue;
+
+      const careCase = careCaseById.get(note.case_id);
+      if (!careCase?.primary_pharmacist_id) continue;
+
+      await dispatchNotificationEvent(prisma, {
+        orgId: note.org_id,
+        eventType: 'conference_next_meeting_due',
+        type: 'reminder',
+        title: '次回担当者会議の予定確認',
+        message: `${careCase.patient.name ?? '患者'} の担当者会議が ${formatDateKey(meetingDate)} に予定されています。`,
+        link: '/conferences',
+        explicitUserIds: [careCase.primary_pharmacist_id],
+        dedupeKey: `conference-next-meeting:${note.id}:${formatDateKey(meetingDate)}`,
+        metadata: {
+          conference_note_id: note.id,
+          case_id: note.case_id,
+          patient_id: careCase.patient_id,
+          next_meeting_date: formatDateKey(meetingDate),
+        } satisfies Prisma.InputJsonValue,
+      });
+      processedCount++;
+    }
+
+    return { processedCount };
+  });
+}
+
 export async function checkReportDeliveryBacklog() {
   return runJob('report_delivery_backlog_check', async () => {
     const reports = await prisma.careReport.findMany({
@@ -1435,8 +1559,10 @@ export async function checkReportDeliveryBacklog() {
         },
       },
     });
+    const orgIds = new Set<string>();
 
     for (const report of reports) {
+      orgIds.add(report.org_id);
       const dueAt = addDays(new Date(report.updated_at), 1);
       await withOrgContext(report.org_id, async (tx) => {
         await upsertOperationalTask(tx, {
@@ -1463,7 +1589,15 @@ export async function checkReportDeliveryBacklog() {
       });
     }
 
-    return { processedCount: reports.length };
+    let queuedResponseReminders = 0;
+    for (const orgId of orgIds) {
+      const result = await withOrgContext(orgId, (tx) =>
+        queueOverdueReportResponseReminders(tx, orgId)
+      );
+      queuedResponseReminders += result.queued_count;
+    }
+
+    return { processedCount: reports.length, queuedResponseReminders };
   });
 }
 
@@ -2179,6 +2313,7 @@ export async function runDailyOperations() {
       generateBillingEvidenceDaily(),
       checkSelfReportFollowups(),
       checkCommunityFollowups(),
+      checkConferenceMeetingReminders(),
       checkReportDeliveryBacklog(),
       checkCarryItemReadiness(),
       checkEmergencyCoverageGaps(),

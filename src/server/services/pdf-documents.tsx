@@ -91,6 +91,48 @@ type TracingReportRecord = {
   } | null;
 };
 
+type ConferenceNoteParticipant = {
+  name?: string;
+  role?: string;
+  attended?: boolean;
+  is_report_recipient?: boolean;
+  email?: string;
+  fax?: string;
+};
+
+type ConferenceNoteActionItem = {
+  title?: string;
+  assignee?: string;
+  converted_task_id?: string;
+  converted_at?: string;
+};
+
+type ConferenceNoteStructuredSection = {
+  key: string;
+  label: string;
+  body?: string;
+};
+
+type ConferenceNotePdfRecord = {
+  id: string;
+  note_type: string;
+  title: string;
+  content: string;
+  conference_date: Date;
+  participants: ConferenceNoteParticipant[];
+  structured_sections: ConferenceNoteStructuredSection[];
+  action_items: ConferenceNoteActionItem[];
+  metadata: Record<string, unknown>;
+  patient: {
+    id: string;
+    name: string;
+    birth_date: Date;
+    gender: string;
+  } | null;
+  facility_name: string | null;
+  unit_name: string | null;
+};
+
 type ManagementPlanRecord = {
   id: string;
   title: string;
@@ -178,6 +220,15 @@ type PatientVisitRecordPdfRecord = {
 };
 
 let fontRegistered = false;
+
+const CONFERENCE_NOTE_TYPE_LABELS: Record<string, string> = {
+  regular: '定例会議',
+  pre_discharge: '退院前カンファレンス',
+  service_manager: 'サービス担当者会議',
+  care_team: '多職種カンファレンス',
+  emergency: '緊急カンファレンス',
+  death_conference: 'デスカンファレンス',
+};
 
 const SLOT_KEYS = ['morning', 'noon', 'evening', 'bedtime'] as const;
 type CalendarSlot = (typeof SLOT_KEYS)[number];
@@ -478,6 +529,38 @@ function flattenJson(value: unknown, labelPrefix = ''): KeyValueRow[] {
   }
 
   return labelPrefix ? [{ label: labelPrefix, value: String(value) }] : [];
+}
+
+function parseConferenceParticipants(raw: unknown): ConferenceNoteParticipant[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (item): item is ConferenceNoteParticipant =>
+      typeof item === 'object' && item !== null,
+  );
+}
+
+function parseConferenceActionItems(raw: unknown): ConferenceNoteActionItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (item): item is ConferenceNoteActionItem =>
+      typeof item === 'object' && item !== null,
+  );
+}
+
+function parseConferenceStructuredSections(raw: unknown): ConferenceNoteStructuredSection[] {
+  if (
+    typeof raw !== 'object' ||
+    raw === null ||
+    !('sections' in raw) ||
+    !Array.isArray((raw as { sections?: unknown }).sections)
+  ) {
+    return [];
+  }
+
+  return ((raw as { sections: unknown[] }).sections).filter(
+    (item): item is ConferenceNoteStructuredSection =>
+      typeof item === 'object' && item !== null && 'label' in item && 'key' in item,
+  );
 }
 
 function inferCalendarSlots(frequency?: string | null): CalendarSlot[] {
@@ -1218,6 +1301,89 @@ function renderTracingReportContent(report: TracingReportRecord) {
   );
 }
 
+function renderConferenceNoteContent(record: ConferenceNotePdfRecord) {
+  const participantItems = record.participants.map((participant) => {
+    const deliveryChannels = [
+      participant.email ? `Mail: ${participant.email}` : null,
+      participant.fax ? `FAX: ${participant.fax}` : null,
+    ].filter(Boolean);
+
+    return [
+      participant.name ?? '名称未設定',
+      participant.role ? `(${participant.role})` : null,
+      participant.attended === false ? '欠席' : '出席',
+      participant.is_report_recipient ? '報告書送付対象' : null,
+      deliveryChannels.length > 0 ? `連絡先 ${deliveryChannels.join(' / ')}` : null,
+    ]
+      .filter(Boolean)
+      .join(' / ');
+  });
+  const structuredSections = record.structured_sections.filter((section) => section.body?.trim());
+  const actionRows =
+    record.action_items.length > 0
+      ? record.action_items.map((item) => [
+          item.title ?? '—',
+          item.assignee ?? '—',
+          item.converted_task_id ? 'タスク化済み' : '未処理',
+        ])
+      : [['記録なし', '', '']];
+  const metadataRows = flattenJson(record.metadata);
+
+  return (
+    <>
+      <Section title="基本情報">
+        <KeyValueCards
+          rows={[
+            { label: '会議種別', value: CONFERENCE_NOTE_TYPE_LABELS[record.note_type] ?? record.note_type },
+            { label: '開催日時', value: formatDate(record.conference_date, true) },
+            { label: 'タイトル', value: record.title },
+            { label: '患者名', value: record.patient?.name ?? '未紐付け' },
+            { label: '施設', value: record.facility_name ?? '—' },
+            { label: 'ユニット', value: record.unit_name ?? '—' },
+          ]}
+        />
+      </Section>
+
+      <Section title="参加者">
+        <BulletList items={participantItems} />
+      </Section>
+
+      {structuredSections.length > 0 ? (
+        <Section title="構造化項目">
+          <BulletList
+            items={structuredSections.map(
+              (section) => `${section.label}: ${section.body?.trim() ?? '—'}`,
+            )}
+          />
+        </Section>
+      ) : null}
+
+      <Section title="議事内容">
+        <Text style={styles.paragraph}>{record.content || '記録なし'}</Text>
+      </Section>
+
+      <Section title="アクションアイテム">
+        <Table
+          headers={['内容', '担当', '状態']}
+          widths={[56, 22, 22]}
+          rows={actionRows}
+        />
+      </Section>
+
+      {metadataRows.length > 0 ? (
+        <Section title="連携メタデータ">
+          <Table
+            headers={['項目', '値']}
+            widths={[36, 64]}
+            compact
+            rows={metadataRows.map((row) => [row.label, row.value])}
+          />
+        </Section>
+      ) : null}
+    </>
+  );
+}
+
 async function renderPdf(document: React.ReactElement, fileName: string) {
   ensurePdfFontRegistered();
   const buffer = await renderToBuffer(
@@ -1651,6 +1817,74 @@ async function getTracingReportRecord(
   };
 }
 
+async function getConferenceNoteRecord(
+  orgId: string,
+  noteId: string,
+): Promise<ConferenceNotePdfRecord> {
+  const note = await prisma.conferenceNote.findFirst({
+    where: { id: noteId, org_id: orgId },
+    select: {
+      id: true,
+      case_id: true,
+      note_type: true,
+      title: true,
+      content: true,
+      structured_content: true,
+      metadata: true,
+      participants: true,
+      conference_date: true,
+      action_items: true,
+    },
+  });
+
+  if (!note) {
+    throw new Error('カンファレンス記録が見つかりません');
+  }
+
+  const careCase = note.case_id
+    ? await prisma.careCase.findFirst({
+        where: { id: note.case_id, org_id: orgId },
+        select: {
+          patient: {
+            select: {
+              id: true,
+              name: true,
+              birth_date: true,
+              gender: true,
+              residences: {
+                where: { is_primary: true },
+                take: 1,
+                select: {
+                  unit_name: true,
+                  facility: {
+                    select: {
+                      name: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      })
+    : null;
+
+  return {
+    id: note.id,
+    note_type: note.note_type,
+    title: note.title,
+    content: note.content,
+    conference_date: note.conference_date,
+    participants: parseConferenceParticipants(note.participants),
+    structured_sections: parseConferenceStructuredSections(note.structured_content),
+    action_items: parseConferenceActionItems(note.action_items),
+    metadata: (note.metadata as Record<string, unknown>) ?? {},
+    patient: careCase?.patient ?? null,
+    facility_name: careCase?.patient.residences[0]?.facility?.name ?? null,
+    unit_name: careCase?.patient.residences[0]?.unit_name ?? null,
+  };
+}
+
 export async function buildCareReportPdf(
   orgId: string,
   reportId: string,
@@ -1669,6 +1903,30 @@ export async function buildCareReportPdf(
       generatedAt={new Date()}
     >
       {renderCareReportContent(report)}
+    </PdfShell>,
+    fileName,
+  );
+}
+
+export async function buildConferenceNotePdf(
+  orgId: string,
+  noteId: string,
+): Promise<PdfRenderResult> {
+  const [branding, note] = await Promise.all([
+    getPdfBranding(orgId),
+    getConferenceNoteRecord(orgId, noteId),
+  ]);
+  const subject = note.patient?.name ?? note.title;
+  const fileName = sanitizeFileName(`conference-note-${subject}-${note.id}.pdf`);
+
+  return renderPdf(
+    <PdfShell
+      title={CONFERENCE_NOTE_TYPE_LABELS[note.note_type] ?? 'カンファレンス記録'}
+      subtitle={note.patient ? `${note.patient.name} / ${note.title}` : note.title}
+      pharmacyName={branding.pharmacyName}
+      generatedAt={new Date()}
+    >
+      {renderConferenceNoteContent(note)}
     </PdfShell>,
     fileName,
   );

@@ -12,6 +12,7 @@ const {
   listPatientRiskSummariesMock,
   withOrgContextMock,
   assertFacilityReferenceMock,
+  getFacilityVisitDefaultsMock,
   residenceCreateMock,
   contactPartyCreateManyMock,
   patientConditionCreateManyMock,
@@ -31,6 +32,7 @@ const {
     listPatientRiskSummariesMock: vi.fn(),
     withOrgContextMock: vi.fn(),
     assertFacilityReferenceMock: vi.fn(),
+    getFacilityVisitDefaultsMock: vi.fn(),
     residenceCreateMock: vi.fn(),
     contactPartyCreateManyMock: vi.fn(),
     patientConditionCreateManyMock: vi.fn(),
@@ -83,6 +85,7 @@ vi.mock('@/lib/db/rls', () => ({
 vi.mock('@/lib/patient/facility-reference', () => ({
   FacilityReferenceValidationError: class FacilityReferenceValidationError extends Error {},
   assertFacilityReference: assertFacilityReferenceMock,
+  getFacilityVisitDefaults: getFacilityVisitDefaultsMock,
 }));
 
 import { GET, POST } from './route';
@@ -105,6 +108,7 @@ describe('/api/patients GET', () => {
     patientSchedulePreferenceCreateMock.mockResolvedValue({ id: 'schedule_pref_new' });
     careCaseCreateMock.mockResolvedValue({ id: 'case_new' });
     careTeamLinkCreateManyMock.mockResolvedValue({ count: 2 });
+    getFacilityVisitDefaultsMock.mockResolvedValue(null);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         patient: {
@@ -354,6 +358,50 @@ describe('/api/patients GET', () => {
     });
   });
 
+  it('supports case, building, billing, and last-visit date filters together', async () => {
+    const response = (await GET({
+      orgId: 'org_1',
+      userId: 'user_1',
+      role: 'pharmacist',
+      url: 'http://localhost/api/patients?case_status=active&building_id=facility_alpha&billing_support=true&last_visit_from=2026-03-01&last_visit_to=2026-03-31',
+      headers: { get: () => null },
+    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+
+    const payload = (await response.json()) as {
+      data: Array<{ id: string }>;
+      summary: { total: number };
+    };
+
+    expect(payload.data).toHaveLength(1);
+    expect(payload.data[0]).toMatchObject({ id: 'patient_1' });
+    expect(payload.summary.total).toBe(1);
+  });
+
+  it('supports payer-basis and primary pharmacist filters', async () => {
+    const response = (await GET({
+      orgId: 'org_1',
+      userId: 'user_1',
+      role: 'pharmacist',
+      url: 'http://localhost/api/patients?payer_basis=medical&primary_pharmacist_id=user_1',
+      headers: { get: () => null },
+    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+
+    const payload = (await response.json()) as {
+      data: Array<{ id: string }>;
+      summary: { total: number };
+    };
+
+    expect(payload.data).toHaveLength(1);
+    expect(payload.data[0]).toMatchObject({ id: 'patient_1' });
+    expect(payload.summary.total).toBe(1);
+  });
+
   it('masks phone and insurance fields for users without sensitive data access', async () => {
     const response = (await GET({
       orgId: 'org_1',
@@ -457,6 +505,8 @@ describe('/api/patients GET', () => {
     expect(patientSchedulePreferenceCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          facility_time_from: null,
+          facility_time_to: null,
           preferred_contact_phone: '03-3333-4444',
         }),
       }),
@@ -487,6 +537,47 @@ describe('/api/patients GET', () => {
           }),
         ]),
       }),
+    );
+  });
+
+  it('copies facility acceptance window into schedule preferences on patient creation', async () => {
+    getFacilityVisitDefaultsMock.mockResolvedValue({
+      id: 'facility_1',
+      acceptance_time_from: new Date('1970-01-01T09:00:00.000Z'),
+      acceptance_time_to: new Date('1970-01-01T17:00:00.000Z'),
+      regular_visit_weekdays: [1, 3, 5],
+    });
+
+    const response = (await POST({
+      orgId: 'org_1',
+      userId: 'user_1',
+      role: 'pharmacist',
+      ...createRequest({
+        name: '施設 利用者',
+        name_kana: 'シセツ リヨウシャ',
+        birth_date: '1945-02-03',
+        gender: 'female',
+        address: '東京都新宿区1-2-3',
+        facility_id: 'facility_1',
+      }),
+    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+
+    expect(response.status).toBe(201);
+    expect(getFacilityVisitDefaultsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        patient: expect.any(Object),
+        residence: expect.any(Object),
+      }),
+      'org_1',
+      'facility_1'
+    );
+    expect(patientSchedulePreferenceCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          facility_time_from: new Date('1970-01-01T09:00:00.000Z'),
+          facility_time_to: new Date('1970-01-01T17:00:00.000Z'),
+        }),
+      })
     );
   });
 });

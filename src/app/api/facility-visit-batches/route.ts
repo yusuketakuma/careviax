@@ -3,16 +3,43 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 
-const upsertFacilityVisitBatchSchema = z.object({
-  schedule_ids: z.array(z.string().trim().min(1)).min(2, '2件以上の訪問予定が必要です'),
-  ordered_schedule_ids: z.array(z.string().trim().min(1)).min(2).optional(),
-  carry_items_confirmed: z.boolean().optional(),
-});
+const upsertFacilityVisitBatchSchema = z
+  .object({
+    schedule_ids: z.array(z.string().trim().min(1)).optional(),
+    facility_id: z.string().trim().optional(),
+    scheduled_date: z.string().date().optional(),
+    pharmacist_id: z.string().trim().optional(),
+    site_id: z.string().trim().optional(),
+    ordered_schedule_ids: z.array(z.string().trim().min(1)).optional(),
+    carry_items_confirmed: z.boolean().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.schedule_ids?.length) {
+      if (value.schedule_ids.length < 2) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['schedule_ids'],
+          message: '2件以上の訪問予定が必要です',
+        });
+      }
+      return;
+    }
+
+    if (!value.facility_id || !value.scheduled_date || !value.pharmacist_id) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['facility_id'],
+        message:
+          'schedule_ids もしくは facility_id / scheduled_date / pharmacist_id を指定してください',
+      });
+    }
+  });
 
 function buildFacilityLabel(schedule: {
   case_: {
     patient: {
       residences: Array<{
+        facility_id: string | null;
         building_id: string | null;
         address: string;
       }>;
@@ -20,7 +47,7 @@ function buildFacilityLabel(schedule: {
   };
 }) {
   const residence = schedule.case_.patient.residences[0] ?? null;
-  return residence?.building_id ?? residence?.address ?? null;
+  return residence?.facility_id ?? residence?.building_id ?? residence?.address ?? null;
 }
 
 function compareUnitName(
@@ -45,12 +72,12 @@ export const POST = withAuth(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const requestedIds = Array.from(new Set(parsed.data.schedule_ids));
+    const requestedIds = Array.from(new Set(parsed.data.schedule_ids ?? []));
     const orderedIds =
       parsed.data.ordered_schedule_ids != null
         ? Array.from(new Set(parsed.data.ordered_schedule_ids))
         : null;
-    if (orderedIds && orderedIds.length !== requestedIds.length) {
+    if (orderedIds && requestedIds.length > 0 && orderedIds.length !== requestedIds.length) {
       return validationError('順序指定と対象予定数が一致しません');
     }
     if (orderedIds && requestedIds.some((scheduleId) => !orderedIds.includes(scheduleId))) {
@@ -61,9 +88,27 @@ export const POST = withAuth(
       const schedules = await tx.visitSchedule.findMany({
         where: {
           org_id: req.orgId,
-          id: {
-            in: requestedIds,
-          },
+          ...(requestedIds.length > 0
+            ? {
+                id: {
+                  in: requestedIds,
+                },
+              }
+            : {
+                scheduled_date: new Date(parsed.data.scheduled_date!),
+                pharmacist_id: parsed.data.pharmacist_id,
+                ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
+                case_: {
+                  patient: {
+                    residences: {
+                      some: {
+                        is_primary: true,
+                        facility_id: parsed.data.facility_id,
+                      },
+                    },
+                  },
+                },
+              }),
         },
         select: {
           id: true,
@@ -94,6 +139,7 @@ export const POST = withAuth(
                     where: { is_primary: true },
                     take: 1,
                     select: {
+                      facility_id: true,
                       address: true,
                       building_id: true,
                       unit_name: true,
@@ -106,8 +152,23 @@ export const POST = withAuth(
         },
       });
 
-      if (schedules.length !== requestedIds.length) {
+      if (requestedIds.length > 0 && schedules.length !== requestedIds.length) {
         return { error: 'missing_schedule' as const };
+      }
+      if (schedules.length < 2) {
+        return { error: 'not_enough_schedules' as const };
+      }
+
+      const targetScheduleIds =
+        requestedIds.length > 0 ? requestedIds : schedules.map((schedule) => schedule.id);
+      if (orderedIds && orderedIds.length !== targetScheduleIds.length) {
+        return { error: 'ordered_length_mismatch' as const };
+      }
+      if (
+        orderedIds &&
+        targetScheduleIds.some((scheduleId) => !orderedIds.includes(scheduleId))
+      ) {
+        return { error: 'ordered_contains_unknown' as const };
       }
 
       const siteIds = new Set(schedules.map((schedule) => schedule.site_id ?? 'site:none'));
@@ -142,7 +203,9 @@ export const POST = withAuth(
       }
 
       const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
-      const orderedSchedules = (orderedIds ?? schedules.slice().sort(compareUnitName).map((schedule) => schedule.id))
+      const orderedSchedules = (
+        orderedIds ?? schedules.slice().sort(compareUnitName).map((schedule) => schedule.id)
+      )
         .map((scheduleId) => scheduleById.get(scheduleId))
         .filter((schedule): schedule is NonNullable<typeof schedule> => schedule != null);
 
@@ -255,6 +318,15 @@ export const POST = withAuth(
       }
       if (result.error === 'mixed_existing_batch') {
         return validationError('異なる施設バッチに属する予定が混在しています');
+      }
+      if (result.error === 'not_enough_schedules') {
+        return validationError('施設一括訪問を作成するには2件以上の訪問予定が必要です');
+      }
+      if (result.error === 'ordered_length_mismatch') {
+        return validationError('順序指定と自動取得された訪問予定数が一致しません');
+      }
+      if (result.error === 'ordered_contains_unknown') {
+        return validationError('順序指定に自動取得対象外の訪問予定が含まれています');
       }
     }
 

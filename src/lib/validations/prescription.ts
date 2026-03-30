@@ -29,6 +29,7 @@ export const createPrescriptionIntakeSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）'),
   prescriber_name: z.string().optional(),
+  prescriber_institution_id: z.string().optional(),
   prescriber_institution: z.string().optional(),
   original_document_url: z.string().url().optional(),
   refill_remaining_count: z.number().int().min(0).optional(),
@@ -51,6 +52,7 @@ export const createFacilityBatchPrescriptionIntakeSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）'),
   prescriber_name: z.string().optional(),
+  prescriber_institution_id: z.string().optional(),
   prescriber_institution: z.string().optional(),
   original_document_url: z.string().url().optional(),
   entries: z
@@ -66,6 +68,7 @@ export const createFacilityBatchPrescriptionIntakeSchema = z.object({
 
 export const updatePrescriptionIntakeSchema = z.object({
   prescriber_name: z.string().optional(),
+  prescriber_institution_id: z.string().nullable().optional(),
   prescriber_institution: z.string().optional(),
   original_document_url: z.string().url().optional(),
   original_collected_at: z.string().datetime('日時形式が不正です').optional(),

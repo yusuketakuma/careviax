@@ -7,6 +7,7 @@ const {
   patientUpdateMock,
   residenceFindFirstMock,
   residenceUpdateMock,
+  assertFacilityReferenceMock,
   medicationProfileFindManyMock,
   visitScheduleFindManyMock,
   visitRecordFindManyMock,
@@ -22,16 +23,20 @@ const {
   billingCandidateFindManyMock,
   billingEvidenceBlockersMock,
   withOrgContextMock,
+  patientSchedulePreferenceUpsertMock,
+  patientSchedulePreferenceUpdateManyMock,
   communicationQueueMock,
   patientRiskSummaryMock,
   patientHomeCareFeatureSummaryMock,
   patientVisitBriefMock,
+  getFacilityVisitDefaultsMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   patientUpdateMock: vi.fn(),
   residenceFindFirstMock: vi.fn(),
   residenceUpdateMock: vi.fn(),
+  assertFacilityReferenceMock: vi.fn(),
   medicationProfileFindManyMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   visitRecordFindManyMock: vi.fn(),
@@ -47,10 +52,13 @@ const {
   billingCandidateFindManyMock: vi.fn(),
   billingEvidenceBlockersMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  patientSchedulePreferenceUpsertMock: vi.fn(),
+  patientSchedulePreferenceUpdateManyMock: vi.fn(),
   communicationQueueMock: vi.fn(),
   patientRiskSummaryMock: vi.fn(),
   patientHomeCareFeatureSummaryMock: vi.fn(),
   patientVisitBriefMock: vi.fn(),
+  getFacilityVisitDefaultsMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -128,6 +136,12 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/lib/patient/facility-reference', () => ({
+  FacilityReferenceValidationError: class FacilityReferenceValidationError extends Error {},
+  assertFacilityReference: assertFacilityReferenceMock,
+  getFacilityVisitDefaults: getFacilityVisitDefaultsMock,
+}));
+
 import { GET, PATCH } from './route';
 
 function createRequest(body?: unknown, headers?: Record<string, string>) {
@@ -157,6 +171,8 @@ describe('/api/patients/[id]', () => {
     patientUpdateMock.mockResolvedValue({ id: 'patient_1', name: '更新後 患者A' });
     residenceFindFirstMock.mockResolvedValue({ id: 'residence_1' });
     residenceUpdateMock.mockResolvedValue({ id: 'residence_1' });
+    patientSchedulePreferenceUpsertMock.mockResolvedValue({ id: 'schedule_pref_1' });
+    patientSchedulePreferenceUpdateManyMock.mockResolvedValue({ count: 1 });
     medicationProfileFindManyMock.mockResolvedValue([]);
     visitScheduleFindManyMock.mockResolvedValue([]);
     visitRecordFindManyMock.mockResolvedValue([]);
@@ -239,6 +255,7 @@ describe('/api/patients/[id]', () => {
         generated_at: '2026-03-27T00:00:00.000Z',
       },
     });
+    getFacilityVisitDefaultsMock.mockResolvedValue(null);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         patient: {
@@ -256,6 +273,10 @@ describe('/api/patients/[id]', () => {
         patientCondition: {
           deleteMany: vi.fn(),
           createMany: vi.fn(),
+        },
+        patientSchedulePreference: {
+          upsert: patientSchedulePreferenceUpsertMock,
+          updateMany: patientSchedulePreferenceUpdateManyMock,
         },
       })
     );
@@ -386,6 +407,7 @@ describe('/api/patients/[id]', () => {
           phone: '090-1111-2222',
           address: '東京都千代田区1-2-3',
           building_id: 'building_1',
+          facility_id: 'facility_1',
           unit_name: '301',
         },
         { 'x-org-id': 'corg1234567890123456789012' }
@@ -408,12 +430,77 @@ describe('/api/patients/[id]', () => {
     expect(residenceFindFirstMock).toHaveBeenCalledWith({
       where: { patient_id: 'patient_1', is_primary: true },
     });
+    expect(assertFacilityReferenceMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        patient: expect.any(Object),
+        residence: expect.any(Object),
+      }),
+      'corg1234567890123456789012',
+      'facility_1'
+    );
     expect(residenceUpdateMock).toHaveBeenCalledWith({
       where: { id: 'residence_1' },
       data: {
         address: '東京都千代田区1-2-3',
         building_id: 'building_1',
+        facility_id: 'facility_1',
         unit_name: '301',
+      },
+    });
+    expect(getFacilityVisitDefaultsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        patient: expect.any(Object),
+        residence: expect.any(Object),
+        patientSchedulePreference: expect.any(Object),
+      }),
+      'corg1234567890123456789012',
+      'facility_1'
+    );
+    expect(patientSchedulePreferenceUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'corg1234567890123456789012',
+        patient_id: 'patient_1',
+      },
+      data: {
+        facility_time_from: null,
+        facility_time_to: null,
+      },
+    });
+  });
+
+  it('syncs facility acceptance window into patient schedule preferences on PATCH', async () => {
+    getFacilityVisitDefaultsMock.mockResolvedValue({
+      id: 'facility_1',
+      acceptance_time_from: new Date('1970-01-01T10:00:00.000Z'),
+      acceptance_time_to: new Date('1970-01-01T16:30:00.000Z'),
+      regular_visit_weekdays: [2, 4],
+    });
+
+    const response = await PATCH(
+      createRequest(
+        {
+          facility_id: 'facility_1',
+        },
+        { 'x-org-id': 'corg1234567890123456789012' }
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) }
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(patientSchedulePreferenceUpsertMock).toHaveBeenCalledWith({
+      where: {
+        patient_id: 'patient_1',
+      },
+      create: {
+        org_id: 'corg1234567890123456789012',
+        patient_id: 'patient_1',
+        facility_time_from: new Date('1970-01-01T10:00:00.000Z'),
+        facility_time_to: new Date('1970-01-01T16:30:00.000Z'),
+      },
+      update: {
+        facility_time_from: new Date('1970-01-01T10:00:00.000Z'),
+        facility_time_to: new Date('1970-01-01T16:30:00.000Z'),
       },
     });
   });
