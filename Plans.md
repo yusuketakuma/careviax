@@ -1808,6 +1808,141 @@ ConferenceNote ─────┼─→ [報告書] CareReport + DeliveryRecord
 
 ---
 
+## Phase 2c: マスター機能整備 + データリンク強化 `cc:TODO`
+> 2026-03-30 立案。マスターデータの体系的整備と、マスター↔トランザクションのリンク構築。
+> 出口条件: 薬局が初期設定を完了し、日常運用でマスター参照が途切れない状態。
+
+### エンティティリンク図（施設→ユニット→患者→訪問）
+```
+Facility (施設)
+├── FacilityUnit[] (ユニット: フロア/棟/ユニット)
+│   ├── name: "2F東ユニット"
+│   ├── floor: "2F"
+│   └── capacity: 20
+│
+├── FacilityContact[] (施設連絡先)
+│   └── role: "施設長" / "看護師長"
+│
+└── ExternalProfessional[] (関連専門職)
+    └── 施設担当医/看護師/ケアマネ
+
+Patient.Residence
+├── building_id → Facility.id (FK化)
+├── unit_id → FacilityUnit.id (NEW)
+└── unit_name: "203号室"
+
+VisitSchedule / FacilityVisitBatch
+├── facility_id → Facility.id
+├── facility_unit_id → FacilityUnit.id (NEW)
+└── patient_ids → ユニット内の患者を自動グルーピング
+
+CareTeamLink
+├── facility_id → Facility.id (NEW)
+└── external_professional_id → ExternalProfessional.id
+
+PharmacySiteInsuranceConfig
+└── 算定時に building_patient_count をユニット単位で計算可能に
+
+PrescriptionIntake
+├── prescriber_institution_id → PrescriberInstitution.id (NEW)
+└── prescriber_institution: テキスト (後方互換)
+```
+
+### 2c-1. 施設ユニット管理 `cc:TODO`
+> Facility 配下にフロア/棟/ユニットの階層を追加。訪問はユニット単位で計画する。
+
+- [ ] 2c-1a: FacilityUnit モデル新設
+  `id, org_id, facility_id(FK), name, floor, unit_type(floor/wing/unit), capacity, notes`
+- [ ] 2c-1b: Residence.unit_id FK 追加 (FacilityUnit へ)
+  `Residence.building_id` を Facility.id への FK に昇格、`unit_id` を FacilityUnit.id への FK に追加
+- [ ] 2c-1c: VisitSchedule / FacilityVisitBatch にユニット単位のグルーピング
+  `facility_unit_id` 追加。同一ユニット患者を自動グルーピングして一括訪問
+- [ ] 2c-1d: 単一建物居住者数のユニット対応
+  `resolveBuildingPatientCount()` が Facility + FacilityUnit 単位でカウントできるように拡張
+- [ ] 2c-1e: 施設管理 UI にユニット CRUD 追加
+  `/admin/facilities/[id]` にユニット一覧タブ + 患者マッピング表示
+- [ ] 2c-1f: 患者登録時に施設→ユニット選択 UI
+  Residence 入力で施設選択 → ユニット選択 → 部屋番号入力のカスケードUI
+
+### 2c-2. 薬局運営基盤マスター `cc:TODO`
+> P0: 薬局が稼働するための最低限
+
+- [ ] 2c-2a: ユーザー・権限管理 UI
+  User/Membership の一覧/招待/権限変更/停止。Cognito 同期状態表示
+- [ ] 2c-2b: 薬局情報設定 API + UI (PharmacySiteInsuranceConfig)
+  保険種別×改定年度の config 登録/編集/有効期間管理
+- [ ] 2c-2c: 薬局基本情報 編集 UI (PharmacySite)
+  名称/住所/電話/FAX/届出フラグの編集画面
+- [ ] 2c-2d: 営業日・休日管理 UI (BusinessHoliday)
+  既存 API を使った UI 追加。カレンダービュー + 一括登録
+
+### 2c-3. 医療機関マスター `cc:TODO`
+> 処方元の構造化管理。報告書宛先・疑義照会先として参照。
+
+- [ ] 2c-3a: PrescriberInstitution モデル新設
+  `id, org_id, name, institution_code, address, phone, fax, notes`
+- [ ] 2c-3b: PrescriptionIntake.prescriber_institution_id FK 追加
+  既存 `prescriber_institution` テキストとの後方互換維持
+- [ ] 2c-3c: CareReport 送達先に医療機関マスターを参照
+  報告書の宛先選択で PrescriberInstitution を候補表示
+- [ ] 2c-3d: 医療機関マスター管理 UI (`/admin/institutions`)
+  CRUD + 処方実績の集計表示
+
+### 2c-4. 訪問計画マスター `cc:TODO`
+> 訪問エリア定義とルートテンプレート
+
+- [ ] 2c-4a: ServiceArea モデル新設
+  `id, org_id, site_id, name, area_type(radius/polygon), geo_data(Json), notes`
+- [ ] 2c-4b: 訪問スケジュール提案時にエリアフィルタ適用
+- [ ] 2c-4c: 訪問エリア設定 UI (`/admin/service-areas`)
+  地図上でエリア定義 + 患者マッピング
+
+### 2c-5. 報告・連携テンプレート拡張 `cc:TODO`
+> 報告書/同意書/トレレポのテンプレート管理強化
+
+- [ ] 2c-5a: Template モデル拡張
+  `target_role, format(pdf/html), version, effective_from/to` 追加
+- [ ] 2c-5b: 同意書テンプレート管理 (ConsentFormTemplate)
+  ConsentRecord 作成時にテンプレート版を参照
+- [ ] 2c-5c: 文書送達ルール (DocumentDeliveryRule)
+  文書種別 × CareTeamLink.role → チャネル(fax/email/mcs) の自動送達ルール
+- [ ] 2c-5d: 通知チャネル設定の拡張
+  NotificationRule に FAX/MCS チャネル追加
+
+### 2c-6. 保険者・採用薬マスター `cc:TODO`
+> 算定精度と調剤効率の向上
+
+- [ ] 2c-6a: InsuranceProvider モデル新設
+  `id, org_id, name, provider_code, insurance_type(medical/care), notes`
+- [ ] 2c-6b: Patient → InsuranceProvider リンク
+  保険番号に加えて保険者マスターを参照
+- [ ] 2c-6c: PharmacyDrugStock 拡張 (採用薬フラグ)
+  `is_formulary, min_stock_alert, preferred_generic_drug_id` 追加
+- [ ] 2c-6d: 採用薬一覧 UI (`/admin/formulary`)
+  DrugMaster から採用薬を選択、在庫下限アラート設定
+
+### 2c-7. CDS アラートルール管理 `cc:TODO`
+> 重複/相互作用/PIM 等のアラートの ON/OFF・閾値管理
+
+- [ ] 2c-7a: DrugAlertRule の API 実装
+  CRUD + アラートタイプ別 ON/OFF
+- [ ] 2c-7b: DrugAlertRule 管理 UI (`/admin/alert-rules`)
+  アラート種別一覧 + 閾値設定 + テスト実行
+- [ ] 2c-7c: 算定チェックルールの実行時検証
+  BillingExclusionRules を候補生成時に自動検証
+
+### 2c-8. システム設定・監視 `cc:TODO`
+> 運用安定性に必要な管理機能
+
+- [ ] 2c-8a: Setting 管理 UI (`/admin/settings`)
+  scope 別フィルタ (org/site/user) + JSON エディタ
+- [ ] 2c-8b: IntegrationJob 監視 UI (`/admin/jobs`)
+  実行状況一覧 + エラーログ + 手動再実行
+- [ ] 2c-8c: 印刷・出力設定
+  PDF 余白/フォント/ラベル印刷設定 (Setting scope=site)
+
+---
+
 ## Phase 3: 外部連携・最適化・通知高度化 `cc:TODO`
 > 着手条件: Phase 2 安定稼働1ヶ月以上。詳細はPhase 2完了時に策定。
 > 2026-03-28 GAP分析: 各アダプタは interface contract + stub 実装済み。実接続のみ残る。
