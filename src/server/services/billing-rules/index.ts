@@ -1,10 +1,24 @@
+// 型定義
 export type {
   BillingRuleSeed,
+  BillingRuleConditions,
+  BillingEvidenceRequirements,
+  BillingExclusionRules,
   BillingEvidenceContext,
   BillingCandidateSpec,
   BillingRevision,
 } from './types';
-export { MEDICAL_REVISION, MEDICAL_RULES_2024 } from './medical-2024';
-export { CARE_REVISION, CARE_RULES_2024 } from './care-2024';
+
+// 改定レジストリ
+export {
+  MEDICAL_2024, MEDICAL_RULES_2024,
+  CARE_2024, CARE_RULES_2024,
+  MEDICAL_REVISIONS, CARE_REVISIONS, ALL_REVISIONS,
+  type RevisionEntry,
+} from './revisions';
+
+// ルールエンジン
 export { buildBillingCandidateSpecs, getHomeCareBillingSsotSummary } from './rule-engine';
+
+// シーダー
 export { ensureHomeCareBillingSsot, HOME_CARE_BILLING_RULESET_VERSION } from './seeder';

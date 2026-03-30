@@ -1,4 +1,4 @@
-import type { BillingRevision, BillingRuleSeed } from './types';
+import type { BillingRevision, BillingRuleSeed } from '../../types';
 
 export const MEDICAL_REVISION: BillingRevision = {
   code: '2024',

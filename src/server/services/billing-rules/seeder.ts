@@ -1,7 +1,6 @@
 import { Prisma } from '@prisma/client';
 import type { BillingRevision, BillingRuleSeed } from './types';
-import { MEDICAL_REVISION, MEDICAL_RULES_2024 } from './medical-2024';
-import { CARE_REVISION, CARE_RULES_2024 } from './care-2024';
+import { ALL_REVISIONS } from './revisions';
 
 type Tx = Prisma.TransactionClient;
 
@@ -37,10 +36,7 @@ export async function ensureHomeCareBillingSsot(
     },
   });
 
-  const allRevisions = revisions ?? [
-    { revision: MEDICAL_REVISION, rules: MEDICAL_RULES_2024 },
-    { revision: CARE_REVISION, rules: CARE_RULES_2024 },
-  ];
+  const allRevisions = revisions ?? ALL_REVISIONS;
 
   let seeded = 0;
 
