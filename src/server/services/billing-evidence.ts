@@ -1478,42 +1478,66 @@ export async function upsertBillingEvidenceForVisit(
     careLevelCategory,
   });
 
-  // ── 薬局マスターから在宅薬学総合体制加算を判定 ──
+  // ── 薬局情報から体制加算を判定 ──
   const siteId = visitRecord.schedule.site_id;
-  if (siteId && payerBasis === 'medical') {
-    const siteBillingConfig = await tx.pharmacySiteBillingConfig.findFirst({
+  if (siteId) {
+    const siteConfig = await tx.pharmacySiteInsuranceConfig.findFirst({
       where: {
         org_id: args.orgId,
         site_id: siteId,
-        insurance_type: 'medical',
+        insurance_type: payerBasis === 'care' ? 'care' : 'medical',
         effective_from: { lte: visitDate },
         OR: [{ effective_to: null }, { effective_to: { gt: visitDate } }],
       },
       orderBy: { effective_from: 'desc' },
     });
 
-    if (siteBillingConfig?.home_comprehensive_2) {
-      candidateSpecs.push({
-        ssotKey: 'site.medical.home_comprehensive_2',
-        code: 'MED_ADD_HOME_COMPREHENSIVE_2',
-        name: '在宅薬学総合体制加算2',
-        status: claimable ? 'confirmed' : 'excluded',
-        points: 50,
-        exclusionReason: claimable ? null : (exclusionReason ?? null),
-        calculationBreakdown: { source: 'pharmacy_site_billing_config', site_id: siteId },
-        sourceSnapshot: { revision_code: siteBillingConfig.revision_code, facility_standard: 'home_comprehensive_2' },
-      });
-    } else if (siteBillingConfig?.home_comprehensive_1) {
-      candidateSpecs.push({
-        ssotKey: 'site.medical.home_comprehensive_1',
-        code: 'MED_ADD_HOME_COMPREHENSIVE_1',
-        name: '在宅薬学総合体制加算1',
-        status: claimable ? 'confirmed' : 'excluded',
-        points: 15,
-        exclusionReason: claimable ? null : (exclusionReason ?? null),
-        calculationBreakdown: { source: 'pharmacy_site_billing_config', site_id: siteId },
-        sourceSnapshot: { revision_code: siteBillingConfig.revision_code, facility_standard: 'home_comprehensive_1' },
-      });
+    if (siteConfig && payerBasis === 'medical') {
+      // 在宅薬学総合体制加算 (level_2: 50点 > level_1: 15点、排他)
+      if (siteConfig.home_comprehensive_level === 'level_2') {
+        candidateSpecs.push({
+          ssotKey: 'site.medical.home_comprehensive_2',
+          code: 'MED_ADD_HOME_COMPREHENSIVE_2',
+          name: '在宅薬学総合体制加算2',
+          status: claimable ? 'confirmed' : 'excluded',
+          points: 50,
+          exclusionReason: claimable ? null : (exclusionReason ?? null),
+          calculationBreakdown: { source: 'pharmacy_site_insurance_config', site_id: siteId },
+          sourceSnapshot: { revision_code: siteConfig.revision_code, level: 'level_2' },
+        });
+      } else if (siteConfig.home_comprehensive_level === 'level_1') {
+        candidateSpecs.push({
+          ssotKey: 'site.medical.home_comprehensive_1',
+          code: 'MED_ADD_HOME_COMPREHENSIVE_1',
+          name: '在宅薬学総合体制加算1',
+          status: claimable ? 'confirmed' : 'excluded',
+          points: 15,
+          exclusionReason: claimable ? null : (exclusionReason ?? null),
+          calculationBreakdown: { source: 'pharmacy_site_insurance_config', site_id: siteId },
+          sourceSnapshot: { revision_code: siteConfig.revision_code, level: 'level_1' },
+        });
+      }
+    }
+
+    // 介護保険の地域加算を薬局情報から自動判定
+    if (siteConfig && payerBasis === 'care') {
+      const regionAddOns: Array<'special_15' | 'small_office_10' | 'resident_5'> = [];
+      if (siteConfig.region_special_15) regionAddOns.push('special_15');
+      if (siteConfig.region_small_office_10) regionAddOns.push('small_office_10');
+      if (siteConfig.region_resident_5) regionAddOns.push('resident_5');
+      // 地域加算が薬局情報に設定されていれば、候補スペックの region を上書き
+      if (regionAddOns.length > 0) {
+        for (const spec of candidateSpecs) {
+          const cond = spec.calculationBreakdown as Record<string, unknown>;
+          const regionKey = (cond.conditions as Record<string, unknown>)?.region_add_on;
+          if (typeof regionKey === 'string' && regionAddOns.includes(regionKey as 'special_15' | 'small_office_10' | 'resident_5')) {
+            if (spec.status === 'excluded' && claimable) {
+              spec.status = 'candidate';
+              spec.exclusionReason = 'SSOT上の追加算定候補です。要件確認後に採否を確定してください';
+            }
+          }
+        }
+      }
     }
   }
 
