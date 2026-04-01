@@ -120,6 +120,8 @@ model VisitSchedule {
   @@index([case_id])
   @@index([site_id, scheduled_date])
   @@index([facility_unit_id])
+  @@index([org_id, scheduled_date, schedule_status])
+  @@index([org_id, pharmacist_id, scheduled_date])
 }
 
 model FacilityVisitBatch {

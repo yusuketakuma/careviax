@@ -216,6 +216,9 @@ model ConsentRecord {
   patient_id         String
   patient            Patient       @relation(fields: [patient_id], references: [id])
   case_id            String?
+  template_id        String?
+  template           Template?     @relation(fields: [template_id], references: [id])
+  template_version   Int?
   consent_type       ConsentType
   method             ConsentMethod
   obtained_date      DateTime

@@ -23,17 +23,26 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { DocumentDeliveryRuleManager } from './document-delivery-rule-manager';
 
 type TemplateType =
   | 'care_report'
   | 'tracing_report'
   | 'management_plan'
-  | 'medication_calendar';
+  | 'medication_calendar'
+  | 'consent_form';
+
+type TemplateFormat = 'html' | 'pdf';
 
 type DocumentTemplateRow = {
   id: string;
   name: string;
   template_type: TemplateType;
+  target_role: string | null;
+  format: TemplateFormat;
+  version: number;
+  effective_from: string | null;
+  effective_to: string | null;
   content: Record<string, unknown>;
   is_default: boolean;
   created_at: string;
@@ -45,6 +54,7 @@ const TEMPLATE_TYPE_LABELS: Record<TemplateType, string> = {
   tracing_report: 'トレーシング',
   management_plan: '計画書',
   medication_calendar: '服薬カレンダー',
+  consent_form: '同意書',
 };
 
 const DEFAULT_TEMPLATE_CONTENT: Record<TemplateType, Record<string, unknown>> = {
@@ -63,6 +73,10 @@ const DEFAULT_TEMPLATE_CONTENT: Record<TemplateType, Record<string, unknown>> = 
     layout: 'weekly',
     show_dose_icons: true,
   },
+  consent_form: {
+    sections: ['purpose', 'scope', 'privacy', 'signature'],
+    footer: '説明日と版数を明記して保存',
+  },
 };
 
 export function DocumentTemplateContent() {
@@ -73,11 +87,21 @@ export function DocumentTemplateContent() {
   const [form, setForm] = useState<{
     name: string;
     templateType: TemplateType;
+    targetRole: string;
+    format: TemplateFormat;
+    version: string;
+    effectiveFrom: string;
+    effectiveTo: string;
     isDefault: boolean;
     contentText: string;
   }>({
     name: '',
     templateType: 'care_report',
+    targetRole: '',
+    format: 'html',
+    version: '1',
+    effectiveFrom: '',
+    effectiveTo: '',
     isDefault: false,
     contentText: JSON.stringify(DEFAULT_TEMPLATE_CONTENT.care_report, null, 2),
   });
@@ -113,6 +137,11 @@ export function DocumentTemplateContent() {
       const payload = {
         name: form.name.trim(),
         template_type: form.templateType,
+        target_role: form.targetRole.trim() || undefined,
+        format: form.format,
+        version: Number.parseInt(form.version, 10) || 1,
+        effective_from: form.effectiveFrom || undefined,
+        effective_to: form.effectiveTo || undefined,
         is_default: form.isDefault,
         content: parsedContent,
       };
@@ -170,6 +199,11 @@ export function DocumentTemplateContent() {
     setForm({
       name: '',
       templateType: 'care_report',
+      targetRole: '',
+      format: 'html',
+      version: '1',
+      effectiveFrom: '',
+      effectiveTo: '',
       isDefault: false,
       contentText: JSON.stringify(DEFAULT_TEMPLATE_CONTENT.care_report, null, 2),
     });
@@ -180,6 +214,11 @@ export function DocumentTemplateContent() {
     setForm({
       name: template.name,
       templateType: template.template_type,
+      targetRole: template.target_role ?? '',
+      format: template.format,
+      version: String(template.version),
+      effectiveFrom: template.effective_from?.slice(0, 10) ?? '',
+      effectiveTo: template.effective_to?.slice(0, 10) ?? '',
       isDefault: template.is_default,
       contentText: JSON.stringify(template.content, null, 2),
     });
@@ -203,6 +242,13 @@ export function DocumentTemplateContent() {
       header: '既定',
       cell: ({ row }) =>
         row.original.is_default ? <Badge>既定</Badge> : <Badge variant="outline">任意</Badge>,
+    },
+    {
+      accessorKey: 'version',
+      header: '版',
+      cell: ({ row }) => (
+        <span className="text-sm tabular-nums">v{row.original.version}</span>
+      ),
     },
     {
       accessorKey: 'updated_at',
@@ -241,7 +287,7 @@ export function DocumentTemplateContent() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">文書テンプレート管理</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          報告書やトレーシングレポートのテンプレートを管理します。
+          報告書や同意書のテンプレート版管理と、相手別の自動送達ルールをまとめて管理します。
         </p>
       </div>
 
@@ -296,6 +342,76 @@ export function DocumentTemplateContent() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="template-target-role">対象ロール</Label>
+              <Input
+                id="template-target-role"
+                value={form.targetRole}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, targetRole: event.target.value }))
+                }
+                placeholder="例: physician / care_manager / patient_family"
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="template-format">形式</Label>
+                <Select
+                  value={form.format}
+                  onValueChange={(value) =>
+                    value &&
+                    setForm((current) => ({ ...current, format: value as TemplateFormat }))
+                  }
+                >
+                  <SelectTrigger id="template-format">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="html">HTML</SelectItem>
+                    <SelectItem value="pdf">PDF</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="template-version">版</Label>
+                <Input
+                  id="template-version"
+                  type="number"
+                  min={1}
+                  value={form.version}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, version: event.target.value }))
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="template-effective-from">有効開始日</Label>
+                <Input
+                  id="template-effective-from"
+                  type="date"
+                  value={form.effectiveFrom}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, effectiveFrom: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="template-effective-to">有効終了日</Label>
+                <Input
+                  id="template-effective-to"
+                  type="date"
+                  value={form.effectiveTo}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, effectiveTo: event.target.value }))
+                  }
+                />
+              </div>
             </div>
 
             <div className="flex items-center justify-between rounded-lg border px-3 py-2">
@@ -384,6 +500,8 @@ export function DocumentTemplateContent() {
           </CardContent>
         </Card>
       </div>
+
+      <DocumentDeliveryRuleManager />
     </div>
   );
 }

@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+const optionalDateStringSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です');
+
 export const prescriptionLineSchema = z.object({
   line_number: z.number().int().min(1, '行番号は1以上です'),
   drug_name: z.string().min(1, '薬剤名は必須です'),
@@ -22,7 +26,7 @@ export const prescriptionLineSchema = z.object({
 
 export const createPrescriptionIntakeSchema = z.object({
   cycle_id: z.string().min(1, 'サイクルIDは必須です'),
-  source_type: z.enum(['paper', 'fax', 'e_prescription', 'facility_batch', 'refill'], {
+  source_type: z.enum(['paper', 'fax', 'e_prescription', 'facility_batch', 'refill', 'qr_scan'], {
     error: 'ソースタイプを選択してください',
   }),
   prescribed_date: z
@@ -33,16 +37,10 @@ export const createPrescriptionIntakeSchema = z.object({
   prescriber_institution: z.string().optional(),
   original_document_url: z.string().url().optional(),
   refill_remaining_count: z.number().int().min(0).optional(),
-  refill_next_dispense_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です')
-    .optional(),
+  refill_next_dispense_date: optionalDateStringSchema.optional(),
   split_dispense_total: z.number().int().min(1).optional(),
   split_dispense_current: z.number().int().min(1).optional(),
-  split_next_dispense_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です')
-    .optional(),
+  split_next_dispense_date: optionalDateStringSchema.optional(),
   lines: z.array(prescriptionLineSchema).min(1, '処方明細は1行以上必要です'),
 });
 
@@ -73,16 +71,10 @@ export const updatePrescriptionIntakeSchema = z.object({
   original_document_url: z.string().url().optional(),
   original_collected_at: z.string().datetime('日時形式が不正です').optional(),
   refill_remaining_count: z.number().int().min(0).optional(),
-  refill_next_dispense_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です')
-    .optional(),
+  refill_next_dispense_date: optionalDateStringSchema.nullable().optional(),
   split_dispense_total: z.number().int().min(1).optional(),
   split_dispense_current: z.number().int().min(1).optional(),
-  split_next_dispense_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です')
-    .optional(),
+  split_next_dispense_date: optionalDateStringSchema.nullable().optional(),
 });
 
 export const createInquiryRecordSchema = z.object({

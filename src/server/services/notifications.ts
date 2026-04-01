@@ -3,7 +3,7 @@ import { LineNotificationAdapter } from '@/server/adapters/line';
 import { SmsNotificationAdapter } from '@/server/adapters/sms';
 
 type Tx = Prisma.TransactionClient;
-type NotificationChannel = 'in_app' | 'sms' | 'line' | 'email';
+type NotificationChannel = 'in_app' | 'sms' | 'line' | 'email' | 'fax' | 'mcs';
 
 type DispatchNotificationEventInput = {
   orgId: string;
@@ -171,7 +171,9 @@ export async function dispatchNotificationEvent(
 
   const smsUserIds = await resolveTargetUserIds(tx, input, rules, 'sms');
   const lineUserIds = await resolveTargetUserIds(tx, input, rules, 'line');
-  const externalUserIds = uniqueStrings([...smsUserIds, ...lineUserIds]);
+  const faxUserIds = await resolveTargetUserIds(tx, input, rules, 'fax');
+  const mcsUserIds = await resolveTargetUserIds(tx, input, rules, 'mcs');
+  const externalUserIds = uniqueStrings([...smsUserIds, ...lineUserIds, ...faxUserIds, ...mcsUserIds]);
 
   if (externalUserIds.length > 0) {
     const users = await tx.user.findMany({

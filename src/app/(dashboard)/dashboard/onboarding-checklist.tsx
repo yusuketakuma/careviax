@@ -7,6 +7,7 @@ import {
   Stethoscope,
   UserPlus,
 } from 'lucide-react';
+import { ErrorState } from '@/components/ui/error-state';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth } from '@/lib/auth/config';
 import { prisma } from '@/lib/db/client';
@@ -33,27 +34,45 @@ export async function OnboardingChecklist() {
     return null;
   }
 
-  const [siteCount, pharmacistCount, patientCount, scheduledVisitCount] =
-    await Promise.all([
-      prisma.pharmacySite.count({
-        where: { org_id: localUser.org_id },
-      }),
-      prisma.membership.count({
-        where: {
-          org_id: localUser.org_id,
-          is_active: true,
-          role: {
-            in: ['pharmacist', 'pharmacist_trainee'],
+  let siteCount = 0;
+  let pharmacistCount = 0;
+  let patientCount = 0;
+  let scheduledVisitCount = 0;
+
+  try {
+    [siteCount, pharmacistCount, patientCount, scheduledVisitCount] =
+      await Promise.all([
+        prisma.pharmacySite.count({
+          where: { org_id: localUser.org_id },
+        }),
+        prisma.membership.count({
+          where: {
+            org_id: localUser.org_id,
+            is_active: true,
+            role: {
+              in: ['pharmacist', 'pharmacist_trainee'],
+            },
           },
-        },
-      }),
-      prisma.patient.count({
-        where: { org_id: localUser.org_id },
-      }),
-      prisma.visitSchedule.count({
-        where: { org_id: localUser.org_id },
-      }),
-    ]);
+        }),
+        prisma.patient.count({
+          where: { org_id: localUser.org_id },
+        }),
+        prisma.visitSchedule.count({
+          where: { org_id: localUser.org_id },
+        }),
+      ]);
+  } catch (e) {
+    console.error('Failed to load onboarding data:', e);
+    return (
+      <ErrorState
+        variant="server"
+        size="inline"
+        title="初期導入オンボーディングを表示できません"
+        description="拠点や患者の集計に失敗しました。ダッシュボードを再読み込みするか、時間をおいて再度お試しください。"
+        action={{ label: 'ダッシュボードを再読み込み', href: '/dashboard' }}
+      />
+    );
+  }
 
   const steps: StepDefinition[] = [
     {

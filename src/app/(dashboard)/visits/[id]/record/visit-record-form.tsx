@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useForm, FormProvider, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import {
@@ -64,6 +64,16 @@ import {
   type VisitGeoLog,
 } from '@/lib/visit-location';
 import { appendVoiceTranscript } from '@/lib/voice-recognition';
+import {
+  getVisitExecutionQueryKeys,
+  invalidateQueryKeys,
+} from '@/lib/visits/query-invalidations';
+import {
+  buildAttachmentId,
+  classifyVisitAttachment,
+  getVisitAttachmentConstraints,
+  validateVisitAttachment,
+} from './visit-record-form.shared';
 
 type ScheduleDetail = {
   id: string;
@@ -125,43 +135,7 @@ type UploadedVisitAttachment = {
   kind: 'photo' | 'attachment';
 };
 
-const MAX_VISIT_ATTACHMENTS = 10;
-const IMAGE_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
-const PDF_ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024;
-const ALLOWED_VISIT_ATTACHMENT_MIME_TYPES = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'application/pdf',
-]);
-
-function buildAttachmentId(file: File) {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-
-  return `${file.name}-${file.size}-${file.lastModified}`;
-}
-
-function classifyVisitAttachment(file: File): 'photo' | 'attachment' {
-  return file.type.startsWith('image/') ? 'photo' : 'attachment';
-}
-
-function validateVisitAttachment(file: File) {
-  if (!ALLOWED_VISIT_ATTACHMENT_MIME_TYPES.has(file.type)) {
-    return 'JPEG / PNG / WEBP / PDF のみ添付できます';
-  }
-
-  const maxBytes =
-    file.type === 'application/pdf' ? PDF_ATTACHMENT_MAX_BYTES : IMAGE_ATTACHMENT_MAX_BYTES;
-  const maxMegabytes = file.type === 'application/pdf' ? 50 : 10;
-
-  if (file.size > maxBytes) {
-    return `${file.name} は ${maxMegabytes}MB を超えるため添付できません`;
-  }
-
-  return null;
-}
+const { maxAttachments: MAX_VISIT_ATTACHMENTS } = getVisitAttachmentConstraints();
 
 function buildStructuredSoap(values: FormValues): StructuredSoap {
   return {
@@ -206,6 +180,8 @@ function buildDraftMetadata(values: FormValues, visitGeoLog: VisitGeoLog | null)
 export function VisitRecordForm({ id }: { id: string }) {
   const router = useRouter();
   const orgId = useOrgId();
+  const isBootstrappingOrg = !orgId;
+  const queryClient = useQueryClient();
   const isMobile = useIsMobile();
   const [draftHydrated, setDraftHydrated] = useState(false);
   const [selectedAttachments, setSelectedAttachments] = useState<VisitAttachmentDraft[]>([]);
@@ -247,7 +223,7 @@ export function VisitRecordForm({ id }: { id: string }) {
         body: JSON.stringify({ cycleId: schedule!.cycle_id }),
       });
       if (!res.ok) {
-        throw new Error('訪問時 CDS アラートの取得に失敗しました');
+        throw new Error('訪問時の処方安全アラート取得に失敗しました');
       }
       return res.json() as Promise<{ alerts: CdsAlert[] }>;
     },
@@ -725,6 +701,14 @@ export function VisitRecordForm({ id }: { id: string }) {
       await clearDraft();
       await refreshSyncState();
       setSelectedAttachments([]);
+      await invalidateQueryKeys(
+        queryClient,
+        getVisitExecutionQueryKeys({
+          orgId,
+          patientId: schedule?.patient_id ?? record.patient_id,
+          scheduleId: id,
+        })
+      );
       allowNavigation();
       if (attachmentWarning) {
         toast.warning(attachmentWarning);
@@ -828,7 +812,7 @@ export function VisitRecordForm({ id }: { id: string }) {
     }
   }, [createRecord.isPending, isOffline, voiceRecognition]);
 
-  if (scheduleLoading) {
+  if (isBootstrappingOrg || scheduleLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <p className="text-sm text-muted-foreground">読み込み中...</p>

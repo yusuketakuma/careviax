@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 import { clearRequestAuthContext } from '../request-context';
 
-const { authMock, membershipFindFirstMock, userFindUniqueMock } = vi.hoisted(() => ({
+const { authMock, membershipFindFirstMock, userFindUniqueMock, logSecurityEventMock } =
+  vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   userFindUniqueMock: vi.fn(),
-}));
+    logSecurityEventMock: vi.fn(),
+  }));
 
 vi.mock('../config', () => ({
   auth: authMock,
@@ -21,6 +23,10 @@ vi.mock('@/lib/db/client', () => ({
       findFirst: membershipFindFirstMock,
     },
   },
+}));
+
+vi.mock('../security-events', () => ({
+  logSecurityEvent: logSecurityEventMock,
 }));
 
 import { getAuthContext, requireAuthContext } from '../context';
@@ -105,6 +111,12 @@ describe('requireAuthContext', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'AUTH_UNAUTHENTICATED',
     });
+    expect(logSecurityEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_type: 'auth_failure',
+        details: expect.objectContaining({ reason: 'no_user_identity' }),
+      })
+    );
   });
 
   it('returns 400 when org header is missing and no default org can be resolved', async () => {
@@ -122,6 +134,24 @@ describe('requireAuthContext', () => {
     });
   });
 
+  it('falls back to the authenticated user org when the header is missing', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    userFindUniqueMock.mockResolvedValue({ org_id: 'org_default' });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const result = await requireAuthContext(createRequest(), {
+      permission: 'canVisit',
+    });
+
+    expect(result).toEqual({
+      ctx: {
+        userId: 'user_1',
+        orgId: 'org_default',
+        role: 'admin',
+      },
+    });
+  });
+
   it('returns 403 when membership is missing', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue(null);
@@ -136,6 +166,12 @@ describe('requireAuthContext', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'AUTH_FORBIDDEN',
     });
+    expect(logSecurityEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_type: 'unauthorized_access',
+        details: expect.objectContaining({ reason: 'no_membership' }),
+      })
+    );
   });
 
   it('returns 403 when role lacks the requested permission', async () => {
@@ -156,6 +192,12 @@ describe('requireAuthContext', () => {
       code: 'AUTH_FORBIDDEN',
       message: '閲覧権限がありません',
     });
+    expect(logSecurityEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_type: 'unauthorized_access',
+        details: expect.objectContaining({ reason: 'insufficient_permission' }),
+      })
+    );
   });
 
   it('returns auth context when permission check passes', async () => {

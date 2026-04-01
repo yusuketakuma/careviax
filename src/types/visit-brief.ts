@@ -161,9 +161,9 @@ export type CareTrend = {
   residual_trend: CareTrendEntry[];
   residual_direction: 'increasing' | 'stable' | 'decreasing';
   issue_timeline: {
-    id: string;
+    issue_id: string;
     title: string;
-    status: string;
+    current_status: string;
     identified_at: string;
     resolved_at: string | null;
   }[];

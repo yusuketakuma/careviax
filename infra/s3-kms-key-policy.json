@@ -1,0 +1,57 @@
+{
+  "description": "CareViaX file-storage CMK policy template",
+  "keys": [
+    {
+      "alias": "alias/careviax-phi",
+      "usage": "処方箋、訪問添付、報告書、ZIP エクスポートなど PHI を含むオブジェクト",
+      "rotation": "enabled",
+      "adminsEnv": "KMS_KEY_ADMIN_ROLE_ARNS",
+      "usersEnv": "APP_RUNTIME_ROLE_ARNS"
+    },
+    {
+      "alias": "alias/careviax-audit",
+      "usage": "監査ログアーカイブと CloudTrail 配信",
+      "rotation": "enabled",
+      "adminsEnv": "KMS_KEY_ADMIN_ROLE_ARNS",
+      "usersEnv": "AUDIT_PIPELINE_ROLE_ARNS"
+    },
+    {
+      "alias": "alias/careviax-general",
+      "usage": "機微性の低い内部ファイル",
+      "rotation": "enabled",
+      "adminsEnv": "KMS_KEY_ADMIN_ROLE_ARNS",
+      "usersEnv": "APP_RUNTIME_ROLE_ARNS"
+    }
+  ],
+  "policyStatements": [
+    {
+      "sid": "AllowKeyAdministrators",
+      "effect": "Allow",
+      "principalEnv": "KMS_KEY_ADMIN_ROLE_ARNS",
+      "actions": [
+        "kms:Create*",
+        "kms:Describe*",
+        "kms:Enable*",
+        "kms:List*",
+        "kms:Put*",
+        "kms:Update*",
+        "kms:Disable*",
+        "kms:ScheduleKeyDeletion",
+        "kms:CancelKeyDeletion"
+      ],
+      "resources": ["*"]
+    },
+    {
+      "sid": "AllowRuntimeEncryptDecrypt",
+      "effect": "Allow",
+      "principalEnv": "APP_RUNTIME_ROLE_ARNS",
+      "actions": [
+        "kms:Encrypt",
+        "kms:Decrypt",
+        "kms:GenerateDataKey",
+        "kms:DescribeKey"
+      ],
+      "resources": ["*"]
+    }
+  ]
+}

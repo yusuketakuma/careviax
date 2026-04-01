@@ -276,7 +276,9 @@ export function DataTable<TData>({
                     'relative px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground',
                     meta?.tabletHidden && 'hidden xl:table-cell'
                   )}
-                  style={{ width: header.getSize() !== 150 ? header.getSize() : undefined }}
+                  {...(header.getSize() !== 150
+                    ? ({ width: String(header.getSize()) } as unknown as Record<string, string>)
+                    : {})}
                 >
                   {header.isPlaceholder ? null : header.column.getCanSort() ? (
                     <button

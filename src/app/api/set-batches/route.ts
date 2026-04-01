@@ -4,6 +4,15 @@ import type { AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import {
+  buildSetBatchHistorySnapshot,
+  createSetBatchChangeLog,
+} from '@/lib/prescription/set-batch-history';
+import {
+  extractPackagingInstructionTags,
+  resolvePackagingSettings,
+} from '@/lib/prescription/packaging';
+import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { z } from 'zod';
 
 const createSetBatchSchema = z.object({
@@ -41,7 +50,9 @@ export const GET = withAuthContext<Record<string, string>>(
             dose: true,
             frequency: true,
             unit: true,
+            packaging_method: true,
             packaging_instructions: true,
+            packaging_instruction_tags: true,
             notes: true,
           },
         },
@@ -68,7 +79,29 @@ export const POST = withAuthContext<Record<string, string>>(
     const result = await withOrgContext(ctx.orgId, async (tx) => {
       const plan = await tx.setPlan.findFirst({
         where: { id: plan_id, org_id: ctx.orgId },
-        select: { id: true, cycle_id: true },
+        select: {
+          id: true,
+          cycle_id: true,
+          cycle: {
+            select: {
+              case_: {
+                select: {
+                  patient: {
+                    select: {
+                      packaging_profile: {
+                        select: {
+                          default_packaging_method: true,
+                          medication_box_color: true,
+                          notes: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       });
       if (!plan) {
         return {
@@ -81,6 +114,11 @@ export const POST = withAuthContext<Record<string, string>>(
         where: { id: line_id, org_id: ctx.orgId },
         select: {
           id: true,
+          drug_name: true,
+          packaging_method: true,
+          packaging_instructions: true,
+          packaging_instruction_tags: true,
+          notes: true,
           intake: {
             select: {
               cycle_id: true,
@@ -109,6 +147,7 @@ export const POST = withAuthContext<Record<string, string>>(
           line_id,
           slot,
           day_number,
+          carry_type,
         },
         select: { id: true },
       });
@@ -119,6 +158,20 @@ export const POST = withAuthContext<Record<string, string>>(
         };
       }
 
+      const resolvedPackaging = resolvePackagingSettings({
+        packagingMethod: line.packaging_method ?? undefined,
+        packagingInstructions: line.packaging_instructions ?? undefined,
+        profile: plan.cycle.case_?.patient.packaging_profile ?? null,
+      });
+      const packagingTags =
+        line.packaging_instruction_tags.length > 0
+          ? line.packaging_instruction_tags
+          : extractPackagingInstructionTags({
+              packagingInstructions: resolvedPackaging.packaging_instructions,
+              notes: line.notes,
+              packagingMethod: resolvedPackaging.packaging_method,
+            });
+
       const batch = await tx.setBatch.create({
         data: {
           org_id: ctx.orgId,
@@ -128,6 +181,9 @@ export const POST = withAuthContext<Record<string, string>>(
           day_number,
           quantity,
           carry_type,
+          packaging_method_snapshot: resolvedPackaging.packaging_method,
+          packaging_instructions_snapshot: resolvedPackaging.packaging_instructions,
+          packaging_instruction_tags_snapshot: packagingTags,
         },
         include: {
           line: {
@@ -139,17 +195,37 @@ export const POST = withAuthContext<Record<string, string>>(
               dose: true,
               frequency: true,
               unit: true,
+              packaging_method: true,
               packaging_instructions: true,
+              packaging_instruction_tags: true,
               notes: true,
             },
           },
         },
       });
 
+      await createSetBatchChangeLog(tx, {
+        orgId: ctx.orgId,
+        planId: plan_id,
+        batchId: batch.id,
+        action: 'manual_create',
+        triggerSource: 'manual_edit',
+        reason: 'セットバッチを手動追加',
+        lineIds: [line_id],
+        beforeSnapshot: [],
+        afterSnapshot: [buildSetBatchHistorySnapshot(batch)],
+        changedBy: ctx.userId,
+      });
+
       return { kind: 'success' as const, batch };
     });
 
     if (result.kind === 'error') return result.response;
+
+    await notifyWorkflowMutation({
+      orgId: ctx.orgId,
+      payload: { source: 'set_batches_create', plan_id },
+    });
 
     return success({ data: result.batch }, 201);
   },

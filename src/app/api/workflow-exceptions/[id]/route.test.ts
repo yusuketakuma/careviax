@@ -6,12 +6,14 @@ const {
   workflowExceptionUpdateMock,
   workflowExceptionCountMock,
   medicationCycleUpdateMock,
+  cycleTransitionLogCreateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   workflowExceptionFindFirstMock: vi.fn(),
   workflowExceptionUpdateMock: vi.fn(),
   workflowExceptionCountMock: vi.fn(),
   medicationCycleUpdateMock: vi.fn(),
+  cycleTransitionLogCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -49,6 +51,7 @@ describe('/api/workflow-exceptions/[id]', () => {
       status: 'resolved',
     });
     workflowExceptionCountMock.mockResolvedValue(0);
+    cycleTransitionLogCreateMock.mockResolvedValue({});
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         workflowException: {
@@ -58,6 +61,9 @@ describe('/api/workflow-exceptions/[id]', () => {
         },
         medicationCycle: {
           update: medicationCycleUpdateMock,
+        },
+        cycleTransitionLog: {
+          create: cycleTransitionLogCreateMock,
         },
       }),
     );

@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { OUTCOME_LABELS, OUTCOME_VARIANTS } from '@/lib/constants/visit';
 
 type VisitRecordRow = {
   id: string;
@@ -29,16 +30,13 @@ type VisitRecordRow = {
   } | null;
 };
 
-const outcomeConfig: Record<
-  string,
-  { label: string; icon: React.ElementType; variant: 'default' | 'secondary' | 'outline' | 'destructive' }
-> = {
-  completed: { label: '完了', icon: CheckCircle2, variant: 'default' },
-  revisit_needed: { label: '再訪必要', icon: AlertTriangle, variant: 'secondary' },
-  postponed: { label: '延期', icon: Clock, variant: 'outline' },
-  cancelled: { label: 'キャンセル', icon: XCircle, variant: 'destructive' },
-  delivery_only: { label: '投薬のみ', icon: Package, variant: 'secondary' },
-  completed_with_issue: { label: '完了（課題あり）', icon: AlertCircle, variant: 'outline' },
+const OUTCOME_ICONS: Record<string, React.ElementType> = {
+  completed: CheckCircle2,
+  revisit_needed: AlertTriangle,
+  postponed: Clock,
+  cancelled: XCircle,
+  delivery_only: Package,
+  completed_with_issue: AlertCircle,
 };
 
 const visitTypeLabel: Record<string, string> = {
@@ -103,13 +101,15 @@ const columns: ColumnDef<VisitRecordRow>[] = [
     accessorKey: 'outcome_status',
     header: '訪問結果',
     cell: ({ row }) => {
-      const config = outcomeConfig[row.original.outcome_status];
-      if (!config) return <span className="text-muted-foreground">{row.original.outcome_status}</span>;
-      const Icon = config.icon;
+      const status = row.original.outcome_status;
+      const label = OUTCOME_LABELS[status];
+      const variant = OUTCOME_VARIANTS[status];
+      const Icon = OUTCOME_ICONS[status];
+      if (!label) return <span className="text-muted-foreground">{status}</span>;
       return (
-        <Badge variant={config.variant} className="gap-1">
-          <Icon className="size-3" aria-hidden="true" />
-          {config.label}
+        <Badge variant={variant ?? 'outline'} className="gap-1">
+          {Icon && <Icon className="size-3" aria-hidden="true" />}
+          {label}
         </Badge>
       );
     },
@@ -128,6 +128,7 @@ const columns: ColumnDef<VisitRecordRow>[] = [
 
 export function VisitsTable() {
   const orgId = useOrgId();
+  const isBootstrappingOrg = !orgId;
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -178,7 +179,7 @@ export function VisitsTable() {
       <DataTable
         columns={columns}
         data={records}
-        isLoading={isLoading}
+        isLoading={isBootstrappingOrg || isLoading}
         caption="訪問記録一覧"
       />
     </div>

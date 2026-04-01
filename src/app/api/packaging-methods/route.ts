@@ -73,7 +73,7 @@ export const POST = withAuth(
       return created;
     });
 
-    return success(method, 201);
+    return success({ data: method }, 201);
   },
   {
     permission: 'canAdmin',

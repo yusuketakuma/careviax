@@ -1,9 +1,10 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
+import { transitionCycleStatus, InvalidTransitionError, VersionConflictError } from '@/lib/db/cycle-transition';
 import { z } from 'zod';
 
 const createDispenseTaskSchema = z.object({
@@ -115,10 +116,17 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       cycle.overall_status === 'ready_to_dispense' ||
       cycle.overall_status === 'dispensing'
     ) {
-      await tx.medicationCycle.update({
-        where: { id: cycle_id },
-        data: { overall_status: 'dispensing' },
-      });
+      try {
+        await transitionCycleStatus(tx, cycle_id, req.orgId, 'dispensing', req.userId);
+      } catch (err) {
+        if (err instanceof InvalidTransitionError) {
+          return validationError(`ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}`);
+        }
+        if (err instanceof VersionConflictError) {
+          return conflict(err.message);
+        }
+        throw err;
+      }
     }
 
     if (priority === 'emergency') {

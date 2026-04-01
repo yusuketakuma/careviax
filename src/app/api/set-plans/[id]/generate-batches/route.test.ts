@@ -10,12 +10,18 @@ const { authMock, prismaMock, withOrgContextMock, txMock } = vi.hoisted(() => ({
   },
   withOrgContextMock: vi.fn(),
   txMock: {
+    setPlan: {
+      update: vi.fn(),
+    },
     setBatch: {
       count: vi.fn(),
       findFirst: vi.fn(),
       findMany: vi.fn(),
       deleteMany: vi.fn(),
       createMany: vi.fn(),
+    },
+    setBatchChangeLog: {
+      create: vi.fn(),
     },
   },
 }));
@@ -54,15 +60,34 @@ describe('set-plans/[id]/generate-batches POST', () => {
       target_period_start: new Date('2026-03-01T00:00:00.000Z'),
       target_period_end: new Date('2026-03-02T00:00:00.000Z'),
       set_method: 'custom',
+      packaging_method_id: null,
+      packaging_method_ref: null,
       updated_at: new Date('2026-03-01T00:00:00.000Z'),
       cycle: {
         overall_status: 'audited',
+        case_: {
+          patient: {
+            packaging_preferences: null,
+            packaging_profile: null,
+          },
+        },
       },
     });
     prismaMock.prescriptionIntake.findMany.mockResolvedValue([
       {
         updated_at: new Date('2026-03-01T00:00:00.000Z'),
-        lines: [{ id: 'line_1', drug_name: 'Drug', frequency: '朝夕', quantity: 2 }],
+        lines: [
+          {
+            id: 'line_1',
+            drug_name: 'Drug',
+            frequency: '朝夕',
+            quantity: 2,
+            packaging_method: null,
+            packaging_instructions: null,
+            packaging_instruction_tags: [],
+            notes: null,
+          },
+        ],
       },
     ]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
@@ -78,6 +103,12 @@ describe('set-plans/[id]/generate-batches POST', () => {
         id: 'batch_1',
         day_number: 1,
         slot: 'morning',
+        line_id: 'line_1',
+        quantity: 1,
+        carry_type: 'carry',
+        packaging_method_snapshot: null,
+        packaging_instructions_snapshot: null,
+        packaging_instruction_tags_snapshot: [],
         line: { id: 'line_1', drug_name: 'Drug', dose: '1T', frequency: '朝夕', unit: '錠' },
       },
     ]);
@@ -101,9 +132,17 @@ describe('set-plans/[id]/generate-batches POST', () => {
       target_period_start: new Date('2026-03-01T00:00:00.000Z'),
       target_period_end: new Date('2026-03-02T00:00:00.000Z'),
       set_method: 'custom',
+      packaging_method_id: null,
+      packaging_method_ref: null,
       updated_at: new Date('2026-03-01T00:00:00.000Z'),
       cycle: {
         overall_status: 'dispensing',
+        case_: {
+          patient: {
+            packaging_preferences: null,
+            packaging_profile: null,
+          },
+        },
       },
     });
 

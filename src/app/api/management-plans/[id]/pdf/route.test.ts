@@ -5,10 +5,14 @@ const {
   requireAuthContextMock,
   buildManagementPlanPdfMock,
   pdfResponseMock,
+  recordDataExportAuditMock,
+  prismaMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   buildManagementPlanPdfMock: vi.fn(),
   pdfResponseMock: vi.fn(),
+  recordDataExportAuditMock: vi.fn(),
+  prismaMock: {},
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -23,6 +27,14 @@ vi.mock('@/lib/api/pdf-response', () => ({
   pdfResponse: pdfResponseMock,
 }));
 
+vi.mock('@/lib/db/client', () => ({
+  prisma: prismaMock,
+}));
+
+vi.mock('@/server/services/export-audit', () => ({
+  recordDataExportAudit: recordDataExportAuditMock,
+}));
+
 import { GET } from './route';
 
 describe('/api/management-plans/[id]/pdf', () => {
@@ -31,6 +43,7 @@ describe('/api/management-plans/[id]/pdf', () => {
     requireAuthContextMock.mockResolvedValue({
       ctx: {
         orgId: 'org_1',
+        userId: 'user_1',
       },
     });
     pdfResponseMock.mockReturnValue(
@@ -39,6 +52,7 @@ describe('/api/management-plans/[id]/pdf', () => {
         headers: { 'content-type': 'application/pdf' },
       }),
     );
+    recordDataExportAuditMock.mockResolvedValue(undefined);
   });
 
   it('returns the rendered management plan pdf', async () => {
@@ -53,6 +67,10 @@ describe('/api/management-plans/[id]/pdf', () => {
 
     expect(response.status).toBe(200);
     expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), 'plan.pdf');
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ targetType: 'management_plan', format: 'pdf', targetId: 'plan_1' }),
+    );
   });
 
   it('returns 404 when the pdf source is missing', async () => {

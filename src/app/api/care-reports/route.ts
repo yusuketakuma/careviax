@@ -53,31 +53,66 @@ const careReportSelect = {
 
 const reportStatusSchema = z.nativeEnum(ReportStatus);
 const reportTypeSchema = z.nativeEnum(ReportType);
+const optionalDateParamSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
+  .refine((value) => {
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+  }, '日付が不正です')
+  .optional();
+const careReportQuerySchema = z.object({
+  patient_id: z.string().min(1).optional(),
+  status: reportStatusSchema.optional(),
+  report_type: reportTypeSchema.optional(),
+  delivery_status: reportStatusSchema.optional(),
+  recipient: z.string().min(1).optional(),
+  q: z.string().min(1).optional(),
+  keyword: z.string().min(1).optional(),
+  date_from: optionalDateParamSchema,
+  date_to: optionalDateParamSchema,
+  sent_from: optionalDateParamSchema,
+  sent_to: optionalDateParamSchema,
+});
+
+function normalizeOptionalSearchParam(value: string | null) {
+  return value?.trim() || undefined;
+}
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const { searchParams } = new URL(req.url);
   const { cursor, limit } = parsePaginationParams(searchParams);
 
-  const patientId = searchParams.get('patient_id') ?? undefined;
-  const rawStatus = searchParams.get('status');
-  const rawReportType = searchParams.get('report_type');
-  const rawDeliveryStatus = searchParams.get('delivery_status');
-  const rawSentFrom = searchParams.get('sent_from');
-  const rawSentTo = searchParams.get('sent_to');
-  const recipient = searchParams.get('recipient')?.trim() || undefined;
-  const query = searchParams.get('q')?.trim() || undefined;
-  const keyword = searchParams.get('keyword')?.trim() || undefined;
-  const dateFrom = searchParams.get('date_from') ?? undefined;
-  const dateTo = searchParams.get('date_to') ?? undefined;
-  const status = rawStatus && reportStatusSchema.safeParse(rawStatus).success
-    ? (rawStatus as ReportStatus)
-    : undefined;
-  const reportType = rawReportType && reportTypeSchema.safeParse(rawReportType).success
-    ? (rawReportType as ReportType)
-    : undefined;
-  const deliveryStatus = rawDeliveryStatus && reportStatusSchema.safeParse(rawDeliveryStatus).success
-    ? (rawDeliveryStatus as ReportStatus)
-    : undefined;
+  const parsedQuery = careReportQuerySchema.safeParse({
+    patient_id: searchParams.get('patient_id') ?? undefined,
+    status: searchParams.get('status') ?? undefined,
+    report_type: searchParams.get('report_type') ?? undefined,
+    delivery_status: searchParams.get('delivery_status') ?? undefined,
+    recipient: normalizeOptionalSearchParam(searchParams.get('recipient')),
+    q: normalizeOptionalSearchParam(searchParams.get('q')),
+    keyword: normalizeOptionalSearchParam(searchParams.get('keyword')),
+    date_from: searchParams.get('date_from') ?? undefined,
+    date_to: searchParams.get('date_to') ?? undefined,
+    sent_from: searchParams.get('sent_from') ?? undefined,
+    sent_to: searchParams.get('sent_to') ?? undefined,
+  });
+  if (!parsedQuery.success) {
+    return validationError('検索条件が不正です', parsedQuery.error.flatten().fieldErrors);
+  }
+
+  const {
+    patient_id: patientId,
+    status,
+    report_type: reportType,
+    delivery_status: deliveryStatus,
+    recipient,
+    q: query,
+    keyword,
+    date_from: dateFrom,
+    date_to: dateTo,
+    sent_from: sentFromRaw,
+    sent_to: sentToRaw,
+  } = parsedQuery.data;
 
   const matchingPatients = query
     ? await prisma.patient.findMany({
@@ -187,8 +222,8 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     };
   });
 
-  const sentFrom = rawSentFrom ? new Date(`${rawSentFrom}T00:00:00.000Z`) : null;
-  const sentTo = rawSentTo ? new Date(`${rawSentTo}T23:59:59.999Z`) : null;
+  const sentFrom = sentFromRaw ? new Date(`${sentFromRaw}T00:00:00.000Z`) : null;
+  const sentTo = sentToRaw ? new Date(`${sentToRaw}T23:59:59.999Z`) : null;
   const filteredData = enrichedData.filter((report) => {
     if (query && !matchedPatientIdSet.has(report.patient_id)) {
       return false;

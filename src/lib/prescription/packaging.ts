@@ -22,9 +22,27 @@ export const PACKAGING_DETAIL_OPTIONS = [
 
 export type PackagingMethodValue = (typeof PACKAGING_METHOD_OPTIONS)[number]['value'];
 
+export const PACKAGING_INSTRUCTION_TAG_OPTIONS = [
+  { value: 'cold_storage', label: '冷所保管' },
+  { value: 'narcotic', label: '麻薬' },
+  { value: 'half_tablet', label: '半錠・分割' },
+  { value: 'crush_prohibited', label: '粉砕禁止' },
+  { value: 'separate_pack', label: '別包' },
+  { value: 'unit_dose', label: '一包化' },
+  { value: 'staple_required', label: 'ホッチキス止め' },
+  { value: 'label_required', label: '名前ラベル' },
+] as const;
+
+export type PackagingInstructionTagValue =
+  (typeof PACKAGING_INSTRUCTION_TAG_OPTIONS)[number]['value'];
+
 export const PACKAGING_METHOD_LABELS = Object.fromEntries(
   PACKAGING_METHOD_OPTIONS.map((option) => [option.value, option.label])
 ) as Record<PackagingMethodValue, string>;
+
+export const PACKAGING_INSTRUCTION_TAG_LABELS = Object.fromEntries(
+  PACKAGING_INSTRUCTION_TAG_OPTIONS.map((option) => [option.value, option.label])
+) as Record<PackagingInstructionTagValue, string>;
 
 export type PackagingProfileLike = {
   default_packaging_method?: PackagingMethodValue | null;
@@ -153,6 +171,40 @@ export function parsePackagingMethod(
   };
 }
 
+const PACKAGING_TAG_PATTERNS: Array<{
+  tag: PackagingInstructionTagValue;
+  patterns: RegExp[];
+}> = [
+  {
+    tag: 'cold_storage',
+    patterns: [/冷所/, /要冷蔵/, /保冷/],
+  },
+  {
+    tag: 'narcotic',
+    patterns: [/麻薬/],
+  },
+  {
+    tag: 'half_tablet',
+    patterns: [/半錠/, /半分/, /1\/2/],
+  },
+  {
+    tag: 'crush_prohibited',
+    patterns: [/粉砕不可/, /粉砕禁止/, /つぶさない/],
+  },
+  {
+    tag: 'separate_pack',
+    patterns: [/別袋/, /別包/, /別に/, /別パック/],
+  },
+  {
+    tag: 'staple_required',
+    patterns: [/ホッチキス/, /ステープル/, /留め/],
+  },
+  {
+    tag: 'label_required',
+    patterns: [/名前シール/, /名前ラベル/, /ラベル/],
+  },
+];
+
 export function buildPackagingInstructions(args: {
   method?: PackagingMethodValue | null;
   detail?: string | null;
@@ -197,4 +249,37 @@ export function resolvePackagingSettings(args: ResolvePackagingArgs) {
       medicationBoxColor,
     }),
   };
+}
+
+export function extractPackagingInstructionTags(args: {
+  packagingInstructions?: string | null;
+  notes?: string | null;
+  packagingMethod?: PackagingMethodValue | null;
+}) {
+  const detail = normalizeText(
+    [args.packagingInstructions, args.notes].filter(Boolean).join(' ')
+  );
+  const tags = new Set<PackagingInstructionTagValue>();
+
+  if (
+    args.packagingMethod === 'unit_dose' ||
+    args.packagingMethod === 'morning_evening_unit_dose'
+  ) {
+    tags.add('unit_dose');
+  }
+
+  if (detail) {
+    for (const entry of PACKAGING_TAG_PATTERNS) {
+      if (entry.patterns.some((pattern) => pattern.test(detail))) {
+        tags.add(entry.tag);
+      }
+    }
+    if (/一包化/.test(detail)) {
+      tags.add('unit_dose');
+    }
+  }
+
+  return PACKAGING_INSTRUCTION_TAG_OPTIONS
+    .map((option) => option.value)
+    .filter((value) => tags.has(value));
 }

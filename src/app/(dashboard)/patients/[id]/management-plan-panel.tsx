@@ -23,6 +23,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loading } from '@/components/ui/loading';
+import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import {
   Select,
   SelectContent,
@@ -396,9 +397,12 @@ export function ManagementPlanPanel({
     onSuccess: async () => {
       toast.success(editor.plan ? '管理計画書を更新しました' : '管理計画書を作成しました');
       setEditor({ open: false, plan: null });
-      await queryClient.invalidateQueries({
-        queryKey: ['management-plans', resolvedSelectedCaseId, orgId],
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['management-plans', resolvedSelectedCaseId, orgId],
+        }),
+        invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId })),
+      ]);
     },
     onError: (err: Error) => {
       toast.error(err.message);
@@ -434,9 +438,12 @@ export function ManagementPlanPanel({
           ? '管理計画書を承認しました'
           : '管理計画書をアーカイブしました',
       );
-      await queryClient.invalidateQueries({
-        queryKey: ['management-plans', resolvedSelectedCaseId, orgId],
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['management-plans', resolvedSelectedCaseId, orgId],
+        }),
+        invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId })),
+      ]);
     },
     onError: (err: Error) => {
       toast.error(err.message);

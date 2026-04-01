@@ -8,8 +8,11 @@ const {
   dispenseAuditFindFirstMock,
   dispenseResultUpdateMock,
   dispenseTaskUpdateMock,
-  medicationCycleUpdateMock,
+  medicationCycleFindFirstMock,
+  medicationCycleUpdateManyMock,
+  cycleTransitionLogCreateMock,
   withOrgContextMock,
+  notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -17,8 +20,11 @@ const {
   dispenseAuditFindFirstMock: vi.fn(),
   dispenseResultUpdateMock: vi.fn(),
   dispenseTaskUpdateMock: vi.fn(),
-  medicationCycleUpdateMock: vi.fn(),
+  medicationCycleFindFirstMock: vi.fn(),
+  medicationCycleUpdateManyMock: vi.fn(),
+  cycleTransitionLogCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  notifyWorkflowMutationMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -38,6 +44,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/server/services/workflow-dashboard-cache', () => ({
+  notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
 import { GET, PATCH } from './route';
@@ -65,9 +75,16 @@ describe('/api/dispense-results/[id]', () => {
       task_id: 'task_1',
       line: { id: 'line_1' },
     });
-    dispenseAuditFindFirstMock.mockResolvedValue({ id: 'audit_1' });
+    dispenseAuditFindFirstMock.mockResolvedValue({ id: 'audit_1', result: 'rejected' });
     dispenseResultUpdateMock.mockResolvedValue({ id: 'result_1' });
     dispenseTaskUpdateMock.mockResolvedValue({ cycle_id: 'cycle_1' });
+    medicationCycleFindFirstMock.mockResolvedValue({
+      id: 'cycle_1',
+      overall_status: 'dispensing',
+      version: 1,
+    });
+    medicationCycleUpdateManyMock.mockResolvedValue({ count: 1 });
+    cycleTransitionLogCreateMock.mockResolvedValue({});
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         dispenseResult: {
@@ -81,7 +98,12 @@ describe('/api/dispense-results/[id]', () => {
           update: dispenseTaskUpdateMock,
         },
         medicationCycle: {
-          update: medicationCycleUpdateMock,
+          findFirst: medicationCycleFindFirstMock,
+          findFirstOrThrow: vi.fn().mockResolvedValue({ id: 'cycle_1', overall_status: 'audit_pending' }),
+          updateMany: medicationCycleUpdateManyMock,
+        },
+        cycleTransitionLog: {
+          create: cycleTransitionLogCreateMock,
         },
       }),
     );
@@ -112,9 +134,15 @@ describe('/api/dispense-results/[id]', () => {
       data: { status: 'completed' },
       select: { cycle_id: true },
     });
-    expect(medicationCycleUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'cycle_1' },
-      data: { overall_status: 'audit_pending' },
+    expect(medicationCycleUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'cycle_1', version: 1 },
+      data: { overall_status: 'audit_pending', version: { increment: 1 } },
+    });
+    expect(cycleTransitionLogCreateMock).toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      eventType: 'cycle_transition',
+      payload: { source: 'dispense_results_rework', result_id: 'result_1' },
     });
   });
 });

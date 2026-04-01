@@ -1,9 +1,12 @@
 import { Prisma } from '@prisma/client';
+import { isoOrNull } from '@/lib/utils/date';
 import { prisma } from '@/lib/db/client';
+import { detectMedicationChanges as detectChangesShared } from '@/lib/prescription/medication-diff';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
 import { listCommunicationQueue } from '@/server/services/communication-queue';
 import { generateVisitBriefAiSummary } from '@/server/services/visit-brief-ai';
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
+import { SET_METHOD_LABELS } from '@/lib/prescription/set-methods';
 import type {
   VisitBrief,
   VisitBriefAiSummary,
@@ -56,22 +59,11 @@ const DISPENSING_METHOD_LABELS: Record<string, string> = {
   other: 'その他',
 };
 
-const SET_METHOD_LABELS: Record<string, string> = {
-  facility_calendar: '施設カレンダー',
-  four_times_daily: '1日4回',
-  bedtime_only: '就寝時のみ',
-  custom: 'カスタム',
-};
-
 const SET_AUDIT_LABELS: Record<string, string> = {
   approved: '承認',
   partial_approved: '部分承認',
   rejected: '差戻し',
 };
-
-function isoOrNull(value: Date | null | undefined) {
-  return value ? value.toISOString() : null;
-}
 
 function timeToHHMM(value: Date | null | undefined): string | null {
   if (!value) return null;
@@ -95,61 +87,21 @@ function severityFromPriority(priority: string | null | undefined): VisitBriefSe
   }
 }
 
-function formatMedicationValue(line: Pick<PrescriptionLineLike, 'dose' | 'frequency'>) {
-  return `${line.dose} / ${line.frequency}`;
-}
-
-function lineIdentity(line: Pick<PrescriptionLineLike, 'drug_name' | 'drug_code'>) {
-  return line.drug_code || line.drug_name;
-}
-
 function detectMedicationChanges(
   currentLines: PrescriptionLineLike[],
   previousLines: PrescriptionLineLike[],
   prescribedDate: string | null,
   prescriberName: string | null
 ): VisitBriefMedicationChange[] {
-  const previousMap = new Map(previousLines.map((line) => [lineIdentity(line), line]));
-  const currentMap = new Map(currentLines.map((line) => [lineIdentity(line), line]));
-
-  const changes: VisitBriefMedicationChange[] = [];
-
-  for (const line of currentLines) {
-    const previous = previousMap.get(lineIdentity(line));
-    let changeType: VisitBriefChangeType = 'unchanged';
-    if (!previous) {
-      changeType = 'added';
-    } else if (previous.dose !== line.dose) {
-      changeType = 'dose_changed';
-    } else if (previous.frequency !== line.frequency) {
-      changeType = 'frequency_changed';
-    }
-
-    if (changeType === 'unchanged') continue;
-
-    changes.push({
-      drug_name: line.drug_name,
-      change_type: changeType,
-      previous: previous ? formatMedicationValue(previous) : null,
-      current: formatMedicationValue(line),
-      prescribed_date: prescribedDate,
-      prescriber_name: prescriberName,
-    });
-  }
-
-  for (const line of previousLines) {
-    if (currentMap.has(lineIdentity(line))) continue;
-    changes.push({
-      drug_name: line.drug_name,
-      change_type: 'removed',
-      previous: formatMedicationValue(line),
-      current: '中止',
-      prescribed_date: prescribedDate,
-      prescriber_name: prescriberName,
-    });
-  }
-
-  return changes;
+  const rawChanges = detectChangesShared(currentLines, previousLines);
+  return rawChanges.map((c) => ({
+    drug_name: c.drug_name,
+    change_type: c.change_type as VisitBriefChangeType,
+    previous: c.previous,
+    current: c.current ?? '中止',
+    prescribed_date: prescribedDate,
+    prescriber_name: prescriberName,
+  }));
 }
 
 function buildMedicationItems(args: {
@@ -208,7 +160,8 @@ function buildDispensingItems(args: {
     : null;
   const setMethod =
     args.latestSetPlan?.set_method
-      ? SET_METHOD_LABELS[args.latestSetPlan.set_method] ?? args.latestSetPlan.set_method
+      ? SET_METHOD_LABELS[args.latestSetPlan.set_method as keyof typeof SET_METHOD_LABELS] ??
+        args.latestSetPlan.set_method
       : null;
   const setPeriodLabel =
     args.latestSetPlan?.target_period_start && args.latestSetPlan?.target_period_end
@@ -1027,23 +980,25 @@ export async function getPatientVisitBrief(
             action_items: true,
           },
         }),
-    db.residence.findFirst({
-      where: {
-        org_id: args.orgId,
-        patient_id: args.patientId,
-        is_primary: true,
-        facility_id: { not: null },
-      },
-      select: {
-        facility: {
-          select: {
-            acceptance_time_from: true,
-            acceptance_time_to: true,
-            notes: true,
+    typeof db.residence?.findFirst === 'function'
+      ? db.residence.findFirst({
+          where: {
+            org_id: args.orgId,
+            patient_id: args.patientId,
+            is_primary: true,
+            facility_id: { not: null },
           },
-        },
-      },
-    }),
+          select: {
+            facility: {
+              select: {
+                acceptance_time_from: true,
+                acceptance_time_to: true,
+                notes: true,
+              },
+            },
+          },
+        })
+      : Promise.resolve(null),
   ]);
 
   if (!patient) {

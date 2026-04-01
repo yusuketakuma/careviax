@@ -176,7 +176,7 @@ export function CdsAlertPanel({ alerts, isLoading, className }: AlertPanelProps)
       <div className={cn('rounded-md border border-green-300 bg-green-50 px-3 py-2.5 text-sm', className)}>
         <div className="flex items-center gap-2 text-green-700">
           <Info className="size-4 shrink-0" aria-hidden="true" />
-          <span>CDSアラートなし</span>
+          <span>処方安全アラートはありません</span>
         </div>
       </div>
     );
@@ -189,7 +189,7 @@ export function CdsAlertPanel({ alerts, isLoading, className }: AlertPanelProps)
   return (
     <div className={cn('space-y-2', className)}>
       <div className="flex items-center gap-2 text-sm font-medium">
-        <span>CDSアラート</span>
+        <span>処方安全アラート</span>
         {criticals.length > 0 && (
           <span className="rounded-full bg-destructive px-2 py-0.5 text-xs font-semibold text-destructive-foreground">
             禁忌 {criticals.length}

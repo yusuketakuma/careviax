@@ -153,6 +153,40 @@ describe('/api/pharmacists/[id] PATCH', () => {
     });
   });
 
+  it('allows overriding workflow permission flags on update', async () => {
+    const response = await PATCH(
+      createRequest(
+        {
+          action: 'update',
+          name: '更新 薬剤師',
+          name_kana: 'コウシン ヤクザイシ',
+          phone: '090-1111-2222',
+          site_id: 'site_2',
+          role: 'admin',
+          can_dispense: true,
+          can_set: false,
+          can_audit_dispense: false,
+          can_audit_set: true,
+        },
+        { 'x-org-id': 'org_1' }
+      ),
+      { params: Promise.resolve({ id: 'user_1' }) }
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(membershipUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'membership_1' },
+      data: expect.objectContaining({
+        role: 'admin',
+        can_dispense: true,
+        can_set: false,
+        can_audit_dispense: false,
+        can_audit_set: true,
+      }),
+    });
+  });
+
   it('suspends a pharmacist account', async () => {
     const response = await PATCH(
       createRequest(

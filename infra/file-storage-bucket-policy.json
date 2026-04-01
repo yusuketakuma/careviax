@@ -17,18 +17,58 @@
       }
     },
     {
-      "sid": "RequireServerSideEncryptionForAppUploads",
+      "sid": "RequireKmsEncryptionForAppUploads",
       "effect": "Deny",
       "principal": "*",
       "actions": ["s3:PutObject"],
       "resources": [
         "arn:aws:s3:::${S3_BUCKET_NAME}/prescriptions/*",
         "arn:aws:s3:::${S3_BUCKET_NAME}/visit-photos/*",
-        "arn:aws:s3:::${S3_BUCKET_NAME}/reports/*"
+        "arn:aws:s3:::${S3_BUCKET_NAME}/reports/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/bulk-exports/*"
       ],
       "condition": {
         "StringNotEquals": {
-          "s3:x-amz-server-side-encryption": "AES256"
+          "s3:x-amz-server-side-encryption": "aws:kms"
+        }
+      }
+    },
+    {
+      "sid": "RequireKmsKeyIdForAppUploads",
+      "effect": "Deny",
+      "principal": "*",
+      "actions": ["s3:PutObject"],
+      "resources": [
+        "arn:aws:s3:::${S3_BUCKET_NAME}/prescriptions/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/visit-photos/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/reports/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/bulk-exports/*"
+      ],
+      "condition": {
+        "Null": {
+          "s3:x-amz-server-side-encryption-aws-kms-key-id": "true"
+        }
+      }
+    },
+    {
+      "sid": "RequireApprovedKmsKeysForAppUploads",
+      "effect": "Deny",
+      "principal": "*",
+      "actions": ["s3:PutObject"],
+      "resources": [
+        "arn:aws:s3:::${S3_BUCKET_NAME}/prescriptions/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/visit-photos/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/reports/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/bulk-exports/*"
+      ],
+      "condition": {
+        "ForAnyValue:StringNotLike": {
+          "s3:x-amz-server-side-encryption-aws-kms-key-id": [
+            "${S3_KMS_KEY_ID}",
+            "${S3_KMS_KEY_ID_PHI}",
+            "${S3_KMS_KEY_ID_REPORT}",
+            "${S3_KMS_KEY_ID_EXPORT}"
+          ]
         }
       }
     },
@@ -40,7 +80,8 @@
       "resources": [
         "arn:aws:s3:::${S3_BUCKET_NAME}/prescriptions/*",
         "arn:aws:s3:::${S3_BUCKET_NAME}/visit-photos/*",
-        "arn:aws:s3:::${S3_BUCKET_NAME}/reports/*"
+        "arn:aws:s3:::${S3_BUCKET_NAME}/reports/*",
+        "arn:aws:s3:::${S3_BUCKET_NAME}/bulk-exports/*"
       ],
       "condition": {
         "StringEqualsIfExists": {

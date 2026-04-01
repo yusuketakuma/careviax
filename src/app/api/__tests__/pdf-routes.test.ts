@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
+  recordDataExportAuditMock,
   buildCareReportPdfMock,
   buildManagementPlanPdfMock,
   buildMedicationHistoryPdfMock,
@@ -12,6 +13,7 @@ const {
   buildVisitRecordPdfMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
+  recordDataExportAuditMock: vi.fn(),
   buildCareReportPdfMock: vi.fn(),
   buildManagementPlanPdfMock: vi.fn(),
   buildMedicationHistoryPdfMock: vi.fn(),
@@ -25,6 +27,10 @@ vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
 }));
 
+vi.mock('@/server/services/export-audit', () => ({
+  recordDataExportAudit: recordDataExportAuditMock,
+}));
+
 vi.mock('@/server/services/pdf-documents', () => ({
   buildCareReportPdf: buildCareReportPdfMock,
   buildManagementPlanPdf: buildManagementPlanPdfMock,
@@ -33,6 +39,10 @@ vi.mock('@/server/services/pdf-documents', () => ({
   buildPatientVisitRecordsPdf: buildPatientVisitRecordsPdfMock,
   buildTracingReportPdf: buildTracingReportPdfMock,
   buildVisitRecordPdf: buildVisitRecordPdfMock,
+}));
+
+vi.mock('@/lib/db/client', () => ({
+  prisma: {},
 }));
 
 import { GET as careReportPdfGet } from '../care-reports/[id]/pdf/route';
@@ -62,6 +72,7 @@ describe('PDF routes', () => {
         role: 'admin',
       },
     });
+    recordDataExportAuditMock.mockResolvedValue(undefined);
   });
 
   it('returns a care report pdf response', async () => {

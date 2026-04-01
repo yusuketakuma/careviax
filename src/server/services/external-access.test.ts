@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
@@ -26,6 +26,8 @@ import {
 describe('buildExternalAccessPayload', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-30T00:00:00.000Z'));
     process.env.NEXTAUTH_SECRET = 'test-secret';
     prismaMock.patient.findFirst.mockResolvedValue({
       id: 'patient_1',
@@ -38,6 +40,10 @@ describe('buildExternalAccessPayload', () => {
     prismaMock.medicationProfile.findMany.mockResolvedValue([]);
     prismaMock.careCase.findMany.mockResolvedValue([]);
     prismaMock.careReport.findMany.mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('does not expose patient phone when scope does not explicitly allow it', async () => {
@@ -138,7 +144,13 @@ describe('buildExternalAccessPayload', () => {
 describe('validateExternalAccessGrant', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-30T00:00:00.000Z'));
     process.env.NEXTAUTH_SECRET = 'test-secret';
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('validates a signed JWT token and matching OTP against the stored grant', async () => {

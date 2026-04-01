@@ -130,4 +130,32 @@ describe('/api/care-reports GET', () => {
       by_status: { response_waiting: 1 },
     });
   });
+
+  it('returns 400 for an invalid status filter', async () => {
+    const response = await GET({
+      orgId: 'org_1',
+      userId: 'user_1',
+      role: 'pharmacist',
+      url: 'http://localhost/api/care-reports?status=unknown',
+      headers: { get: () => null },
+    } as unknown as NextRequest & { orgId: string; userId: string; role?: string });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(careReportFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 for an invalid date filter', async () => {
+    const response = await GET({
+      orgId: 'org_1',
+      userId: 'user_1',
+      role: 'pharmacist',
+      url: 'http://localhost/api/care-reports?sent_from=2026-03-99',
+      headers: { get: () => null },
+    } as unknown as NextRequest & { orgId: string; userId: string; role?: string });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(careReportFindManyMock).not.toHaveBeenCalled();
+  });
 });

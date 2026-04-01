@@ -100,9 +100,9 @@ export async function PATCH(
   const effectiveSplitTotal = split_dispense_total ?? existing.split_dispense_total ?? undefined;
   const effectiveSplitCurrent = split_dispense_current ?? existing.split_dispense_current ?? undefined;
   const effectiveSplitNextDate =
-    split_next_dispense_date ??
-    existing.split_next_dispense_date?.toISOString().slice(0, 10) ??
-    undefined;
+    split_next_dispense_date !== undefined
+      ? split_next_dispense_date ?? undefined
+      : existing.split_next_dispense_date?.toISOString().slice(0, 10) ?? undefined;
   const hasAnySplitField =
     effectiveSplitTotal != null ||
     effectiveSplitCurrent != null ||
@@ -144,13 +144,21 @@ export async function PATCH(
               prescriber_institution: resolvedInstitution.prescriber_institution,
             }
           : {}),
-        ...(refill_next_dispense_date
-          ? { refill_next_dispense_date: new Date(refill_next_dispense_date) }
+        ...(refill_next_dispense_date !== undefined
+          ? {
+              refill_next_dispense_date: refill_next_dispense_date
+                ? new Date(refill_next_dispense_date)
+                : null,
+            }
           : {}),
         ...(split_dispense_total != null ? { split_dispense_total } : {}),
         ...(split_dispense_current != null ? { split_dispense_current } : {}),
-        ...(split_next_dispense_date
-          ? { split_next_dispense_date: new Date(split_next_dispense_date) }
+        ...(split_next_dispense_date !== undefined
+          ? {
+              split_next_dispense_date: split_next_dispense_date
+                ? new Date(split_next_dispense_date)
+                : null,
+            }
           : {}),
         ...(original_collected_at
           ? {

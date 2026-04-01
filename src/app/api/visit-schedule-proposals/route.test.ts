@@ -6,6 +6,8 @@ const {
   membershipFindFirstMock,
   visitScheduleProposalFindManyMock,
   userFindManyMock,
+  careCaseFindFirstMock,
+  billingCandidateFindManyMock,
   validateOrgReferencesMock,
   generateVisitScheduleProposalDraftsMock,
   visitScheduleProposalUpdateManyMock,
@@ -16,6 +18,8 @@ const {
   membershipFindFirstMock: vi.fn(),
   visitScheduleProposalFindManyMock: vi.fn(),
   userFindManyMock: vi.fn(),
+  careCaseFindFirstMock: vi.fn(),
+  billingCandidateFindManyMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
   generateVisitScheduleProposalDraftsMock: vi.fn(),
   visitScheduleProposalUpdateManyMock: vi.fn(),
@@ -37,6 +41,12 @@ vi.mock('@/lib/db/client', () => ({
     },
     user: {
       findMany: userFindManyMock,
+    },
+    careCase: {
+      findFirst: careCaseFindFirstMock,
+    },
+    billingCandidate: {
+      findMany: billingCandidateFindManyMock,
     },
   },
 }));
@@ -94,6 +104,14 @@ describe('/api/visit-schedule-proposals', () => {
     userFindManyMock.mockResolvedValue([
       { id: 'user_2', name: '薬剤師A', name_kana: 'ヤクザイシエー' },
     ]);
+    careCaseFindFirstMock.mockResolvedValue({
+      patient_id: 'patient_1',
+      patient: {
+        medical_insurance_number: '12345678',
+        care_insurance_number: null,
+      },
+    });
+    billingCandidateFindManyMock.mockResolvedValue([]);
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
     generateVisitScheduleProposalDraftsMock.mockResolvedValue([
       { org_id: 'org_1', case_id: 'case_1', proposed_pharmacist_id: 'user_2' },
@@ -192,5 +210,26 @@ describe('/api/visit-schedule-proposals', () => {
         preferredPharmacistId: 'user_2',
       })
     );
+  });
+
+  it('blocks proposal generation when same-month billing exclusions already exist', async () => {
+    billingCandidateFindManyMock.mockResolvedValueOnce([
+      {
+        billing_code: 'medication_management_guidance',
+        billing_name: '服薬管理指導料',
+      },
+    ]);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+        start_date: '2026-04-01',
+      })
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
   });
 });

@@ -27,6 +27,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import { deriveFacilityLabel } from '@/lib/utils/facility';
+import { fetchVisitSchedulesWindow } from '../visit-schedule-fetch.helpers';
 import {
   PRIORITY_LABELS,
   PROPOSAL_STATUS_LABELS,
@@ -120,7 +123,67 @@ function normalizeFacilityKey(item: {
 }) {
   const residence = item.case_.patient.residences[0];
   if (!residence) return null;
-  return residence.building_id ?? residence.address ?? null;
+  return deriveFacilityLabel(residence);
+}
+
+type FacilitySuggestion = {
+  label: string;
+  targetDate: string;
+  targetPharmacistId: string;
+  outliers: Proposal[];
+};
+
+function computeFacilitySuggestions(proposals: Proposal[]): FacilitySuggestion[] {
+  const groups = new Map<
+    string,
+    {
+      label: string;
+      proposals: Proposal[];
+    }
+  >();
+
+  for (const proposal of proposals) {
+    if (!['proposed', 'patient_contact_pending', 'reschedule_pending'].includes(proposal.proposal_status)) continue;
+    const key = normalizeFacilityKey(proposal);
+    if (!key) continue;
+    const residence = proposal.case_.patient.residences[0];
+    const existing = groups.get(key) ?? {
+      label: deriveFacilityLabel(residence ?? null) ?? '施設未設定',
+      proposals: [],
+    };
+    existing.proposals.push(proposal);
+    groups.set(key, existing);
+  }
+
+  return Array.from(groups.values())
+    .map((group) => {
+      const counts = new Map<string, number>();
+      const pharmacistCounts = new Map<string, number>();
+      for (const proposal of group.proposals) {
+        const key = dateKey(proposal.proposed_date);
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+        pharmacistCounts.set(proposal.proposed_pharmacist_id, (pharmacistCounts.get(proposal.proposed_pharmacist_id) ?? 0) + 1);
+      }
+      if (counts.size <= 1 || group.proposals.length < 2) return null;
+
+      const [targetDate] = [...counts.entries()].sort((left, right) => {
+        if (right[1] !== left[1]) return right[1] - left[1];
+        return left[0].localeCompare(right[0]);
+      })[0] ?? [];
+      if (!targetDate) return null;
+
+      const [targetPharmacistId] = [...pharmacistCounts.entries()].sort((left, right) => right[1] - left[1])[0] ?? [];
+      const outliers = group.proposals.filter((proposal) => dateKey(proposal.proposed_date) !== targetDate);
+      if (outliers.length === 0 || !targetPharmacistId) return null;
+
+      return {
+        label: group.label,
+        targetDate,
+        targetPharmacistId,
+        outliers,
+      };
+    })
+    .filter((item): item is FacilitySuggestion => item !== null);
 }
 
 export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
@@ -161,24 +224,21 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
     enabled: !!orgId,
   });
 
-  const schedulesQuery = useQuery({
+  const schedulesQuery = useRealtimeQuery({
     queryKey: ['visit-schedules', 'weekly-optimizer', orgId, dateFrom, dateTo],
     queryFn: async () => {
-      const params = new URLSearchParams({
-        date_from: dateFrom,
-        date_to: dateTo,
-        limit: '400',
+      const data = await fetchVisitSchedulesWindow<VisitSchedule>({
+        orgId,
+        dateFrom,
+        dateTo,
       });
-      const response = await fetch(`/api/visit-schedules?${params}`, {
-        headers: { 'x-org-id': orgId },
-      });
-      if (!response.ok) throw new Error('週間スケジュールの取得に失敗しました');
-      return response.json() as Promise<{ data: VisitSchedule[] }>;
+      return { data };
     },
     enabled: !!orgId,
+    invalidateOn: ['workflow_refresh'],
   });
 
-  const proposalsQuery = useQuery({
+  const proposalsQuery = useRealtimeQuery({
     queryKey: ['visit-schedule-proposals', 'weekly-optimizer', orgId, dateFrom, dateTo],
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -192,6 +252,7 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
       return response.json() as Promise<{ data: Proposal[] }>;
     },
     enabled: !!orgId,
+    invalidateOn: ['workflow_refresh'],
   });
 
   const shiftsQuery = useQuery({
@@ -363,67 +424,7 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
     },
   });
 
-  const facilitySuggestions = useMemo(() => {
-    const groups = new Map<
-      string,
-      {
-        label: string;
-        proposals: Proposal[];
-      }
-    >();
-
-    for (const proposal of proposals) {
-      if (!['proposed', 'patient_contact_pending', 'reschedule_pending'].includes(proposal.proposal_status)) continue;
-      const key = normalizeFacilityKey(proposal);
-      if (!key) continue;
-      const residence = proposal.case_.patient.residences[0];
-      const existing = groups.get(key) ?? {
-        label: residence?.building_id ?? residence?.address ?? '施設未設定',
-        proposals: [],
-      };
-      existing.proposals.push(proposal);
-      groups.set(key, existing);
-    }
-
-    return Array.from(groups.values())
-      .map((group) => {
-        const counts = new Map<string, number>();
-        const pharmacistCounts = new Map<string, number>();
-        for (const proposal of group.proposals) {
-          const key = dateKey(proposal.proposed_date);
-          counts.set(key, (counts.get(key) ?? 0) + 1);
-          pharmacistCounts.set(proposal.proposed_pharmacist_id, (pharmacistCounts.get(proposal.proposed_pharmacist_id) ?? 0) + 1);
-        }
-        if (counts.size <= 1 || group.proposals.length < 2) return null;
-
-        const [targetDate] = [...counts.entries()].sort((left, right) => {
-          if (right[1] !== left[1]) return right[1] - left[1];
-          return left[0].localeCompare(right[0]);
-        })[0] ?? [];
-        if (!targetDate) return null;
-
-        const [targetPharmacistId] = [...pharmacistCounts.entries()].sort((left, right) => right[1] - left[1])[0] ?? [];
-        const outliers = group.proposals.filter((proposal) => dateKey(proposal.proposed_date) !== targetDate);
-        if (outliers.length === 0 || !targetPharmacistId) return null;
-
-        return {
-          label: group.label,
-          targetDate,
-          targetPharmacistId,
-          outliers,
-        };
-      })
-      .filter(
-        (
-          item
-        ): item is {
-          label: string;
-          targetDate: string;
-          targetPharmacistId: string;
-          outliers: Proposal[];
-        } => item !== null
-      );
-  }, [proposals]);
+  const facilitySuggestions = useMemo(() => computeFacilitySuggestions(proposals), [proposals]);
 
   const isLoading =
     casesQuery.isLoading ||
@@ -620,10 +621,7 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
             <p className="py-8 text-sm text-muted-foreground">対象週に勤務シフトがある薬剤師がいません。</p>
           ) : (
             <div className="overflow-x-auto">
-              <div
-                className="grid min-w-[1100px] gap-3"
-                style={{ gridTemplateColumns: `220px repeat(${days.length}, minmax(170px, 1fr))` }}
-              >
+              <div className="grid min-w-[1100px] grid-cols-[220px_repeat(7,minmax(170px,1fr))] gap-3">
                 <div className="rounded-xl border border-dashed border-border bg-muted/20 p-3 text-sm text-muted-foreground">
                   薬剤師 / 日付
                 </div>

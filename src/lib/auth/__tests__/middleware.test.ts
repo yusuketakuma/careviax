@@ -134,4 +134,21 @@ describe('withAuth', () => {
       },
     });
   });
+
+  it('forwards route context arguments to the wrapped handler', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    const handler = withAuth(
+      async (_req, { params }: { params: Promise<{ id: string }> }) =>
+        NextResponse.json({ id: (await params).id })
+    );
+
+    const response = await handler(createRequest('org_1'), {
+      params: Promise.resolve({ id: 'draft_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ id: 'draft_1' });
+  });
 });

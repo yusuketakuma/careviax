@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { error, notFound } from '@/lib/api/response';
 import { pdfResponse } from '@/lib/api/pdf-response';
+import { prisma } from '@/lib/db/client';
+import { recordDataExportAudit } from '@/server/services/export-audit';
 import { buildPatientVisitRecordsPdf } from '@/server/services/pdf-documents';
 
 export const runtime = 'nodejs';
@@ -26,6 +28,20 @@ export async function GET(
       url.searchParams.get('date_from'),
       url.searchParams.get('date_to'),
     );
+    await recordDataExportAudit(prisma, {
+      orgId: authResult.ctx.orgId,
+      actorId: authResult.ctx.userId,
+      targetType: 'visit_record_list',
+      targetId: id,
+      format: 'pdf',
+      recordCount: 1,
+      filters: {
+        date_from: url.searchParams.get('date_from'),
+        date_to: url.searchParams.get('date_to'),
+      },
+      ipAddress: authResult.ctx.ipAddress,
+      userAgent: authResult.ctx.userAgent,
+    });
     return pdfResponse(rendered.buffer, rendered.fileName);
   } catch (cause) {
     if (cause instanceof Error && cause.message.includes('見つかりません')) {

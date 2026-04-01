@@ -40,13 +40,21 @@ type CareCaseSummary = {
   id: string;
   patient_id: string;
   primary_pharmacist_id: string | null;
+  required_visit_support: Prisma.JsonValue | null;
 };
 
 type ConferenceDerivedSyncResult = {
   tasksCreated: number;
   medicationIssuesCreated: number;
   visitProposalId?: string | null;
+  metadataPatch?: Prisma.InputJsonObject | null;
 };
+
+type JsonLike = Prisma.JsonValue | Prisma.InputJsonValue | null;
+
+function toStoredJsonValue(value: Prisma.InputJsonValue | undefined): Prisma.JsonValue | null {
+  return value === undefined ? null : (value as Prisma.JsonValue);
+}
 
 function parseStructuredSections(structuredContent: Prisma.JsonValue | null): StructuredSection[] {
   if (
@@ -67,6 +75,14 @@ function parseStructuredSections(structuredContent: Prisma.JsonValue | null): St
 
 function findSection(sections: StructuredSection[], key: string) {
   return sections.find((section) => section.key === key);
+}
+
+function findSectionBody(sections: StructuredSection[], keys: string[]) {
+  for (const key of keys) {
+    const body = findSection(sections, key)?.body?.trim();
+    if (body) return body;
+  }
+  return null;
 }
 
 function parseSectionLines(body?: string) {
@@ -150,7 +166,7 @@ function deriveRecurringVisitRule(
 }
 
 function mergeConferenceSyncMetadata(
-  existingMetadata: Prisma.JsonValue | null,
+  existingMetadata: JsonLike,
   sync: ConferenceSyncResult
 ): Prisma.InputJsonValue | undefined {
   const hasSyncSummary =
@@ -182,6 +198,76 @@ function mergeConferenceSyncMetadata(
   } satisfies Prisma.InputJsonObject;
 }
 
+function mergeConferenceDerivedMetadata(
+  existingMetadata: JsonLike,
+  metadataPatch?: Prisma.InputJsonObject | null
+): Prisma.InputJsonValue | undefined {
+  if (!metadataPatch || Object.keys(metadataPatch).length === 0) {
+    if (existingMetadata === null) return undefined;
+    return existingMetadata as Prisma.InputJsonValue;
+  }
+
+  const base =
+    existingMetadata && typeof existingMetadata === 'object' && !Array.isArray(existingMetadata)
+      ? (existingMetadata as Prisma.InputJsonObject)
+      : {};
+  const baseVisitBrief =
+    base.visit_brief && typeof base.visit_brief === 'object' && !Array.isArray(base.visit_brief)
+      ? (base.visit_brief as Prisma.InputJsonObject)
+      : {};
+  const nextVisitBrief =
+    metadataPatch.visit_brief &&
+    typeof metadataPatch.visit_brief === 'object' &&
+    !Array.isArray(metadataPatch.visit_brief)
+      ? {
+          ...baseVisitBrief,
+          ...(metadataPatch.visit_brief as Prisma.InputJsonObject),
+        }
+      : baseVisitBrief;
+
+  return {
+    ...base,
+    ...metadataPatch,
+    ...(Object.keys(nextVisitBrief).length > 0 ? { visit_brief: nextVisitBrief } : {}),
+  } satisfies Prisma.InputJsonObject;
+}
+
+function mergeRequiredVisitSupportPatch(
+  existingValue: JsonLike,
+  patch: Prisma.InputJsonObject | null
+): Prisma.InputJsonValue | undefined {
+  if (!patch || Object.keys(patch).length === 0) {
+    if (existingValue === null) return undefined;
+    return existingValue as Prisma.InputJsonValue;
+  }
+
+  const base =
+    existingValue && typeof existingValue === 'object' && !Array.isArray(existingValue)
+      ? (existingValue as Prisma.InputJsonObject)
+      : {};
+  const baseConferenceSync =
+    base.conference_sync &&
+    typeof base.conference_sync === 'object' &&
+    !Array.isArray(base.conference_sync)
+      ? (base.conference_sync as Prisma.InputJsonObject)
+      : {};
+  const patchConferenceSync =
+    patch.conference_sync &&
+    typeof patch.conference_sync === 'object' &&
+    !Array.isArray(patch.conference_sync)
+      ? (patch.conference_sync as Prisma.InputJsonObject)
+      : {};
+
+  return {
+    ...base,
+    ...patch,
+    conference_sync: {
+      ...baseConferenceSync,
+      ...patchConferenceSync,
+    },
+  } satisfies Prisma.InputJsonObject;
+}
+
 function metadataChanged(
   currentMetadata: Prisma.JsonValue | null,
   nextMetadata: Prisma.InputJsonValue | undefined
@@ -207,6 +293,7 @@ async function loadCareCaseSummary(
       id: true,
       patient_id: true,
       primary_pharmacist_id: true,
+      required_visit_support: true,
     },
   });
 }
@@ -262,6 +349,11 @@ async function upsertMedicationIssuesFromSection(
     patientId: string | null;
     sectionKey: string;
     lines: string[];
+    category?: string | null;
+    priority?: 'critical' | 'high' | 'medium' | 'low';
+    status?: 'open' | 'in_progress' | 'resolved' | 'dismissed';
+    resolvedBy?: string | null;
+    resolvedAt?: Date | null;
   }
 ) {
   if (!args.note.case_id || !args.patientId || args.lines.length === 0) return 0;
@@ -292,11 +384,13 @@ async function upsertMedicationIssuesFromSection(
         case_id: args.note.case_id!,
         title,
         description,
-        status: 'open',
-        priority: 'medium',
-        category: 'other',
+        status: args.status ?? 'open',
+        priority: args.priority ?? 'medium',
+        category: args.category ?? 'other',
         identified_by: args.userId,
         identified_at: new Date(),
+        resolved_by: args.resolvedBy ?? undefined,
+        resolved_at: args.resolvedAt ?? undefined,
       })),
     });
   }
@@ -318,7 +412,9 @@ async function syncPreDischargeUsage(
     note,
     patientId: careCase?.patient_id ?? null,
     sectionKey: 'medication_changes_on_discharge',
-    lines: parseSectionLines(findSection(sections, 'medication_changes_on_discharge')?.body),
+    lines: parseSectionLines(
+      findSectionBody(sections, ['medication_changes_on_discharge', 'medication_summary']) ?? undefined
+    ),
   });
 
   const dischargeDate =
@@ -418,7 +514,10 @@ async function syncServiceManagerUsage(
     note,
     patientId: careCase?.patient_id ?? null,
     sectionKey: 'medication_related_items',
-    lines: parseSectionLines(findSection(sections, 'medication_related_items')?.body),
+    lines: parseSectionLines(
+      findSectionBody(sections, ['medication_related_items', 'medication_review']) ?? undefined
+    ),
+    category: 'adherence',
   });
 
   let tasksCreated = 0;
@@ -433,7 +532,45 @@ async function syncServiceManagerUsage(
     lines: parseSectionLines(findSection(sections, 'agreed_actions')?.body),
   });
 
-  const serviceAdjustment = findSection(sections, 'service_adjustments')?.body?.trim();
+  const serviceAdjustment = findSectionBody(sections, [
+    'visit_schedule_adjustment',
+    'service_adjustments',
+  ]);
+  const carePlanUpdate = findSectionBody(sections, [
+    'care_plan_update',
+    'care_plan_changes',
+  ]);
+
+  if (careCase?.id && carePlanUpdate) {
+    const requiredVisitSupportPatch = mergeRequiredVisitSupportPatch(
+      careCase.required_visit_support,
+      {
+        conference_sync: {
+          service_manager: {
+            care_plan_update: {
+              note_id: note.id,
+              conference_date: note.conference_date.toISOString(),
+              summary: carePlanUpdate,
+            },
+          },
+        },
+      } satisfies Prisma.InputJsonObject
+    );
+
+    if (
+      JSON.stringify(careCase.required_visit_support ?? null) !==
+      JSON.stringify(requiredVisitSupportPatch ?? null)
+    ) {
+      await tx.careCase.update({
+        where: { id: careCase.id },
+        data: {
+          required_visit_support: requiredVisitSupportPatch ?? Prisma.JsonNull,
+        },
+      });
+      careCase.required_visit_support = toStoredJsonValue(requiredVisitSupportPatch);
+    }
+  }
+
   if (serviceAdjustment) {
     await upsertOperationalTask(tx, {
       orgId,
@@ -579,7 +716,64 @@ async function syncServiceManagerUsage(
   };
 }
 
-async function syncDeathConferenceUsage(
+function buildVisitBriefMetadataPatch(body: string | null): Prisma.InputJsonObject | null {
+  if (!body?.trim()) return null;
+
+  const highlightedRisks = parseSectionLines(body).slice(0, 4);
+  return {
+    visit_brief: {
+      summary: body.trim(),
+      ...(highlightedRisks.length > 0 ? { highlighted_risks: highlightedRisks } : {}),
+    },
+  } satisfies Prisma.InputJsonObject;
+}
+
+function buildCareTeamMetadataPatch(
+  note: PersistedConferenceNote,
+  sections: StructuredSection[]
+): Prisma.InputJsonObject | null {
+  const visitBriefPatch = buildVisitBriefMetadataPatch(
+    findSectionBody(sections, ['case_review', 'discussion_summary'])
+  );
+
+  const interventionOutcomes = parseSectionLines(
+    findSectionBody(sections, ['intervention_outcomes']) ?? undefined
+  );
+  const careTeamPatch =
+    interventionOutcomes.length > 0
+      ? {
+          care_team: {
+            intervention_outcomes: interventionOutcomes,
+            synced_from_note_id: note.id,
+            conference_date: note.conference_date.toISOString(),
+          } satisfies Prisma.InputJsonObject,
+        }
+      : null;
+
+  const patch = {
+    ...(visitBriefPatch ?? {}),
+    ...(careTeamPatch ?? {}),
+  } satisfies Prisma.InputJsonObject;
+
+  return Object.keys(patch).length > 0 ? patch : null;
+}
+
+async function syncCareTeamUsage(
+  _tx: TransactionClient,
+  _orgId: string,
+  _userId: string,
+  note: PersistedConferenceNote,
+  _careCase: CareCaseSummary | null,
+  sections: StructuredSection[]
+): Promise<ConferenceDerivedSyncResult> {
+  return {
+    tasksCreated: 0,
+    medicationIssuesCreated: 0,
+    metadataPatch: buildCareTeamMetadataPatch(note, sections),
+  };
+}
+
+async function syncEmergencyUsage(
   tx: TransactionClient,
   orgId: string,
   note: PersistedConferenceNote,
@@ -587,6 +781,58 @@ async function syncDeathConferenceUsage(
   sections: StructuredSection[]
 ): Promise<ConferenceDerivedSyncResult> {
   let tasksCreated = 0;
+
+  tasksCreated += await upsertConferenceLineTasks(tx, {
+    orgId,
+    note,
+    sectionKey: 'immediate_actions',
+    taskType: 'conference_immediate_action',
+    titlePrefix: '即時対応',
+    priority: 'urgent',
+    assignedTo: careCase?.primary_pharmacist_id ?? null,
+    lines: parseSectionLines(
+      findSectionBody(sections, ['immediate_actions', 'urgent_actions']) ?? undefined
+    ),
+  });
+
+  tasksCreated += await upsertConferenceLineTasks(tx, {
+    orgId,
+    note,
+    sectionKey: 'risk_mitigation',
+    taskType: 'conference_risk_mitigation',
+    titlePrefix: '再発防止',
+    priority: 'high',
+    assignedTo: careCase?.primary_pharmacist_id ?? null,
+    lines: parseSectionLines(findSectionBody(sections, ['risk_mitigation']) ?? undefined),
+  });
+
+  return {
+    tasksCreated,
+    medicationIssuesCreated: 0,
+  };
+}
+
+async function syncDeathConferenceUsage(
+  tx: TransactionClient,
+  orgId: string,
+  userId: string,
+  note: PersistedConferenceNote,
+  careCase: CareCaseSummary | null,
+  sections: StructuredSection[]
+): Promise<ConferenceDerivedSyncResult> {
+  let tasksCreated = 0;
+  const medicationIssuesCreated = await upsertMedicationIssuesFromSection(tx, {
+    orgId,
+    userId,
+    note,
+    patientId: careCase?.patient_id ?? null,
+    sectionKey: 'medication_at_end',
+    lines: parseSectionLines(findSectionBody(sections, ['medication_at_end']) ?? undefined),
+    category: 'other',
+    status: 'resolved',
+    resolvedBy: userId,
+    resolvedAt: note.conference_date,
+  });
 
   if (note.case_id) {
     await upsertOperationalTask(tx, {
@@ -625,7 +871,7 @@ async function syncDeathConferenceUsage(
 
   return {
     tasksCreated,
-    medicationIssuesCreated: 0,
+    medicationIssuesCreated,
   };
 }
 
@@ -643,8 +889,12 @@ async function syncConferenceDerivedData(
       return syncPreDischargeUsage(tx, orgId, userId, note, careCase, sections);
     case 'service_manager':
       return syncServiceManagerUsage(tx, orgId, userId, note, careCase, sections);
+    case 'care_team':
+      return syncCareTeamUsage(tx, orgId, userId, note, careCase, sections);
+    case 'emergency':
+      return syncEmergencyUsage(tx, orgId, note, careCase, sections);
     case 'death_conference':
-      return syncDeathConferenceUsage(tx, orgId, note, careCase, sections);
+      return syncDeathConferenceUsage(tx, orgId, userId, note, careCase, sections);
     default:
       return {
         tasksCreated: 0,
@@ -678,7 +928,11 @@ export class ConferenceDataSyncService {
       sync.visit_proposal_id = derived.visitProposalId;
     }
 
-    const nextMetadata = mergeConferenceSyncMetadata(note.metadata, sync);
+    const metadataWithDerived = mergeConferenceDerivedMetadata(note.metadata, derived.metadataPatch);
+    const nextMetadata = mergeConferenceSyncMetadata(
+      metadataWithDerived ?? note.metadata,
+      sync
+    );
     if (!metadataChanged(note.metadata, nextMetadata)) {
       return { note, sync };
     }

@@ -14,6 +14,7 @@ const upsertStockSchema = z.object({
   site_id: z.string().min(1, 'site_id は必須です'),
   drug_master_id: z.string().min(1, 'drug_master_id は必須です'),
   is_stocked: z.boolean().default(true),
+  reorder_point: z.number().int().min(0).nullable().optional(),
   preferred_generic_id: z.string().trim().nullable().optional(),
 });
 
@@ -121,7 +122,7 @@ export const POST = withAuthContext(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const { site_id, drug_master_id, is_stocked, preferred_generic_id } = parsed.data;
+    const { site_id, drug_master_id, is_stocked, reorder_point, preferred_generic_id } = parsed.data;
 
     const [site, targetDrug, preferredGeneric] = await Promise.all([
       prisma.pharmacySite.findFirst({
@@ -189,10 +190,12 @@ export const POST = withAuthContext(
         site_id,
         drug_master_id,
         is_stocked,
+        reorder_point: reorder_point ?? null,
         preferred_generic_id: preferredGeneric?.id ?? null,
       },
       update: {
         is_stocked,
+        reorder_point: reorder_point ?? null,
         preferred_generic_id: preferredGeneric?.id ?? null,
       },
       select: {

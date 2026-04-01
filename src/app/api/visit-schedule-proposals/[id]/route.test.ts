@@ -471,6 +471,111 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     );
   });
 
+  it('clears stale callback tasks when an attempted contact no longer needs follow-up', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'pending',
+      })
+    );
+
+    const response = await PATCH(
+      createRequest(
+        {
+          action: 'contact_attempt',
+          outcome: 'attempted',
+          contact_method: 'phone',
+          note: '再架電不要',
+        },
+        { 'x-org-id': 'org_1' }
+      ),
+      { params: Promise.resolve({ id: 'proposal_1' }) }
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        dedupeKey: 'visit-contact-followup:proposal_1',
+        status: 'completed',
+      })
+    );
+  });
+
+  it('creates a callback follow-up task when attempted contact includes a callback due date', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'pending',
+      })
+    );
+
+    const response = await PATCH(
+      createRequest(
+        {
+          action: 'contact_attempt',
+          outcome: 'attempted',
+          contact_method: 'phone',
+          note: '夕方に再架電',
+          callback_due_at: '2026-03-30T09:00:00.000Z',
+        },
+        { 'x-org-id': 'org_1' }
+      ),
+      { params: Promise.resolve({ id: 'proposal_1' }) }
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'visit_contact_followup',
+        title: '患者への再架電が必要です',
+        description: '夕方に再架電',
+        assignedTo: 'pharmacist_1',
+        dueDate: new Date('2026-03-30T09:00:00.000Z'),
+        slaDueAt: new Date('2026-03-30T09:00:00.000Z'),
+        dedupeKey: 'visit-contact-followup:proposal_1',
+        relatedEntityType: 'visit_schedule_proposal',
+        relatedEntityId: 'proposal_1',
+        metadata: {
+          case_id: 'case_1',
+          patient_id: 'patient_1',
+        },
+      })
+    );
+  });
+
+  it('does not stamp patient contact metadata when rejecting before outreach starts', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'proposed',
+        patient_contact_status: 'pending',
+      })
+    );
+
+    const response = await PATCH(
+      createRequest(
+        { action: 'reject' },
+        { 'x-org-id': 'org_1' }
+      ),
+      { params: Promise.resolve({ id: 'proposal_1' }) }
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(proposalUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'proposal_1' },
+      data: {
+        proposal_status: 'rejected',
+      },
+    });
+  });
+
   it('finalizes the proposal into a confirmed visit and supersedes sibling drafts', async () => {
     proposalFindFirstMock.mockResolvedValue(
       buildProposal({

@@ -10,6 +10,7 @@ const {
   assertFacilityReferenceMock,
   medicationProfileFindManyMock,
   visitScheduleFindManyMock,
+  visitScheduleCountMock,
   visitRecordFindManyMock,
   careReportFindManyMock,
   communicationEventFindManyMock,
@@ -39,6 +40,7 @@ const {
   assertFacilityReferenceMock: vi.fn(),
   medicationProfileFindManyMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
+  visitScheduleCountMock: vi.fn(),
   visitRecordFindManyMock: vi.fn(),
   careReportFindManyMock: vi.fn(),
   communicationEventFindManyMock: vi.fn(),
@@ -75,6 +77,7 @@ vi.mock('@/lib/db/client', () => ({
     },
     visitSchedule: {
       findMany: visitScheduleFindManyMock,
+      count: visitScheduleCountMock,
     },
     visitRecord: {
       findMany: visitRecordFindManyMock,
@@ -138,7 +141,9 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/lib/patient/facility-reference', () => ({
   FacilityReferenceValidationError: class FacilityReferenceValidationError extends Error {},
+  FacilityUnitReferenceValidationError: class FacilityUnitReferenceValidationError extends Error {},
   assertFacilityReference: assertFacilityReferenceMock,
+  assertFacilityUnitReference: vi.fn(),
   getFacilityVisitDefaults: getFacilityVisitDefaultsMock,
 }));
 
@@ -175,6 +180,7 @@ describe('/api/patients/[id]', () => {
     patientSchedulePreferenceUpdateManyMock.mockResolvedValue({ count: 1 });
     medicationProfileFindManyMock.mockResolvedValue([]);
     visitScheduleFindManyMock.mockResolvedValue([]);
+    visitScheduleCountMock.mockResolvedValue(0);
     visitRecordFindManyMock.mockResolvedValue([]);
     careReportFindManyMock.mockResolvedValue([]);
     communicationEventFindManyMock.mockResolvedValue([]);
@@ -283,6 +289,24 @@ describe('/api/patients/[id]', () => {
   });
 
   it('loads patient detail with expanded patient master relations', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '患者A',
+      phone: '090-1234-5678',
+      medical_insurance_number: '1234567890',
+      care_insurance_number: '9988776655',
+      residences: [
+        {
+          id: 'res_1',
+          address: '東京都千代田区1-2-3',
+        },
+      ],
+      contacts: [],
+      conditions: [],
+      consents: [],
+      cases: [],
+    });
+
     const response = await GET(createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }), {
       params: Promise.resolve({ id: 'patient_1' }),
     });
@@ -309,6 +333,7 @@ describe('/api/patients/[id]', () => {
     expect(externalAccessGrantFindManyMock).toHaveBeenCalled();
     expect(taskFindManyMock).toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
+      monthly_visit_count: 0,
       first_visit_documents: [],
       home_care_feature_summary: {
         totals: {
@@ -337,6 +362,71 @@ describe('/api/patients/[id]', () => {
       orgId: 'corg1234567890123456789012',
       patientId: 'patient_1',
       context: 'patient',
+    });
+  });
+
+  it('masks insurance and address details for external viewers in the response payload', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: 'corg1234567890123456789012',
+        userId: 'user_ext',
+        role: 'external_viewer',
+      },
+    });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '患者A',
+      phone: '090-1234-5678',
+      medical_insurance_number: '1234567890',
+      care_insurance_number: '9988776655',
+      residences: [
+        {
+          id: 'res_1',
+          address: '東京都千代田区1-2-3',
+        },
+      ],
+      contacts: [
+        {
+          id: 'contact_1',
+          name: '長男 山田',
+          phone: '03-1234-5678',
+          fax: '03-9999-9999',
+          email: 'family@example.com',
+          address: '東京都千代田区4-5-6',
+        },
+      ],
+      conditions: [],
+      consents: [],
+      cases: [],
+    });
+
+    const response = await GET(createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    await expect(response.json()).resolves.toMatchObject({
+      phone: '***-****-5678',
+      medical_insurance_number: '***-890',
+      care_insurance_number: '***-655',
+      residences: [
+        {
+          address: '東京都千代田***',
+        },
+      ],
+      contacts: [
+        {
+          phone: '***-****-5678',
+          fax: '***-****-9999',
+          email: 'f***@example.com',
+          address: '東京都千代田***',
+        },
+      ],
+      privacy: {
+        sensitive_fields_masked: true,
+        address_fields_masked: true,
+        can_view_detail: false,
+      },
     });
   });
 
@@ -429,6 +519,11 @@ describe('/api/patients/[id]', () => {
     });
     expect(residenceFindFirstMock).toHaveBeenCalledWith({
       where: { patient_id: 'patient_1', is_primary: true },
+      select: {
+        id: true,
+        facility_id: true,
+        facility_unit_id: true,
+      },
     });
     expect(assertFacilityReferenceMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -444,6 +539,7 @@ describe('/api/patients/[id]', () => {
         address: '東京都千代田区1-2-3',
         building_id: 'building_1',
         facility_id: 'facility_1',
+        facility_unit_id: null,
         unit_name: '301',
       },
     });
@@ -552,6 +648,67 @@ describe('/api/patients/[id]', () => {
           summary: expect.stringContaining('5mgへ減量'),
         }),
       ]),
+    });
+  });
+
+  it('falls back to visit record detail when a visit timeline event has no schedule id', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '患者A',
+      cases: [{ id: 'case_1' }],
+    });
+    visitRecordFindManyMock.mockResolvedValue([
+      {
+        id: 'record_1',
+        schedule_id: null,
+        visit_date: new Date('2026-03-28T10:00:00.000Z'),
+        outcome_status: 'completed',
+        next_visit_suggestion_date: null,
+        cancellation_reason: null,
+        postpone_reason: null,
+        revisit_reason: null,
+        created_at: new Date('2026-03-28T09:00:00.000Z'),
+      },
+    ]);
+
+    const response = await GET(
+      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      }
+    );
+
+    if (!response) throw new Error('response is required');
+
+    await expect(response.json()).resolves.toMatchObject({
+      timeline_events: expect.arrayContaining([
+        expect.objectContaining({
+          event_type: 'visit_record',
+          href: '/visits/record_1',
+        }),
+      ]),
+    });
+  });
+
+  it('returns the exact current-month visit count for patient detail badges', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '患者A',
+      cases: [{ id: 'case_1' }],
+    });
+    visitScheduleCountMock.mockResolvedValue(5);
+
+    const response = await GET(
+      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      }
+    );
+
+    if (!response) throw new Error('response is required');
+
+    await expect(response.json()).resolves.toMatchObject({
+      monthly_visit_count: 5,
     });
   });
 });

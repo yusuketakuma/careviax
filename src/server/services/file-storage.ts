@@ -11,7 +11,6 @@ import { prisma } from '@/lib/db/client';
 const FILE_SETTING_PREFIX = 'file_asset:';
 const UPLOAD_EXPIRY_SECONDS = 60 * 5;
 const DOWNLOAD_EXPIRY_SECONDS = 60 * 15;
-const S3_SERVER_SIDE_ENCRYPTION = 'AES256';
 const PRESCRIPTION_OBJECT_LOCK_YEARS = 5;
 const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const DOCUMENT_MAX_BYTES = 50 * 1024 * 1024;
@@ -25,6 +24,7 @@ type GeneratedFilePurpose = 'bulk-export';
 type AnyFilePurpose = FilePurpose | GeneratedFilePurpose;
 type StoredFileStatus = 'pending_upload' | 'uploaded';
 type DownloadDisposition = 'inline' | 'attachment';
+type SupportedServerSideEncryption = 'AES256' | 'aws:kms';
 
 export type StoredFileRecord = {
   version: 1;
@@ -127,6 +127,60 @@ function getRequiredStorageConfig() {
   }
 
   return { bucketName, region };
+}
+
+function getServerSideEncryptionMode(): SupportedServerSideEncryption {
+  return process.env.S3_SERVER_SIDE_ENCRYPTION === 'aws:kms' ? 'aws:kms' : 'AES256';
+}
+
+function resolveKmsKeyId(purpose: AnyFilePurpose) {
+  const explicitPurposeKey =
+    purpose === 'bulk-export'
+      ? process.env.S3_KMS_KEY_ID_EXPORT
+      : purpose === 'report'
+        ? process.env.S3_KMS_KEY_ID_REPORT
+        : undefined;
+
+  return (
+    explicitPurposeKey ??
+    process.env.S3_KMS_KEY_ID_PHI ??
+    process.env.S3_KMS_KEY_ID ??
+    null
+  );
+}
+
+function getS3EncryptionConfig(purpose: AnyFilePurpose) {
+  const mode = getServerSideEncryptionMode();
+  if (mode === 'AES256') {
+    return {
+      commandInput: {
+        ServerSideEncryption: 'AES256' as const,
+      },
+      headers: {
+        'x-amz-server-side-encryption': 'AES256',
+      },
+    };
+  }
+
+  const kmsKeyId = resolveKmsKeyId(purpose);
+  if (!kmsKeyId) {
+    throw new FileStorageError(
+      'FILE_STORAGE_NOT_CONFIGURED',
+      'S3 KMS 暗号化に必要な KMS キー ID が設定されていません',
+      503
+    );
+  }
+
+  return {
+    commandInput: {
+      ServerSideEncryption: 'aws:kms' as const,
+      SSEKMSKeyId: kmsKeyId,
+    },
+    headers: {
+      'x-amz-server-side-encryption': 'aws:kms',
+      'x-amz-server-side-encryption-aws-kms-key-id': kmsKeyId,
+    },
+  };
 }
 
 function getClient() {
@@ -334,6 +388,7 @@ export async function createPresignedUpload(args: CreatePresignedUploadArgs) {
   const { bucketName } = getRequiredStorageConfig();
   assertAllowedUpload(args);
   const objectLock = buildPrescriptionObjectLockRetention(args.purpose);
+  const encryption = getS3EncryptionConfig(args.purpose);
 
   const fileId = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -353,7 +408,7 @@ export async function createPresignedUpload(args: CreatePresignedUploadArgs) {
       Bucket: bucketName,
       Key: storageKey,
       ContentType: args.mimeType,
-      ServerSideEncryption: S3_SERVER_SIDE_ENCRYPTION,
+      ...encryption.commandInput,
       ...(objectLock
         ? {
             ObjectLockMode: objectLock.mode,
@@ -412,7 +467,7 @@ export async function createPresignedUpload(args: CreatePresignedUploadArgs) {
     expiresIn: UPLOAD_EXPIRY_SECONDS,
     headers: {
       'Content-Type': args.mimeType,
-      'x-amz-server-side-encryption': S3_SERVER_SIDE_ENCRYPTION,
+      ...encryption.headers,
       ...(objectLock
         ? {
             'x-amz-object-lock-mode': objectLock.mode,
@@ -441,6 +496,7 @@ export function toVisitRecordAttachment(record: StoredFileRecord): VisitRecordAt
 
 export async function storeGeneratedFile(args: StoreGeneratedFileArgs) {
   const { bucketName } = getRequiredStorageConfig();
+  const encryption = getS3EncryptionConfig(args.purpose);
   const fileId = crypto.randomUUID();
   const now = new Date().toISOString();
   const storageKey = buildStorageKey({
@@ -457,7 +513,7 @@ export async function storeGeneratedFile(args: StoreGeneratedFileArgs) {
       Key: storageKey,
       Body: args.buffer,
       ContentType: args.mimeType,
-      ServerSideEncryption: S3_SERVER_SIDE_ENCRYPTION,
+      ...encryption.commandInput,
     })
   );
 

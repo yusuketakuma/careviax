@@ -75,6 +75,11 @@ describe('file-storage', () => {
     vi.clearAllMocks();
     process.env.S3_BUCKET_NAME = 'careviax-files';
     process.env.S3_BUCKET_REGION = 'ap-northeast-1';
+    delete process.env.S3_SERVER_SIDE_ENCRYPTION;
+    delete process.env.S3_KMS_KEY_ID;
+    delete process.env.S3_KMS_KEY_ID_PHI;
+    delete process.env.S3_KMS_KEY_ID_REPORT;
+    delete process.env.S3_KMS_KEY_ID_EXPORT;
     randomUuidMock.mockReturnValue('file-uuid-1');
     getSignedUrlMock.mockResolvedValue('https://example.com/upload');
     settingUpsertMock.mockResolvedValue(undefined);
@@ -144,6 +149,33 @@ describe('file-storage', () => {
       })
     );
     expect(result.storageKey).toBe('bulk-exports/org_1/job_1/file-uuid-1-medication-history.zip');
+  });
+
+  it('uses KMS encryption when the bucket is configured for aws:kms', async () => {
+    process.env.S3_SERVER_SIDE_ENCRYPTION = 'aws:kms';
+    process.env.S3_KMS_KEY_ID_PHI = 'arn:aws:kms:ap-northeast-1:123456789012:key/phi';
+
+    const result = await createPresignedUpload({
+      orgId: 'org_1',
+      purpose: 'prescription',
+      fileName: 'prescription.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 2048,
+      patientId: 'patient_1',
+    });
+
+    const putObjectCommand = getSignedUrlMock.mock.calls[0]?.[1] as {
+      input: Record<string, unknown>;
+    };
+    expect(putObjectCommand.input).toMatchObject({
+      ServerSideEncryption: 'aws:kms',
+      SSEKMSKeyId: 'arn:aws:kms:ap-northeast-1:123456789012:key/phi',
+    });
+    expect(result.headers).toMatchObject({
+      'x-amz-server-side-encryption': 'aws:kms',
+      'x-amz-server-side-encryption-aws-kms-key-id':
+        'arn:aws:kms:ap-northeast-1:123456789012:key/phi',
+    });
   });
 
   it('adds five-year Object Lock headers for prescription uploads', async () => {

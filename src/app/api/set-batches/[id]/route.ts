@@ -2,8 +2,13 @@ import { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import type { AuthContext, AuthRouteContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import {
+  buildSetBatchHistorySnapshot,
+  createSetBatchChangeLog,
+} from '@/lib/prescription/set-batch-history';
+import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { z } from 'zod';
 
 const updateSetBatchSchema = z.object({
@@ -33,7 +38,9 @@ export const GET = withAuthContext<{ id: string }>(
             dose: true,
             frequency: true,
             unit: true,
+            packaging_method: true,
             packaging_instructions: true,
+            packaging_instruction_tags: true,
             notes: true,
           },
         },
@@ -64,16 +71,25 @@ export const PATCH = withAuthContext<{ id: string }>(
     const result = await withOrgContext(ctx.orgId, async (tx) => {
       const existing = await tx.setBatch.findFirst({
         where: { id, org_id: ctx.orgId },
-        select: { id: true, version: true },
+        include: {
+          line: {
+            select: {
+              id: true,
+              drug_name: true,
+            },
+          },
+        },
       });
 
       if (!existing) return null;
 
       if (existing.version !== version) {
-        throw new Error('CONFLICT:他のユーザーによって更新されています。再読み込みしてください');
+        return { error: '他のユーザーによって更新されています。再読み込みしてください', conflict: true } as const;
       }
 
-      return tx.setBatch.update({
+      const beforeSnapshot = buildSetBatchHistorySnapshot(existing);
+
+      const updated = await tx.setBatch.update({
         where: { id },
         data: {
           ...updates,
@@ -89,15 +105,41 @@ export const PATCH = withAuthContext<{ id: string }>(
               dose: true,
               frequency: true,
               unit: true,
+              packaging_method: true,
               packaging_instructions: true,
+              packaging_instruction_tags: true,
               notes: true,
             },
           },
         },
       });
+
+      await createSetBatchChangeLog(tx, {
+        orgId: ctx.orgId,
+        planId: updated.plan_id,
+        batchId: updated.id,
+        action: 'manual_update',
+        triggerSource: 'manual_edit',
+        reason: 'セットバッチを手動更新',
+        lineIds: [updated.line_id],
+        beforeSnapshot: [beforeSnapshot],
+        afterSnapshot: [buildSetBatchHistorySnapshot(updated)],
+        changedBy: ctx.userId,
+      });
+
+      return updated;
     });
 
     if (!result) return notFound('セットバッチが見つかりません');
+    if (typeof result === 'object' && 'error' in result) {
+      if ('conflict' in result && result.conflict) return conflict(result.error);
+      return validationError(result.error);
+    }
+
+    await notifyWorkflowMutation({
+      orgId: ctx.orgId,
+      payload: { source: 'set_batches_update', plan_id: result.plan_id, batch_id: result.id },
+    });
 
     return success({ data: result });
   },
@@ -110,13 +152,37 @@ export const DELETE = withAuthContext<{ id: string }>(
 
     const existing = await prisma.setBatch.findFirst({
       where: { id, org_id: ctx.orgId },
-      select: { id: true },
+      include: {
+        line: {
+          select: {
+            id: true,
+            drug_name: true,
+          },
+        },
+      },
     });
 
     if (!existing) return notFound('セットバッチが見つかりません');
 
     await withOrgContext(ctx.orgId, async (tx) => {
+      await createSetBatchChangeLog(tx, {
+        orgId: ctx.orgId,
+        planId: existing.plan_id,
+        batchId: existing.id,
+        action: 'manual_delete',
+        triggerSource: 'manual_edit',
+        reason: 'セットバッチを削除',
+        lineIds: [existing.line_id],
+        beforeSnapshot: [buildSetBatchHistorySnapshot(existing)],
+        afterSnapshot: [],
+        changedBy: ctx.userId,
+      });
       await tx.setBatch.delete({ where: { id } });
+    });
+
+    await notifyWorkflowMutation({
+      orgId: ctx.orgId,
+      payload: { source: 'set_batches_delete', plan_id: existing.plan_id, batch_id: existing.id },
     });
 
     return success({ data: { id } });

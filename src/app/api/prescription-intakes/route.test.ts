@@ -1,7 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { format } from 'date-fns';
 import type { NextRequest } from 'next/server';
 
-const { withAuthMock, withOrgContextMock } = vi.hoisted(() => ({
+/** 今日の日付文字列（有効期限チェックを通過させるため動的に生成） */
+const TODAY = format(new Date(), 'yyyy-MM-dd');
+
+const {
+  withAuthMock,
+  withOrgContextMock,
+  prescriptionIntakeFindManyMock,
+} = vi.hoisted(() => ({
   withAuthMock: vi.fn((
     handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>
   ) => {
@@ -13,6 +21,7 @@ const { withAuthMock, withOrgContextMock } = vi.hoisted(() => ({
       } as NextRequest & { orgId: string; userId: string });
   }),
   withOrgContextMock: vi.fn(),
+  prescriptionIntakeFindManyMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
@@ -24,10 +33,21 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 vi.mock('@/lib/db/client', () => ({
-  prisma: {},
+  prisma: {
+    prescriptionIntake: {
+      findMany: prescriptionIntakeFindManyMock,
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
+    medicationProfile: {
+      findMany: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue({}),
+      update: vi.fn().mockResolvedValue({}),
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
+  },
 }));
 
-import { POST } from './route';
+import { GET, POST } from './route';
 
 function createRequest(body: unknown) {
   return {
@@ -75,7 +95,7 @@ describe('/api/prescription-intakes POST', () => {
       createRequest({
         cycle_id: 'cycle_1',
         source_type: 'refill',
-        prescribed_date: '2026-03-28',
+        prescribed_date: TODAY,
         refill_remaining_count: 1,
         refill_next_dispense_date: '2026-04-20',
         lines: [
@@ -130,7 +150,7 @@ describe('/api/prescription-intakes POST', () => {
       createRequest({
         cycle_id: 'cycle_1',
         source_type: 'paper',
-        prescribed_date: '2026-03-28',
+        prescribed_date: TODAY,
         lines: [
           {
             line_number: 1,
@@ -196,7 +216,7 @@ describe('/api/prescription-intakes POST', () => {
       createRequest({
         cycle_id: 'cycle_1',
         source_type: 'paper',
-        prescribed_date: '2026-03-28',
+        prescribed_date: TODAY,
         lines: [
           {
             line_number: 1,
@@ -238,7 +258,7 @@ describe('/api/prescription-intakes POST', () => {
       createRequest({
         cycle_id: 'cycle_1',
         source_type: 'paper',
-        prescribed_date: '2026-03-28',
+        prescribed_date: TODAY,
         split_dispense_total: 3,
         lines: [
           {
@@ -265,7 +285,7 @@ describe('/api/prescription-intakes POST', () => {
       createRequest({
         cycle_id: 'cycle_1',
         source_type: 'paper',
-        prescribed_date: '2026-03-28',
+        prescribed_date: TODAY,
         split_dispense_total: 3,
         split_dispense_current: 1,
         lines: [
@@ -289,7 +309,8 @@ describe('/api/prescription-intakes POST', () => {
   });
 
   it('auto-creates a dispense task and moves the cycle to dispensing when no inquiry exists', async () => {
-    const cycleUpdateMock = vi.fn();
+    const cycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const cycleTransitionLogCreateMock = vi.fn().mockResolvedValue({});
     const intakeCreateMock = vi.fn().mockResolvedValue({
       id: 'intake_1',
       lines: [],
@@ -302,14 +323,18 @@ describe('/api/prescription-intakes POST', () => {
           findFirst: vi.fn().mockResolvedValue({
             id: 'cycle_1',
             patient_id: 'patient_1',
-            overall_status: 'new',
+            overall_status: 'ready_to_dispense',
+            version: 1,
             case_: {
               primary_pharmacist_id: 'pharmacist_1',
             },
             prescription_intakes: [],
             dispense_tasks: [],
           }),
-          update: cycleUpdateMock,
+          updateMany: cycleUpdateManyMock,
+        },
+        cycleTransitionLog: {
+          create: cycleTransitionLogCreateMock,
         },
         prescriptionIntake: {
           create: intakeCreateMock,
@@ -328,7 +353,7 @@ describe('/api/prescription-intakes POST', () => {
       createRequest({
         cycle_id: 'cycle_1',
         source_type: 'paper',
-        prescribed_date: '2026-03-28',
+        prescribed_date: TODAY,
         lines: [
           {
             line_number: 1,
@@ -353,9 +378,67 @@ describe('/api/prescription-intakes POST', () => {
         status: 'pending',
       },
     });
-    expect(cycleUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'cycle_1' },
-      data: { overall_status: 'dispensing' },
+    expect(cycleUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'cycle_1', version: 1 },
+      data: expect.objectContaining({ overall_status: 'dispensing' }),
     });
+  });
+});
+
+describe('/api/prescription-intakes GET', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prescriptionIntakeFindManyMock.mockResolvedValue([
+      {
+        id: 'intake_2',
+        cycle_id: 'cycle_2',
+        source_type: 'paper',
+        prescribed_date: new Date('2026-03-30T00:00:00.000Z'),
+        prescriber_name: '医師B',
+        prescriber_institution_id: null,
+        prescriber_institution: null,
+        prescription_expiry_date: null,
+        refill_remaining_count: null,
+        refill_next_dispense_date: null,
+        created_at: new Date('2026-03-30T10:00:00.000Z'),
+        cycle: {
+          overall_status: 'intake',
+          patient_id: 'patient_2',
+        },
+      },
+      {
+        id: 'intake_1',
+        cycle_id: 'cycle_1',
+        source_type: 'paper',
+        prescribed_date: new Date('2026-03-30T00:00:00.000Z'),
+        prescriber_name: '医師A',
+        prescriber_institution_id: null,
+        prescriber_institution: null,
+        prescription_expiry_date: null,
+        refill_remaining_count: null,
+        refill_next_dispense_date: null,
+        created_at: new Date('2026-03-30T10:00:00.000Z'),
+        cycle: {
+          overall_status: 'intake',
+          patient_id: 'patient_1',
+        },
+      },
+    ]);
+  });
+
+  it('uses a stable created_at/id ordering for cursor pagination', async () => {
+    const response = await GET({
+      url: 'http://localhost/api/prescription-intakes?cursor=intake_2',
+    } as NextRequest);
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(prescriptionIntakeFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cursor: { id: 'intake_2' },
+        skip: 1,
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      }),
+    );
   });
 });

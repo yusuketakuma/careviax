@@ -1,9 +1,9 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
 import { Package, Printer, Loader2 } from 'lucide-react';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +18,9 @@ type SetBatch = {
   day_number: number;
   quantity: number;
   carry_type: string;
+  packaging_method_snapshot: string | null;
+  packaging_instructions_snapshot: string | null;
+  packaging_instruction_tags_snapshot: string[];
   version: number;
   line: {
     id: string;
@@ -29,6 +32,26 @@ type SetBatch = {
     unit: string | null;
     packaging_instructions: string | null;
     notes: string | null;
+  };
+};
+
+type SetPlanDetail = {
+  id: string;
+  set_method: string;
+  packaging_summary_snapshot: {
+    packaging_method_name: string | null;
+    patient_default_method_label: string | null;
+    medication_box_color: string | null;
+    box_config: Record<string, string> | null;
+    special_instructions: string[];
+    tag_labels: string[];
+  } | null;
+  cycle: {
+    case_: {
+      patient: {
+        name: string;
+      };
+    };
   };
 };
 
@@ -93,8 +116,8 @@ function batchesToSlotGrid(batches: SetBatch[]): {
     const drug: DrugEntry = {
       drugName: b.line.drug_name,
       quantity: `${b.quantity}${b.line.unit ?? ''}`,
-      isCold: /冷所/.test(specialNotes),
-      isNarcotic: /麻薬/.test(specialNotes),
+      isCold: b.packaging_instruction_tags_snapshot.includes('cold_storage') || /冷所/.test(specialNotes),
+      isNarcotic: b.packaging_instruction_tags_snapshot.includes('narcotic') || /麻薬/.test(specialNotes),
     };
     if (slotCellMap.has(key)) {
       slotCellMap.get(key)!.drugs.push(drug);
@@ -122,8 +145,8 @@ function batchesToSlotGrid(batches: SetBatch[]): {
         drugName: b.line.drug_name,
         quantity: `${b.quantity}${b.line.unit ?? ''}`,
         condition: b.line.frequency,
-        isCold: /冷所/.test(specialNotes),
-        isNarcotic: /麻薬/.test(specialNotes),
+        isCold: b.packaging_instruction_tags_snapshot.includes('cold_storage') || /冷所/.test(specialNotes),
+        isNarcotic: b.packaging_instruction_tags_snapshot.includes('narcotic') || /麻薬/.test(specialNotes),
       });
     }
   }
@@ -329,7 +352,7 @@ export function MedicationSetFullContent() {
   const planId = searchParams.get('plan_id');
   const orgId = useOrgId();
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError } = useRealtimeQuery({
     queryKey: ['set-batches', planId],
     queryFn: async () => {
       if (!planId) return [];
@@ -340,7 +363,23 @@ export function MedicationSetFullContent() {
       const json = await res.json() as { data: SetBatch[] };
       return json.data;
     },
-    enabled: Boolean(planId),
+    enabled: Boolean(planId && orgId),
+    invalidateOn: ['cycle_transition', 'workflow_refresh'],
+  });
+
+  const planQuery = useRealtimeQuery({
+    queryKey: ['set-plan-print', planId],
+    queryFn: async () => {
+      if (!planId) return null;
+      const res = await fetch(`/api/set-plans/${planId}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('セットプランの取得に失敗しました');
+      const json = (await res.json()) as { data: SetPlanDetail };
+      return json.data;
+    },
+    enabled: Boolean(planId && orgId),
+    invalidateOn: ['cycle_transition', 'workflow_refresh'],
   });
 
   if (!planId) {
@@ -351,7 +390,7 @@ export function MedicationSetFullContent() {
     );
   }
 
-  if (isLoading) {
+  if (!orgId || isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden="true" />
@@ -369,6 +408,7 @@ export function MedicationSetFullContent() {
   }
 
   const batches = data ?? [];
+  const plan = planQuery.data ?? null;
   const { grid, prn, days, usedSlots } = batchesToSlotGrid(batches);
   const carryDrugMap = new Map<string, DrugEntry>();
   for (const batch of batches.filter((item) => item.carry_type === 'carry')) {
@@ -377,28 +417,57 @@ export function MedicationSetFullContent() {
       carryDrugMap.set(batch.line.drug_name, {
         drugName: batch.line.drug_name,
         quantity: `${batch.quantity}${batch.line.unit ?? ''}`,
-        isCold: /冷所/.test(specialNotes),
-        isNarcotic: /麻薬/.test(specialNotes),
+        isCold:
+          batch.packaging_instruction_tags_snapshot.includes('cold_storage') || /冷所/.test(specialNotes),
+        isNarcotic:
+          batch.packaging_instruction_tags_snapshot.includes('narcotic') || /麻薬/.test(specialNotes),
       });
     }
   }
 
   return (
-    <>
-      {/* Print styles */}
-      <style>{`
-        @media print {
-          nav, header, aside, [data-sidebar], .print\\:hidden { display: none !important; }
-          body { font-size: 12px; }
-          .print\\:break-inside-avoid { break-inside: avoid; }
-        }
-      `}</style>
-
-      <div className="space-y-6">
+    <div className="medication-set-full-print space-y-6">
         {/* Plan meta */}
         <p className="text-xs text-muted-foreground">
-          セットプラン ID: {planId} / バッチ件数: {batches.length}件
+          セットプラン ID: {planId}
+          {plan ? ` / 患者: ${plan.cycle.case_.patient.name}` : ''}
+          {' / '}バッチ件数: {batches.length}件
         </p>
+
+        {plan?.packaging_summary_snapshot ? (
+          <Card className="print-page-break-inside-avoid">
+            <CardHeader>
+              <CardTitle className="text-base">配薬指示</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <p>
+                {plan.packaging_summary_snapshot.packaging_method_name ??
+                  plan.packaging_summary_snapshot.patient_default_method_label ??
+                  '患者設定を使用'}
+              </p>
+              {plan.packaging_summary_snapshot.medication_box_color ? (
+                <p className="text-xs text-muted-foreground">
+                  BOX色: {plan.packaging_summary_snapshot.medication_box_color}
+                </p>
+              ) : null}
+              {plan.packaging_summary_snapshot.box_config ? (
+                <p className="text-xs text-muted-foreground">
+                  BOX割当:{' '}
+                  {Object.entries(plan.packaging_summary_snapshot.box_config)
+                    .map(([slot, color]) => `${slot}=${color}`)
+                    .join(' / ')}
+                </p>
+              ) : null}
+              {plan.packaging_summary_snapshot.special_instructions.length > 0 ? (
+                <ul className="space-y-1 text-xs">
+                  {plan.packaging_summary_snapshot.special_instructions.map((instruction) => (
+                    <li key={instruction}>- {instruction}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </CardContent>
+          </Card>
+        ) : null}
 
         {/* Slot grid */}
         <Card>
@@ -416,6 +485,5 @@ export function MedicationSetFullContent() {
         {/* Carry pack checklist */}
         <CarryPackChecklist drugs={Array.from(carryDrugMap.values())} />
       </div>
-    </>
   );
 }

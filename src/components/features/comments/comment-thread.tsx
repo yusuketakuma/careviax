@@ -1,0 +1,187 @@
+'use client';
+
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { MessageSquare, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { useOrgId } from '@/lib/hooks/use-org-id';
+import { MentionInput } from './mention-input';
+
+type Comment = {
+  id: string;
+  author_id: string;
+  author_name: string;
+  content: string;
+  mentions: string[];
+  created_at: string;
+};
+
+type CommentThreadProps = {
+  entityType: string;
+  entityId: string;
+};
+
+export function CommentThread({ entityType, entityId }: CommentThreadProps) {
+  const orgId = useOrgId();
+  const queryClient = useQueryClient();
+  const [content, setContent] = useState('');
+  const [mentions, setMentions] = useState<string[]>([]);
+
+  const queryKey = ['comments', entityType, entityId];
+
+  const { data, isLoading } = useQuery<{ data: Comment[] }>({
+    queryKey,
+    queryFn: async () => {
+      const params = new URLSearchParams({ entity_type: entityType, entity_id: entityId });
+      const res = await fetch(`/api/comments?${params}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('コメントの取得に失敗しました');
+      return res.json();
+    },
+    enabled: !!orgId && !!entityId,
+    refetchInterval: 30_000,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/comments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          entity_type: entityType,
+          entity_id: entityId,
+          content,
+          mentions,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.message ?? 'コメントの投稿に失敗しました');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      setContent('');
+      setMentions([]);
+      void queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (commentId: string) => {
+      const res = await fetch(`/api/comments/${commentId}`, {
+        method: 'DELETE',
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.message ?? 'コメントの削除に失敗しました');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const comments = data?.data ?? [];
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!content.trim()) return;
+    createMutation.mutate();
+  }
+
+  return (
+    <Card className="border-slate-200 shadow-sm">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <MessageSquare className="size-4" aria-hidden="true" />
+          コメント
+          {comments.length > 0 && (
+            <span className="text-sm font-normal text-muted-foreground">
+              ({comments.length})
+            </span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="max-h-80 space-y-3 overflow-y-auto">
+          {isLoading && (
+            <p className="text-sm text-muted-foreground">読み込み中...</p>
+          )}
+          {!isLoading && comments.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              コメントはまだありません。
+            </p>
+          )}
+          {comments.map((comment) => (
+            <div key={comment.id} className="flex gap-3">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+                {comment.author_name.charAt(0)}
+              </span>
+              <div className="flex-1 space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">
+                    {comment.author_name}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(comment.created_at).toLocaleString('ja-JP', {
+                      month: 'numeric',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                  <button
+                    type="button"
+                    className="ml-auto rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-destructive group-hover:opacity-100 [div:hover>&]:opacity-100"
+                    onClick={() => deleteMutation.mutate(comment.id)}
+                    disabled={deleteMutation.isPending}
+                    aria-label="コメントを削除"
+                  >
+                    <Trash2 className="size-3.5" aria-hidden="true" />
+                  </button>
+                </div>
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                  {comment.content}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-2 border-t border-border pt-3">
+          <MentionInput
+            value={content}
+            onChange={setContent}
+            mentions={mentions}
+            onMentionsChange={setMentions}
+          />
+          <div className="flex justify-end">
+            <Button
+              type="submit"
+              size="sm"
+              disabled={!content.trim() || createMutation.isPending}
+              className="min-h-[44px]"
+            >
+              {createMutation.isPending ? '送信中...' : '送信'}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}

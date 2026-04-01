@@ -1,7 +1,9 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
+import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+import { transitionCycleStatus, InvalidTransitionError, VersionConflictError } from '@/lib/db/cycle-transition';
 import { z } from 'zod';
 
 const dispenseResultLineSchema = z.object({
@@ -13,6 +15,9 @@ const dispenseResultLineSchema = z.object({
   discrepancy_reason: z.string().optional(),
   carry_type: z.enum(['carry', 'facility_deposit', 'deferred']),
   special_notes: z.string().optional(),
+  is_unit_dose: z.boolean().optional(),
+  is_crushed: z.boolean().optional(),
+  packaging_group_id: z.string().optional(),
 });
 
 const createDispenseResultSchema = z.object({
@@ -67,6 +72,28 @@ function buildDiscrepancyReasonErrors(input: {
       },
     ];
   });
+}
+
+async function promoteCycleToDispensingIfNeeded(args: {
+  tx: Parameters<typeof transitionCycleStatus>[0];
+  cycleId: string;
+  orgId: string;
+  userId: string;
+  currentStatus: string;
+}) {
+  if (args.currentStatus === 'dispensing' || args.currentStatus === 'inquiry_pending') {
+    return;
+  }
+
+  if (args.currentStatus === 'inquiry_resolved') {
+    await transitionCycleStatus(args.tx, args.cycleId, args.orgId, 'ready_to_dispense', args.userId);
+    await transitionCycleStatus(args.tx, args.cycleId, args.orgId, 'dispensing', args.userId);
+    return;
+  }
+
+  if (args.currentStatus === 'ready_to_dispense') {
+    await transitionCycleStatus(args.tx, args.cycleId, args.orgId, 'dispensing', args.userId);
+  }
 }
 
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
@@ -194,6 +221,18 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       };
     }
 
+    // B5: Line ownership validation — each submitted line_id must belong to the current intake
+    const validLineIds = new Set(
+      task.cycle.prescription_intakes[0]?.lines.map((l) => l.id) ?? []
+    );
+    const invalidLines = lines.filter((l) => !validLineIds.has(l.line_id));
+    if (invalidLines.length > 0) {
+      return {
+        error: 'invalid_lines' as const,
+        reasons: invalidLines.map((l) => l.line_id),
+      };
+    }
+
     const now = new Date();
     const existingResultByLineId = new Map(task.results.map((item) => [item.line_id, item]));
 
@@ -258,19 +297,73 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
     if (!canComplete) {
       if (task.cycle.overall_status !== 'inquiry_pending') {
-        await tx.medicationCycle.update({
-          where: { id: task.cycle_id },
-          data: { overall_status: 'dispensing' },
+        try {
+          await promoteCycleToDispensingIfNeeded({
+            tx,
+            cycleId: task.cycle_id,
+            orgId: req.orgId,
+            userId: req.userId,
+            currentStatus: task.cycle.overall_status,
+          });
+        } catch (err) {
+          if (err instanceof InvalidTransitionError) {
+            return { error: 'transition_error' as const, message: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}` };
+          }
+          if (err instanceof VersionConflictError) {
+            return { error: 'version_conflict' as const, message: err.message };
+          }
+          throw err;
+        }
+      }
+
+      // B3: Create WorkflowException for partial dispense (guard against duplicates)
+      const missingLineIds = latestIntakeLineIds.filter((lineId) => !completedLineIds.has(lineId));
+      const intakeLines = task.cycle.prescription_intakes[0]?.lines ?? [];
+      const missingLineNames = missingLineIds
+        .map((lineId) => intakeLines.find((l) => l.id === lineId)?.drug_name ?? lineId);
+      const existingPartialException = await tx.workflowException.findFirst({
+        where: { cycle_id: task.cycle_id, exception_type: 'partial_dispense', status: 'open' },
+      });
+      if (!existingPartialException) {
+        await tx.workflowException.create({
+          data: {
+            org_id: req.orgId,
+            cycle_id: task.cycle_id,
+            exception_type: 'partial_dispense',
+            severity: 'warning',
+            status: 'open',
+            description: `部分調剤: 未調剤の行があります (${missingLineNames.join(', ')})`,
+          },
         });
       }
 
       return { results, task_id, partial: true };
     }
 
-    await tx.medicationCycle.update({
-      where: { id: task.cycle_id },
-      data: { overall_status: 'audit_pending' },
+    // B3: Auto-resolve open partial_dispense exceptions when all lines are complete
+    await tx.workflowException.updateMany({
+      where: { cycle_id: task.cycle_id, exception_type: 'partial_dispense', status: 'open' },
+      data: { status: 'resolved', resolved_at: new Date() },
     });
+
+    try {
+      await promoteCycleToDispensingIfNeeded({
+        tx,
+        cycleId: task.cycle_id,
+        orgId: req.orgId,
+        userId: req.userId,
+        currentStatus: task.cycle.overall_status,
+      });
+      await transitionCycleStatus(tx, task.cycle_id, req.orgId, 'audit_pending', req.userId);
+    } catch (err) {
+      if (err instanceof InvalidTransitionError) {
+        return { error: 'transition_error' as const, message: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}` };
+      }
+      if (err instanceof VersionConflictError) {
+        return { error: 'version_conflict' as const, message: err.message };
+      }
+      throw err;
+    }
 
     const auditRecipients = await tx.membership.findMany({
       where: {
@@ -363,7 +456,24 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         discrepancy_lines: result.reasons,
       });
     }
+    if (result.error === 'invalid_lines') {
+      return validationError('指定された処方明細は現在の処方に属していません', {
+        invalid_line_ids: result.reasons,
+      });
+    }
+    if (result.error === 'transition_error') {
+      return validationError(result.message);
+    }
+    if (result.error === 'version_conflict') {
+      return conflict(result.message);
+    }
   }
+
+  await notifyWorkflowMutation({
+    orgId: req.orgId,
+    eventType: 'cycle_transition',
+    payload: { source: 'dispense_results', task_id },
+  });
 
   return success(result, 201);
 }, {

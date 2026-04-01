@@ -296,3 +296,48 @@ model CommunityActivity {
   @@index([activity_type])
   @@index([activity_date])
 }
+
+// ── 薬局内コミュニケーション ──────────────────────────
+
+model TaskComment {
+  id          String   @id @default(cuid())
+  org_id      String
+  entity_type String   // medication_cycle, dispense_task, set_plan, visit_record, care_report
+  entity_id   String
+  author_id   String
+  content     String
+  mentions    String[] // user IDs mentioned via @
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@index([org_id])
+  @@index([entity_type, entity_id])
+  @@index([author_id])
+}
+
+model HandoffBoard {
+  id         String       @id @default(cuid())
+  org_id     String
+  shift_date DateTime     @db.Date
+  created_by String
+  items      HandoffItem[]
+  created_at DateTime     @default(now())
+
+  @@unique([org_id, shift_date])
+  @@index([org_id])
+}
+
+model HandoffItem {
+  id          String       @id @default(cuid())
+  board_id    String
+  board       HandoffBoard @relation(fields: [board_id], references: [id])
+  content     String
+  priority    String       @default("normal") // normal, high, urgent
+  entity_type String?      // optional link to workflow entity
+  entity_id   String?
+  read_by     String[]     // user IDs who confirmed reading
+  created_by  String
+  created_at  DateTime     @default(now())
+
+  @@index([board_id])
+}

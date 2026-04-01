@@ -1,0 +1,54 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`/api/visit-schedules > lists visit schedules with workload and facility hints 1`] = `
+{
+  "data": [
+    {
+      "applied_override": null,
+      "assignment_mode": "fallback",
+      "case_": {
+        "patient": {
+          "id": "patient_1",
+          "name": "患者A",
+          "residences": [
+            {
+              "address": "施設A",
+              "building_id": "facility_1",
+            },
+          ],
+        },
+      },
+      "cycle": {
+        "overall_status": "visit_ready",
+      },
+      "facility_batch": null,
+      "facility_batch_id": null,
+      "facility_hint": null,
+      "handoff_hint": {
+        "summary": "代替担当での訪問です / 訪問準備が未完了です",
+      },
+      "id": "schedule_1",
+      "org_id": "org_1",
+      "override_request": null,
+      "pharmacist_id": "user_2",
+      "preparation": null,
+      "priority": "urgent",
+      "scheduled_date": "2026-03-30T00:00:00.000Z",
+      "site": {
+        "address": "東京都",
+        "id": "site_1",
+        "lat": 35,
+        "lng": 139,
+        "name": "本店",
+      },
+      "time_window_start": "1970-01-01T09:00:00.000Z",
+      "visit_record": null,
+      "workload_hint": {
+        "daily_visit_count": 1,
+        "urgent_visit_count": 1,
+      },
+    },
+  ],
+  "hasMore": false,
+}
+`;

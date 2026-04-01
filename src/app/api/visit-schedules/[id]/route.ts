@@ -1,10 +1,12 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
+import { SCHEDULE_DETAIL_INCLUDE } from '@/lib/db/schedule-includes';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { updateVisitScheduleSchema } from '@/lib/validations/visit-schedule';
 import { prisma } from '@/lib/db/client';
+import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 
 export async function GET(
   req: NextRequest,
@@ -21,38 +23,7 @@ export async function GET(
 
   const schedule = await prisma.visitSchedule.findFirst({
     where: { id, org_id: ctx.orgId },
-    include: {
-      visit_record: true,
-      preparation: true,
-      override_request: true,
-      applied_override: true,
-      case_: {
-        select: {
-          patient: {
-            select: {
-              id: true,
-              name: true,
-              residences: {
-                where: { is_primary: true },
-                select: {
-                  address: true,
-                  lat: true,
-                  lng: true,
-                },
-                take: 1,
-              },
-            },
-          },
-        },
-      },
-      site: {
-        select: {
-          id: true,
-          name: true,
-          address: true,
-        },
-      },
-    },
+    include: SCHEDULE_DETAIL_INCLUDE,
   });
 
   if (!schedule) return notFound('訪問予定が見つかりません');
@@ -184,6 +155,11 @@ export async function PATCH(
     });
   }, { requestContext: ctx });
 
+  await notifyWorkflowMutation({
+    orgId: ctx.orgId,
+    payload: { source: 'visit_schedules_update', schedule_id: id },
+  });
+
   return success(schedule);
 }
 
@@ -211,6 +187,11 @@ export async function DELETE(
       data: { schedule_status: 'cancelled' },
     });
   }, { requestContext: ctx });
+
+  await notifyWorkflowMutation({
+    orgId: ctx.orgId,
+    payload: { source: 'visit_schedules_delete', schedule_id: id },
+  });
 
   return success(schedule);
 }

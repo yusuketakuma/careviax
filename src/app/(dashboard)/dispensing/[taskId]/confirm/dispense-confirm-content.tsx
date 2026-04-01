@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ChevronLeft, CheckSquare, Square } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, CheckSquare, Square } from 'lucide-react';
 import Link from 'next/link';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,10 @@ import { Badge } from '@/components/ui/badge';
 import { Loading } from '@/components/ui/loading';
 import { CdsAlertPanel, type CdsAlert } from '@/components/features/cds/alert-panel';
 import { cn } from '@/lib/utils';
+import { HIGH_RISK_KEYWORDS, CARRY_TYPE_LABELS } from '@/lib/dispensing/constants';
+import { PRIORITY_LABELS } from '@/lib/constants/status-labels';
+import type { DispensePrefillResult } from '@/lib/dispensing/prefill-generator';
+import type { DateContinuityWarning } from '@/lib/dispensing/date-continuity';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,6 +55,7 @@ type DispenseTaskDetail = {
   priority: string;
   status: string;
   cycle_id: string;
+  prefill?: DispensePrefillResult;
   cycle: {
     id: string;
     patient_id: string;
@@ -108,16 +113,6 @@ type ChecklistItemId = (typeof CHECKLIST_ITEMS)[number]['id'];
 // High-risk / cold-storage detection
 // ---------------------------------------------------------------------------
 
-const HIGH_RISK_KEYWORDS = [
-  'ワーファリン',
-  'インスリン',
-  '麻薬',
-  'ヘパリン',
-  'リチウム',
-  'ジゴキシン',
-  'テオフィリン',
-];
-
 function hasHighRiskDrug(results: DispenseResult[]): boolean {
   return results.some((r) =>
     HIGH_RISK_KEYWORDS.some((kw) => r.actual_drug_name.includes(kw))
@@ -132,22 +127,10 @@ function hasColdStorageDrug(results: DispenseResult[]): boolean {
 // Priority badge
 // ---------------------------------------------------------------------------
 
-const PRIORITY_LABEL: Record<string, string> = {
-  emergency: '緊急',
-  urgent: '至急',
-  normal: '通常',
-};
-
 const PRIORITY_VARIANT: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
   emergency: 'destructive',
   urgent: 'secondary',
   normal: 'outline',
-};
-
-const CARRY_TYPE_LABEL: Record<string, string> = {
-  carry: '持参',
-  facility_deposit: '施設預け',
-  deferred: '後日対応',
 };
 
 // ---------------------------------------------------------------------------
@@ -159,6 +142,7 @@ export function DispenseConfirmContent() {
   const taskId = typeof params.taskId === 'string' ? params.taskId : '';
   const router = useRouter();
   const orgId = useOrgId();
+  const isBootstrappingOrg = !orgId;
 
   const [checked, setChecked] = useState<Record<ChecklistItemId, boolean>>({
     patient_name: false,
@@ -183,7 +167,7 @@ export function DispenseConfirmContent() {
     enabled: !!orgId && !!taskId,
   });
 
-  // Fetch CDS alerts
+  // Fetch prescription safety alerts
   const { data: cdsData, isLoading: cdsLoading } = useQuery<{ alerts: CdsAlert[] }>({
     queryKey: ['cds-alerts', task?.cycle_id, orgId],
     queryFn: async () => {
@@ -234,13 +218,19 @@ export function DispenseConfirmContent() {
     },
   });
 
-  if (isLoading) return <Loading />;
+  const intake = task?.cycle.prescription_intakes[0];
+  const prescriptionLineMap = useMemo(() => {
+    const map = new Map<string, PrescriptionLine>();
+    (intake?.lines ?? []).forEach((line) => map.set(line.id, line));
+    return map;
+  }, [intake?.lines]);
+
+  if (isBootstrappingOrg || isLoading) return <Loading />;
   if (!task) {
     return <p className="p-6 text-sm text-muted-foreground">調剤タスクが見つかりません</p>;
   }
 
   const patient = task.cycle.case_.patient;
-  const intake = task.cycle.prescription_intakes[0];
   const results = task.results;
 
   const showHighRisk = hasHighRiskDrug(results);
@@ -263,9 +253,8 @@ export function DispenseConfirmContent() {
     setChecked((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // Build prescription line lookup map
-  const prescriptionLineMap = new Map<string, PrescriptionLine>();
-  intake?.lines.forEach((l) => prescriptionLineMap.set(l.id, l));
+  const medicationChanges = task.prefill?.medicationChanges ?? [];
+  const dateWarnings: DateContinuityWarning[] = task.prefill?.dateWarnings ?? [];
 
   return (
     <div className="p-4 md:p-6">
@@ -298,7 +287,7 @@ export function DispenseConfirmContent() {
             <div className="flex flex-wrap items-center gap-3">
               <CardTitle className="text-base">{patient.name} 様</CardTitle>
               <Badge variant={PRIORITY_VARIANT[task.priority] ?? 'outline'}>
-                {PRIORITY_LABEL[task.priority] ?? task.priority}
+                {PRIORITY_LABELS[task.priority] ?? task.priority}
               </Badge>
             </div>
             {intake && (
@@ -377,7 +366,7 @@ export function DispenseConfirmContent() {
                             >
                               {result.actual_quantity}
                               {result.actual_unit ?? ''} /{' '}
-                              {CARRY_TYPE_LABEL[result.carry_type] ?? result.carry_type}
+                              {CARRY_TYPE_LABELS[result.carry_type] ?? result.carry_type}
                             </p>
                             {result.discrepancy_reason && (
                               <p className="text-orange-600">
@@ -395,10 +384,10 @@ export function DispenseConfirmContent() {
           </Card>
         )}
 
-        {/* CDS alert panel */}
+        {/* 処方安全アラート */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">CDSアラート確認</CardTitle>
+            <CardTitle className="text-sm">処方安全アラート確認</CardTitle>
           </CardHeader>
           <CardContent>
             <CdsAlertPanel
@@ -407,6 +396,76 @@ export function DispenseConfirmContent() {
             />
           </CardContent>
         </Card>
+
+        {/* 処方変更 */}
+        {medicationChanges.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">処方変更</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-2">
+                {medicationChanges.map((change, i) => {
+                  const badgeClass =
+                    change.change_type === 'added'
+                      ? 'border-green-500 text-green-700'
+                      : change.change_type === 'removed'
+                        ? 'border-red-500 text-red-700'
+                        : change.change_type === 'dose_changed'
+                          ? 'border-amber-500 text-amber-700'
+                          : 'border-blue-500 text-blue-700';
+                  const changeLabel =
+                    change.change_type === 'added'
+                      ? '新規追加'
+                      : change.change_type === 'removed'
+                        ? '削除'
+                        : change.change_type === 'dose_changed'
+                          ? '用量変更'
+                          : '用法変更';
+                  return (
+                    <li key={i} className="flex items-start gap-2 text-sm">
+                      <Badge variant="outline" className={cn('mt-0.5 shrink-0 text-[10px]', badgeClass)}>
+                        {changeLabel}
+                      </Badge>
+                      <span className="flex-1">
+                        {change.drug_name}
+                        {change.previous && (
+                          <span className="ml-1 text-xs text-muted-foreground">
+                            （前回: {change.previous}
+                            {change.current ? ` → ${change.current}` : ''}）
+                          </span>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 服用日付警告 */}
+        {dateWarnings.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">服用日付警告</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-2">
+                {dateWarnings.map((w) => (
+                  <li key={w.lineId} className="flex items-start gap-2 text-sm text-amber-800">
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" aria-hidden="true" />
+                    <span>
+                      {w.type === 'gap'
+                        ? `${w.drugName}: 前回終了 ${w.prevEndDate} → 今回開始 ${w.currentStartDate}（${w.gapDays}日間のギャップ）`
+                        : `${w.drugName}: 前回終了 ${w.prevEndDate} → 今回開始 ${w.currentStartDate}（${Math.abs(w.gapDays)}日間の重複）`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Checklist */}
         <Card>

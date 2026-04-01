@@ -1,7 +1,4 @@
-/**
- * HL7 FHIR R4 Adapter — placeholder
- * Will connect to Japan's e-Prescription Management Service
- */
+import { buildBearerHeaders, fetchJson, HttpAdapterError, unwrapDataEnvelope } from '../http-client';
 
 export interface FhirPatient {
   resourceType: 'Patient';
@@ -24,27 +21,64 @@ export interface FhirMedicationRequest {
   }>;
 }
 
-export class FhirAdapter {
-  private baseUrl: string;
+type FhirBundle<T> = {
+  resourceType: 'Bundle';
+  entry?: Array<{ resource?: T }>;
+};
 
-  constructor(baseUrl: string) {
-    this.baseUrl = baseUrl;
-  }
+export class FhirAdapter {
+  constructor(
+    private readonly baseUrl: string,
+    private readonly options?: {
+      accessToken?: string;
+      apiKey?: string;
+    }
+  ) {}
 
   async getPatient(id: string): Promise<FhirPatient | null> {
-    // TODO: Implement FHIR R4 Patient resource fetch
-    console.log(`[FHIR] GET ${this.baseUrl}/Patient/${id} — not implemented`);
-    return null;
+    const { status, data } = await fetchJson<FhirPatient | { data?: FhirPatient }>(
+      `${this.baseUrl.replace(/\/$/, '')}/Patient/${encodeURIComponent(id)}`,
+      {
+        headers: buildBearerHeaders(this.options?.accessToken, this.options?.apiKey),
+      }
+    );
+    if (status === 404) return null;
+    if (status >= 400) {
+      throw new HttpAdapterError('FHIR Patient 取得に失敗しました', status, data);
+    }
+    return unwrapDataEnvelope(data);
   }
 
   async getMedicationRequests(patientId: string): Promise<FhirMedicationRequest[]> {
-    // TODO: Implement FHIR R4 MedicationRequest search
-    console.log(`[FHIR] GET ${this.baseUrl}/MedicationRequest?patient=${patientId} — not implemented`);
-    return [];
+    const { status, data } = await fetchJson<
+      FhirBundle<FhirMedicationRequest> | FhirMedicationRequest[] | { data?: FhirMedicationRequest[] }
+    >(`${this.baseUrl.replace(/\/$/, '')}/MedicationRequest?patient=${encodeURIComponent(patientId)}`, {
+      headers: buildBearerHeaders(this.options?.accessToken, this.options?.apiKey),
+    });
+    if (status >= 400) {
+      throw new HttpAdapterError('FHIR MedicationRequest 検索に失敗しました', status, data);
+    }
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    if ('data' in data) {
+      return unwrapDataEnvelope<FhirMedicationRequest[]>(data) ?? [];
+    }
+    return (data as FhirBundle<FhirMedicationRequest>).entry?.flatMap((entry) =>
+      entry.resource ? [entry.resource] : []
+    ) ?? [];
   }
 
   async createMedicationDispense(data: Record<string, unknown>): Promise<void> {
-    // TODO: Implement FHIR R4 MedicationDispense create
-    console.log(`[FHIR] POST ${this.baseUrl}/MedicationDispense — not implemented`, data);
+    const result = await fetchJson<Record<string, unknown>>(
+      `${this.baseUrl.replace(/\/$/, '')}/MedicationDispense`,
+      {
+        method: 'POST',
+        headers: buildBearerHeaders(this.options?.accessToken, this.options?.apiKey),
+        body: data,
+      }
+    );
+    if (result.status >= 400) {
+      throw new HttpAdapterError('FHIR MedicationDispense 登録に失敗しました', result.status, result.data);
+    }
   }
 }

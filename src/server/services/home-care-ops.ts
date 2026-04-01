@@ -1,4 +1,5 @@
 import { addDays, startOfDay } from 'date-fns';
+import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import type {
@@ -676,7 +677,7 @@ export async function getHomeCareFeatureSummary(
   const facilityClusterCount = Array.from(
     upcomingSchedules.reduce<Map<string, number>>((acc, schedule) => {
       const residence = schedule.case_.patient.residences[0] ?? null;
-      const locationKey = residence?.building_id ?? residence?.address ?? 'unknown';
+      const locationKey = deriveFacilityLabel(residence ?? null) ?? 'unknown';
       const key = `${schedule.scheduled_date.toISOString().slice(0, 10)}:${locationKey}`;
       acc.set(key, (acc.get(key) ?? 0) + 1);
       return acc;

@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import { StagnationIndicator } from '@/components/features/workflow/stagnation-indicator';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
@@ -407,30 +409,28 @@ const CYCLE_STATUS_LABELS: Record<
   on_hold: { label: '保留', color: 'bg-gray-100 text-gray-600' },
 };
 
-function priorityClass(priority: 'urgent' | 'high' | 'normal' | 'low') {
-  switch (priority) {
-    case 'urgent':
-      return 'border-rose-200 bg-rose-50 text-rose-700';
-    case 'high':
-      return 'border-amber-200 bg-amber-50 text-amber-700';
-    case 'low':
-      return 'border-slate-200 bg-slate-50 text-slate-600';
-    default:
-      return 'border-sky-200 bg-sky-50 text-sky-700';
-  }
+const PRIORITY_CLASS: Record<string, string> = {
+  urgent: 'border-rose-200 bg-rose-50 text-rose-700',
+  high: 'border-amber-200 bg-amber-50 text-amber-700',
+  normal: 'border-sky-200 bg-sky-50 text-sky-700',
+  low: 'border-slate-200 bg-slate-50 text-slate-600',
+};
+
+const SEVERITY_CLASS: Record<string, string> = {
+  urgent: 'border-rose-200 bg-rose-50 text-rose-700',
+  critical: 'border-rose-200 bg-rose-50 text-rose-700',
+  high: 'border-amber-200 bg-amber-50 text-amber-700',
+  warning: 'border-amber-200 bg-amber-50 text-amber-700',
+};
+
+const DEFAULT_PRIORITY_CLASS = 'border-sky-200 bg-sky-50 text-sky-700';
+
+function priorityClass(priority: string) {
+  return PRIORITY_CLASS[priority] ?? DEFAULT_PRIORITY_CLASS;
 }
 
 function severityClass(severity: string) {
-  switch (severity) {
-    case 'urgent':
-    case 'critical':
-      return 'border-rose-200 bg-rose-50 text-rose-700';
-    case 'high':
-    case 'warning':
-      return 'border-amber-200 bg-amber-50 text-amber-700';
-    default:
-      return 'border-sky-200 bg-sky-50 text-sky-700';
-  }
+  return SEVERITY_CLASS[severity] ?? DEFAULT_PRIORITY_CLASS;
 }
 
 export function WorkflowDashboardContent() {
@@ -438,7 +438,7 @@ export function WorkflowDashboardContent() {
   const queryClient = useQueryClient();
   const [inquiryEdits, setInquiryEdits] = useState<Record<string, InquiryEditState>>({});
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, refetch } = useRealtimeQuery({
     queryKey: ['dashboard-workflow', orgId],
     queryFn: async () => {
       const res = await fetch('/api/dashboard/workflow', {
@@ -449,6 +449,7 @@ export function WorkflowDashboardContent() {
     },
     enabled: !!orgId,
     refetchInterval: 60_000,
+    invalidateOn: ['cycle_transition', 'workflow_refresh'],
   });
 
   const workflow = data?.data;
@@ -953,6 +954,7 @@ export function WorkflowDashboardContent() {
                           <p className="text-sm font-semibold text-foreground">{item.patient_name}</p>
                           <Badge variant="outline">{item.queue_state}</Badge>
                           <Badge variant="secondary">{item.item_type === 'issue' ? '候補' : '照会中'}</Badge>
+                          <StagnationIndicator updatedAt={item.created_at} />
                         </div>
                         <p className="mt-1 text-xs text-muted-foreground">
                           {item.title} / {item.inquiry_to_physician}

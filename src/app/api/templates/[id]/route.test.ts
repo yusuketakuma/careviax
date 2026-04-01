@@ -96,6 +96,31 @@ describe('/api/templates/[id]', () => {
     );
   });
 
+  it('updates template metadata fields', async () => {
+    const response = await PATCH(
+      createRequest({
+        target_role: 'physician',
+        format: 'pdf',
+        version: 3,
+        effective_to: '2026-12-31',
+      }),
+      { params: Promise.resolve({ id: 'template_1' }) }
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(templateUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          target_role: 'physician',
+          format: 'pdf',
+          version: 3,
+          effective_to: new Date('2026-12-31T00:00:00.000Z'),
+        }),
+      })
+    );
+  });
+
   it('deletes an existing template', async () => {
     const response = await DELETE(
       createRequest(),

@@ -7,6 +7,7 @@ const {
   consentRecordFindManyMock,
   consentRecordCountMock,
   consentRecordFindFirstMock,
+  templateFindFirstMock,
   validateOrgReferencesMock,
   consentRecordCreateMock,
   withOrgContextMock,
@@ -16,6 +17,7 @@ const {
   consentRecordFindManyMock: vi.fn(),
   consentRecordCountMock: vi.fn(),
   consentRecordFindFirstMock: vi.fn(),
+  templateFindFirstMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
   consentRecordCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -34,6 +36,9 @@ vi.mock('@/lib/db/client', () => ({
       findMany: consentRecordFindManyMock,
       count: consentRecordCountMock,
       findFirst: consentRecordFindFirstMock,
+    },
+    template: {
+      findFirst: templateFindFirstMock,
     },
   },
 }));
@@ -70,6 +75,7 @@ describe('/api/consent-records', () => {
     ]);
     consentRecordCountMock.mockResolvedValue(1);
     consentRecordFindFirstMock.mockResolvedValue(null);
+    templateFindFirstMock.mockResolvedValue({ id: 'template_1', version: 2 });
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
     consentRecordCreateMock.mockResolvedValue({
       id: 'consent_2',
@@ -121,9 +127,27 @@ describe('/api/consent-records', () => {
       data: expect.objectContaining({
         org_id: 'org_1',
         patient_id: 'patient_1',
+        template_id: 'template_1',
+        template_version: 2,
         consent_type: 'external_sharing',
         method: 'paper_scan',
       }),
     });
+  });
+
+  it('returns validation error when an explicit template_id is not found', async () => {
+    templateFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/consent-records', {
+        patient_id: 'patient_1',
+        template_id: 'template_missing',
+        consent_type: 'external_sharing',
+        method: 'paper_scan',
+        obtained_date: '2026-03-29',
+      })
+    ))!;
+
+    expect(response.status).toBe(400);
   });
 });

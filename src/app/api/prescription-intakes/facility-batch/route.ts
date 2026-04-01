@@ -1,4 +1,5 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { createFacilityBatchPrescriptionIntakeSchema } from '@/lib/validations/prescription';
@@ -11,6 +12,10 @@ import {
   PrescriberInstitutionReferenceValidationError,
   resolvePrescriberInstitutionFields,
 } from '@/lib/prescriptions/prescriber-institutions';
+import {
+  extractPackagingInstructionTags,
+  parsePackagingMethod,
+} from '@/lib/prescription/packaging';
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
@@ -114,7 +119,7 @@ export const POST = withAuth(
         }
 
         const residence = careCase.patient.residences[0];
-        const facilityLabel = residence?.building_id ?? residence?.address ?? null;
+        const facilityLabel = deriveFacilityLabel(residence ?? null);
         if (!facilityLabel) {
           return {
             error: 'missing_facility_label' as const,
@@ -162,10 +167,19 @@ export const POST = withAuth(
             prescriber_institution: resolvedInstitution.prescriber_institution,
             ...(original_document_url ? { original_document_url } : {}),
             lines: {
-              create: entry.lines.map((line) => ({
-                org_id: req.orgId,
-                ...line,
-              })),
+              create: entry.lines.map((line) => {
+                const parsedPackaging = parsePackagingMethod(line.packaging_instructions);
+                return {
+                  org_id: req.orgId,
+                  ...line,
+                  packaging_method: parsedPackaging.method,
+                  packaging_instruction_tags: extractPackagingInstructionTags({
+                    packagingInstructions: line.packaging_instructions,
+                    notes: line.notes,
+                    packagingMethod: parsedPackaging.method,
+                  }),
+                };
+              }),
             },
           },
           include: {

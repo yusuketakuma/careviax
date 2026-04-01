@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
+import { serverCache } from '@/lib/utils/server-cache';
 
 const {
   authMock,
@@ -164,6 +165,7 @@ vi.mock('@/server/services/home-care-ops', () => ({
   getHomeCareFeatureSummary: homeCareFeatureSummaryMock,
 }));
 
+import { buildWorkflowCacheKey } from '@/server/services/workflow-dashboard-cache';
 import { GET } from './route';
 
 function createRequest(headers?: Record<string, string>) {
@@ -178,6 +180,7 @@ function createRequest(headers?: Record<string, string>) {
 describe('/api/dashboard/workflow GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    serverCache.clear();
 
     cycleGroupByMock.mockResolvedValue([
       { overall_status: 'visit_completed', _count: { id: 2 } },
@@ -497,7 +500,9 @@ describe('/api/dashboard/workflow GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
 
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
       data: {
         cycle_status_counts: {
           visit_completed: 2,
@@ -627,8 +632,40 @@ describe('/api/dashboard/workflow GET', () => {
         ],
       },
     });
+    expect(payload).toMatchSnapshot();
     expect(homeCareFeatureSummaryMock).toHaveBeenCalledWith(expect.anything(), {
       orgId: 'org_1',
     });
+  });
+
+  it('keeps role-specific inbox state out of cross-role cache hits', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock
+      .mockResolvedValueOnce({ role: 'clerk' })
+      .mockResolvedValueOnce({ role: 'pharmacist' });
+
+    const firstResponse = await GET(createRequest({ 'x-org-id': 'org_1' }));
+    const secondResponse = await GET(createRequest({ 'x-org-id': 'org_1' }));
+
+    if (!firstResponse || !secondResponse) throw new Error('response is required');
+
+    const firstPayload = await firstResponse.json();
+    const secondPayload = await secondResponse.json();
+
+    expect(firstPayload.data.role_inboxes.current_role).toBe('clerk');
+    expect(secondPayload.data.role_inboxes.current_role).toBe('pharmacist');
+  });
+
+  it('keys workflow cache by org, role, user, and local day', () => {
+    expect(
+      buildWorkflowCacheKey('org_1', 'clerk', 'user_1', new Date(2026, 2, 27, 12, 0, 0))
+    ).toBe(
+      'workflow:org_1:clerk:user_1:2026-03-27'
+    );
+    expect(
+      buildWorkflowCacheKey('org_1', 'clerk', 'user_1', new Date(2026, 2, 28, 12, 0, 0))
+    ).toBe(
+      'workflow:org_1:clerk:user_1:2026-03-28'
+    );
   });
 });

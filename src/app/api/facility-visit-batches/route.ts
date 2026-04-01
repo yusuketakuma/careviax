@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
+import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 
 const upsertFacilityVisitBatchSchema = z
   .object({
@@ -194,10 +195,16 @@ export const POST = withAuth(
 
       const facilityUnitIdSet = new Set(
         schedules
-          .map((schedule) => schedule.case_.patient.residences[0]?.facility_unit_id)
-          .filter((value): value is string => value != null)
+          .map(
+            (schedule) => schedule.case_.patient.residences[0]?.facility_unit_id ?? 'unit:none'
+          )
       );
-      const facilityUnitId = facilityUnitIdSet.size === 1 ? Array.from(facilityUnitIdSet)[0] : null;
+      if (facilityUnitIdSet.size > 1) {
+        return { error: 'mixed_facility_unit' as const };
+      }
+
+      const rawFacilityUnitId = Array.from(facilityUnitIdSet)[0] ?? 'unit:none';
+      const facilityUnitId = rawFacilityUnitId === 'unit:none' ? null : rawFacilityUnitId;
 
       const existingBatchIds = Array.from(
         new Set(
@@ -329,6 +336,9 @@ export const POST = withAuth(
       if (result.error === 'mixed_existing_batch') {
         return validationError('異なる施設バッチに属する予定が混在しています');
       }
+      if (result.error === 'mixed_facility_unit') {
+        return validationError('同一ユニットの訪問予定のみを一括化できます');
+      }
       if (result.error === 'not_enough_schedules') {
         return validationError('施設一括訪問を作成するには2件以上の訪問予定が必要です');
       }
@@ -339,6 +349,11 @@ export const POST = withAuth(
         return validationError('順序指定に自動取得対象外の訪問予定が含まれています');
       }
     }
+
+    await notifyWorkflowMutation({
+      orgId: req.orgId,
+      payload: { source: 'facility_visit_batches_upsert' },
+    });
 
     return success(result, 201);
   },

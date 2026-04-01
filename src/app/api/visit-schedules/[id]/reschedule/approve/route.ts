@@ -6,6 +6,7 @@ import { success, notFound, validationError } from '@/lib/api/response';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { resolveOperationalTasks } from '@/server/services/operational-tasks';
 import { fetchEmergencyContacts } from '@/lib/patient/emergency-contacts';
+import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 
 export async function POST(
   req: NextRequest,
@@ -101,6 +102,11 @@ export async function POST(
 
     return { updated, emergencyContacts };
   }, { requestContext: ctx });
+
+  await notifyWorkflowMutation({
+    orgId: ctx.orgId,
+    payload: { source: 'visit_schedules_reschedule_approve', schedule_id: id },
+  });
 
   return success({
     data: {

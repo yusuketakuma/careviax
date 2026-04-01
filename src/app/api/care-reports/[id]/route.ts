@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/prescriber-institutions';
 import { getChannelStatsByName, getRecommendedChannels } from '@/lib/contact-profiles';
+import { inferCareReportTargetRole, resolveDocumentDeliveryRule } from '@/lib/reports/document-delivery-rules';
 
 const updateCareReportSchema = z.object({
   report_type: z
@@ -67,6 +68,11 @@ export async function GET(
     prescriberInstitutionSuggestion != null
       ? await getChannelStatsByName(prisma, ctx.orgId, [prescriberInstitutionSuggestion.name])
       : new Map();
+  const deliveryRuleSuggestion = await resolveDocumentDeliveryRule({
+    orgId: ctx.orgId,
+    documentType: 'care_report',
+    targetRole: inferCareReportTargetRole(report.report_type),
+  });
 
   const reportData = Object.fromEntries(
     Object.entries(report).filter(([key]) => key !== 'case_')
@@ -76,6 +82,7 @@ export async function GET(
     data: {
       ...reportData,
       intake_baseline_context: intakeBaselineContext,
+      delivery_rule_suggestion: deliveryRuleSuggestion,
       prescriber_institution_suggestion: prescriberInstitutionSuggestion
         ? {
             ...prescriberInstitutionSuggestion,

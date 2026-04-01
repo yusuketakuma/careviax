@@ -112,6 +112,7 @@ describe('/api/pharmacy-drug-stocks', () => {
         drug_master_id: 'drug_1',
         is_stocked: true,
         preferred_generic_id: 'generic_1',
+        reorder_point: 12,
       }),
       { params: Promise.resolve({}) }
     );
@@ -125,10 +126,12 @@ describe('/api/pharmacy-drug-stocks', () => {
           site_id: 'site_1',
           drug_master_id: 'drug_1',
           preferred_generic_id: 'generic_1',
+          reorder_point: 12,
         }),
         update: expect.objectContaining({
           is_stocked: true,
           preferred_generic_id: 'generic_1',
+          reorder_point: 12,
         }),
       })
     );

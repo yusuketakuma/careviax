@@ -1,0 +1,86 @@
+{
+  "vpcName": "careviax-prod",
+  "cidr": "10.40.0.0/16",
+  "subnets": [
+    {
+      "name": "public-apne1a",
+      "availabilityZone": "ap-northeast-1a",
+      "cidr": "10.40.0.0/24",
+      "type": "public",
+      "resources": ["alb", "nat-gateway"]
+    },
+    {
+      "name": "public-apne1c",
+      "availabilityZone": "ap-northeast-1c",
+      "cidr": "10.40.1.0/24",
+      "type": "public",
+      "resources": ["alb", "nat-gateway"]
+    },
+    {
+      "name": "private-app-apne1a",
+      "availabilityZone": "ap-northeast-1a",
+      "cidr": "10.40.10.0/24",
+      "type": "private",
+      "resources": ["lambda", "ecs-app"]
+    },
+    {
+      "name": "private-app-apne1c",
+      "availabilityZone": "ap-northeast-1c",
+      "cidr": "10.40.11.0/24",
+      "type": "private",
+      "resources": ["lambda", "ecs-app"]
+    },
+    {
+      "name": "private-db-apne1a",
+      "availabilityZone": "ap-northeast-1a",
+      "cidr": "10.40.20.0/24",
+      "type": "private-db",
+      "resources": ["rds"]
+    },
+    {
+      "name": "private-db-apne1c",
+      "availabilityZone": "ap-northeast-1c",
+      "cidr": "10.40.21.0/24",
+      "type": "private-db",
+      "resources": ["rds"]
+    }
+  ],
+  "securityGroups": [
+    {
+      "name": "careviax-alb-sg",
+      "ingress": [
+        { "protocol": "tcp", "port": 443, "source": "0.0.0.0/0" }
+      ],
+      "egress": [
+        { "protocol": "tcp", "port": 3000, "destinationSecurityGroup": "careviax-app-sg" }
+      ]
+    },
+    {
+      "name": "careviax-app-sg",
+      "ingress": [
+        { "protocol": "tcp", "port": 3000, "sourceSecurityGroup": "careviax-alb-sg" }
+      ],
+      "egress": [
+        { "protocol": "tcp", "port": 5432, "destinationSecurityGroup": "careviax-rds-sg" },
+        { "protocol": "tcp", "port": 443, "destinationPrefixListEnv": "S3_VPC_ENDPOINT_PREFIX_LIST_ID" },
+        { "protocol": "tcp", "port": 443, "destinationPrefixListEnv": "SECRETS_MANAGER_PREFIX_LIST_ID" }
+      ]
+    },
+    {
+      "name": "careviax-rds-sg",
+      "ingress": [
+        { "protocol": "tcp", "port": 5432, "sourceSecurityGroup": "careviax-app-sg" },
+        { "protocol": "tcp", "port": 5432, "sourceSecurityGroup": "careviax-ssm-bastion-sg" }
+      ],
+      "egress": []
+    },
+    {
+      "name": "careviax-ssm-bastion-sg",
+      "ingress": [],
+      "egress": [
+        { "protocol": "tcp", "port": 5432, "destinationSecurityGroup": "careviax-rds-sg" },
+        { "protocol": "tcp", "port": 443, "destination": "0.0.0.0/0" }
+      ]
+    }
+  ]
+}

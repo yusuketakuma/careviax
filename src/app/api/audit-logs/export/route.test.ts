@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const { authMock, membershipFindFirstMock, findManyMock } = vi.hoisted(() => ({
+const { authMock, membershipFindFirstMock, findManyMock, recordDataExportAuditMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   findManyMock: vi.fn(),
+  recordDataExportAuditMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -31,6 +32,10 @@ vi.mock('@/lib/db/client', () => ({
       findMany: findManyMock,
     },
   },
+}));
+
+vi.mock('@/server/services/export-audit', () => ({
+  recordDataExportAudit: recordDataExportAuditMock,
 }));
 
 import { GET } from './route';
@@ -71,6 +76,7 @@ describe('/api/audit-logs/export GET', () => {
   it('returns csv payload with UI-compatible filters', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    recordDataExportAuditMock.mockResolvedValue(undefined);
 
     const response = (await GET(
       createRequest(
@@ -97,6 +103,14 @@ describe('/api/audit-logs/export GET', () => {
     const body = await response.text();
     expect(body).toContain('"audit_1"');
     expect(body).toContain('"visit_record"');
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        targetType: 'audit_log',
+        format: 'csv',
+        recordCount: 1,
+      }),
+    );
   });
 
   it('returns json payload when requested', async () => {

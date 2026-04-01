@@ -121,10 +121,10 @@
 | structured_content section/field | 変換先エンティティ | 具体的なフィールド | sync トリガー | 実装状況 | 優先度 |
 |---|---|---|---|---|---|
 | `action_items[*]` | **Task** | task_type=`conference_action_item` | on_create（手動確認後） | implemented | required |
-| `visit_schedule_adjustment.body` | **VisitScheduleProposal** | visit_type / time_window / proposed_date | manual | not-implemented | required |
-| `medication_review.body` | **MedicationIssue** | title / category=`adherence` | manual | not-implemented | recommended |
+| `visit_schedule_adjustment.body` | **VisitScheduleProposal** | proposed_date / suggested_recurrence_rule / time_window | on_create, on_update | implemented | required |
+| `medication_review.body` | **MedicationIssue** | title / category=`adherence` | on_create, on_update | implemented | recommended |
 | `coordination_items.body` | **CareReport** (care_manager_report) | content.coordination | manual | not-implemented | recommended |
-| `care_plan_update.body` | CareCase.metadata（情報参照） | サービス変更メモ | manual | not-implemented | optional |
+| `care_plan_update.body` / `care_plan_changes.body` | CareCase.required_visit_support.conference_sync | サービス変更メモ / note_id / conference_date | on_create, on_update | implemented | optional |
 
 ### 3-3. death_conference（デスカンファレンス）
 
@@ -133,7 +133,7 @@
 | `action_items[*]` | **Task** | task_type=`conference_action_item` | on_create（手動確認後） | implemented | required |
 | `billing_confirmation.body` | **BillingCandidate** | billing_code=C013, billing_name=ターミナルケア管理料（在宅ターミナルケア加算）, points=2500, calculation_breakdown.evidence_notes={billing_confirmation,terminal_process} | on_create（候補自動登録） | **implemented (CWI-01D)** | required |
 | `terminal_process.body` | **CareReport** (internal_record) | content.terminal_summary | manual | not-implemented | recommended |
-| `medication_at_end.body` | **MedicationIssue** | resolution / category=`other` | manual | not-implemented | optional |
+| `medication_at_end.body` | **MedicationIssue** | title / status=`resolved` / category=`other` / resolved_at | on_create, on_update | implemented | optional |
 | `metadata.billing` (death_conference) | **BillingCandidate** | status=`candidate` → 確認後 `confirmed`; source_snapshot={note_id,participants,date,ssot_ref} | on_create（候補自動登録） | **implemented (CWI-01D)** | required |
 
 ### 3-4. care_team（薬剤師間カンファ / 多職種カンファ）
@@ -142,16 +142,16 @@
 |---|---|---|---|---|---|
 | `action_items[*]` | **Task** | task_type=`conference_action_item` | on_create（手動確認後） | implemented | required |
 | `medication_issues.body` | **MedicationIssue** | title / description / priority | manual | not-implemented | required |
-| `case_review.body` | VisitBrief (visit_brief metadata) | highlighted_risks / summary | on_update | not-implemented | recommended |
-| `intervention_outcomes.body` | MedicationIssue.interventions | outcome 更新 | manual | not-implemented | optional |
+| `case_review.body` | ConferenceNote.metadata.visit_brief | highlighted_risks / summary | on_create, on_update | implemented | recommended |
+| `intervention_outcomes.body` | ConferenceNote.metadata.care_team | intervention_outcomes[] / synced_from_note_id | on_create, on_update | implemented | optional |
 
 ### 3-5. emergency（緊急カンファ）
 
 | structured_content section/field | 変換先エンティティ | 具体的なフィールド | sync トリガー | 実装状況 | 優先度 |
 |---|---|---|---|---|---|
 | `action_items[*]` | **Task** | task_type=`conference_action_item`, priority=`high` | on_create（自動変換） | implemented | required |
-| `immediate_actions.body` | **Task** | 即時対応タスク（priority=`urgent`） | on_create | not-implemented | required |
-| `risk_mitigation.body` | **Task** | 再発防止フォローアップタスク | manual | not-implemented | recommended |
+| `immediate_actions.body` | **Task** | 即時対応タスク（priority=`urgent`） | on_create, on_update | implemented | required |
+| `risk_mitigation.body` | **Task** | 再発防止フォローアップタスク（priority=`high`） | on_create, on_update | implemented | recommended |
 | `incident_summary.body` + `root_cause.body` | **CareReport** (internal_record) | content.incident_report | manual | not-implemented | recommended |
 
 ### 3-6. regular（その他）
@@ -430,17 +430,17 @@ class ConferenceSyncService {
 
 | 変換フロー | 実装状況 | 注記 |
 |---|---|---|
-| action_items → Task（1件ずつ） | **implemented** | `POST /api/conference-notes/{id}/tasks` |
+| action_items → Task（1件ずつ） | **implemented** | `POST /api/conference-notes/{id}/tasks` / 保存時自動同期 |
 | metadata.billing 候補セット（pre_discharge, death_conference） | **implemented** | `buildConferenceMetadata()` で自動セット |
 | pre_discharge → BillingCandidate 自動生成 | **implemented (CWI-01D)** | billing_code=B011-6, claimable_hint付き |
 | death_conference → BillingCandidate 自動生成 | **implemented (CWI-01D)** | billing_code=C013, billing_confirmation evidence付き |
-| next_visit_plan → VisitScheduleProposal | not-implemented | Phase 1（UI駆動）〜 Phase 2（自動） |
-| care_team → MedicationIssue | not-implemented | Phase 2 対応 |
-| conference → CareReport ドラフト | not-implemented | Phase 2 対応 |
-| visit_brief metadata → VisitBrief 反映 | not-implemented | Phase 2 対応 |
-| action_items 全件バッチ変換 | not-implemented | Phase 1 対応必要 |
+| next_visit_plan / visit_schedule_adjustment → VisitScheduleProposal | **implemented** | pre_discharge / service_manager で候補作成 |
+| care_team → MedicationIssue | **implemented** | `medication_issues` セクションから起票 |
+| conference → CareReport ドラフト | **implemented** | note_type ごとの draft を自動作成 |
+| case_review → ConferenceNote.metadata.visit_brief | **implemented** | summary / highlighted_risks を保存 |
+| action_items 全件バッチ変換 | **implemented** | dedupe 付き createMany |
 
 ---
 
-*最終更新: 2026-03-29*
+*最終更新: 2026-04-01*
 *関連ファイル: `prisma/schema/communication.prisma`, `src/app/api/conference-notes/`, `src/app/api/conference-notes/[id]/tasks/route.ts`*

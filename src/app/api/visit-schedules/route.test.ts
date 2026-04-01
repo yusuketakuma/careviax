@@ -121,7 +121,9 @@ describe('/api/visit-schedules', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
       data: [
         expect.objectContaining({
           id: 'schedule_1',
@@ -135,6 +137,7 @@ describe('/api/visit-schedules', () => {
         }),
       ],
     });
+    expect(payload).toMatchSnapshot();
   });
 
   it('creates a visit schedule after gate and reference checks', async () => {
@@ -166,5 +169,23 @@ describe('/api/visit-schedules', () => {
         confirmed_by: 'user_1',
       }),
     });
+  });
+
+  it('rejects unsupported visit schedule notes instead of dropping them silently', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        notes: '玄関前で連絡',
+      })
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '訪問予定メモはまだ保存できません',
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
   });
 });

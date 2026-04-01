@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
 type TestState = {
@@ -17,6 +17,7 @@ type TestState = {
     patient_id: string;
     overall_status: string;
     exception_status: string | null;
+    version: number;
   };
   intake: null | {
     id: string;
@@ -291,6 +292,7 @@ function buildTx(state: TestState) {
           patient_id: state.cycle.patient_id,
           overall_status: state.cycle.overall_status,
           exception_status: state.cycle.exception_status,
+          version: state.cycle.version,
           prescription_intakes:
             state.intake == null
               ? []
@@ -338,18 +340,28 @@ function buildTx(state: TestState) {
             id: string;
             org_id: string;
             overall_status?: { in: string[] };
+            version?: number;
           };
           data: Record<string, unknown>;
         }) => {
           const allowed =
             where.id === state.cycle.id &&
+            (where.version == null || where.version === state.cycle.version) &&
             (where.overall_status == null ||
               where.overall_status.in.includes(state.cycle.overall_status));
 
           if (allowed) {
+            const nextVersion =
+              typeof data.version === 'object' &&
+              data.version != null &&
+              'increment' in data.version &&
+              typeof (data.version as { increment?: unknown }).increment === 'number'
+                ? state.cycle.version + (data.version as { increment: number }).increment
+                : state.cycle.version;
             state.cycle = {
               ...state.cycle,
               ...data,
+              version: nextVersion,
             };
             return { count: 1 };
           }
@@ -357,6 +369,12 @@ function buildTx(state: TestState) {
           return { count: 0 };
         }
       ),
+    },
+    cycleTransitionLog: {
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+        id: `transition_${data.cycle_id as string}`,
+        ...data,
+      })),
     },
     prescriptionIntake: {
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
@@ -404,6 +422,7 @@ function buildTx(state: TestState) {
         state.workflowExceptions.push(data);
         return { id: `exception_${state.workflowExceptions.length}` };
       }),
+      updateMany: vi.fn(async () => ({ count: 0 })), // B3/B4
     },
     prescriptionLine: {
       update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
@@ -503,6 +522,7 @@ function buildTx(state: TestState) {
       }),
     },
     dispenseAudit: {
+      findFirst: vi.fn(async () => null), // B2: no existing audit
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
         id: `audit_${data.task_id as string}`,
         result: data.result as string,
@@ -742,6 +762,8 @@ describe('workflow full-cycle integration', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-29T09:00:00.000Z'));
 
     state = {
       patient: {
@@ -757,8 +779,9 @@ describe('workflow full-cycle integration', () => {
       cycle: {
         id: 'cycle_1',
         patient_id: 'patient_1',
-        overall_status: 'assessment',
+        overall_status: 'ready_to_dispense',
         exception_status: null,
+        version: 1,
       },
       intake: null,
       inquiry: {
@@ -918,6 +941,10 @@ describe('workflow full-cycle integration', () => {
         };
       }
     );
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('passes the prescription intake -> inquiry -> dispense -> audit -> visit -> report flow', async () => {

@@ -7,8 +7,18 @@ import { prisma } from '@/lib/db/client';
 import { Prisma } from '@prisma/client';
 import {
   assertFacilityReference,
+  assertFacilityUnitReference,
+  FacilityReferenceValidationError,
+  FacilityUnitReferenceValidationError,
   getFacilityVisitDefaults,
 } from '@/lib/patient/facility-reference';
+import {
+  getPatientPrivacyFlags,
+  maskAddressDetail,
+  maskContactValue,
+  maskInsuranceNumber,
+  maskPhoneNumber,
+} from '@/lib/patient/privacy';
 import { listCommunicationQueue } from '@/server/services/communication-queue';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
 import { getPatientHomeCareFeatureSummary } from '@/server/services/home-care-ops';
@@ -92,10 +102,16 @@ export async function GET(
   if (!patient) return notFound('患者が見つかりません');
 
   const caseIds = (patient.cases ?? []).map((item) => item.id);
+  const currentMonthStart = new Date();
+  currentMonthStart.setHours(0, 0, 0, 0);
+  currentMonthStart.setDate(1);
+  const nextMonthStart = new Date(currentMonthStart);
+  nextMonthStart.setMonth(nextMonthStart.getMonth() + 1);
 
   const [
     currentMedications,
     visitSchedules,
+    currentMonthVisitCount,
     visitRecords,
     careReports,
     communicationEvents,
@@ -164,6 +180,18 @@ export async function GET(
                 next_visit_suggestion_date: true,
                 created_at: true,
               },
+            },
+          },
+        }),
+    caseIds.length === 0
+      ? Promise.resolve(0)
+      : prisma.visitSchedule.count({
+          where: {
+            org_id: ctx.orgId,
+            case_id: { in: caseIds },
+            scheduled_date: {
+              gte: currentMonthStart,
+              lt: nextMonthStart,
             },
           },
         }),
@@ -411,6 +439,7 @@ export async function GET(
     orgId: ctx.orgId,
     patientId: id,
   });
+  const privacy = getPatientPrivacyFlags(ctx.role);
 
   const timeline_events = [
     ...visitSchedules.map((item) => ({
@@ -427,7 +456,7 @@ export async function GET(
       occurred_at: item.visit_date ?? item.created_at,
       title: `訪問記録 ${item.outcome_status}`,
       summary: item.revisit_reason ?? item.postpone_reason ?? item.cancellation_reason ?? null,
-      href: `/visits/${item.schedule_id}/record`,
+      href: item.schedule_id ? `/visits/${item.schedule_id}/record` : `/visits/${item.id}`,
     })),
     ...careReports.map((item) => ({
       id: `care_report:${item.id}`,
@@ -502,12 +531,38 @@ export async function GET(
 
   return success({
     ...patient,
+    phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(patient.phone) : patient.phone,
+    medical_insurance_number: privacy.sensitiveFieldsMasked
+      ? maskInsuranceNumber(patient.medical_insurance_number)
+      : patient.medical_insurance_number,
+    care_insurance_number: privacy.sensitiveFieldsMasked
+      ? maskInsuranceNumber(patient.care_insurance_number)
+      : patient.care_insurance_number,
+    residences: (patient.residences ?? []).map((residence) => ({
+      ...residence,
+      address: privacy.addressFieldsMasked
+        ? maskAddressDetail(residence.address)
+        : residence.address,
+    })),
+    contacts: (patient.contacts ?? []).map((contact) => ({
+      ...contact,
+      phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.phone) : contact.phone,
+      fax: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.fax) : contact.fax,
+      email: privacy.sensitiveFieldsMasked ? maskContactValue(contact.email) : contact.email,
+      address: privacy.addressFieldsMasked ? maskAddressDetail(contact.address) : contact.address,
+    })),
     current_medications: currentMedications,
     visit_schedules: visitSchedules,
+    monthly_visit_count: currentMonthVisitCount,
     visit_records: visitRecords,
     care_reports: careReports,
     self_reports: selfReports,
-    external_shares: externalShares,
+    external_shares: externalShares.map((item) => ({
+      ...item,
+      granted_to_contact: privacy.sensitiveFieldsMasked
+        ? maskContactValue(item.granted_to_contact)
+        : item.granted_to_contact,
+    })),
     open_tasks: openTasks,
     medication_issues: medicationIssues,
     communication_queue: communicationQueue,
@@ -516,7 +571,16 @@ export async function GET(
     visit_brief: visitBrief,
     first_visit_documents: firstVisitDocuments.map((item) => ({
       ...item,
-      emergency_contacts: normalizeFirstVisitDocumentContacts(item.emergency_contacts),
+      emergency_contacts: normalizeFirstVisitDocumentContacts(item.emergency_contacts).map(
+        (contact) => ({
+          ...contact,
+          phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.phone) : contact.phone,
+          fax: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.fax) : contact.fax,
+          email: privacy.sensitiveFieldsMasked
+            ? maskContactValue(contact.email)
+            : contact.email,
+        })
+      ),
     })),
     billing_summary: {
       evidence: billingEvidence.map((item) => ({
@@ -529,6 +593,11 @@ export async function GET(
       blocked_count: billingEvidence.filter((item) => !item.claimable).length,
     },
     timeline_events,
+    privacy: {
+      sensitive_fields_masked: privacy.sensitiveFieldsMasked,
+      address_fields_masked: privacy.addressFieldsMasked,
+      can_view_detail: privacy.canViewDetail,
+    },
   });
 }
 
@@ -572,16 +641,46 @@ export async function PATCH(
     intake: _intake,
     ...rest
   } = parsed.data;
+  void _requester;
+  void _intake;
 
-  const patient = await withOrgContext(ctx.orgId, async (tx) => {
-    const facilityVisitDefaults =
-      facility_id !== undefined
-        ? await getFacilityVisitDefaults(tx, ctx.orgId, facility_id || null)
-        : null;
+  try {
+    const patient = await withOrgContext(ctx.orgId, async (tx) => {
+      const primaryResidence = await tx.residence.findFirst({
+        where: { patient_id: id, is_primary: true },
+        select: {
+          id: true,
+          facility_id: true,
+          facility_unit_id: true,
+        },
+      });
 
-    if (facility_id !== undefined) {
-      await assertFacilityReference(tx, ctx.orgId, facility_id || null);
-    }
+      const currentFacilityId = primaryResidence?.facility_id ?? null;
+      const nextFacilityId =
+        facility_id !== undefined ? facility_id || null : currentFacilityId;
+      const nextFacilityUnitId =
+        facility_unit_id !== undefined
+          ? facility_unit_id || null
+          : facility_id !== undefined && nextFacilityId !== currentFacilityId
+            ? null
+            : primaryResidence?.facility_unit_id ?? null;
+
+      const facilityVisitDefaults =
+        facility_id !== undefined
+          ? await getFacilityVisitDefaults(tx, ctx.orgId, nextFacilityId)
+          : null;
+
+      if (facility_id !== undefined) {
+        await assertFacilityReference(tx, ctx.orgId, nextFacilityId);
+      }
+      if (facility_id !== undefined || facility_unit_id !== undefined) {
+        await assertFacilityUnitReference(
+          tx,
+          ctx.orgId,
+          nextFacilityId,
+          nextFacilityUnitId
+        );
+      }
 
     const updated = await tx.patient.update({
       where: { id },
@@ -601,17 +700,17 @@ export async function PATCH(
       facility_unit_id !== undefined ||
       unit_name !== undefined
     ) {
-      const primary = await tx.residence.findFirst({
-        where: { patient_id: id, is_primary: true },
-      });
-      if (primary) {
+      if (primaryResidence) {
         await tx.residence.update({
-          where: { id: primary.id },
+          where: { id: primaryResidence.id },
           data: {
             ...(address !== undefined ? { address } : {}),
             ...(building_id !== undefined ? { building_id: building_id || null } : {}),
-            ...(facility_id !== undefined ? { facility_id: facility_id || null } : {}),
-            ...(facility_unit_id !== undefined ? { facility_unit_id: facility_unit_id || null } : {}),
+            ...(facility_id !== undefined ? { facility_id: nextFacilityId } : {}),
+            ...(facility_unit_id !== undefined ||
+            (facility_id !== undefined && nextFacilityId !== currentFacilityId)
+              ? { facility_unit_id: nextFacilityUnitId }
+              : {}),
             ...(unit_name !== undefined ? { unit_name: unit_name || null } : {}),
           },
         });
@@ -622,8 +721,8 @@ export async function PATCH(
             patient_id: id,
             address: address ?? '',
             building_id: building_id || null,
-            facility_id: facility_id || null,
-            facility_unit_id: facility_unit_id || null,
+            facility_id: nextFacilityId,
+            facility_unit_id: nextFacilityUnitId,
             unit_name: unit_name || null,
             is_primary: true,
           },
@@ -710,8 +809,17 @@ export async function PATCH(
       }
     }
 
-    return updated;
-  }, { requestContext: ctx });
+      return updated;
+    }, { requestContext: ctx });
 
-  return success(patient);
+    return success(patient);
+  } catch (error) {
+    if (
+      error instanceof FacilityReferenceValidationError ||
+      error instanceof FacilityUnitReferenceValidationError
+    ) {
+      return validationError(error.message);
+    }
+    throw error;
+  }
 }

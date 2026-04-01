@@ -7,7 +7,9 @@ const {
   setPlanFindManyMock,
   setPlanCreateMock,
   medicationCycleFindFirstMock,
-  medicationCycleUpdateMock,
+  medicationCycleUpdateManyMock,
+  cycleTransitionLogCreateMock,
+  packagingMethodFindFirstMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
@@ -15,7 +17,9 @@ const {
   setPlanFindManyMock: vi.fn(),
   setPlanCreateMock: vi.fn(),
   medicationCycleFindFirstMock: vi.fn(),
-  medicationCycleUpdateMock: vi.fn(),
+  medicationCycleUpdateManyMock: vi.fn(),
+  cycleTransitionLogCreateMock: vi.fn(),
+  packagingMethodFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -62,12 +66,23 @@ describe('/api/set-plans', () => {
     medicationCycleFindFirstMock.mockResolvedValue({
       id: 'cycle_1',
       overall_status: 'audited',
+      version: 1,
+      case_: { patient: { packaging_preferences: null, packaging_profile: null } },
     });
+    medicationCycleUpdateManyMock.mockResolvedValue({ count: 1 });
+    cycleTransitionLogCreateMock.mockResolvedValue({});
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         medicationCycle: {
           findFirst: medicationCycleFindFirstMock,
-          update: medicationCycleUpdateMock,
+          findFirstOrThrow: vi.fn().mockResolvedValue({ id: 'cycle_1', overall_status: 'setting' }),
+          updateMany: medicationCycleUpdateManyMock,
+        },
+        cycleTransitionLog: {
+          create: cycleTransitionLogCreateMock,
+        },
+        packagingMethodMaster: {
+          findFirst: packagingMethodFindFirstMock,
         },
         setPlan: {
           create: setPlanCreateMock,
@@ -102,9 +117,30 @@ describe('/api/set-plans', () => {
 
     expect(response.status).toBe(201);
     expect(setPlanCreateMock).toHaveBeenCalled();
-    expect(medicationCycleUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'cycle_1' },
-      data: { overall_status: 'setting' },
+    expect(medicationCycleUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'cycle_1', version: 1 },
+      data: { overall_status: 'setting', version: { increment: 1 } },
     });
+    expect(cycleTransitionLogCreateMock).toHaveBeenCalled();
+  });
+
+  it('rejects a target period whose end date is before the start date', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/set-plans', {
+        cycle_id: 'cycle_1',
+        target_period_start: '2026-04-07',
+        target_period_end: '2026-04-01',
+        set_method: 'custom',
+      })
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        target_period_end: ['終了日は開始日以降を指定してください'],
+      },
+    });
+    expect(setPlanCreateMock).not.toHaveBeenCalled();
   });
 });

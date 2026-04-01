@@ -1,18 +1,12 @@
 import { NextRequest } from 'next/server';
-import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { success, validationError, notFound } from '@/lib/api/response';
-
-const createConfigSchema = z.object({
-  insurance_type: z.enum(['medical', 'care']),
-  revision_code: z.string().min(1, '改定年度コードは必須です'),
-  revision_label: z.string().optional().nullable(),
-  effective_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です'),
-  effective_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です').optional().nullable(),
-  config: z.record(z.string(), z.any()).default({}),
-});
+import {
+  pharmacySiteInsuranceConfigCreateSchema,
+  rangesOverlap,
+} from '@/lib/validations/pharmacy-site-insurance-config';
 
 export async function GET(
   req: NextRequest,
@@ -54,7 +48,7 @@ export async function POST(
   const body = await req.json().catch(() => null);
   if (!body) return validationError('リクエストボディが不正です');
 
-  const parsed = createConfigSchema.safeParse(body);
+  const parsed = pharmacySiteInsuranceConfigCreateSchema.safeParse(body);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
@@ -79,6 +73,28 @@ export async function POST(
     return validationError('同じ保険種別・改定年度の設定が既に存在します');
   }
 
+  const nextStart = new Date(parsed.data.effective_from);
+  const nextEnd = parsed.data.effective_to ? new Date(parsed.data.effective_to) : null;
+  const overlappingConfigs = await prisma.pharmacySiteInsuranceConfig.findMany({
+    where: {
+      org_id: ctx.orgId,
+      site_id: id,
+      insurance_type: parsed.data.insurance_type,
+    },
+  });
+  if (
+    overlappingConfigs.some((config) =>
+      rangesOverlap({
+        nextStart,
+        nextEnd,
+        currentStart: config.effective_from,
+        currentEnd: config.effective_to,
+      })
+    )
+  ) {
+    return validationError('同一保険種別で適用期間が重複する設定は登録できません');
+  }
+
   const config = await withOrgContext(ctx.orgId, async (tx) => {
     const created = await tx.pharmacySiteInsuranceConfig.create({
       data: {
@@ -87,8 +103,8 @@ export async function POST(
         insurance_type: parsed.data.insurance_type,
         revision_code: parsed.data.revision_code,
         revision_label: parsed.data.revision_label ?? null,
-        effective_from: new Date(parsed.data.effective_from),
-        effective_to: parsed.data.effective_to ? new Date(parsed.data.effective_to) : null,
+        effective_from: nextStart,
+        effective_to: nextEnd,
         config: parsed.data.config,
       },
     });
@@ -112,5 +128,5 @@ export async function POST(
     return created;
   });
 
-  return success(config, 201);
+  return success({ data: config }, 201);
 }

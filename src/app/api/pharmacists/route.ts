@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError } from '@/lib/api/response';
+import { forbiddenResponse, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import {
@@ -12,15 +12,33 @@ import {
 import { createPharmacistSchema } from '@/lib/validations/pharmacist';
 import { inviteCognitoUser } from '@/server/services/cognito-admin';
 
+function dedupePharmacistsByUserId<T extends { id: string }>(items: T[]) {
+  const uniqueItems = new Map<string, T>();
+  for (const item of items) {
+    if (!uniqueItems.has(item.id)) {
+      uniqueItems.set(item.id, item);
+    }
+  }
+  return Array.from(uniqueItems.values());
+}
+
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const { searchParams } = new URL(req.url);
   const siteId = searchParams.get('site_id');
   const includeCollaborators = searchParams.get('include_collaborators') === 'true';
+  if (includeCollaborators && req.role !== 'owner' && req.role !== 'admin') {
+    return forbiddenResponse('スタッフ管理一覧の閲覧権限がありません');
+  }
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const nextMonthStart = new Date(monthStart);
+  nextMonthStart.setMonth(nextMonthStart.getMonth() + 1);
 
   const pharmacists = await prisma.membership.findMany({
     where: {
       org_id: req.orgId,
-      is_active: true,
+      ...(includeCollaborators ? {} : { is_active: true }),
       role: {
         in: includeCollaborators
           ? ['owner', ...MANAGEABLE_MEMBER_ROLES]
@@ -32,6 +50,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       user: {
         select: {
           id: true,
+          cognito_username: true,
           name: true,
           name_kana: true,
           email: true,
@@ -43,12 +62,18 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
           activated_at: true,
           deactivated_at: true,
           deactivation_reason: true,
+          updated_at: true,
           max_daily_visits: true,
           max_weekly_visits: true,
           max_travel_minutes: true,
           can_accept_emergency: true,
           visit_specialties: true,
           coverage_area: true,
+          credentials: {
+            select: {
+              certification_type: true,
+            },
+          },
         },
       },
       site: {
@@ -61,9 +86,35 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     orderBy: [{ user: { name_kana: 'asc' } }],
   });
 
-  return success({
-    data: pharmacists.map((membership) => ({
+  const pharmacistIds = pharmacists.map((membership) => membership.user.id);
+  const monthlyVisitCounts = pharmacistIds.length === 0
+    ? []
+    : await prisma.visitSchedule.groupBy({
+        by: ['pharmacist_id'],
+        where: {
+          org_id: req.orgId,
+          pharmacist_id: { in: pharmacistIds },
+          scheduled_date: {
+            gte: monthStart,
+            lt: nextMonthStart,
+          },
+          schedule_status: {
+            not: 'cancelled',
+          },
+        },
+        _count: {
+          _all: true,
+        },
+      });
+  const monthlyVisitCountByUserId = new Map(
+    monthlyVisitCounts
+      .filter((item) => item.pharmacist_id)
+      .map((item) => [item.pharmacist_id as string, item._count._all])
+  );
+
+  const data = pharmacists.map((membership) => ({
       id: membership.user.id,
+      cognito_linked: Boolean(membership.user.cognito_username),
       name: membership.user.name,
       name_kana: membership.user.name_kana,
       email: membership.user.email,
@@ -78,13 +129,27 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       activated_at: membership.user.activated_at,
       deactivated_at: membership.user.deactivated_at,
       deactivation_reason: membership.user.deactivation_reason,
+      last_active_at:
+        membership.user.activated_at ??
+        membership.user.last_invited_at ??
+        membership.user.invited_at ??
+        membership.user.updated_at,
       max_daily_visits: membership.user.max_daily_visits,
       max_weekly_visits: membership.user.max_weekly_visits,
       max_travel_minutes: membership.user.max_travel_minutes,
       can_accept_emergency: membership.user.can_accept_emergency,
       visit_specialties: membership.user.visit_specialties,
       coverage_area: membership.user.coverage_area,
-    })),
+      can_dispense: membership.can_dispense,
+      can_audit_dispense: membership.can_audit_dispense,
+      can_set: membership.can_set,
+      can_audit_set: membership.can_audit_set,
+      credential_types: membership.user.credentials.map((credential) => credential.certification_type),
+      monthly_visit_count: monthlyVisitCountByUserId.get(membership.user.id) ?? 0,
+    }));
+
+  return success({
+    data: includeCollaborators ? dedupePharmacistsByUserId(data) : data,
   });
 }, {
   permission: 'canVisit',

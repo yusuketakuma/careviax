@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
@@ -527,7 +528,7 @@ export async function GET(
           called_at: log.called_at.toISOString(),
         })),
         facility_mode: {
-          label: primaryResidence?.building_id ?? primaryResidence?.address ?? null,
+          label: deriveFacilityLabel(primaryResidence ?? null),
           same_day_patient_count: sameFacilitySchedules.length + 1,
           same_day_patient_names: [
             schedule.case_.patient.name,

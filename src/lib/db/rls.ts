@@ -41,6 +41,9 @@ export async function withOrgContext<T>(
 ): Promise<T> {
   validateOrgId(orgId);
   const requestContext = options?.requestContext ?? getRequestAuthContext();
+  if (requestContext?.orgId && requestContext.orgId !== orgId) {
+    throw new Error(`Request orgId mismatch: expected ${requestContext.orgId}, received ${orgId}`);
+  }
 
   if (!requestContext) {
     logSecurityEvent({
@@ -54,6 +57,7 @@ export async function withOrgContext<T>(
 
   return prisma.$transaction(async (tx) => {
     await setLocalConfig(tx, 'app.current_org_id', orgId);
+    await setLocalConfig(tx, 'app.rls_context_applied', 'true');
     await setLocalConfig(tx, 'app.current_actor_id', requestContext?.userId);
     await setLocalConfig(tx, 'app.current_member_role', requestContext?.role);
     await setLocalConfig(tx, 'app.current_ip_address', requestContext?.ipAddress);

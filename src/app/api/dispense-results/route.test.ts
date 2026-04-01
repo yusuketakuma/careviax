@@ -189,7 +189,13 @@ describe('/api/dispense-results POST', () => {
       },
     ]);
     const dispenseTaskUpdateMock = vi.fn().mockResolvedValue({});
-    const medicationCycleUpdateMock = vi.fn().mockResolvedValue({});
+    const medicationCycleFindFirstMock = vi.fn().mockResolvedValue({
+      id: 'cycle_1',
+      overall_status: 'dispensing',
+      version: 1,
+    });
+    const medicationCycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const cycleTransitionLogCreateMock = vi.fn().mockResolvedValue({});
     const visitScheduleUpdateMock = vi.fn().mockResolvedValue({});
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -236,8 +242,17 @@ describe('/api/dispense-results POST', () => {
           create: dispenseResultCreateMock,
           findMany: dispenseResultFindManyMock,
         },
-        medicationCycle: { update: medicationCycleUpdateMock },
+        medicationCycle: {
+          findFirst: medicationCycleFindFirstMock,
+          findFirstOrThrow: vi.fn().mockResolvedValue({ id: 'cycle_1', overall_status: 'audit_pending' }),
+          updateMany: medicationCycleUpdateManyMock,
+        },
+        cycleTransitionLog: { create: cycleTransitionLogCreateMock },
         visitSchedule: { update: visitScheduleUpdateMock },
+        workflowException: {
+          create: vi.fn().mockResolvedValue({}),
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }), // B3
+        },
         membership: {
           findMany: vi.fn().mockResolvedValue([{ user_id: 'auditor_1' }]),
         },
@@ -278,10 +293,11 @@ describe('/api/dispense-results POST', () => {
         carry_items_status: 'partial',
       }),
     });
-    expect(medicationCycleUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'cycle_1' },
-      data: { overall_status: 'audit_pending' },
+    expect(medicationCycleUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'cycle_1', version: 1 },
+      data: { overall_status: 'audit_pending', version: { increment: 1 } },
     });
+    expect(cycleTransitionLogCreateMock).toHaveBeenCalled();
     expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({

@@ -5,6 +5,7 @@ const {
   withAuthMock,
   withOrgContextMock,
   dispatchNotificationEventMock,
+  dispenseTaskFindManyMock,
 } = vi.hoisted(() => ({
   withAuthMock: vi.fn((
     handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>
@@ -18,6 +19,7 @@ const {
   }),
   withOrgContextMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
+  dispenseTaskFindManyMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
@@ -29,20 +31,106 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 vi.mock('@/lib/db/client', () => ({
-  prisma: {},
+  prisma: {
+    dispenseTask: {
+      findMany: dispenseTaskFindManyMock,
+    },
+  },
 }));
 
 vi.mock('@/server/services/notifications', () => ({
   dispatchNotificationEvent: dispatchNotificationEventMock,
 }));
 
-import { POST } from './route';
+import { GET, POST } from './route';
 
 function createRequest(body: unknown) {
   return {
     json: async () => body,
   } as unknown as NextRequest;
 }
+
+function createGetRequest() {
+  return {
+    url: 'http://localhost/api/dispense-audits',
+  } as NextRequest;
+}
+
+describe('/api/dispense-audits GET', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dispenseTaskFindManyMock.mockResolvedValue([
+      {
+        id: 'task_hold',
+        priority: 'urgent',
+        due_date: new Date('2026-03-29T09:00:00.000Z'),
+        updated_at: new Date('2026-03-29T10:00:00.000Z'),
+        audits: [{ id: 'audit_1', result: 'hold', audited_at: new Date('2026-03-29T10:30:00.000Z') }],
+        results: [],
+        cycle: {
+          id: 'cycle_1',
+          patient_id: 'patient_1',
+          overall_status: 'auditing',
+          case_: {
+            id: 'case_1',
+            patient: {
+              id: 'patient_1',
+              name: '山田 太郎',
+              name_kana: 'ヤマダ タロウ',
+              residences: [{ building_id: 'facility_1', address: '施設A' }],
+            },
+          },
+          prescription_intakes: [],
+        },
+      },
+      {
+        id: 'task_approved',
+        priority: 'normal',
+        due_date: null,
+        updated_at: new Date('2026-03-29T11:00:00.000Z'),
+        audits: [{ id: 'audit_2', result: 'approved', audited_at: new Date('2026-03-29T11:30:00.000Z') }],
+        results: [],
+        cycle: {
+          id: 'cycle_2',
+          patient_id: 'patient_2',
+          overall_status: 'visit_ready',
+          case_: {
+            id: 'case_2',
+            patient: {
+              id: 'patient_2',
+              name: '佐藤 花子',
+              name_kana: 'サトウ ハナコ',
+              residences: [{ building_id: 'facility_2', address: '施設B' }],
+            },
+          },
+          prescription_intakes: [],
+        },
+      },
+    ]);
+  });
+
+  it('shows hold items again and excludes already approved audits', async () => {
+    const response = await GET(createGetRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      data: Array<{ id: string; facility_label: string | null; is_overdue: boolean }>;
+    };
+    expect(payload.data).toEqual([
+      expect.objectContaining({
+        id: 'task_hold',
+        facility_label: 'facility_1',
+        is_overdue: true,
+      }),
+    ]);
+    expect(payload.data).not.toContainEqual(
+      expect.objectContaining({
+        id: 'task_approved',
+      })
+    );
+  });
+});
 
 describe('/api/dispense-audits POST', () => {
   beforeEach(() => {
@@ -51,7 +139,9 @@ describe('/api/dispense-audits POST', () => {
 
   it('moves a rejected task back to dispensing and notifies the assignee', async () => {
     const taskUpdateMock = vi.fn().mockResolvedValue({});
-    const cycleUpdateMock = vi.fn().mockResolvedValue({});
+    const cycleFindFirstMock = vi.fn().mockResolvedValue({ id: 'cycle_1', overall_status: 'audit_pending', version: 1 });
+    const cycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const cycleTransitionLogCreateMock = vi.fn().mockResolvedValue({});
     const workflowExceptionCreateMock = vi.fn().mockResolvedValue({});
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -75,6 +165,9 @@ describe('/api/dispense-audits POST', () => {
           }),
           update: taskUpdateMock,
         },
+        dispenseResult: {
+          findMany: vi.fn().mockResolvedValue([{ dispensed_by: 'user_dispense' }]),
+        },
         membership: {
           findFirst: vi.fn().mockResolvedValue({ id: 'membership_admin' }),
           findMany: vi.fn().mockResolvedValue([
@@ -83,16 +176,18 @@ describe('/api/dispense-audits POST', () => {
           ]),
         },
         dispenseAudit: {
-          create: vi.fn().mockResolvedValue({
-            id: 'audit_1',
-            result: 'rejected',
-          }),
+          create: vi.fn().mockResolvedValue({ id: 'audit_1', result: 'rejected' }),
+          findFirst: vi.fn().mockResolvedValue(null),
         },
         medicationCycle: {
-          update: cycleUpdateMock,
+          findFirst: cycleFindFirstMock,
+          findFirstOrThrow: vi.fn().mockResolvedValue({ id: 'cycle_1', overall_status: 'dispensing' }),
+          updateMany: cycleUpdateManyMock,
         },
+        cycleTransitionLog: { create: cycleTransitionLogCreateMock },
         workflowException: {
           create: workflowExceptionCreateMock,
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
         },
       })
     );
@@ -108,9 +203,9 @@ describe('/api/dispense-audits POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
-    expect(cycleUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'cycle_1' },
-      data: { overall_status: 'dispensing' },
+    expect(cycleUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'cycle_1', version: 1 },
+      data: { overall_status: 'dispensing', version: { increment: 1 } },
     });
     expect(taskUpdateMock).toHaveBeenCalledWith({
       where: { id: 'task_1' },
@@ -143,7 +238,11 @@ describe('/api/dispense-audits POST', () => {
   });
 
   it('moves approved cycles to visit_ready when no set plan exists', async () => {
-    const cycleUpdateMock = vi.fn().mockResolvedValue({});
+    const cycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    // Two transitions: audit_pending→audited, then audited→visit_ready
+    const cycleFindFirstMock = vi.fn()
+      .mockResolvedValueOnce({ id: 'cycle_2', overall_status: 'audit_pending', version: 1 })
+      .mockResolvedValueOnce({ id: 'cycle_2', overall_status: 'audited', version: 2 });
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -167,21 +266,26 @@ describe('/api/dispense-audits POST', () => {
           }),
           update: vi.fn().mockResolvedValue({}),
         },
+        dispenseResult: {
+          findMany: vi.fn().mockResolvedValue([{ dispensed_by: 'user_dispense' }]),
+        },
         membership: {
           findFirst: vi.fn().mockResolvedValue({ id: 'membership_admin' }),
           findMany: vi.fn().mockResolvedValue([]),
         },
         dispenseAudit: {
-          create: vi.fn().mockResolvedValue({
-            id: 'audit_2',
-            result: 'approved',
-          }),
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockResolvedValue({ id: 'audit_2', result: 'approved' }),
         },
         medicationCycle: {
-          update: cycleUpdateMock,
+          findFirst: cycleFindFirstMock,
+          findFirstOrThrow: vi.fn().mockResolvedValue({ id: 'cycle_2', overall_status: 'visit_ready' }),
+          updateMany: cycleUpdateManyMock,
         },
+        cycleTransitionLog: { create: vi.fn().mockResolvedValue({}) },
         workflowException: {
           create: vi.fn().mockResolvedValue({}),
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
         },
       })
     );
@@ -195,10 +299,11 @@ describe('/api/dispense-audits POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
-    expect(cycleUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'cycle_2' },
-      data: { overall_status: 'visit_ready' },
-    });
+    expect(cycleUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ overall_status: 'visit_ready' }),
+      })
+    );
   });
 
   it('stores external packaging-audit metadata in reject_detail', async () => {
@@ -229,18 +334,26 @@ describe('/api/dispense-audits POST', () => {
           }),
           update: vi.fn().mockResolvedValue({}),
         },
+        dispenseResult: {
+          findMany: vi.fn().mockResolvedValue([{ dispensed_by: 'user_dispense' }]),
+        },
         membership: {
           findFirst: vi.fn().mockResolvedValue({ id: 'membership_admin' }),
           findMany: vi.fn().mockResolvedValue([]),
         },
         dispenseAudit: {
+          findFirst: vi.fn().mockResolvedValue(null),
           create: dispenseAuditCreateMock,
         },
         medicationCycle: {
-          update: vi.fn().mockResolvedValue({}),
+          findFirst: vi.fn().mockResolvedValue({ id: 'cycle_3', overall_status: 'audit_pending', version: 1 }),
+          findFirstOrThrow: vi.fn().mockResolvedValue({ id: 'cycle_3', overall_status: 'on_hold' }),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         },
+        cycleTransitionLog: { create: vi.fn().mockResolvedValue({}) },
         workflowException: {
           create: vi.fn().mockResolvedValue({}),
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
         },
       })
     );

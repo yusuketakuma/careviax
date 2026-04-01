@@ -9,6 +9,9 @@ const { authMock, prismaMock, withOrgContextMock, txMock } = vi.hoisted(() => ({
   },
   withOrgContextMock: vi.fn(),
   txMock: {
+    packagingMethodMaster: {
+      findFirst: vi.fn(),
+    },
     setPlan: {
       findFirst: vi.fn(),
       update: vi.fn(),
@@ -56,10 +59,26 @@ describe('/api/set-plans/[id]', () => {
       },
     });
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
-    txMock.setPlan.findFirst.mockResolvedValue({ id: 'plan_1' });
+    txMock.setPlan.findFirst.mockResolvedValue({
+      id: 'plan_1',
+      target_period_start: new Date('2026-04-01T00:00:00.000Z'),
+      target_period_end: new Date('2026-04-07T00:00:00.000Z'),
+      set_method: 'custom',
+      notes: null,
+      packaging_method_id: null,
+      cycle: {
+        case_: {
+          patient: {
+            packaging_preferences: null,
+            packaging_profile: null,
+          },
+        },
+      },
+    });
     txMock.setPlan.update.mockResolvedValue({
       id: 'plan_1',
       set_method: 'bedtime_only',
+      packaging_method_id: null,
       notes: '眠前のみへ変更',
     });
   });
@@ -93,11 +112,30 @@ describe('/api/set-plans/[id]', () => {
     expect(response.status).toBe(200);
     expect(txMock.setPlan.update).toHaveBeenCalledWith({
       where: { id: 'plan_1' },
-      data: {
+      data: expect.objectContaining({
         set_method: 'bedtime_only',
         notes: '眠前のみへ変更',
-      },
+      }),
       select: expect.any(Object),
     });
+  });
+
+  it('rejects an invalid target period update', async () => {
+    const response = await PATCH(
+      createRequest({
+        target_period_start: '2026-04-10',
+        target_period_end: '2026-04-01',
+      }),
+      {
+        params: Promise.resolve({ id: 'plan_1' }),
+      }
+    );
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '終了日は開始日以降を指定してください',
+    });
+    expect(txMock.setPlan.update).not.toHaveBeenCalled();
   });
 });

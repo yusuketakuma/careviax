@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRef, type TouchEvent } from 'react';
 import { MapPin, Clock, Navigation, Play } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +29,7 @@ export interface VisitCardMobileProps {
   scheduledTimeStart?: string;
   scheduledTimeEnd?: string;
   status: VisitStatus;
+  patientHref?: string;
   carryItemsStatus?: string | null;
   mustCheckToday?: string[];
   onStartVisit?: (id: string) => void;
@@ -68,6 +70,7 @@ export function VisitCardMobile({
   scheduledTimeStart,
   scheduledTimeEnd,
   status,
+  patientHref,
   carryItemsStatus,
   mustCheckToday = [],
   onStartVisit,
@@ -137,9 +140,18 @@ export function VisitCardMobile({
     >
       {/* Header: patient name + status badge */}
       <div className="flex items-start justify-between gap-2">
-        <h3 className="text-base font-semibold text-card-foreground leading-tight">
-          {patientName}
-        </h3>
+        {patientHref ? (
+          <Link
+            href={patientHref}
+            className="text-base font-semibold leading-tight text-card-foreground hover:underline"
+          >
+            {patientName}
+          </Link>
+        ) : (
+          <h3 className="text-base font-semibold text-card-foreground leading-tight">
+            {patientName}
+          </h3>
+        )}
         <Badge variant={config.variant} className="shrink-0">
           {config.label}
         </Badge>

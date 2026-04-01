@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 
 type CareTeamRow = {
   id?: string;
@@ -218,7 +219,10 @@ export function PatientCareTeamPanel({
     },
     onSuccess: async () => {
       toast.success('多職種連携先を更新しました');
-      await queryClient.invalidateQueries({ queryKey: ['patient', patientId, orgId] });
+      await invalidateQueryKeys(
+        queryClient,
+        getPatientCareQueryKeys({ orgId, patientId })
+      );
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '多職種連携先の保存に失敗しました');

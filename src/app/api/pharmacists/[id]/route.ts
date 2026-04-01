@@ -67,6 +67,7 @@ export async function PATCH(
     if (!refResult.ok) return refResult.response;
 
     const isOperational = isOperationalMemberRole(data.role);
+    const roleFlags = membershipFlagsForRole(data.role);
 
     try {
       await updateCognitoUserProfile({
@@ -104,7 +105,11 @@ export async function PATCH(
         data: {
           site_id: data.site_id ?? null,
           role: data.role,
-          ...membershipFlagsForRole(data.role),
+          can_dispense: data.can_dispense ?? roleFlags.can_dispense,
+          can_audit_dispense:
+            data.can_audit_dispense ?? roleFlags.can_audit_dispense,
+          can_set: data.can_set ?? roleFlags.can_set,
+          can_audit_set: data.can_audit_set ?? roleFlags.can_audit_set,
         },
       });
 
@@ -119,6 +124,11 @@ export async function PATCH(
             site_id: data.site_id,
             role: data.role,
             phone: data.phone ?? null,
+            can_dispense: data.can_dispense ?? roleFlags.can_dispense,
+            can_audit_dispense:
+              data.can_audit_dispense ?? roleFlags.can_audit_dispense,
+            can_set: data.can_set ?? roleFlags.can_set,
+            can_audit_set: data.can_audit_set ?? roleFlags.can_audit_set,
           },
           ip_address: ctx.ipAddress,
           user_agent: ctx.userAgent,

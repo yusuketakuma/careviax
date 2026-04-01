@@ -4,7 +4,8 @@ import { useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { AlertTriangle, Loader2, Save, Wand2 } from 'lucide-react';
+import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import { AlertTriangle, History, Loader2, Save, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,8 +20,34 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import { PreviousStageSummary } from '@/components/features/workflow/previous-stage-summary';
+import { StageTimeline } from '@/components/features/workflow/stage-timeline';
+import { SET_METHOD_LABELS, SET_METHOD_OPTIONS } from '@/lib/prescription/set-methods';
 
 // --- Types ---
+
+type PackagingSummary = {
+  packaging_method_name: string | null;
+  patient_default_method_label: string | null;
+  medication_box_color: string | null;
+  box_config: Record<string, string> | null;
+  special_instructions: string[];
+  tag_labels: string[];
+};
+
+type PackagingMethodRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+};
 
 type PrescriptionLine = {
   id: string;
@@ -31,8 +58,10 @@ type PrescriptionLine = {
   frequency: string;
   days: number;
   unit: string | null;
+  packaging_method: string | null;
   dosage_form: string | null;
   packaging_instructions: string | null;
+  packaging_instruction_tags: string[];
   notes: string | null;
 };
 
@@ -50,8 +79,16 @@ type SetPlan = {
   target_period_start: string;
   target_period_end: string;
   set_method: string;
+  packaging_method_id: string | null;
+  packaging_summary_snapshot: PackagingSummary | null;
   notes: string | null;
   updated_at: string;
+  stale_line_ids: string[];
+  packaging_method_ref?: {
+    id: string;
+    name: string;
+    description: string | null;
+  } | null;
   cycle: {
     id: string;
     overall_status: string;
@@ -74,6 +111,18 @@ type SetPlan = {
     reject_reason: string | null;
     audited_at: string;
   }>;
+  change_logs: Array<{
+    id: string;
+    action: string;
+    trigger_source: string | null;
+    reason: string | null;
+    line_ids: string[] | null;
+    before_snapshot: unknown;
+    after_snapshot: unknown;
+    changed_by: string | null;
+    created_at: string;
+    batch_id: string | null;
+  }>;
 };
 
 type SetBatch = {
@@ -84,6 +133,9 @@ type SetBatch = {
   day_number: number;
   quantity: number;
   carry_type: string;
+  packaging_method_snapshot: string | null;
+  packaging_instructions_snapshot: string | null;
+  packaging_instruction_tags_snapshot: string[];
   version: number;
   updated_at: string;
   line: {
@@ -94,7 +146,9 @@ type SetBatch = {
     dose: string;
     frequency: string;
     unit: string | null;
+    packaging_method: string | null;
     packaging_instructions: string | null;
+    packaging_instruction_tags: string[];
     notes: string | null;
   };
 };
@@ -113,6 +167,7 @@ type PlanForm = {
   target_period_start: string;
   target_period_end: string;
   set_method: string;
+  packaging_method_id: string;
   notes: string;
 };
 
@@ -135,13 +190,6 @@ const SLOT_COLORS: Record<Slot, string> = {
   evening: 'bg-orange-50 text-orange-800 border-orange-200',
   bedtime: 'bg-purple-50 text-purple-800 border-purple-200',
   prn: 'bg-gray-50 text-gray-700 border-gray-200',
-};
-
-const SET_METHOD_LABELS: Record<string, string> = {
-  facility_calendar: '施設カレンダー',
-  four_times_daily: '1日4回',
-  bedtime_only: '眠前のみ',
-  custom: 'カスタム',
 };
 
 const CARRY_TYPE_LABELS: Record<string, string> = {
@@ -174,7 +222,13 @@ function getSlotsUsed(batches: SetBatch[]): Slot[] {
 
 // --- Sub-components ---
 
-function PrescriptionPanel({ intakes }: { intakes: PrescriptionIntake[] }) {
+function PrescriptionPanel({
+  intakes,
+  staleLineIds,
+}: {
+  intakes: PrescriptionIntake[];
+  staleLineIds: Set<string>;
+}) {
   return (
     <Card className="h-full">
       <CardHeader>
@@ -192,11 +246,28 @@ function PrescriptionPanel({ intakes }: { intakes: PrescriptionIntake[] }) {
               </p>
               <ul className="space-y-1.5">
                 {intake.lines.map((line) => (
-                  <li key={line.id} className="rounded-md border border-border bg-muted/30 px-3 py-2">
+                  <li
+                    key={line.id}
+                    className={`rounded-md border px-3 py-2 ${
+                      staleLineIds.has(line.id)
+                        ? 'border-amber-300 bg-amber-50'
+                        : 'border-border bg-muted/30'
+                    }`}
+                  >
                     <p className="text-sm font-medium">{line.drug_name}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {line.dose} / {line.frequency} / {line.days}日分
                     </p>
+                    {line.packaging_instructions ? (
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        包装: {line.packaging_instructions}
+                      </p>
+                    ) : null}
+                    {staleLineIds.has(line.id) ? (
+                      <p className="mt-1 text-[11px] font-medium text-amber-900">
+                        セット生成後に変更あり
+                      </p>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -212,11 +283,13 @@ function SlotGridPanel({
   plan,
   batches,
   drafts,
+  staleLineIds,
   onDraftChange,
 }: {
   plan: SetPlan;
   batches: SetBatch[];
   drafts: Map<CellKey, DraftEdit>;
+  staleLineIds: Set<string>;
   onDraftChange: (
     key: CellKey,
     batch: SetBatch,
@@ -281,7 +354,9 @@ function SlotGridPanel({
             return lines.map((line, lineIdx) => (
               <tr key={`${slot}-${line.id}`}>
                 <td
-                  className={`border border-border px-2 py-1.5 font-medium whitespace-nowrap ${SLOT_COLORS[slot]}`}
+                  className={`border border-border px-2 py-1.5 font-medium whitespace-nowrap ${SLOT_COLORS[slot]} ${
+                    staleLineIds.has(line.id) ? 'ring-1 ring-amber-300 ring-inset bg-amber-50/80' : ''
+                  }`}
                 >
                   {lineIdx === 0 && (
                     <Badge
@@ -293,6 +368,9 @@ function SlotGridPanel({
                   )}
                   <p className="text-xs">{line.drug_name}</p>
                   <p className="text-[10px] text-muted-foreground">{line.dose}</p>
+                  {staleLineIds.has(line.id) ? (
+                    <p className="mt-1 text-[10px] font-medium text-amber-900">処方変更あり</p>
+                  ) : null}
                 </td>
                 {days.map((day) => {
                   const cellKey = makeCellKey(day, slot, line.id);
@@ -384,8 +462,9 @@ export function SetPlanEditContent() {
 
   const [drafts, setDrafts] = useState<Map<CellKey, DraftEdit>>(new Map());
   const [planForm, setPlanForm] = useState<PlanForm | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
-  const { data: plan, isLoading: planLoading } = useQuery({
+  const { data: plan, isLoading: planLoading } = useRealtimeQuery({
     queryKey: ['set-plan', planId],
     queryFn: async () => {
       const res = await fetch(`/api/set-plans/${planId}`, {
@@ -396,9 +475,10 @@ export function SetPlanEditContent() {
       return json.data;
     },
     enabled: Boolean(planId && orgId),
+    invalidateOn: ['cycle_transition', 'workflow_refresh'],
   });
 
-  const { data: batches = [], isLoading: batchesLoading } = useQuery({
+  const { data: batches = [], isLoading: batchesLoading } = useRealtimeQuery({
     queryKey: ['set-batches', planId],
     queryFn: async () => {
       const res = await fetch(`/api/set-batches?plan_id=${planId}`, {
@@ -408,7 +488,21 @@ export function SetPlanEditContent() {
       const json = await res.json() as { data: SetBatch[] };
       return json.data;
     },
-    enabled: Boolean(planId),
+    enabled: Boolean(planId && orgId),
+    invalidateOn: ['cycle_transition', 'workflow_refresh'],
+  });
+
+  const packagingMethodsQuery = useQuery({
+    queryKey: ['packaging-methods', orgId],
+    queryFn: async () => {
+      const res = await fetch('/api/packaging-methods', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('配薬方法マスタの取得に失敗しました');
+      const json = (await res.json()) as { data: PackagingMethodRow[] };
+      return json.data.filter((method) => method.is_active);
+    },
+    enabled: Boolean(orgId),
   });
 
   const planUpdateMutation = useMutation({
@@ -425,11 +519,12 @@ export function SetPlanEditContent() {
       return res.json() as Promise<{ data: SetPlan }>;
     },
     onSuccess: ({ data: updatedPlan }) => {
-      queryClient.setQueryData(['set-plan', planId], updatedPlan);
+      void queryClient.invalidateQueries({ queryKey: ['set-plan', planId] });
       setPlanForm({
         target_period_start: updatedPlan.target_period_start.slice(0, 10),
         target_period_end: updatedPlan.target_period_end.slice(0, 10),
         set_method: updatedPlan.set_method,
+        packaging_method_id: updatedPlan.packaging_method_id ?? '',
         notes: updatedPlan.notes ?? '',
       });
       toast.success('セット計画を更新しました');
@@ -549,12 +644,14 @@ export function SetPlanEditContent() {
           target_period_start: plan.target_period_start.slice(0, 10),
           target_period_end: plan.target_period_end.slice(0, 10),
           set_method: plan.set_method,
+          packaging_method_id: plan.packaging_method_id ?? '',
           notes: plan.notes ?? '',
         }
       : {
           target_period_start: '',
           target_period_end: '',
           set_method: 'facility_calendar',
+          packaging_method_id: '',
           notes: '',
         });
   const hasPendingInquiry = (plan?.cycle.inquiries.length ?? 0) > 0;
@@ -575,11 +672,14 @@ export function SetPlanEditContent() {
     acc[batch.carry_type] = (acc[batch.carry_type] ?? 0) + 1;
     return acc;
   }, {});
+  const packagingMethods = packagingMethodsQuery.data ?? [];
+  const staleLineIds = new Set(plan?.stale_line_ids ?? []);
   const planDirty =
     plan != null &&
     (resolvedPlanForm.target_period_start !== plan.target_period_start.slice(0, 10) ||
       resolvedPlanForm.target_period_end !== plan.target_period_end.slice(0, 10) ||
       resolvedPlanForm.set_method !== plan.set_method ||
+      resolvedPlanForm.packaging_method_id !== (plan.packaging_method_id ?? '') ||
       resolvedPlanForm.notes !== (plan.notes ?? ''));
 
   if (isLoading) {
@@ -601,12 +701,41 @@ export function SetPlanEditContent() {
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <div className="flex-1">
+          <PreviousStageSummary cycleId={plan.cycle_id} />
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setHistoryOpen(true)}
+        >
+          <History className="mr-1.5 size-3.5" aria-hidden="true" />
+          履歴
+        </Button>
+      </div>
+
+      <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>ステータス遷移履歴</SheetTitle>
+            <SheetDescription>処方サイクルのステータス変更履歴</SheetDescription>
+          </SheetHeader>
+          <div className="mt-4">
+            <StageTimeline cycleId={plan.cycle_id} />
+          </div>
+        </SheetContent>
+      </Sheet>
+
       {/* Header actions */}
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs text-muted-foreground">
             患者: {plan.cycle.case_.patient.name} / 対象期間: {plan.target_period_start.slice(0, 10)} 〜 {plan.target_period_end.slice(0, 10)}
-            {' / '}方式: {SET_METHOD_LABELS[plan.set_method] ?? plan.set_method}
+            {' / '}方式: {SET_METHOD_LABELS[plan.set_method as keyof typeof SET_METHOD_LABELS] ?? plan.set_method}
+            {plan.packaging_summary_snapshot?.packaging_method_name
+              ? ` / 配薬: ${plan.packaging_summary_snapshot.packaging_method_name}`
+              : ''}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -693,9 +822,34 @@ export function SetPlanEditContent() {
                 <SelectValue placeholder="セット方式を選択" />
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(SET_METHOD_LABELS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
+                {SET_METHOD_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="set-packaging-method">配薬方法</Label>
+            <Select
+              value={resolvedPlanForm.packaging_method_id || 'none'}
+              onValueChange={(value) => {
+                const nextPackagingMethodId = value === 'none' ? '' : String(value);
+                setPlanForm((current) => ({
+                  ...(current ?? resolvedPlanForm),
+                  packaging_method_id: nextPackagingMethodId,
+                }));
+              }}
+            >
+              <SelectTrigger id="set-packaging-method">
+                <SelectValue placeholder="患者設定を使用" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">患者設定を使用</SelectItem>
+                {packagingMethods.map((method) => (
+                  <SelectItem key={method.id} value={method.id}>
+                    {method.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -722,6 +876,11 @@ export function SetPlanEditContent() {
             <Badge variant="outline">持参 {carryCounts.carry ?? 0}</Badge>
             <Badge variant="outline">施設預け {carryCounts.facility_deposit ?? 0}</Badge>
             <Badge variant="outline">後送 {carryCounts.deferred ?? 0}</Badge>
+            {plan.packaging_summary_snapshot?.tag_labels.map((label) => (
+              <Badge key={label} variant="outline">
+                {label}
+              </Badge>
+            ))}
             <Button
               size="sm"
               variant="outline"
@@ -730,6 +889,34 @@ export function SetPlanEditContent() {
             >
               計画を更新
             </Button>
+          </div>
+          <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-3 lg:col-span-3">
+            <p className="text-sm font-medium text-foreground">配薬指示サマリー</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {plan.packaging_summary_snapshot?.packaging_method_name ??
+                plan.packaging_summary_snapshot?.patient_default_method_label ??
+                '患者配薬設定を参照中'}
+            </p>
+            {plan.packaging_summary_snapshot?.medication_box_color ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                BOX色: {plan.packaging_summary_snapshot.medication_box_color}
+              </p>
+            ) : null}
+            {plan.packaging_summary_snapshot?.box_config ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                BOX割当:{' '}
+                {Object.entries(plan.packaging_summary_snapshot.box_config)
+                  .map(([slot, color]) => `${slot}=${color}`)
+                  .join(' / ')}
+              </p>
+            ) : null}
+            {plan.packaging_summary_snapshot?.special_instructions?.length ? (
+              <ul className="mt-2 space-y-1 text-xs text-foreground">
+                {plan.packaging_summary_snapshot.special_instructions.map((instruction) => (
+                  <li key={instruction}>- {instruction}</li>
+                ))}
+              </ul>
+            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -757,7 +944,7 @@ export function SetPlanEditContent() {
       {/* Two-panel layout */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[280px_1fr]">
         {/* Left: prescription info */}
-        <PrescriptionPanel intakes={intakes} />
+        <PrescriptionPanel intakes={intakes} staleLineIds={staleLineIds} />
 
         {/* Right: slot grid */}
         <Card>
@@ -769,11 +956,45 @@ export function SetPlanEditContent() {
               plan={plan}
               batches={batches}
               drafts={drafts}
+              staleLineIds={staleLineIds}
               onDraftChange={handleQuantityChange}
             />
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-semibold">変更履歴</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {plan.change_logs.length === 0 ? (
+            <p className="text-sm text-muted-foreground">変更履歴はまだありません。</p>
+          ) : (
+            plan.change_logs.map((log) => {
+              const lineIds = Array.isArray(log.line_ids) ? log.line_ids : [];
+              const beforeCount = Array.isArray(log.before_snapshot) ? log.before_snapshot.length : 0;
+              const afterCount = Array.isArray(log.after_snapshot) ? log.after_snapshot.length : 0;
+              return (
+                <div key={log.id} className="rounded-lg border border-border/60 bg-background px-3 py-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">{log.action}</Badge>
+                    {log.trigger_source ? <Badge variant="secondary">{log.trigger_source}</Badge> : null}
+                    <span className="text-xs text-muted-foreground">
+                      {log.created_at.slice(0, 16).replace('T', ' ')}
+                    </span>
+                  </div>
+                  {log.reason ? <p className="mt-2 text-sm">{log.reason}</p> : null}
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    before {beforeCount}件 / after {afterCount}件
+                    {lineIds.length > 0 ? ` / 影響ライン: ${lineIds.join(', ')}` : ''}
+                  </p>
+                </div>
+              );
+            })
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { prisma } from '@/lib/db/client';
 const createConsentSchema = z.object({
   patient_id: z.string().min(1, '患者IDは必須です'),
   case_id: z.string().optional(),
+  template_id: z.string().optional(),
   consent_type: z.enum([
     'visit_medication_management',
     'personal_info_handling',
@@ -56,6 +57,15 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       orderBy: { obtained_date: 'desc' },
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: {
+        template: {
+          select: {
+            id: true,
+            name: true,
+            version: true,
+          },
+        },
+      },
     }),
     prisma.consentRecord.count({ where }),
   ]);
@@ -79,7 +89,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const { patient_id, case_id, consent_type, method, obtained_date, expiry_date, document_url } =
+  const { patient_id, case_id, template_id, consent_type, method, obtained_date, expiry_date, document_url } =
     parsed.data;
 
   // Validate patient and optional case belong to this org
@@ -106,12 +116,49 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     );
   }
 
+  const today = new Date(`${obtained_date}T00:00:00.000Z`);
+  const template =
+    template_id
+      ? await prisma.template.findFirst({
+          where: {
+            id: template_id,
+            org_id: req.orgId,
+            template_type: 'consent_form',
+          },
+          select: {
+            id: true,
+            version: true,
+          },
+        })
+      : await prisma.template.findFirst({
+          where: {
+            org_id: req.orgId,
+            template_type: 'consent_form',
+            is_default: true,
+            OR: [{ effective_from: null }, { effective_from: { lte: today } }],
+            AND: [{ OR: [{ effective_to: null }, { effective_to: { gte: today } }] }],
+          },
+          orderBy: [{ version: 'desc' }, { updated_at: 'desc' }],
+          select: {
+            id: true,
+            version: true,
+          },
+        });
+
+  if (template_id && !template) {
+    return validationError('選択した同意書テンプレートが見つかりません', {
+      template_id: ['有効な同意書テンプレートを選択してください'],
+    });
+  }
+
   const record = await withOrgContext(req.orgId, async (tx) => {
     return tx.consentRecord.create({
       data: {
         org_id: req.orgId,
         patient_id,
         case_id: case_id ?? null,
+        template_id: template?.id ?? null,
+        template_version: template?.version ?? null,
         consent_type,
         method,
         obtained_date: new Date(obtained_date),

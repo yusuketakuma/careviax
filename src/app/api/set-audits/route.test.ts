@@ -7,8 +7,11 @@ const {
   withOrgContextMock,
   setPlanFindFirstMock,
   setBatchFindManyMock,
+  setAuditFindFirstMock,
   setAuditCreateMock,
-  medicationCycleUpdateMock,
+  medicationCycleFindFirstMock,
+  medicationCycleUpdateManyMock,
+  cycleTransitionLogCreateMock,
   visitScheduleUpdateManyMock,
   taskCreateMock,
   workflowExceptionCreateMock,
@@ -18,8 +21,11 @@ const {
   withOrgContextMock: vi.fn(),
   setPlanFindFirstMock: vi.fn(),
   setBatchFindManyMock: vi.fn(),
+  setAuditFindFirstMock: vi.fn(),
   setAuditCreateMock: vi.fn(),
-  medicationCycleUpdateMock: vi.fn(),
+  medicationCycleFindFirstMock: vi.fn(),
+  medicationCycleUpdateManyMock: vi.fn(),
+  cycleTransitionLogCreateMock: vi.fn(),
   visitScheduleUpdateManyMock: vi.fn(),
   taskCreateMock: vi.fn(),
   workflowExceptionCreateMock: vi.fn(),
@@ -79,7 +85,11 @@ describe('/api/set-audits POST', () => {
       },
     ]);
     setAuditCreateMock.mockResolvedValue({ id: 'audit_1' });
-    medicationCycleUpdateMock.mockResolvedValue({ id: 'cycle_1' });
+    setAuditFindFirstMock.mockResolvedValue(null);
+    // Default cycle state: 'setting' (valid source for approved/partial_approved → set_audited)
+    medicationCycleFindFirstMock.mockResolvedValue({ id: 'cycle_1', overall_status: 'setting', version: 1 });
+    medicationCycleUpdateManyMock.mockResolvedValue({ count: 1 });
+    cycleTransitionLogCreateMock.mockResolvedValue({});
     visitScheduleUpdateManyMock.mockResolvedValue({ count: 1 });
     taskCreateMock.mockResolvedValue({ id: 'task_1' });
     workflowExceptionCreateMock.mockResolvedValue({ id: 'exception_1' });
@@ -93,10 +103,16 @@ describe('/api/set-audits POST', () => {
           findMany: setBatchFindManyMock,
         },
         setAudit: {
+          findFirst: setAuditFindFirstMock,
           create: setAuditCreateMock,
         },
         medicationCycle: {
-          update: medicationCycleUpdateMock,
+          findFirst: medicationCycleFindFirstMock,
+          findFirstOrThrow: vi.fn().mockResolvedValue({ id: 'cycle_1', overall_status: 'set_audited' }),
+          updateMany: medicationCycleUpdateManyMock,
+        },
+        cycleTransitionLog: {
+          create: cycleTransitionLogCreateMock,
         },
         visitSchedule: {
           updateMany: visitScheduleUpdateManyMock,
@@ -106,6 +122,7 @@ describe('/api/set-audits POST', () => {
         },
         workflowException: {
           create: workflowExceptionCreateMock,
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
         },
       })
     );
@@ -178,7 +195,84 @@ describe('/api/set-audits POST', () => {
     });
   });
 
+  it('merges the latest partial approval scope before recalculating carry items', async () => {
+    setBatchFindManyMock.mockResolvedValue([
+      {
+        id: 'batch_1',
+        slot: 'morning',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+        line: {
+          id: 'line_1',
+          drug_name: 'アムロジピン錠5mg',
+          dose: '1回1錠',
+          frequency: '朝食後',
+          unit: '錠',
+        },
+      },
+      {
+        id: 'batch_2',
+        slot: 'evening',
+        day_number: 2,
+        quantity: 2,
+        carry_type: 'carry',
+        line: {
+          id: 'line_2',
+          drug_name: 'タケプロンOD錠15mg',
+          dose: '1回1錠',
+          frequency: '夕食後',
+          unit: '錠',
+        },
+      },
+    ]);
+    setAuditFindFirstMock.mockResolvedValue({
+      result: 'partial_approved',
+      approved_scope: {
+        '1-morning': true,
+      },
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'partial_approved',
+          approved_scope: {
+            '2-evening': true,
+          },
+        },
+        { 'x-org-id': 'org_1' }
+      )
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(setAuditCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        approved_scope: {
+          '1-morning': true,
+          '2-evening': true,
+        },
+      }),
+    });
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        cycle_id: 'cycle_1',
+      }),
+      data: expect.objectContaining({
+        carry_items: expect.arrayContaining([
+          expect.objectContaining({ batch_id: 'batch_1' }),
+          expect.objectContaining({ batch_id: 'batch_2' }),
+        ]),
+        carry_items_status: 'partial',
+      }),
+    });
+  });
+
   it('blocks visit schedules on rejected audits', async () => {
+    // rejected transitions set_audited → setting
+    medicationCycleFindFirstMock.mockResolvedValue({ id: 'cycle_1', overall_status: 'set_audited', version: 1 });
     const response = await POST(
       createRequest(
         {

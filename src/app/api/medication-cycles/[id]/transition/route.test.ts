@@ -4,15 +4,19 @@ import type { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   medicationCycleFindFirstMock,
-  medicationCycleUpdateMock,
+  medicationCycleUpdateManyMock,
+  cycleTransitionLogCreateMock,
   notificationCreateMock,
   withOrgContextMock,
+  broadcastStatusUpdateMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   medicationCycleFindFirstMock: vi.fn(),
-  medicationCycleUpdateMock: vi.fn(),
+  medicationCycleUpdateManyMock: vi.fn(),
+  cycleTransitionLogCreateMock: vi.fn(),
   notificationCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  broadcastStatusUpdateMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -29,6 +33,12 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/server/adapters/realtime', () => ({
+  getRealtimeAdapter: () => ({
+    broadcastStatusUpdate: broadcastStatusUpdateMock,
+  }),
 }));
 
 import { PATCH } from './route';
@@ -50,15 +60,15 @@ describe('/api/medication-cycles/[id]/transition', () => {
       patient_id: 'patient_1',
       case_id: 'case_1',
     });
-    medicationCycleUpdateMock.mockResolvedValue({
-      id: 'cycle_1',
-      overall_status: 'dispensing',
-      version: 3,
-    });
+    medicationCycleUpdateManyMock.mockResolvedValue({ count: 1 });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         medicationCycle: {
-          update: medicationCycleUpdateMock,
+          findFirst: medicationCycleFindFirstMock,
+          updateMany: medicationCycleUpdateManyMock,
+        },
+        cycleTransitionLog: {
+          create: cycleTransitionLogCreateMock,
         },
         notification: {
           create: notificationCreateMock,
@@ -78,7 +88,7 @@ describe('/api/medication-cycles/[id]/transition', () => {
     }))!;
 
     expect(response.status).toBe(409);
-    expect(medicationCycleUpdateMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('transitions the cycle and creates a notification best-effort', async () => {
@@ -93,13 +103,28 @@ describe('/api/medication-cycles/[id]/transition', () => {
     }))!;
 
     expect(response.status).toBe(200);
-    expect(medicationCycleUpdateMock).toHaveBeenCalledWith({
+    expect(medicationCycleUpdateManyMock).toHaveBeenCalledWith({
       where: { id: 'cycle_1', version: 2 },
-      data: {
+      data: expect.objectContaining({
         overall_status: 'dispensing',
         version: { increment: 1 },
-      },
+      }),
+    });
+    expect(cycleTransitionLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        cycle_id: 'cycle_1',
+        from_status: 'ready_to_dispense',
+        to_status: 'dispensing',
+        actor_id: 'user_1',
+        note: '調剤開始',
+      }),
     });
     expect(notificationCreateMock).toHaveBeenCalled();
+    expect(broadcastStatusUpdateMock).toHaveBeenCalledWith(
+      'org:org_1',
+      expect.objectContaining({
+        type: 'cycle_transition',
+      })
+    );
   });
 });

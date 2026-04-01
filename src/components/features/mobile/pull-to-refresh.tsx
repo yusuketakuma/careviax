@@ -14,6 +14,42 @@ interface PullToRefreshProps {
 
 type PullState = 'idle' | 'pulling' | 'refreshing';
 
+const PULL_HEIGHT_CLASSES = [
+  'h-0',
+  'h-2',
+  'h-4',
+  'h-6',
+  'h-8',
+  'h-10',
+  'h-12',
+  'h-14',
+  'h-16',
+  'h-20',
+  'h-24',
+  'h-28',
+  'h-32',
+] as const;
+
+const PULL_OPACITY_CLASSES = [
+  'opacity-0',
+  'opacity-25',
+  'opacity-50',
+  'opacity-75',
+  'opacity-100',
+] as const;
+
+const PULL_ROTATION_CLASSES = [
+  'rotate-0',
+  'rotate-45',
+  'rotate-90',
+  'rotate-[135deg]',
+  'rotate-180',
+  'rotate-[225deg]',
+  'rotate-[270deg]',
+  'rotate-[315deg]',
+  'rotate-[360deg]',
+] as const;
+
 export function PullToRefresh({
   onRefresh,
   children,
@@ -75,6 +111,21 @@ export function PullToRefresh({
 
   const indicatorOpacity = pullState === 'idle' ? 0 : Math.min(pullDistance / threshold, 1);
   const isThresholdReached = pullDistance >= threshold;
+  const heightIndex =
+    pullState === 'idle'
+      ? 0
+      : Math.min(
+          PULL_HEIGHT_CLASSES.length - 1,
+          Math.max(1, Math.round((pullDistance / Math.max(threshold * 2, 1)) * (PULL_HEIGHT_CLASSES.length - 1)))
+        );
+  const opacityIndex = Math.min(
+    PULL_OPACITY_CLASSES.length - 1,
+    Math.round(indicatorOpacity * (PULL_OPACITY_CLASSES.length - 1))
+  );
+  const rotationIndex = Math.min(
+    PULL_ROTATION_CLASSES.length - 1,
+    Math.round(indicatorOpacity * (PULL_ROTATION_CLASSES.length - 1))
+  );
 
   return (
     <div
@@ -86,26 +137,25 @@ export function PullToRefresh({
     >
       {/* Pull indicator */}
       <div
-        className="flex items-center justify-center overflow-hidden transition-[height] duration-200"
-        style={{ height: pullState === 'idle' ? 0 : pullDistance }}
+        className={[
+          'flex items-center justify-center overflow-hidden transition-[height] duration-200',
+          PULL_HEIGHT_CLASSES[heightIndex],
+        ].join(' ')}
         aria-hidden="true"
       >
         <div
-          className="flex items-center gap-2 text-sm text-muted-foreground"
-          style={{ opacity: indicatorOpacity }}
+          className={[
+            'flex items-center gap-2 text-sm text-muted-foreground transition-opacity duration-200',
+            PULL_OPACITY_CLASSES[opacityIndex],
+          ].join(' ')}
         >
           <RefreshCw
             className={[
               'size-4 transition-transform',
+              pullState === 'pulling' ? PULL_ROTATION_CLASSES[rotationIndex] : '',
               pullState === 'refreshing' ? 'animate-spin' : '',
               isThresholdReached && pullState === 'pulling' ? 'text-primary' : '',
             ].join(' ')}
-            style={{
-              transform:
-                pullState === 'pulling'
-                  ? `rotate(${Math.min((pullDistance / threshold) * 360, 360)}deg)`
-                  : undefined,
-            }}
           />
           <span>
             {pullState === 'refreshing'

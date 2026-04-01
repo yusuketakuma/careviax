@@ -3,6 +3,12 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { notFound, success, validationError } from '@/lib/api/response';
+import {
+  getPatientPrivacyFlags,
+  maskAddressDetail,
+  maskContactValue,
+  maskPhoneNumber,
+} from '@/lib/patient/privacy';
 import { updatePatientContactsSchema } from '@/lib/validations/patient';
 
 async function assertPatient(orgId: string, id: string) {
@@ -39,7 +45,17 @@ export async function GET(
     orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
   });
 
-  return success({ data: contacts });
+  const privacy = getPatientPrivacyFlags(ctx.role);
+
+  return success({
+    data: contacts.map((contact) => ({
+      ...contact,
+      phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.phone) : contact.phone,
+      fax: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.fax) : contact.fax,
+      email: privacy.sensitiveFieldsMasked ? maskContactValue(contact.email) : contact.email,
+      address: privacy.addressFieldsMasked ? maskAddressDetail(contact.address) : contact.address,
+    })),
+  });
 }
 
 export async function PUT(
@@ -98,5 +114,15 @@ export async function PUT(
     });
   });
 
-  return success({ data });
+  const privacy = getPatientPrivacyFlags(ctx.role);
+
+  return success({
+    data: data.map((contact) => ({
+      ...contact,
+      phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.phone) : contact.phone,
+      fax: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.fax) : contact.fax,
+      email: privacy.sensitiveFieldsMasked ? maskContactValue(contact.email) : contact.email,
+      address: privacy.addressFieldsMasked ? maskAddressDetail(contact.address) : contact.address,
+    })),
+  });
 }

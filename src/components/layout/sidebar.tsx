@@ -6,6 +6,7 @@ import {
   Home,
   Users,
   ClipboardPlus,
+  ClipboardList,
   Calendar,
   Pill,
   ClipboardCheck,
@@ -44,16 +45,21 @@ const mainNavItems: NavItem[] = [
   { label: '訪問', href: '/visits', icon: Car },
   { label: '報告', href: '/reports', icon: FileText },
   { label: 'QRスキャン', href: '/qr-scan', icon: QrCode },
+  { label: '申し送り', href: '/handoff', icon: ClipboardList },
 ];
 
 const adminNavItems: NavItem[] = [
   { label: '設定', href: '/admin/settings', icon: Settings },
+  { label: 'スタッフ', href: '/admin/staff', icon: Users },
   { label: '施設', href: '/admin/facilities', icon: Building2 },
   { label: '医療機関', href: '/admin/institutions', icon: Hospital },
   { label: '他職種', href: '/admin/external-professionals', icon: Stethoscope },
   { label: '連携先', href: '/admin/contact-profiles', icon: Users },
   { label: 'データ探索', href: '/admin/data-explorer', icon: Database },
   { label: '文書テンプレート', href: '/admin/document-templates', icon: FileText },
+  { label: '採用薬', href: '/admin/formulary', icon: Pill },
+  { label: '処方安全アラート', href: '/admin/alert-rules', icon: ClipboardCheck },
+  { label: '訪問エリア', href: '/admin/service-areas', icon: Car },
   { label: 'マスタ', href: '/admin/drug-masters', icon: Database },
   { label: '監査ログ', href: '/admin/audit-logs', icon: ScrollText },
 ];

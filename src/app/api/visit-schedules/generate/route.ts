@@ -5,6 +5,7 @@ import { success, validationError } from '@/lib/api/response';
 import { generateVisitSchedulesSchema } from '@/lib/validations/visit-schedule';
 import { parseSimpleRruleDates } from '@/lib/visits/rrule';
 import { prisma } from '@/lib/db/client';
+import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import type { Prisma } from '@prisma/client';
 
 // Insurance visit frequency limits: medical=4/month, care=2/month
@@ -196,6 +197,11 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       })
     );
     return created;
+  });
+
+  await notifyWorkflowMutation({
+    orgId: req.orgId,
+    payload: { source: 'visit_schedules_generate', case_id },
   });
 
   return success({ data: schedules, count: schedules.length }, 201);

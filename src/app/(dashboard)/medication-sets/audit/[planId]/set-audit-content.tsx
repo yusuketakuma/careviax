@@ -1,9 +1,18 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, XCircle, AlertTriangle, Info, Loader2 } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Info,
+  Loader2,
+  CalendarDays,
+  Package,
+} from 'lucide-react';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -25,9 +34,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Separator } from '@/components/ui/separator';
+import { buildSetAuditSubmission } from './set-audit-content.helpers';
 
-// --- Types ---
+// ── Types ──
 
 type SetBatch = {
   id: string;
@@ -47,15 +57,6 @@ type SetBatch = {
   };
 };
 
-type AuditSlot = {
-  key: string;
-  dayNumber: number;
-  slot: string;
-  slotLabel: string;
-  drugs: string[];
-  approved: boolean | null;
-};
-
 type RejectReasonCode =
   | 'drug_mismatch'
   | 'quantity_error'
@@ -63,14 +64,22 @@ type RejectReasonCode =
   | 'prescription_expired'
   | 'other';
 
-// --- Constants ---
+// ── Constants ──
 
 const SLOT_LABELS: Record<string, string> = {
-  morning: '朝',
-  noon: '昼',
-  evening: '夕',
+  morning: '朝食後',
+  noon: '昼食後',
+  evening: '夕食後',
   bedtime: '眠前',
   prn: '頓用',
+};
+
+const SLOT_ORDER = ['morning', 'noon', 'evening', 'bedtime', 'prn'];
+
+const CARRY_TYPE_LABELS: Record<string, string> = {
+  carry: '持参',
+  facility_deposit: '施設預け',
+  deferred: '後日対応',
 };
 
 const REJECT_REASON_OPTIONS: { value: RejectReasonCode; label: string }[] = [
@@ -81,108 +90,229 @@ const REJECT_REASON_OPTIONS: { value: RejectReasonCode; label: string }[] = [
   { value: 'other', label: 'その他' },
 ];
 
-// --- Helpers ---
+// ── Helpers ──
 
-function batchesToAuditSlots(batches: SetBatch[]): AuditSlot[] {
-  const slotMap = new Map<string, AuditSlot>();
+/**
+ * Group batches by day_number, then by slot within each day.
+ * Returns a sorted structure: days ascending, slots in SLOT_ORDER.
+ */
+type DayGroup = {
+  dayNumber: number;
+  slots: SlotGroup[];
+};
+
+type SlotGroup = {
+  slot: string;
+  slotLabel: string;
+  batches: SetBatch[];
+};
+
+function groupBatchesByDayAndSlot(batches: SetBatch[]): DayGroup[] {
+  const dayMap = new Map<number, Map<string, SetBatch[]>>();
 
   for (const batch of batches) {
-    const key = `${batch.day_number}-${batch.slot}`;
-    const drugLabel = `${batch.line.drug_name} ${batch.quantity}${batch.line.unit ?? ''}`;
-
-    if (slotMap.has(key)) {
-      slotMap.get(key)!.drugs.push(drugLabel);
-    } else {
-      slotMap.set(key, {
-        key,
-        dayNumber: batch.day_number,
-        slot: batch.slot,
-        slotLabel: SLOT_LABELS[batch.slot] ?? batch.slot,
-        drugs: [drugLabel],
-        approved: null,
-      });
+    if (!dayMap.has(batch.day_number)) {
+      dayMap.set(batch.day_number, new Map());
     }
+    const slotMap = dayMap.get(batch.day_number)!;
+    if (!slotMap.has(batch.slot)) {
+      slotMap.set(batch.slot, []);
+    }
+    slotMap.get(batch.slot)!.push(batch);
   }
 
-  return Array.from(slotMap.values()).sort((a, b) => {
-    if (a.dayNumber !== b.dayNumber) return a.dayNumber - b.dayNumber;
-    const slotOrder = ['morning', 'noon', 'evening', 'bedtime', 'prn'];
-    return slotOrder.indexOf(a.slot) - slotOrder.indexOf(b.slot);
-  });
+  const days = Array.from(dayMap.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([dayNumber, slotMap]) => {
+      const slots = Array.from(slotMap.entries())
+        .sort((a, b) => {
+          const ai = SLOT_ORDER.indexOf(a[0]);
+          const bi = SLOT_ORDER.indexOf(b[0]);
+          return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+        })
+        .map(([slot, slotBatches]) => ({
+          slot,
+          slotLabel: SLOT_LABELS[slot] ?? slot,
+          batches: slotBatches,
+        }));
+      return { dayNumber, slots };
+    });
+
+  return days;
 }
 
-// --- Components ---
+// ── Sub-components ──
 
-function SlotRow({
-  slot,
-  selected,
-  onToggleSelect,
+function SlotGroupCard({
+  slotGroup,
+  approvalState,
 }: {
-  slot: AuditSlot;
-  selected: boolean;
-  onToggleSelect: (key: string) => void;
+  slotGroup: SlotGroup;
+  approvalState: boolean | null;
 }) {
   return (
-    <tr className="border-b border-border hover:bg-muted/40">
-      <td className="px-3 py-2">
-        <Checkbox
-          id={`select-${slot.key}`}
-          checked={selected}
-          onCheckedChange={() => onToggleSelect(slot.key)}
-          aria-label={`${slot.dayNumber}日目 ${slot.slotLabel}を選択`}
-        />
-      </td>
-      <td className="px-3 py-2 text-sm text-muted-foreground">{slot.dayNumber}日目</td>
-      <td className="px-3 py-2">
-        <Badge variant="outline" className="text-xs">{slot.slotLabel}</Badge>
-      </td>
-      <td className="px-3 py-2">
-        <ul className="space-y-0.5">
-          {slot.drugs.map((d, i) => (
-            <li key={i} className="text-sm">{d}</li>
-          ))}
-        </ul>
-      </td>
-      <td className="px-3 py-2">
-        {slot.approved === true && (
-          <span className="flex items-center gap-1 text-xs text-green-700">
-            <CheckCircle2 className="size-3.5" aria-hidden="true" /> 承認済
-          </span>
-        )}
-        {slot.approved === false && (
-          <span className="flex items-center gap-1 text-xs text-red-700">
-            <XCircle className="size-3.5" aria-hidden="true" /> 差戻し
-          </span>
-        )}
-        {slot.approved === null && (
-          <span className="text-xs text-muted-foreground">未鑑査</span>
-        )}
-      </td>
-    </tr>
+    <div className="rounded-md border bg-card">
+      <div className="flex items-center gap-2 border-b bg-muted/20 px-3 py-2">
+        <Package className="size-3.5 text-muted-foreground" aria-hidden="true" />
+        <span className="text-xs font-semibold">{slotGroup.slotLabel}</span>
+        <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 text-xs ml-1">
+          一包化
+        </Badge>
+        <span className="ml-auto">
+          {approvalState === true && (
+            <span className="flex items-center gap-1 text-xs text-green-700">
+              <CheckCircle2 className="size-3.5" aria-hidden="true" /> 承認済
+            </span>
+          )}
+          {approvalState === false && (
+            <span className="flex items-center gap-1 text-xs text-red-700">
+              <XCircle className="size-3.5" aria-hidden="true" /> 差戻し
+            </span>
+          )}
+          {approvalState === null && (
+            <span className="text-xs text-muted-foreground">未鑑査</span>
+          )}
+        </span>
+      </div>
+      <ul className="divide-y">
+        {slotGroup.batches.map((batch) => (
+          <li key={batch.id} className="flex items-baseline justify-between px-3 py-2">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium leading-snug">{batch.line.drug_name}</p>
+              <p className="text-xs text-muted-foreground">
+                {batch.line.dose} / {batch.line.frequency}
+              </p>
+              {batch.carry_type !== 'carry' && (
+                <p className="text-xs text-muted-foreground">
+                  持参区分: {CARRY_TYPE_LABELS[batch.carry_type] ?? batch.carry_type}
+                </p>
+              )}
+            </div>
+            <span className="ml-4 shrink-0 tabular-nums text-sm font-semibold">
+              {batch.quantity}
+              {batch.line.unit ?? ''}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
-// --- Main ---
+function DayCard({
+  day,
+  localApproval,
+  onApproveDay,
+  onRejectDay,
+  isPending,
+}: {
+  day: DayGroup;
+  localApproval: Map<string, boolean | null>;
+  onApproveDay: (dayNumber: number) => void;
+  onRejectDay: (dayNumber: number) => void;
+  isPending: boolean;
+}) {
+  const slotKeys = day.slots.map((s) => `${day.dayNumber}-${s.slot}`);
+  const anyPending = slotKeys.some((k) => {
+    const state = localApproval.get(k);
+    return state === undefined || state === null;
+  });
+  const allApproved = slotKeys.every((k) => localApproval.get(k) === true);
+  const anyRejected = slotKeys.some((k) => localApproval.get(k) === false);
+
+  return (
+    <Card>
+      <CardHeader className="border-b py-3 px-4">
+        <div className="flex items-center gap-3">
+          <CalendarDays className="size-4 text-muted-foreground" aria-hidden="true" />
+          <CardTitle className="text-sm font-semibold">Day {day.dayNumber}</CardTitle>
+          {allApproved && !anyRejected && (
+            <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">
+              承認済
+            </Badge>
+          )}
+          {anyRejected && (
+            <Badge className="bg-red-100 text-red-800 hover:bg-red-100 text-xs">
+              差戻しあり
+            </Badge>
+          )}
+          {anyPending && !allApproved && (
+            <Badge variant="outline" className="text-xs">
+              未鑑査
+            </Badge>
+          )}
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 border-green-600 text-green-700 hover:bg-green-50 text-xs"
+              onClick={() => onApproveDay(day.dayNumber)}
+              disabled={isPending || allApproved}
+              aria-label={`Day ${day.dayNumber}を承認`}
+            >
+              <CheckCircle2 className="mr-1 size-3.5" aria-hidden="true" />
+              承認
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 border-red-500 text-red-600 hover:bg-red-50 text-xs"
+              onClick={() => onRejectDay(day.dayNumber)}
+              disabled={isPending}
+              aria-label={`Day ${day.dayNumber}を差戻し`}
+            >
+              <XCircle className="mr-1 size-3.5" aria-hidden="true" />
+              差戻し
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3 p-4">
+        {day.slots.map((slotGroup) => {
+          const key = `${day.dayNumber}-${slotGroup.slot}`;
+          const state = localApproval.has(key) ? (localApproval.get(key) ?? null) : null;
+          return (
+            <SlotGroupCard
+              key={key}
+              slotGroup={slotGroup}
+              approvalState={state}
+            />
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Main ──
 
 export function SetAuditContent({ planId }: { planId: string }) {
   const queryClient = useQueryClient();
   const orgId = useOrgId();
+
+  // local slot-level approval state: key = `${dayNumber}-${slot}`
   const [localApproval, setLocalApproval] = useState<Map<string, boolean | null>>(new Map());
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [rejectReasonsByDay, setRejectReasonsByDay] = useState<Map<number, string>>(new Map());
+  const [isAuditSaved, setIsAuditSaved] = useState(false);
+
+  // reject dialog state
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [pendingRejectDayNumber, setPendingRejectDayNumber] = useState<number | null>(null);
   const [rejectReasonCode, setRejectReasonCode] = useState<RejectReasonCode | ''>('');
   const [rejectNote, setRejectNote] = useState('');
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError } = useRealtimeQuery({
     queryKey: ['set-batches', planId],
     queryFn: async () => {
       const res = await fetch(`/api/set-batches?plan_id=${planId}`, {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('セットバッチの取得に失敗しました');
-      const json = await res.json() as { data: SetBatch[] };
+      const json = (await res.json()) as { data: SetBatch[] };
       return json.data;
     },
+    enabled: Boolean(planId && orgId),
+    invalidateOn: ['cycle_transition', 'workflow_refresh'],
   });
 
   const auditMutation = useMutation({
@@ -198,115 +328,138 @@ export function SetAuditContent({ planId }: { planId: string }) {
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({})) as { message?: string };
+        const err = (await res.json().catch(() => ({}))) as { message?: string };
         throw new Error(err.message ?? '鑑査の保存に失敗しました');
       }
       return res.json();
     },
     onSuccess: () => {
+      setIsAuditSaved(true);
       queryClient.invalidateQueries({ queryKey: ['set-batches', planId] });
     },
   });
 
   const rawBatches = data ?? [];
-  const baseSlots = batchesToAuditSlots(rawBatches);
-  const slots = baseSlots.map((s) => ({
-    ...s,
-    approved: localApproval.has(s.key) ? (localApproval.get(s.key) ?? null) : s.approved,
-  }));
+  const days = groupBatchesByDayAndSlot(rawBatches);
 
-  const allKeys = slots.map((s) => s.key);
-  const allSelected = allKeys.length > 0 && allKeys.every((k) => selected.has(k));
+  // Summary counts at slot level
+  const allSlotKeys = days.flatMap((day) =>
+    day.slots.map((s) => `${day.dayNumber}-${s.slot}`)
+  );
+  const approvedCount = allSlotKeys.filter((k) => localApproval.get(k) === true).length;
+  const rejectedCount = allSlotKeys.filter((k) => localApproval.get(k) === false).length;
+  const pendingCount = allSlotKeys.length - approvedCount - rejectedCount;
 
-  function toggleAll() {
-    if (allSelected) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(allKeys));
-    }
-  }
+  // Approve all slots in a day
+  function handleApproveDay(dayNumber: number) {
+    const day = days.find((d) => d.dayNumber === dayNumber);
+    if (!day) return;
 
-  function toggleOne(key: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
-
-  function handleApproveSelected() {
-    if (selected.size === 0) {
-      toast.warning('承認するスロットを選択してください');
-      return;
-    }
+    const keys = day.slots.map((s) => `${dayNumber}-${s.slot}`);
     setLocalApproval((prev) => {
       const next = new Map(prev);
-      for (const key of selected) next.set(key, true);
+      for (const k of keys) next.set(k, true);
       return next;
     });
-
-    const approvedKeys = Array.from(selected);
-    const allApproved = slots.every(
-      (s) => approvedKeys.includes(s.key) || s.approved === true
-    );
-    const result = allApproved ? 'approved' : 'partial_approved';
-    const approvedScope = Object.fromEntries(approvedKeys.map((k) => [k, true]));
-
-    auditMutation.mutate(
-      { plan_id: planId, result, approved_scope: approvedScope },
-      {
-        onSuccess: () => toast.success(`${selected.size}件を承認しました`),
-        onError: (err) => toast.error(err.message),
-      }
-    );
-
-    setSelected(new Set());
+    setRejectReasonsByDay((prev) => {
+      const next = new Map(prev);
+      next.delete(dayNumber);
+      return next;
+    });
+    toast.success(`Day ${dayNumber} を承認候補としてマークしました`);
   }
 
-  function openRejectDialog() {
-    if (selected.size === 0) {
-      toast.warning('差戻すスロットを選択してください');
-      return;
-    }
+  // Open reject dialog for a day
+  function handleRejectDayOpen(dayNumber: number) {
+    setPendingRejectDayNumber(dayNumber);
     setRejectDialogOpen(true);
   }
 
-  function handleReject() {
-    if (!rejectReasonCode) {
+  // Confirm reject for a day
+  function handleRejectConfirm() {
+    if (!rejectReasonCode || pendingRejectDayNumber === null) {
       toast.error('差戻し理由を選択してください');
       return;
     }
 
-    const rejectedKeys = Array.from(selected);
+    const day = days.find((d) => d.dayNumber === pendingRejectDayNumber);
+    if (!day) return;
+
+    const keys = day.slots.map((s) => `${pendingRejectDayNumber}-${s.slot}`);
     setLocalApproval((prev) => {
       const next = new Map(prev);
-      for (const key of rejectedKeys) next.set(key, false);
+      for (const k of keys) next.set(k, false);
       return next;
     });
 
-    const rejectLabel = REJECT_REASON_OPTIONS.find((o) => o.value === rejectReasonCode)?.label ?? rejectReasonCode;
+    const rejectLabel =
+      REJECT_REASON_OPTIONS.find((o) => o.value === rejectReasonCode)?.label ??
+      rejectReasonCode;
     const rejectText = rejectNote ? `${rejectLabel}: ${rejectNote}` : rejectLabel;
+    setRejectReasonsByDay((prev) => {
+      const next = new Map(prev);
+      next.set(pendingRejectDayNumber, rejectText);
+      return next;
+    });
+    toast.success(`Day ${pendingRejectDayNumber} を差戻し候補としてマークしました`);
 
-    auditMutation.mutate(
-      { plan_id: planId, result: 'rejected', reject_reason: rejectText },
-      {
-        onSuccess: () => toast.success(`${rejectedKeys.length}件を差戻しました`),
-        onError: (err) => toast.error(err.message),
-      }
-    );
-
-    setSelected(new Set());
     setRejectDialogOpen(false);
+    setPendingRejectDayNumber(null);
     setRejectReasonCode('');
     setRejectNote('');
   }
 
-  const pendingCount = slots.filter((s) => s.approved === null).length;
-  const approvedCount = slots.filter((s) => s.approved === true).length;
-  const rejectedCount = slots.filter((s) => s.approved === false).length;
+  // Approve all pending days
+  function handleApproveAll() {
+    if (allSlotKeys.length === 0) {
+      toast.warning('セットバッチがありません');
+      return;
+    }
 
-  if (isLoading) {
+    const allKeys = allSlotKeys;
+    setLocalApproval((prev) => {
+      const next = new Map(prev);
+      for (const k of allKeys) next.set(k, true);
+      return next;
+    });
+    setRejectReasonsByDay(new Map());
+    toast.success('全スロットを承認候補としてマークしました。保存して確定してください。');
+  }
+
+  function handleSubmitAudit() {
+    const submission = buildSetAuditSubmission({
+      allSlotKeys,
+      localApproval,
+      rejectReasonsByDay,
+    });
+
+    if (submission.kind === 'empty') {
+      toast.warning(submission.message);
+      return;
+    }
+    if (submission.kind === 'pending') {
+      toast.error(submission.message);
+      return;
+    }
+
+    auditMutation.mutate(
+      { plan_id: planId, ...submission.payload },
+      {
+        onSuccess: () => {
+          const label =
+            submission.payload.result === 'approved'
+              ? '全承認'
+              : submission.payload.result === 'partial_approved'
+                ? '部分承認'
+                : '差戻し';
+          toast.success(`セット鑑査を${label}で保存しました`);
+        },
+        onError: (err) => toast.error(err.message),
+      }
+    );
+  }
+
+  if (!orgId || isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden="true" />
@@ -324,127 +477,113 @@ export function SetAuditContent({ planId }: { planId: string }) {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Plan info */}
+    <div className="space-y-5">
+      {/* Plan info banner */}
       <div className="flex items-start gap-3 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
         <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
         <div>
           <p className="font-medium">セットプラン ID: {planId}</p>
           <p className="mt-0.5 text-blue-700">
             {rawBatches.length > 0
-              ? `${rawBatches.length}件のバッチが登録されています`
+              ? `${days.length}日分 / ${rawBatches.length}件のバッチが登録されています`
               : 'バッチが登録されていません'}
           </p>
         </div>
       </div>
 
       {/* Summary badges */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <span className="text-sm text-muted-foreground">未鑑査:</span>
-        <Badge variant="outline">{pendingCount}件</Badge>
+        <Badge variant="outline">{pendingCount}スロット</Badge>
         <span className="text-sm text-muted-foreground">承認:</span>
-        <Badge className="bg-green-100 text-green-800 hover:bg-green-100">{approvedCount}件</Badge>
+        <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+          {approvedCount}スロット
+        </Badge>
         <span className="text-sm text-muted-foreground">差戻し:</span>
-        <Badge className="bg-red-100 text-red-800 hover:bg-red-100">{rejectedCount}件</Badge>
-      </div>
-
-      {/* Action buttons */}
-      <div className="flex items-center gap-2">
-        <Button
-          size="sm"
-          onClick={handleApproveSelected}
-          disabled={selected.size === 0 || auditMutation.isPending}
-          className="bg-green-700 text-white hover:bg-green-800"
-        >
-          <CheckCircle2 className="mr-1.5 size-3.5" aria-hidden="true" />
-          選択を承認 ({selected.size})
-        </Button>
-        <Button
-          size="sm"
-          variant="destructive"
-          onClick={openRejectDialog}
-          disabled={selected.size === 0 || auditMutation.isPending}
-        >
-          <XCircle className="mr-1.5 size-3.5" aria-hidden="true" />
-          選択を差戻し ({selected.size})
-        </Button>
-        {pendingCount > 0 && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setSelected(new Set(
-                slots
-                  .filter((s) => s.approved === null)
-                  .map((s) => s.key)
-              ));
-            }}
-          >
-            未鑑査を全選択
-          </Button>
+        <Badge className="bg-red-100 text-red-800 hover:bg-red-100">
+          {rejectedCount}スロット
+        </Badge>
+        {isAuditSaved && (
+          <Badge variant="secondary">保存済み</Badge>
         )}
       </div>
 
-      {/* Grid table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">スロット一覧</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {slots.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-muted-foreground">
-              バッチが登録されていません。セット計画編集から自動生成してください。
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm" role="grid" aria-label="鑑査スロット一覧">
-                <thead>
-                  <tr className="border-b border-border bg-muted">
-                    <th className="px-3 py-2 text-left">
-                      <Checkbox
-                        checked={allSelected}
-                        onCheckedChange={toggleAll}
-                        aria-label="全選択"
-                      />
-                    </th>
-                    <th className="px-3 py-2 text-left font-medium text-xs text-muted-foreground">日数</th>
-                    <th className="px-3 py-2 text-left font-medium text-xs text-muted-foreground">時間帯</th>
-                    <th className="px-3 py-2 text-left font-medium text-xs text-muted-foreground">薬剤</th>
-                    <th className="px-3 py-2 text-left font-medium text-xs text-muted-foreground">状態</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {slots.map((slot) => (
-                    <SlotRow
-                      key={slot.key}
-                      slot={slot}
-                      selected={selected.has(slot.key)}
-                      onToggleSelect={toggleOne}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {isAuditSaved && (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          セット鑑査結果は保存済みです。この画面からの再送信は無効化しました。
+        </div>
+      )}
+
+      {/* Global action buttons */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          onClick={handleApproveAll}
+          disabled={allSlotKeys.length === 0 || auditMutation.isPending || isAuditSaved}
+          className="bg-green-700 text-white hover:bg-green-800"
+        >
+          <CheckCircle2 className="mr-1.5 size-3.5" aria-hidden="true" />
+          全承認
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleSubmitAudit}
+          disabled={allSlotKeys.length === 0 || auditMutation.isPending || isAuditSaved}
+        >
+          {approvedCount === allSlotKeys.length
+            ? '承認を保存'
+            : approvedCount > 0 && rejectedCount > 0
+              ? '部分承認を保存'
+              : rejectedCount === allSlotKeys.length && rejectedCount > 0
+                ? '差戻しを保存'
+                : '判定を保存'}
+        </Button>
+      </div>
+
+      <Separator />
+
+      {/* Day cards */}
+      {days.length === 0 ? (
+        <div className="rounded-md border border-muted bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
+          バッチが登録されていません。セット計画編集から自動生成してください。
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {days.map((day) => (
+            <DayCard
+              key={day.dayNumber}
+              day={day}
+              localApproval={localApproval}
+              onApproveDay={handleApproveDay}
+              onRejectDay={handleRejectDayOpen}
+              isPending={auditMutation.isPending || isAuditSaved}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Reject dialog */}
       <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>差戻し理由の入力</DialogTitle>
+            <DialogTitle>
+              差戻し理由の入力
+              {pendingRejectDayNumber !== null && ` — Day ${pendingRejectDayNumber}`}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="flex items-start gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-              {selected.size}件のスロットを差戻します。差戻し後は再計画が必要です。
+              <span>差戻し後は再計画が必要です。</span>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="reject-reason">差戻し理由コード</Label>
               <Select
                 value={rejectReasonCode}
-                onValueChange={(v) => setRejectReasonCode((v ?? '') as RejectReasonCode | '')}
+                onValueChange={(v) =>
+                  setRejectReasonCode((v ?? '') as RejectReasonCode | '')
+                }
               >
                 <SelectTrigger id="reject-reason" aria-label="差戻し理由を選択">
                   <SelectValue placeholder="理由を選択" />
@@ -473,7 +612,12 @@ export function SetAuditContent({ planId }: { planId: string }) {
             <DialogClose render={<Button variant="outline" size="sm" />}>
               キャンセル
             </DialogClose>
-            <Button size="sm" variant="destructive" onClick={handleReject}>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={handleRejectConfirm}
+              disabled={isAuditSaved}
+            >
               差戻し実行
             </Button>
           </DialogFooter>

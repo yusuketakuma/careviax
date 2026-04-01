@@ -3,45 +3,13 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { getRealtimeAdapter } from '@/server/adapters/realtime';
+import {
+  transitionCycleStatus,
+  getPreHoldStatus,
+  ALLOWED_TRANSITIONS,
+} from '@/lib/db/cycle-transition';
 import { z } from 'zod';
-
-type CycleStatus =
-  | 'intake_received'
-  | 'structuring'
-  | 'inquiry_pending'
-  | 'inquiry_resolved'
-  | 'ready_to_dispense'
-  | 'dispensing'
-  | 'dispensed'
-  | 'audit_pending'
-  | 'audited'
-  | 'setting'
-  | 'set_audited'
-  | 'visit_ready'
-  | 'visit_completed'
-  | 'reported'
-  | 'on_hold'
-  | 'cancelled';
-
-// Allowed status transitions: from -> set of valid next statuses
-const ALLOWED_TRANSITIONS: Record<CycleStatus, CycleStatus[]> = {
-  intake_received: ['structuring', 'inquiry_pending', 'on_hold', 'cancelled'],
-  structuring: ['ready_to_dispense', 'inquiry_pending', 'on_hold', 'cancelled'],
-  inquiry_pending: ['inquiry_resolved', 'on_hold', 'cancelled'],
-  inquiry_resolved: ['ready_to_dispense', 'on_hold', 'cancelled'],
-  ready_to_dispense: ['dispensing', 'on_hold', 'cancelled'],
-  dispensing: ['dispensed', 'audit_pending', 'on_hold', 'cancelled'],
-  dispensed: ['audit_pending', 'on_hold', 'cancelled'],
-  audit_pending: ['audited', 'dispensing', 'on_hold', 'cancelled'],
-  audited: ['setting', 'on_hold', 'cancelled'],
-  setting: ['set_audited', 'on_hold', 'cancelled'],
-  set_audited: ['visit_ready', 'setting', 'on_hold', 'cancelled'],
-  visit_ready: ['visit_completed', 'on_hold', 'cancelled'],
-  visit_completed: ['reported', 'on_hold'],
-  reported: ['on_hold'],
-  on_hold: ['intake_received', 'structuring', 'ready_to_dispense', 'cancelled'],
-  cancelled: [],
-};
 
 const transitionSchema = z.object({
   to: z.string().min(1, '遷移先ステータスは必須です'),
@@ -83,10 +51,21 @@ export async function PATCH(
     return conflict('他のユーザーによって更新されています。最新のデータを取得してください。');
   }
 
-  const fromStatus = cycle.overall_status as CycleStatus;
-  const toStatus = to as CycleStatus;
+  const fromStatus = cycle.overall_status;
+  const toStatus = to;
 
-  const allowed = ALLOWED_TRANSITIONS[fromStatus] ?? [];
+  // B6: For on_hold recovery, derive valid return targets from pre-hold status
+  let allowed: string[] = ALLOWED_TRANSITIONS[fromStatus as keyof typeof ALLOWED_TRANSITIONS] ?? [];
+  if (fromStatus === 'on_hold') {
+    const preHoldStatus = await getPreHoldStatus(
+      prisma as unknown as Parameters<typeof getPreHoldStatus>[0],
+      id,
+    );
+    if (preHoldStatus) {
+      allowed = [preHoldStatus, 'cancelled'];
+    }
+  }
+
   if (!allowed.includes(toStatus)) {
     return validationError(
       `ステータス "${fromStatus}" から "${toStatus}" への遷移は許可されていません`,
@@ -95,25 +74,20 @@ export async function PATCH(
   }
 
   const updated = await withOrgContext(ctx.orgId, async (tx) => {
-    const result = await tx.medicationCycle.update({
-      where: { id, version },
-      data: {
-        overall_status: toStatus,
-        version: { increment: 1 },
-      },
-    });
+    const result = await transitionCycleStatus(tx, id, ctx.orgId, toStatus, ctx.userId, { note: note ?? undefined });
 
-    // Create notification for status transition
-    // Notification model may not exist yet — wrap in try/catch to avoid blocking
+    // Create notification for status transition (best-effort)
     try {
-      await (tx as unknown as { notification?: { create: (args: unknown) => Promise<unknown> } }).notification?.create({
+      await tx.notification.create({
         data: {
           org_id: ctx.orgId,
-          related_entity_type: 'cycle',
-          related_entity_id: id,
-          type: 'status_changed',
+          user_id: ctx.userId,
+          event_type: 'status_changed',
+          type: 'system',
+          title: 'ステータス変更',
           message: note ?? `処方サイクルのステータスが ${fromStatus} から ${toStatus} に変更されました`,
-          created_at: new Date(),
+          link: `/workflow`,
+          metadata: { cycle_id: id, from: fromStatus, to: toStatus },
         },
       });
     } catch {
@@ -122,6 +96,17 @@ export async function PATCH(
 
     return result;
   });
+
+  // Broadcast realtime event (best-effort)
+  try {
+    const adapter = getRealtimeAdapter();
+    adapter.broadcastStatusUpdate(`org:${ctx.orgId}`, {
+      type: 'cycle_transition',
+      payload: { cycleId: id, from: fromStatus, to: toStatus },
+    });
+  } catch {
+    // Realtime broadcast is best-effort
+  }
 
   return success(updated);
 }

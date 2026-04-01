@@ -74,6 +74,15 @@ describe('/api/communication-requests', () => {
     expect(response.status).toBe(200);
   });
 
+  it('returns 400 for an invalid status filter', async () => {
+    const response = (await GET({
+      url: 'http://localhost/api/communication-requests?status=foo',
+    } as NextRequest))!;
+
+    expect(response.status).toBe(400);
+    expect(communicationRequestFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('creates a communication request', async () => {
     const response = (await POST({
       json: async () => ({

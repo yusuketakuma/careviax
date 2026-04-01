@@ -52,6 +52,11 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
+import {
+  sectionTemplatesFor,
+  type StructuredSectionDraft,
+} from './conference-note-templates';
 
 type Participant = {
   name: string;
@@ -93,14 +98,6 @@ type ActionItem = {
   assignee?: string;
   converted_task_id?: string;
   converted_at?: string;
-};
-
-type StructuredSectionDraft = {
-  key: string;
-  label: string;
-  body: string;
-  placeholder?: string;
-  rows?: number;
 };
 
 type ConferenceNote = {
@@ -159,171 +156,6 @@ const PROFESSION_LABELS: Record<string, string> = {
   care_staff: '介護職',
   other: 'その他',
 };
-
-function sectionTemplatesFor(
-  noteType: ConferenceNote['note_type']
-): StructuredSectionDraft[] {
-  switch (noteType) {
-    case 'pre_discharge':
-      return [
-        {
-          key: 'discharge_background',
-          label: '退院背景',
-          body: '',
-          placeholder: '退院予定日、入院経過、在宅移行時の留意点',
-          rows: 3,
-        },
-        {
-          key: 'target_discharge_date',
-          label: '退院予定日',
-          body: '',
-          placeholder: 'YYYY-MM-DD 形式で入力',
-          rows: 2,
-        },
-        {
-          key: 'medication_changes_on_discharge',
-          label: '退院時薬剤変更',
-          body: '',
-          placeholder: '1行1変更で入力すると MedicationIssue に反映されます',
-          rows: 4,
-        },
-        {
-          key: 'next_visit_plan',
-          label: '次回訪問計画',
-          body: '',
-          placeholder: '初回訪問候補日、初回確認事項、必要準備',
-          rows: 3,
-        },
-        {
-          key: 'team_roles',
-          label: '退院後の役割分担',
-          body: '',
-          placeholder: '薬局・訪看・主治医・家族の役割整理',
-          rows: 3,
-        },
-      ];
-    case 'service_manager':
-      return [
-        {
-          key: 'meeting_purpose',
-          label: '会議目的',
-          body: '',
-          placeholder: 'ケアプラン見直し、服薬支援強化など',
-          rows: 3,
-        },
-        {
-          key: 'care_plan_changes',
-          label: 'ケアプラン変更点',
-          body: '',
-          placeholder: '変更前後の要約、背景、判断理由',
-          rows: 3,
-        },
-        {
-          key: 'service_adjustments',
-          label: 'サービス調整',
-          body: '',
-          placeholder: '例: 訪問薬剤管理 月2回→月4回 / 理由: 服薬支援強化',
-          rows: 4,
-        },
-        {
-          key: 'medication_related_items',
-          label: '服薬関連項目',
-          body: '',
-          placeholder: '1行1項目で入力すると MedicationIssue に反映されます',
-          rows: 4,
-        },
-        {
-          key: 'agreed_actions',
-          label: '合意アクション',
-          body: '',
-          placeholder: '1行1アクションで入力するとフォローアップ Task を生成します',
-          rows: 4,
-        },
-        {
-          key: 'next_meeting_date',
-          label: '次回会議日',
-          body: '',
-          placeholder: 'YYYY-MM-DD 形式で入力',
-          rows: 2,
-        },
-      ];
-    case 'care_team':
-      return [
-        {
-          key: 'discussion_summary',
-          label: '討議要約',
-          body: '',
-          placeholder: '会議で共有した状況、判断、宿題',
-          rows: 3,
-        },
-        {
-          key: 'medication_issues',
-          label: '薬学課題',
-          body: '',
-          placeholder: '1行1課題で入力すると MedicationIssue に反映されます',
-          rows: 4,
-        },
-      ];
-    case 'death_conference':
-      return [
-        {
-          key: 'billing_confirmation',
-          label: '算定根拠確認',
-          body: '',
-          placeholder: '死亡前14日以内の訪問実績、記録の確認内容',
-          rows: 3,
-        },
-        {
-          key: 'timeline_summary',
-          label: '経過要約',
-          body: '',
-          placeholder: '導入から看取りまでの経過を時系列で記録',
-          rows: 4,
-        },
-        {
-          key: 'improvement_actions',
-          label: '改善アクション',
-          body: '',
-          placeholder: '再発防止や運用改善を1行ずつ記録',
-          rows: 4,
-        },
-        {
-          key: 'quality_indicators',
-          label: '品質指標',
-          body: '',
-          placeholder: '1行1指標で入力すると月次集計対象になります',
-          rows: 3,
-        },
-      ];
-    case 'emergency':
-      return [
-        {
-          key: 'emergency_context',
-          label: '緊急経緯',
-          body: '',
-          placeholder: '急変内容、対応時刻、初動',
-          rows: 3,
-        },
-        {
-          key: 'urgent_actions',
-          label: '当面の対応',
-          body: '',
-          placeholder: '当日中の連携事項、観察ポイント',
-          rows: 3,
-        },
-      ];
-    default:
-      return [
-        {
-          key: 'summary',
-          label: '会議要約',
-          body: '',
-          placeholder: '共有事項、決定事項、次回までの宿題',
-          rows: 4,
-        },
-      ];
-  }
-}
 
 function NoteCard({
   note,
@@ -557,6 +389,7 @@ function ActivityCard({ activity }: { activity: CommunityActivity }) {
 
 export function ConferencesContent() {
   const orgId = useOrgId();
+  const isBootstrappingOrg = !orgId;
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const contextPatientId = searchParams.get('patient_id')?.trim() || '';
@@ -610,7 +443,7 @@ export function ConferencesContent() {
   const notesQuery = useQuery({
     queryKey: ['conference-notes', orgId, selectedNoteType, contextPatientId, contextCaseId],
     queryFn: async () => {
-      const params = new URLSearchParams({ limit: '20' });
+      const params = new URLSearchParams();
       if (selectedNoteType !== 'all') {
         params.set('conference_type', selectedNoteType);
       }
@@ -620,11 +453,14 @@ export function ConferencesContent() {
       if (contextCaseId) {
         params.set('case_id', contextCaseId);
       }
-      const response = await fetch(`/api/conference-notes?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
+      return fetchAllCursorPages<ConferenceNote>({
+        path: '/api/conference-notes',
+        params,
+        init: {
+          headers: { 'x-org-id': orgId },
+        },
+        errorMessage: 'カンファレンスノートの取得に失敗しました',
       });
-      if (!response.ok) throw new Error('カンファレンスノートの取得に失敗しました');
-      return response.json() as Promise<{ data: ConferenceNote[] }>;
     },
     enabled: !!orgId,
   });
@@ -632,11 +468,13 @@ export function ConferencesContent() {
   const activitiesQuery = useQuery({
     queryKey: ['community-activities', orgId],
     queryFn: async () => {
-      const response = await fetch('/api/community-activities?limit=20', {
-        headers: { 'x-org-id': orgId },
+      return fetchAllCursorPages<CommunityActivity>({
+        path: '/api/community-activities',
+        init: {
+          headers: { 'x-org-id': orgId },
+        },
+        errorMessage: '地域活動の取得に失敗しました',
       });
-      if (!response.ok) throw new Error('地域活動の取得に失敗しました');
-      return response.json() as Promise<{ data: CommunityActivity[] }>;
     },
     enabled: !!orgId,
   });
@@ -668,7 +506,6 @@ export function ConferencesContent() {
       const params = new URLSearchParams({
         date_from: format(monthStart, 'yyyy-MM-dd'),
         date_to: format(monthEnd, 'yyyy-MM-dd'),
-        limit: '200',
       });
       if (selectedNoteType !== 'all') {
         params.set('conference_type', selectedNoteType);
@@ -679,11 +516,14 @@ export function ConferencesContent() {
       if (contextCaseId) {
         params.set('case_id', contextCaseId);
       }
-      const response = await fetch(`/api/conference-notes?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
+      return fetchAllCursorPages<ConferenceNote>({
+        path: '/api/conference-notes',
+        params,
+        init: {
+          headers: { 'x-org-id': orgId },
+        },
+        errorMessage: 'カレンダー用カンファレンス記録の取得に失敗しました',
       });
-      if (!response.ok) throw new Error('カレンダー用カンファレンス記録の取得に失敗しました');
-      return response.json() as Promise<{ data: ConferenceNote[] }>;
     },
     enabled: !!orgId,
   });
@@ -1143,7 +983,8 @@ export function ConferencesContent() {
         </Card>
       </div>
 
-      {notesQuery.isLoading ||
+      {isBootstrappingOrg ||
+      notesQuery.isLoading ||
       activitiesQuery.isLoading ||
       (noteViewMode === 'calendar' && conferenceCalendarQuery.isLoading) ? (
         <div className="space-y-2">

@@ -22,6 +22,7 @@ import {
   buildIntakeFieldRows,
   getHomeVisitIntake,
 } from '@/lib/patient/intake-display';
+import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { ClipboardList, Plus } from 'lucide-react';
 
 const caseStatusLabel: Record<CaseStatus, string> = {
@@ -121,7 +122,10 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
     }
 
     toast.success(`ステータスを「${caseStatusLabel[transition.to]}」に変更しました`);
-    await queryClient.invalidateQueries({ queryKey: ['patient', patient.id] });
+    await invalidateQueryKeys(
+      queryClient,
+      getPatientCareQueryKeys({ orgId, patientId: patient.id })
+    );
   }
 
   async function handleCreateCase() {
@@ -143,7 +147,10 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
     }
 
     toast.success('新しいケースを作成しました');
-    await queryClient.invalidateQueries({ queryKey: ['patient', patient.id] });
+    await invalidateQueryKeys(
+      queryClient,
+      getPatientCareQueryKeys({ orgId, patientId: patient.id })
+    );
     setIsCreating(false);
   }
 
@@ -169,10 +176,10 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
     }
 
     toast.success('担当薬剤師を更新しました');
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['patient', patient.id] }),
-      queryClient.invalidateQueries({ queryKey: ['cases', 'schedule-planner', orgId] }),
-    ]);
+    await invalidateQueryKeys(
+      queryClient,
+      getPatientCareQueryKeys({ orgId, patientId: patient.id })
+    );
     setSavingCaseId(null);
   }
 

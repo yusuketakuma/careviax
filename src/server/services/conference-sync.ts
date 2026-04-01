@@ -140,6 +140,10 @@ function parseDateFromSectionBody(body?: string) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function taskPriorityForActionItem(noteType: string) {
+  return noteType === 'emergency' ? 'high' : 'normal';
+}
+
 export class ConferenceSyncService {
   /**
    * Executes all sync side-effects when a ConferenceNote is created.
@@ -290,7 +294,7 @@ export class ConferenceSyncService {
             task_type: 'conference_action_item',
             title: item.title!,
             description: `${note.title} のアクションアイテム`,
-            priority: 'normal',
+            priority: taskPriorityForActionItem(note.note_type),
             dedupe_key: dedupeKey,
             related_entity_type: 'conference_note',
             related_entity_id: note.id,
@@ -327,7 +331,7 @@ export class ConferenceSyncService {
           task_type: 'conference_action_item',
           title: item.title!,
           description: `${note.title} のアクションアイテム`,
-          priority: 'normal',
+          priority: taskPriorityForActionItem(note.note_type),
           dedupe_key: dedupeKey,
           related_entity_type: 'conference_note',
           related_entity_id: note.id,

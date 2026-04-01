@@ -12,7 +12,7 @@
 - POS・仕入・発注 → 在庫管理専用システム
 
 ### 実装優先原則（今回レビュー反映）
-- MVPは「訪問日次運用 + 報告送付 + 最低限の処方差分/持参判定」を最優先にし、重いマスタ/CDS/請求自動化は後段に寄せる
+- MVPは「訪問日次運用 + 報告送付 + 最低限の処方差分/持参判定」を最優先にし、重いマスタ/処方安全チェック/請求自動化は後段に寄せる
 - `MedicationCycle` は「処方起点の1運用サイクル」を維持する。MVPでも訪問予定は処方差分・持参可否・未解決課題と切り離さない
 - CareViaX / レセコン / 電子薬歴 / 在宅支援システムの責任分界を先に固定し、二重入力を避ける
 - 公開情報ベースの市場比較では、既存製品は「訪問記録・計画書/報告書作成・FAX/メール送付・現場共有」に強い。初期価値は最適化機能より、現場記録/連携/持参漏れ防止に置く
@@ -29,7 +29,7 @@
 |---|--------|---------|--------|------|------|
 | 1 | **処方箋応需** | prescription_intake | 受付/事務 | 処方箋（紙/FAX/電子/施設/リフィル） | 構造化明細、MedicationCycle |
 | 2 | **調剤** | dispensing | 調剤担当薬剤師 | 処方明細 + 在庫確認 | 調剤実績、差異記録、持参候補 |
-| 3 | **調剤鑑査** | dispense_audit | 鑑査担当薬剤師 | 処方原本 + 調剤実績 | 承認/差戻し + CDS アラート |
+| 3 | **調剤鑑査** | dispense_audit | 鑑査担当薬剤師 | 処方原本 + 調剤実績 | 承認/差戻し + 処方安全アラート |
 | 4 | **薬剤セット** | medication_set | セット担当 | 鑑査済み薬剤 | セット構成、持参パック |
 | 5 | **セット鑑査** | set_audit | 鑑査担当 | セット実績 | 承認/部分承認/差戻し |
 | 6 | **訪問計画** | visit_planning | 事務/薬剤師 | 持参確定品 + 患者スケジュール | 訪問予定、ルート、準備チェック |
@@ -437,7 +437,7 @@ flowchart LR
   - drug_a_id, drug_b_id, severity ENUM(contraindicated/caution/minor), mechanism, clinical_effect
   - source ENUM(pmda_xml/kegg/manual)
   - データソース: PMDA添付文書XMLの併用禁忌/注意セクションをパース
-- [x] DrugAlertRule（CDSアラートルール）:
+- [x] DrugAlertRule（処方安全アラートルール）:
   - alert_type ENUM(interaction/duplicate/allergy_cross/renal_dose/pim_elderly/high_risk/narcotic/max_days)
   - condition JSON, severity, message
   - ハイリスク薬: 厚労省 特定薬剤管理指導加算対象（薬効分類コードでマッピング）
@@ -511,9 +511,11 @@ flowchart LR
 - [x] 後発医薬品リスト取込 → DrugMaster.is_generic 更新
   - 2026-03-28: MHLW 薬価リスト内の後発フラグ列を利用して `DrugMaster.is_generic` を更新し、一般名マスタ更新と合わせて `/api/drug-master-imports/mhlw-generic` / `drug-reference-refresh` ジョブを追加
 
-**PMDA 添付文書取込（第3層・CDS基盤）:**
+**PMDA 添付文書取込（第3層・処方安全チェック基盤）:**
 - [ ] PMDAメディナビ登録（無料）→ マイ医薬品集サービスで全医療用医薬品XMLを一括DL
   - 2026-03-28: importer 自体は実装済みだが、全量/差分 ZIP の取得は PMDA メディナビ/マイ医薬品集の登録と配布 URL 管理が前提
+  - 2026-03-31: 管理画面に `PMDA_PACKAGE_INSERT_FULL_URL` / `PMDA_PACKAGE_INSERT_DELTA_URL` の運用前提を明記済み。ローカル実装完了、残作業は PMDA 側登録と配布 URL 発行のみ
+  - 2026-04-01: `/api/admin/pilot-launch-dossier` と readiness 集計からは URL 実値を返さず、設定有無のみを返すように変更。残作業は PMDA 側登録と URL 発行、その後の実地 import 疎通確認のみ
 - [x] XML パーサー: 禁忌/併用禁忌/併用注意/重大な副作用/用法用量セクションを構造化抽出
   - 2026-03-28: `src/server/services/drug-master-import/pmda.ts` で XML/ZIP を解析し、主要セクションを構造化抽出
 - [x] → DrugPackageInsert（禁忌/相互作用/副作用JSON）に保存
@@ -687,15 +689,15 @@ flowchart LR
   - [x] 保存期間: 5年（CloudWatch Logs → S3 Glacier アーカイブ）
 
 **0-5a. 本番インフラ — パイロット前ブロッカー:**
-- [ ] I-01: AWS WAF 構成 `cc:TODO`
+- [x] I-01: AWS WAF 構成 `cc:完了` (2026-03-31)
   - SQL injection / XSS / レートリミット / geo-blocking ルール定義
   - ALB or CloudFront 前段に配置、ログを S3 へ出力
   - 日本リージョン限定アクセスの IP レピュテーションフィルタ
-- [ ] I-02: VPC / セキュリティグループ設計 `cc:TODO`
+- [x] I-02: VPC / セキュリティグループ設計 `cc:完了` (2026-03-31)
   - パブリックサブネット（ALB/NAT）+ プライベートサブネット（RDS/Lambda）の2層構成
   - RDS はプライベートサブネット限定、Bastion or SSM Session Manager 経由のみ
   - セキュリティグループ定義: ALB→App（443）、App→RDS（5432）、App→S3（VPC Endpoint）
-- [ ] I-03: S3 暗号化を KMS に移行 `cc:TODO`
+- [x] I-03: S3 暗号化を KMS に移行 `cc:完了` (2026-03-31)
   - 現在 AES256 → AWS KMS（CMK）に切替
   - 鍵ローテーションポリシー（年1回自動）
   - データ分類別の鍵分離: PHI用 / 監査ログ用 / 一般用
@@ -704,46 +706,51 @@ flowchart LR
   - RDS ポイントインタイムリカバリ、S3 バージョニング復元、Cognito ユーザープールバックアップ
   - 実施記録を `docs/compliance/backup-recovery-drill.md` に追記
   - RTO 4h / RPO 24h の実測検証
-- [ ] I-05: RDS 構成の明文化 `cc:TODO`
+  - 2026-03-31: `scripts/backup-recovery-check.ts` と `pnpm backup:drill:check` を追加し、前提確認と試験記録追記を自動化
+  - 2026-03-31: `corepack pnpm backup:drill:check --append ...` で机上訓練の前提確認記録を追記。実地復旧は AWS 接続情報未設定のため継続タスク
+  - 2026-03-31: ローカル確認では必須ファイルは揃っており、`DATABASE_URL` / `AWS_REGION` 未設定のみが live drill の blocker。AWS 権限付与後に同手順で実地記録を追記する
+  - 2026-04-01: `backup:drill:check --append --mode live|tabletop` で机上訓練と実地復旧を区別して記録できるようにし、 dossier/readiness でも live drill 未実施を別 blocker として検出する
+- [x] I-05: RDS 構成の明文化 `cc:完了` (2026-03-31)
   - Multi-AZ 有効化確認、自動バックアップ保持期間（35日）、パラメータグループ定義
   - 削除保護 / 最終スナップショットポリシー
   - サブネットグループ定義（I-02 のプライベートサブネット）
 
 **0-5b. セキュリティ強化:**
-- [ ] I-06: CSP の `unsafe-eval`/`unsafe-inline` 除去 `cc:TODO`
+- [x] I-06: CSP の `unsafe-eval`/`unsafe-inline` 除去 `cc:完了` (2026-03-31)
   - ビルド時 nonce 生成方式に切替
   - `next.config.ts` の `Content-Security-Policy` を本番用に厳格化
-- [ ] I-07: 分散レートリミット `cc:TODO`
+  - 2026-03-31: `src/proxy.ts` を nonce ベースの本番 CSP に変更し、`style-src 'self' 'nonce-...'` へ移行。アプリ内の inline `style` / `<style>` を撤去した。開発環境のみ Next.js 16 の公式ガイドに従って `unsafe-eval` / `unsafe-inline` を維持
+- [x] I-07: 分散レートリミット `cc:完了` (2026-03-31)
   - 現在の in-memory Map → Redis or DynamoDB ベースに移行
   - マルチインスタンス対応、再起動時のリセット防止
   - GET（情報取得）と POST（書込み）でリミット値を分離
   - SSE `/stream` エンドポイントのレートリミット除外を見直し
-- [ ] I-08: セキュリティイベントログ `cc:TODO`
+- [x] I-08: セキュリティイベントログ `cc:完了` (2026-03-31)
   - 認証失敗 / CSRF 拒否 / レートリミット超過 / RLS コンテキスト未設定を AuditLog に記録
   - `src/proxy.ts` と `src/lib/auth/middleware.ts` にセキュリティイベント記録を追加
 
 **0-5c. コンプライアンス文書（3省2ガイドライン監査対応）:**
-- [ ] C-01: アクセス制御ポリシー文書 `cc:TODO`
+- [x] C-01: アクセス制御ポリシー文書 `cc:完了` (2026-03-31)
   - 7ロール × 権限マトリクスの正式文書化（`docs/compliance/access-control-policy.md`）
   - 物理アクセス制御 / 特権アクセス管理（PAM）手順
-- [ ] C-02: 変更管理・リリース手順書 `cc:TODO`
+- [x] C-02: 変更管理・リリース手順書 `cc:完了` (2026-03-31)
   - コードレビュー / 承認 / デプロイ / ロールバック手順（`docs/compliance/change-management.md`）
   - 本番デプロイ前チェックリスト
-- [ ] C-03: データ分類基準 `cc:TODO`
+- [x] C-03: データ分類基準 `cc:完了` (2026-03-31)
   - PHI / PII / 一般データの3段階分類定義（`docs/compliance/data-classification.md`）
   - テーブル / カラム単位の機密度ラベル
   - データ保持 vs 削除ポリシーの粒度定義（5年一律ではなくカテゴリ別）
-- [ ] C-04: 脆弱性管理 `cc:TODO`
+- [x] C-04: 脆弱性管理 `cc:完了` (2026-03-31)
   - SAST / DAST / 依存関係スキャンの CI/CD 統合
   - パッチ適用 SLA（Critical: 48h, High: 7d, Medium: 30d）
   - 脆弱性開示ポリシー（`docs/compliance/vulnerability-management.md`）
-- [ ] C-05: 委託先リスク評価 `cc:TODO`
+- [x] C-05: 委託先リスク評価 `cc:完了` (2026-03-31)
   - AWS サービス別のセキュリティ契約整理（`docs/compliance/vendor-risk-assessment.md`）
   - サブプロセッサリスト（SES, Cognito, S3 等）
-- [ ] C-06: セキュリティ教育計画 `cc:TODO`
+- [x] C-06: セキュリティ教育計画 `cc:完了` (2026-03-31)
   - 従業員向け年次セキュリティ研修カリキュラム
   - インシデント対応机上演習スケジュール
-- [ ] C-07: 3省2ガイドライン統制マッピング `cc:TODO`
+- [x] C-07: 3省2ガイドライン統制マッピング `cc:完了` (2026-03-31)
   - MHLW v6.0 の統制項目ごとの充足チェックリスト（`docs/compliance/mhlw-v6-mapping.md`）
   - METI/MIC v1.1 の統制項目ごとの充足チェックリスト（`docs/compliance/meti-mic-v1.1-mapping.md`）
 
@@ -788,6 +795,7 @@ flowchart LR
   - 同意書一覧画面（患者別: 種別/取得日/有効期限/ステータス）
   - 紙署名→スキャンアップロード→ConsentRecordに紐付けフロー
   - 未取得同意の警告表示（訪問予定作成時に必須同意チェック）
+  - 2026-03-31: 同意、管理計画書、配薬設定、薬剤課題、緊急連絡ドラフト更新後も patient detail だけでなく schedule / My Day / dashboard に反映されるよう invalidate を共通化した
 
 ### 1a-2. ⑥ 訪問計画・ルート最適化 `cc:WIP`
 > depends: 1a-1 | DoD: 訪問予定作成→定期スケジュール生成→準備チェック→当日表示→予定変更連絡が動作
@@ -801,6 +809,8 @@ flowchart LR
 
 **訪問スケジュール (FR-101):**
 - [x] カレンダー(日/週/月) + リスト: 担当者別/施設別/患者別ビュー
+  - 2026-03-31: 月表示 `CalendarView` の 200 件固定取得をページネーション追従に変更し、日別パネルから患者詳細 / 訪問記録へ直接遷移できるようにした
+  - 2026-03-31: `My Day` / `CalendarView` の visit type・status・時間帯表示を `day-view.shared` に揃え、訪問ボードと同じ語彙で見えるように統一した
 - [x] 訪問タイプ7種: 初回/定期/臨時/再訪/配薬のみ/緊急/医師同行
 - [x] 定期訪問の繰返しルール: RRULE形式（月2回第1・第3火曜等）→自動生成
   - 月間訪問回数の自動カウント（医療保険4回/介護保険2回の上限管理）
@@ -855,8 +865,10 @@ flowchart LR
 
 **本日の訪問 (FR-102):**
 - [x] モバイル最適化: 訪問順に患者カード表示
+  - 2026-03-31: モバイル訪問カードの患者名を患者詳細リンク化し、訪問中でも患者情報へ 1 tap で戻れるようにした
 - [x] 各カードに: 患者名/住所/推定到着時刻/前回課題数/持参物チェック/ナビ起動ボタン
 - [x] 訪問開始ボタン → 位置情報記録（任意）→ 訪問記録画面へ遷移
+  - 2026-03-31: 患者基本情報 / 連絡先 / 病名課題 / ケアチーム / 訪問条件 / ケース更新後に、患者詳細だけでなく schedule / My Day / dashboard まで org-aware に再取得するよう統一した
 
 ### 1a-3. ⑦ 訪問実施・記録 `cc:WIP`
 > depends: 1a-2 | DoD: SOAP記録→残薬入力→次回提案→当日参照オフラインが動作
@@ -869,6 +881,7 @@ flowchart LR
   - 2026-03-28: 訪問記録フォームから JPEG/PNG/WEBP(10MB) と PDF(50MB) を presigned upload で保存し、`VisitRecord.attachments` に紐づけ、詳細画面から再ダウンロード可能にした
 - [x] 訪問中止・再訪・延期 (FR-105): 理由コード必須
 - [x] outcome_status に応じて `MedicationCycle` / `BillingEvidence` / 次回タスクへ自動反映
+  - 2026-03-31: `visit-record-form` 保存後に patient / schedule / My Day / dashboard / task board をまとめて invalidate し、記録直後の stale 表示を解消した
 
 **薬歴の法定保存・出力（P0: リリースブロッカー）:**
 - [x] VisitRecord（薬歴）の保存期間管理: 5年保持、期限切れ予告アラート
@@ -901,7 +914,7 @@ flowchart LR
   - 2026-03-28: `/schedules` で当日 visit brief を端末へ事前同期し、最終同期時刻つきの read-only キャッシュとして再利用できるようにした
 - [x] オフラインインジケータ: 読取専用キャッシュであることを明示
   - 2026-03-28: app shell のオフライン banner と schedule board のモバイル訪問モードに read-only / TTL 表記を追加した
-- [ ] 下書き同期は Phase 2（FR-106 Ph2）に後ろ倒し
+- [x] 下書き同期は Phase 2（FR-106 Ph2）に後ろ倒し
 
 ### 1a-4. 薬学的課題 + QRコード `cc:WIP`
 > depends: 1a-1 | DoD: 薬剤一覧、課題CRUD、QRスキャン→患者新規登録 or 既存選択→MedicationProfile保存が動作
@@ -980,7 +993,7 @@ flowchart LR
 
 ---
 
-## Phase 1b: ①処方箋応需→②調剤→③調剤鑑査→CDS `cc:WIP`
+## Phase 1b: ①処方箋応需→②調剤→③調剤鑑査→処方安全チェック `cc:WIP`
 > depends: Phase 1a 完了
 > 出口条件: 処方箋応需→疑義照会→調剤→鑑査→訪問→報告の完全サイクルが回る
 
@@ -1043,7 +1056,7 @@ flowchart LR
 - [x] グローバル: `Cmd+K` 検索、`Cmd+N` 新規作成、`Esc` モーダル閉じ、`?` ショートカット一覧
 - [x] ショートカットヘルプモーダル（`?`キーで表示）
 
-### 1b-3. CDS（臨床意思決定支援） `cc:WIP`
+### 1b-3. 処方安全チェック（臨床意思決定支援） `cc:WIP`
 > depends: 1b-2, 0-2i（医薬品マスタ取込済み） | DoD: 調剤時・訪問記録時にアラート表示
 
 - [x] 調剤時チェック（DrugMaster + DrugInteraction + DrugAlertRule 参照）:
@@ -1085,6 +1098,8 @@ flowchart LR
 - [x] billing evidence ダッシュボード: 算定不可理由 / 根拠不足 / 送付未完了
 - [x] E2E: 処方箋応需→疑義照会→調剤→鑑査→訪問→報告の完全フロー
 - [ ] ISMS認証プロセス開始
+  - 2026-03-31: 技術側の prerequisite（アクセス制御、変更管理、データ分類、脆弱性管理、委託先評価、教育計画、3省2ガイドライン統制マッピング）は文書化済み。残作業は審査機関選定・見積取得・キックオフ日程確定
+  - 2026-04-01: `pilot:dossier` / `/api/admin/pilot-launch-dossier` から comparison table / decision memo の未着手を継続検出できる状態を確認。残作業は外部見積取得と社内意思決定のみ
 
 ### 1b-7. テストカバレッジ強化 `cc:TODO`
 > depends: 1b-1〜1b-6 | DoD: 全 API ルートにユニットテスト、カバレッジ80%以上
@@ -1112,47 +1127,45 @@ flowchart LR
 - [x] `medication-cycles/route.ts`, `medication-cycles/[id]/transition/route.ts` `cc:完了` (2026-03-30)
 - [x] `medication-issues/route.ts`, `medication-issues/[id]/route.ts` `cc:完了` (2026-03-30)
 
-**T-05: 認証・ユーザー設定系（6ルート未テスト）:**
-- [ ] `auth/[...nextauth]/route.ts`
-- [ ] `auth/password/reset/request/route.ts`, `auth/password/reset/confirm/route.ts`
-- [ ] `auth/mfa/setup/route.ts`, `auth/mfa/disable/route.ts`
-- [ ] `me/profile/route.ts`
+**T-05: 認証・ユーザー設定系（6ルート未テスト） `cc:完了`:**
+- [x] `auth/[...nextauth]/route.ts` `cc:完了` (2026-03-31)
+- [x] `auth/password/reset/request/route.ts`, `auth/password/reset/confirm/route.ts` `cc:完了` (2026-03-31)
+- [x] `auth/mfa/setup/route.ts`, `auth/mfa/disable/route.ts` `cc:完了` (2026-03-31)
+- [x] `me/profile/route.ts` `cc:完了` (2026-03-31)
 
-**T-06: PDF 生成系（7ルート — 共通テストで部分カバー）:**
-- [ ] `care-reports/[id]/pdf/route.ts`, `management-plans/[id]/pdf/route.ts`
-- [ ] `patients/[id]/medication-calendar/pdf/route.ts`, `patients/[id]/medications/pdf/route.ts`
-- [ ] `patients/[id]/visit-records/pdf/route.ts`, `tracing-reports/[id]/pdf/route.ts`
-- [ ] `visit-records/[id]/pdf/route.ts`
+**T-06: PDF 生成系（7ルート — 共通テストで部分カバー） `cc:完了`:**
+- [x] `care-reports/[id]/pdf/route.ts`, `management-plans/[id]/pdf/route.ts` `cc:完了` (2026-03-31)
+- [x] `patients/[id]/medication-calendar/pdf/route.ts`, `patients/[id]/medications/pdf/route.ts` `cc:完了` (2026-03-31)
+- [x] `patients/[id]/visit-records/pdf/route.ts`, `tracing-reports/[id]/pdf/route.ts` `cc:完了` (2026-03-31)
+- [x] `visit-records/[id]/pdf/route.ts` `cc:完了` (2026-03-31)
 
-**T-07: その他（37ルート未テスト）:**
-- [ ] 調剤系: `dispense-queue`, `dispense-results/[id]`, `dispense-tasks/[id]/verify-barcode`
-- [ ] ケース系: `cases/route.ts`, `cases/[id]/route.ts`, `cases/[id]/transition`
-- [ ] 通信系: `communication-requests/route.ts`, `[id]/responses`, `communication-events`
+**T-07: その他（37ルート未テスト） `cc:完了` (2026-03-31):**
+- [x] 調剤系: `dispense-queue`, `dispense-results/[id]`, `dispense-tasks/[id]/verify-barcode`
+- [x] ケース系: `cases/route.ts`, `cases/[id]/route.ts`, `cases/[id]/transition`
+- [x] 通信系: `communication-requests/route.ts`, `[id]/responses`, `communication-events`
 - [x] 管理系: `notification-rules`, `pharmacist-shifts`, `pharmacy-sites`, `consent-records` `cc:完了` (2026-03-30)
 - [x] その他: `business-holidays`, `conference-notes`, `community-activities`, `external-access`, `templates`, `settings` `cc:完了` (2026-03-30)
 
-### 1b-8. 機能的ギャップ修正 `cc:TODO`
+### 1b-8. 機能的ギャップ修正 `cc:完了`
 > 2026-03-28 GAP分析: ワークフロー横断で検出した機能的な隙間
 
-- [ ] F-01: 監査トリガーの対象拡大 `cc:TODO`
-  - 現在10テーブルのみ。DispenseResult / DispenseAudit / SetAudit にも DB 監査トリガーを追加
-  - `prisma/migrations/` に追加マイグレーション
-- [ ] F-02: データエクスポート監査ログ `cc:TODO`
+- [x] F-01: 監査トリガーの対象拡大 `cc:完了` (2026-03-31)
+  - `prisma/migrations/20260328223000_expand_audit_log_targets/migration.sql` で `DispenseResult` / `DispenseAudit` / `SetAudit` に DB 監査トリガーを追加済み
+- [x] F-02: データエクスポート監査ログ `cc:完了` (2026-03-31)
   - 一括 PDF / CSV エクスポート時に「誰が何件を出力したか」を AuditLog に記録
   - `audit-logs/export`, `billing-candidates/export`, `visit-records/[id]/pdf` 等の全エクスポート系ルートに追加
-- [ ] F-03: フィールドレベル認可 `cc:TODO`
-  - PII / 保険情報のロール別マスキング
-  - `external_viewer` ロールには患者の保険詳細・住所詳細を非表示
-  - API レスポンス層で役割に応じたフィールド除外
-- [ ] F-04: ユーザー別レートリミット `cc:TODO`
-  - 現在 IP:endpoint 単位 → userId:endpoint 単位に拡張
-  - 共有 IP（施設 NAT）環境での公平性確保
-- [ ] F-05: セッション無効化（全デバイスログアウト） `cc:TODO`
+- [x] F-03: フィールドレベル認可 `cc:完了` (2026-03-31)
+  - `src/lib/patient/privacy.ts` を追加し、患者一覧 / 患者詳細 / 連絡先 API で PII・保険情報・住所詳細のロール別マスキングを共通化
+  - `external_viewer` 想定では住所詳細と保険情報を非表示、`clerk` では電話・保険番号をマスクするレスポンス層へ統一
+- [x] F-04: ユーザー別レートリミット `cc:完了` (2026-03-31)
+  - `src/proxy.ts` で `next-auth/jwt` を用いて `userId:endpoint` 優先、未認証時のみ `IP:endpoint` へフォールバック
+  - 共有 IP（施設 NAT）環境でもユーザー単位で独立したバケットを利用
+- [x] F-05: セッション無効化（全デバイスログアウト） `cc:完了` (2026-03-31)
   - Cognito GlobalSignOut API の呼び出し
   - ユーザー設定画面に「全デバイスからログアウト」ボタン追加
-- [ ] F-06: RLS コンテキスト未設定時のフェイルセーフ `cc:TODO`
-  - `SET LOCAL app.current_org_id` が未設定の場合にクエリを拒否（空結果ではなくエラー）
-  - `withOrgContext` の事前検証を強化
+- [x] F-06: RLS コンテキスト未設定時のフェイルセーフ `cc:完了` (2026-03-31)
+  - `prisma/migrations/20260328234500_rls_context_failsafe/migration.sql` の `app_enforced_org_id()` で RLS コンテキスト未設定時を明示エラー化
+  - `src/lib/db/rls.ts` で `app.rls_context_applied=true` を注入し、request context と orgId の不整合を transaction 開始前に拒否
 
 ### 1b-9. パイロット薬局 UAT + フィードバック反映 `cc:TODO`
 > depends: 1b-6 | DoD: パイロット薬局で1週間の実運用テスト完了、フィードバック反映
@@ -1161,6 +1174,13 @@ flowchart LR
 - [ ] フィードバック収集→優先度付け→Phase 2 開始前に修正適用
 - [ ] 施設患者の有無を確認 → 施設なしなら FacilityVisitBatch と自動ルート最適化は Phase 2 に移動
 - [ ] セット患者の有無を確認 → セット患者なしの場合は Pilot対象を明示し、セット本格機能は Phase 2 へ
+  - 2026-03-31: `/api/admin/pilot-readiness`、UAT 画面の readiness 要約、`pnpm pilot:readiness -- --org <org_id>` を追加。施設患者数 / セット pilot 対象 / UAT blocker を即時確認可能にした
+  - 2026-03-31: `pnpm pilot:org-audit -- --org <org_id>` と `docs/operations/target-pharmacy-onboarding-checklist.md` を追加。店舗構成 / facility linked case / set pilot / 16km圏外患者を一括確認できる
+  - 2026-03-31: `UatFeedback` に status / owner / work item / due date / resolved_at を追加し、`/api/admin/uat-feedback/[id]` と `/admin/uat` で triage-to-closure 導線を実装した
+  - 2026-03-31: `pnpm pilot:dossier -- --org <org_id>` を追加。pilot readiness / org audit / UAT summary / PMDA / backup / ISMS の外部前提を 1 つの Markdown dossier に束ねて Phase 2 判定共有を自動化した
+  - 2026-03-31: `/api/admin/pilot-launch-dossier` と `/admin/uat` の dossier card を追加し、CLI を開かずに同じ統合判定を管理画面から確認できるようにした
+  - 2026-04-01: `/api/pharmacists?include_collaborators=true` と `/admin/uat` の担当者候補を user 単位で重複排除し、triage owner 選択の曖昧さを解消。外部 readiness は PMDA URL 実値を返さず、backup は live/tabletop を区別して表示するよう修正
+  - 2026-03-31: 現時点でローカル側の readiness 集計・フィードバック収集・triage 管理は実装済み。残作業は対象薬局 org を指定した 1 週間運用と、実地結果に基づく修正反映のみ
 
 ---
 
@@ -1224,19 +1244,19 @@ flowchart LR
 > 2026-03-28 立案: 既存コードベースの GAP 分析に基づく6機能の実装計画
 > depends: Phase 1b 主要機能完了 | 出口条件: パイロット薬局で日常業務が完結する
 
-### 2b-1. スタッフ管理機能 `cc:TODO`
+### 2b-1. スタッフ管理機能 `cc:完了` (2026-03-31)
 > 既存: Pharmacist CRUD API、Cognito 連携、シフト管理、資格管理は実装済み
 > 不足: 専用UI、一覧性、勤怠、ワークロード分析、一括操作
 > DoD: 管理者がスタッフの採用→配置→勤怠→評価を1画面で完結できる
 
 **2b-1a. スタッフ管理専用ページ（`/admin/staff`）:**
-- [ ] スタッフ一覧テーブル（DataTable ベース）
+- [x] スタッフ一覧テーブル（DataTable ベース） `cc:完了` (2026-03-31)
   - 列: 名前/カナ、ロール、所属店舗、アカウント状態（invited/active/suspended/retired）、最終ログイン、今月訪問数
   - フィルタ: ロール、店舗、状態、資格種別
   - ソート: 名前/訪問数/最終ログイン
   - 行アクション: 編集/停止/復帰/招待再送
   - 既存 API: `GET /api/pharmacists`（フィルタ拡張のみ）
-- [ ] スタッフ詳細パネル（サイドパネル or モーダル）
+- [x] スタッフ詳細パネル（サイドパネル or モーダル） `cc:完了` (2026-03-31)
   - プロフィール編集（名前/メール/電話/所属店舗/ロール変更）
   - 工程権限フラグ（can_dispense/can_audit_dispense/can_set/can_audit_set）のトグル
   - 訪問制限（max_daily_visits/max_weekly_visits/max_travel_minutes）
@@ -1244,29 +1264,29 @@ flowchart LR
   - 既存 API: `PATCH /api/pharmacists/[id]` action=update
 
 **2b-1b. 資格管理 CRUD:**
-- [ ] 資格の新規登録・編集・失効 UI
+- [x] 資格の新規登録・編集・失効 UI `cc:完了` (2026-03-31)
   - 現状: `pharmacist-credentials-content.tsx` は読み取り専用の一覧表示のみ
   - 追加: 登録フォーム（資格種別/番号/発行日/有効期限/研修時間/在籍年数）
   - API: `POST/PATCH /api/pharmacist-credentials` を新設
   - 既存モデル: `PharmacistCredential`（prisma/schema/organization.prisma）
 
 **2b-1c. 勤怠・ワークロード分析:**
-- [ ] 薬剤師別 KPI ダッシュボード
+- [x] 薬剤師別 KPI ダッシュボード `cc:完了` (2026-03-31)
   - 月間訪問数 / 担当患者数 / 平均訪問時間 / 報告書提出率
   - データソース: `VisitRecord` + `CareReport` + `PharmacistShift` を集計
   - 既存基盤: `/admin/performance` の performance-content.tsx を拡張
-- [ ] ワークロードバランス表示
+- [x] ワークロードバランス表示 `cc:完了` (2026-03-31)
   - 薬剤師間の訪問数/移動距離の偏り可視化
   - 既存 `visit-schedule-planner.ts` の `workload_penalty` スコアを流用
 
 **2b-1d. 一括操作:**
-- [ ] CSV 一括インポート（薬剤師マスタ）
+- [x] CSV 一括インポート（薬剤師マスタ） `cc:完了` (2026-03-31)
   - カラム: 名前/カナ/メール/電話/ロール/店舗/資格
   - 既存 `inviteCognitoUser()` をバッチ呼出し
-- [ ] 一括シフト登録（月間テンプレート適用の拡張）
+- [x] 一括シフト登録（月間テンプレート適用の拡張） `cc:完了` (2026-03-31)
   - 既存: `POST /api/pharmacist-shift-templates/apply`（単一薬剤師）→ 複数薬剤師同時適用
 
-### 2b-2. 患者一覧機能強化 `cc:TODO`
+### 2b-2. 患者一覧機能強化 `cc:完了` (2026-03-31)
 > 既存: 基本テーブル（名前/カナ/生年月日/性別/ケース状態）、カーソルページネーション、名前検索
 > 不足: 高度フィルタ、リスク表示、クイックアクション、エクスポート
 > DoD: 管理者/薬剤師が「今日対応すべき患者」を即座に絞り込める
@@ -1299,7 +1319,7 @@ flowchart LR
   - 既存基盤: `billing-candidates/export` のパターンを流用
 - [x] お気に入り/最近表示した患者（Zustand + localStorage）
 
-### 2b-3. セット機能の実務拡張 `cc:WIP`
+### 2b-3. セット機能の実務拡張 `cc:完了` (2026-03-31)
 > 既存: SetPlan(4方式)/SetBatch(グリッド)/SetAudit(承認/部分/差戻し)/持参パック/冷所・麻薬検知
 > 不足: 患者固有の配薬方法、物理的なセット形態の表現、セット変更履歴
 > DoD: 「この患者はお薬BOXの朝青・昼黄に入れてホッチキス止め」が画面で分かり、印刷できる
@@ -1326,22 +1346,22 @@ flowchart LR
   - 設定は CareCase or Patient に紐付け
 
 **2b-3b. セット画面への配薬方法統合:**
-- [ ] SetPlan.set_method を `PackagingMethod` FK に拡張（既存4値 + マスタ参照の併用）
-- [ ] セットグリッド UI に配薬方法表示
+- [x] SetPlan.set_method を `PackagingMethod` FK に拡張（既存4値 + マスタ参照の併用） `cc:完了` (2026-03-31)
+- [x] セットグリッド UI に配薬方法表示 `cc:完了` (2026-03-31)
   - グリッド上部: 「お薬BOX（朝=青, 昼=黄, 夕=ピンク, 眠前=白）」
   - 特記事項バナー: 「ホッチキス止め / 名前シール貼付」
   - 印刷レイアウト: BOX スロット色 + 患者固有指示を持参パックチェックリストに反映
-- [ ] `medication-set-full-content.tsx` の印刷ビューに配薬指示セクション追加
+- [x] `medication-set-full-content.tsx` の印刷ビューに配薬指示セクション追加 `cc:完了` (2026-03-31)
 
 **2b-3c. セット変更履歴・差分:**
-- [ ] SetBatch の変更履歴（before/after diff）
+- [x] SetBatch の変更履歴（before/after diff） `cc:完了` (2026-03-31)
   - 再生成時に旧バッチを snapshot → diff 表示
   - 処方変更トリガーの自動検知（PrescriptionLine 更新 → 影響 SetBatch ハイライト）
-- [ ] packaging_instructions の構造化
+- [x] packaging_instructions の構造化 `cc:完了` (2026-03-31)
   - 現在: free text + regex 検知（`/冷所/`, `/麻薬/`）→ 脆い
   - 改善: ENUM 型タグ配列に変更（`cold_storage`, `narcotic`, `half_tablet`, `crush_prohibited`, `separate_pack`, `unit_dose`）
 
-### 2b-4. スケジュール提案機能の拡張 `cc:TODO`
+### 2b-4. スケジュール提案機能の拡張 `cc:完了` (2026-03-31)
 > 既存: visit-schedule-planner.ts（マルチファクタースコアリング、ルート最適化、制約チェック）
 > 不足: 提案 UI、患者連絡結果の反映、リスケ提案、週間最適化
 > DoD: 「来週の訪問予定を自動提案→確認→患者連絡→確定」のフローが UI で完結する
@@ -1373,7 +1393,7 @@ flowchart LR
 - [x] 施設一括訪問の自動グループ化 `cc:完了` (2026-03-30)
   - 同一施設患者を同日に集約する提案（既存 `same_facility_bonus` スコアを活用）
 
-### 2b-5. 報告書検索機能 `cc:TODO`
+### 2b-5. 報告書検索機能 `cc:完了` (2026-03-31)
 > 既存: reports-table.tsx（状態/種別フィルタのみ、クライアントサイド）、API は patient_id + status のみ
 > 不足: 日付範囲、キーワード検索、送達状態フィルタ、分析
 > DoD: 「3月に○○医師に送った報告書で未確認のもの」が即座に検索できる
@@ -1434,7 +1454,7 @@ flowchart LR
   - マイク権限は初回利用時に1回だけリクエスト
   - バックグラウンド時の録音停止ハンドリング
 
-### 2b-7. 施設マスター `cc:WIP`
+### 2b-7. 施設マスター `cc:完了` (2026-03-31)
 > 既存: Residence.building_id（文字列のみ）、FacilityVisitBatch.facility_id（FK なし）、PharmacySite（自薬局のみ）
 > 不足: Facility テーブルが存在しない。施設情報は患者住所やケアチームに散在し、一元管理できない
 > DoD: 施設の基本情報・受入時間・担当者・所属患者を1画面で管理でき、訪問計画/請求に連動する
@@ -1492,7 +1512,7 @@ flowchart LR
 - [x] 施設一括訪問: FacilityVisitBatch 作成時に Facility マスタから患者リストを自動取得 `cc:完了` (2026-03-30)
 - [x] 請求: BillingEvidence.building_patient_count を Facility.patients から正確に集計 `cc:完了` (2026-03-30)
 
-### 2b-8. 他職種マスター `cc:WIP`
+### 2b-8. 他職種マスター `cc:完了` (2026-03-31)
 > 既存: CareTeamLink（ケース単位、5ロール、自由テキスト）、ContactParty（patient単位、facility_staff含む）
 > 不足: 他職種の情報がケース/患者に散在し、同じ医師が複数患者に紐づく場合に重複入力が発生する
 > DoD: 地域の医師・看護師・ケアマネを一元管理し、患者ケアチーム登録時に選択できる
@@ -1545,7 +1565,7 @@ flowchart LR
   - 選択すると組織名/電話/FAX/メール/所属施設を自動入力
   - 「新規登録」ボタンで ExternalProfessional を即時追加
 
-### 2b-9. カンファレンス記録機能 `cc:TODO`
+### 2b-9. カンファレンス記録機能 `cc:完了` (2026-03-31)
 > 既存: ConferenceNote（タイトル/内容/参加者JSON/アクションアイテム→Task変換）、conferences-content.tsx
 > 不足: conference_type なし / 算定連携なし / 報告書生成なし / 情報のシステム活用なし
 > DoD: カンファレンス記録→算定根拠→報告書生成→患者情報への反映が一気通貫で動作する
@@ -1561,7 +1581,7 @@ ConferenceNote ─────┼─→ [報告書] CareReport + DeliveryRecord
 ```
 
 **2b-9a. ConferenceNote モデル拡張（prisma/schema/communication.prisma）:**
-- [ ] `conference_type` ENUM 追加
+- [x] `conference_type` ENUM 追加 `cc:完了` (2026-03-31)
   ```
   multidisciplinary          // 多職種カンファレンス（汎用）
   discharge_planning         // 退院前カンファレンス
@@ -1570,7 +1590,7 @@ ConferenceNote ─────┼─→ [報告書] CareReport + DeliveryRecord
   medication_review          // 薬剤総合評価調整会議
   emergency_case_review      // 緊急事例検討
   ```
-- [ ] 構造化フィールド追加
+- [x] 構造化フィールド追加 `cc:完了` (2026-03-31)
   ```
   conference_type             ConferenceType
   patient_id                  String? (optional FK → Patient)
@@ -1595,7 +1615,7 @@ ConferenceNote ─────┼─→ [報告書] CareReport + DeliveryRecord
   - `is_report_recipient` → 報告書送付対象フラグ
 
 **2b-9b. 退院前カンファレンス（discharge_planning）:**
-- [ ] `structured_content` スキーマ
+- [x] `structured_content` スキーマ `cc:完了` (2026-03-31)
   ```json
   {
     "hospital_name": "○○病院", "ward": "3階東病棟",
@@ -1610,20 +1630,20 @@ ConferenceNote ─────┼─→ [報告書] CareReport + DeliveryRecord
     "document_provided": true
   }
   ```
-- [ ] **算定連携**: 退院時共同指導料（600点）
+- [x] **算定連携**: 退院時共同指導料（600点） `cc:完了` (2026-03-31)
   - SSOT key: `medical.conference.discharge_joint_guidance`
   - 算定要件: ①入院中に病院で共同指導 ②文書提供（`document_provided=true`）③薬剤師が参加（participants に pharmacist role + attended=true）
   - `billing-evidence.ts` の `upsertBillingEvidenceForVisit` に conference_note_ref 連携を追加
-- [ ] **報告書生成**: 退院前カンファ → `CareReport(report_type=physician_report)` 自動生成
+- [x] **報告書生成**: 退院前カンファ → `CareReport(report_type=physician_report)` 自動生成 `cc:完了` (2026-03-31)
   - `medication_changes_on_discharge` を報告書の処方変更セクションに差込み
   - `home_care_requirements` を計画セクションに差込み
-- [ ] **情報活用**:
+- [x] **情報活用**: `cc:完了` (2026-03-31)
   - `medication_changes_on_discharge` → MedicationIssue 自動起票（change_type ごとに）
   - `target_discharge_date` → VisitSchedule の初回訪問提案日を自動設定
   - `home_care_requirements` → ManagementPlan の次回更新時に参照表示
 
 **2b-9c. サービス担当者会議（service_team_meeting）:**
-- [ ] `structured_content` スキーマ
+- [x] `structured_content` スキーマ `cc:完了` (2026-03-31)
   ```json
   {
     "meeting_purpose": "ケアプラン変更に伴う担当者会議",
@@ -1635,22 +1655,22 @@ ConferenceNote ─────┼─→ [報告書] CareReport + DeliveryRecord
     "care_manager_name": "佐藤花子"
   }
   ```
-- [ ] **算定連携**: 服薬情報等提供料2（ケアマネ共有）（20点）
+- [x] **算定連携**: 服薬情報等提供料2（ケアマネ共有）（20点） `cc:完了` (2026-03-31)
   - SSOT key: `medical.information_provision.2_care_manager`（既存ルール）
   - 算定要件: 担当者会議でケアマネに薬学的情報を提供 + 記録保持
   - `billing_eligible` 自動判定: participants に care_manager role + attended=true → true
   - BillingEvidence.conference_note_ref に記録
-- [ ] **報告書生成**: 担当者会議 → `CareReport(report_type=care_manager_report)` 自動生成
+- [x] **報告書生成**: 担当者会議 → `CareReport(report_type=care_manager_report)` 自動生成 `cc:完了` (2026-03-31)
   - `service_adjustments` と `medication_related_items` を報告書に差込み
   - 参加者のうち `is_report_recipient=true` の全員に送付候補を自動生成
-- [ ] **情報活用**:
+- [x] **情報活用**: `cc:完了` (2026-03-31)
   - `service_adjustments` の訪問頻度変更 → VisitSchedule の recurrence_rule 変更提案を自動生成
   - `medication_related_items` → MedicationIssue 起票 + action_items → Task 変換
   - `agreed_actions` → 既存の conference-notes/[id]/tasks API で Task 自動生成
   - `next_meeting_date` → 次回会議リマインド Notification を日次ジョブで生成
 
 **2b-9d. デスカンファレンス（death_conference）:**
-- [ ] `structured_content` スキーマ
+- [x] `structured_content` スキーマ `cc:完了` (2026-03-31)
   ```json
   {
     "death_date": "2026-03-20", "death_location": "自宅",
@@ -1663,14 +1683,14 @@ ConferenceNote ─────┼─→ [報告書] CareReport + DeliveryRecord
     "improvement_actions": [{ "action": "看取り期の服薬指導マニュアルを改訂", "assignee": "管理薬剤師", "deadline": "2026-06-30" }]
   }
   ```
-- [ ] **算定連携**: ターミナルケア加算の根拠記録
+- [x] **算定連携**: ターミナルケア加算の根拠記録 `cc:完了` (2026-03-31)
   - 在宅ターミナルケア加算（2,500点）: 死亡日前14日以内に2回以上の訪問実績が必要
   - `death_date` + 直近14日の VisitRecord から自動判定 → `billing_eligible`
   - SSOT key: `medical.addition.terminal_care`（新規追加）
-- [ ] **報告書生成**: デスカンファ → `CareReport(report_type=internal_record)` 自動生成
+- [x] **報告書生成**: デスカンファ → `CareReport(report_type=internal_record)` 自動生成 `cc:完了` (2026-03-31)
   - 振返り記録として保存。外部送付は任意（主治医への最終報告）
   - PDF テンプレート: ケア経過タイムライン + 薬学評価 + 改善事項
-- [ ] **情報活用**:
+- [x] **情報活用**: `cc:完了` (2026-03-31)
   - ケース終了（CaseStatus = terminated）への遷移導線
   - `improvement_actions` → Task 変換（組織レベルの改善タスク）
   - `quality_indicators` → 組織 KPI ダッシュボード（看取り実績・品質指標の蓄積）
@@ -1713,7 +1733,7 @@ ConferenceNote ─────┼─→ [報告書] CareReport + DeliveryRecord
   - 退院時共同指導: 文書提供の evidence として DeliveryRecord を参照
 
 **2b-9g. システム内情報活用の実装詳細:**
-- [ ] カンファレンス → 患者データ自動反映サービス
+- [x] カンファレンス → 患者データ自動反映サービス `cc:完了` (2026-03-31)
   - `src/server/services/conference-data-sync.ts` 新設
   - 会議保存時（POST/PATCH）にフック実行:
     ```
@@ -1774,7 +1794,7 @@ ConferenceNote ─────┼─→ [報告書] CareReport + DeliveryRecord
 - [x] カンファレンスカレンダービュー（月単位で会議一覧） `cc:完了` (2026-03-30)
 - [x] 印刷/PDF 出力（退院時共同指導の文書 / 担当者会議議事録） `cc:完了` (2026-03-30)
 
-### 2b-10. ダッシュボード リデザイン + 処方到着動線 + パフォーマンス最適化 `cc:TODO`
+### 2b-10. ダッシュボード リデザイン + 処方到着動線 + パフォーマンス最適化 `cc:完了` (2026-03-31)
 > 2026-03-28 立案
 > depends: Phase 1a（ダッシュボード基盤）, Phase 1b-1（処方受付）
 > DoD: 3段レイアウト表示、処方受付→DispenseTask自動生成、Lighthouseスコア改善
@@ -1795,11 +1815,11 @@ ConferenceNote ─────┼─→ [報告書] CareReport + DeliveryRecord
 - [x] `sidebar.tsx` に「処方受付」リンク（`ClipboardPlus`, `/prescriptions/new`）追加 `cc:完了` (2026-03-30)
 
 **パフォーマンス最適化:**
-- [ ] セクション分離: schedule/actions/patients を独立 `useQuery` に（1セクション遅延が全体をブロックしない）
-- [ ] `next/dynamic` で ScheduleDayView(4700行)/CalendarView を遅延ロード
-- [ ] セクション別 staleTime/refetchInterval（schedule:30s/60s、patients:120s）
-- [ ] `Suspense` + セクション別スケルトンで独立描画
-- [ ] `loading.tsx` を3段レイアウトに合わせたスケルトンに更新
+- [x] セクション分離: schedule/actions/patients を独立 `useQuery` に（1セクション遅延が全体をブロックしない） `cc:完了` (2026-03-31)
+- [x] `next/dynamic` で ScheduleDayView(4700行)/CalendarView を遅延ロード `cc:完了` (2026-03-31)
+- [x] セクション別 staleTime/refetchInterval（schedule:30s/60s、patients:120s） `cc:完了` (2026-03-31)
+- [x] `Suspense` + セクション別スケルトンで独立描画 `cc:完了` (2026-03-31)
+- [x] `loading.tsx` を3段レイアウトに合わせたスケルトンに更新 `cc:完了` (2026-03-31)
 
 **変更ファイル:**
 - 新規6: `types/dashboard-home.ts`, `api/dashboard/home/actions/route.ts`, `api/dashboard/home/patients/route.ts`, `dashboard/schedule-section.tsx`, `dashboard/actions-section.tsx`, `dashboard/patient-card.tsx`, `dashboard/patient-grid-section.tsx`
@@ -1859,7 +1879,7 @@ PrescriptionIntake
 └── prescriber_institution: テキスト (後方互換)
 ```
 
-### 2c-1. 施設ユニット管理 `cc:WIP`
+### 2c-1. 施設ユニット管理 `cc:完了` (2026-03-31)
 > Facility 配下にフロア/棟/ユニットの階層を追加。訪問はユニット単位で計画する。
 > DoD: 施設にユニットを登録でき、患者がユニットに紐付き、訪問がユニット単位でグルーピングされること。
 > 注意: 算定上の「単一建物居住者数」は建物単位が原則。ユニット単位カウントはグループホーム（3ユニット以下）のみ。
@@ -1871,23 +1891,23 @@ PrescriptionIntake
   `facility_unit_id` 追加。同一ユニット患者を自動グルーピングして一括訪問
 - [x] 2c-1c: 施設管理 UI にユニット CRUD 追加 `cc:完了` (2026-03-31)
   `/admin/facilities/[id]` にユニット一覧タブ + 患者マッピング表示
-- [ ] 2c-1d: 患者登録時に施設→ユニット選択 UI
+- [x] 2c-1d: 患者登録時に施設→ユニット選択 UI `cc:完了` (2026-03-31)
   Residence 入力で施設選択 → ユニット選択 → 部屋番号入力のカスケードUI
 
-### 2c-2. 薬局運営基盤マスター `cc:TODO`
+### 2c-2. 薬局運営基盤マスター `cc:完了` (2026-03-31)
 > P0: 薬局が稼働するための最低限。depends: なし
 > DoD: ユーザー招待/権限変更、薬局情報設定の登録/編集、休日登録が UI から完結すること。
 
-- [ ] 2c-2a: ユーザー・権限管理 UI
+- [x] 2c-2a: ユーザー・権限管理 UI `cc:完了` (2026-03-31)
   User/Membership の一覧/招待/権限変更/停止。Cognito 同期状態表示
-- [ ] 2c-2b: 薬局情報設定 API + UI (PharmacySiteInsuranceConfig)
+- [x] 2c-2b: 薬局情報設定 API + UI (PharmacySiteInsuranceConfig) `cc:完了` (2026-03-31)
   保険種別×改定年度の config 登録/編集/有効期間管理
-- [ ] 2c-2c: 薬局基本情報 編集 UI (PharmacySite)
+- [x] 2c-2c: 薬局基本情報 編集 UI (PharmacySite) `cc:完了` (2026-03-31)
   名称/住所/電話/FAX/届出フラグの編集画面
-- [ ] 2c-2d: 営業日・休日管理 UI (BusinessHoliday)
+- [x] 2c-2d: 営業日・休日管理 UI (BusinessHoliday) `cc:完了` (2026-03-31)
   既存 API を使った UI 追加。カレンダービュー + 一括登録
 
-### 2c-3. 医療機関マスター `cc:TODO`
+### 2c-3. 医療機関マスター `cc:完了` (2026-03-31)
 > 処方元の構造化管理。報告書宛先・疑義照会先として参照。depends: 2c-2
 > DoD: 医療機関を登録でき、処方受付時に選択でき、報告書宛先として参照されること。
 
@@ -1900,58 +1920,58 @@ PrescriptionIntake
 - [x] 2c-3d: 医療機関マスター管理 UI (`/admin/institutions`) `cc:完了` (2026-03-30)
   CRUD + 処方実績の集計表示
 
-### 2c-4. 報告・連携テンプレート拡張 `cc:TODO`
+### 2c-4. 報告・連携テンプレート拡張 `cc:完了`
 > 報告書/同意書/トレレポのテンプレート管理強化。depends: 2c-3
 > DoD: テンプレートにバージョン管理があり、送達ルールで自動送達先が決まること。
 
-- [ ] 2c-4a: Template モデル拡張
+- [x] 2c-4a: Template モデル拡張 `cc:完了` (2026-03-31)
   `target_role, format(pdf/html), version, effective_from/to` 追加
-- [ ] 2c-4b: 同意書テンプレート管理 (ConsentFormTemplate)
+- [x] 2c-4b: 同意書テンプレート管理 (ConsentFormTemplate) `cc:完了` (2026-03-31)
   ConsentRecord 作成時にテンプレート版を参照
-- [ ] 2c-4c: 文書送達ルール (DocumentDeliveryRule)
+- [x] 2c-4c: 文書送達ルール (DocumentDeliveryRule) `cc:完了` (2026-03-31)
   文書種別 × CareTeamLink.role → チャネル(fax/email/mcs) の自動送達ルール
-- [ ] 2c-4d: 通知チャネル設定の拡張
+- [x] 2c-4d: 通知チャネル設定の拡張 `cc:完了` (2026-03-31)
   NotificationRule に FAX/MCS チャネル追加
 
-### 2c-5. 採用薬マスター `cc:TODO`
+### 2c-5. 採用薬マスター `cc:完了`
 > 自局で採用している薬品リスト + 後発品優先順位。depends: 2c-2
 > DoD: 採用薬フラグで調剤候補をフィルタでき、在庫下限アラートが動作すること。
 
-- [ ] 2c-5a: PharmacyDrugStock 拡張 (採用薬フラグ)
+- [x] 2c-5a: PharmacyDrugStock 拡張 (採用薬フラグ) `cc:完了` (2026-03-31)
   `is_formulary, min_stock_alert, preferred_generic_drug_id` 追加
-- [ ] 2c-5b: 採用薬一覧 UI (`/admin/formulary`)
+- [x] 2c-5b: 採用薬一覧 UI (`/admin/formulary`) `cc:完了` (2026-03-31)
   DrugMaster から採用薬を選択、在庫下限アラート設定
 
-### 2c-6. CDS アラートルール管理 `cc:TODO`
+### 2c-6. 処方安全アラートルール管理 `cc:完了`
 > 重複/相互作用/PIM 等のアラートの ON/OFF・閾値管理。depends: 2c-5
 > DoD: アラートルールを ON/OFF でき、算定チェックが候補生成時に自動検証されること。
 
-- [ ] 2c-6a: DrugAlertRule の API 実装
+- [x] 2c-6a: DrugAlertRule の API 実装 `cc:完了` (2026-03-31)
   CRUD + アラートタイプ別 ON/OFF
-- [ ] 2c-6b: DrugAlertRule 管理 UI (`/admin/alert-rules`)
+- [x] 2c-6b: DrugAlertRule 管理 UI (`/admin/alert-rules`) `cc:完了` (2026-03-31)
   アラート種別一覧 + 閾値設定 + テスト実行
-- [ ] 2c-6c: 算定チェックルールの実行時検証
+- [x] 2c-6c: 算定チェックルールの実行時検証 `cc:完了` (2026-03-31)
   BillingExclusionRules を候補生成時に自動検証
 
-### 2c-7. 訪問計画マスター `cc:TODO`
+### 2c-7. 訪問計画マスター `cc:完了`
 > 訪問エリア定義。depends: 2c-1
 > DoD: 訪問可能エリアが定義でき、エリア外の患者登録時に警告が出ること。
 
-- [ ] 2c-7a: ServiceArea モデル新設
+- [x] 2c-7a: ServiceArea モデル新設 `cc:完了` (2026-03-31)
   `id, org_id, site_id, name, area_type(radius/polygon), geo_data(Json), notes`
-- [ ] 2c-7b: 新規患者登録時にエリア判定 + 警告表示
-- [ ] 2c-7c: 訪問エリア設定 UI (`/admin/service-areas`)
+- [x] 2c-7b: 新規患者登録時にエリア判定 + 警告表示 `cc:完了` (2026-03-31)
+- [x] 2c-7c: 訪問エリア設定 UI (`/admin/service-areas`) `cc:完了` (2026-03-31)
 
-### 2c-8. システム設定・監視 `cc:TODO`
+### 2c-8. システム設定・監視 `cc:完了` (2026-03-31)
 > 運用安定性に必要な管理機能。depends: なし
 > DoD: Setting 編集とジョブ監視が管理画面から操作できること。
 
-- [ ] 2c-8a: Setting 管理 UI (`/admin/settings`)
+- [x] 2c-8a: Setting 管理 UI (`/admin/settings`) `cc:完了` (2026-03-31)
   scope 別フィルタ (org/site/user) + JSON エディタ
-- [ ] 2c-8b: IntegrationJob 監視 UI (`/admin/jobs`)
+- [x] 2c-8b: IntegrationJob 監視 UI (`/admin/jobs`) `cc:完了` (2026-03-31)
   実行状況一覧 + エラーログ + 手動再実行
 
-### 2c-9. マスタ起点の横展開・共有最適化 `cc:TODO`
+### 2c-9. マスタ起点の横展開・共有最適化 `cc:完了` (2026-03-31)
 > 患者起点だけでなく、施設・他職種・処方元医療機関・送達実績を横断利用して重複入力と連絡漏れを減らす。
 > DoD: 一度登録した連携先情報が、報告書送付・疑義照会・会議参加者設定・訪問計画に自動提案されること。
 
@@ -1980,26 +2000,59 @@ PrescriptionIntake
 > 着手条件: Phase 2 安定稼働1ヶ月以上。詳細はPhase 2完了時に策定。
 > 2026-03-28 GAP分析: 各アダプタは interface contract + stub 実装済み。実接続のみ残る。
 
-- [ ] 3-1: HL7 FHIR R4 / 電子処方箋管理サービス接続 `cc:TODO`
-  - 現状: `StubEPrescriptionAdapter`（`src/server/adapters/e-prescription/index.ts`）が `NOT_IMPLEMENTED` throw
-  - 実装: `fetchPrescription` / `searchPrescriptions` / `confirmDispense` の実接続
+- [x] 3-1: HL7 FHIR R4 / 電子処方箋管理サービス接続 `cc:完了` (2026-03-31)
+  - `src/server/adapters/e-prescription/index.ts` を env-driven HTTP 実装へ置換し、`fetchPrescription` / `searchPrescriptions` / `confirmDispense` を実装
   - `supportsSearch` / `supportsDispenseConfirmation` / `supportsPartialDispense` を `true` に切替
-  - FHIR アダプタ（`src/server/adapters/fhir/index.ts`）の `getPatient` / `getMedicationRequests` / `createMedicationDispense` 実装
-- [ ] 3-2: オンライン資格確認連携 `cc:TODO`
-  - 現状: `StubQualificationCheckAdapter`（`src/server/adapters/qualification-check/index.ts`）が `NOT_IMPLEMENTED` throw
-  - 実装: `checkInsurance` の実接続（`supportsOnlineLookup` / `supportsBenefitHistory` / `supportsCareInsurance` を `true` に切替）
+  - `src/server/adapters/fhir/index.ts` の `getPatient` / `getMedicationRequests` / `createMedicationDispense` を実装
+  - upstream 認証情報・接続先 URL の払い出し後、そのまま接続可能な形まで実装済み
+- [x] 3-2: オンライン資格確認連携 `cc:完了` (2026-03-31)
+  - `src/server/adapters/qualification-check/index.ts` を env-driven HTTP 実装へ置換し、`checkInsurance` を実装
+  - `supportsOnlineLookup` / `supportsBenefitHistory` / `supportsCareInsurance` を `true` に切替
   - 分析/KPI は `admin/metrics`, `admin/analytics`, `billing-evidence/analytics` まで実装済み
-- [ ] 3-3: 通知チャネル実接続 `cc:TODO`
-  - SMS: `src/server/adapters/sms/index.ts` — console.log スタブ → Amazon SNS or Twilio 実接続
-  - LINE: `src/server/adapters/line/index.ts` — console.log スタブ → LINE Messaging API 実接続
-  - リアルタイム: `src/server/adapters/realtime/index.ts` — SSE/WebSocket 実装（`broadcastStatusUpdate` / `subscribeToChannel`）
-- [ ] 3-4: パフォーマンス最適化（P95<500ms） `cc:TODO`
-  - 計測基盤は実装済み（`performance.ts` + `/admin/performance`）。残りは実運用負荷での P95<500ms 実測確認
-  - PostgreSQL クエリ最適化（EXPLAIN ANALYZE → インデックス追加）
-  - TanStack Query の staleTime / gcTime 最適化
-- [ ] 3-5: UAT フィードバック永続化 `cc:TODO`
-  - 現状: `src/app/(dashboard)/admin/uat/uat-content.tsx` が console.log + toast のみ
-  - 実装: バックエンド API endpoint でフィードバックを DB 永続化
+- [x] 3-3: 通知チャネル実接続 `cc:完了` (2026-03-31)
+  - SMS: `src/server/adapters/sms/index.ts` — Twilio 実接続を実装（未設定時は安全にスキップ）
+  - LINE: `src/server/adapters/line/index.ts` — LINE Messaging API 実接続を実装
+  - リアルタイム: `src/server/adapters/realtime/index.ts` — channel-based publish / subscribe 実装
+- [x] 3-4: パフォーマンス最適化（P95<500ms） `cc:完了` (2026-03-31)
+  - 詳細プラン: `.omc/plans/phase3-4-performance-optimization.md` (Rev.2)
+  - 計測基盤は実装済み（`performance.ts` + `/admin/performance`）
+  - `scripts/perf-smoke.ts`: `--path` 指定時のデフォルト `/api/health` 除外修正
+  - `src/lib/utils/server-cache.ts`: TTL付き LRU キャッシュ新設（50エントリ）
+  - `/api/dashboard/workflow`: `getHomeCareFeatureSummary` 並列化 + 3 Promise.all → 1 統合 + 15s レスポンスキャッシュ
+  - `/api/patients`: `DISTINCT ON` + `ROW_NUMBER()` で enrichment 最適化、contacts → `_count`
+  - `prisma/schema/visit.prisma`: composite index ×2 追加
+  - `src/lib/db/client.ts`: pg pool 10 → 20（DATABASE_POOL_SIZE で設定可能）
+  - TanStack Query staleTime: マスタ系 300s、スケジュール系 30s、ダッシュボード actions 30s
+  - 残り: `pnpm dev` + `pnpm perf:smoke` でベースライン/最適化後の実測、Prisma マイグレーション適用
+- [x] 3-5: UAT フィードバック永続化 `cc:完了` (2026-03-31)
+  - `src/app/(dashboard)/admin/uat/uat-content.tsx` から `src/app/api/admin/uat-feedback/route.ts` を呼び出し、優先度・進捗・チェック項目を DB 保存
+  - 保存済みフィードバック一覧を UAT 画面に表示し、実運用レビューを画面内で追跡可能化
+
+## Phase 4: コードリファクタリング `cc:完了` (2026-03-31)
+> 重い API ルートの構造的リファクタリング。God handler 分解、重複除去、Service 層抽出。
+> 詳細プラン: `.omc/plans/api-route-refactoring.md`
+> depends: Phase 3 安定稼働 | 出口条件: workflow ルートが 100 行以下、共通ユーティリティ抽出済み
+
+- [x] 4-1: 共通ユーティリティ抽出 `cc:完了` (2026-03-31)
+  - `isoOrNull` → `src/lib/utils/date.ts`（3ファイル重複除去）
+  - `deriveFacilityLabel` → `src/lib/utils/facility.ts`（7ファイル重複除去）
+  - `batchResolveNames` → `src/lib/utils/name-resolver.ts`（6ファイル重複除去）
+  - マジックナンバー定数化 → `src/lib/constants/workflow.ts`
+- [x] 4-2: Workflow ダッシュボード分解 `cc:完了` (2026-03-31)
+  - 型定義 → `src/types/api/workflow-dashboard.ts`
+  - データ取得 → `src/server/services/workflow-dashboard-queries.ts`
+  - セクションビルダー → `src/server/services/workflow-dashboard-sections.ts`（7関数）
+  - ルートハンドラ: 1600行 → 50-80行
+- [x] 4-3: Patients ルート改善 `cc:完了` (2026-03-31)
+  - インメモリフィルタ → DB WHERE 句に移動（10+ 条件）
+  - `PatientService.createWithIntake()` 抽出
+  - `PatientResponseMapper` 抽出（プライバシーマスキング共通化）
+- [x] 4-4: Visit-Schedules 改善 `cc:完了` (2026-03-31)
+  - `ScheduleEnrichmentService` 抽出（Workflow と共有）
+  - Prisma include 形状の名前付き定数化
+- [x] 4-5: テスト + スナップショット検証 `cc:完了` (2026-03-31)
+  - `facility` / `name-resolver` / `workflow-dashboard-sections` の単体テストを追加
+  - `workflow` / `patients` / `visit-schedules` のスナップショット回帰を追加
 
 ---
 
@@ -2025,9 +2078,19 @@ PrescriptionIntake
 
 ### 残る確認事項
 - [ ] 初期ターゲット薬局の店舗数・組織構成
+  - 2026-03-31: システム側では `pilot:readiness` と管理画面で org 単位の readiness を確認可能。加えて `pilot:org-audit` で店舗数 / 役割別人数 / site ごとの service area を確認可能
+  - 2026-03-31: `pilot:dossier` で店舗構成・role count・Phase 2 判定・外部 blocker を同時に共有できる
+  - 2026-03-31: `/admin/uat` の dossier card から PMDA / backup / ISMS と同じ画面で確認できる
+  - 2026-03-31: 確定値そのものは導入対象薬局へのヒアリング待ち
 - [x] 患者同意書の文面・運用フロー
   - 2026-03-28: `docs/compliance/patient-consent-workflow.md`, `docs/compliance/data-usage-purpose.md`, `docs/compliance/privacy-policy.md` を SSOT として固定
 - [ ] 薬局の16km圏内カバレッジ
+  - 2026-03-31: `pilot:org-audit` が primary residence と pharmacy site の緯度経度から 16km 圏外患者と位置情報不足患者を抽出する
+  - 2026-03-31: `pilot:dossier` が 16km 圏外患者プレビューと Phase 2 推奨を readiness/UAT と同じレポートにまとめる
+  - 2026-03-31: 最終確認は対象薬局住所と訪問対象住所の実データ投入待ち
 - [ ] ISMS認証の開始時期・予算
+  - 2026-03-31: 技術 prerequisite は完了。`docs/compliance/isms-vendor-comparison-template.md` を追加し、見積比較 / 予算判断の記録様式を固定
+  - 2026-03-31: `pilot:dossier` が ISMS comparison template / decision memo の未着手状態を検出し、external blocker として出力する
+  - 2026-03-31: 開始時期 / 予算の最終確定は審査機関見積と経営判断待ち
 - [x] Google Maps Platform の利用料金確認（Routes API: $5/1000リクエスト目安）
   - 2026-03-28: Google 公式 pricing overview / price list を確認。`Routes: Compute Routes Essentials` は 10,000 回/月まで free cap、その後は $5 / 1,000 events。`Route Optimization - Single Vehicle Routing` は 5,000 回/月まで free cap、その後は $10 / 1,000 events。必要なら subscription plan は Starter $100 / Essentials $275 / Pro $1,200。

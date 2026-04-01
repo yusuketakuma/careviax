@@ -4,6 +4,10 @@ const { getRequestAuthContextMock } = vi.hoisted(() => ({
   getRequestAuthContextMock: vi.fn(),
 }));
 
+const { logSecurityEventMock } = vi.hoisted(() => ({
+  logSecurityEventMock: vi.fn(),
+}));
+
 // Mock the prisma client before importing the module under test
 vi.mock('../client', () => {
   const mockExecuteRaw = vi.fn().mockResolvedValue(undefined);
@@ -22,6 +26,10 @@ vi.mock('../client', () => {
 
 vi.mock('@/lib/auth/request-context', () => ({
   getRequestAuthContext: getRequestAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/security-events', () => ({
+  logSecurityEvent: logSecurityEventMock,
 }));
 
 import { withOrgContext } from '../rls';
@@ -88,11 +96,18 @@ describe('withOrgContext', () => {
     it('sets org and request metadata via set_config', async () => {
       const validCuid = 'clh4dz2xq0000qzrm8n9j3k1p';
       await withOrgContext(validCuid, async () => null);
-      expect(mockClient.mockExecuteRaw).toHaveBeenCalledTimes(5);
+      expect(logSecurityEventMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event_type: 'rls_context_missing',
+          org_id: validCuid,
+        })
+      );
+      expect(mockClient.mockExecuteRaw).toHaveBeenCalledTimes(6);
       expect(
         mockClient.mockExecuteRaw.mock.calls.map(([query]) => query.values)
       ).toEqual([
         ['app.current_org_id', validCuid],
+        ['app.rls_context_applied', 'true'],
         ['app.current_actor_id', ''],
         ['app.current_member_role', ''],
         ['app.current_ip_address', ''],
@@ -116,11 +131,25 @@ describe('withOrgContext', () => {
         mockClient.mockExecuteRaw.mock.calls.map(([query]) => query.values)
       ).toEqual([
         ['app.current_org_id', validCuid],
+        ['app.rls_context_applied', 'true'],
         ['app.current_actor_id', 'user_1'],
         ['app.current_member_role', 'admin'],
         ['app.current_ip_address', '203.0.113.10'],
         ['app.current_user_agent', 'Vitest Browser'],
       ]);
+    });
+
+    it('rejects mismatched request context org ids before starting a transaction', async () => {
+      getRequestAuthContextMock.mockReturnValue({
+        userId: 'user_1',
+        orgId: 'clh4dz2xq1111qzrm8n9j3k1p',
+        role: 'admin',
+      });
+
+      await expect(
+        withOrgContext('clh4dz2xq0000qzrm8n9j3k1p', async () => null)
+      ).rejects.toThrow('Request orgId mismatch');
+      expect(mockClient.prisma.$transaction).not.toHaveBeenCalled();
     });
 
     it('returns the value from the callback function', async () => {

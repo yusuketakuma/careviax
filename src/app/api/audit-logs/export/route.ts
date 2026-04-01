@@ -4,6 +4,7 @@ import { withAuth, AuthenticatedRequest } from '@/lib/auth/middleware';
 import { prisma } from '@/lib/db';
 import { validationError } from '@/lib/api/response';
 import { parseAuditLogFilters } from '@/lib/api/audit-log-filters';
+import { recordDataExportAudit } from '@/server/services/export-audit';
 
 const querySchema = z.object({
   format: z.enum(['csv', 'json']).default('csv'),
@@ -55,6 +56,23 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const logs = await prisma.auditLog.findMany({
     where,
     orderBy: { created_at: 'desc' },
+  });
+
+  await recordDataExportAudit(prisma, {
+    orgId: req.orgId,
+    actorId: req.userId,
+    targetType: 'audit_log',
+    format,
+    recordCount: logs.length,
+    filters: {
+      actor: filters.actor ?? null,
+      targetType: filters.targetType ?? null,
+      action: filters.action ?? null,
+      from: filters.from?.toISOString() ?? null,
+      to: filters.to?.toISOString() ?? null,
+    },
+    ipAddress: req.ipAddress,
+    userAgent: req.userAgent,
   });
 
   if (format === 'json') {

@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 
 type VisitConstraintsResponse = {
   data: {
@@ -192,7 +193,10 @@ export function VisitConstraintsCard({
     onSuccess: async () => {
       toast.success('訪問条件を保存しました');
       setDraftForm(null);
-      await queryClient.invalidateQueries({ queryKey: ['visit-constraints', orgId, patientId] });
+      await invalidateQueryKeys(
+        queryClient,
+        getPatientCareQueryKeys({ orgId, patientId })
+      );
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '訪問条件の保存に失敗しました');

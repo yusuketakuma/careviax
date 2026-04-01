@@ -16,8 +16,13 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         name: true,
         address: true,
         phone: true,
+        fax: true,
         lat: true,
         lng: true,
+        is_health_support_pharmacy: true,
+        is_regional_support: true,
+        is_specialized_pharmacy: true,
+        dispensing_fee_category: true,
       },
       orderBy: [{ name: 'asc' }],
     });
@@ -28,8 +33,13 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         name: site.name,
         address: site.address,
         phone: site.phone,
+        fax: site.fax,
         lat: site.lat,
         lng: site.lng,
+        is_health_support_pharmacy: site.is_health_support_pharmacy,
+        is_regional_support: site.is_regional_support,
+        is_specialized_pharmacy: site.is_specialized_pharmacy,
+        dispensing_fee_category: site.dispensing_fee_category,
       })),
     });
   }

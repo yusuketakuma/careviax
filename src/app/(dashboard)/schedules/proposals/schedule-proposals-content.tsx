@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
@@ -41,6 +41,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import {
   addressOfPatient,
   CONTACT_STATUS_LABELS,
@@ -291,7 +292,7 @@ export function ScheduleProposalsContent({
     return params.toString();
   }, [caseId, dateFrom, dateTo, patientId]);
 
-  const proposalsQuery = useQuery({
+  const proposalsQuery = useRealtimeQuery({
     queryKey: ['schedule-proposals-dashboard', orgId, queryParams],
     queryFn: async () => {
       const response = await fetch(`/api/visit-schedule-proposals?${queryParams}`, {
@@ -301,6 +302,7 @@ export function ScheduleProposalsContent({
       return response.json() as Promise<ScheduleProposalsResponse>;
     },
     enabled: !!orgId,
+    invalidateOn: ['workflow_refresh'],
   });
 
   const proposals = useMemo(() => proposalsQuery.data?.data ?? [], [proposalsQuery.data]);
@@ -342,7 +344,7 @@ export function ScheduleProposalsContent({
         ? detailId
         : null;
 
-  const detailQuery = useQuery({
+  const detailQuery = useRealtimeQuery({
     queryKey: ['schedule-proposal-detail', orgId, activeDetailId],
     queryFn: async () => {
       const response = await fetch(`/api/visit-schedule-proposals/${activeDetailId}`, {
@@ -352,6 +354,7 @@ export function ScheduleProposalsContent({
       return response.json() as Promise<ScheduleProposalDetailResponse>;
     },
     enabled: !!orgId && !!activeDetailId,
+    invalidateOn: ['workflow_refresh'],
   });
 
   const detail = detailQuery.data?.data ?? null;

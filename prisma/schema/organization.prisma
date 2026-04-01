@@ -63,6 +63,7 @@ model Organization {
   facilities            Facility[]
   external_professionals ExternalProfessional[]
   prescriber_institutions PrescriberInstitution[]
+  service_areas         ServiceArea[]
 
   @@index([name])
 }
@@ -95,8 +96,27 @@ model PharmacySite {
   visit_schedule_proposals VisitScheduleProposal[]
   business_holidays    BusinessHoliday[]
   insurance_configs    PharmacySiteInsuranceConfig[]
+  service_areas        ServiceArea[]
 
   @@index([org_id])
+}
+
+model ServiceArea {
+  id         String       @id @default(cuid())
+  org_id     String
+  org        Organization @relation(fields: [org_id], references: [id])
+  site_id    String
+  site       PharmacySite @relation(fields: [site_id], references: [id])
+  name       String
+  area_type  String // radius/polygon
+  geo_data   Json
+  notes      String?
+  created_at DateTime     @default(now())
+  updated_at DateTime     @updatedAt
+
+  @@index([org_id])
+  @@index([site_id])
+  @@index([area_type])
 }
 
 /// 薬局情報 — 保険種別×改定年度ごとの算定設定

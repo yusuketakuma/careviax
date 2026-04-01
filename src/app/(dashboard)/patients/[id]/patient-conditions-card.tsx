@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 
 type ConditionRow = {
   id?: string;
@@ -99,7 +100,10 @@ export function PatientConditionsCard({
     },
     onSuccess: async () => {
       toast.success('病名・課題リストを更新しました');
-      await queryClient.invalidateQueries({ queryKey: ['patient', patientId, orgId] });
+      await invalidateQueryKeys(
+        queryClient,
+        getPatientCareQueryKeys({ orgId, patientId })
+      );
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '病名・課題リストの保存に失敗しました');

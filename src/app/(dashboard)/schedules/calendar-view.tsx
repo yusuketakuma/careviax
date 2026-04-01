@@ -1,7 +1,7 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import {
   startOfMonth,
   endOfMonth,
@@ -17,51 +17,27 @@ import {
 import { ja } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-
-// ---- Types ----------------------------------------------------------------
-
-type ScheduleStatus =
-  | 'planned'
-  | 'in_preparation'
-  | 'ready'
-  | 'departed'
-  | 'in_progress'
-  | 'completed'
-  | 'cancelled'
-  | 'postponed';
-
-type VisitSchedule = {
-  id: string;
-  scheduled_date: string;
-  schedule_status: ScheduleStatus;
-  visit_type: string;
-  pharmacist_id: string;
-  case_id: string;
-  cycle_id: string | null;
-};
+import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import {
+  fetchCalendarSchedules,
+  formatCalendarTimeRange,
+  sortCalendarSchedules,
+  type CalendarVisitSchedule,
+  type ScheduleStatus,
+} from './calendar-view.helpers';
+import { VISIT_TYPE_LABELS } from './day-view.shared';
 
 // ---- Constants ------------------------------------------------------------
 
-const STATUS_STYLES: Record<ScheduleStatus, string> = {
-  planned: 'bg-blue-100 text-blue-800',
-  in_preparation: 'bg-blue-100 text-blue-800',
-  ready: 'bg-green-100 text-green-800',
-  departed: 'bg-green-200 text-green-900',
-  in_progress: 'bg-yellow-100 text-yellow-800',
-  completed: 'bg-gray-100 text-gray-600',
-  cancelled: 'bg-red-100 text-red-800',
-  postponed: 'bg-orange-100 text-orange-800',
-};
-
-const STATUS_LABELS: Record<ScheduleStatus, string> = {
-  planned: '予定',
-  in_preparation: '準備中',
-  ready: '準備完了',
-  departed: '出発',
-  in_progress: '訪問中',
-  completed: '完了',
-  cancelled: 'キャンセル',
-  postponed: '延期',
+const STATUS_CONFIG: Record<ScheduleStatus, { label: string; className: string }> = {
+  planned: { label: '予定', className: 'bg-blue-100 text-blue-800' },
+  in_preparation: { label: '準備中', className: 'bg-blue-100 text-blue-800' },
+  ready: { label: '準備完了', className: 'bg-green-100 text-green-800' },
+  departed: { label: '出発', className: 'bg-green-200 text-green-900' },
+  in_progress: { label: '訪問中', className: 'bg-yellow-100 text-yellow-800' },
+  completed: { label: '完了', className: 'bg-gray-100 text-gray-600' },
+  cancelled: { label: 'キャンセル', className: 'bg-red-100 text-red-800' },
+  postponed: { label: '延期', className: 'bg-orange-100 text-orange-800' },
 };
 
 const WEEKDAY_LABELS = ['月', '火', '水', '木', '金', '土', '日'];
@@ -74,33 +50,47 @@ function useMonthSchedules(orgId: string, year: number, month: number) {
   const dateFrom = format(monthStart, 'yyyy-MM-dd');
   const dateTo = format(monthEnd, 'yyyy-MM-dd');
 
-  return useQuery<VisitSchedule[]>({
+  return useRealtimeQuery<CalendarVisitSchedule[]>({
     queryKey: ['visit-schedules', 'calendar', orgId, year, month],
     queryFn: async () => {
       if (!orgId) return [];
-      const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo, limit: '200' });
-      const res = await fetch(`/api/visit-schedules?${params}`, {
-        headers: { 'x-org-id': orgId },
+      return fetchCalendarSchedules({
+        orgId,
+        dateFrom,
+        dateTo,
       });
-      if (!res.ok) return [];
-      const json = await res.json();
-      return (json.data ?? []) as VisitSchedule[];
     },
     enabled: Boolean(orgId),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    invalidateOn: ['workflow_refresh'],
   });
 }
 
 // ---- Sub-components -------------------------------------------------------
 
-function ScheduleBadge({ schedule }: { schedule: VisitSchedule }) {
-  const status = schedule.schedule_status as ScheduleStatus;
-  const style = STATUS_STYLES[status] ?? 'bg-gray-100 text-gray-600';
-  const label = STATUS_LABELS[status] ?? status;
+function isScheduleStatus(value: string): value is ScheduleStatus {
+  return value in STATUS_CONFIG;
+}
+
+function ScheduleBadge({ schedule }: { schedule: CalendarVisitSchedule }) {
+  const rawStatus = schedule.schedule_status;
+  const config = isScheduleStatus(rawStatus)
+    ? STATUS_CONFIG[rawStatus]
+    : { label: rawStatus, className: 'bg-gray-100 text-gray-600' };
+  const timeLabel = formatCalendarTimeRange(schedule);
   return (
-    <span className={`block truncate rounded px-1 py-0.5 text-[10px] font-medium leading-tight ${style}`}>
-      {label}
+    <span
+      className={`block truncate rounded px-1 py-0.5 text-[10px] font-medium leading-tight ${config.className}`}
+      title={timeLabel ? `${config.label} / ${timeLabel}` : config.label}
+    >
+      {timeLabel ? `${timeLabel} ${config.label}` : config.label}
     </span>
   );
+}
+
+function formatVisitTypeLabel(visitType: string) {
+  return VISIT_TYPE_LABELS[visitType as keyof typeof VISIT_TYPE_LABELS] ?? visitType;
 }
 
 function DayPanel({
@@ -109,9 +99,11 @@ function DayPanel({
   onClose,
 }: {
   date: Date;
-  schedules: VisitSchedule[];
+  schedules: CalendarVisitSchedule[];
   onClose: () => void;
 }) {
+  const sortedSchedules = useMemo(() => sortCalendarSchedules(schedules), [schedules]);
+
   return (
     <div className="mt-4 rounded-lg border bg-card shadow-sm">
       <div className="flex items-center justify-between border-b px-4 py-3">
@@ -126,18 +118,50 @@ function DayPanel({
           <X className="size-4" aria-hidden="true" />
         </button>
       </div>
-      {schedules.length === 0 ? (
+      {sortedSchedules.length === 0 ? (
         <p className="px-4 py-6 text-center text-sm text-muted-foreground">
           この日のスケジュールはありません
         </p>
       ) : (
         <ul className="divide-y">
-          {schedules.map((s) => (
-            <li key={s.id} className="flex items-center gap-3 px-4 py-3">
-              <ScheduleBadge schedule={s} />
-              <span className="truncate text-sm text-foreground">{s.visit_type}</span>
-            </li>
-          ))}
+          {sortedSchedules.map((schedule) => {
+            const patient = schedule.case_?.patient;
+            const timeLabel = formatCalendarTimeRange(schedule) ?? '時間未定';
+            return (
+              <li key={schedule.id} className="space-y-2 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <ScheduleBadge schedule={schedule} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {patient?.name ?? '患者未設定'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {timeLabel}
+                      {' / '}
+                      {formatVisitTypeLabel(schedule.visit_type)}
+                      {schedule.route_order != null ? ` / 順路 ${schedule.route_order}` : ''}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  {patient?.id ? (
+                    <Link
+                      href={`/patients/${patient.id}`}
+                      className="rounded border px-2 py-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    >
+                      患者詳細
+                    </Link>
+                  ) : null}
+                  <Link
+                    href={`/visits/${schedule.id}/record`}
+                    className="rounded border px-2 py-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  >
+                    訪問記録
+                  </Link>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
@@ -148,6 +172,7 @@ function DayPanel({
 
 export function CalendarView() {
   const orgId = useOrgId();
+  const isBootstrappingOrg = !orgId;
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
@@ -155,6 +180,7 @@ export function CalendarView() {
   const month = currentMonth.getMonth();
 
   const { data: schedules = [], isLoading } = useMonthSchedules(orgId, year, month);
+  const isCalendarLoading = isBootstrappingOrg || isLoading;
 
   // Build calendar grid: Mon–Sun weeks covering the full month
   const monthStart = startOfMonth(currentMonth);
@@ -164,7 +190,7 @@ export function CalendarView() {
   const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
   const schedulesByDate = useMemo(() => {
-    const map = new Map<string, VisitSchedule[]>();
+    const map = new Map<string, CalendarVisitSchedule[]>();
     for (const s of schedules) {
       const key = s.scheduled_date.slice(0, 10);
       const list = map.get(key);
@@ -175,12 +201,15 @@ export function CalendarView() {
   }, [schedules]);
 
   const schedulesForDay = (day: Date) =>
-    schedulesByDate.get(format(day, 'yyyy-MM-dd')) ?? [];
+    sortCalendarSchedules(schedulesByDate.get(format(day, 'yyyy-MM-dd')) ?? []);
 
   const today = useMemo(() => new Date(), []);
   const selectedSchedules = selectedDate ? schedulesForDay(selectedDate) : [];
 
   const handleDayClick = (day: Date) => {
+    if (!isSameMonth(day, currentMonth)) {
+      setCurrentMonth(day);
+    }
     if (selectedDate && isSameDay(selectedDate, day)) {
       setSelectedDate(null);
     } else {
@@ -234,7 +263,7 @@ export function CalendarView() {
         </div>
 
         {/* Day cells */}
-        {isLoading ? (
+        {isCalendarLoading ? (
           <div className="flex items-center justify-center py-16">
             <p className="text-sm text-muted-foreground">読み込み中...</p>
           </div>

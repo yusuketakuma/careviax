@@ -4,6 +4,8 @@ import type { AuthContext, AuthRouteContext } from '@/lib/auth/context';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
+import { buildSetPlanPackagingSummary } from '@/lib/prescription/set-plan-packaging';
+import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
@@ -21,6 +23,7 @@ const updateSetPlanSchema = z.object({
       error: 'セット方式を選択してください',
     })
     .optional(),
+  packaging_method_id: z.string().nullable().optional(),
   notes: z.string().optional(),
 });
 
@@ -30,9 +33,18 @@ const setPlanSelect = {
   target_period_start: true,
   target_period_end: true,
   set_method: true,
+  packaging_method_id: true,
+  packaging_summary_snapshot: true,
   notes: true,
   created_at: true,
   updated_at: true,
+  packaging_method_ref: {
+    select: {
+      id: true,
+      name: true,
+      description: true,
+    },
+  },
   cycle: {
     select: {
       id: true,
@@ -46,6 +58,14 @@ const setPlanSelect = {
               id: true,
               name: true,
               name_kana: true,
+              packaging_preferences: true,
+              packaging_profile: {
+                select: {
+                  default_packaging_method: true,
+                  medication_box_color: true,
+                  notes: true,
+                },
+              },
             },
           },
         },
@@ -69,8 +89,10 @@ const setPlanSelect = {
               days: true,
               quantity: true,
               unit: true,
+              packaging_method: true,
               dosage_form: true,
               packaging_instructions: true,
+              packaging_instruction_tags: true,
               notes: true,
             },
           },
@@ -97,6 +119,28 @@ const setPlanSelect = {
       audited_at: true,
     },
   },
+  batches: {
+    select: {
+      id: true,
+      updated_at: true,
+    },
+  },
+  change_logs: {
+    orderBy: { created_at: 'desc' },
+    take: 20,
+    select: {
+      id: true,
+      action: true,
+      trigger_source: true,
+      reason: true,
+      line_ids: true,
+      before_snapshot: true,
+      after_snapshot: true,
+      changed_by: true,
+      created_at: true,
+      batch_id: true,
+    },
+  },
 } satisfies Prisma.SetPlanSelect;
 
 export const GET = withAuthContext<{ id: string }>(
@@ -119,7 +163,26 @@ export const GET = withAuthContext<{ id: string }>(
       return notFound('セットプランが見つかりません');
     }
 
-    return success({ data: plan });
+    const latestBatchUpdatedAt = plan.batches?.reduce<string | null>((latest, batch) => {
+      const current = batch.updated_at.toISOString();
+      return !latest || current > latest ? current : latest;
+    }, null);
+    const staleLineIds = latestBatchUpdatedAt
+      ? Array.from(
+          new Set(
+            plan.cycle.prescription_intakes
+              .filter((intake) => intake.updated_at.toISOString() > latestBatchUpdatedAt)
+              .flatMap((intake) => intake.lines.map((line) => line.id))
+          )
+        )
+      : [];
+
+    return success({
+      data: {
+        ...plan,
+        stale_line_ids: staleLineIds,
+      },
+    });
   },
   { permission: 'canSet' }
 );
@@ -152,6 +215,31 @@ export const PATCH = withAuthContext<{ id: string }>(
         },
         select: {
           id: true,
+          target_period_start: true,
+          target_period_end: true,
+          set_method: true,
+          notes: true,
+          packaging_method_id: true,
+          cycle: {
+            select: {
+              case_: {
+                select: {
+                  patient: {
+                    select: {
+                      packaging_preferences: true,
+                      packaging_profile: {
+                        select: {
+                          default_packaging_method: true,
+                          medication_box_color: true,
+                          notes: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       });
 
@@ -159,7 +247,64 @@ export const PATCH = withAuthContext<{ id: string }>(
         return null;
       }
 
-      return tx.setPlan.update({
+      const packagingMethod =
+        updates.packaging_method_id === undefined
+          ? existing.packaging_method_id
+            ? await tx.packagingMethodMaster.findFirst({
+                where: {
+                  id: existing.packaging_method_id,
+                  org_id: ctx.orgId,
+                },
+                select: {
+                  id: true,
+                  name: true,
+                  description: true,
+                },
+              })
+            : null
+          : updates.packaging_method_id
+            ? await tx.packagingMethodMaster.findFirst({
+                where: {
+                  id: updates.packaging_method_id,
+                  org_id: ctx.orgId,
+                  is_active: true,
+                },
+                select: {
+                  id: true,
+                  name: true,
+                  description: true,
+                },
+              })
+            : null;
+
+      if (updates.packaging_method_id && !packagingMethod) {
+        return {
+          kind: 'error' as const,
+          message: '指定された配薬方法マスタが見つかりません',
+        };
+      }
+
+      const resolvedPeriodStart =
+        updates.target_period_start ?? existing.target_period_start.toISOString().slice(0, 10);
+      const resolvedPeriodEnd =
+        updates.target_period_end ?? existing.target_period_end.toISOString().slice(0, 10);
+      if (resolvedPeriodEnd < resolvedPeriodStart) {
+        return {
+          kind: 'error' as const,
+          message: '終了日は開始日以降を指定してください',
+        };
+      }
+
+      const resolvedSetMethod = updates.set_method ?? existing.set_method;
+      const resolvedNotes = updates.notes !== undefined ? updates.notes || null : existing.notes;
+      const packagingSummary = buildSetPlanPackagingSummary({
+        setMethod: resolvedSetMethod,
+        packagingMethod,
+        patientPackagingProfile: existing.cycle.case_?.patient.packaging_profile ?? null,
+        packagingPreferences: existing.cycle.case_?.patient.packaging_preferences ?? null,
+      });
+
+      const updated = await tx.setPlan.update({
         where: { id },
         data: {
           ...(updates.target_period_start
@@ -169,17 +314,35 @@ export const PATCH = withAuthContext<{ id: string }>(
             ? { target_period_end: new Date(updates.target_period_end) }
             : {}),
           ...(updates.set_method ? { set_method: updates.set_method } : {}),
-          ...(updates.notes !== undefined ? { notes: updates.notes || null } : {}),
+          ...(updates.packaging_method_id !== undefined
+            ? { packaging_method_id: updates.packaging_method_id || null }
+            : {}),
+          packaging_summary_snapshot: packagingSummary,
+          notes: resolvedNotes,
         },
         select: setPlanSelect,
       });
+
+      return {
+        kind: 'success' as const,
+        data: updated,
+      };
     });
 
     if (!result) {
       return notFound('セットプランが見つかりません');
     }
 
-    return success({ data: result });
+    if (result.kind === 'error') {
+      return validationError(result.message);
+    }
+
+    await notifyWorkflowMutation({
+      orgId: ctx.orgId,
+      payload: { source: 'set_plans_update', plan_id: id },
+    });
+
+    return success({ data: result.data });
   },
   { permission: 'canSet' }
 );

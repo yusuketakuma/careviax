@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 import { checkRateLimit } from '@/lib/api/rate-limit';
 import { logSecurityEvent } from '@/lib/auth/security-events';
 import { getClientIp } from '@/lib/api/request-ip';
+import { getAuthSecret } from '@/lib/auth/secret';
 
 /**
  * Next.js 16 proxy.ts — the single Edge middleware entry point.
@@ -75,7 +77,40 @@ function isValidOrigin(request: NextRequest): boolean {
 // Main proxy export — called by Next.js on every matched request
 // ---------------------------------------------------------------------------
 
-export function proxy(request: NextRequest) {
+async function resolveRateLimitIdentity(request: NextRequest) {
+  const ipAddress = getClientIp(request) ?? 'unknown';
+  const secret = getAuthSecret();
+
+  if (secret) {
+    try {
+      const token = await getToken({ req: request, secret });
+      const userId =
+        typeof token?.userId === 'string'
+          ? token.userId
+          : typeof token?.sub === 'string'
+            ? token.sub
+            : undefined;
+
+      if (userId) {
+        return {
+          identifier: `user:${userId}`,
+          userId,
+          ipAddress: ipAddress !== 'unknown' ? ipAddress : undefined,
+        };
+      }
+    } catch {
+      // Fall back to IP-based limiting when the session token is unavailable.
+    }
+  }
+
+  return {
+    identifier: `ip:${ipAddress}`,
+    userId: undefined,
+    ipAddress: ipAddress !== 'unknown' ? ipAddress : undefined,
+  };
+}
+
+export async function proxy(request: NextRequest) {
   // --- Step 1: API-only checks (CSRF + rate limit) ---
   if (
     request.nextUrl.pathname.startsWith('/api') &&
@@ -99,16 +134,24 @@ export function proxy(request: NextRequest) {
       );
     }
 
-    const identifier = getClientIp(request) ?? 'unknown';
-    const result = checkRateLimit(identifier, request.nextUrl.pathname, request.method);
+    const identity = await resolveRateLimitIdentity(request);
+    const result = await checkRateLimit(
+      identity.identifier,
+      request.nextUrl.pathname,
+      request.method
+    );
 
     if (!result.allowed) {
       logSecurityEvent({
         event_type: 'rate_limit_exceeded',
-        ip_address: identifier !== 'unknown' ? identifier : undefined,
+        ip_address: identity.ipAddress,
+        user_id: identity.userId,
         path: request.nextUrl.pathname,
         method: request.method,
-        details: { reset_at: result.resetAt },
+        details: {
+          reset_at: result.resetAt,
+          rate_limited_identifier: identity.identifier,
+        },
       });
       return NextResponse.json(
         { code: 'RATE_LIMIT_EXCEEDED', message: 'リクエスト数が上限に達しました' },
@@ -151,16 +194,14 @@ function buildResponse(
   const nonce = btoa(Array.from(nonceBytes, (b) => String.fromCharCode(b)).join(''));
 
   const scriptSrc = IS_DEV
-    ? `'self' 'nonce-${nonce}' 'unsafe-eval'`
-    : `'self' 'nonce-${nonce}'`;
+    ? `'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval'`
+    : `'self' 'nonce-${nonce}' 'strict-dynamic'`;
+  const styleSrc = IS_DEV ? "'self' 'unsafe-inline'" : `'self' 'nonce-${nonce}'`;
 
   const csp = [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
-    // style-src uses 'unsafe-inline' because Tailwind, shadcn/ui, and
-    // next-themes inject inline styles without nonce support.
-    // CSS injection risk is significantly lower than script injection.
-    "style-src 'self' 'unsafe-inline'",
+    `style-src ${styleSrc}`,
     ...CSP_STATIC_TAIL,
   ].join('; ');
 

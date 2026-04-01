@@ -1,12 +1,9 @@
+import { signAwsJsonRequest, type AwsCredentials } from '@/lib/aws/sigv4';
 /**
- * Rate limiting module — multi-instance aware sliding window implementation.
+ * Rate limiting module.
  *
- * Design: monolith-first (CLAUDE.md). No external store dependency.
- * L1 in-memory store handles all requests with proper per-method limits
- * and user-based keying (user ID when available, fallback to IP).
- *
- * For true distributed rate limiting (when horizontal scaling is needed),
- * replace the store Map with a PostgreSQL-backed counter or Redis.
+ * Default: in-memory fixed window per process.
+ * Optional: DynamoDB-backed distributed counter for multi-instance deployments.
  */
 
 // ---------------------------------------------------------------------------
@@ -40,14 +37,23 @@ export const RATE_LIMIT_CLEANUP_INTERVAL_MS = 5 * 60_000; // 5 minutes
 // ---------------------------------------------------------------------------
 
 interface RateLimitEntry {
-  /** Cumulative hit count within the current window */
   count: number;
-  /** Epoch ms when this window expires and count resets */
   resetAt: number;
 }
 
-/** Keyed by `${method}:${userId|ip}:${pathname}` */
+type RateLimitStore = {
+  increment(key: string, windowMs: number, maxRequests: number): Promise<RateLimitResult>;
+  resetForTests?(): void;
+};
+
+type DynamoRateLimitConfig = {
+  tableName: string;
+  region: string;
+  credentials: AwsCredentials;
+};
+
 const store = new Map<string, RateLimitEntry>();
+let cachedRateLimitStore: RateLimitStore | null = null;
 
 // Periodic cleanup — runs inside the process; safe to skip in test environments.
 // Fix 7: Use NodeJS.Timeout directly; .unref() is always present on Node.js intervals.
@@ -100,6 +106,126 @@ function checkLimit(
   };
 }
 
+class MemoryRateLimitStore implements RateLimitStore {
+  async increment(key: string, windowMs: number, maxRequests: number): Promise<RateLimitResult> {
+    return checkLimit(key, maxRequests, windowMs);
+  }
+
+  resetForTests() {
+    store.clear();
+  }
+}
+
+function resolveDynamoRateLimitConfig(): DynamoRateLimitConfig | null {
+  if (process.env.RATE_LIMIT_STORE !== 'dynamodb') {
+    return null;
+  }
+
+  const tableName = process.env.RATE_LIMIT_DDB_TABLE_NAME;
+  const region = process.env.RATE_LIMIT_DDB_REGION ?? process.env.AWS_REGION;
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+
+  if (!tableName || !region || !accessKeyId || !secretAccessKey) {
+    return null;
+  }
+
+  return {
+    tableName,
+    region,
+    credentials: {
+      accessKeyId,
+      secretAccessKey,
+      sessionToken: process.env.AWS_SESSION_TOKEN,
+    },
+  };
+}
+
+class DynamoRateLimitStore implements RateLimitStore {
+  constructor(
+    private readonly config: DynamoRateLimitConfig,
+    private readonly fallback: MemoryRateLimitStore
+  ) {}
+
+  async increment(key: string, windowMs: number, maxRequests: number): Promise<RateLimitResult> {
+    const now = Date.now();
+    const bucketStart = Math.floor(now / windowMs) * windowMs;
+    const resetAt = bucketStart + windowMs;
+    const expiresAt = Math.ceil(resetAt / 1000) + 86_400;
+    const scopedKey = `${bucketStart}:${key}`;
+    const requestBody = JSON.stringify({
+      TableName: this.config.tableName,
+      Key: {
+        pk: { S: scopedKey },
+      },
+      UpdateExpression:
+        'ADD hit_count :inc SET reset_at = if_not_exists(reset_at, :reset_at), expires_at = :expires_at, updated_at = :updated_at, created_at = if_not_exists(created_at, :created_at)',
+      ExpressionAttributeValues: {
+        ':inc': { N: '1' },
+        ':reset_at': { N: String(resetAt) },
+        ':expires_at': { N: String(expiresAt) },
+        ':updated_at': { S: new Date(now).toISOString() },
+        ':created_at': { S: new Date(now).toISOString() },
+      },
+      ReturnValues: 'UPDATED_NEW',
+    });
+
+    try {
+      const signedRequest = await signAwsJsonRequest({
+        service: 'dynamodb',
+        region: this.config.region,
+        body: requestBody,
+        target: 'DynamoDB_20120810.UpdateItem',
+        credentials: this.config.credentials,
+      });
+      const response = await fetch(`https://${signedRequest.host}/`, {
+        method: 'POST',
+        headers: signedRequest.headers,
+        body: requestBody,
+      });
+
+      if (!response.ok) {
+        throw new Error(`DynamoDB rate limit request failed: ${response.status}`);
+      }
+
+      const payload = (await response.json()) as {
+        Attributes?: {
+          hit_count?: { N?: string };
+          reset_at?: { N?: string };
+        };
+      };
+      const count = Number(payload.Attributes?.hit_count?.N ?? '1');
+      const resolvedResetAt = Number(payload.Attributes?.reset_at?.N ?? String(resetAt));
+
+      return {
+        allowed: count <= maxRequests,
+        remaining: Math.max(0, maxRequests - count),
+        resetAt: resolvedResetAt,
+      };
+    } catch (error) {
+      console.error('[rate-limit] Falling back to in-memory store', error);
+      return this.fallback.increment(key, windowMs, maxRequests);
+    }
+  }
+
+  resetForTests() {
+    this.fallback.resetForTests();
+  }
+}
+
+function getRateLimitStore(): RateLimitStore {
+  if (cachedRateLimitStore) {
+    return cachedRateLimitStore;
+  }
+
+  const memoryStore = new MemoryRateLimitStore();
+  const dynamoConfig = resolveDynamoRateLimitConfig();
+  cachedRateLimitStore = dynamoConfig
+    ? new DynamoRateLimitStore(dynamoConfig, memoryStore)
+    : memoryStore;
+  return cachedRateLimitStore;
+}
+
 // ---------------------------------------------------------------------------
 // HTTP method categorisation
 // ---------------------------------------------------------------------------
@@ -129,17 +255,17 @@ export interface RateLimitResult {
  * @param pathname   - Request pathname, used to key limits per route
  * @param method     - HTTP method; GET/HEAD get a higher limit than write methods
  */
-export function checkRateLimit(
+export async function checkRateLimit(
   identifier: string,
   pathname: string,
   method: string,
-): RateLimitResult {
+): Promise<RateLimitResult> {
   const read = isReadMethod(method);
   const maxRequests = read ? RATE_LIMIT_READ_MAX : RATE_LIMIT_WRITE_MAX;
   const methodBucket = read ? 'read' : 'write';
   const key = `${methodBucket}:${identifier}:${pathname}`;
 
-  return checkLimit(key, maxRequests, RATE_LIMIT_WINDOW_MS);
+  return getRateLimitStore().increment(key, RATE_LIMIT_WINDOW_MS, maxRequests);
 }
 
 /**
@@ -147,8 +273,16 @@ export function checkRateLimit(
  * Returns a function that accepts a string key and returns the limit result.
  */
 export function createRateLimiter(opts: { windowMs: number; maxRequests: number }) {
-  return (identifier: string): { allowed: boolean; remaining: number; resetAt: Date } => {
-    const result = checkLimit(identifier, opts.maxRequests, opts.windowMs);
+  return async (identifier: string): Promise<{
+    allowed: boolean;
+    remaining: number;
+    resetAt: Date;
+  }> => {
+    const result = await getRateLimitStore().increment(
+      identifier,
+      opts.windowMs,
+      opts.maxRequests
+    );
     return {
       allowed: result.allowed,
       remaining: result.remaining,
@@ -208,4 +342,5 @@ export function releaseSseConnection(identifier: string): void {
 export function resetRateLimitStoreForTests() {
   store.clear();
   sseConnections.clear();
+  cachedRateLimitStore = null;
 }

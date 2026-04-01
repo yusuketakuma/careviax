@@ -91,7 +91,12 @@ describe('/api/dispense-tasks POST', () => {
           create: createMock,
         },
         medicationCycle: {
-          update: vi.fn().mockResolvedValue({}),
+          findFirst: vi.fn().mockResolvedValue({ id: 'cycle_1', overall_status: 'ready_to_dispense', version: 1 }),
+          findFirstOrThrow: vi.fn().mockResolvedValue({ id: 'cycle_1', overall_status: 'dispensing' }),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        cycleTransitionLog: {
+          create: vi.fn().mockResolvedValue({}),
         },
         membership: {
           findMany: membershipFindManyMock,
@@ -142,7 +147,12 @@ describe('/api/dispense-tasks POST', () => {
           }),
         },
         medicationCycle: {
-          update: vi.fn().mockResolvedValue({}),
+          findFirst: vi.fn().mockResolvedValue({ id: 'cycle_1', overall_status: 'ready_to_dispense', version: 1 }),
+          findFirstOrThrow: vi.fn().mockResolvedValue({ id: 'cycle_1', overall_status: 'dispensing' }),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        cycleTransitionLog: {
+          create: vi.fn().mockResolvedValue({}),
         },
         membership: {
           findMany: vi.fn().mockResolvedValue([]),

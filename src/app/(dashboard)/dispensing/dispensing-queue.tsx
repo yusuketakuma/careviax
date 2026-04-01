@@ -3,7 +3,8 @@
 import { useMemo, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -13,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useKeyboardShortcuts, type ShortcutDefinition } from '@/components/features/keyboard/use-keyboard-shortcuts';
+import { compareDispenseWorkflowOrder } from '@/lib/dispensing/workflow-order';
 
 type PrescriptionLineSummary = {
   id: string;
@@ -157,12 +159,13 @@ const columns: ColumnDef<DispenseTaskRow>[] = [
 
 export function DispensingQueue() {
   const orgId = useOrgId();
+  const isBootstrappingOrg = !orgId;
   const router = useRouter();
   const queryClient = useQueryClient();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [viewMode, setViewMode] = useState<'patient' | 'facility'>('patient');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading } = useRealtimeQuery({
     queryKey: ['dispense-queue', orgId],
     queryFn: async () => {
       const res = await fetch('/api/dispense-queue', {
@@ -173,26 +176,15 @@ export function DispensingQueue() {
     },
     enabled: !!orgId,
     refetchInterval: 30_000,
+    invalidateOn: ['cycle_transition'],
   });
 
   const tasks = useMemo(() => data?.data ?? [], [data]);
   const orderedTasks = useMemo(() => {
-    const priorityWeight: Record<string, number> = {
-      emergency: 0,
-      urgent: 1,
-      normal: 2,
-    };
     const sorted = [...tasks];
     sorted.sort((a, b) => {
-      const priorityDiff =
-        (priorityWeight[a.priority] ?? 99) - (priorityWeight[b.priority] ?? 99);
-      if (priorityDiff !== 0) return priorityDiff;
-      if (a.is_overdue !== b.is_overdue) return a.is_overdue ? -1 : 1;
-      if (a.due_date && b.due_date && a.due_date !== b.due_date) {
-        return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
-      }
-      if (a.due_date && !b.due_date) return -1;
-      if (!a.due_date && b.due_date) return 1;
+      const base = compareDispenseWorkflowOrder(a, b, { includeOverdue: true });
+      if (base !== 0) return base;
 
       if (viewMode === 'facility') {
         const facilityA = a.facility_label ?? '自宅訪問';
@@ -220,7 +212,7 @@ export function DispensingQueue() {
       return res.json();
     },
     onSuccess: (_result, taskId) => {
-      queryClient.invalidateQueries({ queryKey: ['dispense-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['dispense-queue', orgId] });
       router.push(`/dispensing/${taskId}`);
     },
   });
@@ -290,7 +282,7 @@ export function DispensingQueue() {
       <DataTable
         columns={columns}
         data={orderedTasks}
-        isLoading={isLoading}
+        isLoading={isBootstrappingOrg || isLoading}
         caption="調剤キュー"
         selectedRowIndex={selectedIndex}
         onRowClick={(index) => setSelectedIndex(index)}

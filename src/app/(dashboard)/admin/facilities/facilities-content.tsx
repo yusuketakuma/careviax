@@ -183,6 +183,7 @@ export function FacilitiesContent() {
       return response.json() as Promise<{ data: Facility[] }>;
     },
     enabled: !!orgId,
+    staleTime: 300_000,
   });
 
   const facilities = data?.data ?? [];
@@ -197,6 +198,7 @@ export function FacilitiesContent() {
       return response.json() as Promise<{ data: FacilityDetail }>;
     },
     enabled: !!orgId && !!detailId,
+    staleTime: 300_000,
   });
 
   const patientsQuery = useQuery({
@@ -209,6 +211,7 @@ export function FacilitiesContent() {
       return response.json() as Promise<{ data: FacilityPatient[] }>;
     },
     enabled: !!orgId && !!detailId,
+    staleTime: 300_000,
   });
 
   const visitBatchesQuery = useQuery({
@@ -221,6 +224,7 @@ export function FacilitiesContent() {
       return response.json() as Promise<{ data: FacilityVisitBatch[] }>;
     },
     enabled: !!orgId && !!detailId,
+    staleTime: 300_000,
   });
 
   function resetForm() {

@@ -37,6 +37,7 @@ describe('/api/admin/facilities/[id]/patients', () => {
       {
         id: 'residence_1',
         unit_name: '203号室',
+        facility_unit_id: 'unit_203',
         patient: {
           id: 'patient_1',
           name: '山田 花子',
@@ -64,6 +65,7 @@ describe('/api/admin/facilities/[id]/patients', () => {
       select: {
         id: true,
         unit_name: true,
+        facility_unit_id: true,
         patient: {
           select: {
             id: true,
@@ -88,6 +90,7 @@ describe('/api/admin/facilities/[id]/patients', () => {
           patient_id: 'patient_1',
           patient_name: '山田 花子',
           unit_name: '203号室',
+          facility_unit_id: 'unit_203',
           case_status: 'active',
         },
       ],

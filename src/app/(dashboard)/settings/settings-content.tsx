@@ -789,6 +789,7 @@ function SessionTab() {
   const { data: session, status } = useSession();
   const [mfaEnabled, setMfaEnabled] = useState<boolean | null>(null);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [isSigningOutAll, setIsSigningOutAll] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -824,6 +825,28 @@ function SessionTab() {
   async function handleSignOut() {
     setIsSigningOut(true);
     await signOut({ callbackUrl: '/login' });
+  }
+
+  async function handleSignOutAll() {
+    setIsSigningOutAll(true);
+
+    try {
+      const response = await fetch('/api/me/logout-all', {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(payload?.message ?? '全端末ログアウトに失敗しました。');
+      }
+
+      toast.success('全端末ログアウトを実行しました。再ログインしてください。');
+      await signOut({ callbackUrl: '/login' });
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : '全端末ログアウトに失敗しました。'
+      );
+      setIsSigningOutAll(false);
+    }
   }
 
   const timeoutMinutes = Math.floor(SESSION_TIMEOUT_MS / 60000);
@@ -877,13 +900,21 @@ function SessionTab() {
           <Button
             variant="outline"
             onClick={() => window.location.reload()}
+            disabled={isSigningOut || isSigningOutAll}
           >
             状態を再読込
           </Button>
           <Button
+            variant="outline"
+            onClick={() => void handleSignOutAll()}
+            disabled={isSigningOut || isSigningOutAll}
+          >
+            {isSigningOutAll ? '全端末からログアウト中...' : '全デバイスからログアウト'}
+          </Button>
+          <Button
             variant="destructive"
             onClick={() => void handleSignOut()}
-            disabled={isSigningOut}
+            disabled={isSigningOut || isSigningOutAll}
           >
             {isSigningOut ? 'ログアウト中...' : 'ログアウト'}
           </Button>

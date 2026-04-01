@@ -2,9 +2,14 @@ import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { acquireSseConnection, releaseSseConnection } from '@/lib/api/rate-limit';
+import { getRealtimeAdapter } from '@/server/adapters/realtime';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+const KEEPALIVE_INTERVAL_MS = 30_000;
+const POLL_INTERVAL_MS = 5_000;
+const MAX_STREAM_DURATION_MS = 5 * 60_000;
 
 export async function GET(req: NextRequest) {
   const authResult = await requireAuthContext(req);
@@ -12,8 +17,6 @@ export async function GET(req: NextRequest) {
 
   const { orgId, userId } = authResult.ctx;
 
-  // Gate the number of concurrent SSE connections per user to prevent
-  // connection storms (e.g., many open tabs or a runaway client).
   const sseResult = acquireSseConnection(userId);
   if (!sseResult.allowed) {
     return new Response(
@@ -23,60 +26,108 @@ export async function GET(req: NextRequest) {
   }
 
   const encoder = new TextEncoder();
-  let lastCheckAt = new Date();
-
-  const POLL_INTERVAL_MS = 5_000;
-  // Fix 4: Hard ceiling on stream lifetime to reclaim server resources.
-  const MAX_STREAM_DURATION_MS = 5 * 60_000; // 5 minutes
 
   const stream = new ReadableStream({
     async start(controller) {
       controller.enqueue(encoder.encode(': keepalive\n\n'));
 
-      let timer: ReturnType<typeof setTimeout> | null = null;
       let stopped = false;
+      let keepaliveTimer: ReturnType<typeof setTimeout> | null = null;
+      let pollTimer: ReturnType<typeof setTimeout> | null = null;
+      let realtimeActive = false;
+      let lastCheckAt = new Date();
 
       const teardown = () => {
+        if (stopped) return;
         stopped = true;
-        if (timer) clearTimeout(timer);
+        if (keepaliveTimer) clearTimeout(keepaliveTimer);
+        if (pollTimer) clearTimeout(pollTimer);
         clearTimeout(lifetime);
+        // Unsubscribe realtime listeners to prevent memory leaks
+        if (adapter && realtimeActive) {
+          adapter.unsubscribeFromChannel(`org:${orgId}`, listener);
+          adapter.unsubscribeFromChannel(`user:${userId}`, listener);
+        }
         releaseSseConnection(userId);
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          // Already closed
+        }
       };
 
-      // Safety valve: close stream after MAX_STREAM_DURATION_MS regardless of client state
       const lifetime = setTimeout(teardown, MAX_STREAM_DURATION_MS);
 
+      const sendEvent = (data: unknown) => {
+        if (stopped) return;
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        } catch {
+          teardown();
+        }
+      };
+
+      // Keepalive heartbeat
+      const heartbeat = () => {
+        if (stopped) return;
+        try {
+          controller.enqueue(encoder.encode(': keepalive\n\n'));
+        } catch {
+          teardown();
+          return;
+        }
+        keepaliveTimer = setTimeout(heartbeat, KEEPALIVE_INTERVAL_MS);
+      };
+      keepaliveTimer = setTimeout(heartbeat, KEEPALIVE_INTERVAL_MS);
+
+      // Try realtime adapter subscription
+      let adapter: ReturnType<typeof getRealtimeAdapter> | null = null;
+      const listener = (data: unknown) => sendEvent(data);
+
+      try {
+        adapter = getRealtimeAdapter();
+        await Promise.all([
+          adapter.subscribeToChannel(`org:${orgId}`, listener),
+          adapter.subscribeToChannel(`user:${userId}`, listener),
+        ]);
+        realtimeActive = true;
+      } catch {
+        realtimeActive = false;
+      }
+
+      // Poll unread notifications regardless of adapter availability.
       const poll = async () => {
         if (stopped) return;
+        const windowEnd = new Date();
         try {
           const notifications = await prisma.notification.findMany({
             where: {
               org_id: orgId,
               user_id: userId,
               is_read: false,
-              created_at: { gte: lastCheckAt },
+              created_at: {
+                gt: lastCheckAt,
+                lte: windowEnd,
+              },
             },
             orderBy: { created_at: 'desc' },
             take: 10,
           });
 
-          lastCheckAt = new Date();
+          lastCheckAt = windowEnd;
 
           if (notifications.length > 0) {
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify(notifications)}\n\n`)
-            );
+            sendEvent(notifications);
           }
         } catch {
           // Swallow DB errors to keep stream alive
         }
         if (!stopped) {
-          timer = setTimeout(poll, POLL_INTERVAL_MS);
+          pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
         }
       };
 
-      timer = setTimeout(poll, POLL_INTERVAL_MS);
+      pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
 
       req.signal.addEventListener('abort', teardown);
     },

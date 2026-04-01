@@ -3,7 +3,10 @@ import type { NextRequest } from 'next/server';
 
 const {
   authMock,
+  getRequestAuthContextMock,
   membershipFindFirstMock,
+  patientFindFirstMock,
+  processHandoffExtractionMock,
   withOrgContextMock,
   visitScheduleFindFirstMock,
   careCaseFindFirstMock,
@@ -32,7 +35,10 @@ const {
   billingEvidenceUpsertMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
+  getRequestAuthContextMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
+  processHandoffExtractionMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   visitScheduleFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
@@ -77,8 +83,20 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/lib/auth/request-context', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/auth/request-context')>();
+  return {
+    ...actual,
+    getRequestAuthContext: getRequestAuthContextMock,
+  };
+});
+
 vi.mock('@/server/services/billing-evidence', () => ({
   upsertBillingEvidenceForVisit: billingEvidenceUpsertMock,
+}));
+
+vi.mock('@/server/services/visit-handoff', () => ({
+  processHandoffExtraction: processHandoffExtractionMock,
 }));
 
 import { POST } from './route';
@@ -98,7 +116,23 @@ describe('/api/visit-records POST', () => {
     vi.clearAllMocks();
 
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    getRequestAuthContextMock.mockReturnValue({
+      userId: 'user_1',
+      orgId: 'org_1',
+      role: 'pharmacist',
+    });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    patientFindFirstMock.mockResolvedValue({ name: '患者A' });
+    processHandoffExtractionMock.mockResolvedValue({
+      next_check_items: [],
+      ongoing_monitoring: [],
+      decision_rationale: '',
+      ai_extracted: true,
+      ai_confidence: 0.9,
+      confirmed_by: null,
+      confirmed_at: null,
+      extracted_at: '2026-04-01T00:00:00Z',
+    });
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
@@ -151,6 +185,9 @@ describe('/api/visit-records POST', () => {
         },
         careCase: {
           findFirst: careCaseFindFirstMock,
+        },
+        patient: {
+          findFirst: patientFindFirstMock,
         },
         visitRecord: {
           create: visitRecordCreateMock,
@@ -440,5 +477,45 @@ describe('/api/visit-records POST', () => {
       }),
     });
     expect(firstVisitDocumentUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('kicks off handoff extraction without blocking the save response when structured SOAP is provided', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          structured_soap: {
+            subjective: { symptom_checks: [] },
+            objective: {
+              medication_status: 'full_compliance',
+              adherence_score: 3,
+              side_effect_checks: [],
+            },
+            assessment: { problem_checks: [] },
+            plan: { intervention_checks: [] },
+          },
+        },
+        { 'x-org-id': 'org_1' }
+      )
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(processHandoffExtractionMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        visitRecordId: 'record_1',
+        patientId: 'patient_1',
+        patientName: '患者A',
+        requestContext: expect.objectContaining({
+          userId: 'user_1',
+          orgId: 'org_1',
+        }),
+      })
+    );
   });
 });

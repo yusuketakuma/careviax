@@ -158,7 +158,7 @@ export function ExternalProfessionalsContent() {
       return response.json() as Promise<{ data: Array<{ id: string; name: string }> }>;
     },
     enabled: !!orgId,
-    staleTime: 60_000,
+    staleTime: 300_000,
   });
 
   const { data, isLoading } = useQuery({
@@ -175,6 +175,7 @@ export function ExternalProfessionalsContent() {
       return response.json() as Promise<{ data: ExternalProfessional[] }>;
     },
     enabled: !!orgId,
+    staleTime: 300_000,
   });
 
   const detailQuery = useQuery({
@@ -187,6 +188,7 @@ export function ExternalProfessionalsContent() {
       return response.json() as Promise<{ data: ExternalProfessional }>;
     },
     enabled: !!orgId && !!detailId,
+    staleTime: 300_000,
   });
 
   const patientsQuery = useQuery({
@@ -199,6 +201,7 @@ export function ExternalProfessionalsContent() {
       return response.json() as Promise<{ data: ExternalProfessionalPatient[] }>;
     },
     enabled: !!orgId && !!detailId,
+    staleTime: 300_000,
   });
 
   const communicationsQuery = useQuery({
@@ -216,6 +219,7 @@ export function ExternalProfessionalsContent() {
       }>;
     },
     enabled: !!orgId && !!detailId,
+    staleTime: 300_000,
   });
 
   const professionals = data?.data ?? [];

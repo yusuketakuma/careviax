@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
@@ -17,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
+import { evaluateServiceAreaWarning, type ServiceAreaRecord } from '@/lib/patient/service-area';
 
 interface DuplicatePatient {
   id: string;
@@ -25,6 +27,26 @@ interface DuplicatePatient {
   birth_date: string;
   gender: string;
 }
+
+type FacilityOption = {
+  id: string;
+  name: string;
+  address: string | null;
+};
+
+type FacilityUnitOption = {
+  id: string;
+  name: string;
+  floor: string | null;
+  unit_type: string | null;
+};
+
+type ServiceAreaOption = ServiceAreaRecord & {
+  site: {
+    id: string;
+    name: string;
+  } | null;
+};
 
 interface PatientFormProps {
   /** Where to redirect after successful submission */
@@ -41,12 +63,14 @@ export function PatientForm({ redirectTo, onSuccess, defaultValues }: PatientFor
   const [duplicates, setDuplicates] = useState<DuplicatePatient[]>([]);
   const [duplicateConfirmedKey, setDuplicateConfirmedKey] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastAutofilledAddressRef = useRef<string | null>(null);
   const errorSummaryId = 'patient-form-error-summary';
 
   const {
     register,
     handleSubmit,
     control,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<CreatePatientInput>({
     resolver: zodResolver(createPatientSchema),
@@ -57,6 +81,15 @@ export function PatientForm({ redirectTo, onSuccess, defaultValues }: PatientFor
     control,
     name: ['name', 'birth_date', 'gender'],
   });
+  const selectedFacilityId = useWatch({
+    control,
+    name: 'facility_id',
+  }) ?? '';
+  const watchedAddress = useWatch({
+    control,
+    name: 'address',
+  }) ?? '';
+  const previousFacilityIdRef = useRef<string>('');
   const duplicateLookupKey =
     watchedName?.trim() && watchedBirthDate && watchedGender
       ? `${watchedName.trim()}::${watchedBirthDate}::${watchedGender}`
@@ -68,6 +101,7 @@ export function PatientForm({ redirectTo, onSuccess, defaultValues }: PatientFor
     name_kana: 'フリガナ',
     birth_date: '生年月日',
     gender: '性別',
+    address: '住所',
   });
 
   const scrollToErrorSummary = useCallback(() => {
@@ -97,6 +131,57 @@ export function PatientForm({ redirectTo, onSuccess, defaultValues }: PatientFor
     [orgId],
   );
 
+  const facilitiesQuery = useQuery({
+    queryKey: ['patient-form', 'facilities', orgId],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/facilities', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) {
+        throw new Error('施設一覧の取得に失敗しました');
+      }
+      const payload = (await res.json()) as { data?: FacilityOption[] };
+      return payload.data ?? [];
+    },
+    enabled: !!orgId,
+  });
+
+  const facilityUnitsQuery = useQuery({
+    queryKey: ['patient-form', 'facility-units', orgId, selectedFacilityId],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/facilities/${selectedFacilityId}/units`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) {
+        throw new Error('ユニット一覧の取得に失敗しました');
+      }
+      const payload = (await res.json()) as { data?: FacilityUnitOption[] };
+      return payload.data ?? [];
+    },
+    enabled: !!orgId && !!selectedFacilityId,
+  });
+
+  const serviceAreasQuery = useQuery({
+    queryKey: ['patient-form', 'service-areas', orgId],
+    queryFn: async () => {
+      const res = await fetch('/api/service-areas', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) {
+        throw new Error('訪問エリア設定の取得に失敗しました');
+      }
+      const payload = (await res.json()) as { data?: ServiceAreaOption[] };
+      return payload.data ?? [];
+    },
+    enabled: !!orgId,
+  });
+
+  const serviceAreaWarning = evaluateServiceAreaWarning({
+    serviceAreas: serviceAreasQuery.data ?? [],
+    address: watchedAddress,
+    facilityId: selectedFacilityId || null,
+  });
+
   useEffect(() => {
     if (!watchedName?.trim() || !watchedBirthDate || !watchedGender) {
       return;
@@ -111,6 +196,46 @@ export function PatientForm({ redirectTo, onSuccess, defaultValues }: PatientFor
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [watchedName, watchedBirthDate, watchedGender, checkDuplicate]);
+
+  useEffect(() => {
+    const previousFacilityId = previousFacilityIdRef.current;
+    if (previousFacilityId && previousFacilityId !== selectedFacilityId) {
+      setValue('facility_unit_id', '');
+      if (
+        !selectedFacilityId &&
+        watchedAddress &&
+        watchedAddress === lastAutofilledAddressRef.current
+      ) {
+        setValue('address', '', { shouldDirty: true });
+        lastAutofilledAddressRef.current = null;
+      }
+    }
+    previousFacilityIdRef.current = selectedFacilityId;
+  }, [selectedFacilityId, setValue, watchedAddress]);
+
+  useEffect(() => {
+    if (!selectedFacilityId) {
+      setValue('facility_unit_id', '');
+    }
+  }, [selectedFacilityId, setValue]);
+
+  useEffect(() => {
+    if (!selectedFacilityId) return;
+
+    const selectedFacility =
+      (facilitiesQuery.data ?? []).find((facility) => facility.id === selectedFacilityId) ?? null;
+    if (!selectedFacility?.address) return;
+    if (watchedAddress && watchedAddress !== lastAutofilledAddressRef.current) return;
+    if (watchedAddress === selectedFacility.address) {
+      lastAutofilledAddressRef.current = selectedFacility.address;
+      return;
+    }
+
+    setValue('address', selectedFacility.address, {
+      shouldDirty: true,
+    });
+    lastAutofilledAddressRef.current = selectedFacility.address;
+  }, [facilitiesQuery.data, selectedFacilityId, setValue, watchedAddress]);
 
   async function onSubmit(data: CreatePatientInput) {
     const res = await fetch('/api/patients', {
@@ -253,6 +378,86 @@ export function PatientForm({ redirectTo, onSuccess, defaultValues }: PatientFor
               {...register('address')}
               placeholder="東京都新宿区..."
               rows={2}
+            />
+          </div>
+
+          {serviceAreaWarning ? (
+            <Alert
+              variant="default"
+              className={
+                serviceAreaWarning.level === 'covered'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                  : 'border-amber-300 bg-amber-50 text-amber-900'
+              }
+            >
+              <AlertTriangle
+                className={
+                  serviceAreaWarning.level === 'covered'
+                    ? 'h-4 w-4 text-emerald-600'
+                    : 'h-4 w-4 text-amber-600'
+                }
+              />
+              <AlertDescription>
+                {serviceAreaWarning.message}
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="facility_id">施設</Label>
+              <select
+                id="facility_id"
+                {...register('facility_id')}
+                className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
+              >
+                <option value="">居宅 / 未設定</option>
+                {(facilitiesQuery.data ?? []).map((facility) => (
+                  <option key={facility.id} value={facility.id}>
+                    {facility.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                施設患者の場合は先に施設を選択してください。
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="facility_unit_id">ユニット</Label>
+              <select
+                id="facility_unit_id"
+                {...register('facility_unit_id')}
+                disabled={!selectedFacilityId || facilityUnitsQuery.isLoading}
+                className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="">
+                  {!selectedFacilityId
+                    ? '施設を選択してください'
+                    : facilityUnitsQuery.isLoading
+                      ? 'ユニットを読み込み中...'
+                      : 'ユニットを選択してください'}
+                </option>
+                {(facilityUnitsQuery.data ?? []).map((unit) => (
+                  <option key={unit.id} value={unit.id}>
+                    {[unit.floor, unit.name].filter(Boolean).join(' / ')}
+                  </option>
+                ))}
+              </select>
+              {selectedFacilityId && !facilityUnitsQuery.isLoading && (facilityUnitsQuery.data?.length ?? 0) === 0 && (
+                <p className="text-xs text-amber-700" role="status">
+                  この施設には登録済みユニットがありません。施設管理から先にユニットを追加してください。
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="unit_name">居室・部屋番号</Label>
+            <Input
+              id="unit_name"
+              {...register('unit_name')}
+              placeholder={selectedFacilityId ? '203号室 / 東棟3F など' : '居宅なら未入力で構いません'}
             />
           </div>
 

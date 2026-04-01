@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 
 type ContactRow = {
   id?: string;
@@ -146,7 +147,10 @@ export function PatientContactsPanel({
     },
     onSuccess: async () => {
       toast.success('連絡先を更新しました');
-      await queryClient.invalidateQueries({ queryKey: ['patient', patientId, orgId] });
+      await invalidateQueryKeys(
+        queryClient,
+        getPatientCareQueryKeys({ orgId, patientId })
+      );
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '連絡先の保存に失敗しました');

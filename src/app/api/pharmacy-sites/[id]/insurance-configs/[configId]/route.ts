@@ -1,16 +1,12 @@
 import { NextRequest } from 'next/server';
-import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { success, validationError, notFound } from '@/lib/api/response';
-
-const updateConfigSchema = z.object({
-  revision_label: z.string().optional().nullable(),
-  effective_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です'),
-  effective_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です').optional().nullable(),
-  config: z.record(z.string(), z.any()).default({}),
-});
+import {
+  pharmacySiteInsuranceConfigUpdateSchema,
+  rangesOverlap,
+} from '@/lib/validations/pharmacy-site-insurance-config';
 
 export async function PATCH(
   req: NextRequest,
@@ -26,7 +22,7 @@ export async function PATCH(
   const body = await req.json().catch(() => null);
   if (!body) return validationError('リクエストボディが不正です');
 
-  const parsed = updateConfigSchema.safeParse(body);
+  const parsed = pharmacySiteInsuranceConfigUpdateSchema.safeParse(body);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
@@ -34,17 +30,40 @@ export async function PATCH(
   const { id, configId } = await params;
   const existing = await prisma.pharmacySiteInsuranceConfig.findFirst({
     where: { id: configId, site_id: id, org_id: ctx.orgId },
-    select: { id: true },
+    select: { id: true, insurance_type: true },
   });
   if (!existing) return notFound('保険設定が見つかりません');
+
+  const nextStart = new Date(parsed.data.effective_from);
+  const nextEnd = parsed.data.effective_to ? new Date(parsed.data.effective_to) : null;
+  const overlappingConfigs = await prisma.pharmacySiteInsuranceConfig.findMany({
+    where: {
+      org_id: ctx.orgId,
+      site_id: id,
+      insurance_type: existing.insurance_type,
+      id: { not: configId },
+    },
+  });
+  if (
+    overlappingConfigs.some((config) =>
+      rangesOverlap({
+        nextStart,
+        nextEnd,
+        currentStart: config.effective_from,
+        currentEnd: config.effective_to,
+      })
+    )
+  ) {
+    return validationError('同一保険種別で適用期間が重複する設定は更新できません');
+  }
 
   const updated = await withOrgContext(ctx.orgId, async (tx) => {
     const config = await tx.pharmacySiteInsuranceConfig.update({
       where: { id: configId },
       data: {
         revision_label: parsed.data.revision_label ?? null,
-        effective_from: new Date(parsed.data.effective_from),
-        effective_to: parsed.data.effective_to ? new Date(parsed.data.effective_to) : null,
+        effective_from: nextStart,
+        effective_to: nextEnd,
         config: parsed.data.config,
       },
     });

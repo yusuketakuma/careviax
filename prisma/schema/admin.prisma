@@ -23,7 +23,7 @@ model NotificationRule {
   id          String   @id @default(cuid())
   org_id      String
   event_type  String
-  channel     String   // in_app/email
+  channel     String   // in_app/email/sms/line/fax/mcs
   recipients  Json
   enabled     Boolean  @default(true)
   conditions  Json?
@@ -201,14 +201,37 @@ model Template {
   id            String   @id @default(cuid())
   org_id        String
   name          String
-  template_type String // care_report/tracing_report/management_plan/medication_calendar
+  template_type String // care_report/tracing_report/management_plan/medication_calendar/consent_form
+  target_role   String?
+  format        String   @default("html") // html/pdf
+  version       Int      @default(1)
+  effective_from DateTime? @db.Date
+  effective_to  DateTime? @db.Date
   content       Json
   is_default    Boolean  @default(false)
+  consent_records ConsentRecord[]
   created_at    DateTime @default(now())
   updated_at    DateTime @updatedAt
 
   @@index([org_id])
   @@index([template_type])
+  @@index([target_role])
+}
+
+model DocumentDeliveryRule {
+  id                String   @id @default(cuid())
+  org_id            String
+  document_type     String
+  target_role       String
+  channel           String   // email/fax/mcs
+  fallback_channels Json?
+  is_active         Boolean  @default(true)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  @@index([org_id])
+  @@index([document_type, target_role])
+  @@index([is_active])
 }
 
 model Setting {
@@ -241,15 +264,23 @@ model UatFeedback {
   org_id              String
   submitted_by        String?
   priority            String
+  status              String   @default("open")
+  owner_user_id       String?
   feedback            String
   checklist_progress  String?
   checked_items       Json?
   source              String   @default("pilot_pharmacy")
+  linked_work_item    String?
+  due_date            DateTime?
+  resolved_at         DateTime?
   created_at          DateTime @default(now())
   updated_at          DateTime @updatedAt
 
   @@index([org_id])
   @@index([priority])
+  @@index([status])
+  @@index([owner_user_id])
+  @@index([due_date])
 }
 
 model SourceOfTruthMatrix {
@@ -264,4 +295,18 @@ model SourceOfTruthMatrix {
   updated_at         DateTime @updatedAt
 
   @@unique([org_id, entity_type])
+}
+
+model PushSubscription {
+  id         String   @id @default(cuid())
+  org_id     String
+  user_id    String
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([org_id])
+  @@index([user_id])
 }

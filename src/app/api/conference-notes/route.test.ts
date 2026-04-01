@@ -21,6 +21,7 @@ const {
   medicationIssueFindManyMock,
   medicationIssueCreateManyMock,
   careCaseFindFirstMock,
+  careCaseUpdateMock,
   residenceFindFirstMock,
   facilityFindFirstMock,
   patientSchedulePreferenceUpsertMock,
@@ -47,6 +48,7 @@ const {
   medicationIssueFindManyMock: vi.fn(),
   medicationIssueCreateManyMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
+  careCaseUpdateMock: vi.fn(),
   residenceFindFirstMock: vi.fn(),
   facilityFindFirstMock: vi.fn(),
   patientSchedulePreferenceUpsertMock: vi.fn(),
@@ -108,6 +110,7 @@ function buildTxMock() {
     careCase: {
       findMany: careCaseFindManyMock,
       findFirst: careCaseFindFirstMock,
+      update: careCaseUpdateMock,
     },
     task: {
       findMany: taskFindManyMock,
@@ -162,6 +165,19 @@ describe('/api/conference-notes', () => {
       id: 'case_1',
       patient_id: 'patient_1',
       primary_pharmacist_id: 'pharm_1',
+      required_visit_support: null,
+    });
+    careCaseUpdateMock.mockResolvedValue({
+      id: 'case_1',
+      required_visit_support: {
+        conference_sync: {
+          service_manager: {
+            care_plan_update: {
+              summary: '服薬支援を強化',
+            },
+          },
+        },
+      },
     });
     taskFindManyMock.mockResolvedValue([]);
     taskCreateManyMock.mockResolvedValue({ count: 2 });
@@ -934,6 +950,73 @@ describe('/api/conference-notes', () => {
         }),
       });
     });
+
+    it('stores care plan update in careCase required_visit_support on POST service_manager', async () => {
+      conferenceNoteCreateMock.mockResolvedValue({
+        id: 'note_service_1',
+        case_id: 'case_1',
+        note_type: 'service_manager',
+        title: '担当者会議',
+        conference_date: new Date('2026-03-28T01:00:00.000Z'),
+        participants: [{ name: '佐藤CM', role: 'care_manager', attended: true }],
+        structured_content: {
+          template: 'service_manager',
+          sections: [
+            { key: 'meeting_purpose', label: '会議目的', body: '訪問頻度の見直し' },
+            { key: 'care_plan_changes', label: 'ケアプラン変更点', body: '服薬支援を強化' },
+            {
+              key: 'service_adjustments',
+              label: 'サービス調整',
+              body: '訪問薬剤管理 月2回→月4回',
+            },
+          ],
+        },
+        metadata: null,
+        action_items: null,
+      });
+
+      const response = await POST(
+        createRequest({
+          method: 'POST',
+          body: {
+            conference_type: 'service_manager',
+            case_id: 'case_1',
+            title: '担当者会議',
+            structured_content: {
+              sections: [
+                { key: 'meeting_purpose', label: '会議目的', body: '訪問頻度の見直し' },
+                { key: 'care_plan_changes', label: 'ケアプラン変更点', body: '服薬支援を強化' },
+                {
+                  key: 'service_adjustments',
+                  label: 'サービス調整',
+                  body: '訪問薬剤管理 月2回→月4回',
+                },
+              ],
+            },
+            participants: [{ name: '佐藤CM', role: 'care_manager', attended: true }],
+            conference_date: '2026-03-28T01:00:00.000Z',
+          },
+        })
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(201);
+      expect(careCaseUpdateMock).toHaveBeenCalledWith({
+        where: { id: 'case_1' },
+        data: {
+          required_visit_support: expect.objectContaining({
+            conference_sync: expect.objectContaining({
+              service_manager: expect.objectContaining({
+                care_plan_update: expect.objectContaining({
+                  note_id: 'note_service_1',
+                  summary: '服薬支援を強化',
+                }),
+              }),
+            }),
+          }),
+        },
+      });
+    });
   });
 
   // ─── Sync: death_conference ───────────────────────────────────────────────
@@ -1135,6 +1218,80 @@ describe('/api/conference-notes', () => {
         })
       );
     });
+
+    it('creates resolved MedicationIssues from medication_at_end on POST death_conference', async () => {
+      conferenceNoteCreateMock.mockResolvedValue({
+        id: 'note_death1',
+        case_id: 'case_1',
+        note_type: 'death_conference',
+        title: 'デスカンファレンス',
+        conference_date: new Date('2026-03-25T01:00:00.000Z'),
+        participants: [{ name: '田中薬剤師', role: '薬剤師' }],
+        structured_content: {
+          template: 'death_conference',
+          sections: [
+            {
+              key: 'billing_confirmation',
+              label: '請求根拠確認',
+              body: 'ターミナルケア管理料算定要件を確認。',
+            },
+            {
+              key: 'medication_at_end',
+              label: '終末期薬剤管理',
+              body: '疼痛コントロール目的でオキシコドンへ切替\nレスキュー使用手順を家族へ共有',
+            },
+          ],
+        },
+        metadata: null,
+        action_items: null,
+      });
+
+      const response = await POST(
+        createRequest({
+          method: 'POST',
+          body: {
+            note_type: 'death_conference',
+            case_id: 'case_1',
+            title: 'デスカンファレンス',
+            structured_content: {
+              sections: [
+                {
+                  key: 'billing_confirmation',
+                  label: '請求根拠確認',
+                  body: 'ターミナルケア管理料算定要件を確認。',
+                },
+                {
+                  key: 'medication_at_end',
+                  label: '終末期薬剤管理',
+                  body: '疼痛コントロール目的でオキシコドンへ切替\nレスキュー使用手順を家族へ共有',
+                },
+              ],
+            },
+            participants: [{ name: '田中薬剤師', role: '薬剤師' }],
+            conference_date: '2026-03-25T01:00:00.000Z',
+          },
+        })
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(201);
+      expect(medicationIssueCreateManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.arrayContaining([
+            expect.objectContaining({
+              title: '疼痛コントロール目的でオキシコドンへ切替',
+              status: 'resolved',
+              category: 'other',
+              resolved_by: 'user_1',
+            }),
+            expect.objectContaining({
+              title: 'レスキュー使用手順を家族へ共有',
+              status: 'resolved',
+            }),
+          ]),
+        })
+      );
+    });
   });
 
   // ─── Sync: care_team ─────────────────────────────────────────────────────
@@ -1253,6 +1410,136 @@ describe('/api/conference-notes', () => {
       );
     });
 
+    it('stores case review highlights into visit_brief metadata on POST care_team', async () => {
+      conferenceNoteCreateMock.mockResolvedValue({
+        id: 'note_care_review',
+        case_id: 'case_1',
+        note_type: 'care_team',
+        title: '多職種カンファレンス',
+        conference_date: new Date('2026-03-29T01:00:00.000Z'),
+        participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
+        structured_content: {
+          template: 'care_team',
+          sections: [
+            {
+              key: 'case_review',
+              label: '症例レビュー',
+              body: '転倒リスクが上がっている\n服薬自己管理が不安定\n夜間せん妄に注意',
+            },
+          ],
+        },
+        metadata: {
+          visit_brief: {
+            patient_id: 'patient_1',
+          },
+        },
+        action_items: null,
+      });
+
+      const response = await POST(
+        createRequest({
+          method: 'POST',
+          body: {
+            note_type: 'care_team',
+            case_id: 'case_1',
+            title: '多職種カンファレンス',
+            structured_content: {
+              sections: [
+                {
+                  key: 'case_review',
+                  label: '症例レビュー',
+                  body: '転倒リスクが上がっている\n服薬自己管理が不安定\n夜間せん妄に注意',
+                },
+              ],
+            },
+            participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
+            conference_date: '2026-03-29T01:00:00.000Z',
+          },
+        })
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(201);
+      expect(conferenceNoteUpdateMock).toHaveBeenCalledWith({
+        where: { id: 'note_care_review' },
+        data: {
+          metadata: expect.objectContaining({
+            visit_brief: expect.objectContaining({
+              patient_id: 'patient_1',
+              summary: '転倒リスクが上がっている\n服薬自己管理が不安定\n夜間せん妄に注意',
+              highlighted_risks: [
+                '転倒リスクが上がっている',
+                '服薬自己管理が不安定',
+                '夜間せん妄に注意',
+              ],
+            }),
+          }),
+        },
+      });
+    });
+
+    it('stores intervention outcomes into care_team metadata on POST care_team', async () => {
+      conferenceNoteCreateMock.mockResolvedValue({
+        id: 'note_care_outcomes',
+        case_id: 'case_1',
+        note_type: 'care_team',
+        title: '多職種カンファレンス',
+        conference_date: new Date('2026-03-29T01:00:00.000Z'),
+        participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
+        structured_content: {
+          template: 'care_team',
+          sections: [
+            {
+              key: 'intervention_outcomes',
+              label: '介入結果',
+              body: '残薬確認フローを導入して飲み忘れが減少\n家族同席で手技説明し自己注射が安定',
+            },
+          ],
+        },
+        metadata: null,
+        action_items: null,
+      });
+
+      const response = await POST(
+        createRequest({
+          method: 'POST',
+          body: {
+            note_type: 'care_team',
+            case_id: 'case_1',
+            title: '多職種カンファレンス',
+            structured_content: {
+              sections: [
+                {
+                  key: 'intervention_outcomes',
+                  label: '介入結果',
+                  body: '残薬確認フローを導入して飲み忘れが減少\n家族同席で手技説明し自己注射が安定',
+                },
+              ],
+            },
+            participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
+            conference_date: '2026-03-29T01:00:00.000Z',
+          },
+        })
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(201);
+      expect(conferenceNoteUpdateMock).toHaveBeenCalledWith({
+        where: { id: 'note_care_outcomes' },
+        data: {
+          metadata: expect.objectContaining({
+            care_team: expect.objectContaining({
+              intervention_outcomes: [
+                '残薬確認フローを導入して飲み忘れが減少',
+                '家族同席で手技説明し自己注射が安定',
+              ],
+              synced_from_note_id: 'note_care_outcomes',
+            }),
+          }),
+        },
+      });
+    });
+
     it('does NOT create MedicationIssues when medication_issues section is absent', async () => {
       conferenceNoteCreateMock.mockResolvedValue({
         id: 'note_care_nomi',
@@ -1312,6 +1599,110 @@ describe('/api/conference-notes', () => {
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(201);
       expect(billingCandidateUpsertMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST emergency — sync side-effects', () => {
+    beforeEach(() => {
+      conferenceNoteCreateMock.mockResolvedValue({
+        id: 'note_emergency_1',
+        case_id: 'case_1',
+        note_type: 'emergency',
+        title: '緊急カンファレンス',
+        conference_date: new Date('2026-03-30T01:00:00.000Z'),
+        participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
+        structured_content: {
+          template: 'emergency',
+          sections: [
+            {
+              key: 'immediate_actions',
+              label: '即時対応内容',
+              body: '主治医へ即時連絡\n当日夕方に再訪',
+            },
+            {
+              key: 'risk_mitigation',
+              label: '再発防止',
+              body: '服薬セット方法を再評価',
+            },
+            {
+              key: 'incident_summary',
+              label: 'インシデント概要',
+              body: '内服忘れにより症状悪化',
+            },
+          ],
+        },
+        metadata: null,
+        action_items: [{ title: '家族へ連絡', assignee: '薬剤師' }],
+      });
+    });
+
+    it('creates urgent immediate-action tasks and high-priority mitigation tasks', async () => {
+      const response = await POST(
+        createRequest({
+          method: 'POST',
+          body: {
+            note_type: 'emergency',
+            case_id: 'case_1',
+            title: '緊急カンファレンス',
+            structured_content: {
+              sections: [
+                {
+                  key: 'immediate_actions',
+                  label: '即時対応内容',
+                  body: '主治医へ即時連絡\n当日夕方に再訪',
+                },
+                {
+                  key: 'risk_mitigation',
+                  label: '再発防止',
+                  body: '服薬セット方法を再評価',
+                },
+                {
+                  key: 'incident_summary',
+                  label: 'インシデント概要',
+                  body: '内服忘れにより症状悪化',
+                },
+              ],
+            },
+            action_items: [{ title: '家族へ連絡', assignee: '薬剤師' }],
+            participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
+            conference_date: '2026-03-30T01:00:00.000Z',
+          },
+        })
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(201);
+      expect(taskCreateManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.arrayContaining([
+            expect.objectContaining({
+              title: '家族へ連絡',
+              priority: 'high',
+            }),
+          ]),
+        })
+      );
+      expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          taskType: 'conference_immediate_action',
+          title: '即時対応: 主治医へ即時連絡',
+          priority: 'urgent',
+        })
+      );
+      expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          taskType: 'conference_risk_mitigation',
+          title: '再発防止: 服薬セット方法を再評価',
+          priority: 'high',
+        })
+      );
+      await expect(response.json()).resolves.toMatchObject({
+        sync: expect.objectContaining({
+          tasks_created: 4,
+        }),
+      });
     });
   });
 

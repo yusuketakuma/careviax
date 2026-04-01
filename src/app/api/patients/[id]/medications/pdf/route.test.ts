@@ -5,10 +5,14 @@ const {
   requireAuthContextMock,
   buildMedicationHistoryPdfMock,
   pdfResponseMock,
+  recordDataExportAuditMock,
+  prismaMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   buildMedicationHistoryPdfMock: vi.fn(),
   pdfResponseMock: vi.fn(),
+  recordDataExportAuditMock: vi.fn(),
+  prismaMock: {},
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -23,13 +27,22 @@ vi.mock('@/lib/api/pdf-response', () => ({
   pdfResponse: pdfResponseMock,
 }));
 
+vi.mock('@/lib/db/client', () => ({
+  prisma: prismaMock,
+}));
+
+vi.mock('@/server/services/export-audit', () => ({
+  recordDataExportAudit: recordDataExportAuditMock,
+}));
+
 import { GET } from './route';
 
 describe('/api/patients/[id]/medications/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({ ctx: { orgId: 'org_1' } });
+    requireAuthContextMock.mockResolvedValue({ ctx: { orgId: 'org_1', userId: 'user_1' } });
     pdfResponseMock.mockReturnValue(new Response('pdf', { status: 200 }));
+    recordDataExportAuditMock.mockResolvedValue(undefined);
   });
 
   it('returns the medication history pdf', async () => {
@@ -44,5 +57,9 @@ describe('/api/patients/[id]/medications/pdf', () => {
 
     expect(response.status).toBe(200);
     expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), 'medications.pdf');
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ targetType: 'medication_history', format: 'pdf', targetId: 'patient_1' }),
+    );
   });
 });

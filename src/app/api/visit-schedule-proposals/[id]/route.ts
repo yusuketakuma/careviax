@@ -21,10 +21,11 @@ import {
   resolveOperationalTasks,
   upsertOperationalTask,
 } from '@/server/services/operational-tasks';
-
-function buildContactTaskKey(proposalId: string) {
-  return `visit-contact-followup:${proposalId}`;
-}
+import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+import {
+  buildVisitScheduleContactFollowupTask,
+  buildVisitScheduleContactTaskKey,
+} from '@/server/services/visit-schedule-communication';
 
 type RoutePreviewPoint = {
   schedule_id: string;
@@ -583,6 +584,11 @@ export async function PATCH(
       return updated;
     });
 
+    await notifyWorkflowMutation({
+      orgId: ctx.orgId,
+      payload: { source: 'visit_schedule_proposals_approve', proposal_id: id },
+    });
+
     return success({ data: proposal });
   }
 
@@ -592,12 +598,17 @@ export async function PATCH(
     }
 
     const proposal = await withOrgContext(ctx.orgId, async (tx) => {
+      const rejectedAt = new Date();
       const updated = await tx.visitScheduleProposal.update({
         where: { id },
         data: {
           proposal_status: 'rejected',
-          patient_contact_status: 'declined',
-          patient_contacted_at: new Date(),
+          ...(existing.proposal_status === 'patient_contact_pending'
+            ? {
+                patient_contact_status: 'declined',
+                patient_contacted_at: rejectedAt,
+              }
+            : {}),
         },
       });
 
@@ -614,6 +625,11 @@ export async function PATCH(
       });
 
       return updated;
+    });
+
+    await notifyWorkflowMutation({
+      orgId: ctx.orgId,
+      payload: { source: 'visit_schedule_proposals_reject', proposal_id: id },
     });
 
     return success({ data: proposal });
@@ -657,31 +673,25 @@ export async function PATCH(
         },
       });
 
-      if (
-        (outcome === 'attempted' || outcome === 'unreachable') &&
-        data.callback_due_at
-      ) {
-        await upsertOperationalTask(tx, {
-          orgId: ctx.orgId,
-          taskType: 'visit_contact_followup',
-          title: '患者への再架電が必要です',
-          description: data.note ?? '訪問候補の再架電対応を行ってください。',
-          priority: 'high',
-          assignedTo: existing.proposed_pharmacist_id,
-          dueDate: new Date(data.callback_due_at),
-          slaDueAt: new Date(data.callback_due_at),
-          dedupeKey: buildContactTaskKey(id),
-          relatedEntityType: 'visit_schedule_proposal',
-          relatedEntityId: id,
-          metadata: {
-            case_id: existing.case_id,
-            patient_id: existing.case_.patient_id,
-          },
-        });
-      } else if (['declined', 'change_requested', 'confirmed'].includes(outcome)) {
+      const requiresFollowup = outcome === 'attempted' || outcome === 'unreachable';
+
+      if (requiresFollowup && data.callback_due_at) {
+        await upsertOperationalTask(
+          tx,
+          buildVisitScheduleContactFollowupTask({
+            orgId: ctx.orgId,
+            proposalId: id,
+            caseId: existing.case_id,
+            patientId: existing.case_.patient_id,
+            assignedTo: existing.proposed_pharmacist_id,
+            dueAt: new Date(data.callback_due_at),
+            description: data.note ?? '訪問候補の再架電対応を行ってください。',
+          })
+        );
+      } else {
         await resolveOperationalTasks(tx, {
           orgId: ctx.orgId,
-          dedupeKey: buildContactTaskKey(id),
+          dedupeKey: buildVisitScheduleContactTaskKey(id),
           status: 'completed',
         });
       }
@@ -704,6 +714,11 @@ export async function PATCH(
       });
 
       return updated;
+    });
+
+    await notifyWorkflowMutation({
+      orgId: ctx.orgId,
+      payload: { source: 'visit_schedule_proposals_contact_attempt', proposal_id: id },
     });
 
     return success({ data: proposal });
@@ -877,7 +892,7 @@ export async function PATCH(
 
     await resolveOperationalTasks(tx, {
       orgId: ctx.orgId,
-      dedupeKey: buildContactTaskKey(id),
+      dedupeKey: buildVisitScheduleContactTaskKey(id),
       status: 'completed',
     });
 
@@ -892,6 +907,11 @@ export async function PATCH(
       return validationError('確定済み訪問の変更は承認後に新候補を確定してください');
     }
   }
+
+  await notifyWorkflowMutation({
+    orgId: ctx.orgId,
+    payload: { source: 'visit_schedule_proposals_confirm', proposal_id: id },
+  });
 
   return success({ data: result });
 }

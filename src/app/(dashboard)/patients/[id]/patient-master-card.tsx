@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { buildIntakeBadges, getHomeVisitIntake } from '@/lib/patient/intake-display';
+import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 
 type FacilityOption = {
   id: string;
@@ -124,7 +125,10 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
     },
     onSuccess: async () => {
       toast.success('患者基本情報を更新しました');
-      await queryClient.invalidateQueries({ queryKey: ['patient', patient.id, orgId] });
+      await invalidateQueryKeys(
+        queryClient,
+        getPatientCareQueryKeys({ orgId, patientId: patient.id })
+      );
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '患者基本情報の保存に失敗しました');

@@ -1,8 +1,10 @@
 import { NextRequest } from 'next/server';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { transitionCycleStatus, InvalidTransitionError, VersionConflictError } from '@/lib/db/cycle-transition';
+import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { z } from 'zod';
 
 const updateDispenseResultSchema = z.object({
@@ -13,6 +15,7 @@ const updateDispenseResultSchema = z.object({
   discrepancy_reason: z.string().optional(),
   carry_type: z.enum(['carry', 'facility_deposit', 'deferred']).optional(),
   special_notes: z.string().optional(),
+  version: z.number().int().min(1).optional(),
 });
 
 export async function GET(
@@ -51,16 +54,29 @@ export async function PATCH(
     }
 
     const updated = await withOrgContext(authReq.orgId, async (tx) => {
-      const existing = await tx.dispenseResult.findFirst({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const existing = await (tx.dispenseResult.findFirst as any)({
         where: { id, org_id: authReq.orgId },
-      });
+        select: {
+          id: true,
+          task_id: true,
+          version: true,
+        },
+      }) as { id: string; task_id: string; version: number } | null;
       if (!existing) return null;
 
-      // Precondition: the corresponding DispenseTask must have a rejected audit
-      const hasRejection = await tx.dispenseAudit.findFirst({
-        where: { task_id: existing.task_id, result: 'rejected' },
+      // B2: Version lock — reject if client version is stale
+      if (parsed.data.version !== undefined && existing.version !== parsed.data.version) {
+        return { error: '他のユーザーによって更新されています', conflict: true } as const;
+      }
+
+      // B5: Precondition — the LATEST audit for this task must be 'rejected'
+      const latestAudit = await tx.dispenseAudit.findFirst({
+        where: { task_id: existing.task_id },
+        orderBy: { audited_at: 'desc' },
+        select: { result: true },
       });
-      if (!hasRejection) {
+      if (latestAudit?.result !== 'rejected') {
         return { error: '差戻しされていないタスクの結果は修正できません' } as const;
       }
 
@@ -84,16 +100,32 @@ export async function PATCH(
         select: { cycle_id: true },
       });
 
-      await tx.medicationCycle.update({
-        where: { id: task.cycle_id },
-        data: { overall_status: 'audit_pending' },
-      });
+      try {
+        await transitionCycleStatus(tx, task.cycle_id, authReq.orgId, 'audit_pending', authReq.userId);
+      } catch (err) {
+        if (err instanceof InvalidTransitionError) {
+          return { error: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}` } as const;
+        }
+        if (err instanceof VersionConflictError) {
+          return { error: err.message, conflict: true } as const;
+        }
+        throw err;
+      }
 
       return result;
     });
 
     if (!updated) return notFound('指定された調剤実績が見つかりません');
-    if ('error' in updated) return validationError(updated.error);
+    if ('error' in updated) {
+      if ('conflict' in updated && updated.conflict) return conflict(updated.error);
+      return validationError(updated.error);
+    }
+
+    await notifyWorkflowMutation({
+      orgId: authReq.orgId,
+      eventType: 'cycle_transition',
+      payload: { source: 'dispense_results_rework', result_id: id },
+    });
 
     return success(updated);
   })(req);

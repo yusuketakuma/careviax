@@ -1,12 +1,21 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Plus, Trash2, AlertTriangle, Shield, Camera, Upload, CheckCircle2, ArrowRight, Minus } from 'lucide-react';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { DrugSuggest, type DrugSelection } from '@/components/features/pharmacy/drug-suggest';
+import {
+  emptyLine,
+  fetchOrgJson,
+  INQUIRY_REASON_OPTIONS,
+  METHOD_OPTIONS,
+  ROUTE_OPTIONS,
+  SOURCE_CONFIG,
+  SOURCE_LABELS,
+} from './prescription-form.shared';
 
 type PrescriptionLineInput = {
   line_number: number;
@@ -25,6 +34,12 @@ type PrescriptionLineInput = {
 };
 
 type PatientOption = {
+  id: string;
+  name: string;
+  name_kana: string;
+};
+
+type SelectedPatientDetail = {
   id: string;
   name: string;
   name_kana: string;
@@ -96,53 +111,6 @@ type GenericCandidate = {
   } | null;
 };
 
-const SOURCE_OPTIONS = [
-  { value: 'paper', label: '紙処方箋' },
-  { value: 'fax', label: 'FAX' },
-  { value: 'e_prescription', label: '電子処方箋' },
-  { value: 'facility_batch', label: '施設一括' },
-  { value: 'refill', label: 'リフィル' },
-] as const;
-
-const ROUTE_OPTIONS = [
-  { value: 'internal', label: '内服' },
-  { value: 'external', label: '外用' },
-  { value: 'injection', label: '注射' },
-  { value: 'other', label: 'その他' },
-] as const;
-
-const METHOD_OPTIONS = [
-  { value: 'standard', label: '通常' },
-  { value: 'unit_dose', label: '一包化' },
-  { value: 'crushed', label: '粉砕' },
-  { value: 'other', label: 'その他' },
-] as const;
-
-const INQUIRY_REASON_OPTIONS = [
-  { value: '用量疑義', label: '用量疑義' },
-  { value: '相互作用', label: '相互作用' },
-  { value: '禁忌', label: '禁忌' },
-  { value: '重複', label: '重複' },
-  { value: 'その他', label: 'その他' },
-] as const;
-
-const SOURCE_LABELS: Record<string, string> = {
-  paper: '紙処方箋',
-  fax: 'FAX',
-  e_prescription: '電子処方箋',
-  facility_batch: '施設一括',
-  refill: 'リフィル',
-};
-
-const emptyLine = (): PrescriptionLineInput => ({
-  line_number: 1,
-  drug_name: '',
-  dose: '',
-  frequency: '',
-  days: 1,
-  is_generic: false,
-});
-
 function GenericCandidatePanel({
   query,
   enabled,
@@ -172,6 +140,21 @@ function GenericCandidatePanel({
     staleTime: 30_000,
   });
 
+  const candidatesWithPriceDiff = useMemo(
+    () =>
+      (data?.data ?? []).map((candidate) => {
+        const lowestPrice = candidate.generic_price_comparison?.lowest_price
+          ? Number(candidate.generic_price_comparison.lowest_price)
+          : null;
+        const priceDiff =
+          candidate.drug_price != null && lowestPrice != null
+            ? Number(candidate.drug_price) - lowestPrice
+            : null;
+        return { ...candidate, _lowestPrice: lowestPrice, _priceDiff: priceDiff };
+      }),
+    [data?.data]
+  );
+
   if (!enabled) return null;
   if (isLoading) {
     return (
@@ -181,8 +164,7 @@ function GenericCandidatePanel({
     );
   }
 
-  const candidates = data?.data ?? [];
-  if (candidates.length === 0) {
+  if (candidatesWithPriceDiff.length === 0) {
     return (
       <div className="rounded-md border border-dashed border-blue-200 bg-blue-50/30 px-3 py-2 text-xs text-blue-700">
         一般名処方の候補はまだ見つかっていません。薬剤名を一般名で入力すると候補が表示されます。
@@ -201,7 +183,7 @@ function GenericCandidatePanel({
         </span>
       </div>
       <div className="space-y-2">
-        {candidates.map((candidate) => (
+        {candidatesWithPriceDiff.map((candidate) => (
           <button
             key={candidate.id}
             type="button"
@@ -221,21 +203,11 @@ function GenericCandidatePanel({
                   ? `¥${Number(candidate.drug_price).toFixed(1)} / ${candidate.unit ?? '単位'}`
                   : '薬価未設定'}
               </p>
-              {candidate.generic_price_comparison?.lowest_price ? (
+              {candidate._lowestPrice != null ? (
                 <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  同規格最安 ¥
-                  {Number(candidate.generic_price_comparison.lowest_price).toFixed(1)}
-                  {candidate.drug_price != null
-                    ? ` / 差額 ${
-                        Number(candidate.drug_price) -
-                          Number(candidate.generic_price_comparison.lowest_price) >=
-                        0
-                          ? '+'
-                          : ''
-                      }¥${(
-                        Number(candidate.drug_price) -
-                        Number(candidate.generic_price_comparison.lowest_price)
-                      ).toFixed(1)}`
+                  同規格最安 ¥{candidate._lowestPrice.toFixed(1)}
+                  {candidate._priceDiff != null
+                    ? ` / 差額 ${candidate._priceDiff >= 0 ? '+' : ''}¥${candidate._priceDiff.toFixed(1)}`
                     : ''}
                 </p>
               ) : null}
@@ -251,31 +223,75 @@ function GenericCandidatePanel({
 export function PrescriptionIntakeForm() {
   const orgId = useOrgId();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialPatientId = searchParams.get('patient_id') ?? '';
+  const initialCaseId = searchParams.get('case_id') ?? '';
 
-  // Patient search
-  const [patientSearch, setPatientSearch] = useState('');
-  const [selectedPatientId, setSelectedPatientId] = useState('');
-  const [selectedPatientName, setSelectedPatientName] = useState('');
-  const [selectedCaseId, setSelectedCaseId] = useState('');
+  // Patient selection state
+  const [patientSelection, setPatientSelection] = useState({
+    patientSearch: '',
+    selectedPatientId: '',
+    selectedPatientName: '',
+    selectedCaseId: '',
+  });
+  const { patientSearch, selectedPatientId, selectedPatientName, selectedCaseId } = patientSelection;
+  const updatePatientSelection = useCallback(
+    (patch: Partial<typeof patientSelection>) =>
+      setPatientSelection((prev) => ({ ...prev, ...patch })),
+    []
+  );
+
+  // Prescription metadata state
+  const [prescriptionMeta, setPrescriptionMeta] = useState({
+    sourceType: 'paper' as string,
+    prescribedDate: format(new Date(), 'yyyy-MM-dd'),
+    prescriberName: '',
+    selectedPrescriberInstitutionId: '',
+    prescriberInstitution: '',
+    refillRemainingCount: '0',
+    refillNextDispenseDate: '',
+    splitDispenseTotal: '',
+    splitDispenseCurrent: '',
+    splitNextDispenseDate: '',
+  });
+  const {
+    sourceType, prescribedDate, prescriberName,
+    selectedPrescriberInstitutionId, prescriberInstitution,
+    refillRemainingCount, refillNextDispenseDate,
+    splitDispenseTotal, splitDispenseCurrent, splitNextDispenseDate,
+  } = prescriptionMeta;
+  const updatePrescriptionMeta = useCallback(
+    (patch: Partial<typeof prescriptionMeta>) =>
+      setPrescriptionMeta((prev) => ({ ...prev, ...patch })),
+    []
+  );
+
+  // Document state
+  const [document, setDocument] = useState({
+    originalDocumentUrl: '',
+    originalDocumentName: '',
+  });
+  const { originalDocumentUrl, originalDocumentName } = document;
+  const updateDocument = useCallback(
+    (patch: Partial<typeof document>) => setDocument((prev) => ({ ...prev, ...patch })),
+    []
+  );
+
+  // Inquiry state
+  const [inquiry, setInquiry] = useState({
+    inquiryReason: '',
+    inquiryToPhysician: '',
+    inquiryContent: '',
+    inquiryDueDate: '',
+  });
+  const { inquiryReason, inquiryToPhysician, inquiryContent, inquiryDueDate } = inquiry;
+  const updateInquiry = useCallback(
+    (patch: Partial<typeof inquiry>) => setInquiry((prev) => ({ ...prev, ...patch })),
+    []
+  );
+
+  // Independent UI state
   const [facilityBatchEntries, setFacilityBatchEntries] = useState<FacilityBatchEntryDraft[]>([]);
-
-  // Form fields
-  const [sourceType, setSourceType] = useState<string>('paper');
-  const [prescribedDate, setPrescribedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [prescriberName, setPrescriberName] = useState('');
-  const [selectedPrescriberInstitutionId, setSelectedPrescriberInstitutionId] = useState('');
-  const [prescriberInstitution, setPrescriberInstitution] = useState('');
-  const [originalDocumentUrl, setOriginalDocumentUrl] = useState('');
-  const [originalDocumentName, setOriginalDocumentName] = useState('');
-  const [refillRemainingCount, setRefillRemainingCount] = useState('0');
-  const [refillNextDispenseDate, setRefillNextDispenseDate] = useState('');
-  const [splitDispenseTotal, setSplitDispenseTotal] = useState('');
-  const [splitDispenseCurrent, setSplitDispenseCurrent] = useState('');
-  const [splitNextDispenseDate, setSplitNextDispenseDate] = useState('');
-  const [inquiryReason, setInquiryReason] = useState('');
-  const [inquiryToPhysician, setInquiryToPhysician] = useState('');
-  const [inquiryContent, setInquiryContent] = useState('');
-  const [inquiryDueDate, setInquiryDueDate] = useState('');
   const [documentUploading, setDocumentUploading] = useState(false);
   const [lines, setLines] = useState<PrescriptionLineInput[]>([emptyLine()]);
 
@@ -289,24 +305,42 @@ export function PrescriptionIntakeForm() {
     queryFn: async () => {
       const params = new URLSearchParams({ limit: '10' });
       if (patientSearch) params.set('q', patientSearch);
-      const res = await fetch(`/api/patients?${params}`, {
-        headers: { 'x-org-id': orgId },
+      return fetchOrgJson<{ data: PatientOption[] }>({
+        url: `/api/patients?${params}`,
+        orgId,
+        errorMessage: '患者検索に失敗しました',
       });
-      if (!res.ok) throw new Error('患者検索に失敗しました');
-      return res.json() as Promise<{ data: PatientOption[] }>;
     },
     enabled: !!orgId && patientSearch.length >= 1,
+  });
+
+  const { data: selectedPatientData } = useQuery({
+    queryKey: ['selected-patient', orgId, selectedPatientId],
+    queryFn: async () => {
+      const patient = await fetchOrgJson<SelectedPatientDetail>({
+        url: `/api/patients/${selectedPatientId}`,
+        orgId,
+        errorMessage: '患者情報の取得に失敗しました',
+      });
+      return {
+        id: patient.id,
+        name: patient.name,
+        name_kana: patient.name_kana,
+      } satisfies SelectedPatientDetail;
+    },
+    enabled: !!orgId && !!selectedPatientId && !selectedPatientName,
+    staleTime: 30_000,
   });
 
   // Fetch cases for selected patient
   const { data: casesData } = useQuery({
     queryKey: ['patient-cases', orgId, selectedPatientId],
     queryFn: async () => {
-      const res = await fetch(`/api/cases?patient_id=${selectedPatientId}&status=active&limit=20`, {
-        headers: { 'x-org-id': orgId },
+      return fetchOrgJson<{ data: CaseOption[] }>({
+        url: `/api/cases?patient_id=${selectedPatientId}&status=active&limit=20`,
+        orgId,
+        errorMessage: 'ケース取得に失敗しました',
       });
-      if (!res.ok) throw new Error('ケース取得に失敗しました');
-      return res.json() as Promise<{ data: CaseOption[] }>;
     },
     enabled: !!orgId && !!selectedPatientId,
   });
@@ -314,11 +348,11 @@ export function PrescriptionIntakeForm() {
   const { data: previousPrescriptionsData } = useQuery({
     queryKey: ['patient-prescriptions', orgId, selectedPatientId],
     queryFn: async () => {
-      const res = await fetch(`/api/patients/${selectedPatientId}/prescriptions?limit=5`, {
-        headers: { 'x-org-id': orgId },
+      return fetchOrgJson<{ data: PreviousPrescriptionIntake[] }>({
+        url: `/api/patients/${selectedPatientId}/prescriptions?limit=5`,
+        orgId,
+        errorMessage: '過去処方の取得に失敗しました',
       });
-      if (!res.ok) throw new Error('過去処方の取得に失敗しました');
-      return res.json() as Promise<{ data: PreviousPrescriptionIntake[] }>;
     },
     enabled: !!orgId && !!selectedPatientId,
   });
@@ -328,15 +362,35 @@ export function PrescriptionIntakeForm() {
     queryFn: async () => {
       const params = new URLSearchParams();
       if (prescriberInstitution.trim()) params.set('q', prescriberInstitution.trim());
-      const res = await fetch(`/api/prescriber-institutions?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
+      return fetchOrgJson<{ data: PrescriberInstitutionOption[] }>({
+        url: `/api/prescriber-institutions?${params.toString()}`,
+        orgId,
+        errorMessage: '医療機関マスターの取得に失敗しました',
       });
-      if (!res.ok) throw new Error('医療機関マスターの取得に失敗しました');
-      return res.json() as Promise<{ data: PrescriberInstitutionOption[] }>;
     },
     enabled: !!orgId,
     staleTime: 30_000,
   });
+
+  useEffect(() => {
+    if (!orgId || selectedPatientId || !initialPatientId) return;
+    updatePatientSelection({ selectedPatientId: initialPatientId });
+  }, [initialPatientId, orgId, selectedPatientId, updatePatientSelection]);
+
+  useEffect(() => {
+    if (!selectedPatientData) return;
+    updatePatientSelection({
+      selectedPatientName: selectedPatientData.name,
+      ...(!patientSearch.trim() ? { patientSearch: `${selectedPatientData.name} (${selectedPatientData.name_kana})` } : {}),
+    });
+  }, [patientSearch, selectedPatientData, updatePatientSelection]);
+
+  useEffect(() => {
+    if (!initialCaseId || !casesData?.data || selectedCaseId) return;
+    if (casesData.data.some((candidate) => candidate.id === initialCaseId)) {
+      updatePatientSelection({ selectedCaseId: initialCaseId });
+    }
+  }, [casesData?.data, initialCaseId, selectedCaseId, updatePatientSelection]);
 
   // Create cycle mutation
   const createCycleMutation = useMutation({
@@ -513,10 +567,10 @@ export function PrescriptionIntakeForm() {
 
     try {
       const uploaded = await uploadPrescriptionDocument(file);
-      setOriginalDocumentUrl(
-        new URL(`/api/files/${uploaded.fileId}/download`, window.location.origin).toString()
-      );
-      setOriginalDocumentName(uploaded.fileName);
+      updateDocument({
+        originalDocumentUrl: new URL(`/api/files/${uploaded.fileId}/download`, window.location.origin).toString(),
+        originalDocumentName: uploaded.fileName,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : '処方箋原本の登録に失敗しました');
     } finally {
@@ -525,15 +579,19 @@ export function PrescriptionIntakeForm() {
   };
 
   const resetCurrentPatientDraft = () => {
-    setPatientSearch('');
-    setSelectedPatientId('');
-    setSelectedPatientName('');
-    setSelectedCaseId('');
+    updatePatientSelection({
+      patientSearch: '',
+      selectedPatientId: '',
+      selectedPatientName: '',
+      selectedCaseId: '',
+    });
     setLines([emptyLine()]);
-    setInquiryReason('');
-    setInquiryToPhysician('');
-    setInquiryContent('');
-    setInquiryDueDate('');
+    updateInquiry({
+      inquiryReason: '',
+      inquiryToPhysician: '',
+      inquiryContent: '',
+      inquiryDueDate: '',
+    });
   };
 
   const addCurrentFacilityBatchEntry = () => {
@@ -729,13 +787,14 @@ export function PrescriptionIntakeForm() {
             type="text"
             value={patientSearch}
             onChange={(e) => {
-              setPatientSearch(e.target.value);
-              setSelectedPatientId('');
-              setSelectedPatientName('');
-              setSelectedCaseId('');
+              updatePatientSelection({
+                patientSearch: e.target.value,
+                selectedPatientId: '',
+                selectedPatientName: '',
+                selectedCaseId: '',
+              });
               if (sourceType !== 'facility_batch') {
-                setOriginalDocumentUrl('');
-                setOriginalDocumentName('');
+                updateDocument({ originalDocumentUrl: '', originalDocumentName: '' });
               }
             }}
             placeholder="氏名またはフリガナで検索"
@@ -748,12 +807,13 @@ export function PrescriptionIntakeForm() {
                   <button
                     type="button"
                     onClick={() => {
-                      setSelectedPatientId(p.id);
-                      setSelectedPatientName(p.name);
-                      setPatientSearch(`${p.name} (${p.name_kana})`);
+                      updatePatientSelection({
+                        selectedPatientId: p.id,
+                        selectedPatientName: p.name,
+                        patientSearch: `${p.name} (${p.name_kana})`,
+                      });
                       if (sourceType !== 'facility_batch') {
-                        setOriginalDocumentUrl('');
-                        setOriginalDocumentName('');
+                        updateDocument({ originalDocumentUrl: '', originalDocumentName: '' });
                       }
                     }}
                     className="w-full px-3 py-2 text-left hover:bg-accent"
@@ -775,7 +835,7 @@ export function PrescriptionIntakeForm() {
             <select
               id="case-select"
               value={selectedCaseId}
-              onChange={(e) => setSelectedCaseId(e.target.value)}
+              onChange={(e) => updatePatientSelection({ selectedCaseId: e.target.value })}
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
               <option value="">ケースを選択</option>
@@ -801,10 +861,10 @@ export function PrescriptionIntakeForm() {
             <select
               id="source-type"
               value={sourceType}
-              onChange={(e) => setSourceType(e.target.value)}
+              onChange={(e) => updatePrescriptionMeta({ sourceType: e.target.value })}
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
-              {SOURCE_OPTIONS.map((opt) => (
+              {SOURCE_CONFIG.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>
@@ -820,7 +880,7 @@ export function PrescriptionIntakeForm() {
               id="prescribed-date"
               type="date"
               value={prescribedDate}
-              onChange={(e) => setPrescribedDate(e.target.value)}
+              onChange={(e) => updatePrescriptionMeta({ prescribedDate: e.target.value })}
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
               required
             />
@@ -836,7 +896,7 @@ export function PrescriptionIntakeForm() {
               id="prescriber-name"
               type="text"
               value={prescriberName}
-              onChange={(e) => setPrescriberName(e.target.value)}
+              onChange={(e) => updatePrescriptionMeta({ prescriberName: e.target.value })}
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             />
           </div>
@@ -850,14 +910,14 @@ export function PrescriptionIntakeForm() {
               onChange={(e) => {
                 const value = e.target.value;
                 if (value === '__free__') {
-                  setSelectedPrescriberInstitutionId('');
+                  updatePrescriptionMeta({ selectedPrescriberInstitutionId: '' });
                   return;
                 }
                 const selected = prescriberInstitutions.find((item) => item.id === value);
-                setSelectedPrescriberInstitutionId(value);
-                if (selected) {
-                  setPrescriberInstitution(selected.name);
-                }
+                updatePrescriptionMeta({
+                  selectedPrescriberInstitutionId: value,
+                  ...(selected ? { prescriberInstitution: selected.name } : {}),
+                });
               }}
               className="mb-3 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
@@ -878,9 +938,11 @@ export function PrescriptionIntakeForm() {
               value={prescriberInstitution}
               onChange={(e) => {
                 const value = e.target.value;
-                setPrescriberInstitution(value);
                 const matched = prescriberInstitutions.find((item) => item.name === value);
-                setSelectedPrescriberInstitutionId(matched?.id ?? '');
+                updatePrescriptionMeta({
+                  prescriberInstitution: value,
+                  selectedPrescriberInstitutionId: matched?.id ?? '',
+                });
               }}
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             />
@@ -901,7 +963,7 @@ export function PrescriptionIntakeForm() {
                 type="number"
                 min={0}
                 value={refillRemainingCount}
-                onChange={(e) => setRefillRemainingCount(e.target.value)}
+                onChange={(e) => updatePrescriptionMeta({ refillRemainingCount: e.target.value })}
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
               />
             </div>
@@ -913,7 +975,7 @@ export function PrescriptionIntakeForm() {
                 id="refill-next-dispense-date"
                 type="date"
                 value={refillNextDispenseDate}
-                onChange={(e) => setRefillNextDispenseDate(e.target.value)}
+                onChange={(e) => updatePrescriptionMeta({ refillNextDispenseDate: e.target.value })}
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
               />
             </div>
@@ -930,7 +992,7 @@ export function PrescriptionIntakeForm() {
               type="number"
               min={1}
               value={splitDispenseTotal}
-              onChange={(e) => setSplitDispenseTotal(e.target.value)}
+              onChange={(e) => updatePrescriptionMeta({ splitDispenseTotal: e.target.value })}
               placeholder="例: 3"
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             />
@@ -944,7 +1006,7 @@ export function PrescriptionIntakeForm() {
               type="number"
               min={1}
               value={splitDispenseCurrent}
-              onChange={(e) => setSplitDispenseCurrent(e.target.value)}
+              onChange={(e) => updatePrescriptionMeta({ splitDispenseCurrent: e.target.value })}
               placeholder="例: 1"
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             />
@@ -957,7 +1019,7 @@ export function PrescriptionIntakeForm() {
               id="split-next-dispense-date"
               type="date"
               value={splitNextDispenseDate}
-              onChange={(e) => setSplitNextDispenseDate(e.target.value)}
+              onChange={(e) => updatePrescriptionMeta({ splitNextDispenseDate: e.target.value })}
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             />
           </div>
@@ -1357,7 +1419,7 @@ export function PrescriptionIntakeForm() {
                 <select
                   id="inquiry-reason"
                   value={inquiryReason}
-                  onChange={(e) => setInquiryReason(e.target.value)}
+                  onChange={(e) => updateInquiry({ inquiryReason: e.target.value })}
                   className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="">照会理由を選択</option>
@@ -1377,7 +1439,7 @@ export function PrescriptionIntakeForm() {
                   id="inquiry-physician"
                   type="text"
                   value={inquiryToPhysician}
-                  onChange={(e) => setInquiryToPhysician(e.target.value)}
+                  onChange={(e) => updateInquiry({ inquiryToPhysician: e.target.value })}
                   placeholder="例: 山田 太郎 先生"
                   className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 />
@@ -1390,7 +1452,7 @@ export function PrescriptionIntakeForm() {
                 <textarea
                   id="inquiry-content"
                   value={inquiryContent}
-                  onChange={(e) => setInquiryContent(e.target.value)}
+                  onChange={(e) => updateInquiry({ inquiryContent: e.target.value })}
                   placeholder="疑義照会の内容を入力"
                   className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 />
@@ -1404,7 +1466,7 @@ export function PrescriptionIntakeForm() {
                   id="inquiry-due-date"
                   type="date"
                   value={inquiryDueDate}
-                  onChange={(e) => setInquiryDueDate(e.target.value)}
+                  onChange={(e) => updateInquiry({ inquiryDueDate: e.target.value })}
                   className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 />
               </div>

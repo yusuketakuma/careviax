@@ -1,4 +1,5 @@
-import { addDays, addYears } from 'date-fns';
+import { addDays, addYears, subHours } from 'date-fns';
+import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { withOrgContext } from '@/lib/db/rls';
@@ -16,6 +17,10 @@ import {
   upsertBillingEvidenceForVisit,
 } from '@/server/services/billing-evidence';
 import { queueOverdueReportResponseReminders } from '@/server/services/report-reminders';
+import { trackPatientStatusChanges } from '@/server/services/patient-status-tracker';
+import {
+  buildVisitScheduleContactFollowupTask,
+} from '@/server/services/visit-schedule-communication';
 
 const DOSAGE_SUPPORT_KEYWORDS = [
   '飲みにく',
@@ -109,10 +114,6 @@ function buildGeocodeTaskKey(patientId: string) {
 
 function buildPreparationTaskKey(scheduleId: string) {
   return `visit-preparation:${scheduleId}`;
-}
-
-function buildContactTaskKey(proposalId: string) {
-  return `visit-contact-followup:${proposalId}`;
 }
 
 function buildIntakeLinkageTaskKey(intakeId: string) {
@@ -1070,24 +1071,24 @@ export async function checkCallbackFollowups() {
     });
 
     for (const log of dueLogs) {
+      const callbackDueAt = log.callback_due_at;
+      if (!callbackDueAt) {
+        continue;
+      }
+
       await withOrgContext(log.org_id, (tx) =>
-        upsertOperationalTask(tx, {
-          orgId: log.org_id,
-          taskType: 'visit_contact_followup',
-          title: '患者への再架電が必要です',
-          description: log.note ?? '折り返し期限を過ぎています。',
-          priority: 'high',
-          assignedTo: log.proposal.proposed_pharmacist_id,
-          dueDate: log.callback_due_at,
-          slaDueAt: log.callback_due_at,
-          relatedEntityType: 'visit_schedule_proposal',
-          relatedEntityId: log.proposal_id,
-          dedupeKey: buildContactTaskKey(log.proposal_id),
-          metadata: {
-            case_id: log.case_id,
-            patient_id: log.patient_id,
-          },
-        })
+        upsertOperationalTask(
+          tx,
+          buildVisitScheduleContactFollowupTask({
+            orgId: log.org_id,
+            proposalId: log.proposal_id,
+            caseId: log.case_id,
+            patientId: log.patient_id,
+            assignedTo: log.proposal.proposed_pharmacist_id,
+            dueAt: callbackDueAt,
+            description: log.note ?? '折り返し期限を過ぎています。',
+          })
+        )
       );
     }
 
@@ -1966,7 +1967,7 @@ export async function syncVisitSupportFeatureTasks() {
 
     for (const schedule of upcomingSchedules) {
       const residence = schedule.case_.patient.residences[0] ?? null;
-      const locationKey = residence?.building_id ?? residence?.address ?? null;
+      const locationKey = deriveFacilityLabel(residence ?? null);
       if (!locationKey) continue;
 
       const dateKey = schedule.scheduled_date.toISOString().slice(0, 10);
@@ -2295,6 +2296,42 @@ export async function checkConsentExpiry() {
   });
 }
 
+export async function trackAllOrgPatientStatuses() {
+  return runJob('patient_status_tracking', async () => {
+    const orgs = await prisma.organization.findMany({
+      select: { id: true },
+    });
+
+    let totalChanged = 0;
+    for (const org of orgs) {
+      const result = await trackPatientStatusChanges(prisma, {
+        orgId: org.id,
+        actorId: 'system',
+      });
+      totalChanged += result.changed.length;
+    }
+
+    return { processedCount: totalChanged };
+  });
+}
+
+export async function cleanupAbandonedQrDrafts() {
+  return runJob('cleanup_abandoned_qr_drafts', async () => {
+    const cutoff = subHours(new Date(), 24);
+    const result = await prisma.qrScanDraft.updateMany({
+      where: {
+        status: 'pending',
+        created_at: { lt: cutoff },
+      },
+      data: { status: 'discarded' },
+    });
+    if (result.count > 0) {
+      console.log(`[daily] Discarded ${result.count} abandoned QR scan drafts`);
+    }
+    return { processedCount: result.count };
+  });
+}
+
 export async function runDailyOperations() {
   return runJob('daily', async () => {
     const results = await Promise.all([
@@ -2321,6 +2358,8 @@ export async function runDailyOperations() {
       checkFacilityStandardExpiry(),
       checkCredentialExpiry(),
       checkConsentExpiry(),
+      trackAllOrgPatientStatuses(),
+      cleanupAbandonedQrDrafts(),
     ]);
 
     return {

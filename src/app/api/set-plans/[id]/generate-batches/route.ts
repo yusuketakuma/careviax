@@ -4,22 +4,25 @@ import type { AuthContext, AuthRouteContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import {
+  buildSetBatchHistorySnapshot,
+  collectChangedLineIds,
+  createSetBatchChangeLog,
+} from '@/lib/prescription/set-batch-history';
+import { buildSetPlanPackagingSummary } from '@/lib/prescription/set-plan-packaging';
+import {
+  extractPackagingInstructionTags,
+  resolvePackagingSettings,
+  type PackagingInstructionTagValue,
+  type PackagingMethodValue,
+} from '@/lib/prescription/packaging';
+import { parseFrequencyToSlots } from '@/lib/dispensing/packaging-group';
+import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { z } from 'zod';
 
 const generateBatchesSchema = z.object({
   force: z.boolean().optional().default(false),
 });
-
-function parseFrequencyToSlots(frequency: string): string[] {
-  if (/毎食後|分3|3回/.test(frequency)) return ['morning', 'noon', 'evening'];
-  if (/朝夕|2回/.test(frequency)) return ['morning', 'evening'];
-  if (/朝食後|朝1回/.test(frequency)) return ['morning'];
-  if (/昼食後/.test(frequency)) return ['noon'];
-  if (/夕食後/.test(frequency)) return ['evening'];
-  if (/就寝|眠前/.test(frequency)) return ['bedtime'];
-  if (/頓用|頓服/.test(frequency)) return ['prn'];
-  return ['morning'];
-}
 
 function resolveCarryType(notes: string | null | undefined, packagingInstructions: string | null | undefined) {
   const detail = `${notes ?? ''} ${packagingInstructions ?? ''}`;
@@ -70,10 +73,34 @@ export const POST = withAuthContext<{ id: string }>(
         target_period_start: true,
         target_period_end: true,
         set_method: true,
+        packaging_method_id: true,
         updated_at: true,
+        packaging_method_ref: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+          },
+        },
         cycle: {
           select: {
             overall_status: true,
+            case_: {
+              select: {
+                patient: {
+                  select: {
+                    packaging_preferences: true,
+                    packaging_profile: {
+                      select: {
+                        default_packaging_method: true,
+                        medication_box_color: true,
+                        notes: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -91,7 +118,9 @@ export const POST = withAuthContext<{ id: string }>(
             drug_name: true,
             frequency: true,
             quantity: true,
+            packaging_method: true,
             packaging_instructions: true,
+            packaging_instruction_tags: true,
             notes: true,
           },
         },
@@ -152,6 +181,9 @@ export const POST = withAuthContext<{ id: string }>(
                 dose: true,
                 frequency: true,
                 unit: true,
+                packaging_method: true,
+                packaging_instructions: true,
+                packaging_instruction_tags: true,
               },
             },
           },
@@ -160,7 +192,39 @@ export const POST = withAuthContext<{ id: string }>(
         return { count: existing.length, batches: existing, reused: true as const };
       }
 
+      const patientPackagingProfile = plan.cycle.case_?.patient.packaging_profile ?? null;
+      const packagingPreferences = plan.cycle.case_?.patient.packaging_preferences ?? null;
+      const packagingSummary = buildSetPlanPackagingSummary({
+        setMethod: plan.set_method,
+        packagingMethod: plan.packaging_method_ref ?? null,
+        patientPackagingProfile,
+        packagingPreferences,
+      });
+
+      await tx.setPlan.update({
+        where: { id },
+        data: {
+          packaging_summary_snapshot: packagingSummary,
+        },
+      });
+
+      let regenerationBeforeSnapshots: ReturnType<typeof buildSetBatchHistorySnapshot>[] = [];
       if (force) {
+        const existingBatches = await tx.setBatch.findMany({
+          where: { plan_id: id, org_id: ctx.orgId },
+          orderBy: [{ day_number: 'asc' }, { slot: 'asc' }],
+          include: {
+            line: {
+              select: {
+                id: true,
+                drug_name: true,
+              },
+            },
+          },
+        });
+        regenerationBeforeSnapshots = existingBatches.map((batch) =>
+          buildSetBatchHistorySnapshot(batch)
+        );
         await tx.setBatch.deleteMany({
           where: { plan_id: id, org_id: ctx.orgId },
         });
@@ -174,6 +238,9 @@ export const POST = withAuthContext<{ id: string }>(
         day_number: number;
         quantity: number;
         carry_type: string;
+        packaging_method_snapshot: PackagingMethodValue | null;
+        packaging_instructions_snapshot: string | null;
+        packaging_instruction_tags_snapshot: PackagingInstructionTagValue[];
       }[] = [];
 
       for (const line of allLines) {
@@ -186,6 +253,19 @@ export const POST = withAuthContext<{ id: string }>(
             ? line.quantity / slots.length
             : 1;
         const carryType = resolveCarryType(line.notes, line.packaging_instructions);
+        const resolvedPackaging = resolvePackagingSettings({
+          packagingMethod: line.packaging_method ?? undefined,
+          packagingInstructions: line.packaging_instructions ?? undefined,
+          profile: patientPackagingProfile,
+        });
+        const packagingTags =
+          line.packaging_instruction_tags.length > 0
+            ? line.packaging_instruction_tags
+            : extractPackagingInstructionTags({
+                packagingInstructions: resolvedPackaging.packaging_instructions,
+                notes: line.notes,
+                packagingMethod: resolvedPackaging.packaging_method,
+              });
 
         for (let day = 1; day <= totalDays; day++) {
           for (const slot of slots) {
@@ -197,6 +277,9 @@ export const POST = withAuthContext<{ id: string }>(
               day_number: day,
               quantity: quantityPerSlot,
               carry_type: carryType,
+              packaging_method_snapshot: resolvedPackaging.packaging_method,
+              packaging_instructions_snapshot: resolvedPackaging.packaging_instructions,
+              packaging_instruction_tags_snapshot: packagingTags,
             });
           }
         }
@@ -215,9 +298,33 @@ export const POST = withAuthContext<{ id: string }>(
               dose: true,
               frequency: true,
               unit: true,
+              packaging_method: true,
+              packaging_instructions: true,
+              packaging_instruction_tags: true,
             },
           },
         },
+      });
+
+      const afterSnapshots = created.map((batch) => buildSetBatchHistorySnapshot(batch));
+      await createSetBatchChangeLog(tx, {
+        orgId: ctx.orgId,
+        planId: id,
+        action: force ? 'regenerated' : 'generated',
+        triggerSource:
+          force && latestIntakeUpdatedAt
+            ? 'prescription_update'
+            : force
+              ? 'manual_generate'
+              : 'initial_generate',
+        reason: force ? 'セットバッチを再生成' : 'セットバッチを初回生成',
+        lineIds: collectChangedLineIds({
+          before: regenerationBeforeSnapshots,
+          after: afterSnapshots,
+        }),
+        beforeSnapshot: regenerationBeforeSnapshots,
+        afterSnapshot: afterSnapshots,
+        changedBy: ctx.userId,
       });
 
       return { count: batchData.length, batches: created, reused: false as const };
@@ -225,6 +332,13 @@ export const POST = withAuthContext<{ id: string }>(
 
     if ('kind' in result && result.kind === 'error') {
       return validationError(result.message);
+    }
+
+    if (!result.reused) {
+      await notifyWorkflowMutation({
+        orgId: ctx.orgId,
+        payload: { source: 'set_batches_generate', plan_id: id },
+      });
     }
 
     return success({ data: result }, result.reused ? 200 : 201);

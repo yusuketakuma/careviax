@@ -7,6 +7,13 @@ export class FacilityReferenceValidationError extends Error {
   }
 }
 
+export class FacilityUnitReferenceValidationError extends Error {
+  constructor(message = '選択したユニットが見つかりません') {
+    super(message);
+    this.name = 'FacilityUnitReferenceValidationError';
+  }
+}
+
 export async function assertFacilityReference(
   tx: Prisma.TransactionClient,
   orgId: string,
@@ -26,6 +33,38 @@ export async function assertFacilityReference(
 
   if (!facility) {
     throw new FacilityReferenceValidationError();
+  }
+}
+
+export async function assertFacilityUnitReference(
+  tx: Prisma.TransactionClient,
+  orgId: string,
+  facilityId: string | null | undefined,
+  facilityUnitId: string | null | undefined
+) {
+  if (!facilityUnitId) return;
+
+  if (!facilityId) {
+    throw new FacilityUnitReferenceValidationError(
+      'ユニットを選択する場合は施設を選択してください'
+    );
+  }
+
+  const facilityUnit = await tx.facilityUnit.findFirst({
+    where: {
+      id: facilityUnitId,
+      org_id: orgId,
+      facility_id: facilityId,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!facilityUnit) {
+    throw new FacilityUnitReferenceValidationError(
+      '選択したユニットが施設に紐づいていません'
+    );
   }
 }
 

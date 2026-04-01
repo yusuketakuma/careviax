@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import { toast } from 'sonner';
 
 type CommunicationRequestRow = {
@@ -52,31 +53,52 @@ type CommunicationEventRow = {
   occurred_at: string;
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  draft: '下書き',
-  sent: '送信済み',
-  received: '受信済み',
-  in_progress: '対応中',
-  responded: '返信済み',
-  closed: '完了',
-  escalated: 'エスカレ',
-  cancelled: '取消',
-  expired: '期限切れ',
+const STATUS_CONFIG: Record<
+  string,
+  { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }
+> = {
+  draft: { label: '下書き', variant: 'outline' },
+  sent: { label: '送信済み', variant: 'secondary' },
+  received: { label: '受信済み', variant: 'secondary' },
+  in_progress: { label: '対応中', variant: 'default' },
+  responded: { label: '返信済み', variant: 'default' },
+  closed: { label: '完了', variant: 'outline' },
+  escalated: { label: 'エスカレ', variant: 'destructive' },
+  cancelled: { label: '取消', variant: 'outline' },
+  expired: { label: '期限切れ', variant: 'destructive' },
 };
 
-const STATUS_VARIANTS: Record<
-  string,
-  'default' | 'secondary' | 'outline' | 'destructive'
-> = {
-  draft: 'outline',
-  sent: 'secondary',
-  received: 'secondary',
-  in_progress: 'default',
-  responded: 'default',
-  closed: 'outline',
-  escalated: 'destructive',
-  cancelled: 'outline',
-  expired: 'destructive',
+type StatusTransition = {
+  label: string;
+  nextStatus: 'sent' | 'received' | 'in_progress' | 'responded' | 'closed' | 'escalated' | 'expired';
+  variant: 'outline';
+  action?: 'response_dialog';
+};
+
+const STATUS_TRANSITIONS: Record<string, StatusTransition[]> = {
+  draft: [
+    { label: '送信済みにする', nextStatus: 'sent', variant: 'outline' },
+  ],
+  sent: [
+    { label: '受信済み', nextStatus: 'received', variant: 'outline' },
+    { label: 'エスカレ', nextStatus: 'escalated', variant: 'outline' },
+  ],
+  received: [
+    { label: '対応中へ', nextStatus: 'in_progress', variant: 'outline' },
+    { label: '返信記録', nextStatus: 'responded', variant: 'outline', action: 'response_dialog' },
+    { label: 'エスカレ', nextStatus: 'escalated', variant: 'outline' },
+  ],
+  in_progress: [
+    { label: '返信記録', nextStatus: 'responded', variant: 'outline', action: 'response_dialog' },
+    { label: 'エスカレ', nextStatus: 'escalated', variant: 'outline' },
+  ],
+  responded: [
+    { label: '完了', nextStatus: 'closed', variant: 'outline' },
+  ],
+  escalated: [
+    { label: '対応再開', nextStatus: 'in_progress', variant: 'outline' },
+    { label: '返信記録', nextStatus: 'responded', variant: 'outline', action: 'response_dialog' },
+  ],
 };
 
 const REQUEST_TYPE_LABELS: Record<string, string> = {
@@ -242,15 +264,15 @@ export function CommunicationRequestsContent() {
     queryFn: async () => {
       const params = new URLSearchParams();
       if (statusFilter) params.set('status', statusFilter);
-      const res = await fetch(
-        `/api/communication-requests?${params.toString()}`,
-        { headers: { 'x-org-id': orgId } }
-      );
-      if (!res.ok) throw new Error('依頼一覧の取得に失敗しました');
-      return res.json() as Promise<{
+      return fetchAllCursorPages<CommunicationRequestRow, {
         data: CommunicationRequestRow[];
         hasMore: boolean;
-      }>;
+      }>({
+        path: '/api/communication-requests',
+        params,
+        init: { headers: { 'x-org-id': orgId } },
+        errorMessage: '依頼一覧の取得に失敗しました',
+      });
     },
     enabled: !!orgId,
   });
@@ -258,14 +280,14 @@ export function CommunicationRequestsContent() {
   const { data: eventData, isLoading: isEventsLoading } = useQuery({
     queryKey: ['communication-events', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/communication-events?limit=50', {
-        headers: { 'x-org-id': orgId },
-      });
-      if (!res.ok) throw new Error('連携ログの取得に失敗しました');
-      return res.json() as Promise<{
+      return fetchAllCursorPages<CommunicationEventRow, {
         data: CommunicationEventRow[];
         hasMore: boolean;
-      }>;
+      }>({
+        path: '/api/communication-events',
+        init: { headers: { 'x-org-id': orgId } },
+        errorMessage: '連携ログの取得に失敗しました',
+      });
     },
     enabled: !!orgId,
   });
@@ -359,10 +381,10 @@ export function CommunicationRequestsContent() {
         accessorKey: 'status',
         header: 'ステータス',
         cell: ({ row }) => {
-          const s = row.original.status;
+          const cfg = STATUS_CONFIG[row.original.status];
           return (
-            <Badge variant={STATUS_VARIANTS[s] ?? 'outline'}>
-              {STATUS_LABELS[s] ?? s}
+            <Badge variant={cfg?.variant ?? 'outline'}>
+              {cfg?.label ?? row.original.status}
             </Badge>
           );
         },
@@ -423,116 +445,28 @@ export function CommunicationRequestsContent() {
         header: '操作',
         cell: ({ row }) => {
           const item = row.original;
+          const transitions = STATUS_TRANSITIONS[item.status] ?? [];
           return (
             <div className="flex flex-wrap gap-2">
-              {item.status === 'draft' && (
+              {transitions.map((t) => (
                 <Button
+                  key={t.label}
                   size="sm"
-                  variant="outline"
-                  onClick={() => statusMutation.mutate({ id: item.id, status: 'sent' })}
-                  disabled={statusMutation.isPending}
+                  variant={t.variant}
+                  onClick={() =>
+                    t.action === 'response_dialog'
+                      ? openResponseDialog(item)
+                      : statusMutation.mutate({ id: item.id, status: t.nextStatus })
+                  }
+                  disabled={
+                    t.action === 'response_dialog'
+                      ? responseMutation.isPending
+                      : statusMutation.isPending
+                  }
                 >
-                  送信済みにする
+                  {t.label}
                 </Button>
-              )}
-              {item.status === 'sent' && (
-                <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => statusMutation.mutate({ id: item.id, status: 'received' })}
-                    disabled={statusMutation.isPending}
-                  >
-                    受信済み
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => statusMutation.mutate({ id: item.id, status: 'escalated' })}
-                    disabled={statusMutation.isPending}
-                  >
-                    エスカレ
-                  </Button>
-                </>
-              )}
-              {item.status === 'received' && (
-                <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => statusMutation.mutate({ id: item.id, status: 'in_progress' })}
-                    disabled={statusMutation.isPending}
-                  >
-                    対応中へ
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => openResponseDialog(item)}
-                    disabled={responseMutation.isPending}
-                  >
-                    返信記録
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => statusMutation.mutate({ id: item.id, status: 'escalated' })}
-                    disabled={statusMutation.isPending}
-                  >
-                    エスカレ
-                  </Button>
-                </>
-              )}
-              {item.status === 'in_progress' && (
-                <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => openResponseDialog(item)}
-                    disabled={responseMutation.isPending}
-                  >
-                    返信記録
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => statusMutation.mutate({ id: item.id, status: 'escalated' })}
-                    disabled={statusMutation.isPending}
-                  >
-                    エスカレ
-                  </Button>
-                </>
-              )}
-              {item.status === 'responded' && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => statusMutation.mutate({ id: item.id, status: 'closed' })}
-                  disabled={statusMutation.isPending}
-                >
-                  完了
-                </Button>
-              )}
-              {item.status === 'escalated' && (
-                <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => statusMutation.mutate({ id: item.id, status: 'in_progress' })}
-                    disabled={statusMutation.isPending}
-                  >
-                    対応再開
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => openResponseDialog(item)}
-                    disabled={responseMutation.isPending}
-                  >
-                    返信記録
-                  </Button>
-                </>
-              )}
+              ))}
             </div>
           );
         },

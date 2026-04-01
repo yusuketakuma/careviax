@@ -24,13 +24,34 @@ import { PatientIntakeSummaryCard } from './patient-intake-summary-card';
 import { PatientContactsPanel } from './patient-contacts-panel';
 import { PatientMasterCard } from './patient-master-card';
 import { PatientPackagingCard } from './patient-packaging-card';
+import { deriveStatusFromPatient, selectNextVisit } from './patient-detail-helpers';
+import { fetchPatientVisitRecordsWindow } from './patient-visit-records.helpers';
 import { PrescriptionHistoryContent } from './prescriptions/prescription-history-content';
 import { ExternalShareContent } from './share/external-share-content';
 import { VisitConstraintsCard } from './visit-constraints-card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import type { HomeCareFeatureSummary } from '@/types/home-care';
 import type { VisitBrief } from '@/types/visit-brief';
-import { ClipboardPlus, FileDown, FileQuestion, Printer } from 'lucide-react';
+import {
+  CalendarPlus,
+  CirclePause,
+  Clock,
+  ClipboardPlus,
+  FileDown,
+  FileQuestion,
+  FileWarning,
+  Hospital,
+  LogOut,
+  PhoneOff,
+  Printer,
+  RefreshCw,
+  Sparkles,
+  Star,
+  TriangleAlert,
+  UserCheck,
+} from 'lucide-react';
+import { STATUS_ICON_CONFIG } from '@/lib/patient/status-icon';
 import { toast } from 'sonner';
 
 type Patient = {
@@ -149,6 +170,7 @@ type Patient = {
       outcome_status: string;
     } | null;
   }>;
+  monthly_visit_count: number;
   visit_records: Array<{
     id: string;
     schedule_id: string | null;
@@ -333,9 +355,25 @@ const CONTACT_RELATION_LABELS: Record<string, string> = {
 
 type PatientDetailTabValue = (typeof PATIENT_DETAIL_TABS)[number]['value'];
 
+const STATUS_ICONS = {
+  stable: UserCheck,
+  new: Sparkles,
+  first_visit_soon: CalendarPlus,
+  attention: Star,
+  urgent: TriangleAlert,
+  overdue_visit: Clock,
+  report_pending: FileWarning,
+  medication_change: RefreshCw,
+  hospitalized: Hospital,
+  discharged: LogOut,
+  no_contact: PhoneOff,
+  paused: CirclePause,
+};
+
 export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
   const orgId = useOrgId();
   const [activeTab, setActiveTab] = useState<PatientDetailTabValue>('basic');
+  const isBootstrappingOrg = !orgId;
 
   const {
     data: patient,
@@ -350,10 +388,10 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
       if (!res.ok) throw new Error('患者情報の取得に失敗しました');
       return res.json();
     },
-    enabled: !!orgId,
+    enabled: !isBootstrappingOrg,
   });
 
-  if (isLoading) return <Loading />;
+  if (isBootstrappingOrg || isLoading) return <Loading />;
   if (error || !patient) {
     return (
       <EmptyState
@@ -365,18 +403,7 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
   }
 
   const primaryResidence = patient.residences.find((residence) => residence.is_primary) ?? null;
-  const nextVisit =
-    [...patient.visit_schedules]
-      .filter((schedule) => !schedule.visit_record)
-      .sort(
-        (left, right) =>
-          new Date(left.scheduled_date).getTime() - new Date(right.scheduled_date).getTime(),
-      )[0] ??
-    [...patient.visit_schedules].sort(
-      (left, right) =>
-        new Date(left.scheduled_date).getTime() - new Date(right.scheduled_date).getTime(),
-    )[0] ??
-    null;
+  const nextVisit = selectNextVisit(patient.visit_schedules);
   const age = differenceInYears(new Date(), new Date(patient.birth_date));
   const activeTabMeta =
     PATIENT_DETAIL_TABS.find((tab) => tab.value === activeTab) ?? PATIENT_DETAIL_TABS[0];
@@ -385,6 +412,9 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
   const prescriptionIntakeHref = activeCase
     ? `/prescriptions/new?patient_id=${patient.id}&case_id=${activeCase.id}`
     : `/prescriptions/new?patient_id=${patient.id}`;
+  const patientStatusKey = deriveStatusFromPatient(patient);
+  const patientStatusConfig = STATUS_ICON_CONFIG[patientStatusKey];
+  const PatientStatusIconComponent = STATUS_ICONS[patientStatusKey];
 
   return (
     <div className="space-y-6">
@@ -427,11 +457,27 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
               </CardHeader>
               <CardContent className="space-y-4 text-sm">
                 <div className="space-y-2">
-                  <div>
-                    <p className="font-medium text-foreground">{patient.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {patient.name_kana} / {age}歳 / {patient.gender}
-                    </p>
+                  <div className="flex items-start gap-2.5">
+                    <div
+                      className={`mt-0.5 shrink-0 rounded-full p-1.5 ${patientStatusConfig.color} ${patientStatusConfig.bg}`}
+                      title={patientStatusConfig.label}
+                    >
+                      <PatientStatusIconComponent className="size-4" aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-2">
+                        <p className="font-medium text-foreground">{patient.name}</p>
+                        <Badge
+                          variant="outline"
+                          className={`shrink-0 text-[10px] ${patientStatusConfig.color} border-current`}
+                        >
+                          {patientStatusConfig.label}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {patient.name_kana} / {age}歳 / {patient.gender}
+                      </p>
+                    </div>
                   </div>
                   <div className="rounded-lg border border-border/70 bg-muted/30 p-3">
                     <p className="text-xs text-muted-foreground">主住所</p>
@@ -466,11 +512,12 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
                     <p className="mt-1 font-medium text-foreground">{patient.open_tasks.length}件</p>
                   </div>
                   <div className="rounded-lg border border-border/70 p-3">
-                    <p className="text-muted-foreground">リスク</p>
-                    <p className="mt-1 font-medium text-foreground">
-                      {patient.risk_summary
-                        ? `${patient.risk_summary.level} / ${patient.risk_summary.score}`
-                        : 'stable'}
+                    <p className="text-muted-foreground">ステータス</p>
+                    <p
+                      className={`mt-1 inline-flex items-center gap-1 font-medium ${patientStatusConfig.color}`}
+                    >
+                      <PatientStatusIconComponent className="size-3.5" aria-hidden="true" />
+                      {patientStatusConfig.label}
                     </p>
                   </div>
                 </div>
@@ -597,6 +644,7 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
                   patientId={patient.id}
                   medicalInsuranceNumber={patient.medical_insurance_number}
                   careInsuranceNumber={patient.care_insurance_number}
+                  monthlyVisitCount={patient.monthly_visit_count}
                   visitSchedules={patient.visit_schedules}
                   visitRecords={patient.visit_records}
                 />
@@ -773,41 +821,38 @@ function PatientVisitsTab({
   patientId,
   medicalInsuranceNumber,
   careInsuranceNumber,
+  monthlyVisitCount,
   visitSchedules,
   visitRecords,
 }: {
   patientId: string;
   medicalInsuranceNumber: string | null;
   careInsuranceNumber: string | null;
+  monthlyVisitCount: number;
   visitSchedules: Patient['visit_schedules'];
   visitRecords: Patient['visit_records'];
 }) {
   const orgId = useOrgId();
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const hasDateFilter = Boolean(dateFrom || dateTo);
 
   const visitRecordQuery = useQuery<{ data: Patient['visit_records'] }>({
     queryKey: ['patient-visit-records', patientId, orgId, dateFrom, dateTo],
     enabled: Boolean(patientId && orgId),
-    initialData: { data: visitRecords },
+    ...(hasDateFilter ? {} : { initialData: { data: visitRecords } }),
     queryFn: async () => {
-      const query = new URLSearchParams({
-        patient_id: patientId,
-        limit: '200',
+      const data = await fetchPatientVisitRecordsWindow<Patient['visit_records'][number]>({
+        orgId,
+        patientId,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
       });
-      if (dateFrom) query.set('date_from', dateFrom);
-      if (dateTo) query.set('date_to', dateTo);
-
-      const response = await fetch(`/api/visit-records?${query.toString()}`, {
-        headers: { 'x-org-id': orgId },
-        cache: 'no-store',
-      });
-      if (!response.ok) throw new Error('訪問記録を取得できませんでした');
-      return response.json();
+      return { data };
     },
   });
 
-  const visibleVisitRecords = visitRecordQuery.data?.data ?? visitRecords;
+  const visibleVisitRecords = visitRecordQuery.data?.data ?? [];
   const exportQuery = new URLSearchParams();
   if (dateFrom) exportQuery.set('date_from', dateFrom);
   if (dateTo) exportQuery.set('date_to', dateTo);
@@ -816,10 +861,6 @@ function PatientVisitsTab({
     ...(dateFrom ? { dateFrom } : {}),
     ...(dateTo ? { dateTo } : {}),
   }).toString()}` : ''}`;
-  const currentMonthKey = format(new Date(), 'yyyy-MM');
-  const monthlyScheduledCount = visitSchedules.filter(
-    (item) => format(new Date(item.scheduled_date), 'yyyy-MM') === currentMonthKey
-  ).length;
   const monthlyCountBadges = [
     ...(medicalInsuranceNumber
       ? [{ label: '医療', limit: 4 }]
@@ -841,9 +882,9 @@ function PatientVisitsTab({
               {monthlyCountBadges.map((badge) => (
                 <Badge
                   key={badge.label}
-                  variant={monthlyScheduledCount > badge.limit ? 'destructive' : 'outline'}
+                  variant={monthlyVisitCount > badge.limit ? 'destructive' : 'outline'}
                 >
-                  今月 {badge.label} {monthlyScheduledCount}/{badge.limit} 回
+                  今月 {badge.label} {monthlyVisitCount}/{badge.limit} 回
                 </Badge>
               ))}
             </div>
@@ -922,7 +963,9 @@ function PatientVisitsTab({
               />
             </div>
           </div>
-          {visibleVisitRecords.length === 0 ? (
+          {visitRecordQuery.isLoading ? (
+            <Loading label="訪問記録を読み込み中..." />
+          ) : visibleVisitRecords.length === 0 ? (
             <p className="text-sm text-muted-foreground">訪問記録はありません</p>
           ) : (
             visibleVisitRecords.map((item) => (
@@ -1135,8 +1178,10 @@ function CommunicationQueueCard({
     },
     onSuccess: async () => {
       toast.success('緊急連絡ドラフトを起票しました');
-      await queryClient.invalidateQueries({ queryKey: ['patient', patientId, orgId] });
-      await queryClient.invalidateQueries({ queryKey: ['communication-requests', orgId] });
+      await Promise.all([
+        invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId })),
+        queryClient.invalidateQueries({ queryKey: ['communication-requests', orgId] }),
+      ]);
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '緊急連絡ドラフトの起票に失敗しました');

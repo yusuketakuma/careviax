@@ -7,8 +7,7 @@ const {
   patientCreateMock,
   facilityFindManyMock,
   userFindManyMock,
-  visitRecordFindManyMock,
-  visitScheduleFindManyMock,
+  queryRawMock,
   listPatientRiskSummariesMock,
   withOrgContextMock,
   assertFacilityReferenceMock,
@@ -27,8 +26,7 @@ const {
     patientCreateMock: vi.fn(),
     facilityFindManyMock: vi.fn(),
     userFindManyMock: vi.fn(),
-    visitRecordFindManyMock: vi.fn(),
-    visitScheduleFindManyMock: vi.fn(),
+    queryRawMock: vi.fn(),
     listPatientRiskSummariesMock: vi.fn(),
     withOrgContextMock: vi.fn(),
     assertFacilityReferenceMock: vi.fn(),
@@ -65,12 +63,7 @@ vi.mock('@/lib/db/client', () => ({
     user: {
       findMany: userFindManyMock,
     },
-    visitRecord: {
-      findMany: visitRecordFindManyMock,
-    },
-    visitSchedule: {
-      findMany: visitScheduleFindManyMock,
-    },
+    $queryRaw: queryRawMock,
   },
 }));
 
@@ -84,7 +77,9 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/lib/patient/facility-reference', () => ({
   FacilityReferenceValidationError: class FacilityReferenceValidationError extends Error {},
+  FacilityUnitReferenceValidationError: class FacilityUnitReferenceValidationError extends Error {},
   assertFacilityReference: assertFacilityReferenceMock,
+  assertFacilityUnitReference: vi.fn(),
   getFacilityVisitDefaults: getFacilityVisitDefaultsMock,
 }));
 
@@ -155,12 +150,7 @@ describe('/api/patients GET', () => {
             unit_name: '201',
           },
         ],
-        contacts: [
-          {
-            name: '施設担当',
-            organization_name: 'あおば苑',
-          },
-        ],
+        _count: { contacts: 1 },
         conditions: [
           {
             id: 'condition_1',
@@ -177,28 +167,7 @@ describe('/api/patients GET', () => {
             primary_pharmacist_id: 'user_1',
           },
         ],
-        consents: [
-          {
-            consent_type: 'visit_medication_management',
-            expiry_date: null,
-          },
-        ],
-        visit_records: [
-          {
-            id: 'visit_1',
-            visit_date: new Date('2026-03-25T00:00:00.000Z'),
-            outcome_status: 'completed',
-            created_at: new Date('2026-03-25T10:00:00.000Z'),
-          },
-        ],
-        visit_schedules: [
-          {
-            id: 'schedule_1',
-            scheduled_date: new Date('2026-03-30T00:00:00.000Z'),
-            schedule_status: 'scheduled',
-            priority: 'normal',
-          },
-        ],
+        consents: [{ id: 'consent_1' }],
       },
       {
         id: 'patient_2',
@@ -217,7 +186,7 @@ describe('/api/patients GET', () => {
             unit_name: null,
           },
         ],
-        contacts: [],
+        _count: { contacts: 0 },
         conditions: [],
         cases: [
           {
@@ -228,8 +197,6 @@ describe('/api/patients GET', () => {
           },
         ],
         consents: [],
-        visit_records: [],
-        visit_schedules: [],
       },
     ]);
     userFindManyMock.mockResolvedValue([{ id: 'user_1', name: '佐藤 薬剤師' }]);
@@ -239,24 +206,27 @@ describe('/api/patients GET', () => {
         name: 'あおば苑',
       },
     ]);
-    visitRecordFindManyMock.mockResolvedValue([
-      {
-        id: 'visit_1',
-        patient_id: 'patient_1',
-        visit_date: new Date('2026-03-25T00:00:00.000Z'),
-        outcome_status: 'completed',
-        created_at: new Date('2026-03-25T10:00:00.000Z'),
-      },
-    ]);
-    visitScheduleFindManyMock.mockResolvedValue([
-      {
-        id: 'schedule_1',
-        case_id: 'case_1',
-        scheduled_date: new Date('2026-03-30T00:00:00.000Z'),
-        schedule_status: 'scheduled',
-        priority: 'normal',
-      },
-    ]);
+    // First $queryRaw call: latest visit per patient (DISTINCT ON)
+    // Second $queryRaw call: upcoming schedules per case (ROW_NUMBER)
+    queryRawMock
+      .mockResolvedValueOnce([
+        {
+          id: 'visit_1',
+          patient_id: 'patient_1',
+          visit_date: new Date('2026-03-25T00:00:00.000Z'),
+          outcome_status: 'completed',
+          created_at: new Date('2026-03-25T10:00:00.000Z'),
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'schedule_1',
+          case_id: 'case_1',
+          scheduled_date: new Date('2026-03-30T00:00:00.000Z'),
+          schedule_status: 'scheduled',
+          priority: 'normal',
+        },
+      ]);
     listPatientRiskSummariesMock.mockResolvedValue([
       {
         patient_id: 'patient_1',
@@ -356,6 +326,7 @@ describe('/api/patients GET', () => {
         high: 0,
       },
     });
+    expect(payload).toMatchSnapshot();
   });
 
   it('supports case, building, billing, and last-visit date filters together', async () => {
@@ -380,6 +351,44 @@ describe('/api/patients GET', () => {
     expect(payload.summary.total).toBe(1);
   });
 
+  it('rejects invalid case_status values', async () => {
+    const response = (await GET({
+      orgId: 'org_1',
+      userId: 'user_1',
+      role: 'pharmacist',
+      url: 'http://localhost/api/patients?case_status=active,invalid_status',
+      headers: { get: () => null },
+    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        case_status: expect.arrayContaining(['case_status の値が不正です']),
+      },
+    });
+  });
+
+  it('rejects invalid case_status query values before reaching patient filtering', async () => {
+    const response = (await GET({
+      orgId: 'org_1',
+      userId: 'user_1',
+      role: 'pharmacist',
+      url: 'http://localhost/api/patients?case_status=active,unknown',
+      headers: { get: () => null },
+    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+
+    expect(response.status).toBe(400);
+
+    const payload = (await response.json()) as {
+      code: string;
+      details?: { case_status?: string[] };
+    };
+
+    expect(payload.code).toBe('VALIDATION_ERROR');
+    expect(payload.details?.case_status?.[0]).toBe('case_status の値が不正です');
+  });
+
   it('supports payer-basis and primary pharmacist filters', async () => {
     const response = (await GET({
       orgId: 'org_1',
@@ -402,6 +411,59 @@ describe('/api/patients GET', () => {
     expect(payload.summary.total).toBe(1);
   });
 
+  it('uses the database cursor when paginating filtered results', async () => {
+    patientFindManyMock
+      .mockResolvedValueOnce([
+        {
+          id: 'patient_2',
+          name: '鈴木 次郎',
+          name_kana: 'スズキ ジロウ',
+          birth_date: new Date('1952-10-01'),
+          gender: 'male',
+          phone: null,
+          medical_insurance_number: null,
+          care_insurance_number: null,
+          billing_support_flag: false,
+          residences: [
+            {
+              address: '東京都墨田区2-2-2',
+              building_id: null,
+              unit_name: null,
+            },
+          ],
+          _count: { contacts: 0 },
+          conditions: [],
+          cases: [
+            {
+              id: 'case_2',
+              status: 'assessment',
+              updated_at: new Date('2026-03-20T09:00:00.000Z'),
+              primary_pharmacist_id: null,
+            },
+          ],
+          consents: [],
+        },
+      ]);
+    queryRawMock.mockResolvedValue([]);
+    listPatientRiskSummariesMock.mockResolvedValue([]);
+
+    const response = (await GET({
+      orgId: 'org_1',
+      userId: 'user_1',
+      role: 'pharmacist',
+      url: 'http://localhost/api/patients?cursor=patient_1&limit=1',
+      headers: { get: () => null },
+    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+
+    expect(response.status).toBe(200);
+    expect(patientFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cursor: { id: 'patient_1' },
+        skip: 1,
+      })
+    );
+  });
+
   it('masks phone and insurance fields for users without sensitive data access', async () => {
     const response = (await GET({
       orgId: 'org_1',
@@ -420,17 +482,56 @@ describe('/api/patients GET', () => {
       }>;
       privacy: {
         sensitive_fields_masked: boolean;
+        address_fields_masked: boolean;
         can_view_detail: boolean;
       };
     };
 
     expect(payload.privacy.sensitive_fields_masked).toBe(true);
+    expect(payload.privacy.address_fields_masked).toBe(false);
     expect(payload.privacy.can_view_detail).toBe(true);
     expect(payload.data[0]).toMatchObject({
       id: 'patient_1',
       phone: '***-****-0001',
       medical_insurance_number: '***-001',
     });
+  });
+
+  it('masks address and disables detail viewing for external viewers', async () => {
+    const response = (await GET({
+      orgId: 'org_1',
+      userId: 'user_ext',
+      role: 'external_viewer',
+      url: 'http://localhost/api/patients',
+      headers: { get: () => null },
+    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+
+    if (!response) throw new Error('response is required');
+    const payload = (await response.json()) as {
+      data: Array<{
+        id: string;
+        phone: string | null;
+        medical_insurance_number: string | null;
+        residences: Array<{ address: string | null }>;
+      }>;
+      privacy: {
+        sensitive_fields_masked: boolean;
+        address_fields_masked: boolean;
+        can_view_detail: boolean;
+      };
+    };
+
+    expect(payload.privacy).toMatchObject({
+      sensitive_fields_masked: true,
+      address_fields_masked: true,
+      can_view_detail: false,
+    });
+    expect(payload.data[0]).toMatchObject({
+      id: 'patient_1',
+      phone: '***-****-0001',
+      medical_insurance_number: '***-001',
+    });
+    expect(payload.data[0].residences[0]?.address).toBe('東京都千代田***');
   });
 
   it('persists rich intake payload into canonical tables and intake-only case metadata', async () => {

@@ -36,8 +36,13 @@ describe('/api/pharmacy-sites', () => {
         name: '本店',
         address: '東京都千代田区',
         phone: '03-0000-0000',
+        fax: '03-0000-0001',
         lat: 35.0,
         lng: 139.0,
+        is_health_support_pharmacy: true,
+        is_regional_support: false,
+        is_specialized_pharmacy: true,
+        dispensing_fee_category: 'basic_1',
       },
     ]);
 
@@ -47,7 +52,16 @@ describe('/api/pharmacy-sites', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      data: [{ id: 'site_1', name: '本店' }],
+      data: [
+        {
+          id: 'site_1',
+          name: '本店',
+          fax: '03-0000-0001',
+          is_health_support_pharmacy: true,
+          is_specialized_pharmacy: true,
+          dispensing_fee_category: 'basic_1',
+        },
+      ],
     });
   });
 

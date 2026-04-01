@@ -31,6 +31,7 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Loading } from '@/components/ui/loading';
+import { SegmentedProgressBar } from '@/components/ui/segmented-progress-bar';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type OverdueDashboard = {
@@ -225,15 +226,12 @@ function ProgressBar({ value, max }: { value: number; max: number }) {
     percentage >= 100 ? 'bg-emerald-500' : percentage >= 50 ? 'bg-blue-500' : 'bg-amber-400';
 
   return (
-    <div
-      className="h-2 w-full overflow-hidden rounded-full bg-muted"
-      role="progressbar"
-      aria-valuenow={value}
-      aria-valuemax={max}
-      aria-valuemin={0}
-    >
-      <div className={`h-full ${tone} transition-all`} style={{ width: `${percentage}%` }} />
-    </div>
+    <SegmentedProgressBar
+      value={value}
+      max={max}
+      className="h-2"
+      filledClassName={tone}
+    />
   );
 }
 

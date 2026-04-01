@@ -5,10 +5,14 @@ const {
   requireAuthContextMock,
   buildPatientVisitRecordsPdfMock,
   pdfResponseMock,
+  recordDataExportAuditMock,
+  prismaMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   buildPatientVisitRecordsPdfMock: vi.fn(),
   pdfResponseMock: vi.fn(),
+  recordDataExportAuditMock: vi.fn(),
+  prismaMock: {},
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -23,13 +27,22 @@ vi.mock('@/lib/api/pdf-response', () => ({
   pdfResponse: pdfResponseMock,
 }));
 
+vi.mock('@/lib/db/client', () => ({
+  prisma: prismaMock,
+}));
+
+vi.mock('@/server/services/export-audit', () => ({
+  recordDataExportAudit: recordDataExportAuditMock,
+}));
+
 import { GET } from './route';
 
 describe('/api/patients/[id]/visit-records/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({ ctx: { orgId: 'org_1' } });
+    requireAuthContextMock.mockResolvedValue({ ctx: { orgId: 'org_1', userId: 'user_1' } });
     pdfResponseMock.mockReturnValue(new Response('pdf', { status: 200 }));
+    recordDataExportAuditMock.mockResolvedValue(undefined);
   });
 
   it('passes the date range to patient visit records pdf builder', async () => {
@@ -50,6 +63,10 @@ describe('/api/patients/[id]/visit-records/pdf', () => {
       'patient_1',
       '2026-03-01',
       '2026-03-31',
+    );
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ targetType: 'visit_record_list', format: 'pdf', targetId: 'patient_1' }),
     );
   });
 });

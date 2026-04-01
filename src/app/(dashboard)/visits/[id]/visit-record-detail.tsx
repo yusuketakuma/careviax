@@ -25,6 +25,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { OUTCOME_LABELS, OUTCOME_VARIANTS } from '@/lib/constants/visit';
 import type { VisitGeoLog } from '@/lib/visit-location';
 
 type ResidualMedication = {
@@ -84,23 +85,6 @@ type VisitRecordFull = {
   } | null;
 };
 
-const outcomeLabel: Record<string, string> = {
-  completed: '完了',
-  revisit_needed: '再訪必要',
-  postponed: '延期',
-  cancelled: 'キャンセル',
-  delivery_only: '投薬のみ',
-  completed_with_issue: '完了（課題あり）',
-};
-
-const outcomeVariant: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
-  completed: 'default',
-  revisit_needed: 'secondary',
-  postponed: 'outline',
-  cancelled: 'destructive',
-  delivery_only: 'secondary',
-  completed_with_issue: 'outline',
-};
 
 const relationLabel: Record<string, string> = {
   self: '本人',
@@ -170,8 +154,41 @@ function formatGeoCoordinate(value: number) {
   return value.toFixed(5);
 }
 
+function GeoLocationCard({
+  label,
+  point,
+}: {
+  label: string;
+  point: { latitude: number; longitude: number; captured_at: string; accuracy_meters: number | null } | null;
+}) {
+  return (
+    <div className="rounded-lg border border-border/70 px-3 py-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      {point ? (
+        <>
+          <p className="mt-1 text-sm font-medium">
+            {formatGeoCoordinate(point.latitude)},{' '}
+            {formatGeoCoordinate(point.longitude)}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {format(parseISO(point.captured_at), 'yyyy/MM/dd HH:mm', {
+              locale: ja,
+            })}
+            {point.accuracy_meters != null
+              ? ` / 精度 ±${point.accuracy_meters}m`
+              : ''}
+          </p>
+        </>
+      ) : (
+        <p className="mt-1 text-sm text-muted-foreground">未記録</p>
+      )}
+    </div>
+  );
+}
+
 export function VisitRecordDetail({ recordId }: { recordId: string }) {
   const orgId = useOrgId();
+  const isBootstrappingOrg = !orgId;
   const router = useRouter();
   const [showReportMenu, setShowReportMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -280,7 +297,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     enabled: !!orgId && !!recordId,
   });
 
-  if (isLoading) {
+  if (isBootstrappingOrg || isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <p className="text-sm text-muted-foreground">読み込み中...</p>
@@ -305,8 +322,8 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
         <div>
           <h1 className="text-xl font-bold tracking-tight text-foreground">{visitDateFormatted} 訪問記録</h1>
           <div className="mt-1 flex items-center gap-2">
-            <Badge variant={outcomeVariant[record.outcome_status] ?? 'outline'}>
-              {outcomeLabel[record.outcome_status] ?? record.outcome_status}
+            <Badge variant={OUTCOME_VARIANTS[record.outcome_status] ?? 'outline'}>
+              {OUTCOME_LABELS[record.outcome_status] ?? record.outcome_status}
             </Badge>
             {record.schedule && (
               <span className="text-sm text-muted-foreground">
@@ -492,48 +509,8 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
           </CardHeader>
           <CardContent>
             <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-lg border border-border/70 px-3 py-3">
-                <p className="text-xs text-muted-foreground">開始位置</p>
-                {record.visit_geo_log.start ? (
-                  <>
-                    <p className="mt-1 text-sm font-medium">
-                      {formatGeoCoordinate(record.visit_geo_log.start.latitude)},{' '}
-                      {formatGeoCoordinate(record.visit_geo_log.start.longitude)}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {format(parseISO(record.visit_geo_log.start.captured_at), 'yyyy/MM/dd HH:mm', {
-                        locale: ja,
-                      })}
-                      {record.visit_geo_log.start.accuracy_meters != null
-                        ? ` / 精度 ±${record.visit_geo_log.start.accuracy_meters}m`
-                        : ''}
-                    </p>
-                  </>
-                ) : (
-                  <p className="mt-1 text-sm text-muted-foreground">未記録</p>
-                )}
-              </div>
-              <div className="rounded-lg border border-border/70 px-3 py-3">
-                <p className="text-xs text-muted-foreground">終了位置</p>
-                {record.visit_geo_log.end ? (
-                  <>
-                    <p className="mt-1 text-sm font-medium">
-                      {formatGeoCoordinate(record.visit_geo_log.end.latitude)},{' '}
-                      {formatGeoCoordinate(record.visit_geo_log.end.longitude)}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {format(parseISO(record.visit_geo_log.end.captured_at), 'yyyy/MM/dd HH:mm', {
-                        locale: ja,
-                      })}
-                      {record.visit_geo_log.end.accuracy_meters != null
-                        ? ` / 精度 ±${record.visit_geo_log.end.accuracy_meters}m`
-                        : ''}
-                    </p>
-                  </>
-                ) : (
-                  <p className="mt-1 text-sm text-muted-foreground">未記録</p>
-                )}
-              </div>
+              <GeoLocationCard label="開始位置" point={record.visit_geo_log.start ?? null} />
+              <GeoLocationCard label="終了位置" point={record.visit_geo_log.end ?? null} />
             </div>
             <p className="mt-3 text-xs text-muted-foreground">
               権限状態: {record.visit_geo_log.permission}

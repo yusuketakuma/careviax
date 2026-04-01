@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 import {
   SCOPE_LABELS,
   type SettingScope,
@@ -131,6 +132,8 @@ function ScopePanel({
 }) {
   const queryClient = useQueryClient();
   const [draftItems, setDraftItems] = useState<SettingValueItem[] | null>(null);
+  const [editorMode, setEditorMode] = useState<'form' | 'json'>('form');
+  const [jsonDraft, setJsonDraft] = useState('');
   const settingsQueryKey = ['admin-settings', orgId, scope, scopeId] as const;
 
   const query = useQuery({
@@ -151,18 +154,57 @@ function ScopePanel({
       return response.json() as Promise<SettingResponse>;
     },
     enabled: !!orgId && (scope !== 'site' || !!scopeId),
+    staleTime: 300_000,
   });
   const fetchedItems = query.data?.data.items ?? EMPTY_SETTING_ITEMS;
   const displayedItems = draftItems ?? fetchedItems;
+  const serializedDisplayedItems = useMemo(
+    () =>
+      JSON.stringify(
+        Object.fromEntries(displayedItems.map((item) => [item.key, item.value])),
+        null,
+        2
+      ),
+    [displayedItems]
+  );
+  const serializedFetchedItems = useMemo(
+    () =>
+      JSON.stringify(
+        Object.fromEntries(fetchedItems.map((item) => [item.key, item.value])),
+        null,
+        2
+      ),
+    [fetchedItems]
+  );
 
   const isDirty = useMemo(() => {
+    if (editorMode === 'json') {
+      return jsonDraft.trim() !== serializedFetchedItems.trim();
+    }
     const original = JSON.stringify(fetchedItems);
     const current = JSON.stringify(displayedItems);
     return original !== current;
-  }, [displayedItems, fetchedItems]);
+  }, [displayedItems, editorMode, fetchedItems, jsonDraft, serializedFetchedItems]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      let itemsForSave = displayedItems;
+      if (editorMode === 'json') {
+        const parsed = JSON.parse(jsonDraft) as Record<string, unknown>;
+        if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+          throw new Error('JSON はキーと値のオブジェクト形式で入力してください');
+        }
+        itemsForSave = displayedItems.map((item) => ({
+          ...item,
+          value:
+            typeof parsed[item.key] === 'string'
+              ? (parsed[item.key] as string)
+              : parsed[item.key] == null
+                ? ''
+                : String(parsed[item.key]),
+        }));
+      }
+
       const response = await fetch('/api/settings', {
         method: 'PATCH',
         headers: {
@@ -172,7 +214,7 @@ function ScopePanel({
         body: JSON.stringify({
           scope,
           scope_id: scopeId,
-          values: Object.fromEntries(displayedItems.map((item) => [item.key, item.value])),
+          values: Object.fromEntries(itemsForSave.map((item) => [item.key, item.value])),
         }),
       });
       if (!response.ok) {
@@ -184,6 +226,13 @@ function ScopePanel({
     onSuccess: async (payload) => {
       queryClient.setQueryData(settingsQueryKey, payload);
       setDraftItems(null);
+      setJsonDraft(
+        JSON.stringify(
+          Object.fromEntries(payload.data.items.map((item) => [item.key, item.value])),
+          null,
+          2
+        )
+      );
       await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
       toast.success(`${SCOPE_LABELS[scope].label}設定を保存しました`);
     },
@@ -219,10 +268,30 @@ function ScopePanel({
             <span className="text-sm text-muted-foreground">{targetLabel}</span>
           ) : null}
         </div>
-        <Button size="sm" onClick={() => saveMutation.mutate()} disabled={!isDirty || saveMutation.isPending}>
-          <Save className="mr-1.5 size-3.5" aria-hidden="true" />
-          {saveMutation.isPending ? '保存中...' : '保存'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Select
+            value={editorMode}
+            onValueChange={(value) => {
+              const nextMode = (value as 'form' | 'json') ?? 'form';
+              setEditorMode(nextMode);
+              if (nextMode === 'json') {
+                setJsonDraft(serializedDisplayedItems);
+              }
+            }}
+          >
+            <SelectTrigger className="h-8 w-[140px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="form">フォーム編集</SelectItem>
+              <SelectItem value="json">JSON編集</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button size="sm" onClick={() => saveMutation.mutate()} disabled={!isDirty || saveMutation.isPending}>
+            <Save className="mr-1.5 size-3.5" aria-hidden="true" />
+            {saveMutation.isPending ? '保存中...' : '保存'}
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -231,6 +300,17 @@ function ScopePanel({
             <div className="py-6 text-sm text-muted-foreground">設定を読み込んでいます...</div>
           ) : query.error instanceof Error ? (
             <div className="py-6 text-sm text-rose-700">{query.error.message}</div>
+          ) : editorMode === 'json' ? (
+            <div className="space-y-3 py-4">
+              <p className="text-xs text-muted-foreground">
+                現在の scope 値を JSON として編集できます。保存時に設定キー単位で反映します。
+              </p>
+              <Textarea
+                value={jsonDraft}
+                onChange={(event) => setJsonDraft(event.target.value)}
+                className="min-h-[320px] font-mono text-xs"
+              />
+            </div>
           ) : (
             displayedItems.map((item) => (
               <SettingRow key={item.key} item={item} onChange={handleChange} />
@@ -254,6 +334,7 @@ export function SettingsContent() {
       return response.json() as Promise<{ data: CurrentProfile }>;
     },
     enabled: !!orgId,
+    staleTime: 300_000,
   });
 
   const sitesQuery = useQuery({
@@ -266,6 +347,7 @@ export function SettingsContent() {
       return response.json() as Promise<{ data: SiteOption[] }>;
     },
     enabled: !!orgId,
+    staleTime: 300_000,
   });
 
   const healthQuery = useQuery({

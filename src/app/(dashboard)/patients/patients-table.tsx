@@ -6,7 +6,26 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { differenceInYears, format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Archive, RotateCcw, Search, SlidersHorizontal, Star } from 'lucide-react';
+import {
+  Archive,
+  CalendarPlus,
+  CirclePause,
+  Clock,
+  FileWarning,
+  Hospital,
+  LogOut,
+  PhoneOff,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  SlidersHorizontal,
+  Sparkles,
+  Star,
+  TriangleAlert,
+  UserCheck,
+} from 'lucide-react';
+import { STATUS_ICON_CONFIG } from '@/lib/patient/status-icon';
+import type { PatientStatusIcon } from '@/types/dashboard-home';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
@@ -90,23 +109,58 @@ type PatientsResponse = {
 const ALL_VALUE = '_all';
 const caseStatuses = Object.keys(CASE_STATUS_LABELS);
 
-const riskBadgeClassName: Record<PatientRow['risk_summary']['level'], string> = {
-  stable: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  watch: 'border-amber-200 bg-amber-50 text-amber-900',
-  high: 'border-rose-200 bg-rose-50 text-rose-800',
-};
-
-const riskLabel: Record<PatientRow['risk_summary']['level'], string> = {
-  stable: '安定',
-  watch: '要観察',
-  high: '高リスク',
-};
-
 const genderLabel: Record<string, string> = {
   male: '男性',
   female: '女性',
   other: 'その他',
 };
+
+const STATUS_ICONS: Record<PatientStatusIcon, typeof Star> = {
+  stable: UserCheck,
+  new: Sparkles,
+  first_visit_soon: CalendarPlus,
+  attention: Star,
+  urgent: TriangleAlert,
+  overdue_visit: Clock,
+  report_pending: FileWarning,
+  medication_change: RefreshCw,
+  hospitalized: Hospital,
+  discharged: LogOut,
+  no_contact: PhoneOff,
+  paused: CirclePause,
+};
+
+function deriveRowStatus(row: PatientRow): PatientStatusIcon {
+  const risk = row.risk_summary;
+  const caseStatus = row.latest_case?.status ?? null;
+  const hasCompletedVisit = !!row.latest_visit;
+  const hasNextVisit = row.visit_schedules.some(
+    (v) => ['planned', 'in_preparation', 'ready'].includes(v.schedule_status)
+  );
+  const hasOverdueVisit = row.visit_schedules.some(
+    (v) =>
+      ['planned', 'in_preparation', 'ready'].includes(v.schedule_status) &&
+      new Date(v.scheduled_date) < new Date()
+  );
+
+  if (caseStatus === 'on_hold') return 'paused';
+  if (risk.level === 'high') return 'urgent';
+  if (hasOverdueVisit) return 'overdue_visit';
+  if (!hasCompletedVisit && hasNextVisit) return 'first_visit_soon';
+  if (!hasCompletedVisit) return 'new';
+  if (risk.level === 'watch' || risk.open_tasks > 0) return 'attention';
+  return 'stable';
+}
+
+const STATUS_FILTER_OPTIONS: Array<{ value: PatientStatusIcon; label: string }> = [
+  { value: 'urgent', label: '要対応' },
+  { value: 'overdue_visit', label: '訪問遅延' },
+  { value: 'attention', label: '要確認' },
+  { value: 'new', label: '新規' },
+  { value: 'first_visit_soon', label: '初回予定' },
+  { value: 'stable', label: '安定' },
+  { value: 'paused', label: '休止中' },
+];
 
 function toggleFilter(values: string[], target: string) {
   return values.includes(target)
@@ -241,23 +295,31 @@ function buildPatientColumns(args: {
       ),
     },
     {
-      id: 'risk',
-      header: 'リスク',
+      id: 'status',
+      header: 'ステータス',
       meta: {
-        label: 'リスク',
-        exportValue: (row: PatientRow) =>
-          `${riskLabel[row.risk_summary.level]} / 課題${row.risk_summary.open_issues}件 / Task${row.risk_summary.open_tasks}件`,
+        label: 'ステータス',
+        exportValue: (row: PatientRow) => {
+          const s = deriveRowStatus(row);
+          return STATUS_ICON_CONFIG[s].label;
+        },
       },
-      cell: ({ row }) => (
-        <div className="space-y-1">
-          <Badge variant="outline" className={riskBadgeClassName[row.original.risk_summary.level]}>
-            {riskLabel[row.original.risk_summary.level]}
-          </Badge>
-          <p className="text-xs text-muted-foreground">
-            課題 {row.original.risk_summary.open_issues}件 / Task {row.original.risk_summary.open_tasks}件
-          </p>
-        </div>
-      ),
+      cell: ({ row }) => {
+        const statusKey = deriveRowStatus(row.original);
+        const cfg = STATUS_ICON_CONFIG[statusKey];
+        const IconComponent = STATUS_ICONS[statusKey];
+        return (
+          <div className="flex items-center gap-1.5">
+            <div
+              className={`shrink-0 rounded-full p-1 ${cfg.color} ${cfg.bg}`}
+              title={cfg.label}
+            >
+              <IconComponent className="size-3.5" aria-hidden="true" />
+            </div>
+            <span className={`text-xs font-medium ${cfg.color}`}>{cfg.label}</span>
+          </div>
+        );
+      },
     },
     {
       id: 'lastVisit',
@@ -382,6 +444,7 @@ export function PatientsTable() {
   const [selectedPatients, setSelectedPatients] = useState<PatientRow[]>([]);
   const [caseStatusFilters, setCaseStatusFilters] = useState<string[]>([]);
   const [riskFilter, setRiskFilter] = useState<string>(ALL_VALUE);
+  const [statusFilter, setStatusFilter] = useState<string>(ALL_VALUE);
   const [facilityFilter, setFacilityFilter] = useState<string>(ALL_VALUE);
   const [pharmacistFilter, setPharmacistFilter] = useState<string>(ALL_VALUE);
   const [consentFilter, setConsentFilter] = useState<string>(ALL_VALUE);
@@ -482,6 +545,7 @@ export function PatientsTable() {
     searchQuery.trim(),
     caseStatusFilters.length > 0 ? 'case' : '',
     riskFilter !== ALL_VALUE ? riskFilter : '',
+    statusFilter !== ALL_VALUE ? statusFilter : '',
     facilityFilter !== ALL_VALUE ? facilityFilter : '',
     pharmacistFilter !== ALL_VALUE ? pharmacistFilter : '',
     consentFilter !== ALL_VALUE ? consentFilter : '',
@@ -532,6 +596,7 @@ export function PatientsTable() {
     setSearchQuery('');
     setCaseStatusFilters([]);
     setRiskFilter(ALL_VALUE);
+    setStatusFilter(ALL_VALUE);
     setFacilityFilter(ALL_VALUE);
     setPharmacistFilter(ALL_VALUE);
     setConsentFilter(ALL_VALUE);
@@ -600,6 +665,23 @@ export function PatientsTable() {
               <SelectItem value="high">高リスク</SelectItem>
               <SelectItem value="watch">要観察</SelectItem>
               <SelectItem value="stable">安定</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1.5">
+          <LabelText>ステータス</LabelText>
+          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value ?? ALL_VALUE)}>
+            <SelectTrigger aria-label="ステータスフィルタ">
+              <SelectValue placeholder="すべて" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_VALUE}>すべて</SelectItem>
+              {STATUS_FILTER_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -786,7 +868,11 @@ export function PatientsTable() {
 
       <DataTable
         columns={columns}
-        data={data?.data ?? []}
+        data={
+          statusFilter !== ALL_VALUE
+            ? (data?.data ?? []).filter((row) => deriveRowStatus(row) === statusFilter)
+            : (data?.data ?? [])
+        }
         isLoading={isLoading}
         caption="患者一覧"
         enableRowSelection

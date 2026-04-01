@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   prescriptionIntakeFindManyMock,
   visitScheduleFindManyMock,
+  visitScheduleContactLogFindManyMock,
   conferenceNoteFindManyMock,
   careCaseFindManyMock,
   membershipFindManyMock,
@@ -15,6 +16,7 @@ const {
 } = vi.hoisted(() => ({
   prescriptionIntakeFindManyMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
+  visitScheduleContactLogFindManyMock: vi.fn(),
   conferenceNoteFindManyMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
   membershipFindManyMock: vi.fn(),
@@ -33,6 +35,9 @@ vi.mock('@/lib/db', () => ({
     },
     visitSchedule: {
       findMany: visitScheduleFindManyMock,
+    },
+    visitScheduleContactLog: {
+      findMany: visitScheduleContactLogFindManyMock,
     },
     conferenceNote: {
       findMany: conferenceNoteFindManyMock,
@@ -85,6 +90,7 @@ vi.mock('@/server/services/billing-evidence', () => ({
 
 import { evaluateInitialHomeVisitAssessmentRequirement } from '@/server/services/billing-evidence';
 import {
+  checkCallbackFollowups,
   checkConferenceMeetingReminders,
   checkInitialHomeVisitAssessmentBacklog,
   checkPrescriptionOriginalRetention,
@@ -114,6 +120,44 @@ describe('checkPrescriptionOriginalRetention', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('creates callback follow-up tasks from overdue contact logs', async () => {
+    visitScheduleContactLogFindManyMock.mockResolvedValue([
+      {
+        org_id: 'org_1',
+        proposal_id: 'proposal_1',
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        note: '不在のため折り返し待ち',
+        callback_due_at: new Date('2026-03-27T12:00:00.000Z'),
+        proposal: {
+          proposed_pharmacist_id: 'pharmacist_1',
+          case_id: 'case_1',
+        },
+      },
+    ]);
+
+    const result = await checkCallbackFollowups();
+
+    expect(result).toMatchObject({ processedCount: 1 });
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'visit_contact_followup',
+        title: '患者への再架電が必要です',
+        description: '不在のため折り返し待ち',
+        assignedTo: 'pharmacist_1',
+        relatedEntityType: 'visit_schedule_proposal',
+        relatedEntityId: 'proposal_1',
+        dedupeKey: 'visit-contact-followup:proposal_1',
+        metadata: {
+          case_id: 'case_1',
+          patient_id: 'patient_1',
+        },
+      })
+    );
   });
 
   it('creates overdue fax original follow-up tasks and notifications', async () => {

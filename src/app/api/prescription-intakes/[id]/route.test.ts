@@ -160,4 +160,51 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
       message: '分割調剤の途中回は次回調剤予定日が必須です',
     });
   });
+
+  it('allows clearing next dispense dates with explicit null', async () => {
+    prescriptionIntakeFindFirstMock.mockResolvedValue({
+      id: 'intake_4',
+      org_id: 'org_1',
+      source_type: 'refill',
+      split_dispense_total: 2,
+      split_dispense_current: 2,
+      split_next_dispense_date: new Date('2026-04-10T00:00:00.000Z'),
+      refill_next_dispense_date: new Date('2026-04-05T00:00:00.000Z'),
+    });
+
+    const updateMock = vi.fn().mockResolvedValue({
+      id: 'intake_4',
+      source_type: 'refill',
+      lines: [],
+    });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        prescriptionIntake: {
+          update: updateMock,
+        },
+      })
+    );
+
+    const response = await PATCH(
+      createRequest({
+        split_dispense_current: 2,
+        split_dispense_total: 2,
+        split_next_dispense_date: null,
+        refill_next_dispense_date: null,
+      }),
+      { params: Promise.resolve({ id: 'intake_4' }) }
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          split_next_dispense_date: null,
+          refill_next_dispense_date: null,
+        }),
+      })
+    );
+  });
 });

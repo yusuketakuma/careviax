@@ -102,7 +102,38 @@ describe('/api/templates', () => {
           org_id: 'org_1',
           name: '主治医報告 基本',
           template_type: 'care_report',
+          format: 'html',
+          version: 1,
           is_default: true,
+        }),
+      })
+    );
+  });
+
+  it('creates a consent template with version metadata', async () => {
+    const response = await POST(
+      createRequest('http://localhost/api/templates', {
+        name: '同意書 v2',
+        template_type: 'consent_form',
+        target_role: 'patient_family',
+        format: 'pdf',
+        version: 2,
+        effective_from: '2026-04-01',
+        content: { blocks: ['signature'] },
+      }),
+      { params: Promise.resolve({}) }
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(templateCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          template_type: 'consent_form',
+          target_role: 'patient_family',
+          format: 'pdf',
+          version: 2,
+          effective_from: new Date('2026-04-01T00:00:00.000Z'),
         }),
       })
     );

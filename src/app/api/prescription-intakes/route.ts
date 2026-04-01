@@ -1,18 +1,10 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
-import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { createPrescriptionIntakeSchema } from '@/lib/validations/prescription';
 import { prisma } from '@/lib/db/client';
-import { addDays, format, subDays } from 'date-fns';
-import {
-  collectDuplicatePrescriptionLines,
-  collectStructuringBlockedLines,
-} from './shared';
-import {
-  PrescriberInstitutionReferenceValidationError,
-  resolvePrescriberInstitutionFields,
-} from '@/lib/prescriptions/prescriber-institutions';
+import { format } from 'date-fns';
+import { createPrescriptionIntake } from '@/server/services/prescription-intake-service';
 
 function validateSplitDispense(
   input: {
@@ -67,7 +59,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     where,
     take: limit + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    orderBy: { created_at: 'desc' },
+    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
     select: {
       id: true,
       cycle_id: true,
@@ -109,27 +101,11 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   }
 
   const {
-    cycle_id,
-    source_type,
-    prescribed_date,
-    refill_remaining_count,
-    refill_next_dispense_date,
     split_dispense_total,
     split_dispense_current,
     split_next_dispense_date,
-    lines,
-    prescriber_institution_id,
-    ...rest
+    source_type,
   } = parsed.data;
-
-  const prescribedDateObj = new Date(prescribed_date);
-
-  // 有効期限チェック（発行日+4日）
-  const expiryDate = addDays(prescribedDateObj, 4);
-  const now = new Date();
-  if (expiryDate < now) {
-    return validationError('処方箋の有効期限が切れています（発行日から4日以内が有効です）');
-  }
 
   const splitValidation = validateSplitDispense({
     split_dispense_total,
@@ -151,236 +127,19 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     }
   }
 
-  let result;
-  try {
-    result = await withOrgContext(req.orgId, async (tx) => {
-      // Verify cycle belongs to this org
-      const cycle = await tx.medicationCycle.findFirst({
-      where: { id: cycle_id, org_id: req.orgId },
-      select: {
-        id: true,
-        patient_id: true,
-        case_: {
-          select: {
-            primary_pharmacist_id: true,
-          },
-        },
-        prescription_intakes: {
-          orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
-          take: 1,
-          select: {
-            id: true,
-            source_type: true,
-            prescribed_date: true,
-            refill_remaining_count: true,
-            refill_next_dispense_date: true,
-            lines: {
-              select: {
-                days: true,
-              },
-            },
-          },
-        },
-        dispense_tasks: {
-          orderBy: [{ updated_at: 'desc' }],
-          take: 5,
-          select: {
-            results: {
-              orderBy: [{ dispensed_at: 'desc' }],
-              take: 1,
-              select: {
-                dispensed_at: true,
-              },
-            },
-          },
-        },
-      },
-    });
-    if (!cycle) return null;
-
-    if (source_type === 'refill') {
-      if (refill_remaining_count == null || refill_remaining_count <= 0) {
-        return {
-          error: 'invalid_refill_remaining_count' as const,
-        };
-      }
-      if (!refill_next_dispense_date) {
-        return {
-          error: 'missing_refill_next_dispense_date' as const,
-        };
-      }
-
-      const previousIntake = cycle.prescription_intakes[0] ?? null;
-      const previousDispensedAt =
-        cycle.dispense_tasks
-          .flatMap((task) => task.results)
-          .sort((left, right) => right.dispensed_at.getTime() - left.dispensed_at.getTime())[0]
-          ?.dispensed_at ?? null;
-      const baselineDays = Math.max(
-        ...(previousIntake?.lines.map((line) => line.days) ?? []),
-        0
-      );
-      const baselineDate = previousDispensedAt ?? previousIntake?.prescribed_date ?? null;
-
-      if (baselineDate && baselineDays > 0) {
-        const targetDate = addDays(baselineDate, baselineDays);
-        const windowStart = subDays(targetDate, 7);
-        const windowEnd = addDays(targetDate, 7);
-        const requestedDate = new Date(refill_next_dispense_date);
-
-        if (requestedDate < windowStart || requestedDate > windowEnd) {
-          return {
-            error: 'refill_window_out_of_range' as const,
-            windowStart,
-            windowEnd,
-            targetDate,
-          };
-        }
-      }
+  const result = await createPrescriptionIntake(
+    parsed.data,
+    req.orgId,
+    req.userId,
+    {
+      skipStructuringCheck: source_type === 'qr_scan',
     }
+  );
 
-    const duplicateCandidates = collectDuplicatePrescriptionLines(lines);
-    if (duplicateCandidates.length > 0) {
-      return {
-        error: 'duplicate_prescription_lines' as const,
-        duplicates: duplicateCandidates,
-      };
+  if (!result.ok) {
+    if (result.error === 'cycle_not_found') {
+      return validationError('指定されたサイクルが見つかりません');
     }
-
-    const structuringBlockedLines = collectStructuringBlockedLines(lines);
-    if (structuringBlockedLines.length > 0) {
-      const existingException = await tx.workflowException.findFirst({
-        where: {
-          org_id: req.orgId,
-          cycle_id,
-          exception_type: 'prescription_structuring_block',
-          status: 'open',
-        },
-        select: { id: true },
-      });
-
-      if (!existingException) {
-        await tx.workflowException.create({
-          data: {
-            org_id: req.orgId,
-            cycle_id,
-            exception_type: 'prescription_structuring_block',
-            description: `未構造化または不明な処方明細があります: ${structuringBlockedLines.map((line) => `${line.line_number}行目 ${line.drug_name}`).join(' / ')}`,
-            severity: 'warning',
-            status: 'open',
-          },
-        });
-      }
-
-      return {
-        error: 'structuring_blocked_lines' as const,
-        blockedLines: structuringBlockedLines.map((line) => ({
-          line_number: line.line_number,
-          drug_name: line.drug_name,
-        })),
-      };
-    }
-
-    // Create PrescriptionIntake
-    const resolvedInstitution = await resolvePrescriberInstitutionFields(tx, req.orgId, {
-      prescriber_institution_id,
-      prescriber_institution: rest.prescriber_institution,
-    });
-
-    const intake = await tx.prescriptionIntake.create({
-      data: {
-        org_id: req.orgId,
-        cycle_id,
-        source_type,
-        prescribed_date: prescribedDateObj,
-        prescription_expiry_date: expiryDate,
-        ...(source_type === 'refill' && refill_remaining_count !== undefined
-          ? { refill_remaining_count }
-          : {}),
-        ...(source_type === 'refill' && refill_next_dispense_date
-          ? { refill_next_dispense_date: new Date(refill_next_dispense_date) }
-          : {}),
-        ...(split_dispense_total != null ? { split_dispense_total } : {}),
-        ...(split_dispense_current != null ? { split_dispense_current } : {}),
-        ...(split_next_dispense_date
-          ? { split_next_dispense_date: new Date(split_next_dispense_date) }
-          : {}),
-        ...rest,
-        prescriber_institution_id: resolvedInstitution.prescriber_institution_id,
-        prescriber_institution: resolvedInstitution.prescriber_institution,
-        lines: {
-          create: lines.map((line) => ({
-            org_id: req.orgId,
-            ...line,
-          })),
-        },
-      },
-      include: { lines: true },
-    });
-
-    const unresolvedInquiryCount =
-      typeof tx.inquiryRecord?.count === 'function'
-        ? await tx.inquiryRecord.count({
-            where: {
-              org_id: req.orgId,
-              cycle_id,
-              resolved_at: null,
-            },
-          })
-        : 0;
-    const existingDispenseTask =
-      typeof tx.dispenseTask?.findFirst === 'function'
-        ? await tx.dispenseTask.findFirst({
-            where: {
-              org_id: req.orgId,
-              cycle_id,
-              status: {
-                in: ['pending', 'in_progress'],
-              },
-            },
-            select: { id: true },
-          })
-        : null;
-    const shouldMoveToDispensing = unresolvedInquiryCount === 0;
-    const shouldAutoCreateDispenseTask =
-      shouldMoveToDispensing && !existingDispenseTask;
-
-    if (
-      shouldAutoCreateDispenseTask &&
-      typeof tx.dispenseTask?.create === 'function'
-    ) {
-      await tx.dispenseTask.create({
-        data: {
-          org_id: req.orgId,
-          cycle_id,
-          assigned_to: cycle.case_?.primary_pharmacist_id ?? null,
-          priority: 'normal',
-          status: 'pending',
-        },
-      });
-    }
-
-    // Update MedicationCycle status to intake_received or dispensing
-    await tx.medicationCycle.update({
-      where: { id: cycle_id },
-      data: {
-        overall_status: shouldMoveToDispensing ? 'dispensing' : 'intake_received',
-      },
-    });
-
-      return intake;
-    });
-  } catch (error) {
-    if (error instanceof PrescriberInstitutionReferenceValidationError) {
-      return validationError(error.message);
-    }
-    throw error;
-  }
-
-  if (!result) {
-    return validationError('指定されたサイクルが見つかりません');
-  }
-  if ('error' in result) {
     if (result.error === 'duplicate_prescription_lines') {
       return validationError('重複候補の処方明細があるため受付できません', {
         duplicates: result.duplicates,
@@ -404,9 +163,21 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         window_end: format(result.windowEnd, 'yyyy-MM-dd'),
       });
     }
+    if (result.error === 'expiry_exceeded') {
+      return validationError('処方箋の有効期限が切れています（発行日から4日以内が有効です）');
+    }
+    if (result.error === 'prescriber_institution_not_found') {
+      return validationError(result.message);
+    }
+    if (result.error === 'invalid_transition') {
+      return validationError('サイクルの状態遷移が無効です');
+    }
+    if (result.error === 'version_conflict') {
+      return validationError('他のユーザーによって更新されています。再読み込みしてください');
+    }
   }
 
-  return success(result, 201);
+  return success(result.intake, 201);
 }, {
   permission: 'canVisit',
   message: '処方受付の作成権限がありません',

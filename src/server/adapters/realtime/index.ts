@@ -1,16 +1,21 @@
-/**
- * リアルタイムステータス共有アダプタ — placeholder
- * Options: WebSocket (Next.js custom server) or Server-Sent Events
- */
-export class RealtimeAdapter {
-  async broadcastStatusUpdate(channel: string, data: Record<string, unknown>): Promise<void> {
-    console.log(`[Realtime] Broadcast to ${channel}:`, data, '— not implemented');
-  }
+import { RealtimeAdapter as InMemoryAdapter } from './in-memory-adapter';
 
-  async subscribeToChannel(channel: string, callback: (data: unknown) => void): Promise<void> {
-    console.log(`[Realtime] Subscribe to ${channel} — not implemented`);
-    // Suppress unused parameter warning in placeholder
-    void callback;
-    // TODO: Implement SSE or WebSocket subscription
+export { RealtimeAdapter } from './in-memory-adapter';
+
+let cached: InstanceType<typeof InMemoryAdapter> | null = null;
+
+export function getRealtimeAdapter(): InstanceType<typeof InMemoryAdapter> {
+  if (cached) return cached;
+
+  if (process.env.REDIS_URL) {
+    // Dynamic import avoided — redis-adapter uses the same class shape.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { RealtimeAdapter: RedisAdapter } = require('./redis-adapter') as {
+      RealtimeAdapter: typeof InMemoryAdapter;
+    };
+    cached = new RedisAdapter();
+  } else {
+    cached = new InMemoryAdapter();
   }
+  return cached;
 }

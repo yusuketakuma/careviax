@@ -10,14 +10,27 @@ const templateTypeSchema = z.enum([
   'tracing_report',
   'management_plan',
   'medication_calendar',
+  'consent_form',
 ]);
+
+const templateFormatSchema = z.enum(['html', 'pdf']);
 
 const updateTemplateSchema = z.object({
   name: z.string().trim().min(1, 'テンプレート名は必須です').optional(),
   template_type: templateTypeSchema.optional(),
+  target_role: z.string().trim().min(1).nullable().optional(),
+  format: templateFormatSchema.optional(),
+  version: z.number().int().min(1).optional(),
+  effective_from: z.string().date().nullable().optional(),
+  effective_to: z.string().date().nullable().optional(),
   content: z.record(z.string(), z.unknown()).optional(),
   is_default: z.boolean().optional(),
 });
+
+function parseEffectiveDate(value?: string | null) {
+  if (value === null) return null;
+  return value ? new Date(`${value}T00:00:00.000Z`) : undefined;
+}
 
 export async function PATCH(
   req: NextRequest,
@@ -49,6 +62,8 @@ export async function PATCH(
   if (!existing) return notFound('文書テンプレートが見つかりません');
 
   const nextTemplateType = parsed.data.template_type ?? existing.template_type;
+  const { effective_from, effective_to, ...rest } = parsed.data;
+
   const template = await withOrgContext(
     ctx.orgId,
     async (tx) => {
@@ -69,18 +84,29 @@ export async function PATCH(
       return tx.template.update({
         where: { id },
         data: {
-          ...(parsed.data.name ? { name: parsed.data.name } : {}),
-          ...(parsed.data.template_type
-            ? { template_type: parsed.data.template_type }
+          ...(rest.name ? { name: rest.name } : {}),
+          ...(rest.template_type
+            ? { template_type: rest.template_type }
             : {}),
-          ...(parsed.data.content
+          ...(rest.target_role !== undefined
+            ? { target_role: rest.target_role || null }
+            : {}),
+          ...(rest.format ? { format: rest.format } : {}),
+          ...(rest.version ? { version: rest.version } : {}),
+          ...(effective_from !== undefined
+            ? { effective_from: parseEffectiveDate(effective_from) }
+            : {}),
+          ...(effective_to !== undefined
+            ? { effective_to: parseEffectiveDate(effective_to) }
+            : {}),
+          ...(rest.content
             ? {
                 content:
-                  parsed.data.content as import('@prisma/client').Prisma.InputJsonValue,
+                  rest.content as import('@prisma/client').Prisma.InputJsonValue,
               }
             : {}),
-          ...(parsed.data.is_default !== undefined
-            ? { is_default: parsed.data.is_default }
+          ...(rest.is_default !== undefined
+            ? { is_default: rest.is_default }
             : {}),
         },
       });

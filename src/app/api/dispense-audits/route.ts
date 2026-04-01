@@ -1,8 +1,12 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
+import { annotateDispenseTask, sortDispenseTasks } from '@/server/services/dispense-task-list';
+import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+import { transitionCycleStatus, InvalidTransitionError, VersionConflictError } from '@/lib/db/cycle-transition';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
@@ -108,39 +112,13 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     },
   });
 
-  // Sort by priority weight
-  const priorityWeight: Record<string, number> = {
-    emergency: 0,
-    urgent: 1,
-    normal: 2,
-  };
-  const sorted = [...tasks].sort((a, b) => {
-    const wa = priorityWeight[a.priority] ?? 2;
-    const wb = priorityWeight[b.priority] ?? 2;
-    if (wa !== wb) return wa - wb;
-    if (a.due_date && b.due_date) return a.due_date.getTime() - b.due_date.getTime();
-    if (a.due_date) return -1;
-    if (b.due_date) return 1;
-    return a.updated_at.getTime() - b.updated_at.getTime();
-  });
-
-  const visible = sorted.filter((task) => {
+  const visible = sortDispenseTasks(tasks, 'updated_at').filter((task) => {
     const latestAudit = task.audits[0] ?? null;
     return latestAudit == null || latestAudit.result === 'hold';
   });
 
   return success({
-    data: visible.map((task) => {
-      const residence = task.cycle.case_.patient.residences[0] ?? null;
-      const facilityLabel = residence?.building_id ?? residence?.address ?? null;
-      const isOverdue = task.due_date != null && task.due_date.getTime() < now.getTime();
-
-      return {
-        ...task,
-        facility_label: facilityLabel,
-        is_overdue: isOverdue,
-      };
-    }),
+    data: visible.map((task) => annotateDispenseTask(task, now)),
   });
 }, {
   permission: 'canAuditDispense',
@@ -190,6 +168,11 @@ function mergeRejectDetail(args: {
     .filter(Boolean)
     .join('\n');
 }
+
+type DispenseAuditMutationError =
+  | { error: 'self_audit' }
+  | { error: 'already_audited' }
+  | { error: string; conflict?: true };
 
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
   const body = await req.json().catch(() => null);
@@ -244,6 +227,26 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     });
     if (!task) return null;
 
+    // S2: Self-audit prevention — dispenser cannot audit their own work
+    const dispensedByUsers = await tx.dispenseResult.findMany({
+      where: { task_id, org_id: req.orgId },
+      select: { dispensed_by: true },
+      distinct: ['dispensed_by'],
+    });
+    const dispenserIds = new Set(dispensedByUsers.map((r) => r.dispensed_by));
+    if (dispenserIds.has(req.userId)) {
+      return { error: 'self_audit' as const };
+    }
+
+    // B2: Concurrent audit prevention — reject if a non-hold audit already exists
+    const existingAudit = await tx.dispenseAudit.findFirst({
+      where: { task_id, result: { notIn: ['hold'] } },
+      select: { id: true },
+    });
+    if (existingAudit) {
+      return { error: 'already_audited' as const };
+    }
+
     if (result === 'emergency_approved') {
       const adminMembership = await tx.membership.findFirst({
         where: {
@@ -263,43 +266,76 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
     const now = new Date();
 
-    // Create DispenseAudit
-    const audit = await tx.dispenseAudit.create({
-      data: {
-        org_id: req.orgId,
-        task_id,
-        result,
-        reject_reason: reject_reason ?? null,
-        reject_detail: mergeRejectDetail({
-          rejectDetail: reject_detail,
-          externalAudit: external_audit,
-        }),
-        audited_by: req.userId,
-        audited_at: now,
-      },
-    });
+    // Create DispenseAudit — the partial unique index on (task_id WHERE result NOT IN ('hold'))
+    // provides a DB-level TOCTOU guard; catch the constraint violation here.
+    const audit = await (async () => {
+      try {
+        return await tx.dispenseAudit.create({
+          data: {
+            org_id: req.orgId,
+            task_id,
+            result,
+            reject_reason: reject_reason ?? null,
+            reject_detail: mergeRejectDetail({
+              rejectDetail: reject_detail,
+              externalAudit: external_audit,
+            }),
+            audited_by: req.userId,
+            audited_at: now,
+          },
+        });
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          return { error: 'already_audited' as const };
+        }
+        throw err;
+      }
+    })();
+    if ('error' in audit) return audit;
+
+    const transitionHelper = async (toStatus: string) => {
+      try {
+        await transitionCycleStatus(tx, task.cycle_id, req.orgId, toStatus, req.userId);
+      } catch (err) {
+        if (err instanceof InvalidTransitionError) {
+          return { error: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}` } as const;
+        }
+        if (err instanceof VersionConflictError) {
+          return { error: err.message, conflict: true } as const;
+        }
+        throw err;
+      }
+      return null;
+    };
 
     if (result === 'approved' || result === 'emergency_approved') {
+      // Two-step transition: audit_pending → audited → setting/visit_ready
+      const toAuditedErr = await transitionHelper('audited');
+      if (toAuditedErr) return toAuditedErr;
       const nextStatus = task.cycle.set_plans.length > 0 ? 'setting' : 'visit_ready';
-      await tx.medicationCycle.update({
-        where: { id: task.cycle_id },
-        data: { overall_status: nextStatus },
-      });
+      const transitionErr = await transitionHelper(nextStatus);
+      if (transitionErr) return transitionErr;
       await tx.dispenseTask.update({
         where: { id: task_id },
         data: { status: 'completed' },
       });
-    } else if (result === 'hold') {
-      await tx.medicationCycle.update({
-        where: { id: task.cycle_id },
-        data: { overall_status: 'on_hold' },
+
+      // B4: Auto-resolve open dispense_audit_rejected exceptions on approval
+      await tx.workflowException.updateMany({
+        where: {
+          cycle_id: task.cycle_id,
+          exception_type: 'dispense_audit_rejected',
+          status: 'open',
+        },
+        data: { status: 'resolved', resolved_by: req.userId, resolved_at: new Date() },
       });
+    } else if (result === 'hold') {
+      const transitionErr = await transitionHelper('on_hold');
+      if (transitionErr) return transitionErr;
     } else if (result === 'rejected') {
       // Update MedicationCycle status back to dispensing for re-dispense
-      await tx.medicationCycle.update({
-        where: { id: task.cycle_id },
-        data: { overall_status: 'dispensing' },
-      });
+      const transitionErr = await transitionHelper('dispensing');
+      if (transitionErr) return transitionErr;
       await tx.dispenseTask.update({
         where: { id: task_id },
         data: { status: 'in_progress' },
@@ -364,7 +400,25 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   });
 
   if (!auditResult) return notFound('指定された調剤タスクが見つかりません');
-  if ('error' in auditResult) return validationError(auditResult.error);
+  if ('error' in auditResult) {
+    const auditError = auditResult as DispenseAuditMutationError;
+    if (auditError.error === 'self_audit') {
+      return validationError('ご自身が調剤した処方の監査はできません');
+    }
+    if (auditError.error === 'already_audited') {
+      return conflict('この調剤タスクは既に監査済みです');
+    }
+    if ('conflict' in auditError && auditError.conflict) {
+      return conflict(auditError.error);
+    }
+    return validationError(auditError.error);
+  }
+
+  await notifyWorkflowMutation({
+    orgId: req.orgId,
+    eventType: 'cycle_transition',
+    payload: { source: 'dispense_audits', task_id },
+  });
 
   return success(auditResult, 201);
 }, {

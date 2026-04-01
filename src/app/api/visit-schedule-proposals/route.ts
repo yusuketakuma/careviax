@@ -7,8 +7,116 @@ import {
   generateVisitScheduleProposalSchema,
   proposalStatusValues,
 } from '@/lib/validations/visit-schedule-proposal';
+import { CARE_RULES_2024, MEDICAL_RULES_2024, type BillingRuleSeed } from '@/server/services/billing-rules';
 import { generateVisitScheduleProposalDrafts } from '@/server/services/visit-schedule-planner';
 import { formatVisitWorkflowGateIssues, type VisitWorkflowGateIssue } from '@/server/services/management-plans';
+import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+
+function startOfMonth(value: Date) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
+}
+
+function readMonthlyCap(rule: BillingRuleSeed) {
+  return typeof rule.conditions.monthly_cap === 'number' ? rule.conditions.monthly_cap : null;
+}
+
+function resolveProposalPayerBasis(args: {
+  medicalInsuranceNumber?: string | null;
+  careInsuranceNumber?: string | null;
+  visitType: string;
+}) {
+  if (args.visitType === 'emergency') {
+    return args.medicalInsuranceNumber || args.careInsuranceNumber ? 'medical' : 'self_pay';
+  }
+  if (args.careInsuranceNumber) return 'care';
+  if (args.medicalInsuranceNumber) return 'medical';
+  return 'self_pay';
+}
+
+async function validateProposalBillingExclusions(args: {
+  orgId: string;
+  caseId: string;
+  visitType: string;
+  targetDate: Date;
+}) {
+  const careCase = await prisma.careCase.findFirst({
+    where: {
+      id: args.caseId,
+      org_id: args.orgId,
+    },
+    select: {
+      patient_id: true,
+      patient: {
+        select: {
+          medical_insurance_number: true,
+          care_insurance_number: true,
+        },
+      },
+    },
+  });
+
+  if (!careCase) {
+    return ['ケースが見つかりません'];
+  }
+
+  const payerBasis = resolveProposalPayerBasis({
+    medicalInsuranceNumber: careCase.patient.medical_insurance_number,
+    careInsuranceNumber: careCase.patient.care_insurance_number,
+    visitType: args.visitType,
+  });
+  if (payerBasis === 'self_pay') return [];
+
+  const targetRules = (payerBasis === 'care' ? CARE_RULES_2024 : MEDICAL_RULES_2024).filter(
+    (rule) => rule.rule_type === 'base' && rule.provider_scope === 'pharmacy',
+  );
+  const targetRuleCodes = new Set(targetRules.map((rule) => rule.code));
+  const sameMonthExclusiveCodes = new Set(
+    targetRules.flatMap((rule) => rule.exclusion_rules?.same_month_exclusive ?? []),
+  );
+  const targetMonth = startOfMonth(args.targetDate);
+
+  const existingCandidates = await prisma.billingCandidate.findMany({
+    where: {
+      org_id: args.orgId,
+      patient_id: careCase.patient_id,
+      billing_month: targetMonth,
+      status: {
+        in: ['candidate', 'confirmed', 'exported'],
+      },
+    },
+    select: {
+      billing_code: true,
+      billing_name: true,
+    },
+  });
+
+  const blockingMessages: string[] = [];
+  const sameMonthExclusiveMatches = existingCandidates.filter((candidate) =>
+    sameMonthExclusiveCodes.has(candidate.billing_code),
+  );
+  if (sameMonthExclusiveMatches.length > 0) {
+    blockingMessages.push(
+      `同月併算定不可の請求候補が存在します: ${sameMonthExclusiveMatches
+        .map((candidate) => candidate.billing_name)
+        .join(' / ')}`,
+    );
+  }
+
+  const monthlyCap = targetRules
+    .map(readMonthlyCap)
+    .filter((value): value is number => value != null)
+    .reduce<number | null>((min, value) => (min == null ? value : Math.min(min, value)), null);
+  const currentMonthVisitCount = existingCandidates.filter((candidate) =>
+    targetRuleCodes.has(candidate.billing_code),
+  ).length;
+  if (monthlyCap != null && currentMonthVisitCount >= monthlyCap) {
+    blockingMessages.push(
+      `同月の在宅訪問算定回数が上限に達しています（${currentMonthVisitCount}/${monthlyCap}件）`,
+    );
+  }
+
+  return blockingMessages;
+}
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const { searchParams } = new URL(req.url);
@@ -155,6 +263,16 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   });
   if (!refResult.ok) return refResult.response;
 
+  const billingConstraintMessages = await validateProposalBillingExclusions({
+    orgId: req.orgId,
+    caseId: parsed.data.case_id,
+    visitType: parsed.data.visit_type,
+    targetDate: parsed.data.start_date ? new Date(parsed.data.start_date) : new Date(),
+  });
+  if (billingConstraintMessages.length > 0) {
+    return validationError(billingConstraintMessages.join(' / '));
+  }
+
   let drafts;
   try {
     drafts = await generateVisitScheduleProposalDrafts({
@@ -208,6 +326,11 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         })
       )
     );
+  });
+
+  await notifyWorkflowMutation({
+    orgId: req.orgId,
+    payload: { source: 'visit_schedule_proposals_create', case_id: parsed.data.case_id },
   });
 
   return success({ data: proposals }, 201);

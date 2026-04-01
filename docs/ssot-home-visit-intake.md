@@ -167,7 +167,7 @@
 | アクティブ（下流で正常利用） | 13 | name, name_kana, birth_date, gender, phone, address, building_id, unit_name, medical/care_insurance_number, primary_disease（PatientCondition）, allergy_history（Patient.allergy_info）, care_manager/visiting_nurse（CareTeamLink） |
 | 部分的アクティブ（登録時のみ使用・更新後未反映） | 8 | reported_age, primary_contact_preference, contact_phone, contact_mobile, medication_support_methods, medication_support_other, swallowing_route, intake_note |
 | 表示のみ（PatientIntakeSummaryCard 以外で使われていない） | 30以上 | visit_before_contact_required, first_visit_date, first_visit_time_slot, parking_available, care_level, adl_level, dementia_level, narcotics_*, ent_*, special_medical_procedures, money_management 等 |
-| 未活用の主因 | — | visit-brief・preparation pack・スケジューラが `CareCase.required_visit_support` を読んでいない。notes テキストで埋め込んでも機械読取不可 |
+| 未活用の主因 | — | visit-brief・preparation pack・スケジューラは主要項目を参照済み。残課題は `PatientSchedulePreference` への未正規化項目と、一部 JSON 専用フィールドの下流利用不足 |
 
 ---
 

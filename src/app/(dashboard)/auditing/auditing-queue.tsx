@@ -3,7 +3,7 @@
 import { useMemo, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -154,10 +154,11 @@ const columns: ColumnDef<AuditTaskRow>[] = [
 
 export function AuditingQueue() {
   const orgId = useOrgId();
+  const isBootstrappingOrg = !orgId;
   const router = useRouter();
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading } = useRealtimeQuery({
     queryKey: ['dispense-audits', orgId],
     queryFn: async () => {
       const res = await fetch('/api/dispense-audits', {
@@ -168,6 +169,7 @@ export function AuditingQueue() {
     },
     enabled: !!orgId,
     refetchInterval: 30_000,
+    invalidateOn: ['cycle_transition'],
   });
 
   const tasks = useMemo(() => data?.data ?? [], [data]);
@@ -211,7 +213,7 @@ export function AuditingQueue() {
     <DataTable
       columns={columns}
       data={tasks}
-      isLoading={isLoading}
+      isLoading={isBootstrappingOrg || isLoading}
       caption="鑑査待ち一覧"
       selectedRowIndex={selectedIndex}
       onRowClick={(index) => setSelectedIndex(index)}

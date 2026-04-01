@@ -30,6 +30,15 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import { SET_METHOD_LABELS, SET_METHOD_OPTIONS } from '@/lib/prescription/set-methods';
+
+type PackagingSummary = {
+  packaging_method_name: string | null;
+  patient_default_method_label: string | null;
+  special_instructions: string[];
+  tag_labels: string[];
+};
 
 type SetPlanRow = {
   id: string;
@@ -37,8 +46,15 @@ type SetPlanRow = {
   target_period_start: string;
   target_period_end: string;
   set_method: string;
+  packaging_method_id: string | null;
+  packaging_summary_snapshot: PackagingSummary | null;
   notes: string | null;
   created_at: string;
+  packaging_method_ref?: {
+    id: string;
+    name: string;
+    description: string | null;
+  } | null;
   cycle: {
     id: string;
     overall_status: string;
@@ -69,11 +85,11 @@ type MedicationCycleRow = {
   overall_status: string;
 };
 
-const SET_METHOD_LABELS: Record<string, string> = {
-  facility_calendar: '施設カレンダー',
-  four_times_daily: '1日4回',
-  bedtime_only: '就寝時のみ',
-  custom: 'カスタム',
+type PackagingMethodRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
 };
 
 const AUDIT_RESULT_LABELS: Record<string, string> = {
@@ -96,6 +112,7 @@ type CreatePlanForm = {
   target_period_start: string;
   target_period_end: string;
   set_method: string;
+  packaging_method_id: string;
   notes: string;
 };
 
@@ -117,6 +134,7 @@ export function MedicationSetsContent() {
     target_period_start: '',
     target_period_end: '',
     set_method: 'facility_calendar',
+    packaging_method_id: '',
     notes: '',
   });
 
@@ -126,7 +144,7 @@ export function MedicationSetsContent() {
     reject_reason: '',
   });
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading } = useRealtimeQuery({
     queryKey: ['set-plans', orgId],
     queryFn: async () => {
       const res = await fetch('/api/set-plans', {
@@ -136,6 +154,7 @@ export function MedicationSetsContent() {
       return res.json() as Promise<{ data: SetPlanRow[] }>;
     },
     enabled: !!orgId,
+    invalidateOn: ['cycle_transition', 'workflow_refresh'],
   });
 
   const casesQuery = useQuery({
@@ -150,7 +169,7 @@ export function MedicationSetsContent() {
     enabled: !!orgId,
   });
 
-  const cyclesQuery = useQuery({
+  const cyclesQuery = useRealtimeQuery({
     queryKey: ['set-target-cycles', orgId],
     queryFn: async () => {
       const res = await fetch('/api/medication-cycles?limit=100', {
@@ -158,6 +177,19 @@ export function MedicationSetsContent() {
       });
       if (!res.ok) throw new Error('サイクル一覧の取得に失敗しました');
       return res.json() as Promise<{ data: MedicationCycleRow[] }>;
+    },
+    enabled: !!orgId,
+    invalidateOn: ['cycle_transition', 'workflow_refresh'],
+  });
+
+  const packagingMethodsQuery = useQuery({
+    queryKey: ['packaging-methods', orgId],
+    queryFn: async () => {
+      const res = await fetch('/api/packaging-methods', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('配薬方法マスタの取得に失敗しました');
+      return res.json() as Promise<{ data: PackagingMethodRow[] }>;
     },
     enabled: !!orgId,
   });
@@ -251,8 +283,9 @@ export function MedicationSetsContent() {
   const flaggedCases = cases.filter(
     (careCase) => careCase.required_visit_support?.set_pilot_enabled === true
   );
+  const packagingMethods = packagingMethodsQuery.data?.data.filter((method) => method.is_active) ?? [];
   const eligibleCycles = cycles.filter((cycle) => {
-    if (!['audited', 'setting'].includes(cycle.overall_status)) return false;
+    if (cycle.overall_status !== 'audited') return false;
     if (!flaggedCases.some((careCase) => careCase.id === cycle.case_id)) return false;
     return !(data?.data ?? []).some((plan) => plan.cycle_id === cycle.id);
   });
@@ -275,12 +308,27 @@ export function MedicationSetsContent() {
       {
         accessorKey: 'set_method',
         header: 'セット方式',
-        cell: ({ row }) => (
-          <span className="text-sm">
-            {SET_METHOD_LABELS[row.original.set_method] ??
-              row.original.set_method}
-          </span>
-        ),
+        cell: ({ row }) => {
+          const summary = row.original.packaging_summary_snapshot;
+          return (
+            <div className="space-y-1">
+              <div className="text-sm">
+                {SET_METHOD_LABELS[row.original.set_method as keyof typeof SET_METHOD_LABELS] ??
+                  row.original.set_method}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {summary?.packaging_method_name ??
+                  summary?.patient_default_method_label ??
+                  '配薬方法未設定'}
+              </div>
+              {summary?.special_instructions?.[0] ? (
+                <div className="text-xs text-muted-foreground line-clamp-1">
+                  {summary.special_instructions[0]}
+                </div>
+              ) : null}
+            </div>
+          );
+        },
       },
       {
         id: 'period',
@@ -424,7 +472,7 @@ export function MedicationSetsContent() {
         <div className="rounded-xl border border-border/70 bg-muted/10 p-4">
           <p className="text-sm font-medium text-foreground">計画候補</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            鑑査済みまたは setting のサイクルから、未計画のものだけを表示しています。
+            鑑査済みで未計画のサイクルだけを表示しています。
           </p>
           <div className="mt-3 space-y-2">
             {eligibleCycles.length === 0 ? (
@@ -461,6 +509,7 @@ export function MedicationSetsContent() {
               target_period_start: '',
               target_period_end: '',
               set_method: 'facility_calendar',
+              packaging_method_id: '',
               notes: '',
             });
             setShowCreateDialog(true);
@@ -499,7 +548,10 @@ export function MedicationSetsContent() {
                     {' — '}
                     {format(parseISO(plan.target_period_end), 'M/d', { locale: ja })}
                     {' / '}
-                    {SET_METHOD_LABELS[plan.set_method] ?? plan.set_method}
+                    {SET_METHOD_LABELS[plan.set_method as keyof typeof SET_METHOD_LABELS] ?? plan.set_method}
+                    {plan.packaging_summary_snapshot?.packaging_method_name
+                      ? ` / ${plan.packaging_summary_snapshot.packaging_method_name}`
+                      : ''}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -602,9 +654,34 @@ export function MedicationSetsContent() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(SET_METHOD_LABELS).map(([k, label]) => (
-                    <SelectItem key={k} value={k}>
-                      {label}
+                  {SET_METHOD_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="packaging_method_id">配薬方法</Label>
+              <Select
+                value={createForm.packaging_method_id || 'none'}
+                onValueChange={(value) => {
+                  const nextPackagingMethodId = value === 'none' ? '' : String(value);
+                  setCreateForm((f) => ({
+                    ...f,
+                    packaging_method_id: nextPackagingMethodId,
+                  }));
+                }}
+              >
+                <SelectTrigger id="packaging_method_id">
+                  <SelectValue placeholder="患者設定を使用" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">患者設定を使用</SelectItem>
+                  {packagingMethods.map((method) => (
+                    <SelectItem key={method.id} value={method.id}>
+                      {method.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

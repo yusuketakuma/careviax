@@ -61,6 +61,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import {
   formatOfflineCacheUpdatedAt,
   isOfflineCacheFresh,
@@ -78,6 +79,17 @@ import {
 import { VisitCardMobile } from '@/components/features/visits/visit-card-mobile';
 import { VisitRouteMap } from '@/components/features/visits/visit-route-map';
 import { ScheduleMetricCard } from './schedule-metric-card';
+import {
+  buildOrderedFacilityScheduleIds,
+  formatDistanceLabel,
+  formatDurationLabel,
+  formatEtaLabel,
+  formatMinutesLabel,
+  minutesFromTimestamp,
+  roundDownToSlot,
+  roundUpToSlot,
+} from './calendar-view.helpers';
+import { fetchVisitSchedulesWindow } from './visit-schedule-fetch.helpers';
 import {
   addressOfPatient,
   CONTACT_STATUS_LABELS,
@@ -108,6 +120,10 @@ import {
   type VisitType,
   VISIT_TYPE_LABELS,
 } from './day-view.shared';
+import {
+  OnboardingWarningBadges,
+  ScheduleBoardSkeleton,
+} from './schedule-day-view.chrome';
 
 type CachedVisitBriefCard = {
   scheduleId: string;
@@ -183,116 +199,16 @@ const FACILITY_VISIT_DAY_WEEKDAY_OPTIONS = [
 const GANTT_SLOT_MINUTES = 30;
 const GANTT_DEFAULT_START_MINUTES = 8 * 60;
 const GANTT_DEFAULT_END_MINUTES = 18 * 60;
-const GANTT_ROW_HEIGHT = 44;
 const ROUTE_TRAVEL_MODE_LABELS: Record<RouteTravelMode, string> = {
   DRIVE: '車',
   BICYCLE: '自転車',
   WALK: '徒歩',
   TWO_WHEELER: 'バイク',
 };
-
-function minutesFromTimestamp(value: string | null, fallback: number) {
-  if (!value) return fallback;
-  const parsed = parseISO(value);
-  return parsed.getHours() * 60 + parsed.getMinutes();
-}
-
-function roundDownToSlot(value: number) {
-  return Math.floor(value / GANTT_SLOT_MINUTES) * GANTT_SLOT_MINUTES;
-}
-
-function roundUpToSlot(value: number) {
-  return Math.ceil(value / GANTT_SLOT_MINUTES) * GANTT_SLOT_MINUTES;
-}
-
-function buildOrderedFacilityScheduleIds(
-  group: FacilityTrackerGroup,
-  routeDraft: Record<string, string>
-) {
-  return [...group.patients]
-    .sort((left, right) => {
-      const leftOrder = Number.parseInt(routeDraft[left.scheduleId] ?? '', 10);
-      const rightOrder = Number.parseInt(routeDraft[right.scheduleId] ?? '', 10);
-      const resolvedLeft = Number.isNaN(leftOrder) ? Number.MAX_SAFE_INTEGER : leftOrder;
-      const resolvedRight = Number.isNaN(rightOrder) ? Number.MAX_SAFE_INTEGER : rightOrder;
-      if (resolvedLeft !== resolvedRight) return resolvedLeft - resolvedRight;
-
-      const leftUnit = left.unitName ?? '';
-      const rightUnit = right.unitName ?? '';
-      return leftUnit.localeCompare(rightUnit, 'ja', {
-        numeric: true,
-        sensitivity: 'base',
-      });
-    })
-    .map((patient) => patient.scheduleId);
-}
-
-function formatMinutesLabel(value: number) {
-  const hours = Math.floor(value / 60);
-  const minutes = value % 60;
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-}
-
-function formatDistanceLabel(value: number | null) {
-  if (value == null) return '距離未取得';
-  if (value >= 1000) return `${(value / 1000).toFixed(1)}km`;
-  return `${value}m`;
-}
-
-function formatDurationLabel(value: number | null) {
-  if (value == null) return '時間未取得';
-  const hours = Math.floor(value / 3600);
-  const minutes = Math.round((value % 3600) / 60);
-  if (hours > 0) return `${hours}時間${minutes}分`;
-  return `${minutes}分`;
-}
-
-function formatEtaLabel(
-  baseDate: string,
-  departureTime: string | null,
-  offsetSeconds: number | null,
-  fallbackTime: string | null,
-) {
-  if (offsetSeconds == null) return fallbackTime ? timeLabel(fallbackTime, null) : null;
-  const normalizedDepartureTime = departureTime
-    ? format(parseISO(departureTime), 'HH:mm:ss')
-    : '09:00:00';
-  const base = parseISO(`${baseDate}T${normalizedDepartureTime}`);
-  const shifted = new Date(base.getTime() + offsetSeconds * 1000);
-  return format(shifted, 'HH:mm');
-}
-
-type OnboardingReadiness = {
-  consent_obtained: boolean;
-  first_visit_doc_delivered: boolean;
-  emergency_contact_set: boolean;
-};
-
-function OnboardingWarningBadges({ readiness }: { readiness: OnboardingReadiness }) {
-  const warnings = [
-    !readiness.consent_obtained && (
-      <Badge key="consent" variant="destructive" className="text-xs">
-        同意未取得
-      </Badge>
-    ),
-    !readiness.first_visit_doc_delivered && (
-      <Badge key="fvd" variant="outline" className="text-xs border-orange-500 text-orange-600">
-        初回文書未交付
-      </Badge>
-    ),
-    !readiness.emergency_contact_set && (
-      <Badge key="ec" variant="outline" className="text-xs border-yellow-500 text-yellow-600">
-        緊急連絡先未登録
-      </Badge>
-    ),
-  ].filter(Boolean);
-  if (warnings.length === 0) return null;
-  return <div className="flex flex-wrap gap-1.5">{warnings}</div>;
-}
-
 export function ScheduleDayView() {
   const router = useRouter();
   const orgId = useOrgId();
+  const isBootstrappingOrg = !orgId;
   const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState(() =>
     format(new Date(), 'yyyy-MM-dd')
@@ -455,7 +371,7 @@ export function ScheduleDayView() {
     enabled: !!orgId,
   });
 
-  const { data: pharmacistsData } = useQuery({
+  const { data: pharmacistsData, isLoading: pharmacistsLoading } = useQuery({
     queryKey: ['pharmacists', orgId, 'schedule-board'],
     queryFn: async () => {
       const res = await fetch('/api/pharmacists', {
@@ -467,7 +383,7 @@ export function ScheduleDayView() {
     enabled: !!orgId,
   });
 
-  const { data: proposalsData, isLoading: proposalsLoading } = useQuery({
+  const { data: proposalsData, isLoading: proposalsLoading } = useRealtimeQuery({
     queryKey: [
       'visit-schedule-proposals',
       orgId,
@@ -486,9 +402,10 @@ export function ScheduleDayView() {
       return res.json() as Promise<{ data: Proposal[] }>;
     },
     enabled: !!orgId,
+    invalidateOn: ['workflow_refresh'],
   });
 
-  const { data: schedulesData, isLoading: schedulesLoading } = useQuery({
+  const { data: schedulesData, isLoading: schedulesLoading } = useRealtimeQuery({
     queryKey: [
       'visit-schedules',
       'week-board',
@@ -497,21 +414,20 @@ export function ScheduleDayView() {
       format(weekEnd, 'yyyy-MM-dd'),
     ],
     queryFn: async () => {
-      const params = new URLSearchParams({
-        date_from: format(weekStart, 'yyyy-MM-dd'),
-        date_to: format(weekEnd, 'yyyy-MM-dd'),
-        limit: '200',
+      const data = await fetchVisitSchedulesWindow<VisitSchedule>({
+        orgId,
+        dateFrom: format(weekStart, 'yyyy-MM-dd'),
+        dateTo: format(weekEnd, 'yyyy-MM-dd'),
       });
-      const res = await fetch(`/api/visit-schedules?${params}`, {
-        headers: { 'x-org-id': orgId },
-      });
-      if (!res.ok) throw new Error('訪問予定の取得に失敗しました');
-      return res.json() as Promise<{ data: VisitSchedule[] }>;
+      return { data };
     },
     enabled: !!orgId,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    invalidateOn: ['workflow_refresh'],
   });
 
-  const { data: tasksData, isLoading: tasksLoading } = useQuery({
+  const { data: tasksData, isLoading: tasksLoading } = useRealtimeQuery({
     queryKey: ['tasks', 'schedule-board', orgId],
     queryFn: async () => {
       const params = new URLSearchParams({ status: 'pending' });
@@ -522,9 +438,10 @@ export function ScheduleDayView() {
       return res.json() as Promise<{ data: ScheduleTask[] }>;
     },
     enabled: !!orgId,
+    invalidateOn: ['workflow_refresh'],
   });
 
-  const { data: callbackTasksData, isLoading: callbackTasksLoading } = useQuery({
+  const { data: callbackTasksData, isLoading: callbackTasksLoading } = useRealtimeQuery({
     queryKey: ['tasks', 'visit-contact-followup', orgId],
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -537,6 +454,7 @@ export function ScheduleDayView() {
       return res.json() as Promise<{ data: ScheduleTask[] }>;
     },
     enabled: !!orgId,
+    invalidateOn: ['workflow_refresh'],
   });
 
   const cases = useMemo(
@@ -784,6 +702,20 @@ export function ScheduleDayView() {
       ) as Record<string, Record<string, string>>,
     [facilityTracker]
   );
+  const isScheduleBoardLoading =
+    isBootstrappingOrg ||
+    ((casesLoading ||
+      pharmacistsLoading ||
+      proposalsLoading ||
+      schedulesLoading ||
+      tasksLoading ||
+      callbackTasksLoading) &&
+      !casesData &&
+      !pharmacistsData &&
+      !proposalsData &&
+      !schedulesData &&
+      !tasksData &&
+      !callbackTasksData);
   const activeFacilityFilter =
     facilityFilter && facilityTracker.some((group) => group.key === facilityFilter)
       ? facilityFilter
@@ -1021,11 +953,11 @@ export function ScheduleDayView() {
     return {
       startMinutes: Math.max(
         6 * 60,
-        roundDownToSlot(earliest - GANTT_SLOT_MINUTES)
+        roundDownToSlot(earliest - GANTT_SLOT_MINUTES, GANTT_SLOT_MINUTES)
       ),
       endMinutes: Math.min(
         22 * 60,
-        roundUpToSlot(latest + GANTT_SLOT_MINUTES)
+        roundUpToSlot(latest + GANTT_SLOT_MINUTES, GANTT_SLOT_MINUTES)
       ),
     };
   }, [visibleSchedules]);
@@ -1040,7 +972,6 @@ export function ScheduleDayView() {
     }
     return slots;
   }, [ganttWindow.endMinutes, ganttWindow.startMinutes]);
-  const ganttHeight = ganttSlots.length * GANTT_ROW_HEIGHT;
   const ganttColumns = useMemo(() => {
     const columns = new Map<
       string,
@@ -1104,6 +1035,49 @@ export function ScheduleDayView() {
         left.pharmacistName.localeCompare(right.pharmacistName, 'ja')
       );
   }, [ganttWindow.startMinutes, pharmacistNameById, visibleSchedules]);
+  const ganttTableColumns = useMemo(
+    () =>
+      ganttColumns.map((column) => {
+        const scheduleStarts = new Map<
+          number,
+          {
+            schedule: VisitSchedule & {
+              blockStartMinutes: number;
+              blockEndMinutes: number;
+            };
+            span: number;
+          }
+        >();
+        const coveredSlots = new Set<number>();
+
+        for (const schedule of column.schedules) {
+          const startIndex = Math.max(
+            0,
+            Math.floor((schedule.blockStartMinutes - ganttWindow.startMinutes) / GANTT_SLOT_MINUTES)
+          );
+          const endIndex = Math.min(
+            ganttSlots.length,
+            Math.max(
+              startIndex + 1,
+              Math.ceil((schedule.blockEndMinutes - ganttWindow.startMinutes) / GANTT_SLOT_MINUTES)
+            )
+          );
+          const span = Math.max(1, endIndex - startIndex);
+
+          scheduleStarts.set(startIndex, { schedule, span });
+          for (let index = startIndex + 1; index < startIndex + span; index += 1) {
+            coveredSlots.add(index);
+          }
+        }
+
+        return {
+          ...column,
+          scheduleStarts,
+          coveredSlots,
+        };
+      }),
+    [ganttColumns, ganttSlots.length, ganttWindow.startMinutes]
+  );
 
   function ganttBlockClass(
     schedule: VisitSchedule & {
@@ -1835,6 +1809,10 @@ export function ScheduleDayView() {
     },
   });
 
+  if (isScheduleBoardLoading) {
+    return <ScheduleBoardSkeleton />;
+  }
+
   return (
     <div className="space-y-6">
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
@@ -2139,6 +2117,7 @@ export function ScheduleDayView() {
                 key={schedule.id}
                 id={schedule.id}
                 patientName={schedule.case_.patient.name}
+                patientHref={`/patients/${schedule.case_.patient.id}`}
                 address={addressOfPatient(schedule)}
                 lat={schedule.case_.patient.residences[0]?.lat ?? undefined}
                 lng={schedule.case_.patient.residences[0]?.lng ?? undefined}
@@ -3386,125 +3365,106 @@ export function ScheduleDayView() {
                     <Badge variant="outline">横向き推奨</Badge>
                   </div>
                   <div className="overflow-x-auto">
-                    <div
-                      className="grid min-w-[720px] gap-3"
-                      style={{
-                        gridTemplateColumns: `72px repeat(${ganttColumns.length}, minmax(220px, 1fr))`,
-                      }}
-                    >
-                      <div className="rounded-xl border border-dashed border-border bg-muted/20 p-3 text-xs text-muted-foreground">
-                        時間
-                      </div>
-                      {ganttColumns.map((column) => (
-                        <div
-                          key={column.pharmacistId}
-                          className="rounded-xl border border-border bg-muted/20 p-3"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <p className="text-sm font-medium text-foreground">
-                                {column.pharmacistName}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {column.siteName ?? '拠点未設定'}
-                              </p>
-                            </div>
-                            <Badge variant="outline">{column.schedules.length}件</Badge>
-                          </div>
-                        </div>
-                      ))}
-
-                      <div
-                        className="relative rounded-xl border border-border bg-muted/10"
-                        style={{ height: `${ganttHeight}px` }}
-                      >
-                        {ganttSlots.map((slot) => (
-                          <div
-                            key={slot}
-                            className="absolute inset-x-0 border-t border-dashed border-border/70 px-2 pt-1 text-[11px] text-muted-foreground"
-                            style={{
-                              top: `${((slot - ganttWindow.startMinutes) / GANTT_SLOT_MINUTES) * GANTT_ROW_HEIGHT}px`,
-                              height: `${GANTT_ROW_HEIGHT}px`,
-                            }}
-                          >
-                            {formatMinutesLabel(slot)}
-                          </div>
-                        ))}
-                      </div>
-                      {ganttColumns.map((column) => (
-                        <div
-                          key={`${column.pharmacistId}-timeline`}
-                          className="relative rounded-xl border border-border bg-background"
-                          style={{ height: `${ganttHeight}px` }}
-                        >
-                          {ganttSlots.map((slot) => (
-                            <div
-                              key={`${column.pharmacistId}-${slot}`}
-                              className="absolute inset-x-0 border-t border-dashed border-border/70"
-                              style={{
-                                top: `${((slot - ganttWindow.startMinutes) / GANTT_SLOT_MINUTES) * GANTT_ROW_HEIGHT}px`,
-                                height: `${GANTT_ROW_HEIGHT}px`,
-                              }}
-                            />
-                          ))}
-                          {column.schedules.map((schedule) => {
-                            const top =
-                              ((schedule.blockStartMinutes - ganttWindow.startMinutes) /
-                                GANTT_SLOT_MINUTES) *
-                              GANTT_ROW_HEIGHT;
-                            const height = Math.max(
-                              ((schedule.blockEndMinutes - schedule.blockStartMinutes) /
-                                GANTT_SLOT_MINUTES) *
-                                GANTT_ROW_HEIGHT -
-                                8,
-                              42
-                            );
-
-                            return (
-                              <div
-                                key={schedule.id}
-                                className={[
-                                  'absolute inset-x-2 rounded-2xl border px-3 py-2 shadow-sm',
-                                  ganttBlockClass(schedule),
-                                ].join(' ')}
-                                style={{
-                                  top: `${top + 4}px`,
-                                  height: `${height}px`,
-                                }}
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <p className="truncate text-sm font-medium">
-                                      {schedule.case_.patient.name}
-                                    </p>
-                                    <p className="text-[11px] opacity-80">
-                                      {timeLabel(
-                                        schedule.time_window_start,
-                                        schedule.time_window_end
-                                      )}
-                                    </p>
-                                  </div>
-                                  <Badge variant="outline" className="shrink-0 bg-white/70">
-                                    #{schedule.route_order ?? '-'}
-                                  </Badge>
+                    <table className="min-w-[960px] table-fixed border-separate border-spacing-3">
+                      <thead>
+                        <tr>
+                          <th className="w-18 rounded-xl border border-dashed border-border bg-muted/20 px-3 py-3 text-left text-xs font-medium text-muted-foreground">
+                            時間
+                          </th>
+                          {ganttTableColumns.map((column) => (
+                            <th
+                              key={column.pharmacistId}
+                              className="w-56 min-w-56 rounded-xl border border-border bg-muted/20 px-3 py-3 text-left"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div>
+                                  <p className="text-sm font-medium text-foreground">
+                                    {column.pharmacistName}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {column.siteName ?? '拠点未設定'}
+                                  </p>
                                 </div>
-                                <div className="mt-2 flex flex-wrap gap-1">
-                                  <Badge variant="outline" className="bg-white/70">
-                                    {SCHEDULE_STATUS_LABELS[schedule.schedule_status]}
-                                  </Badge>
-                                  <Badge variant="outline" className="bg-white/70">
-                                    {schedule.preparation?.prepared_at ? '準備完了' : '準備未了'}
-                                  </Badge>
-                                </div>
-                                <p className="mt-2 line-clamp-2 text-[11px] opacity-80">
-                                  {addressOfPatient(schedule)}
-                                </p>
+                                <Badge variant="outline">{column.schedules.length}件</Badge>
                               </div>
-                            );
-                          })}
-                        </div>
-                      ))}
-                    </div>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ganttSlots.map((slot, slotIndex) => (
+                          <tr key={slot} className="align-top">
+                            <th className="h-11 rounded-xl border border-border bg-muted/10 px-3 py-2 text-left text-[11px] font-medium text-muted-foreground">
+                              {formatMinutesLabel(slot)}
+                            </th>
+                            {ganttTableColumns.map((column) => {
+                              const scheduleCell = column.scheduleStarts.get(slotIndex);
+                              if (scheduleCell) {
+                                return (
+                                  <td
+                                    key={`${column.pharmacistId}-${slot}`}
+                                    rowSpan={scheduleCell.span}
+                                    className="w-56 min-w-56 align-top"
+                                  >
+                                    <div
+                                      className={[
+                                        'flex h-full min-h-[44px] flex-col rounded-2xl border px-3 py-2 shadow-sm',
+                                        ganttBlockClass(scheduleCell.schedule),
+                                      ].join(' ')}
+                                    >
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                          <p className="truncate text-sm font-medium">
+                                            {scheduleCell.schedule.case_.patient.name}
+                                          </p>
+                                          <p className="text-[11px] opacity-80">
+                                            {timeLabel(
+                                              scheduleCell.schedule.time_window_start,
+                                              scheduleCell.schedule.time_window_end
+                                            )}
+                                          </p>
+                                        </div>
+                                        <Badge variant="outline" className="shrink-0 bg-white/70">
+                                          #{scheduleCell.schedule.route_order ?? '-'}
+                                        </Badge>
+                                      </div>
+                                      <div className="mt-2 flex flex-wrap gap-1">
+                                        <Badge variant="outline" className="bg-white/70">
+                                          {
+                                            SCHEDULE_STATUS_LABELS[
+                                              scheduleCell.schedule.schedule_status
+                                            ]
+                                          }
+                                        </Badge>
+                                        <Badge variant="outline" className="bg-white/70">
+                                          {scheduleCell.schedule.preparation?.prepared_at
+                                            ? '準備完了'
+                                            : '準備未了'}
+                                        </Badge>
+                                      </div>
+                                      <p className="mt-2 line-clamp-2 text-[11px] opacity-80">
+                                        {addressOfPatient(scheduleCell.schedule)}
+                                      </p>
+                                    </div>
+                                  </td>
+                                );
+                              }
+
+                              if (column.coveredSlots.has(slotIndex)) {
+                                return null;
+                              }
+
+                              return (
+                                <td
+                                  key={`${column.pharmacistId}-${slot}`}
+                                  className="h-11 w-56 min-w-56 rounded-xl border border-dashed border-border/70 bg-background"
+                                />
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </CardContent>
               </Card>

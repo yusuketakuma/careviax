@@ -47,6 +47,27 @@ type AlertRuleCondition = {
   therapeutic_categories?: string[];
 };
 
+type ManagedAlertType =
+  | 'interaction'
+  | 'duplicate'
+  | 'allergy_cross'
+  | 'renal_dose'
+  | 'pim_elderly'
+  | 'high_risk'
+  | 'narcotic'
+  | 'max_days';
+
+const MANAGED_ALERT_TYPES: ManagedAlertType[] = [
+  'interaction',
+  'duplicate',
+  'allergy_cross',
+  'renal_dose',
+  'pim_elderly',
+  'high_risk',
+  'narcotic',
+  'max_days',
+];
+
 type DoPrescriptionRiskProfile = {
   key: string;
   label: string;
@@ -78,6 +99,30 @@ const DO_PRESCRIPTION_RISK_PROFILES: DoPrescriptionRiskProfile[] = [
     minimumContinuedDays: 28,
   },
 ];
+
+async function resolveManagedAlertTypeStates() {
+  const configuredRules = await prisma.drugAlertRule.findMany({
+    where: {
+      alert_type: {
+        in: MANAGED_ALERT_TYPES,
+      },
+    },
+    select: {
+      alert_type: true,
+      is_active: true,
+    },
+  });
+
+  const states = new Map<ManagedAlertType, boolean>();
+  for (const alertType of MANAGED_ALERT_TYPES) {
+    const matchingRules = configuredRules.filter((rule) => rule.alert_type === alertType);
+    states.set(
+      alertType,
+      matchingRules.length === 0 ? true : matchingRules.some((rule) => rule.is_active),
+    );
+  }
+  return states;
+}
 
 function buildComparableLineKey(line: Pick<PrescriptionLine, 'drug_name' | 'drug_code' | 'dose' | 'frequency' | 'days'>) {
   return [
@@ -782,6 +827,8 @@ export async function checkDispenseAlerts(
   cycleId: string,
   patientId: string,
 ): Promise<CdsAlert[]> {
+  const managedAlertStates = await resolveManagedAlertTypeStates();
+
   // Fetch prescription lines for this cycle
   const prescriptionLines = await prisma.prescriptionLine.findMany({
     where: {
@@ -833,15 +880,31 @@ export async function checkDispenseAlerts(
 
   // Run all checks in parallel
   const results = await Promise.all([
-    checkInteractions(prescriptionLines, currentMeds, masterByMedId),
-    checkDuplicates(prescriptionLines, currentMeds, masterByMedId),
-    checkMaxDays(prescriptionLines),
-    checkAllergyReactions(prescriptionLines, patientId, orgId),
-    checkNarcoticFlags(prescriptionLines),
-    checkHighRiskDrugs(prescriptionLines),
+    managedAlertStates.get('interaction')
+      ? checkInteractions(prescriptionLines, currentMeds, masterByMedId)
+      : Promise.resolve([]),
+    managedAlertStates.get('duplicate')
+      ? checkDuplicates(prescriptionLines, currentMeds, masterByMedId)
+      : Promise.resolve([]),
+    managedAlertStates.get('max_days')
+      ? checkMaxDays(prescriptionLines)
+      : Promise.resolve([]),
+    managedAlertStates.get('allergy_cross')
+      ? checkAllergyReactions(prescriptionLines, patientId, orgId)
+      : Promise.resolve([]),
+    managedAlertStates.get('narcotic')
+      ? checkNarcoticFlags(prescriptionLines)
+      : Promise.resolve([]),
+    managedAlertStates.get('high_risk')
+      ? checkHighRiskDrugs(prescriptionLines)
+      : Promise.resolve([]),
     checkDoPrescriptionRisk(orgId, cycleId, patientId),
-    checkElderlyPIM(prescriptionLines, patientId, orgId),
-    checkRenalDoseAdjustment(prescriptionLines, patientId, orgId),
+    managedAlertStates.get('pim_elderly')
+      ? checkElderlyPIM(prescriptionLines, patientId, orgId)
+      : Promise.resolve([]),
+    managedAlertStates.get('renal_dose')
+      ? checkRenalDoseAdjustment(prescriptionLines, patientId, orgId)
+      : Promise.resolve([]),
   ]);
 
   return results.flat();

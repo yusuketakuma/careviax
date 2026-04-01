@@ -25,6 +25,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { StaffKpiPanel } from '@/app/(dashboard)/admin/staff/staff-kpi-panel';
 
 type WorkflowData = {
   route_control: {
@@ -557,6 +558,18 @@ export default function PerformancePage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">薬剤師別 KPI と負荷バランス</CardTitle>
+          <CardDescription>
+            月間訪問数、担当患者数、提出率、勤務日数から偏りを確認します
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <StaffKpiPanel />
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <Card>

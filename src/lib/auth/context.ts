@@ -30,6 +30,14 @@ type RequireApiKeyOrAuthContextOptions = RequireAuthContextOptions & {
   apiKeyHeader?: string;
 };
 
+async function resolveOrgIdFromUserId(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { org_id: true },
+  });
+  return user?.org_id ?? null;
+}
+
 function resolveRequestPath(request: NextRequest): string {
   if (request.nextUrl?.pathname) {
     return request.nextUrl.pathname;
@@ -60,7 +68,7 @@ export async function getAuthContext(request: NextRequest): Promise<AuthContext 
   const userId = session?.user?.id ?? resolvedUser?.id;
   if (!userId) return null;
 
-  const orgId = requestedOrgId || resolvedUser?.org_id;
+  const orgId = requestedOrgId || resolvedUser?.org_id || (await resolveOrgIdFromUserId(userId));
   if (!orgId) return null;
 
   const membership = await prisma.membership.findFirst({
@@ -121,7 +129,7 @@ export async function requireAuthContext(
     };
   }
 
-  const orgId = requestedOrgId || resolvedUser?.org_id;
+  const orgId = requestedOrgId || resolvedUser?.org_id || (await resolveOrgIdFromUserId(userId));
   if (!orgId) {
     logSecurityEvent({
       event_type: 'auth_failure',

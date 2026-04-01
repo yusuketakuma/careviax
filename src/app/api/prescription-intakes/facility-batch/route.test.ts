@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { format } from 'date-fns';
 import type { NextRequest } from 'next/server';
+
+const TODAY = format(new Date(), 'yyyy-MM-dd');
 
 const { withAuthMock, withOrgContextMock } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
@@ -75,7 +78,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
     const response = await POST(
       createRequest({
         source_type: 'facility_batch',
-        prescribed_date: '2026-03-28',
+        prescribed_date: TODAY,
         entries: [
           {
             case_id: 'case_1',
@@ -165,7 +168,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
     const response = await POST(
       createRequest({
         source_type: 'facility_batch',
-        prescribed_date: '2026-03-28',
+        prescribed_date: TODAY,
         prescriber_name: '田中 一郎',
         entries: [
           {

@@ -5,6 +5,7 @@ const {
   conferenceNoteFindFirstMock,
   conferenceNoteUpdateMock,
   careCaseFindFirstMock,
+  careCaseUpdateMock,
   taskFindManyMock,
   taskCreateManyMock,
   billingCandidateUpsertMock,
@@ -24,6 +25,7 @@ const {
   conferenceNoteFindFirstMock: vi.fn(),
   conferenceNoteUpdateMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
+  careCaseUpdateMock: vi.fn(),
   taskFindManyMock: vi.fn(),
   taskCreateManyMock: vi.fn(),
   billingCandidateUpsertMock: vi.fn(),
@@ -146,6 +148,19 @@ describe('/api/conference-notes/[id] PATCH', () => {
       id: 'case_1',
       patient_id: 'patient_1',
       primary_pharmacist_id: 'pharm_1',
+      required_visit_support: null,
+    });
+    careCaseUpdateMock.mockResolvedValue({
+      id: 'case_1',
+      required_visit_support: {
+        conference_sync: {
+          service_manager: {
+            care_plan_update: {
+              summary: '服薬支援を強化',
+            },
+          },
+        },
+      },
     });
     taskFindManyMock.mockResolvedValue([]);
     taskCreateManyMock.mockResolvedValue({ count: 1 });
@@ -195,6 +210,7 @@ describe('/api/conference-notes/[id] PATCH', () => {
         },
         careCase: {
           findFirst: careCaseFindFirstMock,
+          update: careCaseUpdateMock,
         },
         task: {
           findMany: taskFindManyMock,
@@ -282,6 +298,21 @@ describe('/api/conference-notes/[id] PATCH', () => {
         }),
       })
     );
+    expect(careCaseUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'case_1' },
+      data: {
+        required_visit_support: expect.objectContaining({
+          conference_sync: expect.objectContaining({
+            service_manager: expect.objectContaining({
+              care_plan_update: expect.objectContaining({
+                note_id: 'note_1',
+                summary: '服薬支援を強化',
+              }),
+            }),
+          }),
+        }),
+      },
+    });
     expect(billingCandidateUpsertMock).toHaveBeenCalledWith(
       expect.objectContaining({
         update: expect.objectContaining({

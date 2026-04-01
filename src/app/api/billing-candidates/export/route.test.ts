@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const { withOrgContextMock } = vi.hoisted(() => ({
+const { withOrgContextMock, recordDataExportAuditMock } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
+  recordDataExportAuditMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
@@ -13,11 +14,16 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/server/services/export-audit', () => ({
+  recordDataExportAudit: recordDataExportAuditMock,
+}));
+
 import { GET } from './route';
 
 describe('/api/billing-candidates/export GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    recordDataExportAuditMock.mockResolvedValue(undefined);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         billingCandidate: {
@@ -82,5 +88,13 @@ describe('/api/billing-candidates/export GET', () => {
     expect(csv).toContain('"building_a"');
     expect(csv).toContain('"201"');
     expect(csv).toContain('"1149019|2149001"');
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        targetType: 'billing_candidate',
+        format: 'csv',
+        recordCount: 1,
+      }),
+    );
   });
 });

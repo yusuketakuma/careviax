@@ -17,6 +17,13 @@ const baseMemberFields = {
   coverage_area: z.array(z.string()).default([]),
 } as const;
 
+const permissionOverrideFields = {
+  can_dispense: z.boolean().optional(),
+  can_audit_dispense: z.boolean().optional(),
+  can_set: z.boolean().optional(),
+  can_audit_set: z.boolean().optional(),
+} as const;
+
 export const createPharmacistSchema = z
   .object({
     ...baseMemberFields,
@@ -37,6 +44,7 @@ const updateMemberSchema = z
   .object({
     action: z.literal('update'),
     ...baseMemberFields,
+    ...permissionOverrideFields,
   })
   .superRefine((data, ctx) => {
     if (roleRequiresSite(data.role) && !data.site_id) {

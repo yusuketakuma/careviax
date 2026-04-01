@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { batchResolveNames } from '@/lib/utils/name-resolver';
 import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
@@ -139,20 +140,7 @@ export async function GET(
   const userIds = Array.from(
     new Set([record.pharmacist_id, latestAudit?.actor_id].filter(Boolean) as string[])
   );
-  const users =
-    userIds.length === 0
-      ? []
-      : await prisma.user.findMany({
-          where: {
-            org_id: ctx.orgId,
-            id: { in: userIds },
-          },
-          select: {
-            id: true,
-            name: true,
-          },
-        });
-  const userById = new Map(users.map((user) => [user.id, user.name]));
+  const userById = await batchResolveNames(prisma, ctx.orgId, userIds);
 
   const intakeData = getHomeVisitIntake(activeCase?.required_visit_support ?? null);
   const visitBeforeContactRequired =

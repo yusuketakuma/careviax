@@ -4,6 +4,7 @@ enum PrescriptionSourceType {
   e_prescription
   facility_batch
   refill
+  qr_scan
 }
 
 enum MedicationCycleStatus {
@@ -38,6 +39,17 @@ enum SetAuditResult {
   rejected
 }
 
+enum PackagingInstructionTag {
+  cold_storage
+  narcotic
+  half_tablet
+  crush_prohibited
+  separate_pack
+  unit_dose
+  staple_required
+  label_required
+}
+
 model MedicationCycle {
   id                  String                @id @default(cuid())
   org_id              String
@@ -60,10 +72,26 @@ model MedicationCycle {
   workflow_exceptions  WorkflowException[]
   visit_schedules      VisitSchedule[]
   visit_schedule_proposals VisitScheduleProposal[]
+  transition_logs          CycleTransitionLog[]
 
   @@index([org_id])
   @@index([case_id])
   @@index([overall_status])
+}
+
+model CycleTransitionLog {
+  id          String          @id @default(cuid())
+  org_id      String
+  cycle_id    String
+  cycle       MedicationCycle @relation(fields: [cycle_id], references: [id])
+  from_status String
+  to_status   String
+  actor_id    String
+  note        String?
+  created_at  DateTime        @default(now())
+
+  @@index([org_id])
+  @@index([cycle_id, created_at])
 }
 
 model PrescriptionIntake {
@@ -112,13 +140,16 @@ model PrescriptionLine {
   unit                         String?
   is_generic                   Boolean            @default(false)
   is_generic_name_prescription Boolean            @default(false)
+  packaging_method             PackagingMethod?
   packaging_instructions       String?
+  packaging_instruction_tags   PackagingInstructionTag[] @default([])
   notes                        String?
   // 剤形分類・調剤方法
   route                        String?  // internal(内服)/external(外用)/injection(注射)/other
   dispensing_method             String?  // standard(通常)/unit_dose(一包化)/crushed(粉砕)/other
   start_date                   DateTime? @db.Date // 服用開始日
   end_date                     DateTime? @db.Date // 服用終了日（start_date + days で自動計算可能）
+  packaging_group_id           String?
   created_at                   DateTime           @default(now())
   updated_at                   DateTime           @updatedAt
 
@@ -189,6 +220,7 @@ model DispenseResult {
   special_notes     String? // 冷所/麻薬/半割等
   dispensed_by      String // User ID
   dispensed_at      DateTime
+  version           Int          @default(1)
   created_at        DateTime     @default(now())
   updated_at        DateTime     @updatedAt
 
@@ -221,31 +253,42 @@ model SetPlan {
   target_period_start  DateTime
   target_period_end    DateTime
   set_method           String // facility_calendar/four_times_daily/bedtime_only/custom
+  packaging_method_id  String?
+  packaging_method_ref PackagingMethodMaster? @relation(fields: [packaging_method_id], references: [id], onDelete: SetNull)
+  packaging_summary_snapshot Json?
   notes                String?
   created_at           DateTime        @default(now())
   updated_at           DateTime        @updatedAt
 
-  batches    SetBatch[]
-  audits     SetAudit[]
+  batches     SetBatch[]
+  audits      SetAudit[]
+  change_logs SetBatchChangeLog[]
 
   @@index([org_id])
   @@index([cycle_id])
+  @@index([packaging_method_id])
 }
 
 model SetBatch {
-  id         String          @id @default(cuid())
-  org_id     String
-  plan_id    String
-  plan       SetPlan         @relation(fields: [plan_id], references: [id])
-  line_id    String
-  line       PrescriptionLine @relation(fields: [line_id], references: [id])
-  slot       String // morning/noon/evening/bedtime/prn
-  day_number Int
-  quantity   Float
-  carry_type String // carry/facility_deposit/deferred
-  version    Int             @default(1) // 楽観的ロック
-  created_at DateTime        @default(now())
-  updated_at DateTime        @updatedAt
+  id                                String                   @id @default(cuid())
+  org_id                            String
+  plan_id                           String
+  plan                              SetPlan                  @relation(fields: [plan_id], references: [id])
+  line_id                           String
+  line                              PrescriptionLine         @relation(fields: [line_id], references: [id])
+  slot                              String // morning/noon/evening/bedtime/prn
+  day_number                        Int
+  quantity                          Float
+  carry_type                        String // carry/facility_deposit/deferred
+  packaging_method_snapshot         PackagingMethod?
+  packaging_instructions_snapshot   String?
+  packaging_instruction_tags_snapshot PackagingInstructionTag[] @default([])
+  packaging_group_id                String?
+  version                           Int                      @default(1) // 楽観的ロック
+  created_at                        DateTime                 @default(now())
+  updated_at                        DateTime                 @updatedAt
+
+  change_logs SetBatchChangeLog[]
 
   @@index([org_id])
   @@index([plan_id])
@@ -268,6 +311,27 @@ model SetAudit {
   @@index([plan_id])
 }
 
+model SetBatchChangeLog {
+  id            String    @id @default(cuid())
+  org_id        String
+  plan_id       String
+  plan          SetPlan   @relation(fields: [plan_id], references: [id])
+  batch_id      String?
+  batch         SetBatch? @relation(fields: [batch_id], references: [id], onDelete: SetNull)
+  action        String
+  trigger_source String?
+  reason        String?
+  line_ids      Json?
+  before_snapshot Json
+  after_snapshot Json?
+  changed_by    String?
+  created_at    DateTime  @default(now())
+
+  @@index([org_id])
+  @@index([plan_id, created_at])
+  @@index([batch_id])
+}
+
 model WorkflowException {
   id             String          @id @default(cuid())
   org_id         String
@@ -284,4 +348,34 @@ model WorkflowException {
 
   @@index([org_id])
   @@index([status])
+}
+
+enum QrDraftStatus {
+  pending
+  confirmed
+  discarded
+}
+
+model QrScanDraft {
+  id                  String        @id @default(cuid())
+  org_id              String
+  site_id             String
+  patient_id          String?
+  scanned_by          String
+  session_id          String
+  status              QrDraftStatus @default(pending)
+  schema_version      Int           @default(1)
+  raw_qr_texts        Json          // String[]
+  parsed_data         Json          // JahisQRData
+  parse_errors        Json?         // JahisParseError[]
+  auto_completed      Json?         // AutoCompletedField[]
+  expected_qr_count   Int?
+  confirmed_intake_id String?
+  created_at          DateTime      @default(now())
+  updated_at          DateTime      @updatedAt
+
+  @@index([org_id])
+  @@index([org_id, status])
+  @@index([session_id])
+  @@index([patient_id])
 }

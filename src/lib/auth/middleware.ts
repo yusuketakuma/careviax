@@ -22,11 +22,11 @@ type WithAuthOptions = {
  * Wraps a Route Handler with authentication and org context validation.
  * Reads org_id from the `x-org-id` request header for multi-tenant routing.
  */
-export function withAuth(
-  handler: (req: AuthenticatedRequest) => Promise<NextResponse>,
+export function withAuth<TArgs extends unknown[] = []>(
+  handler: (req: AuthenticatedRequest, ...args: TArgs) => Promise<NextResponse>,
   options?: WithAuthOptions
 ) {
-  return async (req: NextRequest) => {
+  return async (req: NextRequest, ...args: TArgs) => {
     return withRoutePerformance(req, async () => {
       const authResult = await requireAuthContext(req, options);
       if ('response' in authResult) return authResult.response;
@@ -38,7 +38,7 @@ export function withAuth(
       authReq.ipAddress = authResult.ctx.ipAddress;
       authReq.userAgent = authResult.ctx.userAgent;
 
-      return runWithRequestAuthContext(authResult.ctx, () => handler(authReq));
+      return runWithRequestAuthContext(authResult.ctx, () => handler(authReq, ...args));
     });
   };
 }

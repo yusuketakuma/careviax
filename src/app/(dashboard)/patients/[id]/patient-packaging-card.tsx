@@ -21,6 +21,7 @@ import {
   PACKAGING_METHOD_OPTIONS,
   type PackagingMethodValue,
 } from '@/lib/prescription/packaging';
+import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 
 type PackagingResponse = {
   data: {
@@ -107,7 +108,10 @@ export function PatientPackagingCard({
     onSuccess: async () => {
       toast.success('患者固有の配薬設定を保存しました');
       setDraftForm(null);
-      await queryClient.invalidateQueries({ queryKey: ['patient-packaging', orgId, patientId] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['patient-packaging', orgId, patientId] }),
+        invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId })),
+      ]);
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '患者配薬設定の保存に失敗しました');

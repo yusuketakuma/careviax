@@ -1,6 +1,19 @@
+import { z } from 'zod';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
-import { success } from '@/lib/api/response';
+import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { withOrgContext } from '@/lib/db/rls';
+import { validateOrgReferences } from '@/lib/api/org-reference';
+
+const createPharmacistCredentialSchema = z.object({
+  user_id: z.string().min(1, '対象スタッフは必須です'),
+  certification_type: z.string().trim().min(1, '認定種別は必須です'),
+  certification_number: z.string().trim().nullable().optional(),
+  issued_date: z.string().date().nullable().optional(),
+  expiry_date: z.string().date().nullable().optional(),
+  tenure_years: z.coerce.number().min(0).max(80).nullable().optional(),
+  weekly_work_hours: z.coerce.number().min(0).max(168).nullable().optional(),
+});
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const credentials = await prisma.pharmacistCredential.findMany({
@@ -91,4 +104,79 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
 }, {
   permission: 'canAdmin',
   message: '薬剤師認定情報の閲覧権限がありません',
+});
+
+export const POST = withAuth(async (req: AuthenticatedRequest) => {
+  const body = await req.json().catch(() => null);
+  if (!body) return validationError('リクエストボディが不正です');
+
+  const parsed = createPharmacistCredentialSchema.safeParse(body);
+  if (!parsed.success) {
+    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  }
+
+  const refResult = await validateOrgReferences(req.orgId, {
+    pharmacist_id: parsed.data.user_id,
+  });
+  if (!refResult.ok) return refResult.response;
+
+  const created = await withOrgContext(req.orgId, async (tx) => {
+    const credential = await tx.pharmacistCredential.create({
+      data: {
+        org_id: req.orgId,
+        user_id: parsed.data.user_id,
+        certification_type: parsed.data.certification_type,
+        certification_number: parsed.data.certification_number || null,
+        issued_date: parsed.data.issued_date ? new Date(parsed.data.issued_date) : null,
+        expiry_date: parsed.data.expiry_date ? new Date(parsed.data.expiry_date) : null,
+        tenure_years: parsed.data.tenure_years ?? null,
+        weekly_work_hours: parsed.data.weekly_work_hours ?? null,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        org_id: req.orgId,
+        actor_id: req.userId,
+        action: 'pharmacist_credential_created',
+        target_type: 'PharmacistCredential',
+        target_id: credential.id,
+        changes: {
+          user_id: parsed.data.user_id,
+          certification_type: parsed.data.certification_type,
+          expiry_date: parsed.data.expiry_date ?? null,
+        },
+        ip_address: req.ipAddress,
+        user_agent: req.userAgent,
+      },
+    });
+
+    return credential;
+  });
+
+  return success({
+    data: {
+      id: created.id,
+      user_id: created.user.id,
+      user_name: created.user.name,
+      certification_type: created.certification_type,
+      certification_number: created.certification_number,
+      issued_date: created.issued_date?.toISOString() ?? null,
+      expiry_date: created.expiry_date?.toISOString() ?? null,
+      tenure_years: created.tenure_years,
+      weekly_work_hours: created.weekly_work_hours,
+      consented_patients: [],
+    },
+  }, 201);
+}, {
+  permission: 'canAdmin',
+  message: '薬剤師認定情報の作成権限がありません',
 });

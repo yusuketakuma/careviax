@@ -30,12 +30,20 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 
 // --- Types ---
 
 type ConsentRecord = {
   id: string;
   patient_id: string;
+  template_id: string | null;
+  template_version: number | null;
+  template: {
+    id: string;
+    name: string;
+    version: number;
+  } | null;
   consent_type: string;
   method: string;
   obtained_date: string;
@@ -82,6 +90,19 @@ function useColumns(onRevoke: (record: ConsentRecord) => void): ColumnDef<Consen
       cell: ({ row }) => (
         <span className="font-medium">
           {CONSENT_TYPE_LABELS[row.original.consent_type] ?? row.original.consent_type}
+        </span>
+      ),
+    },
+    {
+      id: 'template',
+      header: 'テンプレート',
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground">
+          {row.original.template
+            ? `${row.original.template.name} v${row.original.template.version}`
+            : row.original.template_version != null
+              ? `v${row.original.template_version}`
+              : '—'}
         </span>
       ),
     },
@@ -162,6 +183,7 @@ function useColumns(onRevoke: (record: ConsentRecord) => void): ColumnDef<Consen
 // --- Create Dialog ---
 
 type CreateFormState = {
+  template_id: string;
   consent_type: string;
   method: string;
   obtained_date: string;
@@ -180,11 +202,25 @@ function CreateConsentDialog({
 }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<CreateFormState>({
+    template_id: '',
     consent_type: '',
     method: 'paper_scan',
     obtained_date: format(new Date(), 'yyyy-MM-dd'),
     expiry_date: '',
     document_url: '',
+  });
+  const templatesQuery = useQuery({
+    queryKey: ['consent-templates', orgId],
+    queryFn: async () => {
+      const res = await fetch('/api/templates?template_type=consent_form', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('同意書テンプレートの取得に失敗しました');
+      return res.json() as Promise<{
+        data: Array<{ id: string; name: string; version: number; is_default: boolean }>;
+      }>;
+    },
+    enabled: !!orgId,
   });
 
   const mutation = useMutation({
@@ -194,6 +230,7 @@ function CreateConsentDialog({
         headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
         body: JSON.stringify({
           patient_id: patientId,
+          ...(data.template_id ? { template_id: data.template_id } : {}),
           consent_type: data.consent_type,
           method: data.method,
           obtained_date: data.obtained_date,
@@ -207,9 +244,12 @@ function CreateConsentDialog({
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('同意記録を登録しました');
-      queryClient.invalidateQueries({ queryKey: ['consent-records', patientId] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['consent-records', patientId] }),
+        invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId })),
+      ]);
       onClose();
     },
     onError: (err: Error) => {
@@ -249,6 +289,27 @@ function CreateConsentDialog({
               {Object.entries(CONSENT_TYPE_LABELS).map(([value, label]) => (
                 <SelectItem key={value} value={value}>
                   {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="template_id">同意書テンプレート</Label>
+          <Select
+            value={form.template_id}
+            onValueChange={(v) => setForm((f) => ({ ...f, template_id: v ?? '' }))}
+          >
+            <SelectTrigger id="template_id">
+              <SelectValue placeholder="既定テンプレートを使用" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">既定テンプレートを使用</SelectItem>
+              {(templatesQuery.data?.data ?? []).map((template) => (
+                <SelectItem key={template.id} value={template.id}>
+                  {template.name} v{template.version}
+                  {template.is_default ? ' / 既定' : ''}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -347,9 +408,15 @@ function RevokeConsentDialog({
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('同意を撤回しました');
-      queryClient.invalidateQueries({ queryKey: ['consent-records', record.patient_id] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['consent-records', record.patient_id] }),
+        invalidateQueryKeys(
+          queryClient,
+          getPatientCareQueryKeys({ orgId, patientId: record.patient_id })
+        ),
+      ]);
       onClose();
     },
     onError: (err: Error) => {

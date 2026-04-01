@@ -40,6 +40,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { ResidualMedicationChart } from '@/components/features/patients/residual-medication-chart';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import {
   buildJahisQRText,
   type JahisPatient,
@@ -319,8 +320,11 @@ function AddMedicationDialog({
       if (!res.ok) throw new Error(payload?.message ?? '登録に失敗しました');
       return payload;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['medication-profiles', patientId] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['medication-profiles', patientId] }),
+        invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId })),
+      ]);
       onClose();
     },
   });
@@ -581,16 +585,11 @@ function QrExportDialog({
       <html lang="ja">
         <head>
           <title>${patientName} お薬手帳QR</title>
-          <style>
-            body { font-family: sans-serif; padding: 24px; color: #111827; }
-            img { width: 320px; height: 320px; display: block; margin-bottom: 16px; }
-            pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; background: #f8fafc; padding: 12px; border-radius: 12px; }
-          </style>
         </head>
         <body>
           <h1>${patientName} お薬手帳QR</h1>
           <p>生成日時: ${state.generatedAt}</p>
-          <img src="${state.dataUrl}" alt="${patientName} お薬手帳QR" />
+          <img src="${state.dataUrl}" alt="${patientName} お薬手帳QR" width="320" height="320" />
           <pre>${state.payload}</pre>
         </body>
       </html>
@@ -781,9 +780,11 @@ export function MedicationsContent({
       }
       return payload;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['medication-issues', patientId] });
-      queryClient.invalidateQueries({ queryKey: ['patient', patientId, orgId] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['medication-issues', patientId] }),
+        invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId })),
+      ]);
       toast.success(editingIssue ? '課題を更新しました' : '課題を登録しました');
       setIssueDialogOpen(false);
       setEditingIssue(null);
@@ -815,9 +816,11 @@ export function MedicationsContent({
       }
       return payload;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['medication-issues', patientId] });
-      queryClient.invalidateQueries({ queryKey: ['patient', patientId, orgId] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['medication-issues', patientId] }),
+        invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId })),
+      ]);
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '課題状態の更新に失敗しました');

@@ -24,7 +24,7 @@ export async function recordDataExportAudit(
     actorId: string;
     targetType: string;
     targetId?: string;
-    format: 'csv' | 'json' | 'zip';
+    format: 'csv' | 'json' | 'zip' | 'pdf';
     recordCount?: number;
     filters?: Record<string, unknown>;
     metadata?: Record<string, unknown>;

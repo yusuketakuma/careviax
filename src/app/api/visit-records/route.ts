@@ -8,11 +8,13 @@ import {
   type CreateVisitRecordInput,
 } from '@/lib/validations/visit-record';
 import { prisma } from '@/lib/db/client';
+import { getRequestAuthContext } from '@/lib/auth/request-context';
 import { buildAllSoapTexts } from '@/lib/utils/soap-text-builder';
 import { getNextSimpleRruleOccurrence } from '@/lib/visits/rrule';
 import type { StructuredSoap } from '@/types/structured-soap';
 import type { Prisma } from '@prisma/client';
 import { upsertBillingEvidenceForVisit } from '@/server/services/billing-evidence';
+import { processHandoffExtraction } from '@/server/services/visit-handoff';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 
 const scheduleStatusByOutcome: Record<
@@ -59,6 +61,14 @@ type VisitRecordConflictDetail = {
     remaining_quantity: number;
     is_prohibited_reduction: boolean;
   }>;
+};
+
+type VisitRecordHandoffExtractionPayload = {
+  patientId: string;
+  patientName: string;
+  structuredSoap: StructuredSoap;
+  soapAssessment: string | null;
+  soapPlan: string | null;
 };
 
 async function loadExistingVisitRecordConflict(
@@ -377,15 +387,10 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   message: '訪問記録の閲覧権限がありません',
 });
 
-export const POST = withAuth(async (req: AuthenticatedRequest) => {
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
-
-  const parsed = createVisitRecordSchema.safeParse(body);
-  if (!parsed.success) {
-    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-  }
-
+async function saveVisitRecord(
+  req: AuthenticatedRequest,
+  input: CreateVisitRecordInput
+) {
   const {
     schedule_id,
     patient_id,
@@ -400,19 +405,25 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     existing_record_id,
     expected_version,
     ...rest
-  } = parsed.data;
+  } = input;
   const visitRecordedAt = new Date(visit_date);
   const scheduleStatus = scheduleStatusByOutcome[outcome_status];
   const shouldAdvanceVisitWorkflow = cycleCompletionOutcomes.has(outcome_status);
   const reductionCandidates = collectResidualReductionCandidates(residual_medications);
 
-  // Auto-generate SOAP text from structured data
-  let soapTextOverrides = {};
-  if (structured_soap) {
-    soapTextOverrides = buildAllSoapTexts(structured_soap as StructuredSoap);
-  }
+  const soapTextOverrides: Partial<ReturnType<typeof buildAllSoapTexts>> = structured_soap
+    ? buildAllSoapTexts(structured_soap as StructuredSoap)
+    : {};
+  const soapAssessment =
+    typeof soapTextOverrides.soap_assessment === 'string'
+      ? soapTextOverrides.soap_assessment
+      : (rest.soap_assessment ?? null);
+  const soapPlan =
+    typeof soapTextOverrides.soap_plan === 'string'
+      ? soapTextOverrides.soap_plan
+      : (rest.soap_plan ?? null);
 
-  const result = await withOrgContext(req.orgId, async (tx) => {
+  return withOrgContext(req.orgId, async (tx) => {
     const schedule = await tx.visitSchedule.findFirst({
       where: { id: schedule_id, org_id: req.orgId },
       select: {
@@ -478,9 +489,9 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
     const record =
       existingRecord && conflict_resolution === 'overwrite'
-	        ? await tx.visitRecord.update({
-	            where: { id: existingRecord.id },
-	            data: {
+        ? await tx.visitRecord.update({
+            where: { id: existingRecord.id },
+            data: {
               patient_id: careCase.patient_id,
               pharmacist_id: req.userId,
               visit_date: visitRecordedAt,
@@ -489,13 +500,13 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
               ...rest,
               outcome_status,
               ...soapTextOverrides,
-	              structured_soap: (structured_soap as Prisma.InputJsonValue) ?? undefined,
-	              visit_geo_log: (visit_geo_log as Prisma.InputJsonValue) ?? undefined,
-	              version: { increment: 1 },
-	            } as Prisma.VisitRecordUncheckedUpdateInput,
-	          })
-	        : await tx.visitRecord.create({
-	            data: {
+              structured_soap: (structured_soap as Prisma.InputJsonValue) ?? undefined,
+              visit_geo_log: (visit_geo_log as Prisma.InputJsonValue) ?? undefined,
+              version: { increment: 1 },
+            } as Prisma.VisitRecordUncheckedUpdateInput,
+          })
+        : await tx.visitRecord.create({
+            data: {
               org_id: req.orgId,
               schedule_id,
               patient_id: careCase.patient_id,
@@ -504,19 +515,16 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
               next_visit_suggestion_date: nextVisitSuggestionDateInput ?? undefined,
               receipt_at: receipt_at ? new Date(receipt_at) : undefined,
               ...rest,
-	              outcome_status,
-	              ...soapTextOverrides,
-	              structured_soap: (structured_soap as Prisma.InputJsonValue) ?? undefined,
-	              visit_geo_log: (visit_geo_log as Prisma.InputJsonValue) ?? undefined,
-	            } as Prisma.VisitRecordUncheckedCreateInput,
-	          });
+              outcome_status,
+              ...soapTextOverrides,
+              structured_soap: (structured_soap as Prisma.InputJsonValue) ?? undefined,
+              visit_geo_log: (visit_geo_log as Prisma.InputJsonValue) ?? undefined,
+            } as Prisma.VisitRecordUncheckedCreateInput,
+          });
 
     await replaceResidualMedications(tx, req.orgId, record.id, residual_medications);
 
-    if (
-      schedule.visit_type === 'initial' &&
-      firstVisitDocumentOutcomes.has(outcome_status)
-    ) {
+    if (schedule.visit_type === 'initial' && firstVisitDocumentOutcomes.has(outcome_status)) {
       await upsertFirstVisitDocument({
         tx,
         orgId: req.orgId,
@@ -529,8 +537,12 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     }
 
     if (reductionCandidates.length > 0) {
-      const prohibitedCandidates = reductionCandidates.filter((candidate) => candidate.is_prohibited_reduction);
-      const allowedCandidates = reductionCandidates.filter((candidate) => !candidate.is_prohibited_reduction);
+      const prohibitedCandidates = reductionCandidates.filter(
+        (candidate) => candidate.is_prohibited_reduction
+      );
+      const allowedCandidates = reductionCandidates.filter(
+        (candidate) => !candidate.is_prohibited_reduction
+      );
 
       for (const candidate of allowedCandidates) {
         const existingIssue = await tx.medicationIssue.findFirst({
@@ -708,8 +720,6 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       }
     }
 
-    // Visit outcome must drive the schedule state, or postponed/cancelled visits
-    // will be incorrectly treated as completed work.
     await tx.visitSchedule.update({
       where: { id: schedule_id },
       data: { schedule_status: scheduleStatus },
@@ -723,10 +733,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
           consent_type: 'visit_medication_management',
           is_active: true,
           revoked_date: null,
-          OR: [
-            { expiry_date: null },
-            { expiry_date: { gte: visitRecordedAt } },
-          ],
+          OR: [{ expiry_date: null }, { expiry_date: { gte: visitRecordedAt } }],
         },
         select: { id: true },
       });
@@ -738,8 +745,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
       if (
         cycle &&
-        (cycle.overall_status === 'set_audited' ||
-          cycle.overall_status === 'visit_ready')
+        (cycle.overall_status === 'set_audited' || cycle.overall_status === 'visit_ready')
       ) {
         await tx.medicationCycle.update({
           where: { id: cycle.id },
@@ -779,7 +785,6 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       }
     }
 
-    // Suggest next visit if next_visit_suggestion_date provided
     let suggestedSchedule = null;
     if (nextVisitSuggestionDateInput) {
       const intervalDays = differenceInCalendarDays(nextVisitSuggestionDateInput, visitRecordedAt);
@@ -835,12 +840,48 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       visitRecordId: record.id,
     });
 
+    let handoffExtraction: VisitRecordHandoffExtractionPayload | null = null;
+    if (structured_soap) {
+      const patient = await tx.patient.findFirst({
+        where: {
+          id: careCase.patient_id,
+          org_id: req.orgId,
+        },
+        select: {
+          name: true,
+        },
+      });
+
+      if (patient) {
+        handoffExtraction = {
+          patientId: careCase.patient_id,
+          patientName: patient.name,
+          structuredSoap: structured_soap as StructuredSoap,
+          soapAssessment,
+          soapPlan,
+        };
+      }
+    }
+
     return {
       record,
       suggestedSchedule,
       conflictResolved: existingRecord != null && conflict_resolution === 'overwrite',
+      handoffExtraction,
     };
   });
+}
+
+export const POST = withAuth(async (req: AuthenticatedRequest) => {
+  const body = await req.json().catch(() => null);
+  if (!body) return validationError('リクエストボディが不正です');
+
+  const parsed = createVisitRecordSchema.safeParse(body);
+  if (!parsed.success) {
+    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  }
+
+  const result = await saveVisitRecord(req, parsed.data);
 
   if ('error' in result) {
     if (result.error === 'schedule_not_found') {
@@ -860,7 +901,28 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     return validationError('指定されたスケジュールが見つかりません');
   }
 
-  return success(result, result.conflictResolved ? 200 : 201);
+  const requestContext = getRequestAuthContext();
+  if (result.handoffExtraction) {
+    void processHandoffExtraction(prisma, {
+      orgId: req.orgId,
+      visitRecordId: result.record.id,
+      patientId: result.handoffExtraction.patientId,
+      patientName: result.handoffExtraction.patientName,
+      structuredSoap: result.handoffExtraction.structuredSoap,
+      soapAssessment: result.handoffExtraction.soapAssessment,
+      soapPlan: result.handoffExtraction.soapPlan,
+      requestContext,
+    }).catch((cause) => {
+      console.warn('[visit-records] handoff extraction failed', cause);
+    });
+  }
+
+  const responsePayload = {
+    record: result.record,
+    suggestedSchedule: result.suggestedSchedule,
+    conflictResolved: result.conflictResolved,
+  };
+  return success(responsePayload, result.conflictResolved ? 200 : 201);
 }, {
   permission: 'canVisit',
   message: '訪問記録の作成権限がありません',

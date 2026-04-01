@@ -4,10 +4,19 @@ import { useCallback, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CheckCircle2, XCircle, PauseCircle, FileText, ClipboardList, Package } from 'lucide-react';
+import {
+  CheckCircle2,
+  XCircle,
+  PauseCircle,
+  Package,
+  History,
+  AlertTriangle,
+} from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { PreviousStageSummary } from '@/components/features/workflow/previous-stage-summary';
+import { StageTimeline } from '@/components/features/workflow/stage-timeline';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -23,8 +32,21 @@ import {
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loading } from '@/components/ui/loading';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { CdsAlertPanel, type CdsAlert } from '@/components/features/cds/alert-panel';
-import { useKeyboardShortcuts, type ShortcutDefinition } from '@/components/features/keyboard/use-keyboard-shortcuts';
+import {
+  useKeyboardShortcuts,
+  type ShortcutDefinition,
+} from '@/components/features/keyboard/use-keyboard-shortcuts';
+import type { PackagingGroupAssignment } from '@/lib/dispensing/packaging-group';
+
+// ── Types ──
 
 type PrescriptionLine = {
   id: string;
@@ -44,10 +66,14 @@ type PrescriptionLine = {
 
 type DispenseResultItem = {
   id: string;
+  line_id: string;
   actual_drug_name: string;
+  actual_drug_code: string | null;
   actual_quantity: number;
   actual_unit: string | null;
+  discrepancy_reason: string | null;
   carry_type: string;
+  special_notes: string | null;
   dispensed_at: string;
   line: PrescriptionLine;
 };
@@ -75,7 +101,13 @@ type AuditTaskDetail = {
     }>;
   };
   results: DispenseResultItem[];
+  prefill: {
+    packagingGroups: PackagingGroupAssignment[];
+    isPrefillAvailable: boolean;
+  } | null;
 };
+
+// ── Constants ──
 
 const CHECKLIST_ITEMS = [
   { id: 'patient_match', label: '患者一致' },
@@ -113,44 +145,202 @@ const priorityLabel: Record<string, string> = {
   normal: '通常',
 };
 
+// ── Helpers ──
+
+/**
+ * Group DispenseResultItems by packaging_group_id (via line_id → packagingGroups lookup).
+ * Falls back to flat list when no packagingGroups are available.
+ */
+function groupResultsByPackaging(
+  results: DispenseResultItem[],
+  packagingGroups: PackagingGroupAssignment[],
+): Array<{
+  groupId: string | null;
+  groupLabel: string;
+  items: DispenseResultItem[];
+}> {
+  if (packagingGroups.length === 0) {
+    return [{ groupId: null, groupLabel: '調剤品目', items: results }];
+  }
+
+  const groupMap = new Map<string, PackagingGroupAssignment>();
+  for (const pg of packagingGroups) {
+    groupMap.set(pg.lineId, pg);
+  }
+
+  const buckets = new Map<
+    string,
+    { groupId: string | null; groupLabel: string; items: DispenseResultItem[] }
+  >();
+
+  for (const result of results) {
+    const pg = groupMap.get(result.line_id);
+    const key = pg?.groupId ?? '__ungrouped__';
+    const label = pg?.groupLabel ?? '個別包装';
+
+    if (!buckets.has(key)) {
+      buckets.set(key, { groupId: pg?.groupId ?? null, groupLabel: label, items: [] });
+    }
+    buckets.get(key)!.items.push(result);
+  }
+
+  // Order: named groups first (sorted by label), then ungrouped
+  const entries = Array.from(buckets.entries());
+  const grouped = entries
+    .filter(([key]) => key !== '__ungrouped__')
+    .sort((a, b) => a[1].groupLabel.localeCompare(b[1].groupLabel, 'ja'));
+  const ungrouped = entries.filter(([key]) => key === '__ungrouped__');
+
+  return [...grouped, ...ungrouped].map(([, val]) => val);
+}
+
+// ── Sub-components ──
+
+function GroupCard({
+  groupLabel,
+  groupId,
+  items,
+}: {
+  groupLabel: string;
+  groupId: string | null;
+  items: DispenseResultItem[];
+}) {
+  const isUngrouped = groupId === null;
+
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="border-b bg-muted/30 py-2.5 px-4">
+        <div className="flex items-center gap-2">
+          <Package className="size-3.5 text-muted-foreground" aria-hidden="true" />
+          <CardTitle className="text-sm font-semibold">{groupLabel}</CardTitle>
+          {!isUngrouped && (
+            <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 text-xs">
+              一包化
+            </Badge>
+          )}
+          {isUngrouped && (
+            <Badge variant="secondary" className="text-xs">
+              個別包装
+            </Badge>
+          )}
+          <span className="ml-auto text-xs text-muted-foreground">{items.length}品目</span>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <table className="min-w-full text-sm" aria-label={`${groupLabel}の調剤品目`}>
+          <thead>
+            <tr className="border-b bg-muted/10">
+              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">薬剤名</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">数量</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">持参区分</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">調剤時刻</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {items.map((result) => {
+              const hasDiscrepancy = result.actual_drug_name !== result.line.drug_name;
+              const isPkg = groupMap_isCrushed(result);
+
+              return (
+                <tr
+                  key={result.id}
+                  className={hasDiscrepancy ? 'border-l-2 border-l-amber-400' : undefined}
+                >
+                  <td className="px-4 py-3">
+                    <div className="space-y-0.5">
+                      <p className="font-medium leading-snug">{result.actual_drug_name}</p>
+                      {hasDiscrepancy && (
+                        <p className="text-xs text-amber-700">
+                          処方: {result.line.drug_name}
+                        </p>
+                      )}
+                      {isPkg && (
+                        <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-xs">
+                          粉砕
+                        </Badge>
+                      )}
+                      {result.discrepancy_reason && (
+                        <p className="text-xs text-muted-foreground">
+                          理由: {result.discrepancy_reason}
+                        </p>
+                      )}
+                      {result.special_notes && (
+                        <p className="text-xs text-muted-foreground">
+                          備考: {result.special_notes}
+                        </p>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 tabular-nums text-sm">
+                    {result.actual_quantity}
+                    {result.actual_unit ?? ''}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">
+                    {carryTypeLabel[result.carry_type] ?? result.carry_type}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground">
+                    {format(parseISO(result.dispensed_at), 'MM/dd HH:mm', { locale: ja })}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Placeholder: crushing detection via packaging_instructions text (since is_crushed is not on result)
+function groupMap_isCrushed(result: DispenseResultItem): boolean {
+  return (
+    result.line.packaging_instructions?.includes('粉砕') === true ||
+    result.special_notes?.includes('粉砕') === true
+  );
+}
+
+// ── Main component ──
+
 type AuditDetailProps = {
   taskId: string;
 };
 
-type AuditPane = 'original' | 'structured' | 'results' | 'checklist';
+type AuditPane = 'groups' | 'checklist';
 
-const AUDIT_PANES: AuditPane[] = ['original', 'structured', 'results', 'checklist'];
+const AUDIT_PANES: AuditPane[] = ['groups', 'checklist'];
 
 export function AuditDetail({ taskId }: AuditDetailProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const orgId = useOrgId();
+  const isBootstrappingOrg = !orgId;
   const actionParam = searchParams.get('action');
 
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [checklist, setChecklist] = useState<Record<string, boolean>>(
     Object.fromEntries(CHECKLIST_ITEMS.map((item) => [item.id, false]))
   );
-  const [rejectReason, setRejectReason] = useState('');
-  const [rejectDetail, setRejectDetail] = useState('');
-  const [showRejectForm, setShowRejectForm] = useState(() => actionParam === 'reject');
-  const [showEmergencyApprovalForm, setShowEmergencyApprovalForm] = useState(false);
-  const [emergencyApprovalReason, setEmergencyApprovalReason] = useState('');
+  const [formState, setFormState] = useState(() => ({
+    rejectReason: '',
+    rejectDetail: '',
+    showReject: actionParam === 'reject',
+    showEmergency: false,
+    emergencyReason: '',
+  }));
   const [activePane, setActivePane] = useState<AuditPane>(() =>
-    actionParam === 'approve' || actionParam === 'reject' ? 'checklist' : 'original'
+    actionParam === 'approve' || actionParam === 'reject' ? 'checklist' : 'groups'
   );
   const [activeChecklistIndex, setActiveChecklistIndex] = useState(0);
 
+  // Fetch via /api/dispense-tasks/[taskId] to get prefill.packagingGroups + results
   const { data: task, isLoading } = useQuery({
-    queryKey: ['audit-task-detail', taskId, orgId],
+    queryKey: ['dispense-task-detail', taskId, orgId],
     queryFn: async () => {
-      const res = await fetch('/api/dispense-audits', {
+      const res = await fetch(`/api/dispense-tasks/${taskId}`, {
         headers: { 'x-org-id': orgId },
       });
-      if (!res.ok) throw new Error('鑑査タスクの取得に失敗しました');
-      const json = (await res.json()) as { data: AuditTaskDetail[] };
-      const found = json.data.find((t) => t.id === taskId);
-      if (!found) throw new Error('鑑査タスクが見つかりません');
-      return found;
+      if (!res.ok) throw new Error('調剤タスクの取得に失敗しました');
+      return res.json() as Promise<AuditTaskDetail>;
     },
     enabled: !!orgId && !!taskId,
   });
@@ -227,37 +417,37 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
   }, [mutation]);
 
   const handleReject = useCallback(() => {
-    if (!rejectReason) {
+    if (!formState.rejectReason) {
       toast.warning('差戻し理由を選択してください');
       return;
     }
     mutation.mutate({
       result: 'rejected',
-      reject_reason: rejectReason,
-      reject_detail: rejectDetail || undefined,
+      reject_reason: formState.rejectReason,
+      reject_detail: formState.rejectDetail || undefined,
     });
-  }, [mutation, rejectDetail, rejectReason]);
+  }, [mutation, formState.rejectDetail, formState.rejectReason]);
 
   const handleEmergencyApprove = useCallback(() => {
     if (!allChecked) {
       toast.warning('チェックリストを全て確認してください');
       return;
     }
-    if (!emergencyApprovalReason.trim()) {
+    if (!formState.emergencyReason.trim()) {
       toast.warning('緊急例外承認の理由を入力してください');
       return;
     }
     mutation.mutate({
       result: 'emergency_approved',
-      reject_detail: emergencyApprovalReason.trim(),
+      reject_detail: formState.emergencyReason.trim(),
     });
-  }, [allChecked, emergencyApprovalReason, mutation]);
+  }, [allChecked, formState.emergencyReason, mutation]);
 
   const handleNextPane = useCallback((direction: 1 | -1) => {
     setActivePane((current) => {
       const currentIndex = AUDIT_PANES.indexOf(current);
       const nextIndex = (currentIndex + direction + AUDIT_PANES.length) % AUDIT_PANES.length;
-      return AUDIT_PANES[nextIndex] ?? 'original';
+      return AUDIT_PANES[nextIndex] ?? 'groups';
     });
   }, []);
 
@@ -275,14 +465,25 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
 
   const shortcuts: ShortcutDefinition[] = useMemo(
     () => [
-      { key: 'Tab', handler: () => handleNextPane(1), description: 'ペイン切替', scope: 'auditing' },
-      { key: 'Tab', shiftKey: true, handler: () => handleNextPane(-1), description: '前のペインへ切替', scope: 'auditing' },
+      {
+        key: 'Tab',
+        handler: () => handleNextPane(1),
+        description: 'ペイン切替',
+        scope: 'auditing',
+      },
+      {
+        key: 'Tab',
+        shiftKey: true,
+        handler: () => handleNextPane(-1),
+        description: '前のペインへ切替',
+        scope: 'auditing',
+      },
       { key: 'a', handler: handleApprove, description: '承認', scope: 'auditing' },
       {
         key: 'r',
         handler: () => {
-          if (!showRejectForm) {
-            setShowRejectForm(true);
+          if (!formState.showReject) {
+            setFormState((prev) => ({ ...prev, showReject: true }));
             setActivePane('checklist');
             return;
           }
@@ -291,14 +492,19 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
         description: '差戻し',
         scope: 'auditing',
       },
-      { key: ' ', handler: handleToggleChecklistItem, description: 'チェック項目トグル', scope: 'auditing' },
+      {
+        key: ' ',
+        handler: handleToggleChecklistItem,
+        description: 'チェック項目トグル',
+        scope: 'auditing',
+      },
     ],
-    [handleApprove, handleNextPane, handleReject, handleToggleChecklistItem, showRejectForm],
+    [handleApprove, handleNextPane, handleReject, handleToggleChecklistItem, formState.showReject]
   );
 
   useKeyboardShortcuts(shortcuts);
 
-  if (isLoading) return <Loading />;
+  if (isBootstrappingOrg || isLoading) return <Loading />;
   if (!task) {
     return <p className="text-sm text-muted-foreground">鑑査タスクが見つかりません</p>;
   }
@@ -306,153 +512,94 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
   const intake = task.cycle.prescription_intakes[0];
   const patient = task.cycle.case_.patient;
   const alerts = cdsData?.alerts ?? [];
+  const packagingGroups = task.prefill?.packagingGroups ?? [];
+  const groups = groupResultsByPackaging(task.results, packagingGroups);
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="text-lg font-semibold">
-          {patient.name} 様
-        </h2>
+        <h2 className="text-lg font-semibold">{patient.name} 様</h2>
         <Badge variant={priorityVariant[task.priority] ?? 'outline'}>
           {priorityLabel[task.priority] ?? task.priority}
         </Badge>
         {intake && (
           <span className="text-sm text-muted-foreground">
-            処方日: {format(parseISO(intake.prescribed_date), 'yyyy/MM/dd', { locale: ja })}
+            処方日:{' '}
+            {format(parseISO(intake.prescribed_date), 'yyyy/MM/dd', { locale: ja })}
             {intake.prescriber_name && ` / ${intake.prescriber_name}`}
+            {intake.prescriber_institution && ` (${intake.prescriber_institution})`}
           </span>
         )}
       </div>
 
-      {/* CDS Alert Panel */}
-      <CdsAlertPanel alerts={alerts} isLoading={cdsLoading} />
-
-      {/* 3-pane comparison view */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:items-start">
-        {/* Left: Original prescription */}
-        <Card className={activePane === 'original' ? 'ring-2 ring-primary/50 lg:col-span-1' : 'lg:col-span-1'}>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <FileText className="size-4" aria-hidden="true" />
-              処方原本
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {intake?.original_document_url ? (
-              <div className="overflow-hidden rounded-md border">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={intake.original_document_url}
-                  alt="処方箋原本"
-                  className="w-full object-contain"
-                />
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                原本画像なし（電子処方箋またはデータ入力）
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Center: Structured prescription lines */}
-        <Card className={activePane === 'structured' ? 'ring-2 ring-primary/50 lg:col-span-1' : 'lg:col-span-1'}>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <ClipboardList className="size-4" aria-hidden="true" />
-              構造化明細
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {intake?.lines.map((line) => (
-              <div key={line.id} className="rounded-md border p-2.5 text-xs">
-                <p className="font-medium text-sm">{line.drug_name}</p>
-                {line.dosage_form && (
-                  <p className="text-muted-foreground">{line.dosage_form}</p>
-                )}
-                <dl className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 text-muted-foreground">
-                  <div>
-                    <dt className="inline font-medium">用量: </dt>
-                    <dd className="inline">{line.dose}</dd>
-                  </div>
-                  <div>
-                    <dt className="inline font-medium">用法: </dt>
-                    <dd className="inline">{line.frequency}</dd>
-                  </div>
-                  <div>
-                    <dt className="inline font-medium">日数: </dt>
-                    <dd className="inline">{line.days}日</dd>
-                  </div>
-                  {line.quantity != null && (
-                    <div>
-                      <dt className="inline font-medium">数量: </dt>
-                      <dd className="inline">
-                        {line.quantity}
-                        {line.unit ?? ''}
-                      </dd>
-                    </div>
-                  )}
-                </dl>
-                {line.packaging_instructions && (
-                  <p className="mt-1 text-orange-600">
-                    包装指示: {line.packaging_instructions}
-                  </p>
-                )}
-                {line.is_generic && (
-                  <Badge variant="secondary" className="mt-1 text-xs">
-                    後発品可
-                  </Badge>
-                )}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* Right: Dispense results */}
-        <Card className={activePane === 'results' ? 'ring-2 ring-primary/50 lg:col-span-1' : 'lg:col-span-1'}>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Package className="size-4" aria-hidden="true" />
-              調剤実績
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {task.results.map((result) => (
-              <div key={result.id} className="rounded-md border p-2.5 text-xs">
-                <p className="font-medium text-sm">{result.actual_drug_name}</p>
-                <dl className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 text-muted-foreground">
-                  <div>
-                    <dt className="inline font-medium">数量: </dt>
-                    <dd className="inline">
-                      {result.actual_quantity}
-                      {result.actual_unit ?? ''}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="inline font-medium">持参区分: </dt>
-                    <dd className="inline">
-                      {carryTypeLabel[result.carry_type] ?? result.carry_type}
-                    </dd>
-                  </div>
-                </dl>
-                <p className="mt-1 text-muted-foreground">
-                  調剤: {format(parseISO(result.dispensed_at), 'MM/dd HH:mm', { locale: ja })}
-                </p>
-                {/* Highlight discrepancy */}
-                {result.actual_drug_name !== result.line.drug_name && (
-                  <p className="mt-1 text-orange-600 text-xs">
-                    処方: {result.line.drug_name}（後発品変更）
-                  </p>
-                )}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+      {/* Previous stage + history */}
+      <div className="flex items-center gap-2">
+        <div className="flex-1">
+          <PreviousStageSummary cycleId={cycleId} />
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setHistoryOpen(true)}
+        >
+          <History className="mr-1.5 size-3.5" aria-hidden="true" />
+          履歴
+        </Button>
       </div>
 
+      <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>ステータス遷移履歴</SheetTitle>
+            <SheetDescription>処方サイクルのステータス変更履歴</SheetDescription>
+          </SheetHeader>
+          <div className="mt-4">
+            <StageTimeline cycleId={cycleId} />
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* CDS alerts */}
+      <CdsAlertPanel alerts={alerts} isLoading={cdsLoading} />
+
+      {/* Empty results fallback */}
+      {task.results.length === 0 && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <p>調剤実績が登録されていません。</p>
+        </div>
+      )}
+
+      {/* Group-based card view */}
+      {task.results.length > 0 && (
+        <section
+          aria-label="調剤グループ一覧"
+          className={
+            activePane === 'groups'
+              ? 'space-y-4 rounded-md ring-2 ring-primary/30 p-1'
+              : 'space-y-4'
+          }
+        >
+          <h3 className="text-sm font-semibold text-muted-foreground px-1">
+            調剤グループ ({groups.length}グループ / {task.results.length}品目)
+          </h3>
+          {groups.map((group) => (
+            <GroupCard
+              key={group.groupId ?? '__ungrouped__'}
+              groupLabel={group.groupLabel}
+              groupId={group.groupId}
+              items={group.items}
+            />
+          ))}
+        </section>
+      )}
+
       {/* Checklist */}
-      <Card className={activePane === 'checklist' ? 'ring-2 ring-primary/50' : undefined}>
+      <Card
+        className={activePane === 'checklist' ? 'ring-2 ring-primary/50' : undefined}
+      >
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">鑑査チェックリスト</CardTitle>
         </CardHeader>
@@ -495,8 +642,8 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
         </CardContent>
       </Card>
 
-      {/* Reject form (shown when user clicks 差戻し) */}
-      {showRejectForm && (
+      {/* Reject form */}
+      {formState.showReject && (
         <Card className="border-destructive/40">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-destructive">差戻し理由</CardTitle>
@@ -506,7 +653,12 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
               <Label htmlFor="reject-reason" className="text-xs">
                 理由コード <span className="text-destructive">*</span>
               </Label>
-              <Select value={rejectReason} onValueChange={(v) => setRejectReason(v ?? '')}>
+              <Select
+                value={formState.rejectReason}
+                onValueChange={(v) =>
+                  setFormState((prev) => ({ ...prev, rejectReason: v ?? '' }))
+                }
+              >
                 <SelectTrigger id="reject-reason" className="h-8 text-sm">
                   <SelectValue placeholder="理由を選択してください" />
                 </SelectTrigger>
@@ -525,8 +677,10 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
               </Label>
               <Textarea
                 id="reject-detail"
-                value={rejectDetail}
-                onChange={(e) => setRejectDetail(e.target.value)}
+                value={formState.rejectDetail}
+                onChange={(e) =>
+                  setFormState((prev) => ({ ...prev, rejectDetail: e.target.value }))
+                }
                 className="min-h-[80px] text-sm"
                 placeholder="具体的な差戻し内容を入力してください"
               />
@@ -535,7 +689,8 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
         </Card>
       )}
 
-      {showEmergencyApprovalForm && (
+      {/* Emergency approval form */}
+      {formState.showEmergency && (
         <Card className="border-amber-400/50">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-amber-700">緊急例外承認</CardTitle>
@@ -547,8 +702,10 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
               </Label>
               <Textarea
                 id="emergency-approval-reason"
-                value={emergencyApprovalReason}
-                onChange={(e) => setEmergencyApprovalReason(e.target.value)}
+                value={formState.emergencyReason}
+                onChange={(e) =>
+                  setFormState((prev) => ({ ...prev, emergencyReason: e.target.value }))
+                }
                 className="min-h-[80px] text-sm"
                 placeholder="例外承認が必要な理由を入力してください"
               />
@@ -581,14 +738,13 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
           保留
         </Button>
 
-        {!showRejectForm ? (
+        {!formState.showReject ? (
           <Button
             type="button"
             variant="destructive"
-            onClick={() => {
-              setShowEmergencyApprovalForm(false);
-              setShowRejectForm(true);
-            }}
+            onClick={() =>
+              setFormState((prev) => ({ ...prev, showEmergency: false, showReject: true }))
+            }
             disabled={mutation.isPending}
           >
             <XCircle className="mr-1.5 size-4" aria-hidden="true" />
@@ -615,15 +771,14 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
           {mutation.isPending ? '処理中...' : '承認'}
         </Button>
 
-        {!showEmergencyApprovalForm ? (
+        {!formState.showEmergency ? (
           <Button
             type="button"
             variant="outline"
             className="border-amber-400 text-amber-700 hover:bg-amber-50"
-            onClick={() => {
-              setShowRejectForm(false);
-              setShowEmergencyApprovalForm(true);
-            }}
+            onClick={() =>
+              setFormState((prev) => ({ ...prev, showReject: false, showEmergency: true }))
+            }
             disabled={mutation.isPending}
           >
             緊急例外承認

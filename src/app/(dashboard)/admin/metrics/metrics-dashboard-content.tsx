@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { TrendingUp, Users, Home, FileText, Activity } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { SegmentedProgressBar } from '@/components/ui/segmented-progress-bar';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 // --- Types ---
@@ -44,29 +45,15 @@ function ProgressBar({
   targetLine?: number;
   colorClass: string;
 }) {
-  const pct = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
-  const targetPct = targetLine != null && max > 0 ? Math.min(100, Math.round((targetLine / max) * 100)) : null;
-
   return (
-    <div className="relative">
-      <div
-        className="h-3 w-full overflow-hidden rounded-full bg-muted"
-        role="progressbar"
-        aria-valuenow={value}
-        aria-valuemax={max}
-        aria-valuemin={0}
-      >
-        <div className={`h-full rounded-full transition-all ${colorClass}`} style={{ width: `${pct}%` }} />
-      </div>
-      {targetPct != null && (
-        <div
-          className="absolute top-0 h-3 w-0.5 bg-orange-500"
-          style={{ left: `${targetPct}%` }}
-          aria-label={`目標: ${targetLine}%`}
-          title={`目標: ${targetLine}`}
-        />
-      )}
-    </div>
+    <SegmentedProgressBar
+      value={value}
+      max={max}
+      markerValue={targetLine}
+      className="h-3"
+      filledClassName={colorClass}
+      markerClassName="bg-orange-500"
+    />
   );
 }
 

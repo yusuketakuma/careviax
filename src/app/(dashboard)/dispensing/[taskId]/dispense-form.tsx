@@ -1,13 +1,16 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Controller, useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { AlertTriangle, History, Info } from 'lucide-react';
 import { z } from 'zod';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { PreviousStageSummary } from '@/components/features/workflow/previous-stage-summary';
+import { StageTimeline } from '@/components/features/workflow/stage-timeline';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,11 +24,55 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Loading } from '@/components/ui/loading';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
+import { PresenceAvatars } from '@/components/features/collaboration/presence-avatars';
+import { useCollaborativeForm } from '@/lib/hooks/use-collaborative-form';
+import { CollaborativeTextarea } from '@/components/features/collaboration/collaborative-textarea';
+import { CARRY_TYPE_OPTIONS } from '@/lib/dispensing/constants';
+import type { DispensePrefillLine, DispensePrefillResult, PackagingGroupAssignment } from '@/lib/dispensing/prefill-generator';
+import type { DateContinuityWarning } from '@/lib/dispensing/date-continuity';
+
+function toLineIdMap<T extends { line_id: string }>(items: T[]): Map<string, T> {
+  return new Map(items.map((x) => [x.line_id, x]));
+}
+
+function InquiryBlockingAlert({
+  message,
+  reason,
+  physicianNote,
+  detail,
+}: {
+  message: string;
+  reason?: string;
+  physicianNote?: string | null;
+  detail?: string | null;
+}) {
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      <p className="font-medium">{message}</p>
+      {reason && (
+        <p className="mt-1 text-xs">
+          {reason}
+          {physicianNote ? ` / ${physicianNote}` : ''}
+        </p>
+      )}
+      {detail && <p className="mt-1 text-xs text-amber-800">{detail}</p>}
+    </div>
+  );
+}
 
 type PrescriptionLine = {
   id: string;
@@ -48,6 +95,7 @@ type DispenseTaskDetail = {
   due_date: string | null;
   status: string;
   facility_label: string | null;
+  prefill?: DispensePrefillResult;
   site: {
     id: string;
     name: string;
@@ -130,12 +178,6 @@ const formSchema = z.object({
 type FormInput = z.input<typeof formSchema>;
 type FormOutput = z.output<typeof formSchema>;
 
-const carryTypeOptions = [
-  { value: 'carry', label: '持参' },
-  { value: 'facility_deposit', label: '施設預け' },
-  { value: 'deferred', label: '後日対応' },
-];
-
 const priorityLabel: Record<string, string> = {
   emergency: '緊急',
   urgent: '至急',
@@ -155,7 +197,14 @@ type DispenseFormProps = {
 export function DispenseForm({ taskId }: DispenseFormProps) {
   const router = useRouter();
   const orgId = useOrgId();
+  const isBootstrappingOrg = !orgId;
   const errorSummaryId = 'dispense-form-error-summary';
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [usePrefill, setUsePrefill] = useState(true);
+  const [checkedLines, setCheckedLines] = useState<Set<string>>(new Set());
+  const [editedLines, setEditedLines] = useState<Map<string, Partial<DispensePrefillLine>>>(new Map());
+  const [unitDoseLines, setUnitDoseLines] = useState<Map<string, boolean>>(new Map());
+  const [crushedLines, setCrushedLines] = useState<Map<string, boolean>>(new Map());
 
   const { data: task, isLoading } = useQuery({
     queryKey: ['dispense-task', taskId, orgId],
@@ -170,16 +219,13 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
   });
 
   const intake = task?.cycle.prescription_intakes[0];
-  const existingResultByLineId = new Map((task?.results ?? []).map((item) => [item.line_id, item]));
-  const stockGuidanceByLineId = new Map(
-    (task?.stock_guidance ?? []).map((item) => [item.line_id, item])
-  );
+  const existingResultByLineId = toLineIdMap(task?.results ?? []);
+  const stockGuidanceByLineId = toLineIdMap(task?.stock_guidance ?? []);
   const openInquiries = task?.cycle.inquiries ?? [];
   const cycleLevelInquiries = openInquiries.filter((item) => item.line_id == null);
-  const blockedInquiryByLineId = new Map(
+  const blockedInquiryByLineId = toLineIdMap(
     openInquiries
-      .filter((item) => item.line_id)
-      .map((item) => [item.line_id as string, item])
+      .filter((item): item is typeof item & { line_id: string } => item.line_id != null)
   );
 
   const form = useForm<FormInput, unknown, FormOutput>({
@@ -223,6 +269,19 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
   });
 
   const { fields } = useFieldArray({ control: form.control, name: 'lines' });
+
+  const {
+    registerCollaborative,
+    awareness,
+    getTextField,
+    connected: yjsConnected,
+  } = useCollaborativeForm({
+    form,
+    entityType: 'dispense_task',
+    entityId: taskId,
+    textFields: fields.map((_, i) => `lines.${i}.special_notes`),
+  });
+
   const errorSummaryItems = collectFormErrorSummaryItems(form.formState.errors, {
     'lines.*.actual_drug_name': '実薬剤名',
     'lines.*.actual_quantity': '実数量',
@@ -280,7 +339,65 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
     },
   });
 
-  if (isLoading) return <Loading />;
+  const prefillMutation = useMutation({
+    mutationFn: async (lines: DispensePrefillLine[]) => {
+      const groups = task?.prefill?.packagingGroups ?? [];
+      const groupByLineId = new Map<string, PackagingGroupAssignment>(
+        groups.map((g) => [g.lineId, g])
+      );
+
+      const payload = {
+        task_id: taskId,
+        results: lines
+          .filter((line) => line.changeMarker !== 'removed')
+          .map((line) => {
+            const edited = editedLines.get(line.lineId) ?? {};
+            const group = groupByLineId.get(line.lineId);
+            const isGrouped = group?.groupId !== null && group?.groupId !== undefined;
+            const unitDose = unitDoseLines.has(line.lineId)
+              ? unitDoseLines.get(line.lineId)
+              : isGrouped;
+            return {
+              line_id: line.lineId,
+              actual_drug_name: edited.actualDrugName ?? line.actualDrugName,
+              actual_drug_code: edited.actualDrugCode ?? line.actualDrugCode ?? undefined,
+              actual_quantity: edited.actualQuantity ?? line.actualQuantity ?? 0,
+              actual_unit: edited.actualUnit ?? line.actualUnit ?? undefined,
+              carry_type: edited.carryType ?? line.carryType,
+              special_notes: edited.specialNotes ?? line.specialNotes ?? undefined,
+              discrepancy_reason: edited.discrepancyReason ?? line.discrepancyReason ?? undefined,
+              is_unit_dose: unitDose,
+              is_crushed: crushedLines.get(line.lineId) ?? false,
+              packaging_group_id: group?.groupId ?? undefined,
+            };
+          }),
+      };
+      const res = await fetch('/api/dispense-results', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { message?: string }).message ?? '調剤実績の登録に失敗しました');
+      }
+      return res.json() as Promise<{ data?: { partial?: boolean } }>;
+    },
+    onSuccess: (result) => {
+      const partial = result?.data?.partial ?? false;
+      toast.success(partial ? '一部登録' : '調剤完了', {
+        description: partial
+          ? '未照会の明細を保存しました。疑義照会の解決後に残りを再開できます。'
+          : '調剤実績を登録しました',
+      });
+      router.push('/dispensing');
+    },
+    onError: (err: Error) => {
+      toast.error('エラー', { description: err.message });
+    },
+  });
+
+  if (isBootstrappingOrg || isLoading) return <Loading />;
   if (!task || !intake) {
     return (
       <p className="text-sm text-muted-foreground">調剤タスクが見つかりません</p>
@@ -291,6 +408,37 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
   const hasLineLevelBlock = blockedInquiryByLineId.size > 0;
   const availableLineCount = intake.lines.filter((line) => !blockedInquiryByLineId.has(line.id)).length;
   const submitBlocked = cycleLevelInquiries.length > 0 || availableLineCount === 0;
+
+  // Prefill mode
+  const isPrefillMode = usePrefill && task.prefill?.isPrefillAvailable === true && task.results.length === 0;
+  const prefillLines: DispensePrefillLine[] = task.prefill?.lines ?? [];
+  const prefillDateWarnings: DateContinuityWarning[] = task.prefill?.dateWarnings ?? [];
+  const allChecked =
+    prefillLines.length > 0 &&
+    prefillLines.every(
+      (line) => line.changeMarker === 'removed' || checkedLines.has(line.lineId)
+    );
+
+  const togglePrefillLine = (lineId: string) => {
+    setCheckedLines((prev) => {
+      const next = new Set(prev);
+      if (next.has(lineId)) {
+        next.delete(lineId);
+      } else {
+        next.add(lineId);
+      }
+      return next;
+    });
+  };
+
+  const updateEditedLine = (lineId: string, patch: Partial<DispensePrefillLine>) => {
+    setEditedLines((prev) => {
+      const next = new Map(prev);
+      next.set(lineId, { ...(next.get(lineId) ?? {}), ...patch });
+      return next;
+    });
+  };
+
   const applyStockCandidate = (
     index: number,
     candidate: {
@@ -321,12 +469,392 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
     );
   };
 
+  // Prefill mode UI (rendered outside the manual form)
+  if (isPrefillMode) {
+    return (
+      <div className="space-y-6">
+        {/* Top toolbar */}
+        <div className="flex items-center gap-2">
+          <div className="flex-1">
+            <PreviousStageSummary cycleId={task.cycle.id} />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setHistoryOpen(true)}
+          >
+            <History className="mr-1.5 size-3.5" aria-hidden="true" />
+            履歴
+          </Button>
+        </div>
+
+        <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+          <SheetContent>
+            <SheetHeader>
+              <SheetTitle>ステータス遷移履歴</SheetTitle>
+              <SheetDescription>処方サイクルのステータス変更履歴</SheetDescription>
+            </SheetHeader>
+            <div className="mt-4">
+              <StageTimeline cycleId={task.cycle.id} />
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        {/* Patient header */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <CardTitle className="text-base">{patient.name} 様</CardTitle>
+              <Badge variant={priorityVariant[task.priority] ?? 'outline'}>
+                {priorityLabel[task.priority] ?? task.priority}
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              処方医: {intake.prescriber_name ?? '—'} / {intake.prescriber_institution ?? '—'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              調剤拠点: {task.site?.name ?? '未設定'} / 訪問先: {task.facility_label ?? '自宅訪問'}
+            </p>
+          </CardHeader>
+        </Card>
+
+        {/* Auto-prefill info banner */}
+        <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <p>処方データから調剤内容を自動生成しました。各行を確認して承認してください。</p>
+        </div>
+
+        {/* Date warnings */}
+        {prefillDateWarnings.length > 0 && (
+          <div className="space-y-2">
+            {prefillDateWarnings.map((w) => (
+              <div
+                key={w.lineId}
+                className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+              >
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                <p>
+                  {w.type === 'gap'
+                    ? `⚠ ${w.drugName}: 前回終了 ${w.prevEndDate} → 今回開始 ${w.currentStartDate}（${w.gapDays}日間のギャップ）`
+                    : `⚠ ${w.drugName}: 前回終了 ${w.prevEndDate} → 今回開始 ${w.currentStartDate}（${Math.abs(w.gapDays)}日間の重複）`}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Prefill lines table */}
+        <div className="space-y-3">
+          {prefillLines.map((line) => {
+            const edited = editedLines.get(line.lineId) ?? {};
+            const isChecked = checkedLines.has(line.lineId);
+            const isRemoved = line.changeMarker === 'removed';
+            const borderClass =
+              line.changeMarker === 'added'
+                ? 'border-l-4 border-l-green-500'
+                : line.changeMarker === 'removed'
+                  ? 'border-l-4 border-l-red-500'
+                  : line.changeMarker === 'dose_changed'
+                    ? 'border-l-4 border-l-amber-500'
+                    : line.changeMarker === 'frequency_changed'
+                      ? 'border-l-4 border-l-blue-500'
+                      : '';
+
+            return (
+              <Card key={line.lineId} className={borderClass}>
+                <CardHeader className="pb-2">
+                  <div className="flex items-start gap-3">
+                    {!isRemoved && (
+                      <Checkbox
+                        id={`prefill-check-${line.lineId}`}
+                        checked={isChecked}
+                        onCheckedChange={() => togglePrefillLine(line.lineId)}
+                        className="mt-0.5 size-5"
+                        aria-label={`${line.drugName} 確認済み`}
+                      />
+                    )}
+                    <div className="flex-1">
+                      <CardTitle className={`text-sm ${isRemoved ? 'text-muted-foreground line-through' : ''}`}>
+                        {line.lineNumber}. {line.drugName}
+                        {line.changeMarker && (
+                          <Badge
+                            variant="outline"
+                            className={`ml-2 text-[10px] ${
+                              line.changeMarker === 'added'
+                                ? 'border-green-500 text-green-700'
+                                : line.changeMarker === 'removed'
+                                  ? 'border-red-500 text-red-700'
+                                  : line.changeMarker === 'dose_changed'
+                                    ? 'border-amber-500 text-amber-700'
+                                    : 'border-blue-500 text-blue-700'
+                            }`}
+                          >
+                            {line.changeMarker === 'added'
+                              ? '新規追加'
+                              : line.changeMarker === 'removed'
+                                ? '削除'
+                                : line.changeMarker === 'dose_changed'
+                                  ? '用量変更'
+                                  : '用法変更'}
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      {line.changeDetail?.previous && (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          前回: {line.changeDetail.previous}
+                        </p>
+                      )}
+                      {line.genericSuggestion?.available && line.genericSuggestion.genericDrugName && (
+                        <Badge variant="outline" className="mt-1 text-[10px] border-emerald-400 text-emerald-700">
+                          後発品: {line.genericSuggestion.genericDrugName}
+                        </Badge>
+                      )}
+                    </div>
+                    {!isRemoved && (
+                      <label
+                        htmlFor={`prefill-check-${line.lineId}`}
+                        className="cursor-pointer text-xs font-medium text-muted-foreground"
+                      >
+                        確認済み
+                      </label>
+                    )}
+                  </div>
+                </CardHeader>
+                {!isRemoved && (
+                  <CardContent className="space-y-3">
+                    <Separator />
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">実薬剤名</Label>
+                        <Input
+                          value={edited.actualDrugName ?? line.actualDrugName}
+                          onChange={(e) => updateEditedLine(line.lineId, { actualDrugName: e.target.value })}
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">数量</Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            step="0.1"
+                            value={edited.actualQuantity ?? line.actualQuantity ?? ''}
+                            onChange={(e) => updateEditedLine(line.lineId, { actualQuantity: parseFloat(e.target.value) })}
+                            className="h-8 w-24 text-sm"
+                          />
+                          <Input
+                            value={edited.actualUnit ?? line.actualUnit ?? ''}
+                            onChange={(e) => updateEditedLine(line.lineId, { actualUnit: e.target.value })}
+                            className="h-8 w-20 text-sm"
+                            placeholder="単位"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">持参区分</Label>
+                        <Select
+                          value={edited.carryType ?? line.carryType}
+                          onValueChange={(v) => updateEditedLine(line.lineId, { carryType: v as DispensePrefillLine['carryType'] })}
+                        >
+                          <SelectTrigger className="h-8 text-sm">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CARRY_TYPE_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Packaging groups section — grouped unit-dose / crush toggles */}
+        {(() => {
+          const groups = task.prefill?.packagingGroups ?? [];
+          if (groups.length === 0) return null;
+
+          // Collect unique groupIds (excluding null = ungrouped)
+          const groupIds = Array.from(
+            new Set(groups.map((g) => g.groupId).filter((id): id is string => id !== null))
+          );
+
+          // Lines in each named group
+          const groupedLinesByGroupId = new Map<string, PackagingGroupAssignment[]>();
+          for (const g of groups) {
+            if (g.groupId === null) continue;
+            const existing = groupedLinesByGroupId.get(g.groupId) ?? [];
+            existing.push(g);
+            groupedLinesByGroupId.set(g.groupId, existing);
+          }
+
+          // Ungrouped lines (PRN / external / unknown)
+          const ungroupedLines = groups.filter((g) => g.groupId === null);
+
+          if (groupIds.length === 0 && ungroupedLines.length === 0) return null;
+
+          const getUnitDose = (lineId: string, groupId: string | null) => {
+            if (unitDoseLines.has(lineId)) return unitDoseLines.get(lineId)!;
+            return groupId !== null; // default ON for grouped, OFF for ungrouped
+          };
+          const getCrushed = (lineId: string) => crushedLines.get(lineId) ?? false;
+
+          const setUnitDose = (lineId: string, value: boolean) => {
+            setUnitDoseLines((prev) => new Map(prev).set(lineId, value));
+          };
+          const setCrushed = (lineId: string, value: boolean) => {
+            setCrushedLines((prev) => new Map(prev).set(lineId, value));
+          };
+
+          const renderLine = (g: PackagingGroupAssignment) => {
+            const prefillLine = prefillLines.find((l) => l.lineId === g.lineId);
+            if (!prefillLine) return null;
+            const unitDose = getUnitDose(g.lineId, g.groupId);
+            const crushed = getCrushed(g.lineId);
+            const showCrushWarning = crushed && g.isCrushProhibited;
+
+            return (
+              <div key={g.lineId} className="space-y-2 rounded-md border border-border p-3">
+                <p className="text-sm font-medium">
+                  {prefillLine.lineNumber}. {prefillLine.drugName}
+                </p>
+                <div className="flex flex-wrap items-center gap-4">
+                  {g.groupId !== null && (
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id={`unit-dose-${g.lineId}`}
+                        checked={unitDose}
+                        onCheckedChange={(v) => setUnitDose(g.lineId, v)}
+                        aria-label="一包化"
+                      />
+                      <Label htmlFor={`unit-dose-${g.lineId}`} className="text-xs">一包化</Label>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id={`crush-${g.lineId}`}
+                      checked={crushed}
+                      onCheckedChange={(v) => setCrushed(g.lineId, v)}
+                      aria-label="粉砕"
+                    />
+                    <Label htmlFor={`crush-${g.lineId}`} className="text-xs">粉砕</Label>
+                  </div>
+                </div>
+                {showCrushWarning && (
+                  <div className="flex items-center gap-1.5 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800 border border-amber-300">
+                    <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
+                    粉砕禁止薬です
+                  </div>
+                )}
+              </div>
+            );
+          };
+
+          return (
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-foreground">一包化・粉砕設定</h3>
+
+              {groupIds.map((groupId) => {
+                const linesInGroup = groupedLinesByGroupId.get(groupId) ?? [];
+                const label = linesInGroup[0]?.groupLabel ?? groupId;
+                return (
+                  <Card key={groupId}>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">{label}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {linesInGroup.map((g) => renderLine(g))}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+
+              {ungroupedLines.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm text-muted-foreground">個別包装</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {ungroupedLines.map((g) => renderLine(g))}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Prefill action buttons */}
+        <div className="flex justify-end gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => { setUsePrefill(false); }}
+            disabled={prefillMutation.isPending}
+          >
+            手動入力に切替
+          </Button>
+          <LoadingButton
+            type="button"
+            loading={prefillMutation.isPending}
+            loadingLabel="登録中..."
+            disabled={!allChecked}
+            onClick={() => prefillMutation.mutate(prefillLines)}
+          >
+            承認
+          </LoadingButton>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <form
       onSubmit={form.handleSubmit((values) => mutation.mutate(values), scrollToErrorSummary)}
       className="space-y-6"
     >
       <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
+
+      <div className="flex items-center gap-2">
+        <div className="flex-1">
+          <PreviousStageSummary cycleId={task.cycle.id} />
+        </div>
+        <PresenceAvatars entityType="dispense_task" entityId={taskId} />
+        {yjsConnected && (
+          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground" title="共同編集接続中">
+            <span className="inline-block size-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+            同期中
+          </span>
+        )}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setHistoryOpen(true)}
+        >
+          <History className="mr-1.5 size-3.5" aria-hidden="true" />
+          履歴
+        </Button>
+      </div>
+
+      <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>ステータス遷移履歴</SheetTitle>
+            <SheetDescription>処方サイクルのステータス変更履歴</SheetDescription>
+          </SheetHeader>
+          <div className="mt-4">
+            <StageTimeline cycleId={task.cycle.id} />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Task header */}
       <Card>
@@ -349,22 +877,16 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
         {(cycleLevelInquiries.length > 0 || hasLineLevelBlock) && (
           <CardContent className="pt-0">
             {cycleLevelInquiries.length > 0 ? (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                <p className="font-medium">疑義照会中のため、この処方は調剤開始できません。</p>
-                <p className="mt-1 text-xs">
-                  {cycleLevelInquiries[0]?.reason}
-                  {cycleLevelInquiries[0]?.inquiry_to_physician
-                    ? ` / ${cycleLevelInquiries[0].inquiry_to_physician}`
-                    : ''}
-                </p>
-              </div>
+              <InquiryBlockingAlert
+                message="疑義照会中のため、この処方は調剤開始できません。"
+                reason={cycleLevelInquiries[0]?.reason}
+                physicianNote={cycleLevelInquiries[0]?.inquiry_to_physician}
+              />
             ) : (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                <p className="font-medium">疑義照会中の明細は入力をロックしています。</p>
-                <p className="mt-1 text-xs">
-                  未照会の明細だけ先に調剤登録できます。
-                </p>
-              </div>
+              <InquiryBlockingAlert
+                message="疑義照会中の明細は入力をロックしています。"
+                reason="未照会の明細だけ先に調剤登録できます。"
+              />
             )}
           </CardContent>
         )}
@@ -439,17 +961,13 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                   </div>
                 ) : null}
                 {blockedInquiry ? (
-                  <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-900">
-                    <p className="font-medium">疑義照会中のためこの明細は調剤を開始できません。</p>
-                    <p className="mt-1">
-                      {blockedInquiry.reason}
-                      {blockedInquiry.inquiry_to_physician
-                        ? ` / ${blockedInquiry.inquiry_to_physician}`
-                        : ''}
-                    </p>
-                    <p className="mt-1 text-amber-800">
-                      {blockedInquiry.change_detail ?? blockedInquiry.inquiry_content}
-                    </p>
+                  <div className="mt-2">
+                    <InquiryBlockingAlert
+                      message="疑義照会中のためこの明細は調剤を開始できません。"
+                      reason={blockedInquiry.reason}
+                      physicianNote={blockedInquiry.inquiry_to_physician}
+                      detail={blockedInquiry.change_detail ?? blockedInquiry.inquiry_content}
+                    />
                   </div>
                 ) : null}
               </CardHeader>
@@ -464,7 +982,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                     </Label>
                     <Input
                       id={`lines.${index}.actual_drug_name`}
-                      {...form.register(`lines.${index}.actual_drug_name`)}
+                      {...registerCollaborative(`lines.${index}.actual_drug_name`)}
                       className="h-8 text-sm"
                       aria-invalid={!!errors?.actual_drug_name}
                       disabled={!!blockedInquiry || cycleLevelInquiries.length > 0}
@@ -482,7 +1000,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                     </Label>
                     <Input
                       id={`lines.${index}.actual_drug_code`}
-                      {...form.register(`lines.${index}.actual_drug_code`)}
+                      {...registerCollaborative(`lines.${index}.actual_drug_code`)}
                       className="h-8 font-mono text-sm"
                       placeholder="例: 1234567890123"
                       disabled={!!blockedInquiry || cycleLevelInquiries.length > 0}
@@ -498,13 +1016,13 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                         id={`lines.${index}.actual_quantity`}
                         type="number"
                         step="0.1"
-                        {...form.register(`lines.${index}.actual_quantity`)}
+                        {...registerCollaborative(`lines.${index}.actual_quantity`)}
                         className="h-8 w-24 text-sm"
                         aria-invalid={!!errors?.actual_quantity}
                         disabled={!!blockedInquiry || cycleLevelInquiries.length > 0}
                       />
                       <Input
-                        {...form.register(`lines.${index}.actual_unit`)}
+                        {...registerCollaborative(`lines.${index}.actual_unit`)}
                         className="h-8 w-20 text-sm"
                         placeholder="単位"
                         disabled={!!blockedInquiry || cycleLevelInquiries.length > 0}
@@ -537,7 +1055,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {carryTypeOptions.map((opt) => (
+                            {CARRY_TYPE_OPTIONS.map((opt) => (
                               <SelectItem key={opt.value} value={opt.value}>
                                 {opt.label}
                               </SelectItem>
@@ -555,7 +1073,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                   </Label>
                   <Input
                     id={`lines.${index}.discrepancy_reason`}
-                    {...form.register(`lines.${index}.discrepancy_reason`)}
+                    {...registerCollaborative(`lines.${index}.discrepancy_reason`)}
                     className="h-8 text-sm"
                     placeholder="例: 後発品に変更"
                     disabled={!!blockedInquiry || cycleLevelInquiries.length > 0}
@@ -566,13 +1084,24 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                   <Label htmlFor={`lines.${index}.special_notes`} className="text-xs">
                     特記事項（冷所保管・麻薬・半割等）
                   </Label>
-                  <Textarea
-                    id={`lines.${index}.special_notes`}
-                    {...form.register(`lines.${index}.special_notes`)}
-                    className="min-h-[60px] text-sm"
-                    placeholder="例: 冷所保管"
-                    disabled={!!blockedInquiry || cycleLevelInquiries.length > 0}
-                  />
+                  {awareness && getTextField(`lines.${index}.special_notes`) ? (
+                    <CollaborativeTextarea
+                      id={`lines.${index}.special_notes`}
+                      yText={getTextField(`lines.${index}.special_notes`)!}
+                      awareness={awareness}
+                      className="min-h-[60px] text-sm"
+                      placeholder="例: 冷所保管"
+                      disabled={!!blockedInquiry || cycleLevelInquiries.length > 0}
+                    />
+                  ) : (
+                    <Textarea
+                      id={`lines.${index}.special_notes`}
+                      {...form.register(`lines.${index}.special_notes`)}
+                      className="min-h-[60px] text-sm"
+                      placeholder="例: 冷所保管"
+                      disabled={!!blockedInquiry || cycleLevelInquiries.length > 0}
+                    />
+                  )}
                 </div>
               </CardContent>
             </Card>

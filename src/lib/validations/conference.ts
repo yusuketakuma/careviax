@@ -79,8 +79,11 @@ const conferenceStructuredSectionRules: Partial<
       'discharge_background',
       'target_discharge_date',
       'medication_changes_on_discharge',
+      'medication_summary',
       'next_visit_plan',
       'team_roles',
+      'consent_status',
+      'risk_assessment',
     ],
   },
   service_manager: {
@@ -88,23 +91,45 @@ const conferenceStructuredSectionRules: Partial<
     allowedKeys: [
       'meeting_purpose',
       'care_plan_changes',
+      'care_plan_update',
       'service_adjustments',
+      'visit_schedule_adjustment',
       'medication_related_items',
+      'medication_review',
       'agreed_actions',
+      'coordination_items',
       'next_meeting_date',
     ],
   },
   care_team: {
     requiredKeys: [],
-    allowedKeys: ['discussion_summary', 'medication_issues'],
+    allowedKeys: [
+      'discussion_summary',
+      'case_review',
+      'medication_issues',
+      'intervention_outcomes',
+    ],
   },
   death_conference: {
     requiredKeys: ['billing_confirmation'],
     allowedKeys: [
       'billing_confirmation',
       'timeline_summary',
+      'terminal_process',
       'improvement_actions',
       'quality_indicators',
+      'medication_at_end',
+    ],
+  },
+  emergency: {
+    requiredKeys: [],
+    allowedKeys: [
+      'emergency_context',
+      'incident_summary',
+      'root_cause',
+      'urgent_actions',
+      'immediate_actions',
+      'risk_mitigation',
     ],
   },
 };

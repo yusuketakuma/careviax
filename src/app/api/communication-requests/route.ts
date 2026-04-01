@@ -3,10 +3,18 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
-import type { Prisma } from '@prisma/client';
+import { RequestStatus, type Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { pickCommunicationRecipientCandidate } from '@/lib/contact-profiles';
 import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/prescriber-institutions';
+
+const requestStatusSchema = z.nativeEnum(RequestStatus);
+const communicationRequestQuerySchema = z.object({
+  status: requestStatusSchema.optional(),
+  patient_id: z.string().min(1).optional(),
+  related_entity_type: z.string().min(1).optional(),
+  related_entity_id: z.string().min(1).optional(),
+});
 
 const createCommunicationRequestSchema = z.object({
   patient_id: z.string().optional(),
@@ -43,27 +51,26 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const { searchParams } = new URL(req.url);
   const { cursor, limit } = parsePaginationParams(searchParams);
 
-  const status = searchParams.get('status') ?? undefined;
-  const patientId = searchParams.get('patient_id') ?? undefined;
-  const relatedEntityType = searchParams.get('related_entity_type') ?? undefined;
-  const relatedEntityId = searchParams.get('related_entity_id') ?? undefined;
+  const parsedQuery = communicationRequestQuerySchema.safeParse({
+    status: searchParams.get('status') ?? undefined,
+    patient_id: searchParams.get('patient_id') ?? undefined,
+    related_entity_type: searchParams.get('related_entity_type') ?? undefined,
+    related_entity_id: searchParams.get('related_entity_id') ?? undefined,
+  });
+  if (!parsedQuery.success) {
+    return validationError('検索条件が不正です', parsedQuery.error.flatten().fieldErrors);
+  }
+
+  const {
+    status,
+    patient_id: patientId,
+    related_entity_type: relatedEntityType,
+    related_entity_id: relatedEntityId,
+  } = parsedQuery.data;
 
   const where = {
     org_id: req.orgId,
-    ...(status
-      ? {
-          status: status as
-            | 'draft'
-            | 'sent'
-            | 'received'
-            | 'in_progress'
-            | 'responded'
-            | 'closed'
-            | 'escalated'
-            | 'cancelled'
-            | 'expired',
-        }
-      : {}),
+    ...(status ? { status } : {}),
     ...(patientId ? { patient_id: patientId } : {}),
     ...(relatedEntityType ? { related_entity_type: relatedEntityType } : {}),
     ...(relatedEntityId ? { related_entity_id: relatedEntityId } : {}),

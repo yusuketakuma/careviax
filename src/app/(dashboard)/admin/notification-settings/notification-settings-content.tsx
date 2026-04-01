@@ -46,7 +46,7 @@ import {
 type NotificationRule = {
   id: string;
   event_type: string;
-  channel: 'in_app' | 'email' | 'sms' | 'line';
+  channel: 'in_app' | 'email' | 'sms' | 'line' | 'fax' | 'mcs';
   enabled: boolean;
   recipients: {
     roles?: string[];
@@ -159,6 +159,18 @@ const NOTIFICATION_CHANNEL_OPTIONS = [
     value: 'line',
     label: 'LINE',
     description: 'LINE アダプタ経由で送信',
+    icon: MessageSquareText,
+  },
+  {
+    value: 'fax',
+    label: 'FAX',
+    description: 'FAX 送付タスクの通知先として扱う',
+    icon: MessageSquareText,
+  },
+  {
+    value: 'mcs',
+    label: 'MCS',
+    description: 'MCS 連携先への通知先として扱う',
     icon: MessageSquareText,
   },
 ] as const;

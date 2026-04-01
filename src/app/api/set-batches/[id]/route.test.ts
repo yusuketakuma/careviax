@@ -5,12 +5,16 @@ const {
   setBatchFindFirstMock,
   setBatchUpdateMock,
   setBatchDeleteMock,
+  setBatchChangeLogCreateMock,
   withOrgContextMock,
+  notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
   setBatchFindFirstMock: vi.fn(),
   setBatchUpdateMock: vi.fn(),
   setBatchDeleteMock: vi.fn(),
+  setBatchChangeLogCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  notifyWorkflowMutationMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -32,6 +36,10 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/server/services/workflow-dashboard-cache', () => ({
+  notifyWorkflowMutation: notifyWorkflowMutationMock,
+}));
+
 import { DELETE, GET, PATCH } from './route';
 
 describe('/api/set-batches/[id]', () => {
@@ -39,12 +47,31 @@ describe('/api/set-batches/[id]', () => {
     vi.clearAllMocks();
     setBatchFindFirstMock.mockResolvedValue({
       id: 'batch_1',
+      plan_id: 'plan_1',
+      line_id: 'line_1',
+      slot: 'morning',
+      day_number: 1,
+      quantity: 1,
+      carry_type: 'carry',
+      packaging_method_snapshot: null,
+      packaging_instructions_snapshot: null,
+      packaging_instruction_tags_snapshot: [],
       version: 2,
       line: { id: 'line_1', drug_name: 'Drug A' },
     });
     setBatchUpdateMock.mockResolvedValue({
       id: 'batch_1',
+      plan_id: 'plan_1',
+      line_id: 'line_1',
+      slot: 'morning',
+      day_number: 1,
+      quantity: 3,
+      carry_type: 'carry',
+      packaging_method_snapshot: null,
+      packaging_instructions_snapshot: null,
+      packaging_instruction_tags_snapshot: [],
       version: 3,
+      line: { id: 'line_1', drug_name: 'Drug A' },
     });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -52,6 +79,9 @@ describe('/api/set-batches/[id]', () => {
           findFirst: setBatchFindFirstMock,
           update: setBatchUpdateMock,
           delete: setBatchDeleteMock,
+        },
+        setBatchChangeLog: {
+          create: setBatchChangeLogCreateMock,
         },
       }),
     );
@@ -78,11 +108,15 @@ describe('/api/set-batches/[id]', () => {
     expect(response.status).toBe(200);
     expect(setBatchUpdateMock).toHaveBeenCalledWith({
       where: { id: 'batch_1' },
-      data: {
+      data: expect.objectContaining({
         quantity: 3,
         version: { increment: 1 },
-      },
+      }),
       include: expect.any(Object),
+    });
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      payload: { source: 'set_batches_update', plan_id: 'plan_1', batch_id: 'batch_1' },
     });
   });
 
@@ -94,6 +128,10 @@ describe('/api/set-batches/[id]', () => {
     expect(response.status).toBe(200);
     expect(setBatchDeleteMock).toHaveBeenCalledWith({
       where: { id: 'batch_1' },
+    });
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      payload: { source: 'set_batches_delete', plan_id: 'plan_1', batch_id: 'batch_1' },
     });
   });
 });

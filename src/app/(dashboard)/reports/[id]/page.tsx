@@ -71,6 +71,12 @@ type CareReport = {
     prescribed_date: string;
     prescriber_name: string | null;
   } | null;
+  delivery_rule_suggestion?: {
+    document_type: string;
+    target_role: string;
+    channel: string;
+    fallback_channels: string[];
+  } | null;
 };
 
 type SendFormData = {
@@ -102,6 +108,7 @@ export default function ReportDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const orgId = useOrgId();
+  const isBootstrappingOrg = !orgId;
   const queryClient = useQueryClient();
 
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
@@ -175,7 +182,7 @@ export default function ReportDetailPage() {
     sendMutation.mutate(sendForm);
   }
 
-  if (isLoading) {
+  if (isBootstrappingOrg || isLoading) {
     return (
       <div className="p-6">
         <Loading />
@@ -200,52 +207,67 @@ export default function ReportDetailPage() {
     (report.content as { warnings?: string[] }).warnings ?? [];
   const prescriberInstitutionSuggestion = report.prescriber_institution_suggestion;
   const externalProfessionalSuggestions = externalProfessionalSuggestionsQuery.data?.data ?? [];
+  const deliveryRuleSuggestion = report.delivery_rule_suggestion ?? null;
 
-  function applyInstitutionSuggestion() {
-    const suggestion = prescriberInstitutionSuggestion;
-    if (!suggestion) return;
+  function applySuggestion(
+    type: 'institution' | 'professional',
+    suggestion: {
+      name: string;
+      phone: string | null;
+      fax: string | null;
+      email?: string | null;
+      recommended_channels: string[];
+      prescriber_name?: string | null;
+      preferred_contact_method?: string | null;
+    }
+  ) {
+    const suggestedChannels = [
+      deliveryRuleSuggestion?.channel,
+      ...(deliveryRuleSuggestion?.fallback_channels ?? []),
+      ...suggestion.recommended_channels,
+    ].filter((value): value is string => Boolean(value));
 
-    const fallbackChannel =
-      suggestion.recommended_channels.find((channel) =>
-        channel === 'fax' ? Boolean(suggestion.fax) : channel === 'phone' ? Boolean(suggestion.phone) : false
-      ) ?? (suggestion.fax ? 'fax' : 'phone');
-    const fallbackContact = fallbackChannel === 'fax' ? suggestion.fax ?? '' : suggestion.phone ?? '';
+    const contactByChannel = (ch: string): string | null => {
+      if (ch === 'email' || ch === 'ses') return suggestion.email ?? null;
+      if (ch === 'fax') return suggestion.fax ?? null;
+      if (ch === 'phone') return suggestion.phone ?? null;
+      return null;
+    };
+
+    const hasContact = (ch: string): boolean => Boolean(contactByChannel(ch));
+
+    let resolvedChannel: string;
+    if (type === 'institution') {
+      resolvedChannel =
+        suggestedChannels.find((ch) => ch === 'fax' || ch === 'phone' ? hasContact(ch) : false) ??
+        (suggestion.fax ? 'fax' : 'phone');
+    } else {
+      resolvedChannel =
+        suggestedChannels.find(hasContact) ??
+        suggestion.preferred_contact_method ??
+        (suggestion.email ? 'email' : suggestion.fax ? 'fax' : suggestion.phone ? 'phone' : 'email');
+    }
+
+    const resolvedContact =
+      contactByChannel(resolvedChannel) ??
+      (type === 'professional'
+        ? (suggestion.email ?? suggestion.fax ?? suggestion.phone ?? '')
+        : '');
+
     setSendForm({
-      channel: fallbackChannel,
-      recipient_name: suggestion.prescriber_name ?? suggestion.name,
-      recipient_contact: fallbackContact,
+      channel: resolvedChannel,
+      recipient_name: (type === 'institution' ? suggestion.prescriber_name : null) ?? suggestion.name,
+      recipient_contact: resolvedContact,
     });
   }
 
-  function applyExternalProfessionalSuggestion(suggestion: ExternalProfessionalSuggestion) {
-    const fallbackChannel =
-      suggestion.recommended_channels.find((channel) =>
-        channel === 'email' || channel === 'ses'
-          ? Boolean(suggestion.email)
-          : channel === 'fax'
-            ? Boolean(suggestion.fax)
-            : channel === 'phone'
-              ? Boolean(suggestion.phone)
-              : false
-      ) ??
-      suggestion.preferred_contact_method ??
-      (suggestion.email ? 'email' : suggestion.fax ? 'fax' : suggestion.phone ? 'phone' : 'email');
-    const fallbackContact =
-      (fallbackChannel === 'email' || fallbackChannel === 'ses'
-        ? suggestion.email
-        : fallbackChannel === 'fax'
-          ? suggestion.fax
-          : suggestion.phone) ??
-      suggestion.email ??
-      suggestion.fax ??
-      suggestion.phone ??
-      '';
+  function applyInstitutionSuggestion() {
+    if (!prescriberInstitutionSuggestion) return;
+    applySuggestion('institution', prescriberInstitutionSuggestion);
+  }
 
-    setSendForm({
-      channel: fallbackChannel,
-      recipient_name: suggestion.name,
-      recipient_contact: fallbackContact,
-    });
+  function applyExternalProfessionalSuggestion(suggestion: ExternalProfessionalSuggestion) {
+    applySuggestion('professional', suggestion);
   }
 
   return (
@@ -475,6 +497,11 @@ export default function ReportDetailPage() {
                 >
                   候補を適用
                 </Button>
+                {deliveryRuleSuggestion ? (
+                  <p className="mt-2 text-xs text-sky-800">
+                    送達ルール: {deliveryRuleSuggestion.target_role} 向けは {CHANNEL_LABELS[deliveryRuleSuggestion.channel] ?? deliveryRuleSuggestion.channel} を優先
+                  </p>
+                ) : null}
               </div>
             ) : null}
 

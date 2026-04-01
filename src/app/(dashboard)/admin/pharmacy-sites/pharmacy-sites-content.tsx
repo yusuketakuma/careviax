@@ -159,18 +159,6 @@ export function PharmacySitesContent() {
 
   const sites = data?.data ?? [];
 
-  const siteDetailQuery = useQuery({
-    queryKey: ['pharmacy-site-detail', orgId, editingSite?.id],
-    queryFn: async () => {
-      const response = await fetch(`/api/pharmacy-sites/${editingSite!.id}`, {
-        headers: { 'x-org-id': orgId },
-      });
-      if (!response.ok) throw new Error('薬局詳細の取得に失敗しました');
-      return response.json() as Promise<{ data: PharmacySite }>;
-    },
-    enabled: !!orgId && !!editingSite,
-  });
-
   const configsQuery = useQuery({
     queryKey: ['insurance-configs', orgId, configSiteId],
     queryFn: async () => {

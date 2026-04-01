@@ -11,8 +11,16 @@ import { buildVisitScheduleSnapshot } from '@/server/services/visit-schedule-aud
 import { formatVisitWorkflowGateIssues, type VisitWorkflowGateIssue } from '@/server/services/management-plans';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
+import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import type { HomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import { fetchEmergencyContacts } from '@/lib/patient/emergency-contacts';
+import {
+  buildVisitScheduleCommunicationTargets,
+  resolveVisitScheduleCommunicationChannel,
+  toVisitScheduleCommunicationEventChannel,
+  type VisitScheduleSchedulingPreferenceContext,
+  visitScheduleCommunicationChannelValues,
+} from '@/server/services/visit-schedule-communication';
 
 const rescheduleSchema = z.object({
   reason: z.string().min(1, 'リスケ理由は必須です'),
@@ -24,7 +32,7 @@ const rescheduleSchema = z.object({
     'weather',
     'other',
   ]).default('other'),
-  communication_channel: z.enum(['phone', 'fax', 'email', 'collaboration', 'in_person']).default('phone'),
+  communication_channel: z.enum(visitScheduleCommunicationChannelValues).default('phone'),
   communication_result: z.enum(['pending', 'sent', 'verbal_notified']).default('pending'),
   start_date: z
     .string()
@@ -43,20 +51,6 @@ const RESCHEDULE_REASON_LABELS: Record<
   facility_request: '施設都合',
   weather: '天候・交通事情',
   other: 'その他',
-};
-
-type CommunicationTarget = {
-  key: 'family' | 'facility' | 'nurse' | 'care_manager' | 'mcs';
-  recipientRole: string;
-  recipientName: string;
-  contact: string | null;
-};
-
-type SchedulingPreferenceContext = {
-  preferredContactMethod: string | null;
-  visitBeforeContactRequired: boolean;
-  mcsLinked: boolean;
-  pharmacyDecisionDueDate: Date | null;
 };
 
 type RescheduleSourceSchedule = {
@@ -90,142 +84,8 @@ type ImpactedSchedule = RescheduleSourceSchedule & {
   } | null;
 };
 
-function firstValue(...values: Array<string | null | undefined>) {
-  return values.find((value) => Boolean(value)) ?? null;
-}
-
-// Map intake preferred_contact_method values to reschedule schema channel values.
-// 'mcs' is treated separately (not a direct channel in the schema enum).
-function resolveEffectiveChannel(
-  requestedChannel: z.infer<typeof rescheduleSchema>['communication_channel'],
-  preferredContactMethod: string | null
-): z.infer<typeof rescheduleSchema>['communication_channel'] {
-  if (!preferredContactMethod || preferredContactMethod === 'other') {
-    return requestedChannel;
-  }
-  const methodToChannel: Record<string, z.infer<typeof rescheduleSchema>['communication_channel']> = {
-    phone: 'phone',
-    fax: 'fax',
-    email: 'email',
-    mcs: 'collaboration',
-  };
-  return methodToChannel[preferredContactMethod] ?? requestedChannel;
-}
-
-function buildCommunicationTargets(args: {
-  contacts: Array<{
-    name: string;
-    relation: string;
-    phone: string | null;
-    email: string | null;
-    fax: string | null;
-    is_primary: boolean;
-  }>;
-  careTeamLinks: Array<{
-    role: string;
-    name: string;
-    phone: string | null;
-    email: string | null;
-    fax: string | null;
-    is_primary: boolean;
-  }>;
-  channel: z.infer<typeof rescheduleSchema>['communication_channel'];
-  schedulingPreference: SchedulingPreferenceContext;
-}) {
-  // Apply intake preferred_contact_method to override effective channel
-  const effectiveChannel = resolveEffectiveChannel(
-    args.channel,
-    args.schedulingPreference.preferredContactMethod
-  );
-
-  const sortedContacts = [...args.contacts].sort(
-    (left, right) => Number(right.is_primary) - Number(left.is_primary)
-  );
-  const sortedCareTeam = [...args.careTeamLinks].sort(
-    (left, right) => Number(right.is_primary) - Number(left.is_primary)
-  );
-  const contactField =
-    effectiveChannel === 'fax' ? 'fax' : effectiveChannel === 'email' ? 'email' : 'phone';
-
-  const familyContact = sortedContacts.find((contact) =>
-    ['self', 'spouse', 'child', 'parent', 'sibling', 'other'].includes(contact.relation)
-  );
-  const facilityContact = sortedContacts.find((contact) => contact.relation === 'facility_staff');
-  const nurseContact =
-    sortedCareTeam.find((member) => member.role === 'nurse') ??
-    sortedContacts.find((contact) => contact.relation === 'nurse');
-  const careManagerContact =
-    sortedCareTeam.find((member) => member.role === 'care_manager') ??
-    sortedContacts.find((contact) => contact.relation === 'care_manager');
-
-  const targets: Array<CommunicationTarget | null> = [
-    familyContact
-      ? {
-          key: 'family' as const,
-          recipientRole: 'family_share',
-          recipientName: familyContact.name,
-          contact: firstValue(familyContact[contactField], familyContact.phone),
-        }
-      : null,
-    facilityContact
-      ? {
-          key: 'facility' as const,
-          recipientRole: 'facility_handoff',
-          recipientName: facilityContact.name,
-          contact: firstValue(facilityContact[contactField], facilityContact.phone),
-        }
-      : null,
-    nurseContact
-      ? {
-          key: 'nurse' as const,
-          recipientRole: 'nurse_share',
-          recipientName: nurseContact.name,
-          contact: firstValue(nurseContact[contactField], nurseContact.phone),
-        }
-      : null,
-    careManagerContact
-      ? {
-          key: 'care_manager' as const,
-          recipientRole: 'care_manager_report',
-          recipientName: careManagerContact.name,
-          contact: firstValue(careManagerContact[contactField], careManagerContact.phone),
-        }
-      : null,
-  ];
-
-  // If MCS is linked, add it as an explicit communication target so the operator
-  // knows to notify via the MCS collaboration platform in addition to other channels.
-  if (args.schedulingPreference.mcsLinked) {
-    targets.push({
-      key: 'mcs' as const,
-      recipientRole: 'mcs_collaboration',
-      recipientName: 'MCS連携',
-      contact: null,
-    });
-  }
-
-  return targets.filter((target): target is CommunicationTarget => target != null);
-}
-
 function toTimeString(value: Date | null) {
   return value ? format(value, 'HH:mm') : undefined;
-}
-
-function toCommunicationEventChannel(
-  value: z.infer<typeof rescheduleSchema>['communication_channel']
-) {
-  switch (value) {
-    case 'fax':
-      return 'fax';
-    case 'email':
-      return 'email';
-    case 'in_person':
-      return 'in_person';
-    case 'collaboration':
-      return 'email';
-    default:
-      return 'phone';
-  }
 }
 
 function isPotentiallyImpactedByEmergencyInsert(
@@ -328,7 +188,7 @@ export async function POST(
   const schedulingPref = schedule.case_.patient.scheduling_preference;
   const intakeJson = schedule.case_.required_visit_support as { home_visit_intake?: HomeVisitIntake } | null;
   const intake = intakeJson?.home_visit_intake;
-  const schedulingPreference: SchedulingPreferenceContext = {
+  const schedulingPreference: VisitScheduleSchedulingPreferenceContext = {
     preferredContactMethod:
       intake?.requester?.preferred_contact_method ??
       schedulingPref?.primary_contact_preference ??
@@ -626,7 +486,7 @@ export async function POST(
       },
       orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
     });
-    const communicationTargets = buildCommunicationTargets({
+    const communicationTargets = buildVisitScheduleCommunicationTargets({
       contacts,
       careTeamLinks,
       channel: parsed.data.communication_channel,
@@ -679,7 +539,7 @@ export async function POST(
         : schedule.scheduled_date;
 
     // HVI-01F: effective channel after applying intake preferred_contact_method
-    const effectiveChannel = resolveEffectiveChannel(
+    const effectiveChannel = resolveVisitScheduleCommunicationChannel(
       parsed.data.communication_channel,
       schedulingPreference.preferredContactMethod
     );
@@ -744,7 +604,7 @@ export async function POST(
         case_id: schedule.case_id,
         event_type: 'schedule_change',
         // HVI-01F: reflect effective channel in the event record
-        channel: toCommunicationEventChannel(effectiveChannel),
+        channel: toVisitScheduleCommunicationEventChannel(effectiveChannel),
         direction: 'outbound',
         subject: `訪問予定変更 (${RESCHEDULE_REASON_LABELS[parsed.data.reason_code]})`,
         content: schedulingPreference.visitBeforeContactRequired
@@ -871,6 +731,11 @@ export async function POST(
 
     return { proposals: createdProposals, emergencyContacts, schedulingPreferenceRecord };
   }, { requestContext: ctx });
+
+  await notifyWorkflowMutation({
+    orgId: ctx.orgId,
+    payload: { source: 'visit_schedules_reschedule_request', schedule_id: id },
+  });
 
   return success({
     data: {

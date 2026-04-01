@@ -4,6 +4,8 @@ import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
 
+const uatStatusSchema = z.enum(['open', 'triaged', 'in_progress', 'resolved', 'deferred']);
+
 const createUatFeedbackSchema = z.object({
   priority: z.enum(['critical', 'high', 'medium', 'low']),
   feedback: z.string().trim().min(1, 'フィードバック内容は必須です'),
@@ -26,6 +28,8 @@ export const GET = withAuth(
       data: feedback.map((item) => ({
         ...item,
         checked_items: Array.isArray(item.checked_items) ? item.checked_items : [],
+        due_date: item.due_date?.toISOString() ?? null,
+        resolved_at: item.resolved_at?.toISOString() ?? null,
         created_at: item.created_at.toISOString(),
         updated_at: item.updated_at.toISOString(),
       })),
@@ -52,10 +56,15 @@ export const POST = withAuth(
         org_id: req.orgId,
         submitted_by: req.userId,
         priority: parsed.data.priority,
+        status: uatStatusSchema.enum.open,
+        owner_user_id: null,
         feedback: parsed.data.feedback,
         checklist_progress: parsed.data.checklist_progress ?? null,
         checked_items: parsed.data.checked_items ?? Prisma.JsonNull,
         source: parsed.data.source?.trim() || 'pilot_pharmacy',
+        linked_work_item: null,
+        due_date: null,
+        resolved_at: null,
       },
     });
 
@@ -64,6 +73,8 @@ export const POST = withAuth(
         data: {
           ...created,
           checked_items: Array.isArray(created.checked_items) ? created.checked_items : [],
+          due_date: created.due_date?.toISOString() ?? null,
+          resolved_at: created.resolved_at?.toISOString() ?? null,
           created_at: created.created_at.toISOString(),
           updated_at: created.updated_at.toISOString(),
         },

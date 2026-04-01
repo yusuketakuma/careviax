@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
+import { recordDataExportAudit } from '@/server/services/export-audit';
 
 function csvCell(value: string | number | null | undefined) {
   if (value == null) return '';
@@ -11,7 +12,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const { searchParams } = new URL(req.url);
   const billingMonth = searchParams.get('billing_month');
 
-  const candidates = await withOrgContext(req.orgId, async (tx) => {
+  const { candidates, tx } = await withOrgContext(req.orgId, async (tx) => {
     const records = await tx.billingCandidate.findMany({
       where: {
         org_id: req.orgId,
@@ -103,17 +104,34 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       yjCodesByCycleId.set(intake.cycle_id, yjCodes);
     }
 
-    return records.map((candidate) => {
-      const patient = patientById.get(candidate.patient_id) ?? null;
-      const residence = residenceByPatientId.get(candidate.patient_id) ?? null;
-      return {
-        ...candidate,
-        patient_name: patient?.name ?? '',
-        building_id: residence?.building_id ?? '',
-        unit_name: residence?.unit_name ?? '',
-        yj_codes: candidate.cycle_id ? yjCodesByCycleId.get(candidate.cycle_id) ?? [] : [],
-      };
-    });
+    return {
+      tx,
+      candidates: records.map((candidate) => {
+        const patient = patientById.get(candidate.patient_id) ?? null;
+        const residence = residenceByPatientId.get(candidate.patient_id) ?? null;
+        return {
+          ...candidate,
+          patient_name: patient?.name ?? '',
+          building_id: residence?.building_id ?? '',
+          unit_name: residence?.unit_name ?? '',
+          yj_codes: candidate.cycle_id ? yjCodesByCycleId.get(candidate.cycle_id) ?? [] : [],
+        };
+      }),
+    };
+  });
+
+  await recordDataExportAudit(tx, {
+    orgId: req.orgId,
+    actorId: req.userId,
+    targetType: 'billing_candidate',
+    format: 'csv',
+    recordCount: candidates.length,
+    filters: {
+      billing_month: billingMonth ?? null,
+      statuses: ['confirmed', 'exported'],
+    },
+    ipAddress: req.ipAddress,
+    userAgent: req.userAgent,
   });
 
   const header = [

@@ -34,5 +34,5 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   return success({ alerts });
 }, {
   permission: 'canVisit',
-  message: 'CDS チェックの実行権限がありません',
+  message: '処方安全チェックの実行権限がありません',
 });

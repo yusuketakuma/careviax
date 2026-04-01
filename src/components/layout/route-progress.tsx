@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
+import { SegmentedProgressBar } from '@/components/ui/segmented-progress-bar';
 import { cn } from '@/lib/utils';
 
 function isModifiedEvent(event: MouseEvent) {
@@ -110,13 +111,15 @@ export function RouteProgress() {
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-0 z-[80] h-1">
-      <div
-        aria-hidden="true"
+      <SegmentedProgressBar
+        value={progress}
+        max={100}
         className={cn(
-          'h-full bg-primary shadow-[0_0_12px_rgba(37,99,235,0.35)] transition-[width,opacity] duration-200 ease-out',
+          'h-full shadow-[0_0_12px_rgba(37,99,235,0.35)] transition-opacity duration-200 ease-out',
           visible ? 'opacity-100' : 'opacity-0'
         )}
-        style={{ width: `${progress}%` }}
+        filledClassName="bg-primary"
+        emptyClassName="bg-transparent"
       />
     </div>
   );

@@ -32,7 +32,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type Holiday = {
@@ -66,6 +65,9 @@ const EMPTY_FORM: HolidayForm = {
   holiday_type: 'site_closure',
   is_closed: true,
 };
+
+const EMPTY_HOLIDAYS: Holiday[] = [];
+const EMPTY_SITES: SiteOption[] = [];
 
 const HOLIDAY_TYPE_OPTIONS = [
   ['public_holiday', '祝日'],
@@ -142,8 +144,8 @@ export function BusinessHolidaysContent() {
     enabled: !!orgId,
   });
 
-  const holidays = data?.data ?? [];
-  const sites = sitesQuery.data?.data ?? [];
+  const holidays = data?.data ?? EMPTY_HOLIDAYS;
+  const sites = sitesQuery.data?.data ?? EMPTY_SITES;
 
   const holidayMap = useMemo(() => {
     const map = new Map<string, Holiday[]>();

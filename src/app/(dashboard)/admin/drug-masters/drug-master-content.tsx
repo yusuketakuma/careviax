@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { Search, Pill, AlertTriangle, Shield, Database, Download, History, CheckCircle2, Building2 } from 'lucide-react';
@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { LoadingButton } from '@/components/ui/loading-button';
 import {
   Sheet,
@@ -301,6 +302,7 @@ export function DrugMasterContent() {
   const [selectedDrugId, setSelectedDrugId] = useState<string | null>(null);
   const [selectedSiteId, setSelectedSiteId] = useState('');
   const [preferredGenericId, setPreferredGenericId] = useState<string | null>(null);
+  const reorderPointInputRef = useRef<HTMLInputElement | null>(null);
 
   const params = useMemo(() => {
     const p = new URLSearchParams({ limit: '50' });
@@ -325,6 +327,7 @@ export function DrugMasterContent() {
       }>;
     },
     enabled: !!orgId,
+    staleTime: 300_000,
   });
 
   const { data: sitesData } = useQuery({
@@ -337,6 +340,7 @@ export function DrugMasterContent() {
       return res.json() as Promise<{ data: PharmacySiteOption[] }>;
     },
     enabled: !!orgId,
+    staleTime: 300_000,
   });
 
   const { data: importLogsData, isLoading: isLoadingLogs } = useQuery({
@@ -349,6 +353,7 @@ export function DrugMasterContent() {
       return res.json() as Promise<{ data: DrugMasterImportLog[] }>;
     },
     enabled: !!orgId,
+    staleTime: 300_000,
   });
 
   const detailQuery = useQuery({
@@ -363,6 +368,7 @@ export function DrugMasterContent() {
       return res.json() as Promise<DrugMasterDetail>;
     },
     enabled: !!orgId && !!selectedDrugId,
+    staleTime: 300_000,
   });
 
   const effectiveSelectedSiteId = selectedSiteId || sitesData?.data?.[0]?.id || '';
@@ -381,6 +387,7 @@ export function DrugMasterContent() {
       return res.json() as Promise<{ data: PharmacyDrugStockConfig | null }>;
     },
     enabled: !!orgId && !!effectiveSelectedSiteId && !!selectedDrugId,
+    staleTime: 300_000,
   });
 
   const preferredGenericCandidatesQuery = useQuery({
@@ -400,6 +407,7 @@ export function DrugMasterContent() {
       return res.json() as Promise<{ data: GenericCandidateOption[] }>;
     },
     enabled: !!orgId && !!selectedDrugId && !!detailQuery.data?.generic_name,
+    staleTime: 300_000,
   });
 
   const importMutation = useMutation({
@@ -452,6 +460,7 @@ export function DrugMasterContent() {
       drug_master_id: string;
       is_stocked: boolean;
       preferred_generic_id?: string | null;
+      reorder_point?: number | null;
     }) => {
       const res = await fetch('/api/pharmacy-drug-stocks', {
         method: 'POST',
@@ -780,6 +789,10 @@ export function DrugMasterContent() {
                                   stockConfig?.is_stocked
                                     ? null
                                     : effectivePreferredGenericId || null,
+                                reorder_point:
+                                  stockConfig?.is_stocked
+                                    ? null
+                                    : stockConfig?.reorder_point ?? null,
                               })
                             }
                           >
@@ -825,6 +838,7 @@ export function DrugMasterContent() {
                                   drug_master_id: detailQuery.data.id,
                                   is_stocked: true,
                                   preferred_generic_id: effectivePreferredGenericId || null,
+                                  reorder_point: stockConfig?.reorder_point ?? null,
                                 })
                               }
                             >
@@ -833,6 +847,58 @@ export function DrugMasterContent() {
                           </div>
                         </div>
                       )}
+
+                      <div className="grid gap-3 rounded-md border border-border/60 bg-background p-3">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">在庫下限アラート</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            下限数量を下回った場合の補充アラート閾値を設定します。
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-end gap-2">
+                          <label className="space-y-1">
+                            <span className="text-xs font-medium text-muted-foreground">下限数量</span>
+                            <Input
+                              ref={reorderPointInputRef}
+                              type="number"
+                              min={0}
+                              defaultValue={stockConfig?.reorder_point ?? ''}
+                              placeholder="例: 10"
+                              className="w-32"
+                            />
+                          </label>
+                          <LoadingButton
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            loading={stockMutation.isPending}
+                            loadingLabel="保存中"
+                            disabled={!effectiveSelectedSiteId}
+                            onClick={() => {
+                              const rawValue = reorderPointInputRef.current?.value?.trim() ?? '';
+                              const parsedValue =
+                                rawValue.length === 0 ? null : Number.parseInt(rawValue, 10);
+                              if (rawValue.length > 0 && Number.isNaN(parsedValue)) {
+                                toast.error('在庫下限は 0 以上の整数で入力してください');
+                                return;
+                              }
+
+                              stockMutation.mutate({
+                                site_id: effectiveSelectedSiteId,
+                                drug_master_id: detailQuery.data.id,
+                                is_stocked: stockConfig?.is_stocked ?? true,
+                                preferred_generic_id: effectivePreferredGenericId || null,
+                                reorder_point: parsedValue,
+                              });
+                            }}
+                          >
+                            アラート閾値を保存
+                          </LoadingButton>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          現在値: {stockConfig?.reorder_point != null ? `${stockConfig.reorder_point}単位` : '未設定'}
+                        </p>
+                      </div>
                     </div>
                   )}
                 </section>

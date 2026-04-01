@@ -44,12 +44,23 @@ export const PATCH = withAuthContext(
 
     const existing = await prisma.workflowException.findFirst({
       where: { id, org_id: ctx.orgId },
-      select: { id: true, cycle_id: true, status: true },
+      select: { id: true, cycle_id: true, status: true, exception_type: true },
     });
     if (!existing) return notFound('ワークフロー例外が見つかりません');
 
     if (existing.status !== 'open') {
       return validationError('この例外は既に解決済みまたは却下済みです');
+    }
+
+    // B4: For dispense_audit_rejected, cycle must have moved past 'dispensing'
+    if (existing.exception_type === 'dispense_audit_rejected' && existing.cycle_id) {
+      const cycle = await prisma.medicationCycle.findFirst({
+        where: { id: existing.cycle_id },
+        select: { overall_status: true },
+      });
+      if (cycle?.overall_status === 'dispensing') {
+        return validationError('調剤が再実行されていません');
+      }
     }
 
     const result = await withOrgContext(ctx.orgId, async (tx) => {
@@ -77,6 +88,17 @@ export const PATCH = withAuthContext(
           await tx.medicationCycle.update({
             where: { id: existing.cycle_id },
             data: { exception_status: null },
+          });
+          // Log the exception_status clear (no overall_status transition)
+          await tx.cycleTransitionLog.create({
+            data: {
+              org_id: ctx.orgId,
+              cycle_id: existing.cycle_id,
+              from_status: 'exception_status_cleared',
+              to_status: 'exception_status_cleared',
+              actor_id: ctx.userId,
+              note: `exception_status cleared after resolving exception ${id}`,
+            },
           });
         }
       }

@@ -1,8 +1,11 @@
 import { NextRequest } from 'next/server';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { generateDispensePrefill } from '@/lib/dispensing/prefill-generator';
+import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { z } from 'zod';
 
 const updateDispenseTaskSchema = z.object({
@@ -379,13 +382,22 @@ export async function GET(
         })) ?? [],
     });
     const primaryResidence = task.cycle.case_.patient.residences[0] ?? null;
-    const facilityLabel = primaryResidence?.building_id ?? primaryResidence?.address ?? null;
+    const facilityLabel = deriveFacilityLabel(primaryResidence ?? null);
+
+    // Keep packaging groups/date warnings available for downstream audit/detail views
+    // even after results exist, while the form still decides whether to use prefill data.
+    const prefill = await generateDispensePrefill(
+      task.cycle_id,
+      authReq.orgId,
+      site?.id ?? null
+    ).catch(() => null);
 
     return success({
       ...task,
       facility_label: facilityLabel,
       site,
       stock_guidance: stockGuidance,
+      prefill,
     });
   })(req);
 }
@@ -466,6 +478,15 @@ export async function PATCH(
           },
         },
       });
+    });
+
+    await notifyWorkflowMutation({
+      orgId: authReq.orgId,
+      payload: {
+        source: 'dispense_tasks_update',
+        task_id: id,
+        ...(status !== undefined ? { status } : {}),
+      },
     });
 
     return success(updated);

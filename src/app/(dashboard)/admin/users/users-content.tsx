@@ -1,6 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { format } from 'date-fns';
+import { ja } from 'date-fns/locale';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
@@ -8,6 +10,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -24,24 +34,23 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  isOperationalMemberRole,
+  roleRequiresSite,
+  type ManageableMemberRole,
+} from '@/lib/auth/member-roles';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type UserItem = {
   id: string;
+  cognito_linked: boolean;
   name: string;
   name_kana: string | null;
   email: string;
   phone: string | null;
-  role: string;
+  role: ManageableMemberRole | 'owner';
   site_id: string | null;
   site_name: string | null;
   is_active: boolean;
@@ -51,6 +60,19 @@ type UserItem = {
   activated_at: string | null;
   deactivated_at: string | null;
   deactivation_reason: string | null;
+  last_active_at: string | null;
+  max_daily_visits: number | null;
+  max_weekly_visits: number | null;
+  max_travel_minutes: number | null;
+  can_accept_emergency: boolean;
+  visit_specialties: string[] | null;
+  coverage_area: string[] | null;
+  can_dispense: boolean;
+  can_audit_dispense: boolean;
+  can_set: boolean;
+  can_audit_set: boolean;
+  credential_types: string[];
+  monthly_visit_count: number;
 };
 
 type SiteOption = {
@@ -63,8 +85,26 @@ type InviteForm = {
   name_kana: string;
   email: string;
   phone: string;
-  role: string;
+  role: ManageableMemberRole;
   site_id: string;
+};
+
+type DetailForm = {
+  name: string;
+  name_kana: string;
+  phone: string;
+  role: ManageableMemberRole;
+  site_id: string;
+  max_daily_visits: string;
+  max_weekly_visits: string;
+  max_travel_minutes: string;
+  can_accept_emergency: boolean;
+  visit_specialties: string;
+  coverage_area: string;
+  can_dispense: boolean;
+  can_audit_dispense: boolean;
+  can_set: boolean;
+  can_audit_set: boolean;
 };
 
 const EMPTY_INVITE: InviteForm = {
@@ -83,9 +123,12 @@ const ROLE_OPTIONS = [
   ['clerk', '事務スタッフ'],
   ['driver', '配送担当'],
   ['external_viewer', '外部連携者'],
-] as const;
+] as const satisfies ReadonlyArray<readonly [ManageableMemberRole, string]>;
 
-const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
+const STATUS_MAP: Record<
+  string,
+  { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }
+> = {
   invited: { label: '招待済', variant: 'outline' },
   active: { label: '稼働中', variant: 'default' },
   suspended: { label: '停止中', variant: 'destructive' },
@@ -97,8 +140,55 @@ function roleLabel(role: string) {
 }
 
 function statusBadge(status: string) {
-  const config = STATUS_MAP[status] ?? { label: status, variant: 'outline' as const };
+  const config = STATUS_MAP[status] ?? {
+    label: status,
+    variant: 'outline' as const,
+  };
   return <Badge variant={config.variant}>{config.label}</Badge>;
+}
+
+function formatListInput(values: string[] | null | undefined) {
+  return values?.join('\n') ?? '';
+}
+
+function parseListInput(value: string) {
+  return value
+    .split(/\r?\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) return '未記録';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '未記録';
+  return format(parsed, 'yyyy/MM/dd HH:mm', { locale: ja });
+}
+
+function toOptionalNumber(value: string) {
+  if (!value.trim()) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function buildDetailForm(user: UserItem): DetailForm {
+  return {
+    name: user.name,
+    name_kana: user.name_kana ?? '',
+    phone: user.phone ?? '',
+    role: user.role === 'owner' ? 'admin' : user.role,
+    site_id: user.site_id ?? '',
+    max_daily_visits: user.max_daily_visits?.toString() ?? '',
+    max_weekly_visits: user.max_weekly_visits?.toString() ?? '',
+    max_travel_minutes: user.max_travel_minutes?.toString() ?? '',
+    can_accept_emergency: user.can_accept_emergency,
+    visit_specialties: formatListInput(user.visit_specialties),
+    coverage_area: formatListInput(user.coverage_area),
+    can_dispense: user.can_dispense,
+    can_audit_dispense: user.can_audit_dispense,
+    can_set: user.can_set,
+    can_audit_set: user.can_audit_set,
+  };
 }
 
 export function UsersContent() {
@@ -106,12 +196,18 @@ export function UsersContent() {
   const queryClient = useQueryClient();
   const [showInvite, setShowInvite] = useState(false);
   const [inviteForm, setInviteForm] = useState<InviteForm>(EMPTY_INVITE);
+  const [detailUser, setDetailUser] = useState<UserItem | null>(null);
+  const [detailForm, setDetailForm] = useState<DetailForm | null>(null);
   const [actionDialog, setActionDialog] = useState<{
     type: 'suspend' | 'retire' | 'reactivate' | 'resend_invite';
     user: UserItem;
     reason: string;
   } | null>(null);
-  const [detailUser, setDetailUser] = useState<UserItem | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'all' | ManageableMemberRole>('all');
+  const [siteFilter, setSiteFilter] = useState<'all' | string>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | string>('all');
+  const [credentialFilter, setCredentialFilter] = useState<'all' | string>('all');
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-users', orgId],
@@ -137,8 +233,15 @@ export function UsersContent() {
     enabled: !!orgId,
   });
 
-  const users = data?.data ?? [];
-  const sites = sitesQuery.data?.data ?? [];
+  const users = useMemo(() => data?.data ?? [], [data]);
+  const sites = useMemo(() => sitesQuery.data?.data ?? [], [sitesQuery.data]);
+  const credentialOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(users.flatMap((user) => user.credential_types))
+      ).sort((left, right) => left.localeCompare(right, 'ja')),
+    [users]
+  );
 
   const inviteMutation = useMutation({
     mutationFn: async () => {
@@ -164,6 +267,48 @@ export function UsersContent() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '招待に失敗しました');
+    },
+  });
+
+  const detailMutation = useMutation({
+    mutationFn: async () => {
+      if (!detailUser || !detailForm) throw new Error('編集対象がありません');
+
+      const response = await fetch(`/api/pharmacists/${detailUser.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify({
+          action: 'update',
+          name: detailForm.name,
+          name_kana: detailForm.name_kana,
+          phone: detailForm.phone || undefined,
+          role: detailForm.role,
+          site_id: detailForm.site_id || undefined,
+          max_daily_visits: toOptionalNumber(detailForm.max_daily_visits),
+          max_weekly_visits: toOptionalNumber(detailForm.max_weekly_visits),
+          max_travel_minutes: toOptionalNumber(detailForm.max_travel_minutes),
+          can_accept_emergency: detailForm.can_accept_emergency,
+          visit_specialties: parseListInput(detailForm.visit_specialties),
+          coverage_area: parseListInput(detailForm.coverage_area),
+          can_dispense: detailForm.can_dispense,
+          can_audit_dispense: detailForm.can_audit_dispense,
+          can_set: detailForm.can_set,
+          can_audit_set: detailForm.can_audit_set,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error((payload as { message?: string }).message ?? '更新に失敗しました');
+      }
+      return payload;
+    },
+    onSuccess: async () => {
+      toast.success('ユーザー情報を更新しました');
+      setDetailUser(null);
+      await queryClient.invalidateQueries({ queryKey: ['admin-users', orgId] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '更新に失敗しました');
     },
   });
 
@@ -201,86 +346,158 @@ export function UsersContent() {
     },
   });
 
-  const columns = useMemo<ColumnDef<UserItem>[]>(
-    () => [
-      {
-        accessorKey: 'name',
-        header: '氏名',
-        cell: ({ row }) => (
-          <div className="space-y-0.5">
-            <div className="font-medium">{row.original.name}</div>
-            <div className="text-xs text-muted-foreground">{row.original.email}</div>
+  const filteredUsers = useMemo(() => {
+    const keyword = searchTerm.trim().toLowerCase();
+    return users.filter((user) => {
+      if (roleFilter !== 'all' && user.role !== roleFilter) return false;
+      if (siteFilter !== 'all' && (user.site_id ?? '') !== siteFilter) return false;
+      if (statusFilter !== 'all' && user.account_status !== statusFilter) return false;
+      if (
+        credentialFilter !== 'all' &&
+        !user.credential_types.includes(credentialFilter)
+      ) {
+        return false;
+      }
+      if (!keyword) return true;
+
+      return [
+        user.name,
+        user.name_kana ?? '',
+        user.email,
+        user.site_name ?? '',
+        roleLabel(user.role),
+      ]
+        .join(' ')
+        .toLowerCase()
+        .includes(keyword);
+    });
+  }, [credentialFilter, roleFilter, searchTerm, siteFilter, statusFilter, users]);
+
+  const columns: ColumnDef<UserItem>[] = [
+    {
+      accessorKey: 'name',
+      header: '氏名',
+      cell: ({ row }) => (
+        <div className="space-y-0.5">
+          <div className="font-medium">{row.original.name}</div>
+          <div className="text-xs text-muted-foreground">
+            {row.original.name_kana ?? 'フリガナ未設定'}
           </div>
-        ),
+          <div className="text-xs text-muted-foreground">{row.original.email}</div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'role',
+      header: 'ロール',
+      cell: ({ row }) => <Badge variant="outline">{roleLabel(row.original.role)}</Badge>,
+    },
+    {
+      accessorKey: 'site_name',
+      header: '所属店舗',
+      cell: ({ row }) => <span className="text-sm">{row.original.site_name ?? '未設定'}</span>,
+    },
+    {
+      accessorKey: 'credential_types',
+      header: '資格',
+      cell: ({ row }) => {
+        if (row.original.credential_types.length === 0) {
+          return <span className="text-xs text-muted-foreground">未登録</span>;
+        }
+        return (
+          <div className="flex flex-wrap gap-1">
+            {row.original.credential_types.slice(0, 2).map((type) => (
+              <Badge key={type} variant="secondary" className="max-w-36 truncate">
+                {type}
+              </Badge>
+            ))}
+            {row.original.credential_types.length > 2 ? (
+              <Badge variant="outline">+{row.original.credential_types.length - 2}</Badge>
+            ) : null}
+          </div>
+        );
       },
-      {
-        accessorKey: 'role',
-        header: 'ロール',
-        cell: ({ row }) => <Badge variant="outline">{roleLabel(row.original.role)}</Badge>,
-      },
-      {
-        accessorKey: 'site_name',
-        header: '所属店舗',
-        cell: ({ row }) => (
-          <span className="text-sm">{row.original.site_name ?? '未設定'}</span>
-        ),
-      },
-      {
-        accessorKey: 'account_status',
-        header: 'ステータス',
-        cell: ({ row }) => statusBadge(row.original.account_status),
-      },
-      {
-        id: 'actions',
-        header: '操作',
-        cell: ({ row }) => {
-          const user = row.original;
-          return (
-            <div className="flex flex-wrap gap-1">
-              <Button size="sm" variant="secondary" onClick={() => setDetailUser(user)}>
-                詳細
+    },
+    {
+      accessorKey: 'monthly_visit_count',
+      header: '今月訪問',
+      cell: ({ row }) => (
+        <span className="text-sm tabular-nums">{row.original.monthly_visit_count}件</span>
+      ),
+    },
+    {
+      accessorKey: 'account_status',
+      header: 'ステータス',
+      cell: ({ row }) => statusBadge(row.original.account_status),
+    },
+    {
+      accessorKey: 'last_active_at',
+      header: '最終アクティブ',
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground">
+          {formatDateTime(row.original.last_active_at)}
+        </span>
+      ),
+    },
+    {
+      id: 'actions',
+      header: '操作',
+      cell: ({ row }) => {
+        const user = row.original;
+        return (
+          <div className="flex flex-wrap gap-1">
+            <Button size="sm" variant="secondary" onClick={() => openDetail(user)}>
+              詳細
+            </Button>
+            {user.account_status === 'invited' ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setActionDialog({ type: 'resend_invite', user, reason: '' })}
+              >
+                再送
               </Button>
-              {user.account_status === 'invited' && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setActionDialog({ type: 'resend_invite', user, reason: '' })}
-                >
-                  再送
-                </Button>
-              )}
-              {(user.account_status === 'active' || user.account_status === 'invited') && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setActionDialog({ type: 'suspend', user, reason: '' })}
-                >
-                  停止
-                </Button>
-              )}
-              {(user.account_status === 'suspended' || user.account_status === 'retired') && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setActionDialog({ type: 'reactivate', user, reason: '' })}
-                >
-                  復帰
-                </Button>
-              )}
-            </div>
-          );
-        },
+            ) : null}
+            {user.account_status === 'active' || user.account_status === 'invited' ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setActionDialog({ type: 'suspend', user, reason: '' })}
+              >
+                停止
+              </Button>
+            ) : null}
+            {user.account_status === 'suspended' || user.account_status === 'retired' ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setActionDialog({ type: 'reactivate', user, reason: '' })}
+              >
+                復帰
+              </Button>
+            ) : null}
+          </div>
+        );
       },
-    ],
-    []
-  );
+    },
+  ];
 
   const summary = {
     total: users.length,
-    active: users.filter((u) => u.account_status === 'active').length,
-    invited: users.filter((u) => u.account_status === 'invited').length,
-    suspended: users.filter((u) => u.account_status === 'suspended' || u.account_status === 'retired').length,
+    active: users.filter((user) => user.account_status === 'active').length,
+    invited: users.filter((user) => user.account_status === 'invited').length,
+    suspended: users.filter(
+      (user) => user.account_status === 'suspended' || user.account_status === 'retired'
+    ).length,
   };
+
+  const operationalRole = detailForm ? isOperationalMemberRole(detailForm.role) : false;
+  const siteRequired = detailForm ? roleRequiresSite(detailForm.role) : false;
+
+  function openDetail(user: UserItem) {
+    setDetailUser(user);
+    setDetailForm(buildDetailForm(user));
+  }
 
   return (
     <div className="space-y-6">
@@ -292,16 +509,109 @@ export function UsersContent() {
       </div>
 
       <Card>
+        <CardHeader>
+          <CardTitle className="text-base">絞り込み</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <Field label="検索">
+            <Input
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="氏名・メール・店舗で検索"
+            />
+          </Field>
+          <Field label="ロール">
+            <Select
+              value={roleFilter}
+              onValueChange={(value) =>
+                setRoleFilter((value as 'all' | ManageableMemberRole) ?? 'all')
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">すべて</SelectItem>
+                {ROLE_OPTIONS.map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="所属店舗">
+            <Select
+              value={siteFilter}
+              onValueChange={(value) => setSiteFilter(value ?? 'all')}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">すべて</SelectItem>
+                {sites.map((site) => (
+                  <SelectItem key={site.id} value={site.id}>
+                    {site.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="状態">
+            <Select
+              value={statusFilter}
+              onValueChange={(value) => setStatusFilter(value ?? 'all')}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">すべて</SelectItem>
+                {Object.entries(STATUS_MAP).map(([value, config]) => (
+                  <SelectItem key={value} value={value}>
+                    {config.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="資格">
+            <Select
+              value={credentialFilter}
+              onValueChange={(value) => setCredentialFilter(value ?? 'all')}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">すべて</SelectItem>
+                {credentialOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">ユーザー一覧</CardTitle>
           <Button onClick={() => setShowInvite(true)}>ユーザーを招待</Button>
         </CardHeader>
         <CardContent className="p-0">
-          <DataTable columns={columns} data={users} isLoading={isLoading} caption="ユーザー一覧" />
+          <DataTable
+            columns={columns}
+            data={filteredUsers}
+            isLoading={isLoading}
+            caption="ユーザー一覧"
+          />
         </CardContent>
       </Card>
 
-      {/* Invite Sheet */}
       <Sheet open={showInvite} onOpenChange={setShowInvite}>
         <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
           <SheetHeader>
@@ -312,32 +622,49 @@ export function UsersContent() {
             <Field label="氏名">
               <Input
                 value={inviteForm.name}
-                onChange={(e) => setInviteForm((f) => ({ ...f, name: e.target.value }))}
+                onChange={(event) =>
+                  setInviteForm((current) => ({ ...current, name: event.target.value }))
+                }
               />
             </Field>
             <Field label="フリガナ">
               <Input
                 value={inviteForm.name_kana}
-                onChange={(e) => setInviteForm((f) => ({ ...f, name_kana: e.target.value }))}
+                onChange={(event) =>
+                  setInviteForm((current) => ({
+                    ...current,
+                    name_kana: event.target.value,
+                  }))
+                }
               />
             </Field>
             <Field label="メールアドレス">
               <Input
                 type="email"
                 value={inviteForm.email}
-                onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))}
+                onChange={(event) =>
+                  setInviteForm((current) => ({ ...current, email: event.target.value }))
+                }
               />
             </Field>
             <Field label="電話番号">
               <Input
                 value={inviteForm.phone}
-                onChange={(e) => setInviteForm((f) => ({ ...f, phone: e.target.value }))}
+                onChange={(event) =>
+                  setInviteForm((current) => ({ ...current, phone: event.target.value }))
+                }
               />
             </Field>
             <Field label="ロール">
               <Select
                 value={inviteForm.role}
-                onValueChange={(v) => setInviteForm((f) => ({ ...f, role: v ?? '' }))}
+                onValueChange={(value) =>
+                  setInviteForm((current) => ({
+                    ...current,
+                    role: (value as ManageableMemberRole) ?? 'pharmacist',
+                    site_id: value === 'external_viewer' ? '' : current.site_id,
+                  }))
+                }
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -353,13 +680,19 @@ export function UsersContent() {
             </Field>
             <Field label="所属店舗">
               <Select
-                value={inviteForm.site_id}
-                onValueChange={(v) => setInviteForm((f) => ({ ...f, site_id: v ?? '' }))}
+                value={inviteForm.site_id || 'unassigned'}
+                onValueChange={(value) =>
+                  setInviteForm((current) => ({
+                    ...current,
+                    site_id: value && value !== 'unassigned' ? value : '',
+                  }))
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="選択してください" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="unassigned">未設定</SelectItem>
                   {sites.map((site) => (
                     <SelectItem key={site.id} value={site.id}>
                       {site.name}
@@ -374,7 +707,13 @@ export function UsersContent() {
               </Button>
               <Button
                 onClick={() => inviteMutation.mutate()}
-                disabled={inviteMutation.isPending || !inviteForm.name || !inviteForm.email}
+                disabled={
+                  inviteMutation.isPending ||
+                  !inviteForm.name ||
+                  !inviteForm.name_kana ||
+                  !inviteForm.email ||
+                  (roleRequiresSite(inviteForm.role) && !inviteForm.site_id)
+                }
               >
                 {inviteMutation.isPending ? '招待中...' : '招待する'}
               </Button>
@@ -383,52 +722,340 @@ export function UsersContent() {
         </SheetContent>
       </Sheet>
 
-      {/* Detail Sheet */}
-      <Sheet open={!!detailUser} onOpenChange={(open) => !open && setDetailUser(null)}>
-        <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
+      <Sheet
+        open={!!detailUser}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDetailUser(null);
+            setDetailForm(null);
+          }
+        }}
+      >
+        <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
           <SheetHeader>
             <SheetTitle>ユーザー詳細</SheetTitle>
-            <SheetDescription>アカウント情報とCognito同期状態を確認できます。</SheetDescription>
+            <SheetDescription>
+              権限フラグ、訪問制約、Cognito 同期状態を編集できます。
+            </SheetDescription>
           </SheetHeader>
-          {detailUser && (
-            <div className="mt-6 space-y-4">
-              <DetailField label="氏名" value={detailUser.name} />
-              <DetailField label="フリガナ" value={detailUser.name_kana} />
-              <DetailField label="メールアドレス" value={detailUser.email} />
-              <DetailField label="電話番号" value={detailUser.phone} />
-              <DetailField label="ロール" value={roleLabel(detailUser.role)} />
-              <DetailField label="所属店舗" value={detailUser.site_name} />
-              <div>
-                <div className="text-xs text-muted-foreground">ステータス</div>
-                <div className="mt-1">{statusBadge(detailUser.account_status)}</div>
+          {detailUser && detailForm ? (
+            <div className="mt-6 space-y-5">
+              <div className="flex flex-wrap items-center gap-2">
+                {statusBadge(detailUser.account_status)}
+                <Badge variant={detailUser.cognito_linked ? 'default' : 'secondary'}>
+                  {detailUser.cognito_linked ? 'Cognito同期済み' : 'Cognito未接続'}
+                </Badge>
+                <Badge variant="outline">今月訪問 {detailUser.monthly_visit_count}件</Badge>
               </div>
-              <DetailField
-                label="招待日"
-                value={detailUser.invited_at ? new Date(detailUser.invited_at).toLocaleDateString('ja-JP') : null}
-              />
-              <DetailField
-                label="最終招待日"
-                value={detailUser.last_invited_at ? new Date(detailUser.last_invited_at).toLocaleDateString('ja-JP') : null}
-              />
-              <DetailField
-                label="有効化日"
-                value={detailUser.activated_at ? new Date(detailUser.activated_at).toLocaleDateString('ja-JP') : null}
-              />
-              {detailUser.deactivated_at && (
-                <>
-                  <DetailField
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="氏名">
+                  <Input
+                    value={detailForm.name}
+                    onChange={(event) =>
+                      setDetailForm((current) =>
+                        current ? { ...current, name: event.target.value } : current
+                      )
+                    }
+                  />
+                </Field>
+                <Field label="フリガナ">
+                  <Input
+                    value={detailForm.name_kana}
+                    onChange={(event) =>
+                      setDetailForm((current) =>
+                        current ? { ...current, name_kana: event.target.value } : current
+                      )
+                    }
+                  />
+                </Field>
+                <Field label="メールアドレス">
+                  <Input value={detailUser.email} readOnly disabled />
+                </Field>
+                <Field label="電話番号">
+                  <Input
+                    value={detailForm.phone}
+                    onChange={(event) =>
+                      setDetailForm((current) =>
+                        current ? { ...current, phone: event.target.value } : current
+                      )
+                    }
+                  />
+                </Field>
+                <Field label="ロール">
+                  <Select
+                    value={detailForm.role}
+                    onValueChange={(value) =>
+                      setDetailForm((current) =>
+                        current
+                          ? {
+                              ...current,
+                              role: (value as ManageableMemberRole) ?? current.role,
+                              site_id:
+                                value === 'external_viewer' ? '' : current.site_id,
+                            }
+                          : current
+                      )
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ROLE_OPTIONS.map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="所属店舗">
+                  <Select
+                    value={detailForm.site_id || 'unassigned'}
+                    onValueChange={(value) =>
+                      setDetailForm((current) =>
+                        current
+                          ? {
+                              ...current,
+                              site_id: value && value !== 'unassigned' ? value : '',
+                            }
+                          : current
+                      )
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="選択してください" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unassigned">未設定</SelectItem>
+                      {sites.map((site) => (
+                        <SelectItem key={site.id} value={site.id}>
+                          {site.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </div>
+
+              <div className="space-y-3 rounded-lg border p-4">
+                <div>
+                  <div className="font-medium">工程権限</div>
+                  <p className="text-xs text-muted-foreground">
+                    ロール初期値から個別に上書きできます。
+                  </p>
+                </div>
+                <ToggleRow
+                  label="調剤入力"
+                  checked={detailForm.can_dispense}
+                  onCheckedChange={(checked) =>
+                    setDetailForm((current) =>
+                      current ? { ...current, can_dispense: checked } : current
+                    )
+                  }
+                />
+                <ToggleRow
+                  label="調剤監査"
+                  checked={detailForm.can_audit_dispense}
+                  onCheckedChange={(checked) =>
+                    setDetailForm((current) =>
+                      current
+                        ? { ...current, can_audit_dispense: checked }
+                        : current
+                    )
+                  }
+                />
+                <ToggleRow
+                  label="セット作業"
+                  checked={detailForm.can_set}
+                  onCheckedChange={(checked) =>
+                    setDetailForm((current) =>
+                      current ? { ...current, can_set: checked } : current
+                    )
+                  }
+                />
+                <ToggleRow
+                  label="セット監査"
+                  checked={detailForm.can_audit_set}
+                  onCheckedChange={(checked) =>
+                    setDetailForm((current) =>
+                      current ? { ...current, can_audit_set: checked } : current
+                    )
+                  }
+                />
+              </div>
+
+              <div className="space-y-3 rounded-lg border p-4">
+                <div>
+                  <div className="font-medium">訪問制約</div>
+                  <p className="text-xs text-muted-foreground">
+                    非訪問ロールでは保存時にクリアされます。
+                  </p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <Field label="日次上限">
+                    <Input
+                      type="number"
+                      value={detailForm.max_daily_visits}
+                      onChange={(event) =>
+                        setDetailForm((current) =>
+                          current
+                            ? { ...current, max_daily_visits: event.target.value }
+                            : current
+                        )
+                      }
+                      disabled={!operationalRole}
+                    />
+                  </Field>
+                  <Field label="週次上限">
+                    <Input
+                      type="number"
+                      value={detailForm.max_weekly_visits}
+                      onChange={(event) =>
+                        setDetailForm((current) =>
+                          current
+                            ? { ...current, max_weekly_visits: event.target.value }
+                            : current
+                        )
+                      }
+                      disabled={!operationalRole}
+                    />
+                  </Field>
+                  <Field label="移動上限(分)">
+                    <Input
+                      type="number"
+                      value={detailForm.max_travel_minutes}
+                      onChange={(event) =>
+                        setDetailForm((current) =>
+                          current
+                            ? { ...current, max_travel_minutes: event.target.value }
+                            : current
+                        )
+                      }
+                      disabled={!operationalRole}
+                    />
+                  </Field>
+                </div>
+                <ToggleRow
+                  label="緊急対応可"
+                  checked={detailForm.can_accept_emergency}
+                  onCheckedChange={(checked) =>
+                    setDetailForm((current) =>
+                      current
+                        ? { ...current, can_accept_emergency: checked }
+                        : current
+                    )
+                  }
+                  disabled={!operationalRole}
+                />
+                <Field label="専門分野">
+                  <Textarea
+                    value={detailForm.visit_specialties}
+                    onChange={(event) =>
+                      setDetailForm((current) =>
+                        current
+                          ? { ...current, visit_specialties: event.target.value }
+                          : current
+                      )
+                    }
+                    placeholder="在宅中心静脈栄養, 緩和ケア など"
+                    disabled={!operationalRole}
+                  />
+                </Field>
+                <Field label="対応エリア">
+                  <Textarea
+                    value={detailForm.coverage_area}
+                    onChange={(event) =>
+                      setDetailForm((current) =>
+                        current
+                          ? { ...current, coverage_area: event.target.value }
+                          : current
+                      )
+                    }
+                    placeholder="港区, 品川区 など"
+                    disabled={!operationalRole}
+                  />
+                </Field>
+              </div>
+
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <MetaRow
+                  label="招待日"
+                  value={
+                    detailUser.invited_at
+                      ? new Date(detailUser.invited_at).toLocaleDateString('ja-JP')
+                      : '未設定'
+                  }
+                />
+                <MetaRow
+                  label="最終招待日"
+                  value={
+                    detailUser.last_invited_at
+                      ? new Date(detailUser.last_invited_at).toLocaleDateString('ja-JP')
+                      : '未設定'
+                  }
+                />
+                <MetaRow
+                  label="有効化日"
+                  value={
+                    detailUser.activated_at
+                      ? new Date(detailUser.activated_at).toLocaleDateString('ja-JP')
+                      : '未設定'
+                  }
+                />
+                {detailUser.deactivated_at ? (
+                  <MetaRow
                     label="停止日"
                     value={new Date(detailUser.deactivated_at).toLocaleDateString('ja-JP')}
                   />
-                  <DetailField label="停止理由" value={detailUser.deactivation_reason} />
-                </>
-              )}
+                ) : null}
+                {detailUser.deactivation_reason ? (
+                  <MetaRow label="停止理由" value={detailUser.deactivation_reason} />
+                ) : null}
+              </div>
+
+              <div className="flex justify-end gap-2 pb-2">
+                {detailUser.account_status !== 'retired' ? (
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      setActionDialog({
+                        type: 'retire',
+                        user: detailUser,
+                        reason: '',
+                      })
+                    }
+                  >
+                    退職処理
+                  </Button>
+                ) : null}
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setDetailUser(null);
+                    setDetailForm(null);
+                  }}
+                >
+                  閉じる
+                </Button>
+                <Button
+                  onClick={() => detailMutation.mutate()}
+                  disabled={
+                    detailMutation.isPending ||
+                    !detailForm.name.trim() ||
+                    !detailForm.name_kana.trim() ||
+                    (siteRequired && !detailForm.site_id)
+                  }
+                >
+                  {detailMutation.isPending ? '保存中...' : '変更を保存'}
+                </Button>
+              </div>
             </div>
-          )}
+          ) : null}
         </SheetContent>
       </Sheet>
 
-      {/* Action Dialog */}
       <Dialog open={!!actionDialog} onOpenChange={(open) => !open && setActionDialog(null)}>
         <DialogContent>
           <DialogHeader>
@@ -442,28 +1069,35 @@ export function UsersContent() {
               {actionDialog?.user.name} ({actionDialog?.user.email}) に対する操作です。
             </DialogDescription>
           </DialogHeader>
-          {(actionDialog?.type === 'suspend' || actionDialog?.type === 'retire') && (
+          {actionDialog?.type === 'suspend' || actionDialog?.type === 'retire' ? (
             <div className="py-2">
               <Label className="mb-1.5 block">理由</Label>
               <Textarea
                 value={actionDialog.reason}
-                onChange={(e) =>
-                  setActionDialog((prev) => prev ? { ...prev, reason: e.target.value } : null)
+                onChange={(event) =>
+                  setActionDialog((current) =>
+                    current ? { ...current, reason: event.target.value } : null
+                  )
                 }
                 placeholder="停止・退職理由を入力してください"
               />
             </div>
-          )}
+          ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setActionDialog(null)}>
               キャンセル
             </Button>
             <Button
-              variant={actionDialog?.type === 'suspend' || actionDialog?.type === 'retire' ? 'destructive' : 'default'}
+              variant={
+                actionDialog?.type === 'suspend' || actionDialog?.type === 'retire'
+                  ? 'destructive'
+                  : 'default'
+              }
               onClick={() => actionMutation.mutate()}
               disabled={
                 actionMutation.isPending ||
-                ((actionDialog?.type === 'suspend' || actionDialog?.type === 'retire') && !actionDialog?.reason.trim())
+                ((actionDialog?.type === 'suspend' || actionDialog?.type === 'retire') &&
+                  !actionDialog?.reason.trim())
               }
             >
               {actionMutation.isPending ? '処理中...' : '実行'}
@@ -488,18 +1122,41 @@ function SummaryCard({ label, value }: { label: string; value: number }) {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
-      <Label className="mb-1.5 block">{label}</Label>
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
       {children}
     </div>
   );
 }
 
-function DetailField({ label, value }: { label: string; value: string | null | undefined }) {
+function ToggleRow({
+  label,
+  checked,
+  onCheckedChange,
+  disabled,
+}: {
+  label: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  disabled?: boolean;
+}) {
   return (
-    <div>
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 text-sm">{value?.trim() ? value : '未設定'}</div>
+    <div className="flex items-center justify-between rounded-md border px-3 py-2">
+      <span className="text-sm">{label}</span>
+      <Switch
+        checked={checked}
+        onCheckedChange={(value) => onCheckedChange(value === true)}
+        disabled={disabled}
+      />
+    </div>
+  );
+}
+
+function MetaRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span>{label}</span>
+      <span>{value}</span>
     </div>
   );
 }

@@ -207,6 +207,81 @@ describe('/api/facility-visit-batches POST', () => {
     expect(preparationUpsertMock).toHaveBeenCalledTimes(2);
   });
 
+  it('rejects schedules that span multiple facility units', async () => {
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        visitSchedule: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'schedule_1',
+              site_id: 'site_1',
+              pharmacist_id: 'ph_1',
+              scheduled_date: new Date('2026-03-28T00:00:00Z'),
+              facility_batch_id: null,
+              case_id: 'case_1',
+              preparation: null,
+              case_: {
+                patient: {
+                  id: 'patient_1',
+                  name: '山田 太郎',
+                  residences: [
+                    {
+                      facility_id: 'facility_a',
+                      facility_unit_id: 'unit_1',
+                      building_id: 'facility_a',
+                      address: '東京都港区1-1-1',
+                      unit_name: '101',
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              id: 'schedule_2',
+              site_id: 'site_1',
+              pharmacist_id: 'ph_1',
+              scheduled_date: new Date('2026-03-28T00:00:00Z'),
+              facility_batch_id: null,
+              case_id: 'case_2',
+              preparation: null,
+              case_: {
+                patient: {
+                  id: 'patient_2',
+                  name: '山田 花子',
+                  residences: [
+                    {
+                      facility_id: 'facility_a',
+                      facility_unit_id: 'unit_2',
+                      building_id: 'facility_a',
+                      address: '東京都港区1-1-1',
+                      unit_name: '102',
+                    },
+                  ],
+                },
+              },
+            },
+          ]),
+        },
+        facilityVisitBatch: {
+          create: vi.fn(),
+          update: vi.fn(),
+        },
+      })
+    );
+
+    const response = await POST(
+      createRequest({
+        schedule_ids: ['schedule_1', 'schedule_2'],
+      })
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '同一ユニットの訪問予定のみを一括化できます',
+    });
+  });
+
   it('auto-loads facility schedules when facility_id, scheduled_date, and pharmacist_id are given', async () => {
     const batchCreateMock = vi.fn().mockResolvedValue({ id: 'batch_auto_1' });
     const scheduleUpdateMock = vi.fn();

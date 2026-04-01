@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import {
   CHANNEL_LABELS,
   REPORT_STATUS_CONFIG,
@@ -50,6 +51,8 @@ type CareReport = {
 
 type CareReportsResponse = {
   data: CareReport[];
+  hasMore: boolean;
+  nextCursor?: string;
   deliverySummary: {
     pending_delivery_count: number;
     failed_delivery_count: number;
@@ -224,80 +227,79 @@ function renderExpandedRow(row: Row<CareReport>) {
 
 export function ReportsTable() {
   const orgId = useOrgId();
+  const isBootstrappingOrg = !orgId;
   const columns = useMemo(() => buildColumns(), []);
-  const [statusFilter, setStatusFilter] = useState<string>(ALL_VALUE);
-  const [reportTypeFilter, setReportTypeFilter] = useState<string>(ALL_VALUE);
-  const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<string>(ALL_VALUE);
-  const [patientQuery, setPatientQuery] = useState('');
-  const [recipientQuery, setRecipientQuery] = useState('');
-  const [keywordQuery, setKeywordQuery] = useState('');
-  const [createdFrom, setCreatedFrom] = useState('');
-  const [createdTo, setCreatedTo] = useState('');
-  const [sentFrom, setSentFrom] = useState('');
-  const [sentTo, setSentTo] = useState('');
+  const [filters, setFilters] = useState({
+    status: ALL_VALUE,
+    reportType: ALL_VALUE,
+    deliveryStatus: ALL_VALUE,
+    patient: '',
+    recipient: '',
+    keyword: '',
+    createdFrom: '',
+    createdTo: '',
+    sentFrom: '',
+    sentTo: '',
+  });
+  const updateFilter = (key: keyof typeof filters, value: string) =>
+    setFilters((prev) => ({ ...prev, [key]: value }));
 
   const queryParams = useMemo(() => {
-    const params = new URLSearchParams({ limit: '200' });
-    if (statusFilter !== ALL_VALUE) params.set('status', statusFilter);
-    if (reportTypeFilter !== ALL_VALUE) params.set('report_type', reportTypeFilter);
-    if (deliveryStatusFilter !== ALL_VALUE) params.set('delivery_status', deliveryStatusFilter);
-    if (patientQuery.trim()) params.set('q', patientQuery.trim());
-    if (recipientQuery.trim()) params.set('recipient', recipientQuery.trim());
-    if (keywordQuery.trim()) params.set('keyword', keywordQuery.trim());
-    if (createdFrom) params.set('date_from', createdFrom);
-    if (createdTo) params.set('date_to', createdTo);
-    if (sentFrom) params.set('sent_from', sentFrom);
-    if (sentTo) params.set('sent_to', sentTo);
+    const params = new URLSearchParams();
+    if (filters.status !== ALL_VALUE) params.set('status', filters.status);
+    if (filters.reportType !== ALL_VALUE) params.set('report_type', filters.reportType);
+    if (filters.deliveryStatus !== ALL_VALUE) params.set('delivery_status', filters.deliveryStatus);
+    if (filters.patient.trim()) params.set('q', filters.patient.trim());
+    if (filters.recipient.trim()) params.set('recipient', filters.recipient.trim());
+    if (filters.keyword.trim()) params.set('keyword', filters.keyword.trim());
+    if (filters.createdFrom) params.set('date_from', filters.createdFrom);
+    if (filters.createdTo) params.set('date_to', filters.createdTo);
+    if (filters.sentFrom) params.set('sent_from', filters.sentFrom);
+    if (filters.sentTo) params.set('sent_to', filters.sentTo);
     return params.toString();
-  }, [
-    createdFrom,
-    createdTo,
-    deliveryStatusFilter,
-    keywordQuery,
-    patientQuery,
-    recipientQuery,
-    reportTypeFilter,
-    sentFrom,
-    sentTo,
-    statusFilter,
-  ]);
+  }, [filters]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['care-reports', orgId, queryParams],
     queryFn: async () => {
-      const res = await fetch(`/api/care-reports?${queryParams}`, {
-        headers: { 'x-org-id': orgId },
+      return fetchAllCursorPages<CareReport, CareReportsResponse>({
+        path: '/api/care-reports',
+        params: new URLSearchParams(queryParams),
+        init: {
+          headers: { 'x-org-id': orgId },
+        },
+        errorMessage: '報告書一覧の取得に失敗しました',
       });
-      if (!res.ok) throw new Error('報告書一覧の取得に失敗しました');
-      return res.json() as Promise<CareReportsResponse>;
     },
     enabled: !!orgId,
   });
 
   const activeFilterCount = [
-    statusFilter !== ALL_VALUE ? statusFilter : '',
-    reportTypeFilter !== ALL_VALUE ? reportTypeFilter : '',
-    deliveryStatusFilter !== ALL_VALUE ? deliveryStatusFilter : '',
-    patientQuery.trim(),
-    recipientQuery.trim(),
-    keywordQuery.trim(),
-    createdFrom,
-    createdTo,
-    sentFrom,
-    sentTo,
+    filters.status !== ALL_VALUE ? filters.status : '',
+    filters.reportType !== ALL_VALUE ? filters.reportType : '',
+    filters.deliveryStatus !== ALL_VALUE ? filters.deliveryStatus : '',
+    filters.patient.trim(),
+    filters.recipient.trim(),
+    filters.keyword.trim(),
+    filters.createdFrom,
+    filters.createdTo,
+    filters.sentFrom,
+    filters.sentTo,
   ].filter(Boolean).length;
 
   function resetFilters() {
-    setStatusFilter(ALL_VALUE);
-    setReportTypeFilter(ALL_VALUE);
-    setDeliveryStatusFilter(ALL_VALUE);
-    setPatientQuery('');
-    setRecipientQuery('');
-    setKeywordQuery('');
-    setCreatedFrom('');
-    setCreatedTo('');
-    setSentFrom('');
-    setSentTo('');
+    setFilters({
+      status: ALL_VALUE,
+      reportType: ALL_VALUE,
+      deliveryStatus: ALL_VALUE,
+      patient: '',
+      recipient: '',
+      keyword: '',
+      createdFrom: '',
+      createdTo: '',
+      sentFrom: '',
+      sentTo: '',
+    });
   }
 
   return (
@@ -308,8 +310,8 @@ export function ReportsTable() {
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              value={patientQuery}
-              onChange={(event) => setPatientQuery(event.target.value)}
+              value={filters.patient}
+              onChange={(event) => updateFilter('patient', event.target.value)}
               placeholder="患者名 / フリガナ"
               className="pl-8"
             />
@@ -318,22 +320,22 @@ export function ReportsTable() {
         <div className="space-y-1.5">
           <LabelText>送付先</LabelText>
           <Input
-            value={recipientQuery}
-            onChange={(event) => setRecipientQuery(event.target.value)}
+            value={filters.recipient}
+            onChange={(event) => updateFilter('recipient', event.target.value)}
             placeholder="主治医 / ケアマネ"
           />
         </div>
         <div className="space-y-1.5">
           <LabelText>キーワード</LabelText>
           <Input
-            value={keywordQuery}
-            onChange={(event) => setKeywordQuery(event.target.value)}
+            value={filters.keyword}
+            onChange={(event) => updateFilter('keyword', event.target.value)}
             placeholder="SOAP / 要点"
           />
         </div>
         <div className="space-y-1.5">
           <LabelText>報告状態</LabelText>
-          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value ?? ALL_VALUE)}>
+          <Select value={filters.status} onValueChange={(value) => updateFilter('status', value ?? ALL_VALUE)}>
             <SelectTrigger>
               <SelectValue placeholder="すべて" />
             </SelectTrigger>
@@ -350,8 +352,8 @@ export function ReportsTable() {
         <div className="space-y-1.5">
           <LabelText>送達状態</LabelText>
           <Select
-            value={deliveryStatusFilter}
-            onValueChange={(value) => setDeliveryStatusFilter(value ?? ALL_VALUE)}
+            value={filters.deliveryStatus}
+            onValueChange={(value) => updateFilter('deliveryStatus', value ?? ALL_VALUE)}
           >
             <SelectTrigger>
               <SelectValue placeholder="すべて" />
@@ -369,8 +371,8 @@ export function ReportsTable() {
         <div className="space-y-1.5">
           <LabelText>報告書種別</LabelText>
           <Select
-            value={reportTypeFilter}
-            onValueChange={(value) => setReportTypeFilter(value ?? ALL_VALUE)}
+            value={filters.reportType}
+            onValueChange={(value) => updateFilter('reportType', value ?? ALL_VALUE)}
           >
             <SelectTrigger>
               <SelectValue placeholder="すべて" />
@@ -387,19 +389,19 @@ export function ReportsTable() {
         </div>
         <div className="space-y-1.5">
           <LabelText>作成日 From</LabelText>
-          <Input type="date" value={createdFrom} onChange={(event) => setCreatedFrom(event.target.value)} />
+          <Input type="date" value={filters.createdFrom} onChange={(event) => updateFilter('createdFrom', event.target.value)} />
         </div>
         <div className="space-y-1.5">
           <LabelText>作成日 To</LabelText>
-          <Input type="date" value={createdTo} onChange={(event) => setCreatedTo(event.target.value)} />
+          <Input type="date" value={filters.createdTo} onChange={(event) => updateFilter('createdTo', event.target.value)} />
         </div>
         <div className="space-y-1.5">
           <LabelText>送付日 From</LabelText>
-          <Input type="date" value={sentFrom} onChange={(event) => setSentFrom(event.target.value)} />
+          <Input type="date" value={filters.sentFrom} onChange={(event) => updateFilter('sentFrom', event.target.value)} />
         </div>
         <div className="space-y-1.5">
           <LabelText>送付日 To</LabelText>
-          <Input type="date" value={sentTo} onChange={(event) => setSentTo(event.target.value)} />
+          <Input type="date" value={filters.sentTo} onChange={(event) => updateFilter('sentTo', event.target.value)} />
         </div>
         <div className="flex items-end lg:col-span-2 xl:col-span-1">
           <Button type="button" variant="outline" className="w-full" onClick={resetFilters}>
@@ -418,7 +420,7 @@ export function ReportsTable() {
       <DataTable
         columns={columns}
         data={data?.data ?? []}
-        isLoading={isLoading}
+        isLoading={isBootstrappingOrg || isLoading}
         caption="報告書一覧"
         renderExpandedRow={renderExpandedRow}
         toolbar={{
@@ -428,7 +430,7 @@ export function ReportsTable() {
         }}
       />
 
-      {!isLoading && (data?.data.length ?? 0) === 0 && (
+      {!isBootstrappingOrg && !isLoading && (data?.data.length ?? 0) === 0 && (
         <div className="flex min-h-[120px] items-center justify-center rounded-md border border-dashed border-border">
           <p className="text-sm text-muted-foreground">報告書がありません</p>
         </div>

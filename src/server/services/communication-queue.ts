@@ -1,4 +1,5 @@
 import { addDays } from 'date-fns';
+import { isoOrNull } from '@/lib/utils/date';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 
@@ -87,10 +88,6 @@ function priorityRank(priority: QueuePriority) {
     default:
       return 2;
   }
-}
-
-function isoOrNull(value: Date | null | undefined) {
-  return value ? value.toISOString() : null;
 }
 
 function sortItems(left: CommunicationQueueItem, right: CommunicationQueueItem) {

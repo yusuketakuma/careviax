@@ -43,6 +43,17 @@ export type ResidualMedicationEntry = {
   is_reduction_target: boolean;
 };
 
+export type HandoffData = {
+  next_check_items: string[];
+  ongoing_monitoring: string[];
+  decision_rationale: string | null;
+  ai_extracted: boolean;
+  ai_confidence: number | null;
+  confirmed_by: string | null;
+  confirmed_at: string | null;
+  extracted_at: string | null;
+};
+
 export type SoapSubjective = {
   symptom_checks: string[];
   free_text?: string;
@@ -84,4 +95,5 @@ export type StructuredSoap = {
   assessment: SoapAssessment;
   plan: SoapPlan;
   residual_medications?: ResidualMedicationEntry[];
+  handoff?: HandoffData | null;
 };
