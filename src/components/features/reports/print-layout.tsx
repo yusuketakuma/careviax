@@ -5,7 +5,10 @@ interface PrintLayoutProps {
 
 export function PrintLayout({ pharmacyName, children }: PrintLayoutProps) {
   return (
-    <div className="print-layout-root">
+    <div
+      className="print-layout-root mx-auto max-w-4xl bg-white p-6 text-black shadow-sm print:mx-0 print:max-w-none print:p-0 print:shadow-none"
+      data-testid="print-layout-root"
+    >
       {/* Print-only header */}
       <div className="hidden print:block print:mb-4">
         <div className="flex items-center justify-between border-b pb-2">

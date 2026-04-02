@@ -1769,6 +1769,7 @@ export function ScheduleDayView() {
                 type="date"
                 className="w-[160px]"
                 value={selectedDate}
+                aria-label="週間スケジュールの対象日"
                 onChange={(event) => setSelectedDate(event.target.value)}
               />
               <Button

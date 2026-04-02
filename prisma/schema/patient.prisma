@@ -80,6 +80,9 @@ model Patient {
   scheduling_preference PatientSchedulePreference?
   medication_profiles   MedicationProfile[]
   packaging_profile     PatientPackagingProfile?
+  mcs_link              PatientMcsLink?
+  mcs_summary           PatientMcsSummary?
+  mcs_messages          PatientMcsMessage[]
 
   @@index([org_id])
   @@index([name_kana])
@@ -308,4 +311,95 @@ model PatientPackagingProfile {
 
   @@index([org_id])
   @@index([patient_id])
+}
+
+model PatientMcsLink {
+  id               String   @id @default(cuid())
+  org_id           String
+  patient_id       String   @unique
+  patient          Patient  @relation(fields: [patient_id], references: [id])
+  source_url       String
+  mcs_patient_id   String?
+  mcs_patient_url  String?
+  mcs_project_id   String?
+  mcs_project_url  String?
+  project_title    String?
+  project_memo     String?
+  member_count     Int?
+  last_sync_attempt_at DateTime?
+  last_synced_at   DateTime?
+  last_sync_status String?
+  last_sync_error  String?
+  created_by       String?
+  updated_by       String?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  messages PatientMcsMessage[]
+  summary  PatientMcsSummary?
+
+  @@index([org_id])
+  @@index([patient_id])
+  @@index([mcs_project_id])
+}
+
+model PatientMcsSummary {
+  id                              String         @id @default(cuid())
+  org_id                          String
+  patient_id                      String         @unique
+  patient                         Patient        @relation(fields: [patient_id], references: [id])
+  link_id                         String         @unique
+  link                            PatientMcsLink @relation(fields: [link_id], references: [id], onDelete: Cascade)
+  generation_id                   String
+  provider                        String
+  requested_provider              String
+  is_fallback                     Boolean        @default(false)
+  model                           String?
+  fallback_reason                 String?
+  headline                        String
+  bullets                         String[]       @default([])
+  must_check_today                String[]       @default([])
+  suggested_actions               String[]       @default([])
+  source_refs                     String[]       @default([])
+  message_count                   Int            @default(0)
+  other_professional_message_count Int           @default(0)
+  latest_posted_at                DateTime?
+  generated_at                    DateTime
+  duration_ms                     Int?
+  created_at                      DateTime       @default(now())
+  updated_at                      DateTime       @updatedAt
+
+  @@index([org_id])
+  @@index([patient_id])
+  @@index([link_id])
+}
+
+model PatientMcsMessage {
+  id                String   @id @default(cuid())
+  org_id            String
+  patient_id        String
+  patient           Patient  @relation(fields: [patient_id], references: [id])
+  link_id           String
+  link              PatientMcsLink @relation(fields: [link_id], references: [id], onDelete: Cascade)
+  source_message_id String
+  author_name       String
+  author_role       String?
+  author_organization String?
+  author_descriptor String?
+  posted_at         DateTime?
+  posted_at_label   String
+  body              String
+  reaction_count    Int      @default(0)
+  reply_count       Int      @default(0)
+  sort_order        Int?
+  source_url        String
+  raw_payload       Json?
+  synced_at         DateTime @default(now())
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  @@unique([link_id, source_message_id])
+  @@index([org_id])
+  @@index([patient_id, posted_at])
+  @@index([source_message_id])
 }

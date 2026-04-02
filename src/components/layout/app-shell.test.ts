@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { resolveQuickCreateTarget } from './app-shell';
+import {
+  deriveShellViewport,
+  resolveQuickCreateTarget,
+  resolveSidebarSheetOpen,
+  shouldUseMinimalShell,
+  shouldRenderCompactSidebarSheet,
+} from './app-shell';
 
 describe('resolveQuickCreateTarget', () => {
   it('maps reports and schedules to existing reachable screens', () => {
@@ -18,5 +24,86 @@ describe('resolveQuickCreateTarget', () => {
       href: '/patients/new',
       notice: 'この画面には専用の新規作成先がないため、患者新規登録を開きます',
     });
+  });
+});
+
+describe('resolveSidebarSheetOpen', () => {
+  it('keeps the sidebar sheet closed on desktop even when sidebarOpen is persisted', () => {
+    expect(resolveSidebarSheetOpen(false, true)).toBe(false);
+  });
+
+  it('allows the sidebar sheet to open on compact viewports only when requested', () => {
+    expect(resolveSidebarSheetOpen(true, true)).toBe(true);
+    expect(resolveSidebarSheetOpen(true, false)).toBe(false);
+  });
+});
+
+describe('shouldUseMinimalShell', () => {
+  it('routes print pages through the minimal shell', () => {
+    expect(shouldUseMinimalShell('/reports/r1/print')).toBe(true);
+    expect(shouldUseMinimalShell('/patients/p1/visit-records/print')).toBe(true);
+  });
+
+  it('does not collapse standard dashboard pages', () => {
+    expect(shouldUseMinimalShell('/reports')).toBe(false);
+    expect(shouldUseMinimalShell('/workflow')).toBe(false);
+  });
+});
+
+describe('deriveShellViewport', () => {
+  it('marks desktop widths as non-compact', () => {
+    const viewport = deriveShellViewport({
+      matchMedia: (query) =>
+        ({
+          matches: query === '(min-width: 1280px)',
+        }) as MediaQueryList,
+    });
+
+    expect(viewport).toEqual({
+      isReady: true,
+      isDesktopLayout: true,
+      isTabletLayout: false,
+      isCompactLayout: false,
+    });
+  });
+
+  it('marks tablet widths as compact and tablet-specific', () => {
+    const viewport = deriveShellViewport({
+      matchMedia: (query) =>
+        ({
+          matches: query === '(min-width: 768px) and (max-width: 1279px)',
+        }) as MediaQueryList,
+    });
+
+    expect(viewport).toEqual({
+      isReady: true,
+      isDesktopLayout: false,
+      isTabletLayout: true,
+      isCompactLayout: true,
+    });
+  });
+});
+
+describe('shouldRenderCompactSidebarSheet', () => {
+  it('waits for viewport hydration before mounting the compact sheet', () => {
+    expect(
+      shouldRenderCompactSidebarSheet({
+        isReady: false,
+        isDesktopLayout: false,
+        isTabletLayout: false,
+        isCompactLayout: false,
+      })
+    ).toBe(false);
+  });
+
+  it('renders the compact sheet only after a compact viewport is confirmed', () => {
+    expect(
+      shouldRenderCompactSidebarSheet({
+        isReady: true,
+        isDesktopLayout: false,
+        isTabletLayout: true,
+        isCompactLayout: true,
+      })
+    ).toBe(true);
   });
 });

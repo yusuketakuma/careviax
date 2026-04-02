@@ -17,10 +17,8 @@ import {
   CircleAlert,
   CircleX,
 } from 'lucide-react';
-import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
 import { getQrScanShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
-import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
-import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
+import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -373,24 +371,22 @@ export default function QRScanPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-4 pb-20 md:pb-4">
       {/* Header */}
-      <div className="space-y-3">
-        <WorkflowBackLink href="/prescriptions" label="処方受付へ戻る" />
-        <WorkflowPageHeader
-          title="お薬手帳 QR スキャン"
-          description="読取後は QR 下書き一覧、処方受付、ワークフローへ横移動できます。"
-          className="mb-0"
-        >
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {phase !== 'camera' ? (
-              <Button variant="outline" size="sm" onClick={resetScan}>
-                <RotateCcw className="mr-1.5 h-4 w-4" />
-                やり直す
-              </Button>
-            ) : null}
-            <PageShortcutLinks links={getQrScanShortcutLinks()} />
-          </div>
-        </WorkflowPageHeader>
-      </div>
+      <WorkflowPageIntro
+        backHref="/prescriptions"
+        backLabel="処方受付へ戻る"
+        title="お薬手帳 QR スキャン"
+        description="読取後は QR 下書き一覧、処方受付、ワークフローへ横移動できます。"
+        className="mb-0"
+        shortcuts={getQrScanShortcutLinks()}
+        actions={
+          phase !== 'camera' ? (
+            <Button variant="outline" size="sm" onClick={resetScan}>
+              <RotateCcw className="mr-1.5 h-4 w-4" />
+              やり直す
+            </Button>
+          ) : null
+        }
+      />
 
       {/* ── カメラビュー ── */}
       {phase === 'camera' && (

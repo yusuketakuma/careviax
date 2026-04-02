@@ -15,7 +15,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
   ChevronUp,
@@ -224,10 +224,25 @@ export function DataTable<TData>({
     getExpandedRowModel: getExpandedRowModel(),
   });
 
+  const latestSelectionChangeRef = useRef(onSelectionChange);
+  const notifiedSelectionRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (!onSelectionChange) return;
-    onSelectionChange(table.getSelectedRowModel().rows.map((row) => row.original));
-  }, [onSelectionChange, rowSelection, table]);
+    latestSelectionChangeRef.current = onSelectionChange;
+  }, [onSelectionChange]);
+
+  useEffect(() => {
+    if (!latestSelectionChangeRef.current) return;
+    const selectedRows = table.getSelectedRowModel().rows.map((row) => row.original);
+    const selectionSignature = table
+      .getSelectedRowModel()
+      .rows.map((row) => row.id)
+      .join('|');
+    if (notifiedSelectionRef.current === selectionSignature) return;
+
+    notifiedSelectionRef.current = selectionSignature;
+    latestSelectionChangeRef.current(selectedRows);
+  }, [rowSelection, table]);
 
   const showLoadingSkeleton = Boolean(isLoading && data.length === 0);
   const visibleLeafColumns = table

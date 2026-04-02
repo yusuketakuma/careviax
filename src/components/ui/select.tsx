@@ -98,10 +98,23 @@ function SelectContent({
 function SelectLabel({
   className,
   ...props
+}: SelectPrimitive.Label.Props) {
+  return (
+    <SelectPrimitive.Label
+      data-slot="select-label"
+      className={cn("px-1.5 py-1 text-xs text-muted-foreground", className)}
+      {...props}
+    />
+  )
+}
+
+function SelectGroupLabel({
+  className,
+  ...props
 }: SelectPrimitive.GroupLabel.Props) {
   return (
     <SelectPrimitive.GroupLabel
-      data-slot="select-label"
+      data-slot="select-group-label"
       className={cn("px-1.5 py-1 text-xs text-muted-foreground", className)}
       {...props}
     />
@@ -191,6 +204,7 @@ export {
   Select,
   SelectContent,
   SelectGroup,
+  SelectGroupLabel,
   SelectItem,
   SelectLabel,
   SelectScrollDownButton,

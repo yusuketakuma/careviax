@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { resolveQuickCreateTarget } from './app-shell';
+import {
+  deriveShellViewport,
+  resolveQuickCreateTarget,
+  resolveSidebarSheetOpen,
+  shouldUseMinimalShell,
+  shouldRenderCompactSidebarSheet,
+} from './app-shell';
 
 describe('resolveQuickCreateTarget', () => {
   it('keeps real create routes for primary modules', () => {
@@ -23,5 +29,59 @@ describe('resolveQuickCreateTarget', () => {
       href: '/patients/new',
       notice: 'この画面には専用の新規作成先がないため、患者新規登録を開きます',
     });
+  });
+});
+
+describe('resolveSidebarSheetOpen', () => {
+  it('keeps the mobile sidebar sheet closed on desktop even when sidebar state is open', () => {
+    expect(resolveSidebarSheetOpen(false, true)).toBe(false);
+  });
+
+  it('allows the sheet only for compact viewports when the sidebar is open', () => {
+    expect(resolveSidebarSheetOpen(true, true)).toBe(true);
+    expect(resolveSidebarSheetOpen(true, false)).toBe(false);
+  });
+});
+
+describe('shouldUseMinimalShell', () => {
+  it('switches print routes to the minimal shell', () => {
+    expect(shouldUseMinimalShell('/reports/report_1/print')).toBe(true);
+    expect(shouldUseMinimalShell('/patients/p1/medications/print')).toBe(true);
+  });
+
+  it('keeps normal workflow routes on the full shell', () => {
+    expect(shouldUseMinimalShell('/reports/report_1')).toBe(false);
+    expect(shouldUseMinimalShell('/patients/p1')).toBe(false);
+  });
+});
+
+describe('deriveShellViewport', () => {
+  it('flags resolved desktop viewports as ready and non-compact', () => {
+    const viewport = deriveShellViewport({
+      matchMedia: (query) =>
+        ({
+          matches: query === '(min-width: 1280px)',
+        }) as MediaQueryList,
+    });
+
+    expect(viewport).toEqual({
+      isReady: true,
+      isDesktopLayout: true,
+      isTabletLayout: false,
+      isCompactLayout: false,
+    });
+  });
+});
+
+describe('shouldRenderCompactSidebarSheet', () => {
+  it('keeps the compact sheet unmounted until viewport hydration completes', () => {
+    expect(
+      shouldRenderCompactSidebarSheet({
+        isReady: false,
+        isDesktopLayout: false,
+        isTabletLayout: false,
+        isCompactLayout: false,
+      })
+    ).toBe(false);
   });
 });

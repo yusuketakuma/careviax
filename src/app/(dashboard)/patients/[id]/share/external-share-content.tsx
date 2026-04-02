@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Copy, Link2, Clock, ShieldAlert, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Loading } from '@/components/ui/loading';
 import {
   Select,
   SelectContent,
@@ -34,6 +35,21 @@ type GeneratedGrant = {
   otpDeliveryDestination: string | null;
 };
 
+type ExternalShareOverview = {
+  external_shares: Array<{
+    id: string;
+    granted_to_name: string;
+    expires_at: string;
+    accessed_at: string | null;
+  }>;
+  self_reports: Array<{
+    id: string;
+    subject: string;
+    created_at: string;
+    status: string;
+  }>;
+};
+
 // --- Constants ---
 
 const SCOPE_ITEMS: ScopeItem[] = [
@@ -53,11 +69,31 @@ const EXPIRY_OPTIONS = [
 
 export function ExternalShareContent({ patientId }: { patientId: string }) {
   const orgId = useOrgId();
+  const isBootstrappingOrg = !orgId;
   const [grantedToName, setGrantedToName] = useState('');
   const [grantedToContact, setGrantedToContact] = useState('');
   const [expiryHours, setExpiryHours] = useState('72');
   const [selectedScope, setSelectedScope] = useState<Set<string>>(new Set(['medication_list']));
   const [generated, setGenerated] = useState<GeneratedGrant | null>(null);
+  const overviewQuery = useQuery<ExternalShareOverview>({
+    queryKey: ['external-share-overview', patientId, orgId],
+    enabled: Boolean(patientId && orgId),
+    queryFn: async () => {
+      const response = await fetch(`/api/patients/${patientId}`, {
+        headers: { 'x-org-id': orgId },
+        cache: 'no-store',
+      });
+      if (!response.ok) {
+        throw new Error('共有状況を取得できませんでした');
+      }
+
+      const payload = (await response.json()) as ExternalShareOverview;
+      return {
+        external_shares: payload.external_shares ?? [],
+        self_reports: payload.self_reports ?? [],
+      };
+    },
+  });
 
   const generateMutation = useMutation({
     mutationFn: async () => {
@@ -142,6 +178,13 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
     }
     generateMutation.mutate();
   }
+
+  if (isBootstrappingOrg || overviewQuery.isLoading) {
+    return <Loading />;
+  }
+
+  const recentShares = overviewQuery.data?.external_shares ?? [];
+  const recentSelfReports = overviewQuery.data?.self_reports ?? [];
 
   return (
     <div className="max-w-lg space-y-4">
@@ -229,6 +272,45 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">共有済みリンクと連絡文脈</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-foreground">最近の共有先</p>
+            {recentShares.length > 0 ? (
+              recentShares.slice(0, 3).map((share) => (
+                <div key={share.id} className="rounded-lg border border-border/70 px-3 py-2 text-sm">
+                  <p className="font-medium text-foreground">{share.granted_to_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    有効期限 {new Date(share.expires_at).toLocaleString('ja-JP')}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">共有済みリンクはまだありません。</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-foreground">直近の自己申告・連絡メモ</p>
+            {recentSelfReports.length > 0 ? (
+              recentSelfReports.slice(0, 3).map((report) => (
+                <div key={report.id} className="rounded-lg border border-border/70 px-3 py-2 text-sm">
+                  <p className="font-medium text-foreground">{report.subject}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(report.created_at).toLocaleString('ja-JP')} / {report.status}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">自己申告はまだありません。</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Generated result */}
       {generated && (

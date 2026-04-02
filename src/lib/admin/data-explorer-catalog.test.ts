@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
-import { COVERAGE_CATALOG } from './data-explorer-catalog';
+import { COVERAGE_CATALOG, getCoverageCategory } from './data-explorer-catalog';
 
 describe('data explorer coverage catalog', () => {
   it('classifies every Prisma model exactly once', () => {
@@ -15,5 +15,11 @@ describe('data explorer coverage catalog', () => {
     expect(uncategorized).toEqual([]);
     expect(unknown).toEqual([]);
     expect(new Set(categorized).size).toBe(prismaModelNames.length);
+  });
+
+  it('marks MCS persistence models as frontend-backed', () => {
+    expect(getCoverageCategory('PatientMcsLink')).toBe('frontend_api');
+    expect(getCoverageCategory('PatientMcsSummary')).toBe('frontend_api');
+    expect(getCoverageCategory('PatientMcsMessage')).toBe('frontend_api');
   });
 });

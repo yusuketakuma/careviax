@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { WifiOff } from 'lucide-react';
+import { useNetworkOnline } from '@/lib/hooks/use-network-online';
 import { cn } from '@/lib/utils';
 
 /**
@@ -9,22 +9,7 @@ import { cn } from '@/lib/utils';
  * Uses navigator.onLine and the online/offline events.
  */
 export function NetworkStatus() {
-  const [isOnline, setIsOnline] = useState(
-    () => typeof navigator === 'undefined' ? true : navigator.onLine
-  );
-
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
+  const isOnline = useNetworkOnline();
 
   if (isOnline) return null;
 

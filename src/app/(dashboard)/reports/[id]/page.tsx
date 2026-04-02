@@ -8,10 +8,8 @@ import { ja } from 'date-fns/locale';
 import { Send, FileText, Clock, Pencil, Printer } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
 import { getReportDetailShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
-import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
-import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
+import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -276,59 +274,55 @@ export default function ReportDetailPage() {
   return (
     <div className="p-4 md:p-6">
       {/* Header */}
-      <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-        <div className="space-y-3">
-          <WorkflowBackLink href="/reports" label="報告書一覧へ戻る" />
-          <WorkflowPageHeader
-            title={REPORT_TYPE_LABELS[report.report_type] ?? report.report_type}
-            description={`作成日: ${format(new Date(report.created_at), 'yyyy年M月d日', { locale: ja })}`}
-            className="mb-0"
-          >
-            <PageShortcutLinks links={getReportDetailShortcutLinks(report.patient_id ?? null)} />
-          </WorkflowPageHeader>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-          {statusCfg && <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>}
-          {hasContentView && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setEditMode((v) => !v)}
+      <WorkflowPageIntro
+        backHref="/reports"
+        backLabel="報告書一覧へ戻る"
+        title={REPORT_TYPE_LABELS[report.report_type] ?? report.report_type}
+        description={`作成日: ${format(new Date(report.created_at), 'yyyy年M月d日', { locale: ja })}`}
+        shortcuts={getReportDetailShortcutLinks(report.patient_id ?? null, report.id)}
+        actions={
+          <>
+            {statusCfg && <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>}
+            {hasContentView && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEditMode((v) => !v)}
+              >
+                <Pencil className="mr-1.5 size-3.5" aria-hidden="true" />
+                {editMode ? '表示に戻る' : '編集'}
+              </Button>
+            )}
+            <a
+              href={`/api/care-reports/${id}/pdf`}
+              target="_blank"
+              rel="noreferrer"
+              className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
             >
-              <Pencil className="mr-1.5 size-3.5" aria-hidden="true" />
-              {editMode ? '表示に戻る' : '編集'}
+              <FileText className="mr-1.5 size-3.5" aria-hidden="true" />
+              PDFを開く
+            </a>
+            <Link href={`/reports/${id}/print`}>
+              <Button variant="outline" size="sm">
+                <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
+                印刷ビュー
+              </Button>
+            </Link>
+            <Button
+              size="sm"
+              onClick={() => {
+                if (prescriberInstitutionSuggestion) {
+                  applyInstitutionSuggestion();
+                }
+                setSendDialogOpen(true);
+              }}
+            >
+              <Send className="mr-1.5 size-3.5" aria-hidden="true" />
+              送付
             </Button>
-          )}
-          <a
-            href={`/api/care-reports/${id}/pdf`}
-            target="_blank"
-            rel="noreferrer"
-            className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
-          >
-            <FileText className="mr-1.5 size-3.5" aria-hidden="true" />
-            PDFを開く
-          </a>
-          <Link href={`/reports/${id}/print`}>
-            <Button variant="outline" size="sm">
-              <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
-              印刷ビュー
-            </Button>
-          </Link>
-          <Button
-            size="sm"
-            onClick={() => {
-              if (prescriberInstitutionSuggestion) {
-                applyInstitutionSuggestion();
-              }
-              setSendDialogOpen(true);
-            }}
-          >
-            <Send className="mr-1.5 size-3.5" aria-hidden="true" />
-            送付
-          </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Main + Sidebar layout */}
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">

@@ -61,18 +61,44 @@ const DEFAULT_SOURCE_OF_TRUTH_MATRIX = [
   },
 ] as const;
 
+const SEED_IDS = {
+  org: 'cmnhseedorg0000amq9careviax',
+  site: 'cmnhseedsite000amq9careviax',
+  user: 'cmnb3swgz0008wgq9gfpgjq6r',
+  patients: [
+    'cmnhseedpt001amq9careviax',
+    'cmnhseedpt002amq9careviax',
+    'cmnhseedpt003amq9careviax',
+  ],
+} as const;
+
 async function main() {
   // 組織
-  const org = await prisma.organization.create({
-    data: {
+  const org = await prisma.organization.upsert({
+    where: { id: SEED_IDS.org },
+    create: {
+      id: SEED_IDS.org,
+      name: 'サンプル薬局',
+      address: '東京都千代田区丸の内1-1-1',
+    },
+    update: {
       name: 'サンプル薬局',
       address: '東京都千代田区丸の内1-1-1',
     },
   });
 
   // 薬局サイト
-  const site = await prisma.pharmacySite.create({
-    data: {
+  const site = await prisma.pharmacySite.upsert({
+    where: { id: SEED_IDS.site },
+    create: {
+      id: SEED_IDS.site,
+      org_id: org.id,
+      name: 'サンプル薬局 本店',
+      address: '東京都千代田区丸の内1-1-1',
+      lat: 35.6812,
+      lng: 139.7671,
+    },
+    update: {
       org_id: org.id,
       name: 'サンプル薬局 本店',
       address: '東京都千代田区丸の内1-1-1',
@@ -81,6 +107,9 @@ async function main() {
     },
   });
 
+  await prisma.sourceOfTruthMatrix.deleteMany({
+    where: { org_id: org.id },
+  });
   await prisma.sourceOfTruthMatrix.createMany({
     data: DEFAULT_SOURCE_OF_TRUTH_MATRIX.map((entry) => ({
       org_id: org.id,
@@ -89,6 +118,9 @@ async function main() {
   });
 
   // 配薬方法マスタ
+  await prisma.packagingMethodMaster.deleteMany({
+    where: { org_id: org.id },
+  });
   await prisma.packagingMethodMaster.createMany({
     data: [
       { org_id: org.id, name: 'お薬BOX', description: '仕切り付きBOXに曜日・時間帯別に収納', icon_key: 'box', sort_order: 0, is_active: true },
@@ -103,8 +135,20 @@ async function main() {
   });
 
   // ユーザー（管理者薬剤師）
-  const user = await prisma.user.create({
-    data: {
+  const user = await prisma.user.upsert({
+    where: { id: SEED_IDS.user },
+    create: {
+      id: SEED_IDS.user,
+      org_id: org.id,
+      cognito_sub: 'demo-cognito-sub-001',
+      cognito_username: 'demo@careviax.example.com',
+      email: 'demo@careviax.example.com',
+      name: '山田 太郎',
+      name_kana: 'ヤマダ タロウ',
+      account_status: 'active',
+      activated_at: new Date(),
+    },
+    update: {
       org_id: org.id,
       cognito_sub: 'demo-cognito-sub-001',
       cognito_username: 'demo@careviax.example.com',
@@ -117,6 +161,11 @@ async function main() {
   });
 
   // メンバーシップ
+  await prisma.membership.deleteMany({
+    where: {
+      user_id: user.id,
+    },
+  });
   await prisma.membership.create({
     data: {
       org_id: org.id,
@@ -132,8 +181,18 @@ async function main() {
 
   // 患者サンプル
   const patients = await Promise.all([
-    prisma.patient.create({
-      data: {
+    prisma.patient.upsert({
+      where: { id: SEED_IDS.patients[0] },
+      create: {
+        id: SEED_IDS.patients[0],
+        org_id: org.id,
+        name: '佐藤 花子',
+        name_kana: 'サトウ ハナコ',
+        birth_date: new Date('1945-03-15'),
+        gender: 'female',
+        phone: '090-1234-5678',
+      },
+      update: {
         org_id: org.id,
         name: '佐藤 花子',
         name_kana: 'サトウ ハナコ',
@@ -142,8 +201,18 @@ async function main() {
         phone: '090-1234-5678',
       },
     }),
-    prisma.patient.create({
-      data: {
+    prisma.patient.upsert({
+      where: { id: SEED_IDS.patients[1] },
+      create: {
+        id: SEED_IDS.patients[1],
+        org_id: org.id,
+        name: '鈴木 一郎',
+        name_kana: 'スズキ イチロウ',
+        birth_date: new Date('1950-07-22'),
+        gender: 'male',
+        phone: '090-9876-5432',
+      },
+      update: {
         org_id: org.id,
         name: '鈴木 一郎',
         name_kana: 'スズキ イチロウ',
@@ -152,8 +221,17 @@ async function main() {
         phone: '090-9876-5432',
       },
     }),
-    prisma.patient.create({
-      data: {
+    prisma.patient.upsert({
+      where: { id: SEED_IDS.patients[2] },
+      create: {
+        id: SEED_IDS.patients[2],
+        org_id: org.id,
+        name: '田中 美智子',
+        name_kana: 'タナカ ミチコ',
+        birth_date: new Date('1938-11-03'),
+        gender: 'female',
+      },
+      update: {
         org_id: org.id,
         name: '田中 美智子',
         name_kana: 'タナカ ミチコ',

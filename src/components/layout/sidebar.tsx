@@ -177,6 +177,7 @@ function matchesPathPrefix(pathname: string, prefix: string) {
 
 function SidebarNavItem({ item, collapsed }: SidebarNavItemProps) {
   const pathname = usePathname();
+  const { setSidebarOpen } = useUIStore();
   const activePrefixes = item.activePrefixes ?? [item.href];
   const isExcluded =
     item.excludePrefixes?.some((prefix) => matchesPathPrefix(pathname, prefix)) ?? false;
@@ -190,6 +191,14 @@ function SidebarNavItem({ item, collapsed }: SidebarNavItemProps) {
   return (
     <Link
       href={item.href}
+      onClick={() => setSidebarOpen(false)}
+      data-testid={
+        item.href === '/dashboard'
+          ? 'sidebar-nav-home'
+          : item.href === '/patients'
+            ? 'sidebar-nav-patients'
+            : undefined
+      }
       className={cn(
         'flex min-h-[44px] items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
@@ -335,7 +344,7 @@ export function Sidebar({ className }: SidebarProps) {
       </div>
 
       {/* Main nav */}
-      <nav className="flex-1 overflow-y-auto p-2">
+      <nav className="flex-1 overflow-y-auto p-2" aria-label="ワークフローナビ">
         <ul className="space-y-0.5" role="list">
           {mainNavItems.map((item) => (
             <li key={item.href}>

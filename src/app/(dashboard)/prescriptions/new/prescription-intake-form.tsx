@@ -16,6 +16,7 @@ import {
   SOURCE_CONFIG,
   SOURCE_LABELS,
 } from './prescription-form.shared';
+import { getPrescriptionSubmitBlockers } from './prescription-intake-submit';
 
 type PrescriptionLineInput = {
   line_number: number;
@@ -298,6 +299,7 @@ export function PrescriptionIntakeForm() {
   const [error, setError] = useState<string | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const submitBlockersId = 'prescription-submit-blockers';
 
   // Fetch patients for search
   const { data: patientsData } = useQuery({
@@ -639,13 +641,20 @@ export function PrescriptionIntakeForm() {
     e.preventDefault();
     setError(null);
 
+    const submitBlockers = getPrescriptionSubmitBlockers({
+      sourceType,
+      selectedPatientId,
+      selectedCaseId,
+      lines,
+      facilityBatchEntryCount: facilityBatchEntries.length,
+      inquiryReason,
+      inquiryToPhysician,
+      inquiryContent,
+    });
+
     if (sourceType === 'facility_batch') {
-      if (selectedCaseId || selectedPatientId || lines.some((line) => line.drug_name || line.dose || line.frequency)) {
-        setError('現在入力中の患者を先に「一括リストへ追加」するか、入力を消してから登録してください');
-        return;
-      }
-      if (facilityBatchEntries.length < 2) {
-        setError('施設まとめ処方は2名以上の患者を一括リストへ追加してください');
+      if (submitBlockers.length > 0) {
+        setError(submitBlockers[0] ?? '施設まとめ処方の登録条件を確認してください');
         return;
       }
 
@@ -658,21 +667,10 @@ export function PrescriptionIntakeForm() {
       return;
     }
 
-    if (!selectedCaseId) {
-      setError('ケースを選択してください');
+    if (submitBlockers.length > 0) {
+      setError(submitBlockers[0] ?? '処方受付の登録条件を確認してください');
       return;
     }
-
-    const emptyLines = lines.filter((l) => !l.drug_name || !l.dose || !l.frequency);
-    if (emptyLines.length > 0) {
-      setError('すべての処方明細行を入力してください');
-      return;
-    }
-
-    const hasInquiryDraft =
-      inquiryReason.trim().length > 0 ||
-      inquiryToPhysician.trim().length > 0 ||
-      inquiryContent.trim().length > 0;
 
     if (hasInquiryDraft) {
       if (!inquiryReason || !inquiryToPhysician || !inquiryContent) {
@@ -704,6 +702,10 @@ export function PrescriptionIntakeForm() {
   const isPdfDocument = /\.pdf$/i.test(originalDocumentName);
   const latestPreviousIntake = previousPrescriptionsData?.data?.[0] ?? null;
   const prescriberInstitutions = prescriberInstitutionsData?.data ?? [];
+  const hasInquiryDraft =
+    inquiryReason.trim().length > 0 ||
+    inquiryToPhysician.trim().length > 0 ||
+    inquiryContent.trim().length > 0;
 
   const prescriptionDiff = useMemo(() => {
     if (!latestPreviousIntake) return null;
@@ -765,14 +767,74 @@ export function PrescriptionIntakeForm() {
       unchangedCount: Math.max(unchangedCount, 0),
     };
   }, [latestPreviousIntake, lines]);
+  const filledLineCount = lines.filter((line) => line.drug_name.trim().length > 0).length;
+  const isPatientReady = Boolean(selectedPatientId && selectedCaseId);
+  const isDocumentReady = Boolean(originalDocumentUrl);
+  const submitBlockers = useMemo(
+    () =>
+      getPrescriptionSubmitBlockers({
+        sourceType,
+        selectedPatientId,
+        selectedCaseId,
+        lines,
+        facilityBatchEntryCount: facilityBatchEntries.length,
+        inquiryReason,
+        inquiryToPhysician,
+        inquiryContent,
+      }),
+    [
+      facilityBatchEntries.length,
+      inquiryContent,
+      inquiryReason,
+      inquiryToPhysician,
+      lines,
+      selectedCaseId,
+      selectedPatientId,
+      sourceType,
+    ],
+  );
+  const canSubmit = submitBlockers.length === 0 && !isSubmitting;
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-6"
+      data-testid="prescription-intake-form"
+      aria-label="処方受付フォーム"
+    >
       {error && (
-        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+        <div
+          role="alert"
+          className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        >
           {error}
         </div>
       )}
+
+      <section className="rounded-xl border border-border/70 bg-card/70 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1.5">
+            <h2 className="text-sm font-semibold text-foreground">入力の進め方</h2>
+            <p className="text-sm text-muted-foreground">
+              1. 患者とケースを選ぶ 2. 処方箋情報と原本を確認する 3. 明細を入力する 4. 最後に下部の登録ボタンで受付を確定します。
+            </p>
+          </div>
+          <div className="grid min-w-[220px] gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+            <div className="rounded-lg border bg-background px-3 py-2">
+              <p className="font-medium text-foreground">患者・ケース</p>
+              <p>{isPatientReady ? '選択済み' : '未完了'}</p>
+            </div>
+            <div className="rounded-lg border bg-background px-3 py-2">
+              <p className="font-medium text-foreground">原本登録</p>
+              <p>{isDocumentReady ? '登録済み' : '任意'}</p>
+            </div>
+            <div className="rounded-lg border bg-background px-3 py-2">
+              <p className="font-medium text-foreground">明細入力</p>
+              <p>{filledLineCount}/{lines.length} 行入力済み</p>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* Patient Search */}
       <fieldset className="space-y-3">
@@ -860,6 +922,7 @@ export function PrescriptionIntakeForm() {
             </label>
             <select
               id="source-type"
+              data-testid="prescription-source-type"
               value={sourceType}
               onChange={(e) => updatePrescriptionMeta({ sourceType: e.target.value })}
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -878,6 +941,7 @@ export function PrescriptionIntakeForm() {
             </label>
             <input
               id="prescribed-date"
+              data-testid="prescription-prescribed-date"
               type="date"
               value={prescribedDate}
               onChange={(e) => updatePrescriptionMeta({ prescribedDate: e.target.value })}
@@ -1623,25 +1687,73 @@ export function PrescriptionIntakeForm() {
       )}
 
       {/* Submit */}
-      <div className="flex items-center gap-3 pt-2">
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="inline-flex h-9 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-        >
-          {isSubmitting
-            ? '登録中...'
-            : sourceType === 'facility_batch'
-              ? '施設まとめ処方を登録'
-              : '処方受付を登録'}
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push('/prescriptions')}
-          className="inline-flex h-9 items-center rounded-lg border border-input bg-background px-4 text-sm font-medium hover:bg-accent"
-        >
-          キャンセル
-        </button>
+      <div
+        className="rounded-xl border border-primary/20 bg-primary/5 p-4"
+        data-testid="prescription-submit-summary"
+      >
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-foreground">最後にこのボタンで受付を確定します</p>
+            <p className="text-sm text-muted-foreground">
+              患者・ケースを選択し、必要な明細入力を終えたら登録します。登録後は処方受付一覧へ戻ります。
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span className="rounded-full border bg-background px-2.5 py-1">
+              患者 {selectedPatientName || '未選択'}
+            </span>
+            <span className="rounded-full border bg-background px-2.5 py-1">
+              明細 {filledLineCount} 行
+            </span>
+            <span className="rounded-full border bg-background px-2.5 py-1">
+              原本 {isDocumentReady ? 'あり' : 'なし'}
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+          {submitBlockers.length > 0 ? (
+            <div
+              id={submitBlockersId}
+              className="w-full rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 sm:flex-1"
+              role="status"
+            >
+              <p className="text-sm font-medium text-amber-950">登録前に必要な確認</p>
+              <ul className="mt-2 space-y-1 text-sm text-amber-900">
+                {submitBlockers.map((blocker) => (
+                  <li key={blocker}>- {blocker}</li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <div className="w-full rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-900 sm:flex-1">
+              登録可能です。内容を確認してから受付を確定してください。
+            </div>
+          )}
+        </div>
+
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            data-testid="prescription-submit-primary"
+            aria-describedby={submitBlockers.length > 0 ? submitBlockersId : undefined}
+            className="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {isSubmitting
+              ? '登録中...'
+              : sourceType === 'facility_batch'
+                ? '施設まとめ処方を登録'
+                : '処方受付を登録'}
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push('/prescriptions')}
+            className="inline-flex h-10 items-center justify-center rounded-lg border border-input bg-background px-4 text-sm font-medium hover:bg-accent"
+          >
+            キャンセル
+          </button>
+        </div>
       </div>
     </form>
   );

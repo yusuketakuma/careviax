@@ -27,6 +27,9 @@ type Notification = {
   created_at: string;
 };
 
+const NOTIFICATION_STREAM_DISABLED =
+  process.env.NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM === '1';
+
 // --- Constants ---
 
 const TYPE_CONFIG: Record<NotificationType, { label: string; icon: React.ElementType; badgeClass: string }> = {
@@ -149,7 +152,7 @@ export function NotificationsContent() {
   });
 
   useEffect(() => {
-    if (!orgId) return;
+    if (!orgId || NOTIFICATION_STREAM_DISABLED) return;
     const controller = new AbortController();
     let active = true;
 

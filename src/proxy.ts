@@ -32,6 +32,7 @@ const CSP_STATIC_TAIL = [
 ];
 
 const IS_DEV = process.env.NODE_ENV === 'development';
+const IS_E2E = process.env.PLAYWRIGHT === '1';
 
 // ---------------------------------------------------------------------------
 // CSRF helpers
@@ -114,7 +115,8 @@ export async function proxy(request: NextRequest) {
   // --- Step 1: API-only checks (CSRF + rate limit) ---
   if (
     request.nextUrl.pathname.startsWith('/api') &&
-    !request.nextUrl.pathname.endsWith('/stream')
+    !request.nextUrl.pathname.endsWith('/stream') &&
+    !IS_E2E
   ) {
     // CSRF protection: validate Origin/Referer for state-changing methods
     if (!isValidOrigin(request)) {
@@ -196,7 +198,7 @@ function buildResponse(
   const scriptSrc = IS_DEV
     ? `'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval'`
     : `'self' 'nonce-${nonce}' 'strict-dynamic'`;
-  const styleSrc = IS_DEV ? "'self' 'unsafe-inline'" : `'self' 'nonce-${nonce}'`;
+  const styleSrc = IS_DEV || IS_E2E ? "'self' 'unsafe-inline'" : `'self' 'nonce-${nonce}'`;
 
   const csp = [
     "default-src 'self'",

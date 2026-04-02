@@ -1,27 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CloudOff } from 'lucide-react';
+import { useNetworkOnline } from '@/lib/hooks/use-network-online';
 import { OFFLINE_CACHE_TTL_HOURS } from '@/lib/offline/cache-policy';
 
 export function NetworkStatusBanner() {
-  const [online, setOnline] = useState(() =>
-    typeof navigator === 'undefined' ? true : navigator.onLine
-  );
-
-  useEffect(() => {
-    const handleOnline = () => setOnline(true);
-    const handleOffline = () => setOnline(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
+  const online = useNetworkOnline();
 
   if (online) {
     return null;

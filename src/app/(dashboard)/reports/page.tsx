@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { type Metadata } from 'next';
 import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { getReportsOverviewShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
 import { ReportDeliveryDashboard } from './report-delivery-dashboard';
 import { ReportsTable } from './reports-table';
 import { TracingReportsTable } from './tracing-reports-table';
@@ -14,21 +15,15 @@ export default function ReportsPage() {
     <div className="p-6">
       <WorkflowPageHeader
         title="報告書"
-        description="報告書の一覧と送付状態を管理します"
+        description="まず一覧から対象報告を開き、必要に応じて関連依頼や外部連携へ進みます。送達分析は一覧の下段でまとめて確認できます。"
       >
-        <PageShortcutLinks
-          links={[
-            { href: '/reports/analytics', label: '送達分析' },
-            { href: '/external', label: '外部連携' },
-            { href: '/workflow', label: 'ワークフロー' },
-          ]}
-        />
+        <PageShortcutLinks links={getReportsOverviewShortcutLinks()} />
       </WorkflowPageHeader>
       <Suspense fallback={<Loading />}>
         <div className="space-y-6">
-          <ReportDeliveryDashboard />
           <ReportsTable />
           <TracingReportsTable />
+          <ReportDeliveryDashboard />
         </div>
       </Suspense>
     </div>

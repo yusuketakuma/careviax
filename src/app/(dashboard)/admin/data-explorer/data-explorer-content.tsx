@@ -123,8 +123,18 @@ export function DataExplorerContent() {
   );
 
   useEffect(() => {
-    if (!selectedTable && filteredModels.length > 0) {
+    if (filteredModels.length === 0) {
+      return;
+    }
+
+    const selectedTableStillVisible = filteredModels.some(
+      (model) => model.tableName === selectedTable
+    );
+
+    if (!selectedTable || !selectedTableStillVisible) {
       setSelectedTable(filteredModels[0].tableName);
+      setSelectedRowId('');
+      setRowSearch('');
     }
   }, [filteredModels, selectedTable]);
 

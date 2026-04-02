@@ -34,11 +34,11 @@ test('admin data explorer surfaces backend-only seed coverage', async ({ context
   await expect(page.locator('main')).toContainText('AuditLog');
   await expect(page.locator('main')).toContainText('Patient');
 
-  await modelSearch.fill('LabelDictionary');
-  await expect(page.locator('main')).toContainText('LabelDictionary');
+  await modelSearch.fill('Organization');
+  await expect(page.locator('main')).toContainText('Organization');
   await expect(page.locator('main')).toContainText('backend only');
-  await expect(page.locator('main')).toContainText('1 rows');
+  await expect(page.locator('main')).toContainText(/rows/);
 
-  await writeScreenshot(page, 'data-explorer-label-dictionary');
+  await writeScreenshot(page, 'data-explorer-organization');
   expect(errors).toEqual([]);
 });

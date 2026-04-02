@@ -61,7 +61,10 @@ function NavigationCluster({
 export function DashboardContent() {
   return (
     <div className="space-y-8">
-      <div className="grid gap-8 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+      <div
+        className="grid gap-8 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]"
+        data-testid="dashboard-priority-actions"
+      >
         <section className="space-y-4" aria-labelledby="dashboard-tasks-section">
           <SectionHeader
             icon={ListChecks}
@@ -77,7 +80,7 @@ export function DashboardContent() {
           <SectionHeader
             icon={FolderKanban}
             title="主要フロー入口"
-            description="日次で最も使う入口を優先表示し、処方から報告までを同じ面で横断できます。"
+            description="最初に始める入口を3つに絞って上段へ置き、その後の処理フローは一段下で続けてたどれるようにしています。"
           />
           <div id="dashboard-workflows-section">
             <WorkflowNavigation />

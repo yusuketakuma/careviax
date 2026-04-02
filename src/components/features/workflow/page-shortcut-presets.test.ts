@@ -6,6 +6,7 @@ import {
   getMyDayShortcutLinks,
   getPatientConsentShortcutLinks,
   getPatientHubShortcutLinks,
+  getPatientMcsShortcutLinks,
   getPatientMedicationCalendarShortcutLinks,
   getPatientMedicationPrintShortcutLinks,
   getPatientMedicationShortcutLinks,
@@ -16,6 +17,7 @@ import {
   getQrScanShortcutLinks,
   getReferralShortcutLinks,
   getReportDetailShortcutLinks,
+  getReportsOverviewShortcutLinks,
   getReportPrintShortcutLinks,
   getScheduleProposalShortcutLinks,
   getSettingsShortcutLinks,
@@ -27,16 +29,18 @@ import {
 describe('page shortcut presets', () => {
   it('builds patient context shortcuts around the current patient id', () => {
     expect(getPatientHubShortcutLinks('p1')).toEqual([
-      { href: '/patients/p1/prescriptions', label: '処方履歴' },
-      { href: '/patients/p1/medications', label: '服薬管理' },
-      { href: '/patients/p1/medication-calendar', label: '服薬カレンダー' },
-      { href: '/patients/p1/consent', label: '同意記録' },
-      { href: '/patients/p1/share', label: '外部共有' },
+      { href: '/patients/p1/prescriptions', label: '処方履歴', group: '服薬・経過' },
+      { href: '/patients/p1/medications', label: '服薬管理', group: '服薬・経過' },
+      { href: '/patients/p1/medication-calendar', label: '服薬カレンダー', group: '服薬・経過' },
+      { href: '/patients/p1/consent', label: '同意記録', group: '連携・共有' },
+      { href: '/patients/p1/mcs', label: 'MCS連携', group: '連携・共有' },
+      { href: '/patients/p1/share', label: '外部共有', group: '連携・共有' },
     ]);
 
     expect(getPatientMedicationShortcutLinks('p1')).toEqual([
       { href: '/patients/p1', label: '患者詳細' },
       { href: '/patients/p1/prescriptions', label: '処方履歴' },
+      { href: '/patients/p1/mcs', label: 'MCS連携' },
       { href: '/patients/p1/medication-calendar', label: '服薬カレンダー' },
     ]);
 
@@ -48,12 +52,21 @@ describe('page shortcut presets', () => {
 
     expect(getPatientShareShortcutLinks('p1')).toEqual([
       { href: '/patients/p1', label: '患者詳細' },
+      { href: '/patients/p1/mcs', label: 'MCS連携' },
       { href: '/patients/p1/consent', label: '同意記録' },
       { href: '/external', label: '外部連携' },
     ]);
 
+    expect(getPatientMcsShortcutLinks('p1')).toEqual([
+      { href: '/patients/p1', label: '患者詳細' },
+      { href: '/patients/p1/medications', label: '服薬管理' },
+      { href: '/patients/p1/prescriptions', label: '処方履歴' },
+      { href: '/patients/p1/share', label: '外部共有' },
+    ]);
+
     expect(getPatientConsentShortcutLinks('p1')).toEqual([
       { href: '/patients/p1', label: '患者詳細' },
+      { href: '/patients/p1/mcs', label: 'MCS連携' },
       { href: '/patients/p1/share', label: '外部共有' },
       { href: '/patients/p1/medications', label: '服薬管理' },
     ]);
@@ -139,9 +152,19 @@ describe('page shortcut presets', () => {
       { href: '/qr-scan', label: 'QRスキャン' },
     ]);
 
-    expect(getReportDetailShortcutLinks('patient_1')).toEqual([
+    expect(getReportsOverviewShortcutLinks()).toEqual([
+      { href: '/communications/requests', label: '依頼・照会' },
+      { href: '/external', label: '外部連携' },
+      { href: '/workflow', label: 'ワークフロー' },
+    ]);
+
+    expect(getReportDetailShortcutLinks('patient_1', 'report_1')).toEqual([
       { href: '/reports', label: '報告書一覧' },
       { href: '/patients/patient_1', label: '患者詳細' },
+      {
+        href: '/communications/requests?patient_id=patient_1&related_entity_type=care_report&related_entity_id=report_1',
+        label: '関連依頼',
+      },
       { href: '/external', label: '外部連携' },
     ]);
 
@@ -152,6 +175,10 @@ describe('page shortcut presets', () => {
 
     expect(getReportPrintShortcutLinks('report_1')).toEqual([
       { href: '/reports/report_1', label: '報告書詳細' },
+      {
+        href: '/communications/requests?related_entity_type=care_report&related_entity_id=report_1',
+        label: '関連依頼',
+      },
       { href: '/reports', label: '報告書一覧' },
       { href: '/external', label: '外部連携' },
     ]);

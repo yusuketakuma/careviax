@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { Sidebar } from './sidebar';
 
 setupDomTestEnv();
 
 let mockPathname = '/dashboard';
+const mockSetSidebarOpen = vi.fn();
 
 vi.mock('next/link', () => ({
   default: ({
@@ -29,12 +30,25 @@ vi.mock('@/lib/stores/ui-store', () => ({
   useUIStore: () => ({
     sidebarOpen: true,
     sidebarPinned: true,
+    setSidebarOpen: mockSetSidebarOpen,
     toggleSidebar: vi.fn(),
     toggleSidebarPinned: vi.fn(),
   }),
 }));
 
 describe('Sidebar', () => {
+  beforeEach(() => {
+    mockSetSidebarOpen.mockClear();
+  });
+
+  it('closes the compact sidebar sheet after a navigation click', () => {
+    render(<Sidebar />);
+
+    fireEvent.click(screen.getByRole('link', { name: '患者' }));
+
+    expect(mockSetSidebarOpen).toHaveBeenCalledWith(false);
+  });
+
   it('treats prescription list, form, and QR drafts as the same nav group', () => {
     for (const pathname of ['/prescriptions', '/prescriptions/new', '/prescriptions/qr-drafts']) {
       mockPathname = pathname;

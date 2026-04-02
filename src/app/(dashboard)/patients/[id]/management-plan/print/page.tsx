@@ -6,20 +6,16 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Printer } from 'lucide-react';
-import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
 import { getManagementPlanPrintShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
-import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
+import { PrintPageToolbar } from '@/components/features/workflow/print-page-toolbar';
 import { PrintLayout } from '@/components/features/reports/print-layout';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type PatientResponse = {
-  data: {
-    id: string;
-    name: string;
-  };
+  id: string;
+  name: string;
 };
 
 type ManagementPlanResponse = {
@@ -46,6 +42,7 @@ export default function ManagementPlanPrintPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const orgId = useOrgId();
+  const isBootstrappingOrg = !orgId;
   const patientId = typeof params.id === 'string' ? params.id : '';
   const planId = searchParams.get('planId') ?? '';
 
@@ -75,7 +72,7 @@ export default function ManagementPlanPrintPage() {
     },
   });
 
-  const patient = patientQuery.data?.data;
+  const patient = patientQuery.data;
   const plan = planQuery.data?.data;
   const ready = Boolean(patient && plan) && !patientQuery.isLoading && !planQuery.isLoading;
 
@@ -85,7 +82,7 @@ export default function ManagementPlanPrintPage() {
     return () => window.clearTimeout(timer);
   }, [ready]);
 
-  if (patientQuery.isLoading || planQuery.isLoading) {
+  if (isBootstrappingOrg || patientQuery.isLoading || planQuery.isLoading) {
     return <Loading />;
   }
 
@@ -102,16 +99,13 @@ export default function ManagementPlanPrintPage() {
 
   return (
     <div className="mx-auto max-w-4xl p-6 print:p-0">
-      <div className="mb-4 space-y-3 print:hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <WorkflowBackLink href={`/patients/${patientId}`} label="患者詳細へ戻る" />
-          <Button size="sm" onClick={() => window.print()}>
-            <Printer className="mr-1.5 size-4" aria-hidden="true" />
-            印刷
-          </Button>
-        </div>
-        <PageShortcutLinks links={getManagementPlanPrintShortcutLinks(patientId)} />
-      </div>
+      <PrintPageToolbar
+        backHref={`/patients/${patientId}`}
+        backLabel="患者詳細へ戻る"
+        title="管理計画書 印刷ビュー"
+        description="訪問薬剤管理指導計画書をA4印刷向けに確認できます。"
+        shortcuts={getManagementPlanPrintShortcutLinks(patientId)}
+      />
 
       <PrintLayout pharmacyName="CareViaX薬局">
         <div className="space-y-4 text-sm">

@@ -14,6 +14,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { HomeCareFeatureBoard } from '@/components/home-care/home-care-feature-board';
+import { PatientMcsSummaryCard } from '@/components/patient-mcs/patient-mcs-summary-card';
 import { VisitBriefCard } from '@/components/visit-brief/visit-brief-card';
 import { CasesTab } from './cases-tab';
 import { ManagementPlanPanel } from './management-plan-panel';
@@ -30,6 +31,17 @@ import { PrescriptionHistoryContent } from './prescriptions/prescription-history
 import { ExternalShareContent } from './share/external-share-content';
 import { VisitConstraintsCard } from './visit-constraints-card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import {
+  canOpenPatientMcsPage,
+  describePatientMcsCardStatus,
+  restrictedPatientMcsCardViewData,
+  type PatientMcsCardViewData,
+} from '@/lib/patient-mcs/card';
+import {
+  createPatientMcsQueryKey,
+  fetchPatientMcsOverview,
+  PatientMcsOverviewQueryError,
+} from '@/lib/patient-mcs/query';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import type { HomeCareFeatureSummary } from '@/types/home-care';
 import type { VisitBrief } from '@/types/visit-brief';
@@ -42,6 +54,7 @@ import {
   FileQuestion,
   FileWarning,
   Hospital,
+  Link2,
   LogOut,
   PhoneOff,
   Printer,
@@ -440,9 +453,18 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
             title="患者サマリー"
             description="処方変更、調剤方法、他職種共有、未解決事項を1画面に要約しています。"
           />
-          <TabsList variant="line" className="w-full overflow-x-auto">
+          <TabsList
+            variant="line"
+            className="w-full overflow-x-auto"
+            data-testid="patient-detail-tablist"
+            aria-label="患者詳細タブ"
+          >
             {PATIENT_DETAIL_TABS.map((tab) => (
-              <TabsTrigger key={tab.value} value={tab.value}>
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                data-testid={`patient-detail-tab-${tab.value}`}
+              >
                 {tab.label}
               </TabsTrigger>
             ))}
@@ -658,6 +680,7 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
                   initialContacts={patient.contacts}
                 />
                 <PatientCareTeamPanel patientId={patient.id} orgId={orgId} cases={patient.cases} />
+                <PatientMcsLinkCard patientId={patient.id} />
                 <CommunicationQueueCard queue={patient.communication_queue} orgId={orgId} patientId={patient.id} />
                 <TaskAndIssueCard
                   tasks={patient.open_tasks}
@@ -1241,6 +1264,99 @@ function CommunicationQueueCard({
               </div>
             ))}
           </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function PatientMcsLinkCard({ patientId }: { patientId: string }) {
+  const orgId = useOrgId();
+  const statusQuery = useQuery<PatientMcsCardViewData>({
+    queryKey: createPatientMcsQueryKey(patientId, orgId, 0),
+    enabled: Boolean(orgId),
+    queryFn: async () => {
+      try {
+        const payload = await fetchPatientMcsOverview(patientId, orgId, 0);
+        return {
+          link: payload.link,
+          summary: payload.summary,
+          isRestricted: false,
+        };
+      } catch (error) {
+        if (error instanceof PatientMcsOverviewQueryError && error.code === 'forbidden') {
+          return restrictedPatientMcsCardViewData();
+        }
+        if (error instanceof Error) {
+          throw error;
+        }
+        throw new Error('MCS 状態の取得に失敗しました');
+      }
+    },
+  });
+
+  const link = statusQuery.data?.link ?? null;
+  const summary = statusQuery.data?.summary ?? null;
+  const isRestricted = statusQuery.data?.isRestricted ?? false;
+  const status = describePatientMcsCardStatus({
+    link,
+    isRestricted,
+    isError: statusQuery.isError,
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">MCS 連携</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <Badge variant={status.variant}>{status.label}</Badge>
+          {link?.lastSyncAttemptAt ? (
+            <span className="text-muted-foreground">
+              最終試行 {format(new Date(link.lastSyncAttemptAt), 'M/d HH:mm', { locale: ja })}
+            </span>
+          ) : null}
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {isRestricted
+            ? 'このロールでは MCS 本文は表示しません。必要時は権限のある担当者から参照してください。'
+            : status.description}
+        </p>
+        <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-sm">
+          <p className="font-medium text-foreground">患者別タイムラインを保存済みデータとして利用</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            看護師やケアマネの投稿を患者詳細から見返せるようにし、システム内の判断材料として残します。
+          </p>
+        </div>
+        {!isRestricted && summary ? (
+          <div className="space-y-2">
+            {link?.lastSyncError ? (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                同期エラー中のため、以下は前回成功時点の MCS 要約です。
+              </p>
+            ) : null}
+            <PatientMcsSummaryCard
+              summary={summary}
+              title="MCS共有要点"
+              description="他職種共有の要点と次アクションを患者詳細から確認できます。"
+              compact
+            />
+          </div>
+        ) : null}
+        {link?.lastSyncError ? (
+          <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+            {link.lastSyncError}
+          </p>
+        ) : null}
+        {canOpenPatientMcsPage(statusQuery.data) ? (
+          <Link
+            href={`/patients/${patientId}/mcs`}
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
+            <Link2 className="mr-1.5 size-4" aria-hidden="true" />
+            MCS 連携ページを開く
+          </Link>
         ) : null}
       </CardContent>
     </Card>

@@ -34,7 +34,7 @@ function matchesPathPrefix(pathname: string, prefix: string) {
 
 export function MobileNav() {
   const pathname = usePathname();
-  const { toggleSidebar } = useUIStore();
+  const { setSidebarOpen, toggleSidebar } = useUIStore();
 
   return (
     <nav
@@ -59,6 +59,7 @@ export function MobileNav() {
             <li key={item.href} className="flex flex-1">
               <Link
                 href={item.href}
+                onClick={() => setSidebarOpen(false)}
                 className={cn(
                   'relative flex flex-1 flex-col items-center justify-center gap-1 text-xs font-medium transition-colors',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',

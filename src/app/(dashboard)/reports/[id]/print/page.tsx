@@ -3,9 +3,8 @@
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
 import { getReportPrintShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
-import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
+import { PrintPageToolbar } from '@/components/features/workflow/print-page-toolbar';
 import { PrintLayout } from '@/components/features/reports/print-layout';
 import { Loading } from '@/components/ui/loading';
 import type {
@@ -20,6 +19,10 @@ type CareReportResponse = {
   report_type: 'physician_report' | 'care_manager_report';
   pharmacy_name?: string;
   content: PhysicianReportContent | CareManagerReportContent;
+};
+
+type CareReportApiResponse = {
+  data: CareReportResponse;
 };
 
 // ─── Physician report layout (別紙様式1準拠) ─────────────────────────────────
@@ -439,7 +442,8 @@ export default function ReportPrintPage() {
     queryFn: async () => {
       const res = await fetch(`/api/care-reports/${reportId}`);
       if (!res.ok) throw new Error('報告書の取得に失敗しました');
-      return res.json() as Promise<CareReportResponse>;
+      const payload = (await res.json()) as CareReportApiResponse;
+      return payload.data;
     },
     enabled: !!reportId,
     staleTime: 60_000,
@@ -472,19 +476,13 @@ export default function ReportPrintPage() {
 
   return (
     <PrintLayout pharmacyName={data.pharmacy_name}>
-      <div className="mb-4 space-y-3 print:hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <WorkflowBackLink href={`/reports/${reportId}`} label="報告書詳細へ戻る" />
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-          >
-            印刷
-          </button>
-        </div>
-        <PageShortcutLinks links={getReportPrintShortcutLinks(reportId)} />
-      </div>
+      <PrintPageToolbar
+        backHref={`/reports/${reportId}`}
+        backLabel="報告書詳細へ戻る"
+        title="報告書 印刷ビュー"
+        description="A4印刷に最適化したレイアウトです。印刷前に内容を確認してください。"
+        shortcuts={getReportPrintShortcutLinks(reportId)}
+      />
 
       {data.report_type === 'physician_report' ? (
         <PhysicianReportPrint content={data.content as PhysicianReportContent} />

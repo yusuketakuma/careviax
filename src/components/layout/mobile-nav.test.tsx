@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { MobileNav } from './mobile-nav';
 
 setupDomTestEnv();
 
 let mockPathname = '/dashboard';
+const mockSetSidebarOpen = vi.fn();
 
 vi.mock('next/link', () => ({
   default: ({
@@ -27,11 +28,24 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/lib/stores/ui-store', () => ({
   useUIStore: () => ({
+    setSidebarOpen: mockSetSidebarOpen,
     toggleSidebar: vi.fn(),
   }),
 }));
 
 describe('MobileNav', () => {
+  beforeEach(() => {
+    mockSetSidebarOpen.mockClear();
+  });
+
+  it('closes the sidebar drawer when a bottom navigation link is used', () => {
+    render(<MobileNav />);
+
+    fireEvent.click(screen.getByRole('link', { name: '患者' }));
+
+    expect(mockSetSidebarOpen).toHaveBeenCalledWith(false);
+  });
+
   it('keeps a direct dashboard entry in the bottom navigation', () => {
     render(<MobileNav />);
 

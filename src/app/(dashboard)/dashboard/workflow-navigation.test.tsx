@@ -23,11 +23,16 @@ describe('WorkflowNavigation', () => {
   it('shows newly exposed referral and qr draft entry points', () => {
     render(<WorkflowNavigation />);
 
+    expect(screen.getByText('最初に始める 3 操作')).toBeTruthy();
+    expect(screen.getByText('続きの主要フロー')).toBeTruthy();
     expect(screen.getByRole('link', { name: /紹介受付/ }).getAttribute('href')).toBe(
       '/referrals/new',
     );
     expect(screen.getByRole('link', { name: /QR下書き/ }).getAttribute('href')).toBe(
       '/prescriptions/qr-drafts',
+    );
+    expect(screen.getByRole('link', { name: /訪問スケジュール設定/ }).getAttribute('href')).toBe(
+      '/schedules',
     );
   });
 });

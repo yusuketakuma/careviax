@@ -1,10 +1,7 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
-import Link from 'next/link';
-import { ChevronLeft } from 'lucide-react';
-import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
 import { getPatientMedicationCalendarShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
-import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
+import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { Loading } from '@/components/ui/loading';
 import { MedicationCalendarContent } from './medication-calendar-content';
 
@@ -21,22 +18,14 @@ export default async function MedicationCalendarPage({
 
   return (
     <div className="p-6 print:p-2">
-      <div className="mb-6 print:hidden">
-        <Link
-          href={`/patients/${id}`}
-          className="mb-4 inline-flex h-7 items-center gap-1 rounded-lg px-2.5 text-[0.8rem] font-medium text-foreground hover:bg-muted"
-        >
-          <ChevronLeft className="size-3.5" aria-hidden="true" />
-          患者詳細へ戻る
-        </Link>
-        <WorkflowPageHeader
-          title="服薬カレンダー"
-          description="月間服薬スケジュールの確認・印刷"
-          className="mb-0 mt-2"
-        >
-          <PageShortcutLinks links={getPatientMedicationCalendarShortcutLinks(id)} />
-        </WorkflowPageHeader>
-      </div>
+      <WorkflowPageIntro
+        backHref={`/patients/${id}`}
+        backLabel="患者詳細へ戻る"
+        title="服薬カレンダー"
+        description="月間服薬スケジュールの確認・印刷"
+        shortcuts={getPatientMedicationCalendarShortcutLinks(id)}
+        className="print:hidden"
+      />
 
       <Suspense fallback={<Loading />}>
         <MedicationCalendarContent patientId={id} />

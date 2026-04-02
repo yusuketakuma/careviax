@@ -30,6 +30,9 @@ type Notification = {
   is_read: boolean;
 };
 
+const NOTIFICATION_STREAM_DISABLED =
+  process.env.NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM === '1';
+
 export function NotificationBell() {
   const orgId = useOrgId();
   const { notificationDrawerOpen, setNotificationDrawerOpen } = useUIStore();
@@ -93,7 +96,7 @@ export function NotificationBell() {
 
   // SSE connection via fetch (EventSource does not support custom headers)
   useEffect(() => {
-    if (!orgId) return;
+    if (!orgId || NOTIFICATION_STREAM_DISABLED) return;
     const controller = new AbortController();
     abortRef.current = controller;
 

@@ -1,0 +1,62 @@
+import { NextRequest } from 'next/server';
+import { requireAuthContext } from '@/lib/auth/context';
+import { conflict, error, forbidden, validationError, success, notFound } from '@/lib/api/response';
+import { syncPatientMcsSchema } from '@/lib/validations/patient-mcs';
+import { prisma } from '@/lib/db/client';
+import { PatientMcsSyncError, syncPatientMcsTimeline } from '@/server/services/patient-mcs';
+import { canViewSensitivePatientData } from '@/lib/patient/sensitive';
+
+export const runtime = 'nodejs';
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: 'MCS 連携の同期権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const ctx = authResult.ctx;
+  if (!canViewSensitivePatientData(ctx.role)) {
+    return forbidden('MCS 連携の同期権限がありません');
+  }
+
+  const { id } = await params;
+
+  const patient = await prisma.patient.findFirst({
+    where: { id, org_id: ctx.orgId },
+    select: { id: true },
+  });
+  if (!patient) return notFound('患者が見つかりません');
+
+  const body = await req.json().catch(() => ({}));
+  const parsed = syncPatientMcsSchema.safeParse(body);
+  if (!parsed.success) {
+    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+  }
+
+  try {
+    const result = await syncPatientMcsTimeline({
+      orgId: ctx.orgId,
+      patientId: id,
+      userId: ctx.userId,
+      sourceUrl: parsed.data.source_url,
+    });
+
+    return success({ data: result });
+  } catch (cause) {
+    if (cause instanceof PatientMcsSyncError) {
+      if (cause.kind === 'validation') {
+        return validationError(cause.message);
+      }
+
+      if (cause.kind === 'conflict') {
+        return conflict(cause.message);
+      }
+    }
+
+    const message = cause instanceof Error ? cause.message : 'MCS 同期に失敗しました';
+    return error('PATIENT_MCS_SYNC_FAILED', message, 502);
+  }
+}

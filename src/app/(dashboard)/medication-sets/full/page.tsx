@@ -1,9 +1,7 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
-import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
 import { getMedicationSetFullShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
-import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
-import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
+import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { Loading } from '@/components/ui/loading';
 import { MedicationSetFullContent } from './medication-set-full-content';
 
@@ -27,17 +25,14 @@ export default async function MedicationSetFullPage({
 
   return (
     <div className="p-6">
-      <div className="mb-4">
-        <WorkflowBackLink href="/medication-sets" label="セット管理へ戻る" />
-      </div>
-
-      <WorkflowPageHeader
+      <WorkflowPageIntro
+        backHref="/medication-sets"
+        backLabel="セット管理へ戻る"
         title="セット計画（詳細）"
         description="セット方式、スロットグリッド、持参パック生成の確認面です。"
+        shortcuts={getMedicationSetFullShortcutLinks(planId)}
         className="mb-6"
-      >
-        <PageShortcutLinks links={getMedicationSetFullShortcutLinks(planId)} />
-      </WorkflowPageHeader>
+      />
 
       <Suspense fallback={<Loading />}>
         <MedicationSetFullContent />

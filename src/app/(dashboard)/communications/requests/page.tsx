@@ -9,7 +9,19 @@ export const metadata: Metadata = {
   title: '依頼・照会一覧 — CareViaX',
 };
 
-export default function CommunicationRequestsPage() {
+type CommunicationRequestsPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+function readString(value: string | string[] | undefined) {
+  return typeof value === 'string' ? value : null;
+}
+
+export default async function CommunicationRequestsPage({
+  searchParams,
+}: CommunicationRequestsPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+
   return (
     <div className="p-6">
       <WorkflowPageHeader
@@ -18,6 +30,7 @@ export default function CommunicationRequestsPage() {
       >
         <PageShortcutLinks
           links={[
+            { href: '/reports', label: '報告書' },
             { href: '/external', label: '外部連携' },
             { href: '/notifications', label: '通知' },
             { href: '/handoff', label: '申し送り' },
@@ -26,7 +39,12 @@ export default function CommunicationRequestsPage() {
       </WorkflowPageHeader>
 
       <Suspense fallback={<Loading />}>
-        <CommunicationRequestsContent />
+        <CommunicationRequestsContent
+          initialStatus={readString(resolvedSearchParams?.status)}
+          initialPatientId={readString(resolvedSearchParams?.patient_id)}
+          initialRelatedEntityType={readString(resolvedSearchParams?.related_entity_type)}
+          initialRelatedEntityId={readString(resolvedSearchParams?.related_entity_id)}
+        />
       </Suspense>
     </div>
   );

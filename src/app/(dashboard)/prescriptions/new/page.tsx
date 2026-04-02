@@ -12,7 +12,7 @@ export default function NewPrescriptionPage() {
     <div className="mx-auto max-w-5xl p-6">
       <WorkflowPageHeader
         title="新規処方受付"
-        description="処方箋を受け付け、調剤ワークフローを開始します"
+        description="患者とケースを選び、原本・明細を確認してから下部の登録ボタンで調剤ワークフローを開始します"
       >
         <PageShortcutLinks
           links={[

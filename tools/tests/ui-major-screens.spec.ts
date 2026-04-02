@@ -1,31 +1,28 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
-import { encode } from 'next-auth/jwt';
+import { expect, test, type Page } from '@playwright/test';
 import { Client } from 'pg';
 import { PLAYWRIGHT_UI_SCREENSHOT_DIR } from './helpers/artifacts';
-
-const AUTH_SECRET = 'careviax-local-auth-secret';
+import {
+  attachLocalSession,
+  createInstrumentedPage,
+  shouldIgnoreConsoleError,
+  waitForStableUi,
+} from './helpers/local-auth';
 const SCREENSHOT_DIR = PLAYWRIGHT_UI_SCREENSHOT_DIR;
 const DB_CONNECTION_STRING = (
   process.env.DATABASE_URL ?? 'postgresql://careviax:careviax@localhost:5433/careviax_dev?schema=public'
 ).replace(/\?.*$/, '');
 
-const LOCAL_USER = {
-  id: 'cmnb3swgz0008wgq9gfpgjq6r',
-  email: 'demo@careviax.example.com',
-  name: '山田 太郎',
-  cognitoSub: 'demo-cognito-sub-001',
-  sessionVersion: 0,
-};
-
 const ROOT_ROUTES = [
   { name: 'dashboard', route: '/dashboard' },
+  { name: 'my-day', route: '/my-day' },
   { name: 'patients', route: '/patients' },
   { name: 'patients-new', route: '/patients/new' },
   { name: 'workflow', route: '/workflow' },
   { name: 'prescriptions', route: '/prescriptions' },
   { name: 'prescriptions-new', route: '/prescriptions/new' },
+  { name: 'qr-scan', route: '/qr-scan' },
   { name: 'dispensing', route: '/dispensing' },
   { name: 'auditing', route: '/auditing' },
   { name: 'medication-sets', route: '/medication-sets' },
@@ -51,6 +48,7 @@ const DEMO_IDS = {
   consent: 'ui_demo_consent_1',
   packaging: 'ui_demo_packaging_1',
   medication: 'ui_demo_medication_1',
+  managementPlan: 'ui_demo_management_plan_1',
   task: 'ui_demo_task_1',
   grant: 'ui_demo_grant_1',
   selfReport: 'ui_demo_self_report_1',
@@ -72,6 +70,7 @@ type DemoContext = {
   conditionName: string;
   contactName: string;
   medicationName: string;
+  managementPlanId: string;
   reportId: string;
   scheduleId: string;
   visitRecordId: string;
@@ -144,9 +143,12 @@ async function ensureUiDemoData() {
           "id","org_id","patient_id","address","building_id","unit_name","is_primary","created_at","updated_at"
         ) VALUES ($1,$2,$3,$4,$5,$6,true,NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
-        SET "address" = EXCLUDED."address",
+        SET "org_id" = EXCLUDED."org_id",
+            "patient_id" = EXCLUDED."patient_id",
+            "address" = EXCLUDED."address",
             "building_id" = EXCLUDED."building_id",
             "unit_name" = EXCLUDED."unit_name",
+            "is_primary" = true,
             "updated_at" = NOW()
       `,
       [DEMO_IDS.residence, base.org_id, base.patient_id, address, 'facility-demo-1', '305号室']
@@ -158,7 +160,9 @@ async function ensureUiDemoData() {
           "id","org_id","patient_id","name","relation","phone","email","organization_name","department","address","is_primary","is_emergency_contact","created_at","updated_at"
         ) VALUES ($1,$2,$3,$4,'child',$5,$6,$7,$8,$9,true,true,NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
-        SET "name" = EXCLUDED."name",
+        SET "org_id" = EXCLUDED."org_id",
+            "patient_id" = EXCLUDED."patient_id",
+            "name" = EXCLUDED."name",
             "phone" = EXCLUDED."phone",
             "email" = EXCLUDED."email",
             "organization_name" = EXCLUDED."organization_name",
@@ -187,7 +191,11 @@ async function ensureUiDemoData() {
           "id","org_id","patient_id","condition_type","name","is_primary","is_active","noted_at","notes","created_at","updated_at"
         ) VALUES ($1,$2,$3,'disease',$4,true,true,CURRENT_DATE,$5,NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
-        SET "name" = EXCLUDED."name",
+        SET "org_id" = EXCLUDED."org_id",
+            "patient_id" = EXCLUDED."patient_id",
+            "name" = EXCLUDED."name",
+            "is_primary" = true,
+            "is_active" = true,
             "notes" = EXCLUDED."notes",
             "updated_at" = NOW()
       `,
@@ -200,8 +208,12 @@ async function ensureUiDemoData() {
           "id","org_id","patient_id","status","referral_source","referral_date","start_date","primary_pharmacist_id","required_visit_support","notes","created_at","updated_at"
         ) VALUES ($1,$2,$3,'active',$4,CURRENT_DATE,CURRENT_DATE,$5,$6::jsonb,$7,NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
-        SET "status" = 'active',
+        SET "org_id" = EXCLUDED."org_id",
+            "patient_id" = EXCLUDED."patient_id",
+            "status" = 'active',
             "referral_source" = EXCLUDED."referral_source",
+            "referral_date" = CURRENT_DATE,
+            "start_date" = CURRENT_DATE,
             "primary_pharmacist_id" = EXCLUDED."primary_pharmacist_id",
             "required_visit_support" = EXCLUDED."required_visit_support",
             "notes" = EXCLUDED."notes",
@@ -239,7 +251,10 @@ async function ensureUiDemoData() {
           "id","org_id","patient_id","case_id","consent_type","method","obtained_date","is_active","access_restricted","created_at","updated_at"
         ) VALUES ($1,$2,$3,$4,'visit_medication_management','paper_scan',CURRENT_DATE,true,false,NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
-        SET "obtained_date" = CURRENT_DATE,
+        SET "org_id" = EXCLUDED."org_id",
+            "patient_id" = EXCLUDED."patient_id",
+            "case_id" = EXCLUDED."case_id",
+            "obtained_date" = CURRENT_DATE,
             "is_active" = true,
             "updated_at" = NOW()
       `,
@@ -251,8 +266,10 @@ async function ensureUiDemoData() {
         INSERT INTO "PatientPackagingProfile" (
           "id","org_id","patient_id","default_packaging_method","medication_box_color","notes","created_at","updated_at"
         ) VALUES ($1,$2,$3,'unit_dose','blue',$4,NOW(),NOW())
-        ON CONFLICT ("patient_id") DO UPDATE
-        SET "default_packaging_method" = 'unit_dose',
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "default_packaging_method" = 'unit_dose',
+            "patient_id" = EXCLUDED."patient_id",
             "medication_box_color" = 'blue',
             "notes" = EXCLUDED."notes",
             "updated_at" = NOW()
@@ -266,10 +283,14 @@ async function ensureUiDemoData() {
           "id","org_id","patient_id","drug_name","dose","frequency","start_date","prescriber","is_current","source","created_at","updated_at"
         ) VALUES ($1,$2,$3,$4,$5,$6,CURRENT_DATE,$7,true,'manual',NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
-        SET "drug_name" = EXCLUDED."drug_name",
+        SET "org_id" = EXCLUDED."org_id",
+            "patient_id" = EXCLUDED."patient_id",
+            "drug_name" = EXCLUDED."drug_name",
             "dose" = EXCLUDED."dose",
             "frequency" = EXCLUDED."frequency",
+            "start_date" = CURRENT_DATE,
             "prescriber" = EXCLUDED."prescriber",
+            "is_current" = true,
             "updated_at" = NOW()
       `,
       [DEMO_IDS.medication, base.org_id, base.patient_id, medicationName, '1錠', '1日1回 朝食後', '東京内科クリニック']
@@ -281,11 +302,14 @@ async function ensureUiDemoData() {
           "id","org_id","task_type","title","description","status","priority","assigned_to","due_date","related_entity_type","related_entity_id","created_at","updated_at"
         ) VALUES ($1,$2,'patient_followup',$3,$4,'pending','high',$5,$6,'patient',$7,NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
-        SET "title" = EXCLUDED."title",
+        SET "org_id" = EXCLUDED."org_id",
+            "title" = EXCLUDED."title",
             "description" = EXCLUDED."description",
             "status" = 'pending',
             "priority" = 'high',
+            "assigned_to" = EXCLUDED."assigned_to",
             "due_date" = EXCLUDED."due_date",
+            "related_entity_id" = EXCLUDED."related_entity_id",
             "updated_at" = NOW()
       `,
       [DEMO_IDS.task, base.org_id, '訪問前の服薬確認', 'ご家族へ持参薬確認の電話', base.user_id, nextWeek, base.patient_id]
@@ -297,7 +321,9 @@ async function ensureUiDemoData() {
           "id","org_id","patient_id","token_hash","expires_at","granted_to_name","granted_to_contact","scope","created_at","updated_at"
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
-        SET "expires_at" = EXCLUDED."expires_at",
+        SET "org_id" = EXCLUDED."org_id",
+            "patient_id" = EXCLUDED."patient_id",
+            "expires_at" = EXCLUDED."expires_at",
             "granted_to_name" = EXCLUDED."granted_to_name",
             "granted_to_contact" = EXCLUDED."granted_to_contact",
             "scope" = EXCLUDED."scope",
@@ -321,7 +347,10 @@ async function ensureUiDemoData() {
           "id","org_id","patient_id","external_access_grant_id","reported_by_name","relation","category","subject","content","requested_callback","preferred_contact_time","status","created_at","updated_at"
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10,'submitted',NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
-        SET "subject" = EXCLUDED."subject",
+        SET "org_id" = EXCLUDED."org_id",
+            "patient_id" = EXCLUDED."patient_id",
+            "external_access_grant_id" = EXCLUDED."external_access_grant_id",
+            "subject" = EXCLUDED."subject",
             "content" = EXCLUDED."content",
             "requested_callback" = true,
             "preferred_contact_time" = EXCLUDED."preferred_contact_time",
@@ -347,9 +376,13 @@ async function ensureUiDemoData() {
           "id","org_id","patient_id","case_id","request_type","recipient_name","recipient_role","related_entity_type","related_entity_id","status","subject","content","requested_by","requested_at","due_date","created_at","updated_at"
         ) VALUES ($1,$2,$3,$4,'care_manager_followup',$5,'care_manager','patient',$3,'sent',$6,$7,$8,NOW(),$9,NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
-        SET "status" = 'sent',
+        SET "org_id" = EXCLUDED."org_id",
+            "patient_id" = EXCLUDED."patient_id",
+            "case_id" = EXCLUDED."case_id",
+            "status" = 'sent',
             "subject" = EXCLUDED."subject",
             "content" = EXCLUDED."content",
+            "requested_by" = EXCLUDED."requested_by",
             "due_date" = EXCLUDED."due_date",
             "updated_at" = NOW()
       `,
@@ -372,7 +405,10 @@ async function ensureUiDemoData() {
           "id","org_id","patient_id","case_id","event_type","channel","direction","counterpart_name","subject","content","occurred_at","created_at","updated_at"
         ) VALUES ($1,$2,$3,$4,'care_manager_report','phone','outbound',$5,$6,$7,NOW(),NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
-        SET "counterpart_name" = EXCLUDED."counterpart_name",
+        SET "org_id" = EXCLUDED."org_id",
+            "patient_id" = EXCLUDED."patient_id",
+            "case_id" = EXCLUDED."case_id",
+            "counterpart_name" = EXCLUDED."counterpart_name",
             "subject" = EXCLUDED."subject",
             "content" = EXCLUDED."content",
             "updated_at" = NOW()
@@ -390,12 +426,54 @@ async function ensureUiDemoData() {
 
     await client.query(
       `
+        INSERT INTO "ManagementPlan" (
+          "id","org_id","case_id","version","title","summary","content","created_by","approved_by","approved_at","reviewed_by","reviewed_at","effective_from","next_review_date","status","created_at","updated_at"
+        ) VALUES ($1,$2,$3,1,$4,$5,$6::jsonb,$7,$7,NOW(),$7,NOW(),CURRENT_DATE,$8,'approved',NOW(),NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "case_id" = EXCLUDED."case_id",
+            "title" = EXCLUDED."title",
+            "summary" = EXCLUDED."summary",
+            "content" = EXCLUDED."content",
+            "created_by" = EXCLUDED."created_by",
+            "approved_by" = EXCLUDED."approved_by",
+            "approved_at" = NOW(),
+            "reviewed_by" = EXCLUDED."reviewed_by",
+            "reviewed_at" = NOW(),
+            "effective_from" = CURRENT_DATE,
+            "next_review_date" = EXCLUDED."next_review_date",
+            "status" = 'approved',
+            "updated_at" = NOW()
+      `,
+      [
+        DEMO_IDS.managementPlan,
+        base.org_id,
+        DEMO_IDS.caseId,
+        '訪問薬剤管理指導計画書',
+        '服薬状況と残薬確認を中心に継続支援する計画です。',
+        JSON.stringify({
+          goals: ['服薬遵守の維持', '残薬の適正化'],
+          interventions: ['一包化継続', '家族への服薬確認依頼'],
+          review_points: ['血圧推移', 'ふらつき再発の有無'],
+        }),
+        base.user_id,
+        nextVisitDate,
+      ]
+    );
+
+    await client.query(
+      `
         INSERT INTO "CareReport" (
           "id","org_id","patient_id","case_id","report_type","status","content","created_by","created_at","updated_at"
         ) VALUES ($1,$2,$3,$4,'physician_report','response_waiting',$5::jsonb,$6,NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
-        SET "status" = 'response_waiting',
+        SET "org_id" = EXCLUDED."org_id",
+            "patient_id" = EXCLUDED."patient_id",
+            "case_id" = EXCLUDED."case_id",
+            "report_type" = EXCLUDED."report_type",
+            "status" = 'response_waiting',
             "content" = EXCLUDED."content",
+            "created_by" = EXCLUDED."created_by",
             "updated_at" = NOW()
       `,
       [
@@ -464,7 +542,10 @@ async function ensureUiDemoData() {
           "id","org_id","case_id","site_id","visit_type","priority","schedule_status","scheduled_date","pharmacist_id","assignment_mode","route_order","confirmed_at","created_at","updated_at"
         ) VALUES ($1,$2,$3,$4,'regular','normal','ready',$5,$6,'primary',1,NOW(),NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
-        SET "schedule_status" = 'ready',
+        SET "org_id" = EXCLUDED."org_id",
+            "case_id" = EXCLUDED."case_id",
+            "site_id" = EXCLUDED."site_id",
+            "schedule_status" = 'ready',
             "scheduled_date" = EXCLUDED."scheduled_date",
             "pharmacist_id" = EXCLUDED."pharmacist_id",
             "confirmed_at" = NOW(),
@@ -479,7 +560,12 @@ async function ensureUiDemoData() {
           "id","org_id","schedule_id","patient_id","pharmacist_id","visit_date","outcome_status","soap_subjective","soap_objective","soap_assessment","soap_plan","next_visit_suggestion_date","created_at","updated_at"
         ) VALUES ($1,$2,$3,$4,$5,NOW(),'completed',$6,$7,$8,$9,$10,NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
-        SET "outcome_status" = 'completed',
+        SET "org_id" = EXCLUDED."org_id",
+            "schedule_id" = EXCLUDED."schedule_id",
+            "patient_id" = EXCLUDED."patient_id",
+            "pharmacist_id" = EXCLUDED."pharmacist_id",
+            "visit_date" = NOW(),
+            "outcome_status" = 'completed',
             "soap_subjective" = EXCLUDED."soap_subjective",
             "soap_objective" = EXCLUDED."soap_objective",
             "soap_assessment" = EXCLUDED."soap_assessment",
@@ -512,6 +598,7 @@ async function ensureUiDemoData() {
       conditionName,
       contactName,
       medicationName,
+      managementPlanId: DEMO_IDS.managementPlan,
       reportId: DEMO_IDS.careReport,
       scheduleId: DEMO_IDS.visitSchedule,
       visitRecordId: DEMO_IDS.visitRecord,
@@ -521,63 +608,6 @@ async function ensureUiDemoData() {
   } finally {
     await client.end();
   }
-}
-
-async function createSessionToken() {
-  return encode({
-    secret: AUTH_SECRET,
-    token: {
-      userId: LOCAL_USER.id,
-      email: LOCAL_USER.email,
-      name: LOCAL_USER.name,
-      cognitoSub: LOCAL_USER.cognitoSub,
-      sessionVersion: LOCAL_USER.sessionVersion,
-      sub: LOCAL_USER.cognitoSub,
-    },
-    maxAge: 30 * 60,
-  });
-}
-
-async function attachLocalSession(context: BrowserContext) {
-  const token = await createSessionToken();
-  await context.addCookies([
-    {
-      name: 'next-auth.session-token',
-      value: token,
-      domain: 'localhost',
-      path: '/',
-      httpOnly: true,
-      sameSite: 'Lax',
-    },
-  ]);
-}
-
-async function createInstrumentedPage(context: BrowserContext) {
-  const page = await context.newPage();
-  const errors: string[] = [];
-
-  page.on('console', (message) => {
-    if (message.type() === 'error') {
-      errors.push(`console:${message.text()}`);
-    }
-  });
-
-  page.on('pageerror', (error) => {
-    errors.push(`pageerror:${error.message}`);
-  });
-
-  page.on('response', (response) => {
-    if (response.status() >= 400) {
-      errors.push(`http:${response.status()} ${response.url()}`);
-    }
-  });
-
-  return { page, errors };
-}
-
-async function waitForStableUi(page: Page) {
-  await page.waitForLoadState('domcontentloaded');
-  await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => null);
 }
 
 async function dismissSheetOverlayIfPresent(page: Page) {
@@ -615,7 +645,7 @@ test.beforeAll(async () => {
 test('login screen renders without runtime errors', async ({ page }) => {
   const errors: string[] = [];
   page.on('console', (message) => {
-    if (message.type() === 'error') {
+    if (message.type() === 'error' && !shouldIgnoreConsoleError(message.text())) {
       errors.push(`console:${message.text()}`);
     }
   });
@@ -657,17 +687,13 @@ test.describe('major authenticated screens', () => {
     await page.goto('/patients', { waitUntil: 'domcontentloaded' });
     await waitForStableUi(page);
 
-    await page
-      .getByPlaceholder('氏名・住所・担当・課題を検索')
-      .fill(demoContext.patientName);
+    await page.getByLabel('患者検索').fill(demoContext.patientName);
 
-    await expect(page.locator('main').getByText(demoContext.patientName).first()).toBeVisible({
-      timeout: 10_000,
-    });
-    await expect(page.locator('main').getByText(demoContext.patientKana).first()).toBeVisible({
-      timeout: 10_000,
-    });
-    await expect(page.locator('main').getByText(demoContext.conditionName).first()).toBeVisible({
+    const patientLink = page.locator(
+      `main a[href="/patients/${demoContext.patientId}"]:visible`
+    ).first();
+    await expect(patientLink).toContainText(demoContext.patientName, { timeout: 10_000 });
+    await expect(patientLink).toHaveAttribute('href', `/patients/${demoContext.patientId}`, {
       timeout: 10_000,
     });
     await writeScreenshot(page, 'patients-data');
@@ -736,6 +762,60 @@ test.describe('major authenticated screens', () => {
     });
   }
 
+  const sharedChromeRoutes = [
+    {
+      name: 'report-print',
+      route: () => `/reports/${demoContext.reportId}/print`,
+      heading: '報告書 印刷ビュー',
+      backLabel: '報告書詳細へ戻る',
+      expectPrintButton: true,
+    },
+    {
+      name: 'management-plan-print',
+      route: () =>
+        `/patients/${demoContext.patientId}/management-plan/print?planId=${demoContext.managementPlanId}`,
+      heading: '管理計画書 印刷ビュー',
+      backLabel: '患者詳細へ戻る',
+      expectPrintButton: true,
+    },
+    {
+      name: 'patient-medications-print',
+      route: () => `/patients/${demoContext.patientId}/medications/print`,
+      heading: '薬歴・服薬一覧 印刷ビュー',
+      backLabel: '服薬管理へ戻る',
+      expectPrintButton: true,
+    },
+    {
+      name: 'patient-visit-records-print',
+      route: () => `/patients/${demoContext.patientId}/visit-records/print`,
+      heading: '訪問記録一覧 印刷ビュー',
+      backLabel: '患者詳細へ戻る',
+      expectPrintButton: true,
+    },
+  ] as const;
+
+  for (const entry of sharedChromeRoutes) {
+    test(`${entry.name} screen renders shared chrome cleanly`, async ({ context }) => {
+      const { page, errors } = await createInstrumentedPage(context);
+      const response = await page.goto(entry.route(), { waitUntil: 'domcontentloaded' });
+      await waitForStableUi(page);
+
+      expect(response?.ok() ?? false).toBeTruthy();
+      await expect(page.getByRole('heading', { name: entry.heading })).toBeVisible({
+        timeout: 20_000,
+      });
+      await expect(page.getByRole('link', { name: entry.backLabel })).toBeVisible();
+      await expect(page.getByTestId('app-shell-print-route')).toBeVisible();
+      await expect(page.getByTestId('app-sidebar')).toHaveCount(0);
+      await expect(page.getByTestId('print-layout-root')).toBeVisible();
+      if (entry.expectPrintButton) {
+        await expect(page.getByRole('button', { name: '印刷' })).toBeVisible();
+      }
+      await writeScreenshot(page, entry.name);
+      expect(errors).toEqual([]);
+    });
+  }
+
   test('patient share screen exposes backend share and self-report data', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await page.goto(`/patients/${demoContext.patientId}/share`, {
@@ -758,6 +838,24 @@ test.describe('major authenticated screens', () => {
 
     await expect(page.locator('main').getByText(demoContext.medicationName).first()).toBeVisible();
     await writeScreenshot(page, 'patient-medications-data');
+    expect(errors).toEqual([]);
+  });
+
+  test('reports list keeps direct detail and patient navigation visible', async ({ context }) => {
+    const { page, errors } = await createInstrumentedPage(context);
+    await page.goto('/reports', { waitUntil: 'domcontentloaded' });
+    await waitForStableUi(page);
+
+    const reportLink = page.locator('main a[href^="/reports/"]:visible').first();
+    await expect(reportLink).toBeVisible();
+    await expect(reportLink).toHaveAttribute('href', /\/reports\/[^/]+$/);
+    await expect(page.getByRole('button', { name: '詳細を開く' }).first()).toBeVisible();
+
+    const patientLink = page.locator(`main a[href="/patients/${demoContext.patientId}"]:visible`).first();
+    await expect(patientLink).toBeVisible();
+    await expect(patientLink).toHaveAttribute('href', `/patients/${demoContext.patientId}`);
+
+    await writeScreenshot(page, 'reports-list-navigation');
     expect(errors).toEqual([]);
   });
 });

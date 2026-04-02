@@ -1,6 +1,7 @@
 import NextAuth, { getServerSession, type NextAuthOptions } from 'next-auth';
 import CognitoProvider from 'next-auth/providers/cognito';
 import CredentialsProvider from 'next-auth/providers/credentials';
+import { getAuthBaseUrl, getAuthSecret } from './secret';
 import { markLocalUserActive, resolveLocalUserByIdentity } from './user-resolution';
 import {
   authenticateWithPassword,
@@ -8,7 +9,14 @@ import {
   respondToSoftwareTokenChallenge,
 } from '@/server/services/cognito-auth';
 
+const authBaseUrl = getAuthBaseUrl();
+
+if (authBaseUrl && !process.env.NEXTAUTH_URL) {
+  process.env.NEXTAUTH_URL = authBaseUrl;
+}
+
 export const authOptions: NextAuthOptions = {
+  secret: getAuthSecret(),
   providers: [
     CredentialsProvider({
       id: 'credentials',

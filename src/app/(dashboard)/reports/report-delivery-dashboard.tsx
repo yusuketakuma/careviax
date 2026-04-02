@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -16,6 +16,7 @@ import {
   REPORT_STATUS_CONFIG,
   REPORT_TYPE_LABELS,
 } from '@/lib/constants/status-labels';
+import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
 import { cn } from '@/lib/utils';
 
 type DeliveryAnalyticsResponse = {
@@ -135,7 +136,14 @@ export function ReportDeliveryDashboard() {
   const analytics = data?.data;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="reports-delivery-dashboard">
+      <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-4">
+        <h2 className="text-base font-semibold text-foreground">送達分析・未確認フォロー</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          一覧で対象報告を確認したあとに、送達傾向や返信待ちの滞留をまとめて見返すセクションです。
+        </p>
+      </div>
+
       <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <SummaryCard
@@ -285,12 +293,30 @@ export function ReportDeliveryDashboard() {
                     </p>
                     <p className="text-xs text-muted-foreground">{item.recipient_contact}</p>
                   </div>
-                  <Link
-                    href={`/reports/${item.report_id}`}
-                    className={cn(buttonVariants({ variant: 'outline' }))}
-                  >
-                    報告書を開く
-                  </Link>
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      href={`/patients/${item.patient_id}`}
+                      className={cn(buttonVariants({ variant: 'ghost' }))}
+                    >
+                      患者詳細
+                    </Link>
+                    <Link
+                      href={buildCommunicationRequestsHref({
+                        patientId: item.patient_id,
+                        relatedEntityType: 'care_report',
+                        relatedEntityId: item.report_id,
+                      })}
+                      className={cn(buttonVariants({ variant: 'outline' }))}
+                    >
+                      関連依頼
+                    </Link>
+                    <Link
+                      href={`/reports/${item.report_id}`}
+                      className={cn(buttonVariants({ variant: 'outline' }))}
+                    >
+                      報告書を開く
+                    </Link>
+                  </div>
                 </div>
               ))}
             </div>

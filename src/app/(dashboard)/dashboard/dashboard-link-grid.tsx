@@ -17,6 +17,7 @@ type DashboardLinkGridProps = {
   iconMap: Record<string, LucideIcon>;
   compact?: boolean;
   className?: string;
+  dataTestId?: string;
 };
 
 export function DashboardLinkGrid({
@@ -24,9 +25,11 @@ export function DashboardLinkGrid({
   iconMap,
   compact = false,
   className,
+  dataTestId,
 }: DashboardLinkGridProps) {
   return (
     <div
+      data-testid={dataTestId}
       className={cn(
         'grid gap-3 md:grid-cols-2',
         compact ? 'xl:grid-cols-2' : 'xl:grid-cols-4',

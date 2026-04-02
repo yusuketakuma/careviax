@@ -29,6 +29,35 @@ const WORKFLOW_ICONS = {
   conferences: Users,
 } as const;
 
+const PRIMARY_WORKFLOW_KEYS = new Set(['referrals', 'prescriptions', 'schedules']);
+
 export function WorkflowNavigation() {
-  return <DashboardLinkGrid links={DASHBOARD_WORKFLOW_LINKS} iconMap={WORKFLOW_ICONS} />;
+  const primaryLinks = DASHBOARD_WORKFLOW_LINKS.filter((link) => PRIMARY_WORKFLOW_KEYS.has(link.key));
+  const secondaryLinks = DASHBOARD_WORKFLOW_LINKS.filter((link) => !PRIMARY_WORKFLOW_KEYS.has(link.key));
+
+  return (
+    <div className="space-y-4" data-testid="dashboard-phase-rail">
+      <div className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          最初に始める 3 操作
+        </p>
+        <DashboardLinkGrid
+          links={primaryLinks}
+          iconMap={WORKFLOW_ICONS}
+          className="xl:grid-cols-3"
+        />
+      </div>
+      <div className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          続きの主要フロー
+        </p>
+        <DashboardLinkGrid
+          links={secondaryLinks}
+          iconMap={WORKFLOW_ICONS}
+          compact
+          className="xl:grid-cols-4"
+        />
+      </div>
+    </div>
+  );
 }

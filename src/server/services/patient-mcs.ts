@@ -1,0 +1,991 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { prisma } from '@/lib/db/client';
+import { withOrgContext } from '@/lib/db/rls';
+import {
+  buildMcsTimelinePayload,
+  inferMcsProjectIdFromDocument,
+  MCS_TIMELINE_SELECTORS,
+  type ScrapedMcsTimeline,
+  type ScrapedMcsTimelineArgs,
+} from './patient-mcs-parser';
+import {
+  generatePatientMcsAiSummary,
+  type PatientMcsSummaryMessage,
+  type PatientMcsSummarySnapshot,
+} from './patient-mcs-ai';
+
+const execFileAsync = promisify(execFile);
+
+const MCS_HOST = 'www.medical-care.net';
+const ALLOWED_MCS_HOSTS = new Set(['www.medical-care.net', 'medical-care.net']);
+const DEFAULT_CDP_TARGET = '18800';
+const DEFAULT_MAX_MESSAGES = 50;
+const TOKYO_OFFSET_MS = 9 * 60 * 60 * 1000;
+const MCS_BROWSER_SYNC_DISABLED_MESSAGE =
+  'MCS 同期はローカル端末の開発環境でのみ有効です。';
+const MCS_BROWSER_CONNECT_ERROR_MESSAGE =
+  'MCS 連携用ブラウザに接続できません。ローカル端末で MCS にログインした Chrome を開いてから再試行してください。';
+const MCS_BROWSER_SCRAPE_ERROR_MESSAGE =
+  'MCS からデータを取得できませんでした。MCS を開き直してから再試行してください。';
+
+export type PatientMcsLinkRecord = {
+  id: string;
+  source_url: string;
+  mcs_patient_id: string | null;
+  mcs_patient_url: string | null;
+  mcs_project_id: string | null;
+  mcs_project_url: string | null;
+  project_title: string | null;
+  project_memo: string | null;
+  member_count: number | null;
+  last_sync_attempt_at: Date | null;
+  last_synced_at: Date | null;
+  last_sync_status: string | null;
+  last_sync_error: string | null;
+};
+
+export type PatientMcsMessageRecord = {
+  id: string;
+  source_message_id: string;
+  author_name: string;
+  author_role: string | null;
+  author_organization: string | null;
+  author_descriptor: string | null;
+  posted_at: Date | null;
+  posted_at_label: string;
+  body: string;
+  reaction_count: number;
+  reply_count: number;
+  sort_order: number | null;
+  source_url: string;
+  synced_at: Date;
+};
+
+export type PatientMcsOverview = {
+  link: PatientMcsLinkRecord | null;
+  summary: PatientMcsSummaryRecord | null;
+  messages: PatientMcsMessageRecord[];
+};
+
+export type PatientMcsSyncResult = {
+  link: PatientMcsLinkRecord;
+  summary: PatientMcsSummaryRecord | null;
+  importedCount: number;
+  latestMessageAt: Date | null;
+};
+
+export type PatientMcsSummaryRecord = {
+  id: string;
+  generation_id: string;
+  provider: string;
+  requested_provider: string;
+  is_fallback: boolean;
+  model: string | null;
+  fallback_reason: string | null;
+  headline: string;
+  bullets: string[];
+  must_check_today: string[];
+  suggested_actions: string[];
+  source_refs: string[];
+  message_count: number;
+  other_professional_message_count: number;
+  latest_posted_at: Date | null;
+  generated_at: Date;
+  duration_ms: number | null;
+};
+
+type PatientIdentityRecord = {
+  id: string;
+  name: string;
+  name_kana: string;
+};
+
+type SyncPatientMcsTimelineArgs = {
+  orgId: string;
+  patientId: string;
+  userId: string;
+  sourceUrl?: string;
+};
+
+type PatientMcsSyncErrorKind = 'validation' | 'conflict' | 'external';
+
+type ResolvedMcsProjectLink = {
+  sourceUrl: string;
+  patientId: string | null;
+  patientUrl: string | null;
+  projectId: string;
+  projectUrl: string;
+  patientName: string | null;
+};
+
+type ScrapedMcsTimelineWithContext = ScrapedMcsTimeline & {
+  mcsPatientName: string | null;
+};
+
+type PreparedPatientMcsMessage = PatientMcsSummaryMessage & {
+  authorDescriptor: string | null;
+  reactionCount: number;
+  replyCount: number;
+  sortOrder: number | null;
+  sourceUrl: string;
+  rawPayload: ScrapedMcsTimeline['messages'][number];
+};
+
+export class PatientMcsSyncError extends Error {
+  constructor(
+    message: string,
+    readonly kind: PatientMcsSyncErrorKind = 'external'
+  ) {
+    super(message);
+    this.name = 'PatientMcsSyncError';
+  }
+}
+
+function validationFailure(message: string) {
+  return new PatientMcsSyncError(message, 'validation');
+}
+
+function conflictFailure(message: string) {
+  return new PatientMcsSyncError(message, 'conflict');
+}
+
+function externalFailure(message: string) {
+  return new PatientMcsSyncError(message, 'external');
+}
+
+function getAgentBrowserBinary() {
+  return process.env.MCS_AGENT_BROWSER_BIN?.trim() || 'agent-browser';
+}
+
+function getMcsCdpTarget() {
+  return process.env.MCS_BROWSER_CDP_TARGET?.trim() || DEFAULT_CDP_TARGET;
+}
+
+function isHostedRuntime() {
+  return Boolean(process.env.VERCEL || process.env.AWS_EXECUTION_ENV);
+}
+
+export function isPatientMcsBrowserSyncEnabled() {
+  return process.env.PATIENT_MCS_BROWSER_SYNC_ENABLED === 'true' && !isHostedRuntime();
+}
+
+export function sanitizePatientMcsExternalErrorMessage(message: string | null | undefined) {
+  const normalized = message?.trim() ?? '';
+
+  if (normalized.includes('ログイン済みの Chrome セッションが見つかりません')) {
+    return 'Medical Care Station にログイン済みの Chrome セッションが見つかりません';
+  }
+
+  if (normalized.includes('ローカル端末の開発環境でのみ有効')) {
+    return MCS_BROWSER_SYNC_DISABLED_MESSAGE;
+  }
+
+  if (
+    /agent-browser|chrome|browser|cdp|econnrefused|spawn|enoent|connect/i.test(normalized)
+  ) {
+    return MCS_BROWSER_CONNECT_ERROR_MESSAGE;
+  }
+
+  return MCS_BROWSER_SCRAPE_ERROR_MESSAGE;
+}
+
+function toPatientMcsSyncError(error: unknown) {
+  if (error instanceof PatientMcsSyncError) {
+    if (error.kind !== 'external') {
+      return error;
+    }
+
+    return externalFailure(sanitizePatientMcsExternalErrorMessage(error.message));
+  }
+
+  return externalFailure(
+    sanitizePatientMcsExternalErrorMessage(error instanceof Error ? error.message : null)
+  );
+}
+
+function extractMeaningfulOutput(stdout: string) {
+  return stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith('✓'))
+    .join('\n')
+    .trim();
+}
+
+async function runAgentBrowser(args: string[]) {
+  try {
+    const { stdout } = await execFileAsync(getAgentBrowserBinary(), args, {
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    return extractMeaningfulOutput(stdout);
+  } catch (error) {
+    const message =
+      error instanceof Error && 'stderr' in error && typeof error.stderr === 'string'
+        ? error.stderr.trim() || error.message
+        : error instanceof Error
+          ? error.message
+          : 'agent-browser の実行に失敗しました';
+    throw externalFailure(sanitizePatientMcsExternalErrorMessage(message));
+  }
+}
+
+async function connectMcsBrowser() {
+  if (!isPatientMcsBrowserSyncEnabled()) {
+    throw externalFailure(MCS_BROWSER_SYNC_DISABLED_MESSAGE);
+  }
+
+  await runAgentBrowser(['connect', getMcsCdpTarget()]);
+}
+
+async function getCurrentUrl() {
+  return runAgentBrowser(['get', 'url']);
+}
+
+function extractUrlFromAgentBrowserOutput(output: string) {
+  const candidates = output
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (const candidate of candidates.toReversed()) {
+    try {
+      return new URL(candidate).toString();
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+async function openUrl(url: string) {
+  const output = await runAgentBrowser(['open', url]);
+  return extractUrlFromAgentBrowserOutput(output) ?? getCurrentUrl();
+}
+
+async function evaluateJson<T>(script: string): Promise<T> {
+  const output = await runAgentBrowser(['eval', script]);
+  const decoded = JSON.parse(output) as string;
+  return JSON.parse(decoded) as T;
+}
+
+function createTokyoDate(
+  year: number,
+  month: number,
+  day: number,
+  hour = 0,
+  minute = 0
+) {
+  return new Date(Date.UTC(year, month - 1, day, hour, minute) - TOKYO_OFFSET_MS);
+}
+
+function getTokyoCalendarParts(now: Date) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  });
+
+  const parts = formatter.formatToParts(now);
+  const read = (type: 'year' | 'month' | 'day') =>
+    Number(parts.find((part) => part.type === type)?.value ?? '0');
+
+  return {
+    year: read('year'),
+    month: read('month'),
+    day: read('day'),
+  };
+}
+
+export function normalizeMedicalCareStationUrl(input: string) {
+  const normalized = new URL(input.trim());
+
+  if (normalized.protocol !== 'https:' || !ALLOWED_MCS_HOSTS.has(normalized.hostname)) {
+    throw validationFailure('Medical Care Station の URL を入力してください');
+  }
+
+  normalized.hash = '';
+  return normalized;
+}
+
+function extractPathId(pathname: string, prefix: string) {
+  const match = pathname.match(new RegExp(`^${prefix}/([^/]+)`));
+  return match?.[1] ?? null;
+}
+
+export function parseMcsAuthorDescriptor(descriptor: string | null | undefined) {
+  if (!descriptor) {
+    return {
+      authorRole: null,
+      authorOrganization: null,
+      authorDescriptor: null,
+    };
+  }
+
+  const normalized = descriptor.replace(/\s+/g, ' ').trim();
+  const match = normalized.match(/^(.+?)[（(](.+?)[）)]$/);
+
+  return {
+    authorRole: match?.[1]?.trim() ?? normalized,
+    authorOrganization: match?.[2]?.trim() ?? null,
+    authorDescriptor: normalized,
+  };
+}
+
+export function parseMcsPostedAtLabel(label: string | null | undefined, now = new Date()) {
+  if (!label) return null;
+
+  const normalized = label.trim();
+  const today = getTokyoCalendarParts(now);
+
+  const monthDayTimeMatch = normalized.match(/^(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})$/);
+  if (monthDayTimeMatch) {
+    const [, monthRaw, dayRaw, hourRaw, minuteRaw] = monthDayTimeMatch;
+    let parsed = createTokyoDate(
+      today.year,
+      Number(monthRaw),
+      Number(dayRaw),
+      Number(hourRaw),
+      Number(minuteRaw)
+    );
+
+    if (parsed.getTime() - now.getTime() > 1000 * 60 * 60 * 24 * 30) {
+      parsed = createTokyoDate(
+        today.year - 1,
+        Number(monthRaw),
+        Number(dayRaw),
+        Number(hourRaw),
+        Number(minuteRaw)
+      );
+    }
+
+    return parsed;
+  }
+
+  const monthDayMatch = normalized.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (monthDayMatch) {
+    const [, monthRaw, dayRaw] = monthDayMatch;
+    let parsed = createTokyoDate(today.year, Number(monthRaw), Number(dayRaw));
+
+    if (parsed.getTime() - now.getTime() > 1000 * 60 * 60 * 24 * 30) {
+      parsed = createTokyoDate(today.year - 1, Number(monthRaw), Number(dayRaw));
+    }
+
+    return parsed;
+  }
+
+  const timeOnlyMatch = normalized.match(/^(\d{1,2}):(\d{2})$/);
+  if (timeOnlyMatch) {
+    const [, hourRaw, minuteRaw] = timeOnlyMatch;
+    let parsed = createTokyoDate(today.year, today.month, today.day, Number(hourRaw), Number(minuteRaw));
+
+    if (parsed.getTime() - now.getTime() > 1000 * 60 * 60 * 12) {
+      parsed = new Date(parsed.getTime() - 1000 * 60 * 60 * 24);
+    }
+
+    return parsed;
+  }
+
+  return null;
+}
+
+function normalizePatientIdentityText(value: string | null | undefined) {
+  return (
+    value
+      ?.normalize('NFKC')
+      .replace(/[｜|].*$/, '')
+      .replace(/[：:].*$/, '')
+      .replace(/[\s　()（）・･]/g, '')
+      .trim()
+      .toLowerCase() ?? ''
+  );
+}
+
+export function extractPatientNameFromProjectTitle(projectTitle: string | null | undefined) {
+  if (!projectTitle) {
+    return null;
+  }
+
+  const [titleBeforeDivider] = projectTitle.split(/[|｜]/, 1);
+  const [name] = titleBeforeDivider.split(/[：:]/, 1);
+  const normalized = name?.trim();
+  return normalized?.length ? normalized : null;
+}
+
+export function matchesPatientIdentity(
+  patient: Pick<PatientIdentityRecord, 'name' | 'name_kana'>,
+  candidates: Array<string | null | undefined>
+) {
+  const localCandidates = [patient.name, patient.name_kana]
+    .map((value) => normalizePatientIdentityText(value))
+    .filter(Boolean);
+  const remoteCandidates = candidates
+    .filter((value): value is string => Boolean(value?.trim()))
+    .map((value) => normalizePatientIdentityText(value))
+    .filter(Boolean);
+
+  if (remoteCandidates.length === 0) {
+    return false;
+  }
+
+  return localCandidates.some((localCandidate) =>
+    remoteCandidates.some(
+      (remoteCandidate) =>
+        localCandidate === remoteCandidate ||
+        localCandidate.includes(remoteCandidate) ||
+        remoteCandidate.includes(localCandidate)
+    )
+  );
+}
+
+function assertPatientIdentityMatches(
+  patient: PatientIdentityRecord,
+  scraped: ScrapedMcsTimelineWithContext
+) {
+  const mcsCandidateLabels = [
+    scraped.mcsPatientName,
+    extractPatientNameFromProjectTitle(scraped.projectTitle),
+  ].filter((value): value is string => Boolean(value?.trim()));
+
+  if (mcsCandidateLabels.length === 0) {
+    throw conflictFailure(
+      `MCS 上の患者名を確認できませんでした。対象患者「${patient.name}」に紐づく URL か確認してください`
+    );
+  }
+
+  if (!matchesPatientIdentity(patient, mcsCandidateLabels)) {
+    throw conflictFailure(
+      `MCS の患者名「${mcsCandidateLabels[0]}」が対象患者「${patient.name}」と一致しません`
+    );
+  }
+}
+
+function assertAuthenticatedMcsUrl(currentUrl: string) {
+  if (currentUrl.includes('/authentication/login')) {
+    throw externalFailure('Medical Care Station にログイン済みの Chrome セッションが見つかりません');
+  }
+}
+
+function assertTrustedMcsUrl(currentUrl: string) {
+  normalizeMedicalCareStationUrl(currentUrl);
+}
+
+async function activateMedicalTimelineFromPatientPage() {
+  return evaluateJson<{ projectId: string | null; currentUrl: string; patientName: string | null }>(
+    `(async () => {
+      const findProjectId = ${inferMcsProjectIdFromDocument.toString()};
+      const normalize = (value) => value?.textContent?.replace(/\\s+/g, ' ').trim() || '';
+      const nameLabel = Array.from(document.querySelectorAll('th, dt, label')).find((node) => {
+        return normalize(node) === '名前';
+      });
+      const labeledCandidates = nameLabel
+        ? [
+            nameLabel.nextElementSibling,
+            nameLabel.parentElement?.querySelector('td, dd, .value'),
+            ...Array.from(nameLabel.parentElement?.children || []).filter((node) => node !== nameLabel),
+          ]
+        : [];
+      const patientName =
+        labeledCandidates.map((node) => normalize(node)).find(Boolean) ||
+        normalize(document.querySelector('.patient_name')) ||
+        normalize(document.querySelector('.profile_name')) ||
+        normalize(document.querySelector('h1')) ||
+        null;
+      const link = Array.from(document.querySelectorAll('a')).find((anchor) => {
+        const label = normalize(anchor);
+        return label === '医療･介護側' || label === '医療・介護側';
+      });
+
+      if (link instanceof HTMLElement) {
+        link.click();
+      }
+
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      let projectId = null;
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        await sleep(350);
+        projectId = findProjectId(document);
+        if (projectId && document.querySelectorAll(${JSON.stringify(MCS_TIMELINE_SELECTORS.messagePosts)}).length > 0) {
+          break;
+        }
+      }
+
+      return JSON.stringify({
+        projectId,
+        currentUrl: location.href,
+        patientName,
+      });
+    })()`
+  );
+}
+
+async function ensureMedicalProjectUrl(sourceUrl: string): Promise<ResolvedMcsProjectLink> {
+  await connectMcsBrowser();
+
+  const normalizedSource = normalizeMedicalCareStationUrl(sourceUrl);
+  let currentUrl = await openUrl(normalizedSource.toString());
+  assertAuthenticatedMcsUrl(currentUrl);
+  assertTrustedMcsUrl(currentUrl);
+
+  const patientId = extractPathId(normalizedSource.pathname, '/patients');
+  const patientUrl = patientId ? normalizedSource.toString() : null;
+
+  if (normalizedSource.pathname.startsWith('/projects/unavailable/')) {
+    const projectId = extractPathId(normalizedSource.pathname, '/projects/unavailable');
+    if (!projectId) {
+      throw validationFailure('MCS の患者・利用者側 URL から project_id を判定できませんでした');
+    }
+
+    currentUrl = await openUrl(`https://${MCS_HOST}/projects/medical/${projectId}`);
+  } else if (normalizedSource.pathname.startsWith('/patients/')) {
+    const activated = await activateMedicalTimelineFromPatientPage();
+    if (!activated.projectId) {
+      throw validationFailure('医療・介護側タイムラインの project_id を判定できませんでした');
+    }
+    return {
+      sourceUrl: normalizedSource.toString(),
+      patientId,
+      patientUrl,
+      projectId: activated.projectId,
+      projectUrl: `https://${MCS_HOST}/projects/medical/${activated.projectId}`,
+      patientName: activated.patientName,
+    };
+  }
+
+  assertAuthenticatedMcsUrl(currentUrl);
+  assertTrustedMcsUrl(currentUrl);
+  const resolved = new URL(currentUrl);
+  const projectId = extractPathId(resolved.pathname, '/projects/medical');
+  if (!projectId) {
+    throw validationFailure('医療・介護側タイムラインを開けませんでした');
+  }
+
+  return {
+    sourceUrl: normalizedSource.toString(),
+    patientId,
+    patientUrl,
+    projectId,
+    projectUrl: resolved.toString(),
+    patientName: null,
+  };
+}
+
+function buildTimelineScrapeScript(args: ScrapedMcsTimelineArgs, maxMessages = DEFAULT_MAX_MESSAGES) {
+  return `(async () => {
+    const selectors = ${JSON.stringify(MCS_TIMELINE_SELECTORS)};
+    const args = ${JSON.stringify(args)};
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const messageSelector = selectors.messagePosts;
+    await sleep(1200);
+
+    let stagnant = 0;
+    while (stagnant < 2) {
+      const before = document.querySelectorAll(messageSelector).length;
+      if (before >= ${maxMessages}) {
+        break;
+      }
+
+      const wrapper = document.querySelector(selectors.scrollWrapper);
+      if (wrapper instanceof HTMLElement) {
+        wrapper.scrollTop = wrapper.scrollHeight;
+      } else {
+        window.scrollTo(0, document.body.scrollHeight);
+      }
+
+      await sleep(800);
+      const after = document.querySelectorAll(messageSelector).length;
+      stagnant = after <= before ? stagnant + 1 : 0;
+    }
+
+    const buildPayload = ${buildMcsTimelinePayload.toString()};
+    return JSON.stringify(buildPayload(document, args, selectors));
+  })()`;
+}
+
+async function scrapeMcsTimeline(sourceUrl: string): Promise<ScrapedMcsTimelineWithContext> {
+  const resolved = await ensureMedicalProjectUrl(sourceUrl);
+  const timelineArgs: ScrapedMcsTimelineArgs = {
+    sourceUrl: resolved.sourceUrl,
+    mcsPatientId: resolved.patientId,
+    mcsPatientUrl: resolved.patientUrl,
+    mcsProjectId: resolved.projectId,
+    mcsProjectUrl: resolved.projectUrl,
+  };
+  const scraped = await evaluateJson<ScrapedMcsTimeline>(buildTimelineScrapeScript(timelineArgs));
+
+  return {
+    ...scraped,
+    mcsPatientName: resolved.patientName,
+  };
+}
+
+function buildPreparedMessages(messages: ScrapedMcsTimeline['messages']) {
+  return messages.map((message) => {
+    const parsedAuthor = parseMcsAuthorDescriptor(message.authorDescriptor);
+    const postedAt = parseMcsPostedAtLabel(message.postedAtLabel);
+
+    return {
+      sourceMessageId: message.sourceMessageId,
+      authorName: message.authorName,
+      authorRole: parsedAuthor.authorRole,
+      authorOrganization: parsedAuthor.authorOrganization,
+      authorDescriptor: parsedAuthor.authorDescriptor,
+      postedAt,
+      postedAtLabel: message.postedAtLabel,
+      body: message.body,
+      reactionCount: message.reactionCount,
+      replyCount: message.replyCount,
+      sortOrder: message.sortOrder,
+      sourceUrl: message.sourceUrl,
+      rawPayload: message,
+    };
+  });
+}
+
+function selectPatientMcsSummaryRecord() {
+  return {
+    id: true,
+    generation_id: true,
+    provider: true,
+    requested_provider: true,
+    is_fallback: true,
+    model: true,
+    fallback_reason: true,
+    headline: true,
+    bullets: true,
+    must_check_today: true,
+    suggested_actions: true,
+    source_refs: true,
+    message_count: true,
+    other_professional_message_count: true,
+    latest_posted_at: true,
+    generated_at: true,
+    duration_ms: true,
+  } as const;
+}
+
+function buildPatientMcsSummaryFields(summary: PatientMcsSummarySnapshot) {
+  return {
+    generation_id: summary.generation_id,
+    provider: summary.provider,
+    requested_provider: summary.requested_provider,
+    is_fallback: summary.is_fallback,
+    model: summary.model,
+    fallback_reason: summary.fallback_reason,
+    headline: summary.headline,
+    bullets: summary.bullets,
+    must_check_today: summary.must_check_today,
+    suggested_actions: summary.suggested_actions,
+    source_refs: summary.source_refs,
+    message_count: summary.message_count,
+    other_professional_message_count: summary.other_professional_message_count,
+    latest_posted_at: summary.latest_posted_at ? new Date(summary.latest_posted_at) : null,
+    generated_at: new Date(summary.generated_at),
+    duration_ms: summary.duration_ms,
+  };
+}
+
+export async function generatePatientMcsSummarySafely(args: {
+  patientName: string;
+  projectTitle: string | null;
+  messages: Parameters<typeof generatePatientMcsAiSummary>[0]['messages'];
+}) {
+  try {
+    return await generatePatientMcsAiSummary(args);
+  } catch (error) {
+    console.warn('[patient-mcs-summary] fallback-to-null', {
+      reason: error instanceof Error ? error.message : 'unknown_error',
+    });
+    return null;
+  }
+}
+
+export async function syncPatientMcsTimeline({
+  orgId,
+  patientId,
+  userId,
+  sourceUrl,
+}: SyncPatientMcsTimelineArgs): Promise<PatientMcsSyncResult> {
+  const patient = await prisma.patient.findFirst({
+    where: { id: patientId, org_id: orgId },
+    select: { id: true, name: true, name_kana: true },
+  });
+  if (!patient) {
+    throw new Error('患者が見つかりません');
+  }
+
+  const existingLink = await prisma.patientMcsLink.findUnique({
+    where: { patient_id: patientId },
+    select: {
+      id: true,
+      source_url: true,
+      mcs_patient_id: true,
+      mcs_project_id: true,
+    },
+  });
+
+  const effectiveSourceUrl = sourceUrl?.trim() || existingLink?.source_url;
+  if (!effectiveSourceUrl) {
+    throw validationFailure('MCS の患者 URL または医療・介護側タイムライン URL を入力してください');
+  }
+
+  try {
+    const scraped = await scrapeMcsTimeline(effectiveSourceUrl);
+    if (
+      existingLink?.mcs_patient_id &&
+      scraped.mcsPatientId &&
+      existingLink.mcs_patient_id !== scraped.mcsPatientId
+    ) {
+      throw conflictFailure('既存の MCS 連携先と異なる患者が指定されています');
+    }
+    assertPatientIdentityMatches(patient, scraped);
+    const preparedMessages = buildPreparedMessages(scraped.messages);
+    const summary = await generatePatientMcsSummarySafely({
+      patientName: patient.name,
+      projectTitle: scraped.projectTitle,
+      messages: preparedMessages,
+    });
+    const syncedAt = new Date();
+
+    const saved = await withOrgContext(orgId, async (tx) => {
+      const txWithSummary = tx as typeof tx & {
+        patientMcsSummary: typeof prisma.patientMcsSummary;
+      };
+      const buildLinkFields = () => ({
+        source_url: scraped.sourceUrl,
+        mcs_patient_id: scraped.mcsPatientId,
+        mcs_patient_url: scraped.mcsPatientUrl,
+        mcs_project_id: scraped.mcsProjectId,
+        mcs_project_url: scraped.mcsProjectUrl,
+        project_title: scraped.projectTitle,
+        project_memo: scraped.projectMemo,
+        member_count: scraped.memberCount,
+        last_sync_attempt_at: syncedAt,
+        last_synced_at: syncedAt,
+        last_sync_status: 'success',
+        last_sync_error: null,
+        updated_by: userId,
+      });
+
+      const link = await tx.patientMcsLink.upsert({
+        where: { patient_id: patientId },
+        create: {
+          org_id: orgId,
+          patient_id: patientId,
+          ...buildLinkFields(),
+          created_by: userId,
+        },
+        update: buildLinkFields(),
+        select: {
+          id: true,
+          source_url: true,
+          mcs_patient_id: true,
+          mcs_patient_url: true,
+          mcs_project_id: true,
+          mcs_project_url: true,
+          project_title: true,
+          project_memo: true,
+          member_count: true,
+          last_sync_attempt_at: true,
+          last_synced_at: true,
+          last_sync_status: true,
+          last_sync_error: true,
+        },
+      });
+
+      if (
+        existingLink?.mcs_project_id &&
+        existingLink.mcs_project_id !== scraped.mcsProjectId
+      ) {
+        await tx.patientMcsMessage.deleteMany({
+          where: { link_id: link.id },
+        });
+        await txWithSummary.patientMcsSummary.deleteMany({
+          where: { patient_id: patientId, org_id: orgId },
+        });
+      }
+
+      const buildMessageFields = (message: PreparedPatientMcsMessage) => {
+        return {
+          author_name: message.authorName,
+          author_role: message.authorRole,
+          author_organization: message.authorOrganization,
+          author_descriptor: message.authorDescriptor,
+          posted_at: message.postedAt,
+          posted_at_label: message.postedAtLabel,
+          body: message.body,
+          reaction_count: message.reactionCount,
+          reply_count: message.replyCount,
+          sort_order: message.sortOrder,
+          source_url: message.sourceUrl,
+          raw_payload: message.rawPayload,
+          synced_at: syncedAt,
+        };
+      };
+
+      await Promise.all(
+        preparedMessages.map((message) =>
+          tx.patientMcsMessage.upsert({
+            where: {
+              link_id_source_message_id: {
+                link_id: link.id,
+                source_message_id: message.sourceMessageId,
+              },
+            },
+            create: {
+              org_id: orgId,
+              patient_id: patientId,
+              link_id: link.id,
+              source_message_id: message.sourceMessageId,
+              ...buildMessageFields(message),
+            },
+            update: buildMessageFields(message),
+          })
+        )
+      );
+
+      const currentMessageIds = preparedMessages.map((message) => message.sourceMessageId);
+      if (currentMessageIds.length === 0) {
+        await tx.patientMcsMessage.deleteMany({
+          where: { link_id: link.id },
+        });
+      } else {
+        await tx.patientMcsMessage.deleteMany({
+          where: {
+            link_id: link.id,
+            source_message_id: { notIn: currentMessageIds },
+          },
+        });
+      }
+
+      if (summary) {
+        await txWithSummary.patientMcsSummary.upsert({
+          where: { patient_id: patientId },
+          create: {
+            org_id: orgId,
+            patient_id: patientId,
+            link_id: link.id,
+            ...buildPatientMcsSummaryFields(summary),
+          },
+          update: {
+            link_id: link.id,
+            ...buildPatientMcsSummaryFields(summary),
+          },
+        });
+      } else {
+        await txWithSummary.patientMcsSummary.deleteMany({
+          where: { patient_id: patientId, org_id: orgId },
+        });
+      }
+
+      const savedSummary = await txWithSummary.patientMcsSummary.findUnique({
+        where: { patient_id: patientId },
+        select: selectPatientMcsSummaryRecord(),
+      });
+
+      return {
+        link,
+        summary: savedSummary,
+        importedCount: preparedMessages.length,
+        latestMessageAt: preparedMessages
+          .map((message) => message.postedAt)
+          .filter((value): value is Date => value instanceof Date)
+          .sort((left, right) => right.getTime() - left.getTime())[0] ?? null,
+      };
+    });
+
+    return saved;
+  } catch (error) {
+    const syncError = toPatientMcsSyncError(error);
+    const attemptedAt = new Date();
+
+    await withOrgContext(orgId, async (tx) => {
+      await tx.patientMcsLink.upsert({
+        where: { patient_id: patientId },
+        create: {
+          org_id: orgId,
+          patient_id: patientId,
+          source_url: effectiveSourceUrl,
+          last_sync_attempt_at: attemptedAt,
+          last_sync_status: 'failed',
+          last_sync_error: syncError.message,
+          created_by: userId,
+          updated_by: userId,
+        },
+        update: {
+          source_url: effectiveSourceUrl,
+          last_sync_attempt_at: attemptedAt,
+          last_sync_status: 'failed',
+          last_sync_error: syncError.message,
+          updated_by: userId,
+        },
+      });
+    }).catch(() => undefined);
+
+    throw syncError;
+  }
+}
+
+export async function getPatientMcsOverview(args: {
+  orgId: string;
+  patientId: string;
+  limit?: number;
+}): Promise<PatientMcsOverview> {
+  const prismaWithSummary = prisma as typeof prisma & {
+    patientMcsSummary: typeof prisma.patientMcsSummary;
+  };
+  const link = await prisma.patientMcsLink.findFirst({
+    where: { patient_id: args.patientId, org_id: args.orgId },
+    select: {
+      id: true,
+      source_url: true,
+      mcs_patient_id: true,
+      mcs_patient_url: true,
+      mcs_project_id: true,
+      mcs_project_url: true,
+      project_title: true,
+      project_memo: true,
+      member_count: true,
+      last_sync_attempt_at: true,
+      last_synced_at: true,
+      last_sync_status: true,
+      last_sync_error: true,
+    },
+  });
+  const summary =
+    !link
+      ? null
+      : await prismaWithSummary.patientMcsSummary.findFirst({
+          where: { patient_id: args.patientId, org_id: args.orgId },
+          select: selectPatientMcsSummaryRecord(),
+        });
+
+  const messages =
+    !link || args.limit === 0
+      ? []
+      : await prisma.patientMcsMessage.findMany({
+          where: { link_id: link.id, org_id: args.orgId },
+          orderBy: [{ posted_at: 'desc' }, { sort_order: 'asc' }, { created_at: 'desc' }],
+          take: args.limit ?? DEFAULT_MAX_MESSAGES,
+          select: {
+            id: true,
+            source_message_id: true,
+            author_name: true,
+            author_role: true,
+            author_organization: true,
+            author_descriptor: true,
+            posted_at: true,
+            posted_at_label: true,
+            body: true,
+            reaction_count: true,
+            reply_count: true,
+            sort_order: true,
+            source_url: true,
+            synced_at: true,
+          },
+        });
+
+  return { link, summary, messages };
+}

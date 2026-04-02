@@ -1,87 +1,19 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
-import { encode } from 'next-auth/jwt';
+import { expect, test, type Page } from '@playwright/test';
 import {
   PLAYWRIGHT_ELEMENT_SCREENSHOT_DIR,
   PLAYWRIGHT_SCREENSHOT_DIR,
 } from './helpers/artifacts';
+import {
+  attachLocalSession,
+  createInstrumentedPage,
+  waitForStableUi,
+} from './helpers/local-auth';
 
-const AUTH_SECRET = 'careviax-local-auth-secret';
 const SCREENSHOT_DIR = PLAYWRIGHT_SCREENSHOT_DIR;
 const ELEMENT_SCREEN_DIR = PLAYWRIGHT_ELEMENT_SCREENSHOT_DIR;
-
-const LOCAL_USER = {
-  id: 'cmnb3swgz0008wgq9gfpgjq6r',
-  email: 'demo@careviax.example.com',
-  name: '山田 太郎',
-  cognitoSub: 'demo-cognito-sub-001',
-  sessionVersion: 0,
-};
-
-async function createSessionToken() {
-  return encode({
-    secret: AUTH_SECRET,
-    token: {
-      userId: LOCAL_USER.id,
-      email: LOCAL_USER.email,
-      name: LOCAL_USER.name,
-      cognitoSub: LOCAL_USER.cognitoSub,
-      sessionVersion: LOCAL_USER.sessionVersion,
-      sub: LOCAL_USER.cognitoSub,
-    },
-    maxAge: 30 * 60,
-  });
-}
-
-async function attachLocalSession(context: BrowserContext) {
-  const token = await createSessionToken();
-  await context.addCookies([
-    {
-      name: 'next-auth.session-token',
-      value: token,
-      domain: 'localhost',
-      path: '/',
-      httpOnly: true,
-      sameSite: 'Lax',
-    },
-  ]);
-}
-
-async function createInstrumentedPage(
-  context: BrowserContext,
-  options: { captureHttpErrors?: boolean } = {}
-) {
-  const page = await context.newPage();
-  const errors: string[] = [];
-  const captureHttpErrors = options.captureHttpErrors ?? true;
-
-  page.on('console', (message) => {
-    if (message.type() === 'error') {
-      errors.push(`console:${message.text()}`);
-    }
-  });
-
-  page.on('pageerror', (error) => {
-    errors.push(`pageerror:${error.message}`);
-  });
-
-  if (captureHttpErrors) {
-    page.on('response', (response) => {
-      if (response.status() >= 400) {
-        errors.push(`http:${response.status()} ${response.url()}`);
-      }
-    });
-  }
-
-  return { page, errors };
-}
-
-async function waitForStableUi(page: Page) {
-  await page.waitForLoadState('domcontentloaded');
-  await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => null);
-}
 
 async function writeScreenshot(page: Page, name: string) {
   await fs.mkdir(SCREENSHOT_DIR, { recursive: true });
@@ -120,6 +52,26 @@ function summarizeViolations(
   }));
 }
 
+async function analyzeMainAccessibility(page: Page) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await new AxeBuilder({ page }).include('main').analyze();
+    } catch (error) {
+      const shouldRetry =
+        error instanceof Error &&
+        error.message.includes('Execution context was destroyed') &&
+        attempt === 0;
+      if (!shouldRetry) {
+        throw error;
+      }
+      await waitForStableUi(page);
+      await expect(page.locator('main')).toBeVisible();
+    }
+  }
+
+  throw new Error('Axe analysis did not complete');
+}
+
 async function openFirstPatientDetail(page: Page) {
   await page.goto('/patients');
   await waitForStableUi(page);
@@ -129,6 +81,7 @@ async function openFirstPatientDetail(page: Page) {
   expect(href).toBeTruthy();
   await page.goto(href!);
   await waitForStableUi(page);
+  return href!;
 }
 
 test.beforeEach(async ({ context }) => {
@@ -142,7 +95,7 @@ test('dashboard accessibility has no critical or serious violations', async ({ c
   await page.goto('/dashboard');
   await waitForStableUi(page);
 
-  const results = await new AxeBuilder({ page }).include('main').analyze();
+  const results = await analyzeMainAccessibility(page);
   const severe = results.violations.filter((violation) =>
     ['critical', 'serious'].includes(violation.impact ?? '')
   );
@@ -160,12 +113,12 @@ test('patients accessibility has no critical or serious violations', async ({ co
   await page.goto('/patients');
   await waitForStableUi(page);
 
-  const results = await new AxeBuilder({ page }).include('main').analyze();
+  const results = await analyzeMainAccessibility(page);
   const severe = results.violations.filter((violation) =>
     ['critical', 'serious'].includes(violation.impact ?? '')
   );
 
-  const searchInput = page.getByPlaceholder('氏名・住所・担当・課題を検索');
+  const searchInput = page.getByLabel('患者検索');
   await expect(searchInput).toBeVisible();
   await writeScreenshot(page, 'patients-a11y');
   await writeElementScreenshot(searchInput, 'patients-search-input');
@@ -180,7 +133,7 @@ test('prescription intake accessibility has no critical or serious violations', 
   await page.goto('/prescriptions/new');
   await waitForStableUi(page);
 
-  const results = await new AxeBuilder({ page }).include('main').analyze();
+  const results = await analyzeMainAccessibility(page);
   const severe = results.violations.filter((violation) =>
     ['critical', 'serious'].includes(violation.impact ?? '')
   );
@@ -225,7 +178,7 @@ test('mobile patients screen preserves search usability without horizontal overf
   await page.goto('/patients');
   await waitForStableUi(page);
 
-  const searchInput = page.getByPlaceholder('氏名・住所・担当・課題を検索');
+  const searchInput = page.getByLabel('患者検索');
   await expect(searchInput).toBeVisible();
 
   const overflowWidth = await page.evaluate(() => {
@@ -315,7 +268,7 @@ test.describe('locale and timezone audit', () => {
     const runtimeTimezone = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
 
     await expect(page.getByTestId('app-shell-main')).toBeVisible();
-    await expect(page.locator('main').getByText('CareViaX ダッシュボード')).toBeVisible();
+    await expect(page.locator('main').getByText(/CareViaX.*ダッシュボード/)).toBeVisible();
     await writeScreenshot(page, 'dashboard-locale-timezone');
     expect(runtimeLocale).toBe('en-US');
     expect(runtimeTimezone).toBe('America/Los_Angeles');
@@ -324,6 +277,42 @@ test.describe('locale and timezone audit', () => {
 });
 
 test.describe('ARIA and keyboard contracts', () => {
+  test('dashboard sidebar link remains clickable without residual sheet overlay', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+
+    const { page, errors } = await createInstrumentedPage(context);
+    await page.goto('/dashboard');
+    await waitForStableUi(page);
+
+    await Promise.all([
+      page.waitForURL(/\/patients$/, { timeout: 20_000 }),
+      page.getByTestId('sidebar-nav-patients').click(),
+    ]);
+    await expect(page.getByLabel('患者検索')).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
+  test('patients table row opens patient detail by click', async ({ context }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+
+    const { page, errors } = await createInstrumentedPage(context);
+    await page.goto('/patients');
+    await waitForStableUi(page);
+
+    const patientLink = page.locator('tbody tr').first().locator('a[href^="/patients/"]').first();
+    const href = await patientLink.getAttribute('href');
+    expect(href).toBeTruthy();
+
+    await patientLink.click();
+    await waitForStableUi(page);
+
+    await expect(page).toHaveURL(new RegExp(`${href}$`));
+    await expect(page.locator('main').getByText('患者詳細').first()).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
   test('dashboard sidebar navigation aria tree stays stable', async ({ context }, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium');
 
@@ -339,38 +328,59 @@ test.describe('ARIA and keyboard contracts', () => {
           - listitem:
             - link "患者"
           - listitem:
-            - link "スケジュール"
-          - listitem:
-            - link /訪問候補/
-          - listitem:
             - link /処方受付/
+          - listitem:
+            - link "スケジュール"
           - listitem:
             - link /調剤/
           - listitem:
             - link /鑑査/
           - listitem:
-            - link /セット管理/
+            - link /セット/
           - listitem:
             - link /訪問/
           - listitem:
             - link /報告/
-            - link "報告 の一覧を開く"
+          - listitem:
+            - link "多職種連携"
           - listitem:
             - link "QRスキャン"
+          - listitem:
+            - link "申し送り"
+        - paragraph: ワークベンチ
+        - list:
+          - listitem:
+            - link "My Day"
+          - listitem:
+            - link "ワークフロー"
+          - listitem:
+            - link "タスク"
+          - listitem:
+            - link "請求"
+          - listitem:
+            - link "管理"
+          - listitem:
+            - link "通知"
+          - listitem:
+            - link "依頼・照会"
+          - listitem:
+            - link "外部連携"
         - paragraph: 管理
         - list:
           - listitem:
-            - link "設定"
+            - button "運営"
           - listitem:
-            - link "文書テンプレート"
+            - button "スタッフ"
           - listitem:
-            - link "マスタ"
+            - button "施設・連携先"
           - listitem:
-            - link "施設マスター"
+            - button "薬剤"
           - listitem:
-            - link "他職種マスター"
+            - button "文書・通知"
           - listitem:
-            - link "監査ログ"
+            - button "分析・監視"
+          - listitem:
+            - button "その他"
     `);
 
     expect(errors).toEqual([]);
@@ -394,6 +404,39 @@ test.describe('ARIA and keyboard contracts', () => {
     expect(errors).toEqual([]);
   });
 
+  test('dashboard sidebar patients link remains clickable without dismissing overlays', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+
+    const { page, errors } = await createInstrumentedPage(context);
+    await page.goto('/dashboard');
+    await waitForStableUi(page);
+
+    await page.getByTestId('sidebar-nav-patients').first().click();
+    await expect(page).toHaveURL(/\/patients$/);
+    await expect(page.getByLabel('患者検索')).toBeVisible();
+
+    expect(errors).toEqual([]);
+  });
+
+  test('patients row click opens patient detail without sheet interference', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+
+    const { page, errors } = await createInstrumentedPage(context);
+    await page.goto('/patients');
+    await waitForStableUi(page);
+
+    const patientLink = page.locator('tbody tr').first().locator('a[href^="/patients/"]').first();
+    await patientLink.click();
+    await expect(page).toHaveURL(/\/patients\/[^/]+$/);
+    await expect(page.getByRole('heading', { name: '患者詳細' })).toBeVisible();
+
+    expect(errors).toEqual([]);
+  });
+
   test('patient detail mobile tabs keep aria structure and arrow-key navigation', async ({
     context,
   }, testInfo) => {
@@ -406,8 +449,8 @@ test.describe('ARIA and keyboard contracts', () => {
     await openFirstPatientDetail(page);
 
     const tablist = page.getByTestId('patient-detail-tablist');
-    const basicTab = page.getByTestId('patient-detail-tab-basic');
-    const casesTab = page.getByTestId('patient-detail-tab-cases');
+    const basicTab = tablist.getByRole('tab', { name: '基本情報' });
+    const casesTab = tablist.getByRole('tab', { name: 'ケース' });
 
     await expect(tablist).toBeVisible();
     await expect(tablist).toMatchAriaSnapshot(`
@@ -432,6 +475,22 @@ test.describe('ARIA and keyboard contracts', () => {
     expect(errors).toEqual([]);
   });
 
+  test('patient MCS page surfaces setup guidance before the first sync', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+
+    const { page, errors } = await createInstrumentedPage(context);
+    await openFirstPatientDetail(page);
+    await page.goto(`${page.url()}/mcs`);
+    await waitForStableUi(page);
+
+    await expect(page.getByTestId('patient-mcs-setup-guide')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'URL を入力する' })).toBeVisible();
+
+    expect(errors).toEqual([]);
+  });
+
   test('prescription intake form keeps accessible labeling and keyboard flow', async ({
     context,
   }, testInfo) => {
@@ -452,7 +511,64 @@ test.describe('ARIA and keyboard contracts', () => {
     await expect(sourceType).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(prescribedDate).toBeFocused();
+    await expect(page.getByTestId('prescription-submit-summary')).toContainText(
+      '最後にこのボタンで受付を確定します'
+    );
 
+    expect(errors).toEqual([]);
+  });
+
+  test('patient mcs screen explains the first setup step when unlinked', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+
+    const { page, errors } = await createInstrumentedPage(context);
+    const patientHref = await openFirstPatientDetail(page);
+
+    await page.goto(`${patientHref}/mcs`);
+    await waitForStableUi(page);
+
+    await expect(page.locator('main').getByText('最初に必要な設定')).toBeVisible();
+    await expect(page.locator('main').getByRole('button', { name: 'URL を入力する' })).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
+  test('patient mcs screen rejects invalid draft urls before enabling sync actions', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+
+    const { page, errors } = await createInstrumentedPage(context);
+    const patientHref = await openFirstPatientDetail(page);
+
+    await page.goto(`${patientHref}/mcs`);
+    await waitForStableUi(page);
+
+    const sourceInput = page.getByLabel('MCS 連携元 URL');
+    await sourceInput.fill('invalid-url');
+
+    await expect(
+      page.getByText('MCS の患者 URL または医療・介護側タイムライン URL を入力してください')
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: '今すぐ同期' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'MCS で開く' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '患者ページ' })).toBeDisabled();
+
+    expect(errors).toEqual([]);
+  });
+
+  test('prescription intake keeps the final submit guidance visible', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+
+    const { page, errors } = await createInstrumentedPage(context);
+    await page.goto('/prescriptions/new');
+    await waitForStableUi(page);
+
+    await expect(page.locator('main').getByText('最後にこのボタンで受付を確定します')).toBeVisible();
+    await expect(page.getByRole('button', { name: '処方受付を登録' })).toBeVisible();
     expect(errors).toEqual([]);
   });
 });

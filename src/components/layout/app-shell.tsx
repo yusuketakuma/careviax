@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Suspense, useEffect, useRef, useMemo, useCallback, useState } from 'react';
 import { AppHeader } from '@/components/layout/app-header';
 import { GlobalSearchModal } from '@/components/layout/global-search-modal';
 import { NetworkStatusBanner } from '@/components/layout/network-status-banner';
@@ -21,6 +21,13 @@ import { toast } from 'sonner';
 interface AppShellProps {
   children: React.ReactNode;
 }
+
+type ShellViewportState = {
+  isReady: boolean;
+  isDesktopLayout: boolean;
+  isTabletLayout: boolean;
+  isCompactLayout: boolean;
+};
 
 type QuickCreateTarget = {
   href: string;
@@ -51,9 +58,42 @@ export function resolveQuickCreateTarget(pathname: string): QuickCreateTarget {
   );
 }
 
+export function shouldUseMinimalShell(pathname: string) {
+  return pathname.split('/').filter(Boolean).at(-1) === 'print';
+}
+
+export function deriveShellViewport(target: Pick<Window, 'matchMedia'>): ShellViewportState {
+  const isDesktopLayout = target.matchMedia('(min-width: 1280px)').matches;
+  const isTabletLayout = target.matchMedia(
+    '(min-width: 768px) and (max-width: 1279px)'
+  ).matches;
+
+  return {
+    isReady: true,
+    isDesktopLayout,
+    isTabletLayout,
+    isCompactLayout: !isDesktopLayout,
+  };
+}
+
+export function resolveSidebarSheetOpen(isCompactViewport: boolean, sidebarOpen: boolean) {
+  return isCompactViewport && sidebarOpen;
+}
+
+export function shouldRenderCompactSidebarSheet(viewport: ShellViewportState) {
+  return viewport.isReady && viewport.isCompactLayout;
+}
+
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const useMinimalShell = shouldUseMinimalShell(pathname);
+  const [viewport, setViewport] = useState<ShellViewportState>({
+    isReady: false,
+    isDesktopLayout: false,
+    isTabletLayout: false,
+    isCompactLayout: false,
+  });
   const {
     sidebarOpen,
     sidebarPinned,
@@ -64,17 +104,36 @@ export function AppShell({ children }: AppShellProps) {
     setShortcutHelpOpen,
     toggleShortcutHelp,
   } = useUIStore();
-  const initializedRef = useRef(false);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const mobileSidebarOpen = resolveSidebarSheetOpen(viewport.isCompactLayout, sidebarOpen);
+  const chromeHidden = useMinimalShell;
 
   useEffect(() => {
-    if (initializedRef.current || typeof window === 'undefined') return;
-    initializedRef.current = true;
+    if (typeof window === 'undefined') return;
 
-    const isTabletLayout = window.matchMedia('(min-width: 768px) and (max-width: 1279px)').matches;
-    const isDesktopLayout = window.matchMedia('(min-width: 1280px)').matches;
-    setSidebarOpen(isDesktopLayout && !isTabletLayout && sidebarPinned);
-  }, [setSidebarOpen, sidebarPinned]);
+    const desktopQuery = window.matchMedia('(min-width: 1280px)');
+    const tabletQuery = window.matchMedia('(min-width: 768px) and (max-width: 1279px)');
+    const syncViewport = () => setViewport(deriveShellViewport(window));
+
+    syncViewport();
+    desktopQuery.addEventListener?.('change', syncViewport);
+    tabletQuery.addEventListener?.('change', syncViewport);
+
+    return () => {
+      desktopQuery.removeEventListener?.('change', syncViewport);
+      tabletQuery.removeEventListener?.('change', syncViewport);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!viewport.isReady) return;
+    setSidebarOpen(viewport.isDesktopLayout && sidebarPinned);
+  }, [viewport.isDesktopLayout, viewport.isReady, sidebarPinned, setSidebarOpen]);
+
+  useEffect(() => {
+    if (!viewport.isReady || !viewport.isCompactLayout) return;
+    setSidebarOpen(false);
+  }, [pathname, setSidebarOpen, viewport.isCompactLayout, viewport.isReady]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -82,18 +141,15 @@ export function AppShell({ children }: AppShellProps) {
     const main = document.getElementById('main-content');
     if (!main) return;
 
-    const isTabletLayout = () =>
-      window.matchMedia('(min-width: 768px) and (max-width: 1279px)').matches;
-
     const handleTouchStart = (event: TouchEvent) => {
-      if (!isTabletLayout()) return;
+      if (!viewport.isTabletLayout) return;
       const touch = event.changedTouches[0];
       if (!touch) return;
       touchStartRef.current = { x: touch.clientX, y: touch.clientY };
     };
 
     const handleTouchEnd = (event: TouchEvent) => {
-      if (!isTabletLayout() || !touchStartRef.current) return;
+      if (!viewport.isTabletLayout || !touchStartRef.current) return;
 
       const touch = event.changedTouches[0];
       if (!touch) return;
@@ -121,7 +177,7 @@ export function AppShell({ children }: AppShellProps) {
       main.removeEventListener('touchstart', handleTouchStart);
       main.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [sidebarOpen, setSidebarOpen]);
+  }, [sidebarOpen, setSidebarOpen, viewport.isTabletLayout]);
 
   const handleCommandK = useCallback(() => {
     setGlobalSearchOpen(true);
@@ -163,27 +219,43 @@ export function AppShell({ children }: AppShellProps) {
 
   useKeyboardShortcuts(globalShortcuts);
 
+  if (useMinimalShell) {
+    return (
+      <div className="min-h-screen bg-background" data-testid="app-shell-print-route">
+        <main id="main-content" className="min-h-screen">
+          {children}
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-background print:block print:h-auto print:overflow-visible" data-print-container="true">
-      <Suspense fallback={null}>
-        <RouteProgress />
-      </Suspense>
+      {chromeHidden ? null : (
+        <Suspense fallback={null}>
+          <RouteProgress />
+        </Suspense>
+      )}
       {/* Desktop sidebar — always visible on xl+ */}
-      <div className="hidden xl:flex xl:shrink-0" data-print-skip="true">
-        <Sidebar />
-      </div>
+      {chromeHidden ? null : (
+        <div className="hidden xl:flex xl:shrink-0" data-print-skip="true" data-testid="app-sidebar">
+          <Sidebar />
+        </div>
+      )}
 
       {/* Tablet/mobile sidebar — Sheet overlay */}
-      <div className="xl:hidden" data-print-skip="true">
-        <Sheet
-          open={sidebarOpen}
-          onOpenChange={setSidebarOpen}
-        >
-          <SheetContent side="left" className="w-56 p-0">
-            <Sidebar className="border-r-0" />
-          </SheetContent>
-        </Sheet>
-      </div>
+      {!chromeHidden && shouldRenderCompactSidebarSheet(viewport) ? (
+        <div className="xl:hidden" data-print-skip="true">
+          <Sheet
+            open={mobileSidebarOpen}
+            onOpenChange={setSidebarOpen}
+          >
+            <SheetContent side="left" className="w-56 p-0">
+              <Sidebar className="border-r-0" />
+            </SheetContent>
+          </Sheet>
+        </div>
+      ) : null}
 
       {/* Main content */}
       <main
@@ -191,56 +263,77 @@ export function AppShell({ children }: AppShellProps) {
         id="main-content"
         tabIndex={-1}
         data-print-main="true"
+        data-testid="app-shell-main"
       >
         {/* Skip to main content link for keyboard users */}
-        <a
-          href="#main-content"
-          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-background focus:px-4 focus:py-2 focus:text-sm focus:shadow"
-          data-print-skip="true"
-        >
-          メインコンテンツへスキップ
-        </a>
+        {chromeHidden ? null : (
+          <a
+            href="#main-content"
+            className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-background focus:px-4 focus:py-2 focus:text-sm focus:shadow"
+            data-print-skip="true"
+          >
+            メインコンテンツへスキップ
+          </a>
+        )}
 
-        <div data-print-skip="true">
-          <AppHeader />
-        </div>
-        <div data-print-skip="true">
-          <NetworkStatusBanner />
-        </div>
-        <div data-print-skip="true">
-          <MobileOrientationGuard />
-        </div>
+        {chromeHidden ? null : (
+          <div data-print-skip="true">
+            <AppHeader />
+          </div>
+        )}
+        {chromeHidden ? null : (
+          <div data-print-skip="true">
+            <NetworkStatusBanner />
+          </div>
+        )}
+        {chromeHidden ? null : (
+          <div data-print-skip="true">
+            <MobileOrientationGuard />
+          </div>
+        )}
 
         {/* Bottom padding for mobile nav bar */}
-        <div className="flex-1 pb-16 md:pb-0 print:pb-0">{children}</div>
+        <div className={chromeHidden ? 'flex-1 pb-0' : 'flex-1 pb-16 md:pb-0 print:pb-0'}>
+          {children}
+        </div>
       </main>
 
       {/* Mobile bottom navigation */}
-      <div data-print-skip="true">
-        <MobileNav />
-      </div>
-      <div data-print-skip="true">
-        <InstallPrompt />
-      </div>
-      <div data-print-skip="true">
-        <SessionTimeoutModal />
-      </div>
+      {chromeHidden ? null : (
+        <div data-print-skip="true">
+          <MobileNav />
+        </div>
+      )}
+      {chromeHidden ? null : (
+        <div data-print-skip="true">
+          <InstallPrompt />
+        </div>
+      )}
+      {chromeHidden ? null : (
+        <div data-print-skip="true">
+          <SessionTimeoutModal />
+        </div>
+      )}
 
       {/* Keyboard shortcut help modal */}
-      <div data-print-skip="true">
-        <ShortcutHelpModal
-          open={shortcutHelpOpen}
-          onOpenChange={setShortcutHelpOpen}
-          shortcuts={GLOBAL_SHORTCUTS}
-        />
-      </div>
-      <div data-print-skip="true">
-        <GlobalSearchModal
-          open={globalSearchOpen}
-          onOpenChange={setGlobalSearchOpen}
-          pathname={pathname}
-        />
-      </div>
+      {chromeHidden ? null : (
+        <div data-print-skip="true">
+          <ShortcutHelpModal
+            open={shortcutHelpOpen}
+            onOpenChange={setShortcutHelpOpen}
+            shortcuts={GLOBAL_SHORTCUTS}
+          />
+        </div>
+      )}
+      {chromeHidden ? null : (
+        <div data-print-skip="true">
+          <GlobalSearchModal
+            open={globalSearchOpen}
+            onOpenChange={setGlobalSearchOpen}
+            pathname={pathname}
+          />
+        </div>
+      )}
     </div>
   );
 }

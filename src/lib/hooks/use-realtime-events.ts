@@ -8,6 +8,9 @@ interface UseRealtimeEventsOptions {
   enabled?: boolean;
 }
 
+const NOTIFICATION_STREAM_DISABLED =
+  process.env.NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM === '1';
+
 export function useRealtimeEvents({ onEvent, enabled = true }: UseRealtimeEventsOptions) {
   const orgId = useOrgId();
   const [connected, setConnected] = useState(false);
@@ -30,7 +33,7 @@ export function useRealtimeEvents({ onEvent, enabled = true }: UseRealtimeEvents
   }, []);
 
   useEffect(() => {
-    if (!enabled || !orgId) {
+    if (!enabled || !orgId || NOTIFICATION_STREAM_DISABLED) {
       cleanup();
       return;
     }
@@ -100,7 +103,7 @@ export function useRealtimeEvents({ onEvent, enabled = true }: UseRealtimeEvents
       unmounted = true;
       cleanup();
     };
-  }, [enabled, cleanup, handleEvent, orgId]);
+  }, [enabled, cleanup, orgId]);
 
   return { connected: enabled && connected };
 }

@@ -11,6 +11,7 @@ describe('route labels', () => {
     expect(labelForPath('/admin/settings')).toBe('管理設定');
     expect(labelForPath('/admin/performance')).toBe('パフォーマンス');
     expect(labelForPath('/admin/realtime')).toBe('リアルタイム監視');
+    expect(labelForPath('/patients/p1/mcs')).toBe('MCS連携');
   });
 
   it('labels utility segments used by breadcrumb navigation', () => {
@@ -20,5 +21,6 @@ describe('route labels', () => {
     expect(labelForSegment('full', 'medication-sets')).toBe('一覧');
     expect(labelForSegment('record', 'visits')).toBe('記録入力');
     expect(labelForSegment('settings', 'admin')).toBe('管理設定');
+    expect(labelForSegment('mcs', 'patients')).toBe('MCS連携');
   });
 });

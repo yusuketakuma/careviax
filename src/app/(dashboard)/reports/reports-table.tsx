@@ -78,12 +78,16 @@ function buildColumns(): ColumnDef<CareReport>[] {
           REPORT_TYPE_LABELS[row.report_type] ?? row.report_type,
       },
       cell: ({ row }) => (
-        <Link
-          href={`/reports/${row.original.id}`}
-          className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {REPORT_TYPE_LABELS[row.original.report_type] ?? row.original.report_type}
-        </Link>
+        <div className="space-y-1">
+          <Link
+            href={`/reports/${row.original.id}`}
+            className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={`${REPORT_TYPE_LABELS[row.original.report_type] ?? row.original.report_type}の詳細`}
+          >
+            {REPORT_TYPE_LABELS[row.original.report_type] ?? row.original.report_type}
+          </Link>
+          <p className="text-xs text-muted-foreground">本文、送付先、送達履歴を確認</p>
+        </div>
       ),
     },
     {
@@ -95,7 +99,12 @@ function buildColumns(): ColumnDef<CareReport>[] {
       },
       cell: ({ row }) => (
         <div className="space-y-1">
-          <p>{row.original.patient_name ?? '患者名未設定'}</p>
+          <Link
+            href={`/patients/${row.original.patient_id}`}
+            className="hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {row.original.patient_name ?? '患者名未設定'}
+          </Link>
           <p className="font-mono text-xs text-muted-foreground">{row.original.patient_id}</p>
         </div>
       ),
@@ -186,6 +195,23 @@ function buildColumns(): ColumnDef<CareReport>[] {
         <span className="text-sm tabular-nums">
           {formatDate(row.original.created_at)}
         </span>
+      ),
+    },
+    {
+      id: 'actions',
+      header: '操作',
+      meta: {
+        label: '操作',
+        tabletHidden: true,
+      },
+      cell: ({ row }) => (
+        <Link
+          href={`/reports/${row.original.id}`}
+          className="inline-flex items-center rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={`${row.original.patient_name ?? '患者未設定'} の報告詳細を開く`}
+        >
+          報告詳細
+        </Link>
       ),
     },
   ];
@@ -304,7 +330,10 @@ export function ReportsTable() {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 rounded-xl border border-border/70 bg-card/80 p-4 lg:grid-cols-5 xl:grid-cols-6">
+      <div
+        className="grid gap-3 rounded-xl border border-border/70 bg-card/80 p-4 lg:grid-cols-5 xl:grid-cols-6"
+        data-testid="reports-filter-panel"
+      >
         <div className="space-y-1.5 lg:col-span-2">
           <LabelText>患者名</LabelText>
           <div className="relative">
@@ -415,6 +444,7 @@ export function ReportsTable() {
         <Badge variant="outline">適用中フィルタ {activeFilterCount}件</Badge>
         <Badge variant="outline">返信待ち {data?.deliverySummary.pending_delivery_count ?? 0}件</Badge>
         <Badge variant="outline">失敗 {data?.deliverySummary.failed_delivery_count ?? 0}件</Badge>
+        <Badge variant="outline">報告書名か患者名から詳細へ移動</Badge>
       </div>
 
       <DataTable

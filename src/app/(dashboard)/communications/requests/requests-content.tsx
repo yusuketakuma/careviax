@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, parseISO } from 'date-fns';
@@ -23,6 +24,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
+import {
+  buildCommunicationRequestsHref,
+  resolveCommunicationEntityLink,
+} from '@/lib/communications/navigation';
 import { toast } from 'sonner';
 
 type CommunicationRequestRow = {
@@ -33,6 +38,8 @@ type CommunicationRequestRow = {
   requested_at: string;
   due_date: string | null;
   patient_id: string | null;
+  related_entity_type: string | null;
+  related_entity_id: string | null;
   recipient_name: string | null;
   recipient_role: string | null;
   responses: Array<{
@@ -45,6 +52,7 @@ type CommunicationRequestRow = {
 type CommunicationEventRow = {
   id: string;
   event_type: string;
+  patient_id: string | null;
   channel: string;
   direction: string;
   counterpart_name: string | null;
@@ -134,13 +142,32 @@ const DEFAULT_RESPONSE_FORM = {
   content: '',
 };
 
-export function CommunicationRequestsContent() {
+type CommunicationRequestsContentProps = {
+  initialStatus?: string | null;
+  initialPatientId?: string | null;
+  initialRelatedEntityType?: string | null;
+  initialRelatedEntityId?: string | null;
+};
+
+export function CommunicationRequestsContent({
+  initialStatus,
+  initialPatientId,
+  initialRelatedEntityType,
+  initialRelatedEntityId,
+}: CommunicationRequestsContentProps) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState(initialStatus ?? '');
   const [responseDialogOpen, setResponseDialogOpen] = useState(false);
   const [responseTarget, setResponseTarget] = useState<CommunicationRequestRow | null>(null);
   const [responseForm, setResponseForm] = useState(DEFAULT_RESPONSE_FORM);
+  const patientFilter = initialPatientId ?? '';
+  const relatedEntityTypeFilter = initialRelatedEntityType ?? '';
+  const relatedEntityIdFilter = initialRelatedEntityId ?? '';
+  const relatedEntityLink = resolveCommunicationEntityLink({
+    entityType: relatedEntityTypeFilter || null,
+    entityId: relatedEntityIdFilter || null,
+  });
 
   const statusMutation = useMutation({
     mutationFn: async ({
@@ -260,10 +287,20 @@ export function CommunicationRequestsContent() {
   }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['communication-requests', orgId, statusFilter],
+    queryKey: [
+      'communication-requests',
+      orgId,
+      statusFilter,
+      patientFilter,
+      relatedEntityTypeFilter,
+      relatedEntityIdFilter,
+    ],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (statusFilter) params.set('status', statusFilter);
+      if (patientFilter) params.set('patient_id', patientFilter);
+      if (relatedEntityTypeFilter) params.set('related_entity_type', relatedEntityTypeFilter);
+      if (relatedEntityIdFilter) params.set('related_entity_id', relatedEntityIdFilter);
       return fetchAllCursorPages<CommunicationRequestRow, {
         data: CommunicationRequestRow[];
         hasMore: boolean;
@@ -278,13 +315,16 @@ export function CommunicationRequestsContent() {
   });
 
   const { data: eventData, isLoading: isEventsLoading } = useQuery({
-    queryKey: ['communication-events', orgId],
+    queryKey: ['communication-events', orgId, patientFilter],
     queryFn: async () => {
+      const params = new URLSearchParams();
+      if (patientFilter) params.set('patient_id', patientFilter);
       return fetchAllCursorPages<CommunicationEventRow, {
         data: CommunicationEventRow[];
         hasMore: boolean;
       }>({
         path: '/api/communication-events',
+        params,
         init: { headers: { 'x-org-id': orgId } },
         errorMessage: '連携ログの取得に失敗しました',
       });
@@ -302,6 +342,21 @@ export function CommunicationRequestsContent() {
             {EVENT_TYPE_LABELS[row.original.event_type] ?? row.original.event_type}
           </span>
         ),
+      },
+      {
+        id: 'patient',
+        header: '患者',
+        cell: ({ row }) =>
+          row.original.patient_id ? (
+            <Link
+              href={`/patients/${row.original.patient_id}`}
+              className="text-sm text-primary underline-offset-4 hover:underline"
+            >
+              患者詳細
+            </Link>
+          ) : (
+            <span className="text-sm text-muted-foreground">—</span>
+          ),
       },
       {
         accessorKey: 'channel',
@@ -376,6 +431,42 @@ export function CommunicationRequestsContent() {
             </p>
           </div>
         ),
+      },
+      {
+        id: 'patient',
+        header: '患者',
+        cell: ({ row }) =>
+          row.original.patient_id ? (
+            <Link
+              href={`/patients/${row.original.patient_id}`}
+              className="text-sm text-primary underline-offset-4 hover:underline"
+            >
+              患者詳細
+            </Link>
+          ) : (
+            <span className="text-sm text-muted-foreground">—</span>
+          ),
+      },
+      {
+        id: 'related',
+        header: '関連',
+        cell: ({ row }) => {
+          const entityLink = resolveCommunicationEntityLink({
+            entityType: row.original.related_entity_type,
+            entityId: row.original.related_entity_id,
+          });
+
+          return entityLink ? (
+            <Link
+              href={entityLink.href}
+              className="text-sm text-primary underline-offset-4 hover:underline"
+            >
+              {entityLink.label}
+            </Link>
+          ) : (
+            <span className="text-sm text-muted-foreground">—</span>
+          );
+        },
       },
       {
         accessorKey: 'status',
@@ -496,6 +587,32 @@ export function CommunicationRequestsContent() {
         </Button>
       </div>
 
+      {patientFilter || relatedEntityTypeFilter || relatedEntityIdFilter ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-sm">
+          <span className="font-medium text-foreground">適用中の文脈:</span>
+          {patientFilter ? (
+            <Link href={`/patients/${patientFilter}`} className="text-primary underline-offset-4 hover:underline">
+              <Badge variant="outline">患者詳細</Badge>
+            </Link>
+          ) : null}
+          {relatedEntityTypeFilter ? (
+            <Badge variant="outline">関連種別 {relatedEntityTypeFilter}</Badge>
+          ) : null}
+          {relatedEntityIdFilter ? <Badge variant="outline">関連ID {relatedEntityIdFilter}</Badge> : null}
+          {relatedEntityLink ? (
+            <Link href={relatedEntityLink.href} className="text-primary underline-offset-4 hover:underline">
+              {relatedEntityLink.label}
+            </Link>
+          ) : null}
+          <Link
+            href={buildCommunicationRequestsHref({ status: statusFilter || null })}
+            className="text-primary underline-offset-4 hover:underline"
+          >
+            文脈をクリア
+          </Link>
+        </div>
+      ) : null}
+
       <DataTable
         columns={columns}
         data={data?.data ?? []}
@@ -534,6 +651,14 @@ export function CommunicationRequestsContent() {
                 <p className="mt-2 text-xs leading-5 text-muted-foreground">
                   {item.subject ?? item.content ?? '詳細なし'}
                 </p>
+                {item.patient_id ? (
+                  <Link
+                    href={`/patients/${item.patient_id}`}
+                    className="mt-2 inline-flex text-xs text-primary underline-offset-4 hover:underline"
+                  >
+                    患者詳細へ
+                  </Link>
+                ) : null}
               </div>
             ))
           )}

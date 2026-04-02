@@ -64,6 +64,8 @@ BEGIN
     'CommunityActivity',
     'TracingReport',
     'MedicationProfile',
+    'PatientMcsLink',
+    'PatientMcsMessage',
     'ResidualMedication',
     'MedicationIssue',
     'Intervention',

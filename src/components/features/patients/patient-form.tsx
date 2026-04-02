@@ -103,6 +103,10 @@ export function PatientForm({ redirectTo, onSuccess, defaultValues }: PatientFor
     gender: '性別',
     address: '住所',
   });
+  const errorSummaryTitle =
+    errorSummaryItems.length > 0
+      ? `必須の${errorSummaryItems.length}項目を入力してください`
+      : '必須項目を確認してください';
 
   const scrollToErrorSummary = useCallback(() => {
     if (typeof document === 'undefined') return;
@@ -263,7 +267,13 @@ export function PatientForm({ redirectTo, onSuccess, defaultValues }: PatientFor
 
   return (
     <form onSubmit={handleSubmit(onSubmit, scrollToErrorSummary)} noValidate className="space-y-6">
-      <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
+      <FormErrorSummary
+        id={errorSummaryId}
+        title={errorSummaryTitle}
+        items={errorSummaryItems}
+        showMessage={false}
+        compact
+      />
 
       <Card>
         <CardHeader>

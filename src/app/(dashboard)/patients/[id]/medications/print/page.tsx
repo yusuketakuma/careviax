@@ -6,22 +6,18 @@ import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Printer } from 'lucide-react';
-import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
 import { getPatientMedicationPrintShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
-import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
+import { PrintPageToolbar } from '@/components/features/workflow/print-page-toolbar';
 import { PrintLayout } from '@/components/features/reports/print-layout';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type PatientResponse = {
-  data: {
-    id: string;
-    name: string;
-    name_kana: string | null;
-    birth_date: string | null;
-  };
+  id: string;
+  name: string;
+  name_kana: string | null;
+  birth_date: string | null;
 };
 
 type MedicationProfile = {
@@ -48,6 +44,7 @@ function formatDate(value: string | null) {
 export default function MedicationPrintPage() {
   const params = useParams<{ id: string }>();
   const orgId = useOrgId();
+  const isBootstrappingOrg = !orgId;
   const patientId = typeof params.id === 'string' ? params.id : '';
 
   const patientQuery = useQuery<PatientResponse>({
@@ -79,7 +76,7 @@ export default function MedicationPrintPage() {
     },
   });
 
-  const patient = patientQuery.data?.data;
+  const patient = patientQuery.data;
   const profiles = medicationQuery.data?.data ?? [];
   const ready = Boolean(patient) && !patientQuery.isLoading && !medicationQuery.isLoading;
 
@@ -89,7 +86,7 @@ export default function MedicationPrintPage() {
     return () => window.clearTimeout(timer);
   }, [ready]);
 
-  if (patientQuery.isLoading || medicationQuery.isLoading) {
+  if (isBootstrappingOrg || patientQuery.isLoading || medicationQuery.isLoading) {
     return <Loading />;
   }
 
@@ -109,19 +106,13 @@ export default function MedicationPrintPage() {
 
   return (
     <div className="mx-auto max-w-4xl p-6 print:p-0">
-      <div className="mb-4 space-y-3 print:hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <WorkflowBackLink
-            href={`/patients/${patientId}/medications`}
-            label="服薬管理へ戻る"
-          />
-          <Button size="sm" onClick={() => window.print()}>
-            <Printer className="mr-1.5 size-4" aria-hidden="true" />
-            印刷
-          </Button>
-        </div>
-        <PageShortcutLinks links={getPatientMedicationPrintShortcutLinks(patientId)} />
-      </div>
+      <PrintPageToolbar
+        backHref={`/patients/${patientId}/medications`}
+        backLabel="服薬管理へ戻る"
+        title="薬歴・服薬一覧 印刷ビュー"
+        description="服薬中薬剤と処方履歴をまとめて印刷できます。"
+        shortcuts={getPatientMedicationPrintShortcutLinks(patientId)}
+      />
 
       <PrintLayout pharmacyName="CareViaX薬局">
         <div className="space-y-4 text-sm">

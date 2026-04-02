@@ -37,6 +37,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { LoadingButton } from '@/components/ui/loading-button';
 import {
   Select,
@@ -609,7 +610,10 @@ export function PatientsTable() {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 rounded-xl border border-border/70 bg-card/80 p-4 lg:grid-cols-[1.4fr_repeat(4,minmax(0,0.75fr))] xl:grid-cols-[1.4fr_repeat(5,minmax(0,0.72fr))]">
+      <div
+        className="grid gap-3 rounded-xl border border-border/70 bg-card/80 p-4 lg:grid-cols-[1.4fr_repeat(4,minmax(0,0.75fr))] xl:grid-cols-[1.4fr_repeat(5,minmax(0,0.72fr))]"
+        data-testid="patients-filter-panel"
+      >
         <div className="space-y-1.5">
           <LabelText>患者検索</LabelText>
           <div className="relative">
@@ -619,7 +623,7 @@ export function PatientsTable() {
             />
             <Input
               type="search"
-              placeholder="氏名・フリガナ"
+              placeholder="氏名・ふりがなを検索"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               className="pl-8"
@@ -772,13 +776,33 @@ export function PatientsTable() {
         </div>
 
         <div className="space-y-1.5">
-          <LabelText>最終訪問 From</LabelText>
-          <Input type="date" value={lastVisitFrom} onChange={(event) => setLastVisitFrom(event.target.value)} />
+          <Label
+            htmlFor="patients-last-visit-from"
+            className="text-xs font-medium text-muted-foreground"
+          >
+            最終訪問 From
+          </Label>
+          <Input
+            id="patients-last-visit-from"
+            type="date"
+            value={lastVisitFrom}
+            onChange={(event) => setLastVisitFrom(event.target.value)}
+          />
         </div>
 
         <div className="space-y-1.5">
-          <LabelText>最終訪問 To</LabelText>
-          <Input type="date" value={lastVisitTo} onChange={(event) => setLastVisitTo(event.target.value)} />
+          <Label
+            htmlFor="patients-last-visit-to"
+            className="text-xs font-medium text-muted-foreground"
+          >
+            最終訪問 To
+          </Label>
+          <Input
+            id="patients-last-visit-to"
+            type="date"
+            value={lastVisitTo}
+            onChange={(event) => setLastVisitTo(event.target.value)}
+          />
         </div>
 
         <div className="flex items-end gap-2 lg:col-span-2 xl:col-span-1">

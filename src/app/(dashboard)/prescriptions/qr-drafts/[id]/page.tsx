@@ -5,9 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AlertTriangle, CheckCircle2, Trash2 } from 'lucide-react';
-import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
-import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
-import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
+import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -389,26 +387,21 @@ export default function QrDraftReviewPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-6">
       {/* Page header */}
-      <div className="space-y-3">
-        <WorkflowBackLink href="/prescriptions/qr-drafts" label="QR下書き一覧へ戻る" />
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <WorkflowPageHeader
-              title="QR読取下書き確認"
-              description={`スキャン日時: ${format(new Date(draft.created_at), 'yyyy年M月d日 HH:mm', { locale: ja })} / セッション: ${draft.session_id.slice(0, 8)}`}
-              className="mb-0"
-            />
-          </div>
-          {hasParseErrors ? (
+      <WorkflowPageIntro
+        backHref="/prescriptions/qr-drafts"
+        backLabel="QR下書き一覧へ戻る"
+        title="QR読取下書き確認"
+        description={`スキャン日時: ${format(new Date(draft.created_at), 'yyyy年M月d日 HH:mm', { locale: ja })} / セッション: ${draft.session_id.slice(0, 8)}`}
+        shortcuts={buildQrDraftShortcutLinks(draft.patient_id)}
+        actions={
+          hasParseErrors ? (
             <Badge variant="destructive" className="gap-1">
               <AlertTriangle className="size-3" />
               解析エラーあり
             </Badge>
-          ) : null}
-        </div>
-      </div>
-
-      <PageShortcutLinks links={buildQrDraftShortcutLinks(draft.patient_id)} />
+          ) : null
+        }
+      />
 
       {/* Parse errors banner */}
       {hasParseErrors && (

@@ -37,6 +37,9 @@ type Notification = {
   created_at: string;
 };
 
+const NOTIFICATION_STREAM_DISABLED =
+  process.env.NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM === '1';
+
 type WorkflowSnapshot = {
   route_control: {
     locked_schedules: number;
@@ -112,7 +115,7 @@ export default function RealtimePage() {
   });
 
   useEffect(() => {
-    if (!orgId) return;
+    if (!orgId || NOTIFICATION_STREAM_DISABLED) return;
     const controller = new AbortController();
     let active = true;
 

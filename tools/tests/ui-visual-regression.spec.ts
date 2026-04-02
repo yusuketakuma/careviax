@@ -48,11 +48,11 @@ test.describe('limited visual comparison', () => {
     await page.goto('/reports');
     await waitForStableUi(page);
 
-    const phasePanel = page.getByTestId('workflow-phase-panel');
-    await expect(phasePanel).toBeVisible({ timeout: 20_000 });
+    const deliveryDashboard = page.getByTestId('reports-delivery-dashboard');
+    await expect(deliveryDashboard).toBeVisible({ timeout: 20_000 });
 
-    await expect(phasePanel).toHaveScreenshot(
-      'reports-workflow-phase-panel.png',
+    await expect(deliveryDashboard).toHaveScreenshot(
+      'reports-delivery-dashboard.png',
       {
         animations: 'disabled',
         caret: 'hide',
