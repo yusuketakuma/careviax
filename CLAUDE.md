@@ -132,8 +132,10 @@ careviax/
 │   └── server/         # Server-only code (adapters, jobs)
 ├── prisma/             # Schema & migrations
 ├── public/             # Static assets, manifest.json, icons
-├── infra/              # AWS CDK or CloudFormation (IaC)
-└── tests/              # E2E tests (Playwright)
+├── tools/
+│   ├── infra/          # AWS / ops artifacts and infrastructure definitions
+│   ├── scripts/        # Operational and reporting scripts
+│   └── tests/          # E2E tests (Playwright) and .artifacts output
 ```
 
 ## Environment Variables
@@ -178,6 +180,8 @@ pnpm dev              # Start dev server
 pnpm build            # Production build
 pnpm test             # Unit tests (Vitest)
 pnpm test:e2e         # E2E tests (Playwright)
+pnpm test:e2e:list    # List Playwright tests
+pnpm test:e2e:audit   # Audit-focused Playwright config
 pnpm db:migrate       # Prisma migrations (→ RDS)
 pnpm db:seed          # Seed database
 pnpm db:generate      # Prisma client generation

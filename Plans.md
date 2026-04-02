@@ -542,7 +542,7 @@ flowchart LR
 > depends: 0-2 | DoD: RLS正当性テスト通過
 
 - [x] Prisma + RLS（SET LOCAL）, ヘルパー関数, 全テーブルポリシー, S3ポリシー
-  - 2026-03-28: `withOrgContext` で `app.current_org_id/current_actor_id/current_member_role/current_ip_address/current_user_agent` を `set_config` で注入し、`infra/file-storage-bucket-policy.json` と presigned PUT の SSE 強制を追加
+  - 2026-03-28: `withOrgContext` で `app.current_org_id/current_actor_id/current_member_role/current_ip_address/current_user_agent` を `set_config` で注入し、`tools/infra/file-storage-bucket-policy.json` と presigned PUT の SSE 強制を追加
 - [x] RLS正当性テスト（Vitest）, 権限マトリクス（7ロール+工程フラグ4種）
   - 2026-03-28: `src/lib/db/__tests__/rls.test.ts` で transaction context 注入を検証し、`src/lib/auth/__tests__/permissions.test.ts` で 7 ロール x 4 工程フラグの matrix を固定
 
@@ -706,7 +706,7 @@ flowchart LR
   - RDS ポイントインタイムリカバリ、S3 バージョニング復元、Cognito ユーザープールバックアップ
   - 実施記録を `docs/compliance/backup-recovery-drill.md` に追記
   - RTO 4h / RPO 24h の実測検証
-  - 2026-03-31: `scripts/backup-recovery-check.ts` と `pnpm backup:drill:check` を追加し、前提確認と試験記録追記を自動化
+  - 2026-03-31: `tools/scripts/backup-recovery-check.ts` と `pnpm backup:drill:check` を追加し、前提確認と試験記録追記を自動化
   - 2026-03-31: `corepack pnpm backup:drill:check --append ...` で机上訓練の前提確認記録を追記。実地復旧は AWS 接続情報未設定のため継続タスク
   - 2026-03-31: ローカル確認では必須ファイルは揃っており、`DATABASE_URL` / `AWS_REGION` 未設定のみが live drill の blocker。AWS 権限付与後に同手順で実地記録を追記する
   - 2026-04-01: `backup:drill:check --append --mode live|tabletop` で机上訓練と実地復旧を区別して記録できるようにし、 dossier/readiness でも live drill 未実施を別 blocker として検出する
@@ -2016,7 +2016,7 @@ PrescriptionIntake
 - [x] 3-4: パフォーマンス最適化（P95<500ms） `cc:完了` (2026-03-31)
   - 詳細プラン: `.omc/plans/phase3-4-performance-optimization.md` (Rev.2)
   - 計測基盤は実装済み（`performance.ts` + `/admin/performance`）
-  - `scripts/perf-smoke.ts`: `--path` 指定時のデフォルト `/api/health` 除外修正
+  - `tools/scripts/perf-smoke.ts`: `--path` 指定時のデフォルト `/api/health` 除外修正
   - `src/lib/utils/server-cache.ts`: TTL付き LRU キャッシュ新設（50エントリ）
   - `/api/dashboard/workflow`: `getHomeCareFeatureSummary` 並列化 + 3 Promise.all → 1 統合 + 15s レスポンスキャッシュ
   - `/api/patients`: `DISTINCT ON` + `ROW_NUMBER()` で enrichment 最適化、contacts → `_count`
