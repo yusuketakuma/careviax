@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Car, Users, Calendar, Bell, Menu } from 'lucide-react';
+import { Calendar, Car, Home, Menu, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/lib/stores/ui-store';
 
@@ -10,15 +10,27 @@ interface BottomNavItem {
   label: string;
   href: string;
   icon: React.ElementType;
+  activePrefixes?: string[];
+  excludePrefixes?: string[];
   badge?: number;
 }
 
 const bottomNavItems: BottomNavItem[] = [
-  { label: '本日の訪問', href: '/visits', icon: Car },
+  { label: 'ホーム', href: '/dashboard', icon: Home },
+  {
+    label: '本日の訪問',
+    href: '/visits',
+    icon: Car,
+    activePrefixes: ['/visits', '/my-day'],
+    excludePrefixes: ['/visits/handoffs'],
+  },
   { label: '患者', href: '/patients', icon: Users },
   { label: 'スケジュール', href: '/schedules', icon: Calendar },
-  { label: '通知', href: '/notifications', icon: Bell },
 ];
+
+function matchesPathPrefix(pathname: string, prefix: string) {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
 
 export function MobileNav() {
   const pathname = usePathname();
@@ -32,10 +44,16 @@ export function MobileNav() {
       <ul className="flex h-16 items-stretch" role="list">
         {bottomNavItems.map((item) => {
           const Icon = item.icon;
+          const activePrefixes = item.activePrefixes ?? [item.href];
+          const isExcluded =
+            item.excludePrefixes?.some((prefix) => matchesPathPrefix(pathname, prefix)) ?? false;
           const isActive =
-            item.href === '/dashboard'
-              ? pathname === '/dashboard'
-              : pathname.startsWith(item.href);
+            !isExcluded &&
+            activePrefixes.some((prefix) =>
+              prefix === '/dashboard'
+                ? pathname === '/dashboard'
+                : matchesPathPrefix(pathname, prefix)
+            );
 
           return (
             <li key={item.href} className="flex flex-1">

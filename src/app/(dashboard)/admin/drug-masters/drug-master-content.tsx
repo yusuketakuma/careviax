@@ -5,6 +5,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { Search, Pill, AlertTriangle, Shield, Database, Download, History, CheckCircle2, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
+import {
+  getAdminDrugMasterShortcutLinks,
+  getAdminFormularyShortcutLinks,
+} from '@/components/features/admin/admin-page-shortcut-presets';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -292,7 +297,11 @@ function StructuredPayload({ value }: { value: unknown }) {
   );
 }
 
-export function DrugMasterContent() {
+type DrugMasterContentProps = {
+  variant?: 'master' | 'formulary';
+};
+
+export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
@@ -524,6 +533,15 @@ export function DrugMasterContent() {
       ]
     : [];
   const preferredGenericCandidates = preferredGenericCandidatesQuery.data?.data ?? [];
+  const headerTitle = variant === 'formulary' ? '採用薬マスター' : '医薬品マスター';
+  const headerDescription =
+    variant === 'formulary'
+      ? '拠点ごとの採用品設定と優先後発品を確認し、処方受付で使う採用薬候補を整備します。'
+      : 'SSK基本マスター・PMDA添付文書データベースの管理';
+  const headerShortcuts =
+    variant === 'formulary'
+      ? getAdminFormularyShortcutLinks()
+      : getAdminDrugMasterShortcutLinks();
 
   const statusLabel = (status: DrugMasterImportLog['status']) => {
     switch (status) {
@@ -540,13 +558,12 @@ export function DrugMasterContent() {
 
   return (
     <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">医薬品マスター</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            SSK基本マスター・PMDA添付文書データベースの管理
-          </p>
-        </div>
+      <div className="space-y-4">
+        <AdminPageHeader
+          title={headerTitle}
+          description={headerDescription}
+          shortcuts={headerShortcuts}
+        />
         <div className="flex flex-wrap items-center justify-end gap-2">
           {data?.totalCount !== undefined && (
             <Badge variant="outline" className="gap-1">

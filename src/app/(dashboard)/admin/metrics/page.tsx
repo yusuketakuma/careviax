@@ -1,5 +1,7 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
+import { getAdminMetricsShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Loading } from '@/components/ui/loading';
 import { MetricsDashboardContent } from './metrics-dashboard-content';
 
@@ -10,14 +12,11 @@ export const metadata: Metadata = {
 export default function MetricsDashboardPage() {
   return (
     <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          経営指標ダッシュボード
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          薬局経営に関わる主要指標のモニタリング
-        </p>
-      </div>
+      <AdminPageHeader
+        title="経営指標ダッシュボード"
+        description="薬局経営に関わる主要指標のモニタリング"
+        shortcuts={getAdminMetricsShortcutLinks()}
+      />
 
       <Suspense fallback={<Loading />}>
         <MetricsDashboardContent />

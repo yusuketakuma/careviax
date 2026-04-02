@@ -7,6 +7,8 @@ import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { FileText, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
+import { getAdminDocumentTemplatesShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { DataTable } from '@/components/ui/data-table';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -284,12 +286,11 @@ export function DocumentTemplateContent() {
 
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">文書テンプレート管理</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          報告書や同意書のテンプレート版管理と、相手別の自動送達ルールをまとめて管理します。
-        </p>
-      </div>
+      <AdminPageHeader
+        title="文書テンプレート管理"
+        description="報告書や同意書のテンプレート版管理と、相手別の自動送達ルールをまとめて管理します。"
+        shortcuts={getAdminDocumentTemplatesShortcutLinks()}
+      />
 
       <div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
         <Card>

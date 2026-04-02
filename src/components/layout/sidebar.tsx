@@ -1,30 +1,46 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Home,
-  Users,
-  ClipboardPlus,
-  ClipboardList,
-  Calendar,
-  Pill,
-  ClipboardCheck,
-  Car,
-  FileText,
-  Package,
-  QrCode,
-  Settings,
-  Database,
-  ScrollText,
+  Activity,
+  BarChart3,
+  Bell,
   Building2,
+  Calendar,
+  CalendarOff,
+  Car,
+  CheckSquare,
+  ChevronDown,
+  ClipboardCheck,
+  ClipboardList,
+  ClipboardPlus,
+  Clock3,
+  Cog,
+  Database,
+  FileText,
+  GraduationCap,
+  Home,
   Hospital,
-  Stethoscope,
+  LineChart,
+  ListChecks,
   LogOut,
+  MessageSquare,
+  Package,
   PanelLeftClose,
   PanelLeftOpen,
+  Pill,
   Pin,
   PinOff,
+  QrCode,
+  Receipt,
+  ScrollText,
+  Settings,
+  Shield,
+  Stethoscope,
+  UserCircle,
+  Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/lib/stores/ui-store';
@@ -34,36 +50,120 @@ interface NavItem {
   label: string;
   href: string;
   icon: React.ElementType;
+  activePrefixes?: string[];
+  excludePrefixes?: string[];
 }
 
 const mainNavItems: NavItem[] = [
   { label: 'ホーム', href: '/dashboard', icon: Home },
   { label: '患者', href: '/patients', icon: Users },
-  { label: '処方受付', href: '/prescriptions/new', icon: ClipboardPlus },
+  {
+    label: '処方受付',
+    href: '/prescriptions',
+    icon: ClipboardPlus,
+    activePrefixes: ['/prescriptions'],
+  },
   { label: 'スケジュール', href: '/schedules', icon: Calendar },
   { label: '調剤', href: '/dispensing', icon: Pill },
   { label: '鑑査', href: '/auditing', icon: ClipboardCheck },
   { label: 'セット', href: '/medication-sets', icon: Package },
-  { label: '訪問', href: '/visits', icon: Car },
+  {
+    label: '訪問',
+    href: '/visits',
+    icon: Car,
+    excludePrefixes: ['/visits/handoffs'],
+  },
   { label: '報告', href: '/reports', icon: FileText },
+  { label: '多職種連携', href: '/conferences', icon: Users },
   { label: 'QRスキャン', href: '/qr-scan', icon: QrCode },
-  { label: '申し送り', href: '/handoff', icon: ClipboardList },
+  {
+    label: '申し送り',
+    href: '/handoff',
+    icon: ClipboardList,
+    activePrefixes: ['/handoff', '/visits/handoffs'],
+  },
 ];
 
-const adminNavItems: NavItem[] = [
-  { label: '設定', href: '/admin/settings', icon: Settings },
-  { label: 'スタッフ', href: '/admin/staff', icon: Users },
-  { label: '施設', href: '/admin/facilities', icon: Building2 },
-  { label: '医療機関', href: '/admin/institutions', icon: Hospital },
-  { label: '他職種', href: '/admin/external-professionals', icon: Stethoscope },
-  { label: '連携先', href: '/admin/contact-profiles', icon: Users },
-  { label: 'データ探索', href: '/admin/data-explorer', icon: Database },
-  { label: '文書テンプレート', href: '/admin/document-templates', icon: FileText },
-  { label: '採用薬', href: '/admin/formulary', icon: Pill },
-  { label: '処方安全アラート', href: '/admin/alert-rules', icon: ClipboardCheck },
-  { label: '訪問エリア', href: '/admin/service-areas', icon: Car },
-  { label: 'マスタ', href: '/admin/drug-masters', icon: Database },
-  { label: '監査ログ', href: '/admin/audit-logs', icon: ScrollText },
+const workbenchNavItems: NavItem[] = [
+  { label: 'My Day', href: '/my-day', icon: Clock3 },
+  { label: 'ワークフロー', href: '/workflow', icon: ListChecks },
+  { label: 'タスク', href: '/tasks', icon: CheckSquare },
+  { label: '請求', href: '/billing', icon: ScrollText },
+  { label: '管理', href: '/admin', icon: Shield, activePrefixes: ['/admin'] },
+  { label: '通知', href: '/notifications', icon: Bell },
+  { label: '依頼・照会', href: '/communications/requests', icon: MessageSquare },
+  { label: '外部連携', href: '/external', icon: Stethoscope },
+];
+
+interface AdminNavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+const adminNavGroups: AdminNavGroup[] = [
+  {
+    label: '運営',
+    items: [
+      { label: '管理ダッシュボード', href: '/admin', icon: Home },
+      { label: '管理設定', href: '/admin/settings', icon: Settings },
+      { label: '薬局情報', href: '/admin/pharmacy-sites', icon: Building2 },
+      { label: '休日カレンダー', href: '/admin/business-holidays', icon: CalendarOff },
+      { label: '請求ルール', href: '/admin/billing-rules', icon: Receipt },
+    ],
+  },
+  {
+    label: 'スタッフ',
+    items: [
+      { label: 'スタッフ', href: '/admin/staff', icon: Users },
+      { label: 'ユーザー', href: '/admin/users', icon: UserCircle },
+      { label: 'シフト', href: '/admin/shifts', icon: Calendar },
+      { label: '薬剤師資格', href: '/admin/pharmacist-credentials', icon: GraduationCap },
+    ],
+  },
+  {
+    label: '施設・連携先',
+    items: [
+      { label: '施設', href: '/admin/facilities', icon: Building2 },
+      { label: '医療機関', href: '/admin/institutions', icon: Hospital },
+      { label: '他職種', href: '/admin/external-professionals', icon: Stethoscope },
+      { label: '連携先', href: '/admin/contact-profiles', icon: Users },
+      { label: '訪問エリア', href: '/admin/service-areas', icon: Car },
+      { label: '施設基準', href: '/admin/facility-standards', icon: Shield },
+    ],
+  },
+  {
+    label: '薬剤',
+    items: [
+      { label: '採用薬', href: '/admin/formulary', icon: Pill },
+      { label: 'マスタ', href: '/admin/drug-masters', icon: Database },
+      { label: '処方安全アラート', href: '/admin/alert-rules', icon: ClipboardCheck },
+    ],
+  },
+  {
+    label: '文書・通知',
+    items: [
+      { label: '文書テンプレート', href: '/admin/document-templates', icon: FileText },
+      { label: '通知設定', href: '/admin/notification-settings', icon: Bell },
+    ],
+  },
+  {
+    label: '分析・監視',
+    items: [
+      { label: 'データ探索', href: '/admin/data-explorer', icon: Database },
+      { label: '監査ログ', href: '/admin/audit-logs', icon: ScrollText },
+      { label: 'ジョブ', href: '/admin/jobs', icon: Cog },
+      { label: '経営指標', href: '/admin/metrics', icon: BarChart3 },
+      { label: 'KPI分析', href: '/admin/analytics', icon: LineChart },
+      { label: 'パフォーマンス', href: '/admin/performance', icon: Activity },
+      { label: 'リアルタイム監視', href: '/admin/realtime', icon: Activity },
+    ],
+  },
+  {
+    label: 'その他',
+    items: [
+      { label: 'UAT', href: '/admin/uat', icon: MessageSquare },
+    ],
+  },
 ];
 
 interface SidebarNavItemProps {
@@ -71,12 +171,20 @@ interface SidebarNavItemProps {
   collapsed: boolean;
 }
 
+function matchesPathPrefix(pathname: string, prefix: string) {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
+
 function SidebarNavItem({ item, collapsed }: SidebarNavItemProps) {
   const pathname = usePathname();
+  const activePrefixes = item.activePrefixes ?? [item.href];
+  const isExcluded =
+    item.excludePrefixes?.some((prefix) => matchesPathPrefix(pathname, prefix)) ?? false;
   const isActive =
-    item.href === '/dashboard'
+    !isExcluded &&
+    (item.href === '/dashboard'
       ? pathname === '/dashboard'
-      : pathname.startsWith(item.href);
+      : activePrefixes.some((prefix) => matchesPathPrefix(pathname, prefix)));
   const Icon = item.icon;
 
   return (
@@ -99,11 +207,72 @@ function SidebarNavItem({ item, collapsed }: SidebarNavItemProps) {
   );
 }
 
+function SidebarAdminGroup({
+  group,
+  collapsed,
+}: {
+  group: AdminNavGroup;
+  collapsed: boolean;
+}) {
+  const pathname = usePathname();
+  const hasActiveChild = group.items.some((item) => {
+    const prefixes = item.activePrefixes ?? [item.href];
+    return prefixes.some((p) => matchesPathPrefix(pathname, p));
+  });
+  const [open, setOpen] = useState(hasActiveChild);
+
+  if (collapsed) {
+    return (
+      <>
+        {group.items.map((item) => (
+          <li key={item.href}>
+            <SidebarNavItem item={item} collapsed />
+          </li>
+        ))}
+      </>
+    );
+  }
+
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          'flex w-full min-h-[32px] items-center gap-2 rounded-md px-3 py-1 text-xs font-medium tracking-wide text-muted-foreground transition-colors hover:text-foreground',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          hasActiveChild && 'text-foreground'
+        )}
+        aria-expanded={open}
+      >
+        <ChevronDown
+          className={cn(
+            'h-3 w-3 shrink-0 transition-transform',
+            !open && '-rotate-90'
+          )}
+          aria-hidden="true"
+        />
+        <span>{group.label}</span>
+      </button>
+      {open && (
+        <ul className="space-y-0.5 pl-2" role="list">
+          {group.items.map((item) => (
+            <li key={item.href}>
+              <SidebarNavItem item={item} collapsed={false} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
 interface SidebarProps {
   className?: string;
 }
 
 export function Sidebar({ className }: SidebarProps) {
+  const pathname = usePathname();
   const { sidebarOpen, sidebarPinned, toggleSidebar, toggleSidebarPinned } = useUIStore();
 
   return (
@@ -179,20 +348,49 @@ export function Sidebar({ className }: SidebarProps) {
 
         {sidebarOpen && (
           <p className="mb-1 px-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            管理
+            ワークベンチ
           </p>
         )}
         <ul className="space-y-0.5" role="list">
-          {adminNavItems.map((item) => (
+          {workbenchNavItems.map((item) => (
             <li key={item.href}>
               <SidebarNavItem item={item} collapsed={!sidebarOpen} />
             </li>
           ))}
         </ul>
+
+        <div className="my-2 border-t border-border" />
+
+        {sidebarOpen && (
+          <p className="mb-1 px-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            管理
+          </p>
+        )}
+        <ul className="space-y-0.5" role="list">
+          {adminNavGroups.map((group) => (
+            <SidebarAdminGroup
+              key={`${group.label}:${pathname}`}
+              group={group}
+              collapsed={!sidebarOpen}
+            />
+          ))}
+        </ul>
       </nav>
 
-      {/* User / logout */}
+      {/* User settings & logout */}
       <div className="shrink-0 border-t border-border p-2">
+        <Link
+          href="/settings"
+          className={cn(
+            'flex min-h-[44px] w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            !sidebarOpen && 'justify-center px-2'
+          )}
+          title={!sidebarOpen ? '設定' : undefined}
+        >
+          <UserCircle className="h-5 w-5 shrink-0" aria-hidden="true" />
+          {sidebarOpen && <span>設定</span>}
+        </Link>
         <button
           type="button"
           className={cn(

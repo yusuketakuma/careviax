@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
+import { getAdminServiceAreasShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -123,12 +125,11 @@ export default function ServiceAreasPage() {
 
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">訪問エリア設定</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          拠点ごとの訪問可能エリアを管理します。`match_keywords` や `facility_ids` を使うと患者登録時に警告できます。
-        </p>
-      </div>
+      <AdminPageHeader
+        title="訪問エリア設定"
+        description="拠点ごとの訪問可能エリアを管理します。`match_keywords` や `facility_ids` を使うと患者登録時に警告できます。"
+        shortcuts={getAdminServiceAreasShortcutLinks()}
+      />
 
       <div className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
         <Card>

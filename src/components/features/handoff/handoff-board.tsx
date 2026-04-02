@@ -1,8 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Clock } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,7 @@ import {
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
+import { resolveHandoffEntityAction } from './handoff-board.helpers';
 
 type HandoffItem = {
   id: string;
@@ -177,6 +179,7 @@ export function HandoffBoard() {
         {sortedItems.map((item) => {
           const isRead = userId ? item.read_by.includes(userId) : false;
           const config = PRIORITY_CONFIG[item.priority] ?? PRIORITY_CONFIG.normal;
+          const entityAction = resolveHandoffEntityAction(item);
 
           return (
             <Card
@@ -207,6 +210,15 @@ export function HandoffBoard() {
                     <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
                       {item.content}
                     </p>
+                    {entityAction && (
+                      <Link
+                        href={entityAction.href}
+                        className="inline-flex min-h-[32px] items-center gap-1 text-xs font-medium text-primary hover:underline"
+                      >
+                        {entityAction.label}
+                        <ArrowRight className="size-3" aria-hidden="true" />
+                      </Link>
+                    )}
                   </div>
                   <div className="shrink-0">
                     {isRead ? (

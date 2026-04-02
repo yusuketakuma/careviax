@@ -1,7 +1,9 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
-import Link from 'next/link';
-import { ChevronLeft } from 'lucide-react';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { getMedicationSetFullShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
+import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { Loading } from '@/components/ui/loading';
 import { MedicationSetFullContent } from './medication-set-full-content';
 
@@ -9,24 +11,33 @@ export const metadata: Metadata = {
   title: 'セット計画（詳細） — CareViaX',
 };
 
-export default function MedicationSetFullPage() {
+type MedicationSetFullPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+function readString(value: string | string[] | undefined) {
+  return typeof value === 'string' ? value : null;
+}
+
+export default async function MedicationSetFullPage({
+  searchParams,
+}: MedicationSetFullPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const planId = readString(resolvedSearchParams?.plan_id);
+
   return (
     <div className="p-6">
-      <div className="mb-6">
-        <Link
-          href="/medication-sets"
-          className="mb-4 inline-flex h-7 items-center gap-1 rounded-lg px-2.5 text-[0.8rem] font-medium text-foreground hover:bg-muted"
-        >
-          <ChevronLeft className="size-3.5" aria-hidden="true" />
-          セット管理へ戻る
-        </Link>
-        <h1 className="mt-2 text-2xl font-bold tracking-tight text-foreground">
-          セット計画（詳細）
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          セット方式の選択・スロットグリッド確認・持参パック生成
-        </p>
+      <div className="mb-4">
+        <WorkflowBackLink href="/medication-sets" label="セット管理へ戻る" />
       </div>
+
+      <WorkflowPageHeader
+        title="セット計画（詳細）"
+        description="セット方式、スロットグリッド、持参パック生成の確認面です。"
+        className="mb-6"
+      >
+        <PageShortcutLinks links={getMedicationSetFullShortcutLinks(planId)} />
+      </WorkflowPageHeader>
 
       <Suspense fallback={<Loading />}>
         <MedicationSetFullContent />

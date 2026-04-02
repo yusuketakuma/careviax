@@ -1,17 +1,21 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { QrCode, ArrowRight } from 'lucide-react';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { useKeyboardShortcuts, type ShortcutDefinition } from '@/components/features/keyboard/use-keyboard-shortcuts';
+import { cn } from '@/lib/utils';
 
 type QrDraftMedication = {
   name: string;
@@ -97,18 +101,14 @@ const columns: ColumnDef<QrDraftRow>[] = [
     id: 'actions',
     header: '操作',
     cell: ({ row }) => (
-      <Button
-        variant="ghost"
-        size="sm"
-        className="gap-1 text-primary"
-        onClick={(e) => {
-          e.stopPropagation();
-          window.location.href = `/prescriptions/qr-drafts/${row.original.id}`;
-        }}
+      <Link
+        href={`/prescriptions/qr-drafts/${row.original.id}`}
+        className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'gap-1 text-primary')}
+        onClick={(event) => event.stopPropagation()}
       >
         確認
         <ArrowRight className="size-3.5" aria-hidden="true" />
-      </Button>
+      </Link>
     ),
   },
 ];
@@ -179,15 +179,22 @@ function QrDraftList() {
 export default function QrDraftsPage() {
   return (
     <div className="p-6">
-      <div className="mb-6 flex items-center gap-3">
-        <QrCode className="size-6 text-muted-foreground" aria-hidden="true" />
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">QRスキャン下書き</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            スタッフがスキャンしたQR処方箋の下書き一覧です
-          </p>
-        </div>
-      </div>
+      <WorkflowPageHeader
+        title="QRスキャン下書き"
+        description="スタッフがスキャンしたQR処方箋の下書き一覧です"
+        action={{
+          href: '/qr-scan',
+          label: 'QRスキャンへ',
+          icon: <QrCode className="size-4" aria-hidden="true" />,
+        }}
+      >
+        <PageShortcutLinks
+          links={[
+            { href: '/prescriptions', label: '処方受付' },
+            { href: '/workflow', label: 'ワークフロー' },
+          ]}
+        />
+      </WorkflowPageHeader>
 
       <QrDraftList />
     </div>

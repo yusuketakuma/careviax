@@ -5,6 +5,7 @@ import { ScheduleDayView } from './day-view';
 import { CalendarView } from './calendar-view';
 import { ScheduleViewToggle } from './schedule-view-toggle';
 import { Loading } from '@/components/ui/loading';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 
 export const metadata: Metadata = {
@@ -33,7 +34,16 @@ export default async function SchedulesPage({ searchParams }: SchedulesPageProps
           icon: <CalendarPlus className="size-4" aria-hidden="true" />,
         }}
       >
-        <ScheduleViewToggle activeView={activeView} />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <PageShortcutLinks
+            links={[
+              { href: '/schedules/proposals', label: '提案一覧' },
+              { href: '/communications/requests', label: '依頼・照会' },
+              { href: '/workflow', label: 'ワークフロー' },
+            ]}
+          />
+          <ScheduleViewToggle activeView={activeView} />
+        </div>
       </WorkflowPageHeader>
 
       <Suspense fallback={<Loading />}>

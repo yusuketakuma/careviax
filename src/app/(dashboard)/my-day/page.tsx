@@ -1,4 +1,8 @@
 import type { Metadata } from 'next';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { getMyDayShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
+import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { MyDayContent } from './my-day-content';
 
 export const metadata: Metadata = {
@@ -7,12 +11,16 @@ export const metadata: Metadata = {
 
 export default function MyDayPage() {
   return (
-    <div>
+    <div className="space-y-4">
       <div className="border-b border-border px-6 py-4">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">My Day</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          今日の担当訪問・未完了タスク・未解決課題をまとめて確認
-        </p>
+        <WorkflowBackLink href="/dashboard" label="ホームへ戻る" className="mb-3" />
+        <WorkflowPageHeader
+          title="My Day"
+          description="今日の担当訪問・未完了タスク・未解決課題をまとめて確認"
+          className="mb-0"
+        >
+          <PageShortcutLinks links={getMyDayShortcutLinks()} />
+        </WorkflowPageHeader>
       </div>
       <MyDayContent />
     </div>

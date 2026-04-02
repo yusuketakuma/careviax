@@ -2,6 +2,8 @@ import { Metadata } from 'next';
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { Loading } from '@/components/ui/loading';
 import { BillingCandidatesContent } from './billing-candidates-content';
 
@@ -20,12 +22,19 @@ export default function BillingCandidatesPage() {
           <ChevronLeft className="size-3.5" aria-hidden="true" />
           請求ダッシュボードへ戻る
         </Link>
-        <h1 className="mt-2 text-2xl font-bold tracking-tight text-foreground">
-          月次請求候補
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          算定候補の確認・バリデーション・CSV出力
-        </p>
+        <WorkflowPageHeader
+          title="月次請求候補"
+          description="算定候補の確認・バリデーション・CSV出力"
+          className="mb-0 mt-2"
+        >
+          <PageShortcutLinks
+            links={[
+              { href: '/billing', label: '請求ダッシュボード' },
+              { href: '/admin/billing-rules', label: '請求ルール' },
+              { href: '/workflow', label: 'ワークフロー' },
+            ]}
+          />
+        </WorkflowPageHeader>
       </div>
 
       <Suspense fallback={<Loading />}>

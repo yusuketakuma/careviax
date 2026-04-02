@@ -4,7 +4,10 @@ import { useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, CheckCircle2, ChevronLeft, Trash2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Trash2 } from 'lucide-react';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -35,6 +38,10 @@ import {
 } from '@/components/ui/alert-dialog';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { cn } from '@/lib/utils';
+import {
+  buildQrDraftShortcutLinks,
+  QR_DRAFT_CONFIRM_SUCCESS_HREF,
+} from './page.helpers';
 
 // ── Types ──
 
@@ -296,9 +303,9 @@ export default function QrDraftReviewPage() {
       }
       return res.json() as Promise<{ intake: { id: string }; cycle: { id: string } }>;
     },
-    onSuccess: (result) => {
+    onSuccess: () => {
       toast.success('処方受付を確定しました');
-      router.push(`/medication-cycles/${result.cycle.id}`);
+      router.push(QR_DRAFT_CONFIRM_SUCCESS_HREF);
     },
     onError: (err: Error) => {
       toast.error('確定エラー', { description: err.message });
@@ -382,31 +389,26 @@ export default function QrDraftReviewPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-6">
       {/* Page header */}
-      <div className="flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => router.push('/prescriptions/qr-drafts')}
-          className="gap-1.5"
-        >
-          <ChevronLeft className="size-4" />
-          一覧
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-lg font-semibold">QR読取下書き確認</h1>
-          <p className="text-xs text-muted-foreground">
-            スキャン日時:{' '}
-            {format(new Date(draft.created_at), 'yyyy年M月d日 HH:mm', { locale: ja })}
-            　セッション: {draft.session_id.slice(0, 8)}
-          </p>
+      <div className="space-y-3">
+        <WorkflowBackLink href="/prescriptions/qr-drafts" label="QR下書き一覧へ戻る" />
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <WorkflowPageHeader
+              title="QR読取下書き確認"
+              description={`スキャン日時: ${format(new Date(draft.created_at), 'yyyy年M月d日 HH:mm', { locale: ja })} / セッション: ${draft.session_id.slice(0, 8)}`}
+              className="mb-0"
+            />
+          </div>
+          {hasParseErrors ? (
+            <Badge variant="destructive" className="gap-1">
+              <AlertTriangle className="size-3" />
+              解析エラーあり
+            </Badge>
+          ) : null}
         </div>
-        {hasParseErrors && (
-          <Badge variant="destructive" className="gap-1">
-            <AlertTriangle className="size-3" />
-            解析エラーあり
-          </Badge>
-        )}
       </div>
+
+      <PageShortcutLinks links={buildQrDraftShortcutLinks(draft.patient_id)} />
 
       {/* Parse errors banner */}
       {hasParseErrors && (

@@ -1,5 +1,7 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
+import { getAdminBusinessHolidaysShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Loading } from '@/components/ui/loading';
 import { BusinessHolidaysContent } from './business-holidays-content';
 
@@ -10,12 +12,11 @@ export const metadata: Metadata = {
 export default function BusinessHolidaysPage() {
   return (
     <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">休日カレンダー</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          薬局の休業日・祝日・イベント日を管理します。
-        </p>
-      </div>
+      <AdminPageHeader
+        title="休日カレンダー"
+        description="薬局の休業日・祝日・イベント日を管理します。"
+        shortcuts={getAdminBusinessHolidaysShortcutLinks()}
+      />
 
       <Suspense fallback={<Loading />}>
         <BusinessHolidaysContent />

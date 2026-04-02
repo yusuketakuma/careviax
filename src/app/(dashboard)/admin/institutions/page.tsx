@@ -1,5 +1,7 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
+import { getAdminInstitutionsShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Loading } from '@/components/ui/loading';
 import { InstitutionsContent } from './institutions-content';
 
@@ -10,12 +12,11 @@ export const metadata: Metadata = {
 export default function InstitutionsPage() {
   return (
     <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">医療機関マスター</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          処方元医療機関を管理し、処方受付・疑義照会・報告書送付へ横展開します。
-        </p>
-      </div>
+      <AdminPageHeader
+        title="医療機関マスター"
+        description="処方元医療機関を管理し、処方受付・疑義照会・報告書送付へ横展開します。"
+        shortcuts={getAdminInstitutionsShortcutLinks()}
+      />
 
       <Suspense fallback={<Loading />}>
         <InstitutionsContent />

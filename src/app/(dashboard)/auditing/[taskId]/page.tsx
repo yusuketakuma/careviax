@@ -1,6 +1,8 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { AuditDetail } from './audit-detail';
 
 export const metadata: Metadata = {
@@ -26,12 +28,18 @@ export default async function AuditDetailPage({
         </Link>
       </div>
 
-      <div className="mb-4">
-        <h1 className="text-xl font-bold tracking-tight text-foreground">調剤鑑査</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          処方原本・構造化明細・調剤実績を比較して鑑査を実施してください
-        </p>
-      </div>
+      <WorkflowPageHeader
+        title="調剤鑑査"
+        description="処方原本・構造化明細・調剤実績を比較して鑑査を実施してください"
+        className="mb-4"
+      >
+        <PageShortcutLinks
+          links={[
+            { href: `/dispensing/${taskId}`, label: '調剤入力' },
+            { href: '/workflow', label: 'ワークフロー' },
+          ]}
+        />
+      </WorkflowPageHeader>
 
       <AuditDetail taskId={taskId} />
     </div>

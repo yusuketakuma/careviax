@@ -4,6 +4,10 @@ import Link from 'next/link';
 import { ChevronLeft, FileText, Printer } from 'lucide-react';
 import { Loading } from '@/components/ui/loading';
 import { buttonVariants } from '@/components/ui/button';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { getPatientMedicationShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
+import { InterventionPanel } from '@/components/features/medications/intervention-panel';
 import { PatientVisitBriefSection } from '@/components/visit-brief/patient-visit-brief-section';
 import { MedicationsContent } from './medications-content';
 
@@ -28,10 +32,13 @@ export default async function MedicationsPage({
           <ChevronLeft className="size-3.5" aria-hidden="true" />
           患者詳細へ戻る
         </Link>
-        <h1 className="mt-2 text-2xl font-bold tracking-tight text-foreground">服薬管理</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          服薬中薬剤・残薬記録を管理します
-        </p>
+        <WorkflowPageHeader
+          title="服薬管理"
+          description="服薬中薬剤・残薬記録を管理します"
+          className="mb-0 mt-2"
+        >
+          <PageShortcutLinks links={getPatientMedicationShortcutLinks(id)} />
+        </WorkflowPageHeader>
         <div className="mt-4 flex gap-2 print:hidden">
           <Link
             href={`/api/patients/${id}/medications/pdf`}
@@ -63,6 +70,12 @@ export default async function MedicationsPage({
 
         <Suspense fallback={<Loading />}>
           <MedicationsContent patientId={id} />
+        </Suspense>
+
+        <Suspense fallback={<Loading />}>
+          <section className="rounded-lg border bg-card p-4">
+            <InterventionPanel patientId={id} />
+          </section>
         </Suspense>
       </div>
     </div>

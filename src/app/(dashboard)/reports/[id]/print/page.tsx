@@ -3,6 +3,9 @@
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { getReportPrintShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
+import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
 import { PrintLayout } from '@/components/features/reports/print-layout';
 import { Loading } from '@/components/ui/loading';
 import type {
@@ -469,15 +472,18 @@ export default function ReportPrintPage() {
 
   return (
     <PrintLayout pharmacyName={data.pharmacy_name}>
-      {/* Print button — hidden during actual print */}
-      <div className="mb-4 flex justify-end print:hidden">
-        <button
-          type="button"
-          onClick={() => window.print()}
-          className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-        >
-          印刷
-        </button>
+      <div className="mb-4 space-y-3 print:hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <WorkflowBackLink href={`/reports/${reportId}`} label="報告書詳細へ戻る" />
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          >
+            印刷
+          </button>
+        </div>
+        <PageShortcutLinks links={getReportPrintShortcutLinks(reportId)} />
       </div>
 
       {data.report_type === 'physician_report' ? (

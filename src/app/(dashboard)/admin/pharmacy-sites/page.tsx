@@ -1,5 +1,7 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
+import { getAdminPharmacySitesShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Loading } from '@/components/ui/loading';
 import { PharmacySitesContent } from './pharmacy-sites-content';
 
@@ -10,12 +12,11 @@ export const metadata: Metadata = {
 export default function PharmacySitesPage() {
   return (
     <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">薬局情報管理</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          薬局の基本情報・届出フラグ・保険算定設定を管理します。
-        </p>
-      </div>
+      <AdminPageHeader
+        title="薬局情報管理"
+        description="薬局の基本情報・届出フラグ・保険算定設定を管理します。"
+        shortcuts={getAdminPharmacySitesShortcutLinks()}
+      />
 
       <Suspense fallback={<Loading />}>
         <PharmacySitesContent />

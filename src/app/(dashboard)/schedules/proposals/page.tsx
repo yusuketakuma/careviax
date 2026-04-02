@@ -1,4 +1,8 @@
 import { Metadata } from 'next';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { getScheduleProposalShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
+import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { ScheduleProposalsContent } from './schedule-proposals-content';
 import { ScheduleWeeklyOptimizer } from './schedule-weekly-optimizer';
 import { WorkflowPhasePanel } from '@/components/features/workflow/workflow-phase-panel';
@@ -22,13 +26,15 @@ export default async function ScheduleProposalsPage({
 
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          訪問候補ダッシュボード
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          自動提案、患者連絡、再提案、確定までをこの画面で処理します。
-        </p>
+      <div className="space-y-4">
+        <WorkflowBackLink href="/schedules" label="スケジュールへ戻る" />
+        <WorkflowPageHeader
+          title="訪問候補ダッシュボード"
+          description="自動提案、患者連絡、再提案、確定までをこの画面で処理します。"
+          className="mb-0"
+        >
+          <PageShortcutLinks links={getScheduleProposalShortcutLinks()} />
+        </WorkflowPageHeader>
       </div>
 
       <WorkflowPhasePanel

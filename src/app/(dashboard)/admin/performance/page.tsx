@@ -15,6 +15,8 @@ import {
   TrendingUp,
   Users,
 } from 'lucide-react';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
+import { getAdminPerformanceShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import {
   Card,
   CardContent,
@@ -295,6 +297,11 @@ export default function PerformancePage() {
 
   return (
     <div className="space-y-6">
+      <AdminPageHeader
+        title="運用パフォーマンス"
+        description="訪問制御、変更負荷、ルート確定率、API 遅延の主要運用指標を継続監視します。"
+        shortcuts={getAdminPerformanceShortcutLinks()}
+      />
       <Card className="overflow-hidden border-none bg-[linear-gradient(135deg,rgba(248,250,252,1),rgba(236,253,245,1))] ring-1 ring-slate-200">
         <CardContent className="grid gap-5 px-5 py-5 lg:grid-cols-[1.1fr_0.9fr]">
           <div>

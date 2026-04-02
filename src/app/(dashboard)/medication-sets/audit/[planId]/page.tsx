@@ -2,6 +2,8 @@ import { Metadata } from 'next';
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { Loading } from '@/components/ui/loading';
 import { SetAuditContent } from './set-audit-content';
 
@@ -26,12 +28,18 @@ export default async function SetAuditPage({
           <ChevronLeft className="size-3.5" aria-hidden="true" />
           セット管理へ戻る
         </Link>
-        <h1 className="mt-2 text-2xl font-bold tracking-tight text-foreground">
-          セット鑑査
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          グリッド確認・部分承認・差戻し
-        </p>
+        <WorkflowPageHeader
+          title="セット鑑査"
+          description="グリッド確認・部分承認・差戻し"
+          className="mb-0 mt-2"
+        >
+          <PageShortcutLinks
+            links={[
+              { href: `/medication-sets/full?plan_id=${planId}`, label: '計画詳細' },
+              { href: '/workflow', label: 'ワークフロー' },
+            ]}
+          />
+        </WorkflowPageHeader>
       </div>
 
       <Suspense fallback={<Loading />}>

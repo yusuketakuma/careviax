@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
+import { getAdminAlertRulesShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -147,12 +149,11 @@ export default function AlertRulesPage() {
 
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">処方安全アラートルール</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          相互作用、重複、高齢者 PIM などのルールを ON/OFF と条件 JSON で管理します。
-        </p>
-      </div>
+      <AdminPageHeader
+        title="処方安全アラートルール"
+        description="相互作用、重複、高齢者 PIM などのルールを ON/OFF と条件 JSON で管理します。"
+        shortcuts={getAdminAlertRulesShortcutLinks()}
+      />
 
       <div className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
         <Card>

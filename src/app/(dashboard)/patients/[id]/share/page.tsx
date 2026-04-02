@@ -2,6 +2,9 @@ import { Metadata } from 'next';
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { getPatientShareShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { Loading } from '@/components/ui/loading';
 import { ExternalShareContent } from './external-share-content';
 
@@ -26,12 +29,13 @@ export default async function ExternalSharePage({
           <ChevronLeft className="size-3.5" aria-hidden="true" />
           患者詳細へ戻る
         </Link>
-        <h1 className="mt-2 text-2xl font-bold tracking-tight text-foreground">
-          外部共有
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          医療情報の一時共有リンクを発行します（JWT + OTP）
-        </p>
+        <WorkflowPageHeader
+          title="外部共有"
+          description="医療情報の一時共有リンクを発行します（JWT + OTP）"
+          className="mb-0 mt-2"
+        >
+          <PageShortcutLinks links={getPatientShareShortcutLinks(id)} />
+        </WorkflowPageHeader>
       </div>
 
       <Suspense fallback={<Loading />}>

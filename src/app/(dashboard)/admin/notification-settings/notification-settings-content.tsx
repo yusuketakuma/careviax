@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bell, BellRing, Loader2, MessageSquareText, ShieldAlert, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
+import { getAdminNotificationSettingsShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   getBrowserNotificationPreference,
@@ -531,14 +533,11 @@ export function NotificationSettingsContent() {
 
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          通知設定
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          イベントごとのアプリ内通知、ブラウザ通知、エスカレーション条件を管理します。
-        </p>
-      </div>
+      <AdminPageHeader
+        title="通知設定"
+        description="イベントごとのアプリ内通知、ブラウザ通知、エスカレーション条件を管理します。"
+        shortcuts={getAdminNotificationSettingsShortcutLinks()}
+      />
 
       <Alert>
         <ShieldAlert className="size-4" aria-hidden="true" />

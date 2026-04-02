@@ -1,5 +1,7 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { Loading } from '@/components/ui/loading';
 import { NotificationsContent } from './notifications-content';
 
@@ -10,12 +12,18 @@ export const metadata: Metadata = {
 export default function NotificationsPage() {
   return (
     <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">通知</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          未読・既読の通知一覧
-        </p>
-      </div>
+      <WorkflowPageHeader
+        title="通知"
+        description="未読・既読の通知一覧"
+      >
+        <PageShortcutLinks
+          links={[
+            { href: '/tasks', label: 'タスク' },
+            { href: '/admin/notification-settings', label: '通知設定' },
+            { href: '/external', label: '外部連携' },
+          ]}
+        />
+      </WorkflowPageHeader>
 
       <Suspense fallback={<Loading />}>
         <NotificationsContent />

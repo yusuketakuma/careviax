@@ -1,6 +1,8 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { DispenseForm } from './dispense-form';
 
 export const metadata: Metadata = {
@@ -26,12 +28,18 @@ export default async function DispenseTaskPage({
         </Link>
       </div>
 
-      <div className="mb-4">
-        <h1 className="text-xl font-bold tracking-tight text-foreground">調剤入力</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          処方明細を確認して調剤実績を入力してください
-        </p>
-      </div>
+      <WorkflowPageHeader
+        title="調剤入力"
+        description="処方明細を確認して調剤実績を入力してください"
+        className="mb-4"
+      >
+        <PageShortcutLinks
+          links={[
+            { href: `/dispensing/${taskId}/confirm`, label: '確認画面' },
+            { href: '/auditing', label: '鑑査一覧' },
+          ]}
+        />
+      </WorkflowPageHeader>
 
       <div className="mx-auto max-w-3xl">
         <DispenseForm taskId={taskId} />

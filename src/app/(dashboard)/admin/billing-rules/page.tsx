@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
+import { getAdminBillingRulesShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { toast } from 'sonner';
 import { type ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '@/components/ui/data-table';
@@ -479,19 +481,22 @@ export default function BillingRulesPage() {
   ];
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            算定ルール設定
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            薬剤師居宅療養管理指導と在宅患者訪問薬剤管理指導の算定 SSOT を管理します
-          </p>
-          <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+    <div className="space-y-6 p-6">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0 flex-1">
+          <AdminPageHeader
+            title="算定ルール設定"
+            description="薬剤師居宅療養管理指導と在宅患者訪問薬剤管理指導の算定 SSOT を管理します。"
+            shortcuts={getAdminBillingRulesShortcutLinks()}
+          />
+          <div className="-mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <Badge variant="secondary">公式 {data?.summary.ssot_rule_count ?? 0}</Badge>
             <Badge variant="outline">任意 {data?.summary.custom_rule_count ?? 0}</Badge>
-            {data?.source && <span>{data.source.source_of_truth} / {data.source.sync_direction ?? 'push'}</span>}
+            {data?.source ? (
+              <span>
+                {data.source.source_of_truth} / {data.source.sync_direction ?? 'push'}
+              </span>
+            ) : null}
           </div>
         </div>
         <div className="flex items-center gap-2">

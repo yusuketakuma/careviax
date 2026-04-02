@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Card,
@@ -468,6 +469,11 @@ export default function MfaSetupPage() {
           )}
         </CardContent>
       </Card>
+      <p className="mt-4 text-center text-sm text-muted-foreground">
+        <Link href="/login" className="text-primary hover:underline">
+          ログイン画面に戻る
+        </Link>
+      </p>
     </div>
   );
 }

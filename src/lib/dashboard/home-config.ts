@@ -143,12 +143,37 @@ export const DASHBOARD_TAB_FALLBACK_ACTIONS: Record<
   },
 };
 
-export const DASHBOARD_WORKFLOW_LINKS = [
+export type DashboardNavigationLink = {
+  key: string;
+  title: string;
+  description: string;
+  href: string;
+};
+
+export const DASHBOARD_WORKFLOW_LINKS: readonly DashboardNavigationLink[] = [
+  {
+    key: 'referrals',
+    title: '紹介受付',
+    description: '患者紹介からケース起票までの受け皿を開きます。',
+    href: '/referrals/new',
+  },
   {
     key: 'prescriptions',
     title: '処方登録',
     description: '新規処方受付と施設単位の一括取り込みを開始します。',
     href: '/prescriptions',
+  },
+  {
+    key: 'qr_drafts',
+    title: 'QR下書き',
+    description: '読み取り済み QR 下書きを確認し、受付入力へ引き継ぎます。',
+    href: '/prescriptions/qr-drafts',
+  },
+  {
+    key: 'qr_scan',
+    title: 'QRスキャン',
+    description: '処方箋 QR を読み取り、その場で受付下書きを作成します。',
+    href: '/qr-scan',
   },
   {
     key: 'dispensing',
@@ -192,4 +217,103 @@ export const DASHBOARD_WORKFLOW_LINKS = [
     description: 'カンファレンス記録と連携アクションを追跡します。',
     href: '/conferences',
   },
+] as const;
+
+export const DASHBOARD_WORKBENCH_LINKS: readonly DashboardNavigationLink[] = [
+  {
+    key: 'my_day',
+    title: 'My Day',
+    description: '担当訪問、未完了タスク、緊急アクションを個人単位で見ます。',
+    href: '/my-day',
+  },
+  {
+    key: 'workflow',
+    title: '工程ダッシュボード',
+    description: '工程別集計、例外、連携滞留を横断で確認します。',
+    href: '/workflow',
+  },
+  {
+    key: 'tasks',
+    title: 'タスク一覧',
+    description: '運用タスクをまとめて棚卸しし、一括完了や再割当へ進みます。',
+    href: '/tasks',
+  },
+  {
+    key: 'billing',
+    title: '請求支援',
+    description: '請求候補、締めブロック、算定根拠の不足を確認します。',
+    href: '/billing',
+  },
+  {
+    key: 'billing_candidates',
+    title: '請求候補',
+    description: '締め前に確認が必要な請求候補へ直接移動します。',
+    href: '/billing/candidates',
+  },
+  {
+    key: 'schedule_proposals',
+    title: '提案一覧',
+    description: '訪問スケジュール提案と差戻し対応をまとめて確認します。',
+    href: '/schedules/proposals',
+  },
+] as const;
+
+export const DASHBOARD_COORDINATION_LINKS: readonly DashboardNavigationLink[] = [
+  {
+    key: 'notifications',
+    title: '通知',
+    description: '未読通知、緊急アラート、システム連絡をまとめて確認します。',
+    href: '/notifications',
+  },
+  {
+    key: 'external',
+    title: '外部連携',
+    description: '自己申告、共有リンク、地域フォローの対応状況を見ます。',
+    href: '/external',
+  },
+  {
+    key: 'communications',
+    title: '依頼・照会',
+    description: '返信待ち、照会対応、外部との連携依頼を追跡します。',
+    href: '/communications/requests',
+  },
+  {
+    key: 'handoff',
+    title: '申し送り',
+    description: 'シフト交代の引き継ぎ事項と確認漏れを整理します。',
+    href: '/handoff',
+  },
+] as const;
+
+export const DASHBOARD_ADMIN_LINKS: readonly DashboardNavigationLink[] = [
+  {
+    key: 'admin_dashboard',
+    title: '管理ダッシュボード',
+    description: '運営状況、滞留、例外残件を管理者視点で横断確認します。',
+    href: '/admin',
+  },
+  {
+    key: 'data_explorer',
+    title: 'データ探索',
+    description: '運用データを断面別に確認し、監査や調査へ進みます。',
+    href: '/admin/data-explorer',
+  },
+  {
+    key: 'jobs',
+    title: 'ジョブ監視',
+    description: 'バッチや配信処理の状態を追跡し、手動実行へ進みます。',
+    href: '/admin/jobs',
+  },
+  {
+    key: 'metrics',
+    title: '経営指標',
+    description: '月次の進捗や送達状況を指標ベースで確認します。',
+    href: '/admin/metrics',
+  },
+] as const;
+
+export const DASHBOARD_HEADER_SHORTCUTS = [
+  { href: '/settings', label: 'ユーザー設定' },
+  { href: '/qr-scan', label: 'QRスキャン' },
+  { href: '/admin/notification-settings', label: '通知設定' },
 ] as const;

@@ -13,6 +13,8 @@ import {
   Route,
   Sparkles,
 } from 'lucide-react';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
+import { getAdminRealtimeShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import {
   Card,
   CardContent,
@@ -196,6 +198,11 @@ export default function RealtimePage() {
 
   return (
     <div className="space-y-6">
+      <AdminPageHeader
+        title="リアルタイム運用監視"
+        description="通知ストリームとワークフロー制御を同じ面で追跡し、遅延や割込影響を即時確認します。"
+        shortcuts={getAdminRealtimeShortcutLinks()}
+      />
       <Card className="overflow-hidden border-none bg-[linear-gradient(135deg,rgba(15,23,42,1),rgba(30,41,59,1))] text-white shadow-lg">
         <CardContent className="grid gap-5 px-5 py-5 lg:grid-cols-[1.1fr_0.9fr]">
           <div>

@@ -6,7 +6,10 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { ChevronLeft, Printer } from 'lucide-react';
+import { Printer } from 'lucide-react';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { getPatientVisitRecordPrintShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
+import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
 import { PrintLayout } from '@/components/features/reports/print-layout';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Loading } from '@/components/ui/loading';
@@ -136,18 +139,15 @@ export default function PatientVisitRecordsPrintPage() {
 
   return (
     <div className="mx-auto max-w-4xl p-6 print:p-0">
-      <div className="mb-4 flex items-center justify-between print:hidden">
-        <Link
-          href={`/patients/${patientId}`}
-          className={buttonVariants({ variant: 'outline', size: 'sm' })}
-        >
-          <ChevronLeft className="mr-1.5 size-4" aria-hidden="true" />
-          戻る
-        </Link>
-        <Button size="sm" onClick={() => window.print()}>
-          <Printer className="mr-1.5 size-4" aria-hidden="true" />
-          印刷
-        </Button>
+      <div className="mb-4 space-y-3 print:hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <WorkflowBackLink href={`/patients/${patientId}`} label="患者詳細へ戻る" />
+          <Button size="sm" onClick={() => window.print()}>
+            <Printer className="mr-1.5 size-4" aria-hidden="true" />
+            印刷
+          </Button>
+        </div>
+        <PageShortcutLinks links={getPatientVisitRecordPrintShortcutLinks(patientId)} />
       </div>
 
       <PrintLayout pharmacyName="CareViaX薬局">

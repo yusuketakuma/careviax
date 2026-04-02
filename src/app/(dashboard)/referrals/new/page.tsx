@@ -1,6 +1,9 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { getReferralShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { ReferralForm } from './referral-form';
 
 export const metadata: Metadata = {
@@ -18,10 +21,13 @@ export default function NewReferralPage() {
           <ChevronLeft className="size-3.5" aria-hidden="true" />
           患者一覧へ戻る
         </Link>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">紹介受付</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          新規患者の紹介情報と患者基本情報をまとめて登録します
-        </p>
+        <WorkflowPageHeader
+          title="紹介受付"
+          description="新規患者の紹介情報と患者基本情報をまとめて登録します"
+          className="mb-0 mt-2"
+        >
+          <PageShortcutLinks links={getReferralShortcutLinks()} />
+        </WorkflowPageHeader>
       </div>
 
       <div className="mx-auto max-w-2xl">

@@ -1,5 +1,7 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
+import { getAdminStaffShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Loading } from '@/components/ui/loading';
 import { UsersContent } from '@/app/(dashboard)/admin/users/users-content';
 import { StaffBulkActions } from './staff-bulk-actions';
@@ -12,14 +14,11 @@ export const metadata: Metadata = {
 export default function StaffPage() {
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          スタッフ運用管理
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          採用、配置、勤怠負荷、一括取込を 1 画面で扱います。
-        </p>
-      </div>
+      <AdminPageHeader
+        title="スタッフ運用管理"
+        description="採用、配置、勤怠負荷、一括取込を 1 画面で扱います。"
+        shortcuts={getAdminStaffShortcutLinks()}
+      />
 
       <Suspense fallback={<Loading />}>
         <StaffKpiPanel />

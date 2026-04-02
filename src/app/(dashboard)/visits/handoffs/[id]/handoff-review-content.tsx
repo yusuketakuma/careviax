@@ -1,8 +1,10 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft } from 'lucide-react';
-import Link from 'next/link';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { getVisitHandoffShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
+import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { HandoffConfirmPanel } from '@/components/features/visits/handoff-confirm-panel';
 import { ErrorState } from '@/components/ui/error-state';
 import { Loading } from '@/components/ui/loading';
@@ -30,14 +32,16 @@ export function HandoffReviewContent({ visitRecordId }: { visitRecordId: string 
   return (
     <div className="space-y-4 p-4 md:p-6">
       <div>
-        <Link
-          href="/tasks"
-          className="inline-flex h-7 items-center gap-1 rounded-lg px-2.5 text-[0.8rem] font-medium text-foreground hover:bg-muted"
-        >
-          <ChevronLeft className="size-3.5" aria-hidden="true" />
-          タスク一覧へ戻る
-        </Link>
+        <WorkflowBackLink href="/handoff" label="申し送り一覧へ戻る" />
       </div>
+
+      <WorkflowPageHeader
+        title="申し送り確認"
+        description="訪問後の申し送り内容を確認し、次の対応面へつなげます。"
+        className="mb-0"
+      >
+        <PageShortcutLinks links={getVisitHandoffShortcutLinks(visitRecordId)} />
+      </WorkflowPageHeader>
 
       {isBootstrappingOrg || isLoading ? (
         <Loading />
@@ -56,7 +60,7 @@ export function HandoffReviewContent({ visitRecordId }: { visitRecordId: string 
           variant="not-found"
           title="申し送りデータが見つかりません"
           description="AI 抽出または確認対象データが未作成の可能性があります。"
-          action={{ label: 'タスク一覧へ戻る', href: '/tasks' }}
+          action={{ label: '申し送り一覧へ戻る', href: '/handoff' }}
         />
       )}
     </div>

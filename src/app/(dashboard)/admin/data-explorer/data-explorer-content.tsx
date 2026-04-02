@@ -2,8 +2,10 @@
 
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Database, RefreshCcw, Save, Search } from 'lucide-react';
+import { RefreshCcw, Save, Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
+import { getAdminDataExplorerShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import {
   COVERAGE_CATEGORY_LABELS,
   type CoverageCategory,
@@ -212,16 +214,11 @@ export function DataExplorerContent() {
 
   return (
     <div className="space-y-6 p-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-foreground">
-          <Database className="size-6 text-primary" aria-hidden="true" />
-          データ探索
-        </h1>
-        <p className="max-w-3xl text-sm text-muted-foreground">
-          監査ドキュメントで未露出だった backend graph を含め、全テーブルを一覧・閲覧・更新します。
-          seed で投入した代表データを画面から直接検証・補正できます。
-        </p>
-      </div>
+      <AdminPageHeader
+        title="データ探索"
+        description="監査ドキュメントで未露出だった backend graph を含め、全テーブルを一覧・閲覧・更新します。seed で投入した代表データを画面から直接検証・補正できます。"
+        shortcuts={getAdminDataExplorerShortcutLinks()}
+      />
 
       <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)_minmax(0,1.1fr)]">
         <Card className="xl:h-[calc(100vh-13rem)] xl:overflow-hidden">

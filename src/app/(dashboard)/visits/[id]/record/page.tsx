@@ -1,6 +1,8 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { VisitRecordForm } from './visit-record-form';
 
 export const metadata: Metadata = {
@@ -26,12 +28,18 @@ export default async function VisitRecordPage({
         </Link>
       </div>
 
-      <div className="mb-4">
-        <h1 className="text-xl font-bold tracking-tight text-foreground">訪問記録入力</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          SOAP形式で訪問内容を記録します
-        </p>
-      </div>
+      <WorkflowPageHeader
+        title="訪問記録入力"
+        description="SOAP形式で訪問内容を記録します"
+        className="mb-4"
+      >
+        <PageShortcutLinks
+          links={[
+            { href: `/visits/${id}`, label: '記録詳細' },
+            { href: '/reports', label: '報告書' },
+          ]}
+        />
+      </WorkflowPageHeader>
 
       <VisitRecordForm id={id} />
     </div>

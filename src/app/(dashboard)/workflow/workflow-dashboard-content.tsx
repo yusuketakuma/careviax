@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
@@ -769,9 +770,12 @@ export function WorkflowDashboardContent() {
                   <LoadPill label="至急" value={bucket.urgent_items} />
                   <LoadPill label="連絡" value={bucket.communication_items} />
                 </div>
-                <a href={bucket.action_href} className="text-xs font-medium text-primary hover:underline">
+                <Link
+                  href={bucket.action_href}
+                  className="text-xs font-medium text-primary hover:underline"
+                >
                   inbox を開く
-                </a>
+                </Link>
               </CardContent>
             </Card>
           ))}
@@ -868,9 +872,12 @@ export function WorkflowDashboardContent() {
                             {draft.target_name ?? draft.target_role} / {draft.request_type}
                           </p>
                         </div>
-                        <a href={draft.action_href} className="text-xs font-medium text-primary hover:underline">
+                        <Link
+                          href={draft.action_href}
+                          className="text-xs font-medium text-primary hover:underline"
+                        >
                           {draft.action_label}
-                        </a>
+                        </Link>
                       </div>
                       <p className="mt-2 text-xs leading-5 text-muted-foreground">{draft.summary}</p>
                       <div className="mt-3 flex justify-end">

@@ -22,13 +22,34 @@ interface AppShellProps {
   children: React.ReactNode;
 }
 
-const NEW_ROUTE_BY_SEGMENT: Record<string, string> = {
-  patients: '/patients/new',
-  prescriptions: '/prescriptions/new',
-  referrals: '/referrals/new',
-  reports: '/reports/new',
-  schedules: '/schedules/new',
+type QuickCreateTarget = {
+  href: string;
+  notice?: string;
 };
+
+const QUICK_CREATE_TARGET_BY_SEGMENT: Record<string, QuickCreateTarget> = {
+  patients: { href: '/patients/new' },
+  prescriptions: { href: '/prescriptions/new' },
+  referrals: { href: '/referrals/new' },
+  reports: {
+    href: '/reports',
+    notice: '報告書は一覧から対象記録を選択して開始します',
+  },
+  schedules: {
+    href: '/schedules#planner',
+    notice: 'スケジュールは一覧画面の新規予定エリアを開きます',
+  },
+};
+
+export function resolveQuickCreateTarget(pathname: string): QuickCreateTarget {
+  const rootSegment = pathname.split('/').filter(Boolean)[0] ?? '';
+  return (
+    QUICK_CREATE_TARGET_BY_SEGMENT[rootSegment] ?? {
+      href: '/patients/new',
+      notice: 'この画面には専用の新規作成先がないため、患者新規登録を開きます',
+    }
+  );
+}
 
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
@@ -107,17 +128,16 @@ export function AppShell({ children }: AppShellProps) {
   }, [setGlobalSearchOpen]);
 
   const handleCommandN = useCallback(() => {
-    const rootSegment = pathname.split('/').filter(Boolean)[0] ?? '';
-    const target = NEW_ROUTE_BY_SEGMENT[rootSegment] ?? '/patients/new';
+    const target = resolveQuickCreateTarget(pathname);
 
-    if (!NEW_ROUTE_BY_SEGMENT[rootSegment]) {
-      toast.info('この画面には専用の新規作成先がないため、患者新規登録を開きます');
+    if (target.notice) {
+      toast.info(target.notice);
     }
 
     setGlobalSearchOpen(false);
     setShortcutHelpOpen(false);
-    if (target !== pathname) {
-      router.push(target);
+    if (target.href !== pathname) {
+      router.push(target.href);
     }
   }, [pathname, router, setGlobalSearchOpen, setShortcutHelpOpen]);
 

@@ -1,5 +1,7 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { Loading } from '@/components/ui/loading';
 import { HandoffBoard } from '@/components/features/handoff/handoff-board';
 
@@ -10,14 +12,17 @@ export const metadata: Metadata = {
 export default function HandoffPage() {
   return (
     <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          申し送りボード
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          シフト交代時の申し送り・引き継ぎ事項
-        </p>
-      </div>
+      <WorkflowPageHeader
+        title="申し送りボード"
+        description="シフト交代時の申し送り・引き継ぎ事項"
+      >
+        <PageShortcutLinks
+          links={[
+            { href: '/tasks', label: 'タスク' },
+            { href: '/visits', label: '訪問' },
+          ]}
+        />
+      </WorkflowPageHeader>
 
       <Suspense fallback={<Loading />}>
         <HandoffBoard />

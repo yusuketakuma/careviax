@@ -12,6 +12,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Loading } from '@/components/ui/loading';
 import { CdsAlertPanel, type CdsAlert } from '@/components/features/cds/alert-panel';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { getDispenseConfirmShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { cn } from '@/lib/utils';
 import { HIGH_RISK_KEYWORDS, CARRY_TYPE_LABELS } from '@/lib/dispensing/constants';
 import { PRIORITY_LABELS } from '@/lib/constants/status-labels';
@@ -269,16 +272,13 @@ export function DispenseConfirmContent() {
         </Link>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            調剤確認チェックリスト
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            全ての必須項目にチェックしてから調剤完了してください
-          </p>
-        </div>
-      </div>
+      <WorkflowPageHeader
+        title="調剤確認チェックリスト"
+        description="全ての必須項目にチェックしてから調剤完了してください"
+        className="mb-4"
+      >
+        <PageShortcutLinks links={getDispenseConfirmShortcutLinks(taskId)} />
+      </WorkflowPageHeader>
 
       <div className="mx-auto max-w-3xl space-y-6">
         {/* Patient / task summary */}

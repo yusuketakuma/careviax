@@ -1,6 +1,8 @@
 import { Metadata } from 'next';
-import Link from 'next/link';
-import { ChevronLeft } from 'lucide-react';
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { getPatientHubShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
+import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { PatientDetailTabs } from './patient-detail-tabs';
 
 export const metadata: Metadata = {
@@ -17,14 +19,16 @@ export default async function PatientDetailPage({
   return (
     <div className="p-6">
       <div className="mb-6">
-        <Link
-          href="/patients"
-          className="mb-4 inline-flex h-7 items-center gap-1 rounded-lg px-2.5 text-[0.8rem] font-medium text-foreground hover:bg-muted"
-        >
-          <ChevronLeft className="size-3.5" aria-hidden="true" />
-          患者一覧へ戻る
-        </Link>
+        <WorkflowBackLink href="/patients" label="患者一覧へ戻る" />
       </div>
+
+      <WorkflowPageHeader
+        title="患者詳細"
+        description="患者の基本情報、ケース進行、服薬と共有状態を横断して確認できます。"
+        className="mb-6"
+      >
+        <PageShortcutLinks links={getPatientHubShortcutLinks(id)} />
+      </WorkflowPageHeader>
 
       <PatientDetailTabs patientId={id} />
     </div>

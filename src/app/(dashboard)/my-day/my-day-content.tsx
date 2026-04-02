@@ -30,6 +30,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { STATUS_ICON_CONFIG } from '@/lib/patient/status-icon';
 import { fetchActions, PRIORITY_STYLES } from '@/app/(dashboard)/dashboard/actions-section';
+import { describeOperationalTask } from '@/lib/tasks/operational-task-presentation';
 import {
   SCHEDULE_STATUS_LABELS,
   statusBadgeClass,
@@ -47,6 +48,8 @@ type Task = {
   status: string;
   due_date: string | null;
   sla_due_at: string | null;
+  related_entity_type: string | null;
+  related_entity_id: string | null;
 };
 
 const STATUS_ICONS: Record<PatientStatusIcon, typeof Star> = {
@@ -295,24 +298,34 @@ export function MyDayContent() {
           ) : pendingTasks.length === 0 ? (
             <p className="py-3 text-center text-sm text-muted-foreground">未完了のタスクはありません</p>
           ) : (
-            pendingTasks.slice(0, 8).map((task) => (
-              <div key={task.id} className="flex items-center justify-between rounded-lg border p-2.5">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{task.title}</p>
-                  <p className="text-xs text-muted-foreground">{task.task_type}</p>
-                </div>
-                <div className="ml-2 flex shrink-0 items-center gap-1">
-                  {(task.priority === 'urgent' || task.priority === 'high') && (
-                    <Badge
-                      variant={task.priority === 'urgent' ? 'destructive' : 'secondary'}
-                      className="text-[10px]"
-                    >
-                      {task.priority === 'urgent' ? '緊急' : '高'}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            ))
+            pendingTasks.slice(0, 8).map((task) => {
+              const presentation = describeOperationalTask(task);
+              return (
+                <Link
+                  key={task.id}
+                  href={presentation.actionHref}
+                  className="flex items-center justify-between rounded-lg border p-2.5 transition-colors hover:bg-muted/50"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{task.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {presentation.queueLabel} / {presentation.actionLabel}
+                    </p>
+                  </div>
+                  <div className="ml-2 flex shrink-0 items-center gap-1">
+                    {(task.priority === 'urgent' || task.priority === 'high') && (
+                      <Badge
+                        variant={task.priority === 'urgent' ? 'destructive' : 'secondary'}
+                        className="text-[10px]"
+                      >
+                        {task.priority === 'urgent' ? '緊急' : '高'}
+                      </Badge>
+                    )}
+                    <ArrowRight className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                  </div>
+                </Link>
+              );
+            })
           )}
         </CardContent>
       </Card>
@@ -356,9 +369,9 @@ export function MyDayContent() {
       )}
 
       {/* Quick links */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
         <Link
-          href="/"
+          href="/dashboard"
           className="flex items-center justify-center gap-1.5 rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-muted/50"
         >
           ダッシュボード
@@ -368,6 +381,30 @@ export function MyDayContent() {
           className="flex items-center justify-center gap-1.5 rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-muted/50"
         >
           スケジュール
+        </Link>
+        <Link
+          href="/tasks"
+          className="flex items-center justify-center gap-1.5 rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-muted/50"
+        >
+          タスク
+        </Link>
+        <Link
+          href="/workflow"
+          className="flex items-center justify-center gap-1.5 rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-muted/50"
+        >
+          ワークフロー
+        </Link>
+        <Link
+          href="/handoff"
+          className="flex items-center justify-center gap-1.5 rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-muted/50"
+        >
+          申し送り
+        </Link>
+        <Link
+          href="/notifications"
+          className="flex items-center justify-center gap-1.5 rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-muted/50"
+        >
+          通知
         </Link>
       </div>
     </div>

@@ -1,7 +1,9 @@
+import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
 import { DashboardContent } from './dashboard-content';
 import { DeviceSupportMatrix } from './device-support-matrix';
 import { OnboardingChecklist } from './onboarding-checklist';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
+import { DASHBOARD_HEADER_SHORTCUTS } from '@/lib/dashboard/home-config';
 
 export default function DashboardPage() {
   return (
@@ -11,7 +13,9 @@ export default function DashboardPage() {
           className="mb-0 space-y-0"
           title="CareViaX — ダッシュボード"
           description="在宅訪問薬局業務・連携プラットフォーム"
-        />
+        >
+          <PageShortcutLinks links={DASHBOARD_HEADER_SHORTCUTS} />
+        </WorkflowPageHeader>
       </div>
       <div className="space-y-6 p-6">
         <OnboardingChecklist />

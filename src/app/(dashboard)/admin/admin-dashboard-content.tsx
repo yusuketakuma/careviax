@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type ElementType } from 'react';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import {
   addMonths,
@@ -198,26 +199,38 @@ function SummaryCard({
   value,
   description,
   icon: Icon,
+  href,
 }: {
   title: string;
   value: number;
   description: string;
   icon: ElementType;
+  href?: string;
 }) {
-  return (
-    <Card>
-      <CardContent className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">{title}</p>
-          <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">{value}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{description}</p>
-        </div>
-        <div className="rounded-full border border-border bg-background p-2">
-          <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-        </div>
-      </CardContent>
-    </Card>
+  const content = (
+    <CardContent className="flex items-start justify-between gap-3">
+      <div>
+        <p className="text-sm font-medium text-muted-foreground">{title}</p>
+        <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">{value}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+      </div>
+      <div className="rounded-full border border-border bg-background p-2">
+        <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+      </div>
+    </CardContent>
   );
+
+  if (href) {
+    return (
+      <Link href={href}>
+        <Card className="transition-colors hover:border-primary/40 hover:bg-muted/30">
+          {content}
+        </Card>
+      </Link>
+    );
+  }
+
+  return <Card>{content}</Card>;
 }
 
 function ProgressBar({ value, max }: { value: number; max: number }) {
@@ -308,7 +321,10 @@ function MonthlyProgressSection({
               return (
                 <li
                   key={`${item.patient_id}:${item.insurance_basis}`}
-                  className="rounded-2xl border border-border/70 bg-background px-4 py-4"
+                >
+                <Link
+                  href={`/patients/${item.patient_id}`}
+                  className="block rounded-2xl border border-border/70 bg-background px-4 py-4 transition-colors hover:border-primary/40 hover:bg-muted/30"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="space-y-2">
@@ -334,6 +350,7 @@ function MonthlyProgressSection({
                   <div className="mt-3">
                     <ProgressBar value={item.visit_count} max={item.monthly_limit} />
                   </div>
+                </Link>
                 </li>
               );
             })}
@@ -361,12 +378,17 @@ function UnrecordedVisitsSection({
         ) : (
           <ul className="divide-y divide-border" role="list">
             {visits.map((visit) => (
-              <li key={visit.id} className="space-y-1 py-3">
-                <p className="text-sm font-medium text-foreground">{visit.patient_name}</p>
-                <p className="text-xs text-muted-foreground">
-                  訪問日 {formatDateLabel(visit.scheduled_date)}
-                </p>
-                <Badge variant="outline">{visit.schedule_status}</Badge>
+              <li key={visit.id}>
+                <Link
+                  href={`/visits/${visit.id}/record`}
+                  className="block space-y-1 py-3 rounded-md px-2 -mx-2 transition-colors hover:bg-muted/50"
+                >
+                  <p className="text-sm font-medium text-foreground">{visit.patient_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    訪問日 {formatDateLabel(visit.scheduled_date)}
+                  </p>
+                  <Badge variant="outline">{visit.schedule_status}</Badge>
+                </Link>
               </li>
             ))}
           </ul>
@@ -393,22 +415,27 @@ function UnsentReportsSection({
         ) : (
           <ul className="divide-y divide-border" role="list">
             {reports.map((report) => (
-              <li key={report.id} className="flex items-center justify-between gap-3 py-3">
-                <div>
-                  <p className="text-sm font-medium text-foreground">{report.patient_name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {report.report_type} / 更新 {formatDateLabel(report.updated_at)}
-                  </p>
-                </div>
-                <Badge
-                  variant={
-                    report.status === 'failed' || report.status === 'response_waiting'
-                      ? 'destructive'
-                      : 'outline'
-                  }
+              <li key={report.id}>
+                <Link
+                  href={`/reports/${report.id}`}
+                  className="flex items-center justify-between gap-3 py-3 rounded-md px-2 -mx-2 transition-colors hover:bg-muted/50"
                 >
-                  {formatDaysElapsed(report.updated_at)}日経過
-                </Badge>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{report.patient_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {report.report_type} / 更新 {formatDateLabel(report.updated_at)}
+                    </p>
+                  </div>
+                  <Badge
+                    variant={
+                      report.status === 'failed' || report.status === 'response_waiting'
+                        ? 'destructive'
+                        : 'outline'
+                    }
+                  >
+                    {formatDaysElapsed(report.updated_at)}日経過
+                  </Badge>
+                </Link>
               </li>
             ))}
           </ul>
@@ -435,15 +462,20 @@ function OverdueTasksSection({
         ) : (
           <ul className="divide-y divide-border" role="list">
             {tasks.map((task) => (
-              <li key={task.id} className="space-y-2 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium text-foreground">{task.title}</p>
-                  <Badge variant={priorityVariant(task.priority)}>{task.priority}</Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">{task.task_type}</p>
-                <p className="text-xs text-muted-foreground">
-                  期限 {task.sla_due_at ? formatDateLabel(task.sla_due_at) : task.due_date ? formatDateLabel(task.due_date) : '未設定'}
-                </p>
+              <li key={task.id}>
+                <Link
+                  href={`/tasks?highlight=${task.id}`}
+                  className="block space-y-2 py-3 rounded-md px-2 -mx-2 transition-colors hover:bg-muted/50"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium text-foreground">{task.title}</p>
+                    <Badge variant={priorityVariant(task.priority)}>{task.priority}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{task.task_type}</p>
+                  <p className="text-xs text-muted-foreground">
+                    期限 {task.sla_due_at ? formatDateLabel(task.sla_due_at) : task.due_date ? formatDateLabel(task.due_date) : '未設定'}
+                  </p>
+                </Link>
               </li>
             ))}
           </ul>
@@ -472,20 +504,25 @@ function WorkflowExceptionsSection({
             {exceptions.map((exception) => {
               const severity = workflowExceptionSeverityMeta(exception.severity);
               return (
-                <li key={exception.id} className="space-y-2 py-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
-                        {exception.patient_name ?? '患者未紐付け'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{exception.description}</p>
+                <li key={exception.id}>
+                  <Link
+                    href={`/workflow?exception=${exception.id}`}
+                    className="block space-y-2 py-3 rounded-md px-2 -mx-2 transition-colors hover:bg-muted/50"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {exception.patient_name ?? '患者未紐付け'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{exception.description}</p>
+                      </div>
+                      <Badge variant={severity.variant}>{severity.label}</Badge>
                     </div>
-                    <Badge variant={severity.variant}>{severity.label}</Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground">{exception.exception_type}</p>
-                  <p className="text-xs text-muted-foreground">
-                    発生 {formatDateLabel(exception.created_at)}
-                  </p>
+                    <p className="text-xs text-muted-foreground">{exception.exception_type}</p>
+                    <p className="text-xs text-muted-foreground">
+                      発生 {formatDateLabel(exception.created_at)}
+                    </p>
+                  </Link>
                 </li>
               );
             })}
@@ -597,24 +634,28 @@ export function AdminDashboardContent() {
       value: overdue?.summary.unrecorded_visits ?? 0,
       description: '訪問記録の未登録件数',
       icon: ClipboardList,
+      href: '/visits',
     },
     {
       title: '未送付報告',
       value: overdue?.summary.unsent_reports ?? 0,
       description: '送達待ち・失敗・返信待ち',
       icon: FileClock,
+      href: '/reports',
     },
     {
       title: '月間超過患者',
       value: monthlyStats?.summary.over_limit_count ?? 0,
       description: '上限回数を超えた患者',
       icon: CalendarRange,
+      href: '/patients',
     },
     {
       title: '未解消例外',
       value: workflow?.workflow_exceptions.open ?? 0,
       description: 'ワークフロー例外の残件',
       icon: ShieldAlert,
+      href: '/workflow',
     },
   ] as const;
 

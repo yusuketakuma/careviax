@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import {
@@ -297,6 +298,11 @@ export default function FirstLoginPage() {
           </form>
         </CardContent>
       </Card>
+      <p className="mt-4 text-center text-sm text-muted-foreground">
+        <Link href="/login" className="text-primary hover:underline">
+          ログイン画面に戻る
+        </Link>
+      </p>
     </div>
   );
 }

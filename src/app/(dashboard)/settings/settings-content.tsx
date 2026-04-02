@@ -929,13 +929,6 @@ function SessionTab() {
 export function SettingsContent() {
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-semibold text-slate-800">ユーザー設定</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          プロフィール、セキュリティ、通知の設定を管理します
-        </p>
-      </div>
-
       <Tabs defaultValue="profile">
         <TabsList>
           <TabsTrigger value="profile">

@@ -1,5 +1,7 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
+import { getAdminAnalyticsShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Loading } from '@/components/ui/loading';
 import { AnalyticsContent } from './analytics-content';
 
@@ -10,14 +12,11 @@ export const metadata: Metadata = {
 export default function AnalyticsPage() {
   return (
     <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          KPI分析ダッシュボード
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          請求 SSOT と運用実績を月次で分析します。
-        </p>
-      </div>
+      <AdminPageHeader
+        title="KPI分析ダッシュボード"
+        description="請求 SSOT と運用実績を月次で分析します。"
+        shortcuts={getAdminAnalyticsShortcutLinks()}
+      />
 
       <Suspense fallback={<Loading />}>
         <AnalyticsContent />

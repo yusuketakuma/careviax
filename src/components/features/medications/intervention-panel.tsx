@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { Plus, ChevronDown, ChevronUp } from 'lucide-react';
@@ -75,12 +75,14 @@ function InterventionRow({ intervention, onOutcomeUpdate }: InterventionRowProps
   const [editing, setEditing] = useState(false);
   const [outcomeText, setOutcomeText] = useState(intervention.outcome ?? '');
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const typeLabel = INTERVENTION_TYPE_LABELS[intervention.type] ?? intervention.type;
   const typeColor = INTERVENTION_TYPE_COLORS[intervention.type] ?? INTERVENTION_TYPE_COLORS.other;
 
   async function saveOutcome() {
     setSaving(true);
+    setSaveError(null);
     try {
       const res = await fetch(`/api/interventions/${intervention.id}`, {
         method: 'PATCH',
@@ -90,7 +92,11 @@ function InterventionRow({ intervention, onOutcomeUpdate }: InterventionRowProps
       if (res.ok) {
         onOutcomeUpdate?.(intervention.id, outcomeText);
         setEditing(false);
+      } else {
+        setSaveError('保存に失敗しました');
       }
+    } catch {
+      setSaveError('ネットワークエラーが発生しました');
     } finally {
       setSaving(false);
     }
@@ -132,6 +138,9 @@ function InterventionRow({ intervention, onOutcomeUpdate }: InterventionRowProps
                   className="text-sm"
                   placeholder="介入の結果・効果を記録..."
                 />
+                {saveError && (
+                  <p className="text-xs text-destructive">{saveError}</p>
+                )}
                 <div className="flex gap-2">
                   <Button size="sm" onClick={saveOutcome} disabled={saving}>
                     {saving ? '保存中...' : '保存'}
@@ -288,6 +297,33 @@ export function InterventionPanel({
   initialInterventions = [],
 }: InterventionPanelProps) {
   const [interventions, setInterventions] = useState<Intervention[]>(initialInterventions);
+  const [loading, setLoading] = useState(initialInterventions.length === 0);
+  const [fetchError, setFetchError] = useState(false);
+
+  useEffect(() => {
+    if (initialInterventions.length > 0) return;
+    let cancelled = false;
+    async function load() {
+      try {
+        const params = new URLSearchParams({ patient_id: patientId });
+        if (issueId) params.set('issue_id', issueId);
+        const res = await fetch(`/api/interventions?${params.toString()}`);
+        if (cancelled) return;
+        if (res.ok) {
+          const json = await res.json();
+          setInterventions(json.data ?? []);
+        } else {
+          setFetchError(true);
+        }
+      } catch {
+        if (!cancelled) setFetchError(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void load();
+    return () => { cancelled = true; };
+  }, [patientId, issueId, initialInterventions.length]);
 
   function handleCreated(intervention: Intervention) {
     setInterventions((prev) => [intervention, ...prev]);
@@ -317,7 +353,11 @@ export function InterventionPanel({
         />
       </div>
 
-      {interventions.length === 0 ? (
+      {loading ? (
+        <p className="text-xs text-muted-foreground">読み込み中...</p>
+      ) : fetchError ? (
+        <p className="text-xs text-destructive">介入記録の読み込みに失敗しました。</p>
+      ) : interventions.length === 0 ? (
         <p className="text-xs text-muted-foreground">介入記録はありません。</p>
       ) : (
         <ul className="space-y-2">

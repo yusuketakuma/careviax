@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { labelForPath } from '@/lib/navigation/route-labels';
 
 type PatientSearchResult = {
   id: string;
@@ -44,24 +45,6 @@ type GlobalSearchModalProps = {
 };
 
 const RECENT_OPERATIONS_KEY = 'careviax:recent-operations';
-
-const PATH_LABELS: Array<{ pattern: RegExp; label: string }> = [
-  { pattern: /^\/dashboard$/, label: 'ホーム' },
-  { pattern: /^\/patients(\/.*)?$/, label: '患者' },
-  { pattern: /^\/schedules(\/.*)?$/, label: 'スケジュール' },
-  { pattern: /^\/visits(\/.*)?$/, label: '訪問' },
-  { pattern: /^\/reports(\/.*)?$/, label: '報告' },
-  { pattern: /^\/dispensing(\/.*)?$/, label: '調剤' },
-  { pattern: /^\/auditing(\/.*)?$/, label: '鑑査' },
-  { pattern: /^\/notifications(\/.*)?$/, label: '通知' },
-  { pattern: /^\/communications(\/.*)?$/, label: '連携' },
-  { pattern: /^\/admin(\/.*)?$/, label: '管理' },
-  { pattern: /^\/settings$/, label: 'ユーザー設定' },
-];
-
-function labelForPath(pathname: string) {
-  return PATH_LABELS.find((item) => item.pattern.test(pathname))?.label ?? pathname;
-}
 
 function readRecentOperations() {
   if (typeof window === 'undefined') {
