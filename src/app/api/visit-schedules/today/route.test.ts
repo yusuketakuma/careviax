@@ -39,5 +39,14 @@ describe('/api/visit-schedules/today', () => {
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'schedule_1' }],
     });
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          schedule_status: {
+            in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
+          },
+        }),
+      }),
+    );
   });
 });

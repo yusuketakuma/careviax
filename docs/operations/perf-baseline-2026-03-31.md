@@ -1,7 +1,8 @@
 # Performance Baseline & Optimization Results (2026-03-31)
 
 ## Test Parameters
-- Tool: `scripts/perf-smoke.ts`
+- Tool: `tools/scripts/perf-smoke.ts`
+- Command: `pnpm perf:smoke`
 - Requests per route: 40
 - Concurrency: 4
 - Target: P95 < 500ms, P50 < 200ms

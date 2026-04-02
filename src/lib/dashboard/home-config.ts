@@ -86,6 +86,8 @@ export const DASHBOARD_TASK_TYPE_TO_TAB: Record<string, DashboardTaskTabKey> = {
   dosage_form_support: 'dispensing',
   residual_reduction_review: 'dispensing',
   inquiry_workbench: 'dispense_audit',
+  medication_set_queue: 'medication_set',
+  set_audit_queue: 'set_audit',
   visit_demand: 'visit_planning',
   visit_contact_followup: 'visit_planning',
   visit_preparation: 'visit_planning',
@@ -101,6 +103,44 @@ export const DASHBOARD_TASK_TYPE_TO_TAB: Record<string, DashboardTaskTabKey> = {
   tracing_report_followup: 'reporting',
   management_plan_review: 'reporting',
   community_activity_followup: 'reporting',
+};
+
+export const DASHBOARD_TAB_FALLBACK_ACTIONS: Record<
+  Exclude<DashboardTaskTabKey, 'all'>,
+  { href: string; label: string }
+> = {
+  intake: {
+    href: '/prescriptions',
+    label: '処方受付を開く',
+  },
+  dispensing: {
+    href: '/dispensing',
+    label: '調剤キューを開く',
+  },
+  dispense_audit: {
+    href: '/auditing',
+    label: '調剤監査を開く',
+  },
+  medication_set: {
+    href: '/medication-sets',
+    label: 'セット管理を開く',
+  },
+  set_audit: {
+    href: '/medication-sets',
+    label: 'セット監査を開く',
+  },
+  visit_planning: {
+    href: '/schedules',
+    label: 'スケジュールを開く',
+  },
+  visit: {
+    href: '/visits',
+    label: '訪問記録を開く',
+  },
+  reporting: {
+    href: '/reports',
+    label: '報告書を開く',
+  },
 };
 
 export const DASHBOARD_WORKFLOW_LINKS = [
@@ -121,6 +161,12 @@ export const DASHBOARD_WORKFLOW_LINKS = [
     title: '調剤監査',
     description: '調剤結果の鑑査と差し戻し対応を確認します。',
     href: '/auditing',
+  },
+  {
+    key: 'medication_sets',
+    title: 'セット管理',
+    description: 'セット計画、グリッド鑑査、持参パック作成へ進みます。',
+    href: '/medication-sets',
   },
   {
     key: 'schedules',

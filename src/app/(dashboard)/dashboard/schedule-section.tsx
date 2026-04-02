@@ -2,8 +2,8 @@
 
 import { Suspense, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { CalendarDays, List } from 'lucide-react';
 import { Skeleton } from '@/components/ui/loading';
+import { ScheduleViewToggle, type ScheduleViewMode } from '@/app/(dashboard)/schedules/schedule-view-toggle';
 
 const ScheduleDayView = dynamic(
   () =>
@@ -40,52 +40,17 @@ function ScheduleSkeleton() {
   );
 }
 
-type ViewMode = 'day' | 'calendar';
-
 export function ScheduleSection() {
-  const [view, setView] = useState<ViewMode>('day');
+  const [view, setView] = useState<ScheduleViewMode>('list');
 
   return (
     <section>
       <div className="mb-3 flex justify-end">
-        <div
-          className="flex rounded-lg border bg-muted p-0.5"
-          role="group"
-          aria-label="表示切替"
-        >
-          <button
-            type="button"
-            onClick={() => setView('day')}
-            className={[
-              'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              view === 'day'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground',
-            ].join(' ')}
-            aria-pressed={view === 'day'}
-          >
-            <List className="size-4" aria-hidden="true" />
-            リスト
-          </button>
-          <button
-            type="button"
-            onClick={() => setView('calendar')}
-            className={[
-              'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              view === 'calendar'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground',
-            ].join(' ')}
-            aria-pressed={view === 'calendar'}
-          >
-            <CalendarDays className="size-4" aria-hidden="true" />
-            カレンダー
-          </button>
-        </div>
+        <ScheduleViewToggle activeView={view} onChange={setView} />
       </div>
 
       <Suspense fallback={<ScheduleSkeleton />}>
-        {view === 'day' ? <ScheduleDayView /> : <CalendarView />}
+        {view === 'list' ? <ScheduleDayView /> : <CalendarView />}
       </Suspense>
     </section>
   );

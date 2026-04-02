@@ -29,6 +29,49 @@ function sortActions(a: ActionItem, b: ActionItem) {
   return a.title.localeCompare(b.title, 'ja');
 }
 
+function buildCycleAggregateActionItems(statusMap: Record<string, number>): ActionItem[] {
+  return [
+    ...((statusMap.setting ?? 0) > 0
+      ? [
+          {
+            id: 'aggregate:medication_set_queue',
+            item_type: 'aggregate' as const,
+            task_type: 'medication_set_queue',
+            queue_label: 'セット',
+            title: 'セット作成待ちがあります',
+            summary: `${statusMap.setting}件のサイクルがセット作成待ちです。`,
+            priority: 'normal' as const,
+            due_at: null,
+            action_href: '/medication-sets',
+            action_label: 'セット管理を開く',
+            owner_name: null,
+            patient_name: null,
+            badges: ['setting'],
+          },
+        ]
+      : []),
+    ...((statusMap.set_audited ?? 0) > 0
+      ? [
+          {
+            id: 'aggregate:set_audit_queue',
+            item_type: 'aggregate' as const,
+            task_type: 'set_audit_queue',
+            queue_label: 'セット監査',
+            title: 'セット監査待ちがあります',
+            summary: `${statusMap.set_audited}件のサイクルがセット監査待ちです。`,
+            priority: 'high' as const,
+            due_at: null,
+            action_href: '/medication-sets',
+            action_label: 'セット監査を開く',
+            owner_name: null,
+            patient_name: null,
+            badges: ['set_audited'],
+          },
+        ]
+      : []),
+  ];
+}
+
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const [cycleCounts, pendingTasks, communicationQueue] = await Promise.all([
     prisma.medicationCycle.groupBy({
@@ -111,7 +154,8 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     badges: [],
   }));
 
-  const actions = [...taskItems, ...commItems].sort(sortActions).slice(0, 10);
+  const aggregateItems = buildCycleAggregateActionItems(statusMap);
+  const actions = [...taskItems, ...commItems, ...aggregateItems].sort(sortActions).slice(0, 10);
 
   return success({ data: { pipeline, actions } satisfies DashboardActionsResponse });
 });

@@ -2,7 +2,7 @@
 
 ## 概要
 
-3省2ガイドラインのうち METI / MIC v1.1 に対応する統制マッピングを整理する。詳細表は [three-ministry-guideline-mapping.md](/Users/yusuke/workspace/careviax/docs/compliance/three-ministry-guideline-mapping.md) を参照し、本書は監査提出時の参照点を提供する。
+3省2ガイドラインのうち METI / MIC v1.1 に対応する統制マッピングを整理する。詳細表は [`./three-ministry-guideline-mapping.md`](./three-ministry-guideline-mapping.md) を参照し、本書は監査提出時の参照点を提供する。
 
 ## 参照条項
 
@@ -14,10 +14,10 @@
 
 ## エビデンスの紐付け
 
-- 委託先管理: [vendor-risk-assessment.md](/Users/yusuke/workspace/careviax/docs/compliance/vendor-risk-assessment.md)
-- 教育計画: [security-training.md](/Users/yusuke/workspace/careviax/docs/compliance/security-training.md)
-- 変更管理: [change-management.md](/Users/yusuke/workspace/careviax/docs/compliance/change-management.md)
-- WAF / VPC / RDS: [aws-waf-configuration.md](/Users/yusuke/workspace/careviax/docs/compliance/aws-waf-configuration.md), [network-security-design.md](/Users/yusuke/workspace/careviax/docs/compliance/network-security-design.md), [rds-configuration.md](/Users/yusuke/workspace/careviax/docs/compliance/rds-configuration.md)
+- 委託先管理: [`./vendor-risk-assessment.md`](./vendor-risk-assessment.md)
+- 教育計画: [`./security-training.md`](./security-training.md)
+- 変更管理: [`./change-management.md`](./change-management.md)
+- WAF / VPC / RDS: [`./aws-waf-configuration.md`](./aws-waf-configuration.md), [`./network-security-design.md`](./network-security-design.md), [`./rds-configuration.md`](./rds-configuration.md)
 
 ## 更新履歴
 

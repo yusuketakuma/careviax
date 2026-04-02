@@ -140,6 +140,23 @@ describe('/api/visit-schedules', () => {
     expect(payload).toMatchSnapshot();
   });
 
+  it('supports the active schedule scope filter', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/visit-schedules?status_scope=active')
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          schedule_status: {
+            in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
+          },
+        }),
+      }),
+    );
+  });
+
   it('creates a visit schedule after gate and reference checks', async () => {
     const response = (await POST(
       createRequest('http://localhost/api/visit-schedules', {

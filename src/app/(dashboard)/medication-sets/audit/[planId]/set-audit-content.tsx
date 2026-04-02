@@ -35,7 +35,13 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { buildSetAuditSubmission } from './set-audit-content.helpers';
+import {
+  buildSetAuditHydrationState,
+  buildSetAuditSubmission,
+  groupBatchesByDayAndSlot,
+  type DayGroup,
+  type SlotGroup,
+} from './set-audit-content.helpers';
 
 // ── Types ──
 
@@ -64,17 +70,21 @@ type RejectReasonCode =
   | 'prescription_expired'
   | 'other';
 
-// ── Constants ──
-
-const SLOT_LABELS: Record<string, string> = {
-  morning: '朝食後',
-  noon: '昼食後',
-  evening: '夕食後',
-  bedtime: '眠前',
-  prn: '頓用',
+type SetPlanAuditDetails = {
+  audits: Array<{
+    id: string;
+    result: 'approved' | 'partial_approved' | 'rejected' | string;
+    approved_scope: Record<string, unknown> | null;
+    reject_reason: string | null;
+    audited_at: string;
+  }>;
+  batches: Array<{
+    id: string;
+    updated_at: string;
+  }>;
 };
 
-const SLOT_ORDER = ['morning', 'noon', 'evening', 'bedtime', 'prn'];
+// ── Constants ──
 
 const CARRY_TYPE_LABELS: Record<string, string> = {
   carry: '持参',
@@ -90,64 +100,13 @@ const REJECT_REASON_OPTIONS: { value: RejectReasonCode; label: string }[] = [
   { value: 'other', label: 'その他' },
 ];
 
-// ── Helpers ──
-
-/**
- * Group batches by day_number, then by slot within each day.
- * Returns a sorted structure: days ascending, slots in SLOT_ORDER.
- */
-type DayGroup = {
-  dayNumber: number;
-  slots: SlotGroup[];
-};
-
-type SlotGroup = {
-  slot: string;
-  slotLabel: string;
-  batches: SetBatch[];
-};
-
-function groupBatchesByDayAndSlot(batches: SetBatch[]): DayGroup[] {
-  const dayMap = new Map<number, Map<string, SetBatch[]>>();
-
-  for (const batch of batches) {
-    if (!dayMap.has(batch.day_number)) {
-      dayMap.set(batch.day_number, new Map());
-    }
-    const slotMap = dayMap.get(batch.day_number)!;
-    if (!slotMap.has(batch.slot)) {
-      slotMap.set(batch.slot, []);
-    }
-    slotMap.get(batch.slot)!.push(batch);
-  }
-
-  const days = Array.from(dayMap.entries())
-    .sort((a, b) => a[0] - b[0])
-    .map(([dayNumber, slotMap]) => {
-      const slots = Array.from(slotMap.entries())
-        .sort((a, b) => {
-          const ai = SLOT_ORDER.indexOf(a[0]);
-          const bi = SLOT_ORDER.indexOf(b[0]);
-          return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-        })
-        .map(([slot, slotBatches]) => ({
-          slot,
-          slotLabel: SLOT_LABELS[slot] ?? slot,
-          batches: slotBatches,
-        }));
-      return { dayNumber, slots };
-    });
-
-  return days;
-}
-
 // ── Sub-components ──
 
 function SlotGroupCard({
   slotGroup,
   approvalState,
 }: {
-  slotGroup: SlotGroup;
+  slotGroup: SlotGroup<SetBatch>;
   approvalState: boolean | null;
 }) {
   return (
@@ -206,7 +165,7 @@ function DayCard({
   onRejectDay,
   isPending,
 }: {
-  day: DayGroup;
+  day: DayGroup<SetBatch>;
   localApproval: Map<string, boolean | null>;
   onApproveDay: (dayNumber: number) => void;
   onRejectDay: (dayNumber: number) => void;
@@ -291,8 +250,8 @@ export function SetAuditContent({ planId }: { planId: string }) {
   const orgId = useOrgId();
 
   // local slot-level approval state: key = `${dayNumber}-${slot}`
-  const [localApproval, setLocalApproval] = useState<Map<string, boolean | null>>(new Map());
-  const [rejectReasonsByDay, setRejectReasonsByDay] = useState<Map<number, string>>(new Map());
+  const [draftApproval, setDraftApproval] = useState<Map<string, boolean | null> | null>(null);
+  const [draftRejectReasonsByDay, setDraftRejectReasonsByDay] = useState<Map<number, string> | null>(null);
   const [isAuditSaved, setIsAuditSaved] = useState(false);
 
   // reject dialog state
@@ -309,6 +268,20 @@ export function SetAuditContent({ planId }: { planId: string }) {
       });
       if (!res.ok) throw new Error('セットバッチの取得に失敗しました');
       const json = (await res.json()) as { data: SetBatch[] };
+      return json.data;
+    },
+    enabled: Boolean(planId && orgId),
+    invalidateOn: ['cycle_transition', 'workflow_refresh'],
+  });
+
+  const planQuery = useRealtimeQuery({
+    queryKey: ['set-plan-audit', planId],
+    queryFn: async () => {
+      const res = await fetch(`/api/set-plans/${planId}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('セットプランの取得に失敗しました');
+      const json = (await res.json()) as { data: SetPlanAuditDetails };
       return json.data;
     },
     enabled: Boolean(planId && orgId),
@@ -336,6 +309,7 @@ export function SetAuditContent({ planId }: { planId: string }) {
     onSuccess: () => {
       setIsAuditSaved(true);
       queryClient.invalidateQueries({ queryKey: ['set-batches', planId] });
+      queryClient.invalidateQueries({ queryKey: ['set-plan-audit', planId] });
     },
   });
 
@@ -346,6 +320,23 @@ export function SetAuditContent({ planId }: { planId: string }) {
   const allSlotKeys = days.flatMap((day) =>
     day.slots.map((s) => `${day.dayNumber}-${s.slot}`)
   );
+  const latestAudit = planQuery.data?.audits[0] ?? null;
+  const latestBatchUpdatedAt =
+    planQuery.data?.batches.reduce<string | null>((latest, batch) => {
+      return !latest || batch.updated_at > latest ? batch.updated_at : latest;
+    }, null) ?? null;
+  const allowHydration =
+    !latestAudit ||
+    !latestBatchUpdatedAt ||
+    latestAudit.audited_at >= latestBatchUpdatedAt;
+  const hydratedAuditState = buildSetAuditHydrationState({
+    allSlotKeys,
+    latestAudit,
+    allowHydration,
+  });
+  const localApproval = draftApproval ?? hydratedAuditState.localApproval;
+  const rejectReasonsByDay =
+    draftRejectReasonsByDay ?? hydratedAuditState.rejectReasonsByDay;
   const approvedCount = allSlotKeys.filter((k) => localApproval.get(k) === true).length;
   const rejectedCount = allSlotKeys.filter((k) => localApproval.get(k) === false).length;
   const pendingCount = allSlotKeys.length - approvedCount - rejectedCount;
@@ -356,13 +347,13 @@ export function SetAuditContent({ planId }: { planId: string }) {
     if (!day) return;
 
     const keys = day.slots.map((s) => `${dayNumber}-${s.slot}`);
-    setLocalApproval((prev) => {
-      const next = new Map(prev);
+    setDraftApproval((prev) => {
+      const next = new Map(prev ?? localApproval);
       for (const k of keys) next.set(k, true);
       return next;
     });
-    setRejectReasonsByDay((prev) => {
-      const next = new Map(prev);
+    setDraftRejectReasonsByDay((prev) => {
+      const next = new Map(prev ?? rejectReasonsByDay);
       next.delete(dayNumber);
       return next;
     });
@@ -386,8 +377,8 @@ export function SetAuditContent({ planId }: { planId: string }) {
     if (!day) return;
 
     const keys = day.slots.map((s) => `${pendingRejectDayNumber}-${s.slot}`);
-    setLocalApproval((prev) => {
-      const next = new Map(prev);
+    setDraftApproval((prev) => {
+      const next = new Map(prev ?? localApproval);
       for (const k of keys) next.set(k, false);
       return next;
     });
@@ -396,8 +387,8 @@ export function SetAuditContent({ planId }: { planId: string }) {
       REJECT_REASON_OPTIONS.find((o) => o.value === rejectReasonCode)?.label ??
       rejectReasonCode;
     const rejectText = rejectNote ? `${rejectLabel}: ${rejectNote}` : rejectLabel;
-    setRejectReasonsByDay((prev) => {
-      const next = new Map(prev);
+    setDraftRejectReasonsByDay((prev) => {
+      const next = new Map(prev ?? rejectReasonsByDay);
       next.set(pendingRejectDayNumber, rejectText);
       return next;
     });
@@ -417,12 +408,12 @@ export function SetAuditContent({ planId }: { planId: string }) {
     }
 
     const allKeys = allSlotKeys;
-    setLocalApproval((prev) => {
-      const next = new Map(prev);
+    setDraftApproval((prev) => {
+      const next = new Map(prev ?? localApproval);
       for (const k of allKeys) next.set(k, true);
       return next;
     });
-    setRejectReasonsByDay(new Map());
+    setDraftRejectReasonsByDay(new Map());
     toast.success('全スロットを承認候補としてマークしました。保存して確定してください。');
   }
 
@@ -459,7 +450,7 @@ export function SetAuditContent({ planId }: { planId: string }) {
     );
   }
 
-  if (!orgId || isLoading) {
+  if (!orgId || isLoading || planQuery.isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden="true" />
@@ -468,7 +459,7 @@ export function SetAuditContent({ planId }: { planId: string }) {
     );
   }
 
-  if (isError) {
+  if (isError || planQuery.isError) {
     return (
       <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
         セットバッチの取得に失敗しました。ページを再読み込みしてください。

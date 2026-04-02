@@ -65,6 +65,8 @@ describe('/api/dashboard/home/actions GET', () => {
     medicationCycleGroupByMock.mockResolvedValue([
       { overall_status: 'intake_received', _count: { id: 2 } },
       { overall_status: 'ready_to_dispense', _count: { id: 1 } },
+      { overall_status: 'setting', _count: { id: 3 } },
+      { overall_status: 'set_audited', _count: { id: 2 } },
     ]);
     taskFindManyMock.mockResolvedValue([
       {
@@ -129,8 +131,10 @@ describe('/api/dashboard/home/actions GET', () => {
         pipeline: expect.arrayContaining([
           expect.objectContaining({ key: 'intake', count: 2 }),
           expect.objectContaining({ key: 'dispensing', count: 1 }),
+          expect.objectContaining({ key: 'medication_set', count: 3 }),
+          expect.objectContaining({ key: 'set_audit', count: 2 }),
         ]),
-        actions: [
+        actions: expect.arrayContaining([
           expect.objectContaining({
             id: 'comm_1',
             item_type: 'self_report',
@@ -141,7 +145,19 @@ describe('/api/dashboard/home/actions GET', () => {
             item_type: 'task',
             priority: 'high',
           }),
-        ],
+          expect.objectContaining({
+            id: 'aggregate:medication_set_queue',
+            item_type: 'aggregate',
+            task_type: 'medication_set_queue',
+            action_href: '/medication-sets',
+          }),
+          expect.objectContaining({
+            id: 'aggregate:set_audit_queue',
+            item_type: 'aggregate',
+            task_type: 'set_audit_queue',
+            action_href: '/medication-sets',
+          }),
+        ]),
       },
     });
   });

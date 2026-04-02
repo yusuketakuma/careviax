@@ -1,5 +1,4 @@
 'use client';
-
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import {
@@ -30,6 +29,7 @@ import type {
 } from '@/types/dashboard-home';
 import {
   DASHBOARD_TASK_TABS,
+  DASHBOARD_TAB_FALLBACK_ACTIONS,
   DASHBOARD_TASK_TYPE_TO_TAB,
   type DashboardTaskTabKey,
 } from '@/lib/dashboard/home-config';
@@ -67,6 +67,7 @@ async function fetchTodayVisits(
     orgId,
     dateFrom: today,
     dateTo: today,
+    statusScope: 'active',
   });
 }
 
@@ -322,6 +323,11 @@ export function TodayTasksSection() {
   const todayVisits = (schedulesQuery.data ?? []).map(visitToActionItem);
   const allItems = [...actionItems, ...todayVisits];
   const filteredItems = sortByPriority(filterByTab(allItems, activeTab));
+  const activeTabConfig =
+    DASHBOARD_TASK_TABS.find((tab) => tab.key === activeTab) ?? DASHBOARD_TASK_TABS[0];
+  const activeTabCount = getTabCount(activeTabConfig, pipeline, todayVisits.length);
+  const activeTabFallbackAction =
+    activeTab === 'all' ? null : DASHBOARD_TAB_FALLBACK_ACTIONS[activeTab];
 
   return (
     <Card>
@@ -388,12 +394,22 @@ export function TodayTasksSection() {
           aria-labelledby={`tab-${activeTab}`}
         >
           {filteredItems.length === 0 ? (
-            <EmptyState
-              icon={Layers}
-              title="対応が必要なタスクはありません"
-              description="このカテゴリのタスクが発生すると、ここに優先度順で表示されます。"
-              className="border-0 px-0 py-6"
-            />
+            activeTab !== 'all' && activeTabCount > 0 && activeTabFallbackAction ? (
+              <EmptyState
+                icon={Layers}
+                title={`${activeTabConfig.label} に要対応があります`}
+                description="優先度順の上位アクションには含まれていないため、この工程画面から直接確認してください。"
+                action={activeTabFallbackAction}
+                className="border-0 px-0 py-6"
+              />
+            ) : (
+              <EmptyState
+                icon={Layers}
+                title="対応が必要なタスクはありません"
+                description="このカテゴリのタスクが発生すると、ここに優先度順で表示されます。"
+                className="border-0 px-0 py-6"
+              />
+            )
           ) : (
             <ul className="divide-y divide-border rounded-lg border" role="list">
               {filteredItems.map((item) => (

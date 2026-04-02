@@ -1,6 +1,7 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { success } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { ACTIVE_VISIT_SCHEDULE_STATUSES } from '@/lib/constants/visit';
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const { searchParams } = new URL(req.url);
@@ -19,7 +20,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         lt: tomorrow,
       },
       schedule_status: {
-        notIn: ['cancelled', 'rescheduled'],
+        in: [...ACTIVE_VISIT_SCHEDULE_STATUSES],
       },
       ...(pharmacistId ? { pharmacist_id: pharmacistId } : {}),
     },

@@ -18,6 +18,7 @@ const visitScheduleQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
   date_from: optionalDateParam,
   date_to: optionalDateParam,
+  status_scope: z.enum(['active']).optional(),
   pharmacist_id: z.string().trim().optional(),
   case_id: z.string().trim().optional(),
   patient_id: z.string().trim().optional(),

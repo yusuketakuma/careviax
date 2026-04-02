@@ -1,17 +1,21 @@
 'use client';
 
-import { useMemo, useState, useCallback } from 'react';
-import Link from 'next/link';
+import { useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { AlertTriangle } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table';
-import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useKeyboardShortcuts, type ShortcutDefinition } from '@/components/features/keyboard/use-keyboard-shortcuts';
+import {
+  QueueDueDate,
+  QueueFacilityLabel,
+  QueuePatientLink,
+  QueuePriorityBadge,
+  useSelectableQueueState,
+} from '@/app/(dashboard)/dispensing/dispense-work-queue.shared';
 
 type AuditTaskRow = {
   id: string;
@@ -46,38 +50,16 @@ type AuditTaskRow = {
   }>;
 };
 
-const priorityConfig: Record<
-  string,
-  { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive'; icon?: React.ElementType }
-> = {
-  emergency: { label: '緊急', variant: 'destructive', icon: AlertTriangle },
-  urgent: { label: '至急', variant: 'secondary' },
-  normal: { label: '通常', variant: 'outline' },
-};
-
 const columns: ColumnDef<AuditTaskRow>[] = [
   {
     accessorKey: 'priority',
     header: '優先度',
-    cell: ({ row }) => {
-      const config = priorityConfig[row.original.priority] ?? priorityConfig.normal;
-      const Icon = config.icon;
-      return (
-        <Badge variant={config.variant} className="gap-1 whitespace-nowrap">
-          {Icon && <Icon className="size-3" aria-hidden="true" />}
-          {config.label}
-        </Badge>
-      );
-    },
+    cell: ({ row }) => <QueuePriorityBadge priority={row.original.priority} />,
   },
   {
     id: 'facility',
     header: '施設/訪問先',
-    cell: ({ row }) => (
-      <span className="text-sm text-muted-foreground">
-        {row.original.facility_label ?? '自宅訪問'}
-      </span>
-    ),
+    cell: ({ row }) => <QueueFacilityLabel facilityLabel={row.original.facility_label} />,
   },
   {
     id: 'patient_name',
@@ -85,15 +67,11 @@ const columns: ColumnDef<AuditTaskRow>[] = [
     cell: ({ row }) => {
       const p = row.original.cycle.case_.patient;
       return (
-        <Link
+        <QueuePatientLink
           href={`/auditing/${row.original.id}`}
-          className="font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {p.name}
-          {p.name_kana && (
-            <span className="ml-1 text-xs text-muted-foreground">({p.name_kana})</span>
-          )}
-        </Link>
+          name={p.name}
+          nameKana={p.name_kana}
+        />
       );
     },
   },
@@ -121,18 +99,13 @@ const columns: ColumnDef<AuditTaskRow>[] = [
   {
     accessorKey: 'due_date',
     header: '期限',
-    cell: ({ row }) => {
-      if (!row.original.due_date) {
-        return <span className="text-xs text-muted-foreground">—</span>;
-      }
-
-      return (
-        <span className={row.original.is_overdue ? 'text-sm font-medium text-destructive' : 'text-sm text-muted-foreground'}>
-          {format(parseISO(row.original.due_date), 'MM/dd HH:mm', { locale: ja })}
-          {row.original.is_overdue && ' / 期限超過'}
-        </span>
-      );
-    },
+    cell: ({ row }) => (
+      <QueueDueDate
+        dueDate={row.original.due_date}
+        isOverdue={row.original.is_overdue}
+        showIcon={false}
+      />
+    ),
   },
   {
     id: 'dispense_count',
@@ -156,7 +129,6 @@ export function AuditingQueue() {
   const orgId = useOrgId();
   const isBootstrappingOrg = !orgId;
   const router = useRouter();
-  const [selectedIndex, setSelectedIndex] = useState(0);
 
   const { data, isLoading } = useRealtimeQuery({
     queryKey: ['dispense-audits', orgId],
@@ -173,19 +145,17 @@ export function AuditingQueue() {
   });
 
   const tasks = useMemo(() => data?.data ?? [], [data]);
-
-  const handleMoveUp = useCallback(() => {
-    setSelectedIndex((prev) => Math.max(0, prev - 1));
-  }, []);
-
-  const handleMoveDown = useCallback(() => {
-    setSelectedIndex((prev) => Math.min(Math.max(0, tasks.length - 1), prev + 1));
-  }, [tasks.length]);
+  const {
+    selectedItem,
+    selectedRowIndex,
+    handleMoveUp,
+    handleMoveDown,
+    handleRowClick,
+  } = useSelectableQueueState(tasks);
 
   const handleSelect = useCallback(() => {
-    const task = tasks[selectedIndex];
-    if (task) router.push(`/auditing/${task.id}`);
-  }, [tasks, selectedIndex, router]);
+    if (selectedItem) router.push(`/auditing/${selectedItem.id}`);
+  }, [router, selectedItem]);
 
   const shortcuts: ShortcutDefinition[] = useMemo(
     () => [
@@ -193,18 +163,16 @@ export function AuditingQueue() {
       { key: 'ArrowDown', handler: handleMoveDown, description: '次の行へ移動', scope: 'auditing' },
       { key: 'Enter', handler: handleSelect, description: '選択した行を開く', scope: 'auditing' },
       { key: 'a', handler: () => {
-        const task = tasks[selectedIndex];
-        if (task) router.push(`/auditing/${task.id}?action=approve`);
+        if (selectedItem) router.push(`/auditing/${selectedItem.id}?action=approve`);
       }, description: '承認', scope: 'auditing' },
       { key: 'r', handler: () => {
-        const task = tasks[selectedIndex];
-        if (task) router.push(`/auditing/${task.id}?action=reject`);
+        if (selectedItem) router.push(`/auditing/${selectedItem.id}?action=reject`);
       }, description: '差戻し', scope: 'auditing' },
       { key: ' ', handler: () => {
         // Space toggles check items — placeholder for future checklist
       }, description: 'チェック項目トグル', scope: 'auditing' },
     ],
-    [handleMoveUp, handleMoveDown, handleSelect, tasks, selectedIndex, router],
+    [handleMoveUp, handleMoveDown, handleSelect, router, selectedItem],
   );
 
   useKeyboardShortcuts(shortcuts);
@@ -215,8 +183,8 @@ export function AuditingQueue() {
       data={tasks}
       isLoading={isBootstrappingOrg || isLoading}
       caption="鑑査待ち一覧"
-      selectedRowIndex={selectedIndex}
-      onRowClick={(index) => setSelectedIndex(index)}
+      selectedRowIndex={selectedRowIndex}
+      onRowClick={handleRowClick}
     />
   );
 }

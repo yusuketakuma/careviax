@@ -60,9 +60,9 @@ const PMDA_REQUIRED_DOCS = [
 const BACKUP_REQUIRED_PATHS = [
   'docs/compliance/backup-recovery-drill.md',
   'docs/compliance/rds-configuration.md',
-  'infra/file-storage-bucket-policy.json',
-  'infra/s3-kms-key-policy.json',
-  'infra/vpc-security-groups.json',
+  'tools/infra/file-storage-bucket-policy.json',
+  'tools/infra/s3-kms-key-policy.json',
+  'tools/infra/vpc-security-groups.json',
 ];
 
 const BACKUP_REQUIRED_ENV = ['DATABASE_URL', 'AWS_REGION'];

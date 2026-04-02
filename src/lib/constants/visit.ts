@@ -15,3 +15,11 @@ export const OUTCOME_VARIANTS: Record<string, 'default' | 'secondary' | 'outline
   delivery_only: 'secondary',
   completed_with_issue: 'outline',
 };
+
+export const ACTIVE_VISIT_SCHEDULE_STATUSES = [
+  'planned',
+  'in_preparation',
+  'ready',
+  'departed',
+  'in_progress',
+] as const;

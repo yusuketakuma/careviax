@@ -11,7 +11,7 @@ CareViaX の本番ネットワークは 2 層 VPC を基本とし、公開面と
 - Private DB subnet: RDS PostgreSQL
 - VPC endpoint: S3, Secrets Manager, CloudWatch Logs
 
-実体テンプレートは [vpc-security-groups.json](/Users/yusuke/workspace/careviax/infra/vpc-security-groups.json) を SSOT とする。
+実体テンプレートは [`../../tools/infra/vpc-security-groups.json`](../../tools/infra/vpc-security-groups.json) を SSOT とする。
 
 ## セキュリティグループ
 

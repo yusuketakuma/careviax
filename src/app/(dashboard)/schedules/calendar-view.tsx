@@ -21,6 +21,7 @@ import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import {
   fetchCalendarSchedules,
   formatCalendarTimeRange,
+  groupCalendarSchedulesByDate,
   sortCalendarSchedules,
   type CalendarVisitSchedule,
   type ScheduleStatus,
@@ -190,18 +191,11 @@ export function CalendarView() {
   const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
   const schedulesByDate = useMemo(() => {
-    const map = new Map<string, CalendarVisitSchedule[]>();
-    for (const s of schedules) {
-      const key = s.scheduled_date.slice(0, 10);
-      const list = map.get(key);
-      if (list) list.push(s);
-      else map.set(key, [s]);
-    }
-    return map;
+    return groupCalendarSchedulesByDate(schedules);
   }, [schedules]);
 
   const schedulesForDay = (day: Date) =>
-    sortCalendarSchedules(schedulesByDate.get(format(day, 'yyyy-MM-dd')) ?? []);
+    schedulesByDate.get(format(day, 'yyyy-MM-dd')) ?? [];
 
   const today = useMemo(() => new Date(), []);
   const selectedSchedules = selectedDate ? schedulesForDay(selectedDate) : [];

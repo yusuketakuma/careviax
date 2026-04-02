@@ -1,13 +1,18 @@
 import { defineConfig, devices } from '@playwright/test';
 import baseConfig from './playwright.local.config';
+import {
+  PLAYWRIGHT_AUDIT_JSON_REPORT,
+  PLAYWRIGHT_AUDIT_OUTPUT_DIR,
+  PLAYWRIGHT_AUDIT_REPORT_DIR,
+} from './tools/tests/helpers/artifacts';
 
 export default defineConfig({
   ...baseConfig,
-  outputDir: 'artifacts/playwright-audit/output',
+  outputDir: PLAYWRIGHT_AUDIT_OUTPUT_DIR,
   reporter: [
     ['list'],
-    ['html', { outputFolder: 'artifacts/playwright-audit/reports/html', open: 'never' }],
-    ['json', { outputFile: 'artifacts/playwright-audit/reports/json/report.json' }],
+    ['html', { outputFolder: PLAYWRIGHT_AUDIT_REPORT_DIR, open: 'never' }],
+    ['json', { outputFile: PLAYWRIGHT_AUDIT_JSON_REPORT }],
   ],
   use: {
     ...baseConfig.use,

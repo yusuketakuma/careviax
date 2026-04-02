@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import { buildSort } from '@/lib/api/search';
 import { withOrgContext } from '@/lib/db/rls';
 import { SCHEDULE_LIST_INCLUDE } from '@/lib/db/schedule-includes';
+import { ACTIVE_VISIT_SCHEDULE_STATUSES } from '@/lib/constants/visit';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { validationError } from '@/lib/api/response';
 import { enrichSchedulesWithHints } from '@/server/services/schedule-enrichment';
@@ -19,6 +20,7 @@ export type ListSchedulesFilters = {
   limit?: number;
   date_from?: string;
   date_to?: string;
+  status_scope?: 'active';
   pharmacist_id?: string;
   case_id?: string;
   patient_id?: string;
@@ -48,6 +50,13 @@ export async function listSchedules(
             scheduled_date: {
               ...(filters.date_from ? { gte: new Date(filters.date_from) } : {}),
               ...(filters.date_to ? { lte: new Date(filters.date_to) } : {}),
+            },
+          }
+        : {}),
+      ...(filters.status_scope === 'active'
+        ? {
+            schedule_status: {
+              in: [...ACTIVE_VISIT_SCHEDULE_STATUSES],
             },
           }
         : {}),

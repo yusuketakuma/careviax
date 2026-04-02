@@ -6,6 +6,7 @@ export async function fetchVisitSchedulesWindow<T>(args: {
   orgId: string;
   dateFrom: string;
   dateTo: string;
+  statusScope?: 'active';
   fetchImpl?: typeof fetch;
   limit?: number;
   maxPages?: number;
@@ -15,6 +16,7 @@ export async function fetchVisitSchedulesWindow<T>(args: {
     params: new URLSearchParams({
       date_from: args.dateFrom,
       date_to: args.dateTo,
+      ...(args.statusScope ? { status_scope: args.statusScope } : {}),
     }),
     init: {
       headers: { 'x-org-id': args.orgId },

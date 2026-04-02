@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CareViaX Pharmacy
 
-## Getting Started
+在宅訪問に強い保険薬局向けの業務・連携プラットフォームです。Next.js App Router を中心に、調剤、監査、セット監査、訪問スケジュール、多職種連携を 1 つのリポジトリで扱います。
 
-First, run the development server:
+## Repository Layout
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+GitHub のトップでは、継続的に編集するアプリ本体と運用資産だけが見える構成に寄せています。
+
+```text
+careviax/
+├── docs/      # 仕様、設計、運用ガイド、監査・テスト用ドキュメント
+├── prisma/    # Prisma schema, migrations, generated client settings
+├── public/    # Static assets
+├── src/       # Application and server code
+└── tools/     # Operational assets: infra templates, scripts, Playwright tests
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Key Entry Points
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `src/app/` : App Router pages and route handlers
+- `src/server/` : jobs, services, server-only orchestration
+- `tools/scripts/` : 運用レポート、バックアップ確認、pilot readiness などの CLI
+- `tools/tests/` : Playwright による E2E / UI 監査
+- `tools/infra/` : AWS / セキュリティ / 運用テンプレート
+- `tools/README.md` : `tools/` 配下の index
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Docs
 
-## Learn More
+- `docs/README.md` : ドキュメント全体の index
+- `docs/compliance/README.md` : compliance docs の入口
+- `docs/operations/README.md` : operations docs の入口
+- `CLAUDE.md` : プロジェクト方針と設計原則
+- `Plans.md` : 実装計画と進行中タスク
+- `docs/testing/README.md` : testing docs の入口
+- `docs/testing/TESTING.md` : テスト規約
+- `docs/testing/PROMPT_PLAYWRIGHT_AUDIT_MASTER.md` : Playwright 監査用マスタープロンプト
 
-To learn more about Next.js, take a look at the following resources:
+## Common Commands
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+pnpm dev
+pnpm build
+pnpm lint
+pnpm test
+pnpm test:e2e
+pnpm test:e2e:list
+pnpm test:e2e:audit
+pnpm db:generate
+```

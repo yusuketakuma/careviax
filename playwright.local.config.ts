@@ -1,7 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
+import { PLAYWRIGHT_OUTPUT_DIR } from './tools/tests/helpers/artifacts';
 
 export default defineConfig({
-  testDir: './tests',
+  testDir: './tools/tests',
+  outputDir: PLAYWRIGHT_OUTPUT_DIR,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 0,

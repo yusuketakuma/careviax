@@ -54,7 +54,17 @@ function previewFromWorkbenchItem(item: WorkflowWorkbenchItem): WorkflowPreviewI
   };
 }
 
-function buildWorkflowPhaseAccess(
+function buildMedicationSetSummary(preparationCount: number, auditCount: number) {
+  if (preparationCount > 0 && auditCount > 0) {
+    return `セット ${preparationCount}件 / セット監査 ${auditCount}件`;
+  }
+  if (auditCount > 0) {
+    return `セット監査 ${auditCount}件`;
+  }
+  return `セット ${preparationCount}件`;
+}
+
+export function buildWorkflowPhaseAccess(
   payload: WorkflowDashboardResponse['data']
 ): Record<WorkflowPhaseKey, WorkflowPhaseAccessItem> {
   const workbench = (payload.unified_workbench ?? []) as WorkflowWorkbenchItem[];
@@ -74,6 +84,10 @@ function buildWorkflowPhaseAccess(
     ? payload.refill_upcoming.length
     : 0;
   const prescriptionCount = intakeLinkageCount + refillUpcomingCount;
+  const medicationSetPreparationCount = payload.cycle_status_counts.setting ?? 0;
+  const medicationSetAuditCount = payload.cycle_status_counts.set_audited ?? 0;
+  const medicationSetCycleCount = medicationSetPreparationCount + medicationSetAuditCount;
+  const medicationSetPendingCount = Math.max(medicationSets.length, medicationSetCycleCount);
 
   const proposalNext = proposals[0];
   const dispensingNext = dispensing[0];
@@ -136,15 +150,21 @@ function buildWorkflowPhaseAccess(
       preview_items: medicationSetsNext ? [previewFromWorkbenchItem(medicationSetsNext)] : [],
       label: 'セット',
       href: '/medication-sets',
-      pending_count: medicationSets.length,
+      pending_count: medicationSetPendingCount,
       summary:
-        medicationSets.length > 0
-          ? `セット関連 ${medicationSets.length}件`
+        medicationSetPendingCount > 0
+          ? buildMedicationSetSummary(medicationSetPreparationCount, medicationSetAuditCount)
           : 'セット関連の滞留はありません',
-      tone: medicationSets.length > 0 ? 'warning' : 'default',
+      tone: medicationSetPendingCount > 0 ? 'warning' : 'default',
       next_action: medicationSetsNext
         ? { href: medicationSetsNext.action_href, label: medicationSetsNext.action_label }
-        : null,
+        : medicationSetPendingCount > 0
+          ? {
+              href: '/medication-sets',
+              label:
+                medicationSetAuditCount > 0 ? 'セット監査を確認' : 'セット管理を開く',
+            }
+          : null,
     },
     visits: {
       preview_items: visitsNext ? [previewFromWorkbenchItem(visitsNext)] : [],

@@ -375,7 +375,8 @@ export function MedicationSetsContent() {
         id: 'actions',
         header: '',
         cell: ({ row }) => {
-          const hasAudit = row.original.audits.length > 0;
+          const latestAudit = row.original.audits[0];
+          const isApproved = latestAudit?.result === 'approved';
           return (
             <div className="flex flex-wrap justify-end gap-2">
               <Link
@@ -393,7 +394,7 @@ export function MedicationSetsContent() {
               <Button
                 size="sm"
                 variant="outline"
-                disabled={hasAudit}
+                disabled={isApproved}
                 onClick={() => {
                   setAuditForm({
                     plan_id: row.original.id,
@@ -503,7 +504,9 @@ export function MedicationSetsContent() {
 
       <div className="flex justify-end">
         <Button
+          disabled={eligibleCycles.length === 0}
           onClick={() => {
+            if (eligibleCycles.length === 0) return;
             setCreateForm({
               cycle_id: eligibleCycles[0]?.id ?? '',
               target_period_start: '',

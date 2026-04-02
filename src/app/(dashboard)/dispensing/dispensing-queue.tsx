@@ -1,20 +1,22 @@
 'use client';
 
-import { useMemo, useState, useCallback } from 'react';
-import Link from 'next/link';
+import { useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { type ColumnDef } from '@tanstack/react-table';
-import { format, parseISO } from 'date-fns';
-import { ja } from 'date-fns/locale';
-import { AlertTriangle, Clock } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useKeyboardShortcuts, type ShortcutDefinition } from '@/components/features/keyboard/use-keyboard-shortcuts';
 import { compareDispenseWorkflowOrder } from '@/lib/dispensing/workflow-order';
+import {
+  QueueDueDate,
+  QueueFacilityLabel,
+  QueuePatientLink,
+  QueuePriorityBadge,
+  useSelectableQueueState,
+} from './dispense-work-queue.shared';
 
 type PrescriptionLineSummary = {
   id: string;
@@ -51,38 +53,16 @@ type DispenseTaskRow = {
   };
 };
 
-const priorityConfig: Record<
-  string,
-  { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive'; icon?: React.ElementType }
-> = {
-  emergency: { label: '緊急', variant: 'destructive', icon: AlertTriangle },
-  urgent: { label: '至急', variant: 'secondary' },
-  normal: { label: '通常', variant: 'outline' },
-};
-
 const columns: ColumnDef<DispenseTaskRow>[] = [
   {
     accessorKey: 'priority',
     header: '優先度',
-    cell: ({ row }) => {
-      const config = priorityConfig[row.original.priority] ?? priorityConfig.normal;
-      const Icon = config.icon;
-      return (
-        <Badge variant={config.variant} className="gap-1 whitespace-nowrap">
-          {Icon && <Icon className="size-3" aria-hidden="true" />}
-          {config.label}
-        </Badge>
-      );
-    },
+    cell: ({ row }) => <QueuePriorityBadge priority={row.original.priority} />,
   },
   {
     id: 'facility',
     header: '施設/訪問先',
-    cell: ({ row }) => (
-      <span className="text-sm text-muted-foreground">
-        {row.original.facility_label ?? '自宅訪問'}
-      </span>
-    ),
+    cell: ({ row }) => <QueueFacilityLabel facilityLabel={row.original.facility_label} />,
   },
   {
     id: 'patient_name',
@@ -90,15 +70,11 @@ const columns: ColumnDef<DispenseTaskRow>[] = [
     cell: ({ row }) => {
       const p = row.original.cycle.case_.patient;
       return (
-        <Link
+        <QueuePatientLink
           href={`/dispensing/${row.original.id}`}
-          className="font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {p.name}
-          {p.name_kana && (
-            <span className="ml-1 text-xs text-muted-foreground">({p.name_kana})</span>
-          )}
-        </Link>
+          name={p.name}
+          nameKana={p.name_kana}
+        />
       );
     },
   },
@@ -126,22 +102,12 @@ const columns: ColumnDef<DispenseTaskRow>[] = [
   {
     accessorKey: 'due_date',
     header: '期限',
-    cell: ({ row }) => {
-      if (!row.original.due_date)
-        return <span className="text-muted-foreground text-xs">—</span>;
-      return (
-        <div
-          className={`flex items-center gap-1 text-sm ${row.original.is_overdue ? 'font-medium text-destructive' : ''}`}
-        >
-          <Clock
-            className={`size-3.5 ${row.original.is_overdue ? 'text-destructive' : 'text-muted-foreground'}`}
-            aria-hidden="true"
-          />
-          {format(parseISO(row.original.due_date), 'MM/dd HH:mm', { locale: ja })}
-          {row.original.is_overdue && <span className="text-[11px]">期限超過</span>}
-        </div>
-      );
-    },
+    cell: ({ row }) => (
+      <QueueDueDate
+        dueDate={row.original.due_date}
+        isOverdue={row.original.is_overdue}
+      />
+    ),
   },
   {
     id: 'prescriber',
@@ -162,7 +128,6 @@ export function DispensingQueue() {
   const isBootstrappingOrg = !orgId;
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [selectedIndex, setSelectedIndex] = useState(0);
   const [viewMode, setViewMode] = useState<'patient' | 'facility'>('patient');
 
   const { data, isLoading } = useRealtimeQuery({
@@ -195,6 +160,14 @@ export function DispensingQueue() {
     });
     return sorted;
   }, [tasks, viewMode]);
+  const {
+    selectedItem,
+    selectedRowIndex,
+    handleMoveUp,
+    handleMoveDown,
+    handleRowClick,
+    resetSelection,
+  } = useSelectableQueueState(orderedTasks);
 
   const completeMutation = useMutation({
     mutationFn: async (taskId: string) => {
@@ -217,23 +190,13 @@ export function DispensingQueue() {
     },
   });
 
-  const handleMoveUp = useCallback(() => {
-    setSelectedIndex((prev) => Math.max(0, prev - 1));
-  }, []);
-
-  const handleMoveDown = useCallback(() => {
-    setSelectedIndex((prev) => Math.min(Math.max(0, orderedTasks.length - 1), prev + 1));
-  }, [orderedTasks.length]);
-
   const handleSelect = useCallback(() => {
-    const task = orderedTasks[selectedIndex];
-    if (task) router.push(`/dispensing/${task.id}`);
-  }, [orderedTasks, selectedIndex, router]);
+    if (selectedItem) router.push(`/dispensing/${selectedItem.id}`);
+  }, [router, selectedItem]);
 
   const handleQuickStart = useCallback(() => {
-    const task = orderedTasks[selectedIndex];
-    if (task) completeMutation.mutate(task.id);
-  }, [orderedTasks, selectedIndex, completeMutation]);
+    if (selectedItem) completeMutation.mutate(selectedItem.id);
+  }, [completeMutation, selectedItem]);
 
   const shortcuts: ShortcutDefinition[] = useMemo(
     () => [
@@ -257,7 +220,7 @@ export function DispensingQueue() {
             size="sm"
             onClick={() => {
               setViewMode('patient');
-              setSelectedIndex(0);
+              resetSelection();
             }}
           >
             患者別
@@ -268,7 +231,7 @@ export function DispensingQueue() {
             size="sm"
             onClick={() => {
               setViewMode('facility');
-              setSelectedIndex(0);
+              resetSelection();
             }}
           >
             施設別
@@ -284,8 +247,8 @@ export function DispensingQueue() {
         data={orderedTasks}
         isLoading={isBootstrappingOrg || isLoading}
         caption="調剤キュー"
-        selectedRowIndex={selectedIndex}
-        onRowClick={(index) => setSelectedIndex(index)}
+        selectedRowIndex={selectedRowIndex}
+        onRowClick={handleRowClick}
       />
     </div>
   );

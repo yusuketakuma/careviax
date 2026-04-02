@@ -42,9 +42,9 @@ describe('external-readiness', () => {
 
     for (const filePath of [
       'docs/compliance/rds-configuration.md',
-      'infra/file-storage-bucket-policy.json',
-      'infra/s3-kms-key-policy.json',
-      'infra/vpc-security-groups.json',
+      'tools/infra/file-storage-bucket-policy.json',
+      'tools/infra/s3-kms-key-policy.json',
+      'tools/infra/vpc-security-groups.json',
     ]) {
       const absolutePath = path.join(cwd, filePath);
       fs.mkdirSync(path.dirname(absolutePath), { recursive: true });

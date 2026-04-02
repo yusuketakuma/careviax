@@ -93,8 +93,8 @@ import {
   checkCallbackFollowups,
   checkConferenceMeetingReminders,
   checkInitialHomeVisitAssessmentBacklog,
-  checkPrescriptionOriginalRetention,
 } from './daily';
+import { checkPrescriptionOriginalRetention } from './daily-prescription-original-retention';
 
 describe('checkPrescriptionOriginalRetention', () => {
   beforeEach(() => {

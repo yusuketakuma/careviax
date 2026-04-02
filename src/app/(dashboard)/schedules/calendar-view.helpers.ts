@@ -66,6 +66,23 @@ export function sortCalendarSchedules<T extends CalendarVisitSchedule>(schedules
   });
 }
 
+export function groupCalendarSchedulesByDate<T extends CalendarVisitSchedule>(schedules: T[]) {
+  const grouped = new Map<string, T[]>();
+
+  for (const schedule of schedules) {
+    const key = schedule.scheduled_date.slice(0, 10);
+    const bucket = grouped.get(key);
+    if (bucket) bucket.push(schedule);
+    else grouped.set(key, [schedule]);
+  }
+
+  for (const [key, bucket] of grouped) {
+    grouped.set(key, sortCalendarSchedules(bucket));
+  }
+
+  return grouped;
+}
+
 export async function fetchCalendarSchedules(args: {
   orgId: string;
   dateFrom: string;

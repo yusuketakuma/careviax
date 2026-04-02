@@ -48,11 +48,20 @@ prisma/generated/
 # Playwright
 test-results/
 playwright-report/
+tools/tests/.artifacts/
 
 # Claude Code internal state
-.claude/state/
-.claude/sessions/
-.claude/memory/session-log.md
+.claude/
+
+# Local workflow / audit artifacts
+.omc/
+artifacts/
+audits/
+reports/
+tmp/
+
+# Accidental local worktree state directory
+{"decision":"approve","reason":"WorktreeCreate: initialized worktree state"}/
 
 # IDE
 .vscode/
