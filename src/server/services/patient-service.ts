@@ -671,10 +671,34 @@ export async function createPatientWithIntake(
         phone: preferredContactPhone,
         medical_insurance_number: rest.medical_insurance_number || null,
         care_insurance_number: rest.care_insurance_number || null,
-        allergy_info: rest.allergy_info ?? undefined,
+        allergy_info: rest.allergy_info ? (rest.allergy_info as unknown as Prisma.InputJsonValue) : undefined,
         notes: rest.notes || null,
       },
     });
+
+    // Write PatientInsurance records from denormalized insurance numbers
+    const insuranceRecords: Prisma.PatientInsuranceCreateManyInput[] = [];
+    if (rest.medical_insurance_number) {
+      insuranceRecords.push({
+        org_id: orgId,
+        patient_id: newPatient.id,
+        insurance_type: 'medical',
+        number: rest.medical_insurance_number,
+        is_active: true,
+      });
+    }
+    if (rest.care_insurance_number) {
+      insuranceRecords.push({
+        org_id: orgId,
+        patient_id: newPatient.id,
+        insurance_type: 'care',
+        number: rest.care_insurance_number,
+        is_active: true,
+      });
+    }
+    if (insuranceRecords.length > 0) {
+      await tx.patientInsurance.createMany({ data: insuranceRecords });
+    }
 
     const residenceAddress =
       address ||
@@ -764,6 +788,12 @@ export async function createPatientWithIntake(
           first_visit_time_note: intake?.first_visit_time_note || null,
           parking_available: intake?.parking_available ?? null,
           mcs_linked: intake?.mcs_linked ?? null,
+          // P-09: structured intake columns
+          adl_level: intake?.adl_level || null,
+          dementia_level: intake?.dementia_level || null,
+          swallowing_route: intake?.swallowing_route || null,
+          care_level: intake?.care_level || null,
+          infection_isolation: !!intake?.infection_isolation,
         },
       });
 

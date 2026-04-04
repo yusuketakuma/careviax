@@ -74,6 +74,16 @@ type ExternalPayload = {
   expires_at: string;
 };
 
+const SCOPE_DISPLAY_NAMES: Record<string, string> = {
+  allergy_info: 'アレルギー情報',
+  medication_profiles: '服薬一覧',
+  visit_schedules: '訪問予定',
+  care_reports: '訪問報告書',
+  self_report_history: '自己申告履歴',
+  shared_summary: 'AIサマリー',
+  lab_summary: '検査値サマリー',
+};
+
 const SELF_REPORT_CATEGORIES = [
   '服薬の困りごと',
   '残薬',
@@ -82,6 +92,33 @@ const SELF_REPORT_CATEGORIES = [
   '医療材料・注射関連',
   'その他',
 ];
+
+const SELF_REPORT_STATUS_LABELS: Record<string, string> = {
+  pending: '未対応',
+  triaged: 'トリアージ済',
+  resolved: '解決済',
+  closed: '完了',
+};
+
+const RELATION_LABELS: Record<string, string> = {
+  self: '本人',
+  spouse: '配偶者',
+  child: '子',
+  parent: '親',
+  sibling: '兄弟姉妹',
+  care_manager: 'ケアマネ',
+  physician: '医師',
+  nurse: '看護師',
+  facility_staff: '施設職員',
+  other: 'その他',
+};
+
+const GENDER_LABELS: Record<string, string> = {
+  male: '男性',
+  female: '女性',
+  other: 'その他',
+  unknown: '不明',
+};
 
 export function SharedViewerContent({
   token,
@@ -235,7 +272,7 @@ export function SharedViewerContent({
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">性別</p>
-                    <p>{data.patient.gender ?? '未登録'}</p>
+                    <p>{data.patient.gender ? (GENDER_LABELS[data.patient.gender] ?? data.patient.gender) : '未登録'}</p>
                   </div>
                 </div>
                 {data.allergy_info ? (
@@ -257,7 +294,7 @@ export function SharedViewerContent({
                     .filter(([, enabled]) => enabled)
                     .map(([key]) => (
                       <Badge key={key} variant="outline">
-                        {key}
+                        {SCOPE_DISPLAY_NAMES[key] ?? key}
                       </Badge>
                     ))}
                 </div>
@@ -317,10 +354,10 @@ export function SharedViewerContent({
                         <p className="font-medium text-foreground">{report.subject}</p>
                         <p className="text-xs text-muted-foreground">
                           {report.reported_by_name}
-                          {report.relation ? ` (${report.relation})` : ''} / {report.category}
+                          {report.relation ? ` (${RELATION_LABELS[report.relation] ?? report.relation})` : ''} / {report.category}
                         </p>
                       </div>
-                      <Badge variant="outline">{report.status}</Badge>
+                      <Badge variant="outline">{SELF_REPORT_STATUS_LABELS[report.status] ?? report.status}</Badge>
                     </div>
                     <p className="mt-2 whitespace-pre-line text-xs leading-5 text-muted-foreground">
                       {report.content}

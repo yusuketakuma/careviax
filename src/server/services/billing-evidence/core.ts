@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db/client';
 import { findActiveVisitConsent, findCurrentManagementPlan } from '../management-plans';
 import { upsertOperationalTask, resolveOperationalTasks } from '../operational-tasks';
 import { resolveBillingPayerBasis } from '../billing-payer-basis';
+import { resolvePatientInsurance } from '../patient-insurance';
 import { findLatestPrescriptionIntakeClassification } from '../prescription-intake-classification';
 import {
   buildBillingCandidateSpecs,
@@ -711,8 +712,6 @@ export async function upsertBillingEvidenceForVisit(
     },
     select: {
       id: true,
-      medical_insurance_number: true,
-      care_insurance_number: true,
       birth_date: true,
       cases: {
         where: { id: visitRecord.schedule.case_id },
@@ -726,6 +725,21 @@ export async function upsertBillingEvidenceForVisit(
   if (!patient) {
     throw new Error('PATIENT_NOT_FOUND');
   }
+
+  const [medicalInsurance, careInsurance] = await Promise.all([
+    resolvePatientInsurance(tx as Parameters<typeof resolvePatientInsurance>[0], {
+      orgId: args.orgId,
+      patientId: visitRecord.patient_id,
+      type: 'medical',
+      asOf: visitRecord.visit_date,
+    }),
+    resolvePatientInsurance(tx as Parameters<typeof resolvePatientInsurance>[0], {
+      orgId: args.orgId,
+      patientId: visitRecord.patient_id,
+      type: 'care',
+      asOf: visitRecord.visit_date,
+    }),
+  ]);
 
   const visitDate = visitRecord.visit_date;
   const visitDateOnly = new Date(
@@ -927,8 +941,8 @@ export async function upsertBillingEvidenceForVisit(
   );
 
   const payerBasis = resolveBillingPayerBasis({
-    medicalInsuranceNumber: patient.medical_insurance_number,
-    careInsuranceNumber: patient.care_insurance_number,
+    medicalInsuranceNumber: medicalInsurance?.number ?? null,
+    careInsuranceNumber: careInsurance?.number ?? null,
     visitType: visitRecord.schedule.visit_type,
   });
   const hasVisitReports = reports.length > 0;

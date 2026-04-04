@@ -108,6 +108,17 @@ function makeTx(overrides: Record<string, unknown> = {}) {
     billingEvidence: {
       upsert: vi.fn().mockResolvedValue({ id: 'evidence_1', claimable: true }),
     },
+    patientInsurance: {
+      // Default: medical insurance present (matching makePatient's medical_insurance_number)
+      findFirst: vi.fn().mockImplementation(
+        ({ where }: { where: { insurance_type: string } }) =>
+          Promise.resolve(
+            where?.insurance_type === 'medical'
+              ? { id: 'ins_1', number: 'med_1', insurance_type: 'medical', is_active: true }
+              : null,
+          ),
+      ),
+    },
   };
 
   // Deep merge overrides

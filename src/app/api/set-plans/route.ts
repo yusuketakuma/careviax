@@ -125,12 +125,14 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
           select: {
             patient: {
               select: {
-                packaging_preferences: true,
                 packaging_profile: {
                   select: {
                     default_packaging_method: true,
                     medication_box_color: true,
                     notes: true,
+                    box_config: true,
+                    special_instructions: true,
+                    cognitive_note: true,
                   },
                 },
               },
@@ -181,7 +183,6 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       setMethod: set_method,
       packagingMethod,
       patientPackagingProfile: cycle.case_?.patient.packaging_profile ?? null,
-      packagingPreferences: cycle.case_?.patient.packaging_preferences ?? null,
     });
 
     const plan = await tx.setPlan.create({

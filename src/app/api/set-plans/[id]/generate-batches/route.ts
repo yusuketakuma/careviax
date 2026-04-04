@@ -89,12 +89,14 @@ export const POST = withAuthContext<{ id: string }>(
               select: {
                 patient: {
                   select: {
-                    packaging_preferences: true,
                     packaging_profile: {
                       select: {
                         default_packaging_method: true,
                         medication_box_color: true,
                         notes: true,
+                        box_config: true,
+                        special_instructions: true,
+                        cognitive_note: true,
                       },
                     },
                   },
@@ -193,12 +195,10 @@ export const POST = withAuthContext<{ id: string }>(
       }
 
       const patientPackagingProfile = plan.cycle.case_?.patient.packaging_profile ?? null;
-      const packagingPreferences = plan.cycle.case_?.patient.packaging_preferences ?? null;
       const packagingSummary = buildSetPlanPackagingSummary({
         setMethod: plan.set_method,
         packagingMethod: plan.packaging_method_ref ?? null,
         patientPackagingProfile,
-        packagingPreferences,
       });
 
       await tx.setPlan.update({

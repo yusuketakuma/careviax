@@ -36,7 +36,7 @@ export interface JahisPatient {
   name: string;       // 患者氏名（漢字）
   nameKana?: string;  // 患者氏名（カナ）
   birthDate?: string; // YYYY-MM-DD
-  gender?: 'male' | 'female' | 'unknown';
+  gender?: 'male' | 'female' | 'other';
 }
 
 export interface JahisMedication {
@@ -535,7 +535,7 @@ export function parseJahisQRSafe(text: string): JahisParseResult {
           if (parts[1]) patient.name = parts[1];
           if (parts[2]) {
             const g = parts[2].trim();
-            patient.gender = g === '1' ? 'male' : g === '2' ? 'female' : 'unknown';
+            patient.gender = g === '1' ? 'male' : g === '2' ? 'female' : 'other';
           }
           if (parts[3]) patient.birthDate = parseJahisDate(parts[3]);
           if (parts[10]) patient.nameKana = parts[10];

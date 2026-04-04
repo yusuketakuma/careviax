@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { packagingPreferencesSchema } from './packaging-method';
+import { allergyEntrySchema } from './patient-allergy';
 
 export const patientConditionSchema = z.object({
   id: z.string().optional(),
@@ -149,9 +149,8 @@ export const createPatientSchema = z.object({
   facility_id: z.string().optional(),
   facility_unit_id: z.string().optional(),
   unit_name: z.string().optional(),
-  allergy_info: z.array(z.string().min(1)).optional(),
+  allergy_info: z.array(allergyEntrySchema).optional(),
   notes: z.string().optional(),
-  packaging_preferences: packagingPreferencesSchema.optional().nullable(),
   conditions: z.array(patientConditionSchema).optional(),
   contacts: z.array(patientContactSchema).optional(),
   requester: intakeRequesterSchema.optional(),

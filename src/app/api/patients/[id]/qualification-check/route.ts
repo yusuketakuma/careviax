@@ -1,0 +1,61 @@
+import { NextRequest } from 'next/server';
+import { requireAuthContext } from '@/lib/auth/context';
+import { success, notFound, error } from '@/lib/api/response';
+import { prisma } from '@/lib/db/client';
+import {
+  createQualificationCheckAdapter,
+  QualificationCheckAdapterError,
+} from '@/server/adapters/qualification-check';
+import { format } from 'date-fns';
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: '資格確認の実行権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const ctx = authResult.ctx;
+
+  const { id } = await params;
+
+  const patient = await prisma.patient.findFirst({
+    where: { id, org_id: ctx.orgId },
+    select: {
+      id: true,
+      medical_insurance_number: true,
+      care_insurance_number: true,
+    },
+  });
+  if (!patient) return notFound('患者が見つかりません');
+
+  const adapter = createQualificationCheckAdapter({
+    provider: (process.env.OQC_PROVIDER as 'stub' | 'mhlw') ?? 'stub',
+    baseUrl: process.env.OQC_BASE_URL,
+    clientId: process.env.OQC_CLIENT_ID,
+    clientSecret: process.env.OQC_CLIENT_SECRET,
+    accessToken: process.env.OQC_ACCESS_TOKEN,
+  });
+
+  try {
+    const result = await adapter.checkInsurance({
+      insuranceNumber: patient.medical_insurance_number ?? undefined,
+      asOfDate: format(new Date(), 'yyyy-MM-dd'),
+    });
+
+    return success({ data: result, capabilities: adapter.getCapabilities() });
+  } catch (cause) {
+    if (cause instanceof QualificationCheckAdapterError) {
+      if (cause.code === 'NOT_IMPLEMENTED') {
+        return error('OQC_NOT_ENABLED', cause.message, 501);
+      }
+      if (cause.code === 'UNAUTHORIZED') {
+        return error('OQC_UNAUTHORIZED', cause.message, 502);
+      }
+      return error('OQC_UPSTREAM_FAILURE', cause.message, 502);
+    }
+    throw cause;
+  }
+}

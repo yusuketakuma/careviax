@@ -439,6 +439,36 @@ export async function GET(
     orgId: ctx.orgId,
     patientId: id,
   });
+
+  // Lab summary: most recent value per analyte for key analytes
+  const KEY_ANALYTES = ['egfr', 'scr', 'k', 'crp', 'hba1c', 'pt_inr', 'alb'] as const;
+  const labRows = await prisma.patientLabObservation.findMany({
+    where: {
+      org_id: ctx.orgId,
+      patient_id: id,
+      analyte_code: { in: KEY_ANALYTES as unknown as never[] },
+    },
+    orderBy: [{ measured_at: 'desc' }],
+    take: 50,
+    select: {
+      id: true,
+      analyte_code: true,
+      measured_at: true,
+      value_numeric: true,
+      value_text: true,
+      unit: true,
+      abnormal_flag: true,
+    },
+  });
+
+  // Latest per analyte
+  const labSummaryMap = new Map<string, (typeof labRows)[number]>();
+  for (const row of labRows) {
+    if (!labSummaryMap.has(row.analyte_code)) {
+      labSummaryMap.set(row.analyte_code, row);
+    }
+  }
+  const labSummary = Array.from(labSummaryMap.values());
   const privacy = getPatientPrivacyFlags(ctx.role);
 
   const timeline_events = [
@@ -592,6 +622,7 @@ export async function GET(
       claimable_count: billingEvidence.filter((item) => item.claimable).length,
       blocked_count: billingEvidence.filter((item) => !item.claimable).length,
     },
+    lab_summary: labSummary,
     timeline_events,
     privacy: {
       sensitive_fields_masked: privacy.sensitiveFieldsMasked,
@@ -636,7 +667,6 @@ export async function PATCH(
     unit_name,
     contacts,
     conditions,
-    packaging_preferences,
     requester: _requester,
     intake: _intake,
     ...rest
@@ -686,9 +716,6 @@ export async function PATCH(
       where: { id },
       data: {
         ...(birth_date ? { birth_date: new Date(birth_date) } : {}),
-        ...(packaging_preferences !== undefined
-          ? { packaging_preferences: (packaging_preferences ?? null) as Prisma.InputJsonValue | null }
-          : {}),
         ...rest,
       } as Prisma.PatientUpdateInput,
     });

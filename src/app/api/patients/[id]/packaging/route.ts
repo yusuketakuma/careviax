@@ -73,25 +73,28 @@ export async function PUT(
   });
   if (!patient) return notFound('患者が見つかりません');
 
+  const boxConfigRaw = parsed.data.box_config ?? null;
+  const profileData = {
+    default_packaging_method: parsed.data.default_packaging_method ?? null,
+    medication_box_color: parsed.data.medication_box_color || null,
+    notes: parsed.data.notes || null,
+    box_config: boxConfigRaw as import('@prisma/client').Prisma.NullableJsonNullValueInput | import('@prisma/client').Prisma.InputJsonValue,
+    special_instructions: parsed.data.special_instructions || null,
+    cognitive_note: parsed.data.cognitive_note || null,
+  };
+
   const updated = await withOrgContext(ctx.orgId, async (tx) => {
     return tx.patientPackagingProfile.upsert({
       where: { patient_id: id },
-      create: {
-        org_id: ctx.orgId,
-        patient_id: id,
-        default_packaging_method: parsed.data.default_packaging_method ?? null,
-        medication_box_color: parsed.data.medication_box_color || null,
-        notes: parsed.data.notes || null,
-      },
-      update: {
-        default_packaging_method: parsed.data.default_packaging_method ?? null,
-        medication_box_color: parsed.data.medication_box_color || null,
-        notes: parsed.data.notes || null,
-      },
+      create: { org_id: ctx.orgId, patient_id: id, ...profileData },
+      update: profileData,
       select: {
         default_packaging_method: true,
         medication_box_color: true,
         notes: true,
+        box_config: true,
+        special_instructions: true,
+        cognitive_note: true,
         updated_at: true,
       },
     });

@@ -122,7 +122,7 @@ type MedicationsContentProps = {
   patientNameKana?: string;
   birthDate?: string;
   gender?: string;
-  allergyInfo?: string[] | null;
+  allergyInfo?: Array<{ drug_name: string; category: string; severity: string } | string> | null;
 };
 
 const sourceLabel: Record<string, string> = {
@@ -216,7 +216,7 @@ function buildMedicationStats(profiles: MedicationProfile[]) {
 function normalizePatientGender(gender: string): JahisPatient['gender'] {
   if (gender === 'male' || gender === '男性') return 'male';
   if (gender === 'female' || gender === '女性') return 'female';
-  return 'unknown';
+  return 'other';
 }
 
 function formatDateTime(value: string | null) {
@@ -1197,11 +1197,14 @@ export function MedicationsContent({
                 <p className="text-xs font-medium text-muted-foreground">登録済みアレルギー</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {resolvedAllergyInfo && resolvedAllergyInfo.length > 0 ? (
-                    resolvedAllergyInfo.map((item) => (
-                      <Badge key={item} variant="outline">
-                        {item}
-                      </Badge>
-                    ))
+                    resolvedAllergyInfo.map((item, index) => {
+                      const label = typeof item === 'string' ? item : item.drug_name;
+                      return (
+                        <Badge key={`${label}-${index}`} variant="outline">
+                          {label}
+                        </Badge>
+                      );
+                    })
                   ) : (
                     <span className="text-sm text-muted-foreground">登録なし</span>
                   )}

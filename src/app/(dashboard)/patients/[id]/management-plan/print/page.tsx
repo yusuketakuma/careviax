@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { getManagementPlanPrintShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
+import { sortedManagementPlanSections, SECTION_LABELS } from '@/lib/validations/management-plan';
 import { PrintPageToolbar } from '@/components/features/workflow/print-page-toolbar';
 import { PrintLayout } from '@/components/features/reports/print-layout';
 import { buttonVariants } from '@/components/ui/button';
@@ -152,14 +153,31 @@ export default function ManagementPlanPrintPage() {
             </div>
           </section>
 
-          <section>
-            <h2 className="mb-1 bg-gray-800 px-2 py-1 text-sm font-bold text-white">
-              【本文】
-            </h2>
-            <pre className="min-h-[320px] overflow-hidden border border-gray-400 px-3 py-2 text-xs whitespace-pre-wrap">
-              {JSON.stringify(plan.content, null, 2)}
-            </pre>
-          </section>
+          {sortedManagementPlanSections(plan.content).map(({ key, label, value }) => (
+            <section key={key}>
+              <h2 className="mb-1 bg-gray-800 px-2 py-1 text-sm font-bold text-white">
+                【{SECTION_LABELS[key] ?? label}】
+              </h2>
+              {Array.isArray(value) ? (
+                value.length === 0 ? (
+                  <div className="border border-gray-400 px-3 py-2 text-xs text-gray-400">—</div>
+                ) : (
+                  <ul className="border border-gray-400 px-3 py-2 text-xs space-y-1">
+                    {(value as unknown[]).map((item, i) => (
+                      <li key={i} className="flex gap-2">
+                        <span className="text-gray-500">•</span>
+                        <span className="whitespace-pre-wrap">{String(item)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              ) : (
+                <div className="min-h-[48px] border border-gray-400 px-3 py-2 text-xs whitespace-pre-wrap">
+                  {value != null && value !== '' ? String(value) : '—'}
+                </div>
+              )}
+            </section>
+          ))}
         </div>
       </PrintLayout>
     </div>

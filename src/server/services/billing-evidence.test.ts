@@ -32,6 +32,10 @@ vi.mock('./operational-tasks', () => ({
   resolveOperationalTasks: resolveOperationalTasksMock,
 }));
 
+vi.mock('./patient-insurance', () => ({
+  resolvePatientInsurance: vi.fn().mockResolvedValue(null),
+}));
+
 import {
   closeBillingCandidatesForMonth,
   generateBillingCandidatesForMonth,

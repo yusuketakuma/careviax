@@ -1,6 +1,7 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { Gender } from '@prisma/client';
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const { searchParams } = new URL(req.url);
@@ -24,7 +25,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       org_id: req.orgId,
       name: { contains: name, mode: 'insensitive' },
       birth_date: birthDate,
-      gender,
+      ...(Object.values(Gender).includes(gender as Gender) ? { gender: gender as Gender } : {}),
     },
     select: {
       id: true,

@@ -112,6 +112,9 @@ vi.mock('@/lib/db/client', () => ({
     billingCandidate: {
       findMany: billingCandidateFindManyMock,
     },
+    patientLabObservation: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
   },
 }));
 

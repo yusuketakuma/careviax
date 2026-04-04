@@ -1,5 +1,51 @@
 import { z } from 'zod';
 
+export const managementPlanContentSchema = z.object({
+  goals: z.array(z.string()).optional(),                    // 薬学的ケア目標
+  problems: z.array(z.string()).optional(),                 // 薬学的課題
+  interventions: z.array(z.string()).optional(),            // 介入計画
+  monitoring: z.array(z.string()).optional(),               // モニタリング項目
+  collaboration: z.array(z.string()).optional(),            // 多職種連携事項
+  patient_education: z.array(z.string()).optional(),        // 患者教育・指導
+  notes: z.string().optional(),                             // 特記事項
+}).catchall(z.unknown());
+
+export type ManagementPlanContent = z.infer<typeof managementPlanContentSchema>;
+
+const SECTION_ORDER: string[] = [
+  'goals',
+  'problems',
+  'interventions',
+  'monitoring',
+  'collaboration',
+  'patient_education',
+  'notes',
+];
+
+export const SECTION_LABELS: Record<string, string> = {
+  goals: '薬学的ケア目標',
+  problems: '薬学的課題',
+  interventions: '介入計画',
+  monitoring: 'モニタリング項目',
+  collaboration: '多職種連携事項',
+  patient_education: '患者教育・指導',
+  notes: '特記事項',
+};
+
+export function sortedManagementPlanSections(
+  content: Record<string, unknown>
+): Array<{ key: string; label: string; value: unknown }> {
+  const ordered = SECTION_ORDER.filter((k) => k in content).map((k) => ({
+    key: k,
+    label: SECTION_LABELS[k] ?? k,
+    value: content[k],
+  }));
+  const extra = Object.keys(content)
+    .filter((k) => !SECTION_ORDER.includes(k))
+    .map((k) => ({ key: k, label: k, value: content[k] }));
+  return [...ordered, ...extra];
+}
+
 const contentSchema = z.record(z.string(), z.unknown()).default({});
 
 export const createManagementPlanSchema = z.object({

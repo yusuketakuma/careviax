@@ -69,7 +69,6 @@ describe('/api/set-plans/[id]', () => {
       cycle: {
         case_: {
           patient: {
-            packaging_preferences: null,
             packaging_profile: null,
           },
         },

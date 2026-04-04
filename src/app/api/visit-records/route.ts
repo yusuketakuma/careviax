@@ -12,7 +12,7 @@ import { getRequestAuthContext } from '@/lib/auth/request-context';
 import { buildAllSoapTexts } from '@/lib/utils/soap-text-builder';
 import { getNextSimpleRruleOccurrence } from '@/lib/visits/rrule';
 import type { StructuredSoap } from '@/types/structured-soap';
-import type { Prisma } from '@prisma/client';
+import type { Prisma, LabAnalyteCode } from '@prisma/client';
 import { upsertBillingEvidenceForVisit } from '@/server/services/billing-evidence';
 import { processHandoffExtraction } from '@/server/services/visit-handoff';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
@@ -128,6 +128,44 @@ async function loadExistingVisitRecordConflict(
       prescribed_daily_dose: null,
     })),
   };
+}
+
+const LAB_ANALYTE_CODES = new Set([
+  'wbc', 'neut', 'hb', 'plt', 'pt_inr', 'ast', 'alt', 't_bil',
+  'scr', 'egfr', 'bun', 'ck', 'bnp', 'nt_pro_bnp', 'na', 'k', 'cl',
+  'hba1c', 'blood_glucose', 'alb', 'tp', 'crp',
+]);
+
+async function syncLabObservations(
+  tx: Prisma.TransactionClient,
+  orgId: string,
+  patientId: string,
+  visitRecordId: string,
+  visitDate: Date,
+  labValues: Record<string, unknown>,
+) {
+  const entries = Object.entries(labValues).filter(
+    ([key, val]) => LAB_ANALYTE_CODES.has(key) && typeof val === 'number',
+  ) as [string, number][];
+
+  if (entries.length === 0) return;
+
+  // Remove previous observations from this visit record on re-save
+  await tx.patientLabObservation.deleteMany({
+    where: { org_id: orgId, source_visit_record_id: visitRecordId },
+  });
+
+  await tx.patientLabObservation.createMany({
+    data: entries.map(([key, val]) => ({
+      org_id: orgId,
+      patient_id: patientId,
+      analyte_code: key as LabAnalyteCode,
+      measured_at: visitDate,
+      value_numeric: val,
+      source_type: 'visit_record',
+      source_visit_record_id: visitRecordId,
+    })),
+  });
 }
 
 async function replaceResidualMedications(
@@ -523,6 +561,12 @@ async function saveVisitRecord(
           });
 
     await replaceResidualMedications(tx, req.orgId, record.id, residual_medications);
+
+    // Sync structured lab values to PatientLabObservation
+    const labValues = (structured_soap as StructuredSoap | undefined)?.objective?.lab_values;
+    if (labValues) {
+      await syncLabObservations(tx, req.orgId, careCase.patient_id, record.id, visitRecordedAt, labValues as Record<string, unknown>);
+    }
 
     if (schedule.visit_type === 'initial' && firstVisitDocumentOutcomes.has(outcome_status)) {
       await upsertFirstVisitDocument({

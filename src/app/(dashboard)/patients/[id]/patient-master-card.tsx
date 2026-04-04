@@ -1,10 +1,12 @@
 'use client';
 
 import { cloneElement, isValidElement, useId, useState, type ReactNode, type ReactElement } from 'react';
+import type { AllergyEntry } from '@/lib/validations/patient-allergy';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { ShieldCheck } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -37,7 +39,7 @@ type PatientMasterCardProps = {
     phone: string | null;
     medical_insurance_number: string | null;
     care_insurance_number: string | null;
-    allergy_info: string[] | null;
+    allergy_info: AllergyEntry[] | null;
     notes: string | null;
     residences: Array<{
       id: string;
@@ -85,8 +87,42 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
     facility_id: primaryResidence?.facility_id ?? '',
     building_id: primaryResidence?.building_id ?? '',
     unit_name: primaryResidence?.unit_name ?? '',
-    allergy_info: patient.allergy_info?.join('\n') ?? '',
+    allergy_info: (patient.allergy_info ?? []) as AllergyEntry[],
     notes: patient.notes ?? '',
+  });
+
+  const qualificationCheckMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/patients/${patient.id}/qualification-check`, {
+        method: 'POST',
+        headers: { 'x-org-id': orgId },
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 501) {
+          throw new Error('オンライン資格確認はまだ有効化されていません');
+        }
+        throw new Error((payload as { message?: string }).message ?? '資格確認に失敗しました');
+      }
+      return payload as { data: { valid: boolean; payerName: string | null; copayRatio: number | null } | null };
+    },
+    onSuccess: (result) => {
+      if (!result.data) {
+        toast.info('資格情報が見つかりませんでした');
+        return;
+      }
+      const { valid, payerName, copayRatio } = result.data;
+      if (valid) {
+        toast.success(
+          `資格確認OK: ${payerName ?? '保険者不明'}${copayRatio != null ? ` / 負担割合 ${copayRatio * 100}%` : ''}`
+        );
+      } else {
+        toast.warning('資格確認: 保険資格が無効または期限切れです');
+      }
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : '資格確認に失敗しました');
+    },
   });
 
   const saveMutation = useMutation({
@@ -109,12 +145,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
           facility_id: form.facility_id || undefined,
           building_id: form.building_id || undefined,
           unit_name: form.unit_name || undefined,
-          allergy_info: form.allergy_info
-            ? form.allergy_info
-                .split(/\r?\n/)
-                .map((item) => item.trim())
-                .filter(Boolean)
-            : [],
+          allergy_info: form.allergy_info,
           notes: form.notes || undefined,
         }),
       });
@@ -155,150 +186,278 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
           </div>
         )}
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="氏名">
-            <Input
-              value={form.name}
-              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-            />
-          </Field>
-          <Field label="フリガナ">
-            <Input
-              value={form.name_kana}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, name_kana: event.target.value }))
-              }
-            />
-          </Field>
-          <Field label="生年月日">
-            <Input
-              type="date"
-              value={form.birth_date}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, birth_date: event.target.value }))
-              }
-            />
-          </Field>
-          <Field label="性別">
-            <Select
-              value={form.gender}
-              onValueChange={(value) => setForm((current) => ({ ...current, gender: value ?? current.gender }))}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="性別を選択">
-                  {GENDER_LABELS[form.gender] ?? form.gender}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="male">男性</SelectItem>
-                <SelectItem value="female">女性</SelectItem>
-                <SelectItem value="other">その他</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="電話番号">
-            <Input
-              value={form.phone}
-              onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
-            />
-          </Field>
-          <Field label="住所">
-            <Input
-              value={form.address}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, address: event.target.value }))
-              }
-            />
-          </Field>
-          <Field label="施設">
-            <Select
-              value={form.facility_id || 'home'}
-              onValueChange={(value) => {
-                if (!value || value === 'home') {
+      <CardContent className="space-y-6">
+        {/* A. 基本属性 */}
+        <fieldset className="space-y-3">
+          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">A. 基本属性</legend>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="氏名">
+              <Input
+                value={form.name}
+                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+              />
+            </Field>
+            <Field label="フリガナ">
+              <Input
+                value={form.name_kana}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, name_kana: event.target.value }))
+                }
+              />
+            </Field>
+            <Field label="生年月日">
+              <Input
+                type="date"
+                value={form.birth_date}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, birth_date: event.target.value }))
+                }
+              />
+            </Field>
+            <Field label="性別">
+              <Select
+                value={form.gender}
+                onValueChange={(value) => setForm((current) => ({ ...current, gender: value ?? current.gender }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="性別を選択">
+                    {GENDER_LABELS[form.gender] ?? form.gender}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="male">男性</SelectItem>
+                  <SelectItem value="female">女性</SelectItem>
+                  <SelectItem value="other">その他</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+        </fieldset>
+
+        <hr className="border-border/50" />
+
+        {/* B. 連絡・住所 */}
+        <fieldset className="space-y-3">
+          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">B. 連絡・住所</legend>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="電話番号">
+              <Input
+                value={form.phone}
+                onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
+              />
+            </Field>
+            <Field label="住所">
+              <Input
+                value={form.address}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, address: event.target.value }))
+                }
+              />
+            </Field>
+            <Field label="施設">
+              <Select
+                value={form.facility_id || 'home'}
+                onValueChange={(value) => {
+                  if (!value || value === 'home') {
+                    setForm((current) => ({
+                      ...current,
+                      facility_id: '',
+                    }));
+                    return;
+                  }
+                  const selectedFacility = facilitiesQuery.data?.data.find((item) => item.id === value);
                   setForm((current) => ({
                     ...current,
-                    facility_id: '',
+                    facility_id: value,
+                    address: selectedFacility?.address ?? current.address,
                   }));
-                  return;
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="自宅または施設を選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="home">自宅・手入力</SelectItem>
+                  {(facilitiesQuery.data?.data ?? []).map((facility) => (
+                    <SelectItem key={facility.id} value={facility.id}>
+                      {facility.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="建物ID">
+              <Input
+                value={form.building_id}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, building_id: event.target.value }))
                 }
-                const selectedFacility = facilitiesQuery.data?.data.find((item) => item.id === value);
+              />
+            </Field>
+            <Field label="部屋番号等">
+              <Input
+                value={form.unit_name}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, unit_name: event.target.value }))
+                }
+              />
+            </Field>
+          </div>
+        </fieldset>
+
+        <hr className="border-border/50" />
+
+        {/* C. 保険 */}
+        <fieldset className="space-y-3">
+          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">C. 保険</legend>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="医療保険番号">
+              <div className="flex gap-2">
+                <Input
+                  className="flex-1"
+                  value={form.medical_insurance_number}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      medical_insurance_number: event.target.value,
+                    }))
+                  }
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => qualificationCheckMutation.mutate()}
+                  disabled={qualificationCheckMutation.isPending}
+                  title="オンライン資格確認"
+                >
+                  <ShieldCheck className="h-4 w-4 mr-1" />
+                  {qualificationCheckMutation.isPending ? '確認中...' : '資格確認'}
+                </Button>
+              </div>
+            </Field>
+            <Field label="介護保険番号">
+              <Input
+                value={form.care_insurance_number}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    care_insurance_number: event.target.value,
+                  }))
+                }
+              />
+            </Field>
+          </div>
+        </fieldset>
+
+        <hr className="border-border/50" />
+
+        {/* D. アレルギー */}
+        <fieldset className="space-y-3">
+          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">D. アレルギー</legend>
+          <div className="space-y-2">
+            <Label className="block mb-1.5">アレルギー情報</Label>
+            {form.allergy_info.map((entry, index) => (
+              <div key={index} className="flex gap-2 items-center">
+                <Input
+                  className="flex-1"
+                  value={entry.drug_name}
+                  onChange={(event) =>
+                    setForm((current) => {
+                      const updated = [...current.allergy_info];
+                      updated[index] = { ...updated[index], drug_name: event.target.value };
+                      return { ...current, allergy_info: updated };
+                    })
+                  }
+                  placeholder="薬剤名・食品名"
+                />
+                <Select
+                  value={entry.category}
+                  onValueChange={(value) =>
+                    setForm((current) => {
+                      const updated = [...current.allergy_info];
+                      updated[index] = { ...updated[index], category: value as AllergyEntry['category'] };
+                      return { ...current, allergy_info: updated };
+                    })
+                  }
+                >
+                  <SelectTrigger className="w-28">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="drug">薬剤</SelectItem>
+                    <SelectItem value="food">食品</SelectItem>
+                    <SelectItem value="other">その他</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={entry.severity}
+                  onValueChange={(value) =>
+                    setForm((current) => {
+                      const updated = [...current.allergy_info];
+                      updated[index] = { ...updated[index], severity: value as AllergyEntry['severity'] };
+                      return { ...current, allergy_info: updated };
+                    })
+                  }
+                >
+                  <SelectTrigger className="w-28">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unknown">不明</SelectItem>
+                    <SelectItem value="mild">軽度</SelectItem>
+                    <SelectItem value="moderate">中等度</SelectItem>
+                    <SelectItem value="severe">重度</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setForm((current) => ({
+                      ...current,
+                      allergy_info: current.allergy_info.filter((_, i) => i !== index),
+                    }))
+                  }
+                >
+                  削除
+                </Button>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
                 setForm((current) => ({
                   ...current,
-                  facility_id: value,
-                  address: selectedFacility?.address ?? current.address,
-                }));
-              }}
+                  allergy_info: [
+                    ...current.allergy_info,
+                    { drug_name: '', category: 'drug', severity: 'unknown' },
+                  ],
+                }))
+              }
             >
-              <SelectTrigger>
-                <SelectValue placeholder="自宅または施設を選択" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="home">自宅・手入力</SelectItem>
-                {(facilitiesQuery.data?.data ?? []).map((facility) => (
-                  <SelectItem key={facility.id} value={facility.id}>
-                    {facility.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="建物ID">
-            <Input
-              value={form.building_id}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, building_id: event.target.value }))
-              }
-            />
-          </Field>
-          <Field label="部屋番号等">
-            <Input
-              value={form.unit_name}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, unit_name: event.target.value }))
-              }
-            />
-          </Field>
-          <Field label="医療保険番号">
-            <Input
-              value={form.medical_insurance_number}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  medical_insurance_number: event.target.value,
-                }))
-              }
-            />
-          </Field>
-          <Field label="介護保険番号">
-            <Input
-              value={form.care_insurance_number}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  care_insurance_number: event.target.value,
-                }))
-              }
-            />
-          </Field>
-          <Field label="アレルギー情報" className="md:col-span-2">
-            <Textarea
-              rows={3}
-              value={form.allergy_info}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, allergy_info: event.target.value }))
-              }
-              placeholder="1行1件で入力"
-            />
-          </Field>
-          <Field label="患者メモ" className="md:col-span-2">
+              + アレルギー追加
+            </Button>
+          </div>
+        </fieldset>
+
+        <hr className="border-border/50" />
+
+        {/* E. 補助メモ */}
+        <fieldset className="space-y-3">
+          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">E. 補助メモ</legend>
+          <Field label="患者メモ">
             <Textarea
               rows={4}
               value={form.notes}
               onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
             />
           </Field>
-        </div>
+        </fieldset>
 
         <div className="flex justify-end">
           <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>

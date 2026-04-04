@@ -12,13 +12,37 @@ export type VitalSigns = {
 };
 
 export type LabValues = {
-  hba1c?: number;
-  egfr?: number;
-  k?: number;
-  na?: number;
-  alb?: number;
+  // Hematology
+  wbc?: number;
+  neut?: number;
+  hb?: number;
   plt?: number;
+  // Coagulation
   pt_inr?: number;
+  // Liver
+  ast?: number;
+  alt?: number;
+  t_bil?: number;
+  // Renal
+  scr?: number;
+  egfr?: number;
+  bun?: number;
+  // Cardiac
+  ck?: number;
+  bnp?: number;
+  nt_pro_bnp?: number;
+  // Electrolytes
+  na?: number;
+  k?: number;
+  cl?: number;
+  // Metabolic
+  hba1c?: number;
+  blood_glucose?: number;
+  alb?: number;
+  tp?: number;
+  // Inflammation
+  crp?: number;
+  // Free text for additional values
   free_text?: string;
 };
 

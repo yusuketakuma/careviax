@@ -67,7 +67,7 @@ describe('/api/set-plans', () => {
       id: 'cycle_1',
       overall_status: 'audited',
       version: 1,
-      case_: { patient: { packaging_preferences: null, packaging_profile: null } },
+      case_: { patient: { packaging_profile: null } },
     });
     medicationCycleUpdateManyMock.mockResolvedValue({ count: 1 });
     cycleTransitionLogCreateMock.mockResolvedValue({});

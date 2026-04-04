@@ -16,6 +16,9 @@ type PatientPackagingProfileLike = {
   default_packaging_method?: PackagingMethodValue | null;
   medication_box_color?: string | null;
   notes?: string | null;
+  box_config?: unknown;
+  special_instructions?: string | null;
+  cognitive_note?: string | null;
 };
 
 type BoxConfigValue = Record<string, string>;
@@ -52,26 +55,14 @@ export function buildSetPlanPackagingSummary(args: {
   setMethod: string;
   packagingMethod?: PackagingMethodMasterLike | null;
   patientPackagingProfile?: PatientPackagingProfileLike | null;
-  packagingPreferences?: unknown;
   packagingTags?: PackagingInstructionTagValue[];
 }) {
-  const preferences =
-    typeof args.packagingPreferences === 'object' &&
-    args.packagingPreferences !== null &&
-    !Array.isArray(args.packagingPreferences)
-      ? (args.packagingPreferences as Record<string, unknown>)
-      : null;
-  const boxConfig = normalizeBoxConfig(preferences?.box_config);
+  const profile = args.patientPackagingProfile ?? null;
+  const boxConfig = normalizeBoxConfig(profile?.box_config);
   const specialInstructions = [
-    normalizeText(args.patientPackagingProfile?.notes),
-    normalizeText(
-      typeof preferences?.special_instructions === 'string'
-        ? preferences.special_instructions
-        : null
-    ),
-    normalizeText(
-      typeof preferences?.cognitive_note === 'string' ? preferences.cognitive_note : null
-    ),
+    normalizeText(profile?.notes),
+    normalizeText(profile?.special_instructions),
+    normalizeText(profile?.cognitive_note),
   ].filter((value): value is string => value != null);
   const uniqueSpecialInstructions = Array.from(new Set(specialInstructions));
   const tagLabels = Array.from(new Set(args.packagingTags ?? []))

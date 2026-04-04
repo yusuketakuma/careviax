@@ -141,6 +141,26 @@ function AlertItem({ alert }: AlertItemProps) {
                   <dd>{String(alert.details.allergy_drug)}</dd>
                 </div>
               )}
+              {alert.details?.allergy_severity !== undefined && (
+                <div>
+                  <dt className="font-medium">アレルギー重症度</dt>
+                  <dd>
+                    {({ severe: '重度', moderate: '中等度', mild: '軽度', unknown: '不明' } as Record<string, string>)[String(alert.details.allergy_severity)] ?? String(alert.details.allergy_severity)}
+                  </dd>
+                </div>
+              )}
+              {alert.details?.analyte !== undefined && (
+                <div>
+                  <dt className="font-medium">検査項目</dt>
+                  <dd>{String(alert.details.analyte).toUpperCase()}</dd>
+                </div>
+              )}
+              {alert.details?.value !== undefined && (
+                <div>
+                  <dt className="font-medium">直近値</dt>
+                  <dd>{String(alert.details.value)}</dd>
+                </div>
+              )}
               {alert.details?.therapeutic_category !== undefined && (
                 <div>
                   <dt className="font-medium">薬効分類</dt>

@@ -6,6 +6,7 @@ import {
   type BillingRequirementAlert,
 } from './billing-requirement-validator';
 import { resolveBillingPayerBasis } from './billing-payer-basis';
+import { resolvePatientInsurance } from './patient-insurance';
 import { findLatestPrescriptionIntakeClassification } from './prescription-intake-classification';
 
 export type VisitScheduleBillingPreview = {
@@ -45,25 +46,36 @@ export async function buildVisitScheduleBillingPreview(args: {
       required_visit_support: true,
       patient: {
         select: {
-          medical_insurance_number: true,
-          care_insurance_number: true,
+          id: true,
         },
       },
     },
   });
   if (!careCase) return null;
 
-  const latestIntake = await findLatestPrescriptionIntakeClassification(prisma, {
-    orgId: args.orgId,
-    caseId: args.caseId,
-  });
+  const [latestIntake, medicalInsurance, careInsurance] = await Promise.all([
+    findLatestPrescriptionIntakeClassification(prisma, {
+      orgId: args.orgId,
+      caseId: args.caseId,
+    }),
+    resolvePatientInsurance(prisma, {
+      orgId: args.orgId,
+      patientId: careCase.patient_id,
+      type: 'medical',
+    }),
+    resolvePatientInsurance(prisma, {
+      orgId: args.orgId,
+      patientId: careCase.patient_id,
+      type: 'care',
+    }),
+  ]);
 
   const visitType =
     args.visitType ??
     (latestIntake?.prescription_category === 'emergency' ? 'emergency' : 'regular');
   const payerBasis = resolveBillingPayerBasis({
-    medicalInsuranceNumber: careCase.patient.medical_insurance_number,
-    careInsuranceNumber: careCase.patient.care_insurance_number,
+    medicalInsuranceNumber: medicalInsurance?.number ?? null,
+    careInsuranceNumber: careInsurance?.number ?? null,
     visitType,
   });
 

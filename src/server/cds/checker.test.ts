@@ -10,6 +10,8 @@ const {
   drugAlertRuleFindManyMock,
   drugPackageInsertFindManyMock,
   prescriptionIntakeFindFirstMock,
+  patientLabObservationFindFirstMock,
+  patientLabObservationFindManyMock,
 } = vi.hoisted(() => ({
   prescriptionLineFindManyMock: vi.fn(),
   medicationProfileFindManyMock: vi.fn(),
@@ -20,6 +22,8 @@ const {
   drugAlertRuleFindManyMock: vi.fn(),
   drugPackageInsertFindManyMock: vi.fn(),
   prescriptionIntakeFindFirstMock: vi.fn(),
+  patientLabObservationFindFirstMock: vi.fn(),
+  patientLabObservationFindManyMock: vi.fn(),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -49,6 +53,10 @@ vi.mock('@/lib/db/client', () => ({
     prescriptionIntake: {
       findFirst: prescriptionIntakeFindFirstMock,
     },
+    patientLabObservation: {
+      findFirst: patientLabObservationFindFirstMock,
+      findMany: patientLabObservationFindManyMock,
+    },
   },
 }));
 
@@ -67,6 +75,8 @@ describe('checkDispenseAlerts', () => {
     drugAlertRuleFindManyMock.mockResolvedValue([]);
     drugPackageInsertFindManyMock.mockResolvedValue([]);
     prescriptionIntakeFindFirstMock.mockResolvedValue(null);
+    patientLabObservationFindFirstMock.mockResolvedValue(null);
+    patientLabObservationFindManyMock.mockResolvedValue([]);
   });
 
   it('warns when the current intake is a risky DO prescription continued from the previous intake', async () => {

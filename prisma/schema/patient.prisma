@@ -1,3 +1,40 @@
+enum Gender {
+  male
+  female
+  other
+}
+
+enum LabAnalyteCode {
+  wbc
+  neut
+  hb
+  plt
+  pt_inr
+  ast
+  alt
+  t_bil
+  scr
+  egfr
+  ck
+  crp
+  k
+  hba1c
+  tp
+  alb
+  na
+  cl
+  bun
+  bnp
+  nt_pro_bnp
+  blood_glucose
+}
+
+enum InsuranceType {
+  medical
+  care
+  public_subsidy
+}
+
 enum PackagingMethod {
   none
   unit_dose
@@ -61,14 +98,15 @@ model Patient {
   name                     String
   name_kana                String
   birth_date               DateTime @db.Date
-  gender                   String // male/female/other
+  gender                   Gender
   phone                    String?
   medical_insurance_number String?
   care_insurance_number    String?
   billing_support_flag     Boolean  @default(false) // 請求支援フラグ
-  allergy_info             Json? // アレルギー情報
+  allergy_info             Json? // アレルギー情報 (AllergyEntry[])
   notes                    String?
-  packaging_preferences    Json? // 配薬方法個別設定 { default_method_id, box_config, special_instructions, ... }
+  archived_at              DateTime?
+  archived_by              String?
   created_at               DateTime @default(now())
   updated_at               DateTime @updatedAt
 
@@ -83,6 +121,8 @@ model Patient {
   mcs_link              PatientMcsLink?
   mcs_summary           PatientMcsSummary?
   mcs_messages          PatientMcsMessage[]
+  insurances            PatientInsurance[]
+  lab_observations      PatientLabObservation[]
 
   @@index([org_id])
   @@index([name_kana])
@@ -289,6 +329,12 @@ model PatientSchedulePreference {
   parking_available             Boolean?
   primary_contact_preference    String?
   mcs_linked                    Boolean?
+  // P-09: structured intake columns
+  adl_level                     String?
+  dementia_level                String?
+  swallowing_route              String?
+  care_level                    String?
+  infection_isolation           Boolean  @default(false)
   created_at              DateTime @default(now())
   updated_at              DateTime @updatedAt
 
@@ -306,8 +352,11 @@ model PatientPackagingProfile {
   default_packaging_method PackagingMethod?
   medication_box_color     String?
   notes                    String?
-  created_at               DateTime        @default(now())
-  updated_at               DateTime        @updatedAt
+  box_config               Json?    // 配薬BOX設定 (例: 仕切り数、ラベル色など)
+  special_instructions     String?  // 個別特記指示
+  cognitive_note           String?  // 認知機能・服薬自己管理に関する注記
+  created_at               DateTime @default(now())
+  updated_at               DateTime @updatedAt
 
   @@index([org_id])
   @@index([patient_id])
@@ -372,6 +421,53 @@ model PatientMcsSummary {
   @@index([org_id])
   @@index([patient_id])
   @@index([link_id])
+}
+
+model PatientInsurance {
+  id              String        @id @default(cuid())
+  org_id          String
+  patient_id      String
+  patient         Patient       @relation(fields: [patient_id], references: [id])
+  insurance_type  InsuranceType
+  insurer_number  String?  // 保険者番号
+  symbol          String?  // 記号
+  number          String?  // 番号
+  branch_number   String?  // 枝番
+  copay_ratio     Int?     // 自己負担割合（例: 30 = 3割）
+  valid_from      DateTime? @db.Date
+  valid_until     DateTime? @db.Date
+  is_active       Boolean  @default(true)
+  notes           String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@index([org_id])
+  @@index([patient_id])
+  @@index([patient_id, insurance_type, is_active])
+}
+
+model PatientLabObservation {
+  id                     String          @id @default(cuid())
+  org_id                 String
+  patient_id             String
+  patient                Patient         @relation(fields: [patient_id], references: [id])
+  analyte_code           LabAnalyteCode
+  measured_at            DateTime
+  value_numeric          Float?
+  value_text             String?
+  unit                   String?
+  abnormal_flag          String?         // "H" | "L" | "HH" | "LL" | "A"
+  reference_low          Float?
+  reference_high         Float?
+  source_type            String          // "manual" | "visit_record" | "import"
+  source_visit_record_id String?
+  note                   String?
+  created_at             DateTime        @default(now())
+  updated_at             DateTime        @updatedAt
+
+  @@index([org_id])
+  @@index([patient_id, analyte_code, measured_at])
+  @@index([source_visit_record_id])
 }
 
 model PatientMcsMessage {

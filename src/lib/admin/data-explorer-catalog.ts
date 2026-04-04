@@ -105,6 +105,8 @@ const COVERAGE_CATEGORY_ENTRIES = {
     'ContactParty',
     'CareTeamLink',
     'PatientSchedulePreference',
+    'PatientInsurance',
+    'PatientLabObservation',
     'PrescriptionLine',
     'VisitScheduleContactLog',
     'VisitScheduleOverride',

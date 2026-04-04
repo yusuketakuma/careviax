@@ -1,8 +1,10 @@
-import { withAuthContext } from '@/lib/auth/context';
+import { withAuthContext, requireAuthContext } from '@/lib/auth/context';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
+import { NextRequest } from 'next/server';
+import { getPatientPrivacyFlags } from '@/lib/patient/privacy';
 
 const patchSelfReportSchema = z.object({
   status: z
@@ -14,6 +16,33 @@ const patchSelfReportSchema = z.object({
   requested_callback: z.boolean().optional(),
   preferred_contact_time: z.string().trim().max(200).nullable().optional(),
 });
+
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canReport',
+    message: '患者自己申告の閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const ctx = authResult.ctx;
+
+  const { id } = await params;
+
+  const report = await prisma.patientSelfReport.findFirst({
+    where: { id, org_id: ctx.orgId },
+  });
+  if (!report) return notFound('患者自己申告が見つかりません');
+
+  const privacy = getPatientPrivacyFlags(ctx.role);
+  return success({
+    data: {
+      ...report,
+      preferred_contact_time: privacy.sensitiveFieldsMasked ? null : report.preferred_contact_time,
+    },
+  });
+}
 
 export const PATCH = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {

@@ -58,12 +58,14 @@ const setPlanSelect = {
               id: true,
               name: true,
               name_kana: true,
-              packaging_preferences: true,
               packaging_profile: {
                 select: {
                   default_packaging_method: true,
                   medication_box_color: true,
                   notes: true,
+                  box_config: true,
+                  special_instructions: true,
+                  cognitive_note: true,
                 },
               },
             },
@@ -226,12 +228,14 @@ export const PATCH = withAuthContext<{ id: string }>(
                 select: {
                   patient: {
                     select: {
-                      packaging_preferences: true,
                       packaging_profile: {
                         select: {
                           default_packaging_method: true,
                           medication_box_color: true,
                           notes: true,
+                          box_config: true,
+                          special_instructions: true,
+                          cognitive_note: true,
                         },
                       },
                     },
@@ -301,7 +305,6 @@ export const PATCH = withAuthContext<{ id: string }>(
         setMethod: resolvedSetMethod,
         packagingMethod,
         patientPackagingProfile: existing.cycle.case_?.patient.packaging_profile ?? null,
-        packagingPreferences: existing.cycle.case_?.patient.packaging_preferences ?? null,
       });
 
       const updated = await tx.setPlan.update({

@@ -681,6 +681,33 @@ export function VisitRecordForm({ id }: { id: string }) {
 
       const { record } = await res.json();
 
+      // Persist lab values from wizard to PatientLabObservation (fire-and-forget)
+      const labValues = buildStructuredSoap(values).objective?.lab_values;
+      const labPatientId = schedule?.patient_id ?? values.patient_id;
+      if (labValues && labPatientId) {
+        const analyteMap: Array<[string, number | undefined]> = [
+          ['hba1c', labValues.hba1c],
+          ['egfr', labValues.egfr],
+          ['k', labValues.k],
+          ['na', labValues.na],
+          ['alb', labValues.alb],
+          ['plt', labValues.plt],
+          ['pt_inr', labValues.pt_inr],
+        ];
+        const measuredAt = typeof values.visit_date === 'string' ? values.visit_date : new Date().toISOString().slice(0, 10);
+        void Promise.allSettled(
+          analyteMap
+            .filter((entry): entry is [string, number] => entry[1] != null)
+            .map(([code, value]) =>
+              fetch(`/api/patients/${labPatientId}/labs`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+                body: JSON.stringify({ analyte_code: code, measured_at: measuredAt, value_numeric: value, source_type: 'visit_record', source_visit_record_id: record.id }),
+              }),
+            ),
+        );
+      }
+
       if (selectedAttachments.length === 0) {
         return {
           record,

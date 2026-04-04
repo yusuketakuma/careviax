@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { differenceInYears, format } from 'date-fns';
+import { differenceInDays, differenceInYears, format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -65,6 +65,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { STATUS_ICON_CONFIG } from '@/lib/patient/status-icon';
+import type { AllergyEntry } from '@/lib/validations/patient-allergy';
 import { toast } from 'sonner';
 
 type Patient = {
@@ -76,8 +77,9 @@ type Patient = {
   phone: string | null;
   medical_insurance_number: string | null;
   care_insurance_number: string | null;
-  allergy_info: string[] | null;
+  allergy_info: AllergyEntry[] | null;
   notes: string | null;
+  archived_at: string | null;
   residences: Array<{
     id: string;
     address: string;
@@ -336,6 +338,13 @@ type Patient = {
     summary: string | null;
     href: string;
   }>;
+  lab_summary: Array<{
+    analyte_code: string;
+    value_numeric: number | null;
+    measured_at: string;
+    unit: string | null;
+    abnormal_flag: string | null;
+  }>;
 };
 
 interface PatientDetailTabsProps {
@@ -431,17 +440,80 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
 
   return (
     <div className="space-y-6">
+      {/* Archive banner */}
+      {patient.archived_at && (
+        <div className="flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <span>
+            <strong>アーカイブ中</strong> — この患者はアーカイブされています。閲覧のみ可能です。
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 border-amber-400 bg-white text-amber-900 hover:bg-amber-100"
+            onClick={async () => {
+              await fetch(`/api/patients/${patientId}/restore`, {
+                method: 'PATCH',
+                headers: { 'x-org-id': orgId },
+              });
+              window.location.reload();
+            }}
+          >
+            復元
+          </Button>
+        </div>
+      )}
       {/* Patient header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">{patient.name}</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{patient.name_kana}</p>
+          {patient.allergy_info?.some((a) => a.severity === 'severe') && (
+            <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">
+              <TriangleAlert className="size-3" aria-hidden="true" />
+              重症アレルギーあり
+            </span>
+          )}
         </div>
         <Link href={prescriptionIntakeHref} className={buttonVariants({ size: 'sm' })}>
           <ClipboardPlus className="mr-1.5 size-4" aria-hidden="true" />
           処方受付
         </Link>
       </div>
+
+      {/* Summary band: key lab values */}
+      {patient.lab_summary && patient.lab_summary.length > 0 && (() => {
+        const KEY_ANALYTES = [
+          { code: 'egfr', label: 'eGFR', unit: '' },
+          { code: 'k', label: 'K', unit: 'mEq/L' },
+          { code: 'crp', label: 'CRP', unit: '' },
+          { code: 'hba1c', label: 'HbA1c', unit: '%' },
+          { code: 'pt_inr', label: 'PT-INR', unit: '' },
+          { code: 'alb', label: 'Alb', unit: 'g/dL' },
+        ];
+        const labByCode = new Map(patient.lab_summary.map((l) => [l.analyte_code, l]));
+        const present = KEY_ANALYTES.map((a) => ({ ...a, obs: labByCode.get(a.code) })).filter((a) => a.obs);
+        if (present.length === 0) return null;
+        return (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs">
+            <span className="font-medium text-muted-foreground shrink-0">最新検査値</span>
+            {present.map(({ code, label, unit, obs }) => {
+              const staleDays = obs ? differenceInDays(new Date(), new Date(obs.measured_at)) : 0;
+              const isStale = staleDays > 90;
+              return (
+                <span key={code} className="flex items-center gap-1">
+                  <span className="text-muted-foreground">{label}</span>
+                  <span className={`font-semibold ${obs?.abnormal_flag ? 'text-destructive' : 'text-foreground'}`}>
+                    {obs?.value_numeric}{unit}
+                  </span>
+                  {isStale && (
+                    <span className="rounded bg-amber-100 px-1 text-[10px] text-amber-700">{staleDays}日前</span>
+                  )}
+                </span>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       <Tabs
         value={activeTab}

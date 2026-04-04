@@ -37,6 +37,13 @@ type PatientIntakeSummaryCardProps = {
       created_at: string;
       required_visit_support: Record<string, unknown> | null;
     }>;
+    scheduling_preference?: {
+      adl_level?: string | null;
+      dementia_level?: string | null;
+      swallowing_route?: string | null;
+      care_level?: string | null;
+      infection_isolation?: boolean;
+    } | null;
   };
 };
 
@@ -93,6 +100,17 @@ export function PatientIntakeSummaryCard({ patient }: PatientIntakeSummaryCardPr
   const intakeCase = patient.cases.find((careCase) => getHomeVisitIntake(careCase.required_visit_support));
   const intake = intakeCase ? getHomeVisitIntake(intakeCase.required_visit_support) : null;
   const primaryResidence = patient.residences.find((residence) => residence.is_primary) ?? null;
+  const pref = patient.scheduling_preference;
+
+  // P-09: prefer dedicated columns over JSON intake fields
+  const adlLevel = pref?.adl_level ?? intake?.adl_level;
+  const dementiaLevel = pref?.dementia_level ?? intake?.dementia_level;
+  const careLevel = pref?.care_level ?? intake?.care_level;
+  const swallowingRoute = pref?.swallowing_route ?? intake?.swallowing_route;
+  const infectionIsolation =
+    pref?.infection_isolation != null
+      ? (pref.infection_isolation ? '要隔離' : null)
+      : intake?.infection_isolation ?? null;
 
   if (!intake || !intakeCase) {
     return null;
@@ -244,9 +262,9 @@ export function PatientIntakeSummaryCard({ patient }: PatientIntakeSummaryCardPr
               value: labelOf(intake.money_management, moneyManagementLabels),
             },
             { label: '家族構成・キーパーソン', value: intake.family_key_person ?? '—' },
-            { label: '介護認定', value: labelOf(intake.care_level, careLevelLabels) },
-            { label: '日常生活自立度', value: labelOf(intake.adl_level, adlLabels) },
-            { label: '認知症自立度', value: labelOf(intake.dementia_level, dementiaLabels) },
+            { label: '介護認定', value: labelOf(careLevel, careLevelLabels) },
+            { label: '日常生活自立度', value: labelOf(adlLevel, adlLabels) },
+            { label: '認知症自立度', value: labelOf(dementiaLevel, dementiaLabels) },
           ]}
         />
 
@@ -288,8 +306,8 @@ export function PatientIntakeSummaryCard({ patient }: PatientIntakeSummaryCardPr
               ].join(' / '),
             },
             { label: 'アレルギー / 副作用歴', value: intake.allergy_history ?? '—' },
-            { label: '感染症 / 隔離', value: intake.infection_isolation ?? '—' },
-            { label: '嚥下 / 投与経路', value: intake.swallowing_route ?? '—' },
+            { label: '感染症 / 隔離', value: infectionIsolation ?? '—' },
+            { label: '嚥下 / 投与経路', value: swallowingRoute ?? '—' },
             { label: '残薬状況', value: intake.residual_medication_status ?? '—' },
             { label: '備考', value: intake.intake_note ?? '—' },
             { label: 'その他', value: intake.other_clinical_notes ?? '—' },

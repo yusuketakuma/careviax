@@ -34,7 +34,16 @@ type AllergyEntry = {
   drug_name?: string;
   therapeutic_category?: string;
   substance?: string;
+  category?: 'drug' | 'food' | 'other';
+  severity?: 'mild' | 'moderate' | 'severe' | 'unknown';
 };
+
+function allergyAlertSeverity(severity?: string): CdsAlert['severity'] {
+  if (severity === 'severe') return 'critical';
+  if (severity === 'moderate') return 'warning';
+  if (severity === 'mild') return 'info';
+  return 'critical'; // unknown or undefined → safe default
+}
 
 type RenalDoseEntry = {
   egfr_min?: number;
@@ -531,21 +540,22 @@ async function checkAllergyReactions(
       if (allergy.drug_name && line.drug_name.includes(allergy.drug_name)) {
         alerts.push({
           type: 'allergy_cross',
-          severity: 'critical',
+          severity: allergyAlertSeverity(allergy.severity),
           message: `アレルギー交差反応: ${line.drug_name}（患者アレルギー: ${allergy.drug_name}）`,
-          details: { allergy_drug: allergy.drug_name, prescribed_drug: line.drug_name },
+          details: { allergy_drug: allergy.drug_name, prescribed_drug: line.drug_name, allergy_severity: allergy.severity },
         });
       }
 
-      // Therapeutic category match
+      // Therapeutic category match — only for drug-category allergies
       if (
+        allergy.category === 'drug' &&
         allergy.therapeutic_category &&
         drugInfo?.therapeutic_category &&
         drugInfo.therapeutic_category === allergy.therapeutic_category
       ) {
         alerts.push({
           type: 'allergy_cross',
-          severity: 'critical',
+          severity: allergyAlertSeverity(allergy.severity),
           message: `アレルギー交差反応（薬効分類一致）: ${line.drug_name}（分類: ${drugInfo.therapeutic_category}）`,
           details: {
             therapeutic_category: drugInfo.therapeutic_category,
@@ -899,31 +909,14 @@ async function checkRenalDoseAdjustment(
 ): Promise<CdsAlert[]> {
   const alerts: CdsAlert[] = [];
 
-  // Fetch patient for latest eGFR (stored in allergy_info JSON or dedicated field)
-  // Since there is no dedicated eGFR column, we look for it in patient notes or allergy_info
-  // Convention: allergy_info may contain an object with { egfr?: number } or a top-level field
-  const patient = await prisma.patient.findFirst({
-    where: { id: patientId, org_id: orgId },
-    select: { allergy_info: true, notes: true },
+  // Fetch latest eGFR from PatientLabObservation
+  const latestEgfr = await prisma.patientLabObservation.findFirst({
+    where: { patient_id: patientId, org_id: orgId, analyte_code: 'egfr' },
+    orderBy: { measured_at: 'desc' },
+    select: { value_numeric: true },
   });
 
-  // Try to extract eGFR from allergy_info (which may hold clinical markers)
-  let egfr: number | null = null;
-
-  if (patient?.allergy_info && typeof patient.allergy_info === 'object' && !Array.isArray(patient.allergy_info)) {
-    const info = patient.allergy_info as Record<string, unknown>;
-    if (typeof info.egfr === 'number') {
-      egfr = info.egfr;
-    }
-  } else if (Array.isArray(patient?.allergy_info)) {
-    // Check if allergy_info array has an entry with egfr
-    for (const entry of patient.allergy_info as Record<string, unknown>[]) {
-      if (typeof entry?.egfr === 'number') {
-        egfr = entry.egfr;
-        break;
-      }
-    }
-  }
+  const egfr = latestEgfr?.value_numeric ?? null;
 
   if (egfr === null) return alerts;
 
@@ -986,6 +979,94 @@ async function checkRenalDoseAdjustment(
 }
 
 // ---------------------------------------------------------------------------
+// 10. PT-INR × anticoagulant / K × diuretic monitoring alerts
+// ---------------------------------------------------------------------------
+
+const ANTICOAGULANT_CATEGORY_PREFIXES = ['333'];
+const ANTICOAGULANT_KEYWORDS = ['ワルファリン', 'アピキサバン', 'リバーロキサバン', 'エドキサバン', 'ダビガトラン'];
+const DIURETIC_CATEGORY_PREFIXES = ['213', '214', '2149'];
+const DIURETIC_KEYWORDS = ['フロセミド', 'スピロノラクトン', 'トルバプタン', 'アゾセミド', 'カンレノ酸', 'ヒドロクロロチアジド'];
+
+async function checkMonitoringAlerts(
+  prescriptionLines: PrescriptionLine[],
+  patientId: string,
+  orgId: string,
+): Promise<CdsAlert[]> {
+  const alerts: CdsAlert[] = [];
+
+  const drugCodes = prescriptionLines
+    .map((l) => l.drug_code)
+    .filter((c): c is string => c !== null);
+
+  const prescribedDrugs = drugCodes.length > 0
+    ? await prisma.drugMaster.findMany({
+        where: { yj_code: { in: drugCodes } },
+        select: { yj_code: true, therapeutic_category: true },
+      })
+    : [];
+
+  const drugByCode = new Map(prescribedDrugs.map((d) => [d.yj_code, d]));
+
+  let hasAnticoagulant = false;
+  let hasDiuretic = false;
+
+  for (const line of prescriptionLines) {
+    const category = line.drug_code ? (drugByCode.get(line.drug_code)?.therapeutic_category ?? '') : '';
+    if (
+      ANTICOAGULANT_CATEGORY_PREFIXES.some((p) => category.startsWith(p)) ||
+      ANTICOAGULANT_KEYWORDS.some((kw) => line.drug_name.includes(kw))
+    ) hasAnticoagulant = true;
+    if (
+      DIURETIC_CATEGORY_PREFIXES.some((p) => category.startsWith(p)) ||
+      DIURETIC_KEYWORDS.some((kw) => line.drug_name.includes(kw))
+    ) hasDiuretic = true;
+  }
+
+  if (!hasAnticoagulant && !hasDiuretic) return alerts;
+
+  const analyteCodes: string[] = [];
+  if (hasAnticoagulant) analyteCodes.push('pt_inr');
+  if (hasDiuretic) analyteCodes.push('k');
+
+  const latestLabs = await prisma.patientLabObservation.findMany({
+    where: { patient_id: patientId, org_id: orgId, analyte_code: { in: analyteCodes as never[] } },
+    orderBy: { measured_at: 'desc' },
+    select: { analyte_code: true, value_numeric: true },
+  });
+
+  const latestByAnalyte = new Map<string, number | null>();
+  for (const row of latestLabs) {
+    if (!latestByAnalyte.has(row.analyte_code)) {
+      latestByAnalyte.set(row.analyte_code, row.value_numeric);
+    }
+  }
+
+  if (hasAnticoagulant) {
+    const ptInr = latestByAnalyte.get('pt_inr') ?? null;
+    if (ptInr === null) {
+      alerts.push({ type: 'monitoring', severity: 'info', message: 'モニタリング: 抗凝固薬処方あり — PT-INR の直近値が未記録です', details: { analyte: 'pt_inr' } });
+    } else if (ptInr >= 3.0) {
+      alerts.push({ type: 'monitoring', severity: 'critical', message: `モニタリング: 抗凝固薬 × PT-INR 高値（${ptInr}）— 出血リスク要確認`, details: { analyte: 'pt_inr', value: ptInr } });
+    } else if (ptInr >= 2.5) {
+      alerts.push({ type: 'monitoring', severity: 'warning', message: `モニタリング: 抗凝固薬 × PT-INR 上昇傾向（${ptInr}）— 用量見直しを検討`, details: { analyte: 'pt_inr', value: ptInr } });
+    }
+  }
+
+  if (hasDiuretic) {
+    const k = latestByAnalyte.get('k') ?? null;
+    if (k === null) {
+      alerts.push({ type: 'monitoring', severity: 'info', message: 'モニタリング: 利尿薬/RAA系薬処方あり — 血清K値の直近値が未記録です', details: { analyte: 'k' } });
+    } else if (k < 3.0) {
+      alerts.push({ type: 'monitoring', severity: 'critical', message: `モニタリング: 利尿薬 × K低値（${k} mEq/L）— 低カリウム血症リスク要確認`, details: { analyte: 'k', value: k } });
+    } else if (k < 3.5) {
+      alerts.push({ type: 'monitoring', severity: 'warning', message: `モニタリング: 利尿薬 × K低め（${k} mEq/L）— カリウム補充を検討`, details: { analyte: 'k', value: k } });
+    }
+  }
+
+  return alerts;
+}
+
+// ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
 
@@ -1002,6 +1083,7 @@ async function checkRenalDoseAdjustment(
  *   7. DO prescription long-term continuation risk
  *   8. Elderly PIM (potentially inappropriate medications)
  *   9. Renal dose adjustment
+ *  10. PT-INR / K monitoring
  */
 export async function checkDispenseAlerts(
   orgId: string,
@@ -1089,6 +1171,8 @@ export async function checkDispenseAlerts(
       : Promise.resolve([]),
     // Package insert audit — always enabled (regulatory information)
     checkPackageInsertAudit(prescriptionLines, patientId, orgId),
+    // PT-INR / K monitoring — always enabled
+    checkMonitoringAlerts(prescriptionLines, patientId, orgId),
   ]);
 
   return results.flat();

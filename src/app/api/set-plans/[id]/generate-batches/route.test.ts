@@ -67,7 +67,6 @@ describe('set-plans/[id]/generate-batches POST', () => {
         overall_status: 'audited',
         case_: {
           patient: {
-            packaging_preferences: null,
             packaging_profile: null,
           },
         },
@@ -139,7 +138,6 @@ describe('set-plans/[id]/generate-batches POST', () => {
         overall_status: 'dispensing',
         case_: {
           patient: {
-            packaging_preferences: null,
             packaging_profile: null,
           },
         },
