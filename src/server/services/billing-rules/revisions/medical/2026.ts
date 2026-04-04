@@ -5,12 +5,12 @@ export const MEDICAL_REVISION: BillingRevision = {
   label: '令和8年度 診療報酬改定',
   effectiveFrom: new Date('2026-06-01'),
   effectiveTo: null, // 現行改定
-  source: '', // TODO: 令和8年改定告示URL確定後に追加
-  status: 'draft',
+  source: 'https://www.mhlw.go.jp/stf/newpage_67729.html',
+  status: 'confirmed',
 };
 
-const MEDICAL_SOURCE_URL = ''; // TODO: 令和8年改定確定後に追加
-const MEDICAL_TABLE_URL = ''; // TODO: 令和8年改定確定後に追加
+const MEDICAL_SOURCE_URL = 'https://www.mhlw.go.jp/stf/newpage_67729.html';
+const MEDICAL_TABLE_URL = 'https://www.mhlw.go.jp/content/12400000/001665294.pdf';
 
 export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
   // ── 在宅患者訪問薬剤管理指導料 ──
@@ -25,8 +25,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 10,
     name: '在宅患者訪問薬剤管理指導料 単一建物1人',
     code: 'MED_HOME_VISIT_SINGLE',
-    amount: 650, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 650,    conditions: {
       building_tier: 'single',
       monthly_cap: 4,
       weekly_pharmacist_cap: 40,
@@ -54,7 +53,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
       ],
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: `令和8年度診療報酬改定（施行日未確定）仮置き 在宅患者訪問薬剤管理指導料（単一建物1人 ${650}点）`,
+    source_note: `令和8年度診療報酬改定（2026年6月施行） 在宅患者訪問薬剤管理指導料（単一建物1人 ${650}点）`,
   },
   {
     ssot_key: 'medical.home_visit.multi_2_9',
@@ -67,8 +66,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 20,
     name: '在宅患者訪問薬剤管理指導料 単一建物2〜9人',
     code: 'MED_HOME_VISIT_MULTI_2_9',
-    amount: 320, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 320,    conditions: {
       building_tier: 'multi_2_9',
       monthly_cap: 4,
       weekly_pharmacist_cap: 40,
@@ -96,7 +94,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
       ],
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: `令和8年度診療報酬改定（施行日未確定）仮置き 在宅患者訪問薬剤管理指導料（単一建物2〜9人 ${320}点）`,
+    source_note: `令和8年度診療報酬改定（2026年6月施行） 在宅患者訪問薬剤管理指導料（単一建物2〜9人 ${320}点）`,
   },
   {
     ssot_key: 'medical.home_visit.multi_10_plus',
@@ -109,8 +107,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 30,
     name: '在宅患者訪問薬剤管理指導料 単一建物10人以上',
     code: 'MED_HOME_VISIT_MULTI_10_PLUS',
-    amount: 290, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 290,    conditions: {
       building_tier: 'multi_10_plus',
       monthly_cap: 4,
       weekly_pharmacist_cap: 40,
@@ -138,7 +135,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
       ],
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: `令和8年度診療報酬改定（施行日未確定）仮置き 在宅患者訪問薬剤管理指導料（単一建物10人以上 ${290}点）`,
+    source_note: `令和8年度診療報酬改定（2026年6月施行） 在宅患者訪問薬剤管理指導料（単一建物10人以上 ${290}点）`,
   },
   {
     ssot_key: 'medical.home_visit.online',
@@ -151,8 +148,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 40,
     name: '在宅患者オンライン薬剤管理指導料',
     code: 'MED_HOME_VISIT_ONLINE',
-    amount: 59, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 59,    conditions: {
       requires_online_visit: true,
       monthly_cap_shared: true,
       weekly_pharmacist_cap: 40,
@@ -172,7 +168,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
       ],
     },
     source_url: MEDICAL_SOURCE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 在宅患者オンライン薬剤管理指導料 59点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 在宅患者オンライン薬剤管理指導料 59点',
   },
 
   // ── 加算 ──
@@ -187,13 +183,12 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 100,
     name: '麻薬管理指導加算',
     code: 'MED_ADD_NARCOTIC',
-    amount: 100, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 100,    conditions: {
       requires_narcotic_management: true,
       exclusive_with: ['MED_ADD_CONTINUOUS_NARCOTIC'],
     },
     source_url: MEDICAL_SOURCE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 麻薬管理指導加算 100点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 麻薬管理指導加算 100点',
   },
   {
     ssot_key: 'medical.addition.narcotic_online',
@@ -206,13 +201,12 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 110,
     name: '麻薬管理指導加算（オンライン）',
     code: 'MED_ADD_NARCOTIC_ONLINE',
-    amount: 22, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 22,    conditions: {
       requires_online_visit: true,
       requires_narcotic_management: true,
     },
     source_url: MEDICAL_SOURCE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 麻薬管理指導加算（オンライン）22点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 麻薬管理指導加算（オンライン）22点',
   },
   {
     ssot_key: 'medical.addition.continuous_narcotic_infusion',
@@ -225,14 +219,13 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 120,
     name: '在宅患者医療用麻薬持続注射療法加算',
     code: 'MED_ADD_CONTINUOUS_NARCOTIC',
-    amount: 250, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 250,    conditions: {
       requires_narcotic_continuous_injection: true,
       special_cap_eligible: true,
       exclusive_with: ['MED_ADD_NARCOTIC'],
     },
     source_url: MEDICAL_SOURCE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 在宅患者医療用麻薬持続注射療法加算 250点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 在宅患者医療用麻薬持続注射療法加算 250点',
   },
   {
     ssot_key: 'medical.addition.infant',
@@ -245,12 +238,11 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 130,
     name: '乳幼児加算',
     code: 'MED_ADD_INFANT',
-    amount: 100, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 100,    conditions: {
       requires_infant_eligibility: true,
     },
     source_url: MEDICAL_SOURCE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 乳幼児加算 100点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 乳幼児加算 100点',
   },
   {
     ssot_key: 'medical.addition.infant_online',
@@ -263,13 +255,12 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 140,
     name: '乳幼児加算（オンライン）',
     code: 'MED_ADD_INFANT_ONLINE',
-    amount: 12, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 12,    conditions: {
       requires_online_visit: true,
       requires_infant_eligibility: true,
     },
     source_url: MEDICAL_SOURCE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 乳幼児加算（オンライン）12点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 乳幼児加算（オンライン）12点',
   },
   {
     ssot_key: 'medical.addition.pediatric_special',
@@ -282,15 +273,14 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 150,
     name: '小児特定加算',
     code: 'MED_ADD_PEDIATRIC_SPECIAL',
-    amount: 450, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 450,    conditions: {
       requires_pediatric_special_eligibility: true,
     },
     exclusion_rules: {
       same_month_exclusive: ['MED_ADD_PEDIATRIC_SPECIAL_ONLINE'],
     },
     source_url: MEDICAL_SOURCE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 小児特定加算 450点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 小児特定加算 450点',
   },
   {
     ssot_key: 'medical.addition.pediatric_special_online',
@@ -303,8 +293,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 155,
     name: '小児特定加算（オンライン）',
     code: 'MED_ADD_PEDIATRIC_SPECIAL_ONLINE',
-    amount: 350, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 350,    conditions: {
       requires_online_visit: true,
       requires_pediatric_special_eligibility: true,
     },
@@ -315,7 +304,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
       requires_visit_documentation: true,
     },
     source_url: MEDICAL_SOURCE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 小児特定加算（オンライン）350点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 小児特定加算（オンライン）350点',
   },
   {
     ssot_key: 'medical.addition.central_venous_nutrition',
@@ -328,13 +317,12 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 155,
     name: '在宅中心静脈栄養法加算',
     code: 'MED_ADD_CENTRAL_VENOUS',
-    amount: 150, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 150,    conditions: {
       requires_central_venous_nutrition: true,
       special_cap_eligible: true,
     },
     source_url: MEDICAL_SOURCE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 在宅中心静脈栄養法加算 150点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 在宅中心静脈栄養法加算 150点',
   },
 
   // ── 在宅移行初期管理料 ──
@@ -349,8 +337,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 200,
     name: '在宅移行初期管理料',
     code: 'MED_HOME_TRANSITION_INITIAL',
-    amount: 240, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 230,    conditions: {
       requires_initial_transition: true,
       once_per_patient: true,
     },
@@ -359,7 +346,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
       requires_management_plan: true,
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 在宅移行初期管理料 240点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 在宅移行初期管理料 230点',
   },
 
   // ── 退院時共同指導料 ──
@@ -374,8 +361,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 300,
     name: '退院時共同指導料',
     code: 'MED_DISCHARGE_JOINT_GUIDANCE',
-    amount: 600, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 600,    conditions: {
       requires_hospital_conference: true,
       once_per_admission: true,
     },
@@ -383,7 +369,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
       requires_visit_documentation: true,
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 退院時共同指導料 600点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 退院時共同指導料 600点',
   },
 
   // ── 在宅患者緊急時等共同指導料 ──
@@ -398,8 +384,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 350,
     name: '在宅患者緊急時等共同指導料',
     code: 'MED_EMERGENCY_JOINT_GUIDANCE',
-    amount: 700, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 700,    conditions: {
       requires_emergency_conference: true,
       monthly_cap: 2,
     },
@@ -407,7 +392,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
       requires_visit_documentation: true,
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 在宅患者緊急時等共同指導料 700点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 在宅患者緊急時等共同指導料 700点',
   },
   {
     ssot_key: 'medical.addition.terminal_care',
@@ -420,8 +405,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 360,
     name: '在宅ターミナルケア加算',
     code: 'C013',
-    amount: 2500, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 2500,    conditions: {
       monthly_cap: 1,
     },
     evidence_requirements: {
@@ -429,7 +413,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
       requires_written_report: true,
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 在宅ターミナルケア加算 2500点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 在宅ターミナルケア加算 2500点',
   },
 
   // ── 経管投薬支援料 ──
@@ -444,13 +428,12 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 380,
     name: '経管投薬支援料',
     code: 'MED_ENTERAL_MEDICATION_SUPPORT',
-    amount: 100, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 100,    conditions: {
       requires_enteral_feeding: true,
       once_per_patient: true,
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 経管投薬支援料 100点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 経管投薬支援料 100点',
   },
 
   // ── 服薬情報等提供料 ──
@@ -465,14 +448,13 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 400,
     name: '服薬情報等提供料1',
     code: 'MED_INFO_PROVISION_1',
-    amount: 30, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 30,    conditions: {
       information_provision_type: '1',
       requested_by_medical_institution: true,
       frequency_limit: 'monthly_once',
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 服薬情報等提供料1 30点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 服薬情報等提供料1 30点',
   },
   {
     ssot_key: 'medical.information_provision.2_medical',
@@ -485,14 +467,13 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 410,
     name: '服薬情報等提供料2 イ',
     code: 'MED_INFO_PROVISION_2_I',
-    amount: 20, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 20,    conditions: {
       information_provision_type: '2_i',
       target: 'medical_institution',
       frequency_limit: 'monthly_once',
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 服薬情報等提供料2 イ 20点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 服薬情報等提供料2 イ 20点',
   },
   {
     ssot_key: 'medical.information_provision.2_refill',
@@ -505,15 +486,14 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 420,
     name: '服薬情報等提供料2 ロ',
     code: 'MED_INFO_PROVISION_2_RO',
-    amount: 20, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 20,    conditions: {
       information_provision_type: '2_ro',
       target: 'prescriber',
       refill_followup: true,
       frequency_limit: 'monthly_once',
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 服薬情報等提供料2 ロ 20点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 服薬情報等提供料2 ロ 20点',
   },
   {
     ssot_key: 'medical.information_provision.2_care_manager',
@@ -526,15 +506,14 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 430,
     name: '服薬情報等提供料2 ハ',
     code: 'MED_INFO_PROVISION_2_HA',
-    amount: 20, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 20,    conditions: {
       information_provision_type: '2_ha',
       target: 'care_manager',
       same_month_home_management_disallowed: true,
       frequency_limit: 'monthly_once',
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 服薬情報等提供料2 ハ 20点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 服薬情報等提供料2 ハ 20点',
   },
   {
     ssot_key: 'medical.information_provision.3',
@@ -547,13 +526,12 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 440,
     name: '服薬情報等提供料3',
     code: 'MED_INFO_PROVISION_3',
-    amount: 50, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 50,    conditions: {
       information_provision_type: '3',
       pre_admission_medication_reconciliation: true,
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 服薬情報等提供料3 50点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 服薬情報等提供料3 50点',
   },
 
   // ── 在宅患者重複投薬・相互作用等防止管理料 ──
@@ -568,14 +546,13 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 450,
     name: '在宅患者重複投薬・相互作用等防止管理料1 イ',
     code: 'MED_HOME_DUPLICATE_CHANGE_OTHER',
-    amount: 40, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 50,    conditions: {
       duplicate_interaction_type: '1_i',
       residual_adjustment: false,
       requires_prescription_change: true,
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 在宅患者重複投薬・相互作用等防止管理料1 イ 40点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 在宅患者重複投薬・相互作用等防止管理料1 イ 50点',
   },
   {
     ssot_key: 'medical.home_duplicate_interaction.change_residual',
@@ -588,14 +565,13 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 460,
     name: '在宅患者重複投薬・相互作用等防止管理料1 ロ',
     code: 'MED_HOME_DUPLICATE_CHANGE_RESIDUAL',
-    amount: 20, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 50,    conditions: {
       duplicate_interaction_type: '1_ro',
       residual_adjustment: true,
       requires_prescription_change: true,
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 在宅患者重複投薬・相互作用等防止管理料1 ロ 20点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 在宅患者重複投薬・相互作用等防止管理料1 ロ 50点',
   },
   {
     ssot_key: 'medical.home_duplicate_interaction.proposal_other',
@@ -608,14 +584,13 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 470,
     name: '在宅患者重複投薬・相互作用等防止管理料2 イ',
     code: 'MED_HOME_DUPLICATE_PROPOSAL_OTHER',
-    amount: 40, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 50,    conditions: {
       duplicate_interaction_type: '2_i',
       residual_adjustment: false,
       proposal_reflected: true,
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 在宅患者重複投薬・相互作用等防止管理料2 イ 40点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 在宅患者重複投薬・相互作用等防止管理料2 イ 50点',
   },
   {
     ssot_key: 'medical.home_duplicate_interaction.proposal_residual',
@@ -628,14 +603,13 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 480,
     name: '在宅患者重複投薬・相互作用等防止管理料2 ロ',
     code: 'MED_HOME_DUPLICATE_PROPOSAL_RESIDUAL',
-    amount: 20, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 30,    conditions: {
       duplicate_interaction_type: '2_ro',
       residual_adjustment: true,
       proposal_reflected: true,
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 在宅患者重複投薬・相互作用等防止管理料2 ロ 20点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 在宅患者重複投薬・相互作用等防止管理料2 ロ 30点',
   },
 
   // ── 在宅患者緊急訪問薬剤管理指導料 ──
@@ -650,8 +624,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 500,
     name: '在宅患者緊急訪問薬剤管理指導料1',
     code: 'MED_EMERGENCY_VISIT_1',
-    amount: 500, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 500,    conditions: {
       visit_type: 'emergency',
       emergency_category: 'planned_disease_exacerbation',
       monthly_cap: 4,
@@ -663,7 +636,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
       requires_written_report: true,
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 在宅患者緊急訪問薬剤管理指導料1 500点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 在宅患者緊急訪問薬剤管理指導料1 500点',
   },
   {
     ssot_key: 'medical.emergency_visit.2',
@@ -676,8 +649,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 510,
     name: '在宅患者緊急訪問薬剤管理指導料2',
     code: 'MED_EMERGENCY_VISIT_2',
-    amount: 200, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 200,    conditions: {
       visit_type: 'emergency',
       emergency_category: 'other_exacerbation',
       monthly_cap: 4,
@@ -699,7 +671,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
       ],
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 在宅患者緊急訪問薬剤管理指導料2 200点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 在宅患者緊急訪問薬剤管理指導料2 200点',
   },
   {
     ssot_key: 'medical.emergency_visit.online',
@@ -712,8 +684,7 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
     display_order: 520,
     name: '在宅患者緊急オンライン薬剤管理指導料',
     code: 'MED_EMERGENCY_VISIT_ONLINE',
-    amount: 59, // TODO: 令和8年改定確定後に更新
-    conditions: {
+    amount: 59,    conditions: {
       visit_type: 'emergency',
       emergency_category: 'online',
       monthly_cap: 4,
@@ -725,6 +696,6 @@ export const MEDICAL_RULES_2026: BillingRuleSeed[] = [
       requires_written_report: true,
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: '令和8年度診療報酬改定（施行日未確定）仮置き 在宅患者緊急オンライン薬剤管理指導料 59点',
+    source_note: '令和8年度診療報酬改定（2026年6月施行） 在宅患者緊急オンライン薬剤管理指導料 59点',
   },
 ];

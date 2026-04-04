@@ -21,7 +21,7 @@ describe('/api/auth/password/reset/confirm POST', () => {
       json: async () => ({
         email: 'user@example.com',
         code: '123456',
-        newPassword: 'new-password-12345',
+        newPassword: 'New-Password-12345!',
       }),
     } as Request);
 
@@ -29,7 +29,7 @@ describe('/api/auth/password/reset/confirm POST', () => {
     expect(confirmForgotPasswordMock).toHaveBeenCalledWith({
       email: 'user@example.com',
       code: '123456',
-      newPassword: 'new-password-12345',
+      newPassword: 'New-Password-12345!',
     });
   });
 });

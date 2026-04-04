@@ -7,23 +7,22 @@ import {
 } from '../revisions';
 
 describe('resolveRevisionEntryForDate', () => {
-  it('uses the confirmed 2024 medical revision while 2026 remains draft', () => {
+  it('uses the confirmed 2026 medical revision for dates on or after 2026-06-01', () => {
     const resolved = resolveRevisionEntryForDate(
       MEDICAL_REVISIONS,
       new Date('2026-06-15T00:00:00.000Z'),
-    );
-
-    expect(resolved?.revision.code).toBe('2024');
-  });
-
-  it('can opt into draft medical revisions explicitly', () => {
-    const resolved = resolveRevisionEntryForDate(
-      MEDICAL_REVISIONS,
-      new Date('2026-06-15T00:00:00.000Z'),
-      { includeDraft: true },
     );
 
     expect(resolved?.revision.code).toBe('2026');
+  });
+
+  it('uses the confirmed 2024 medical revision for dates before 2026-06-01', () => {
+    const resolved = resolveRevisionEntryForDate(
+      MEDICAL_REVISIONS,
+      new Date('2026-05-31T00:00:00.000Z'),
+    );
+
+    expect(resolved?.revision.code).toBe('2024');
   });
 
   it('keeps the current confirmed care revision active', () => {
@@ -35,7 +34,7 @@ describe('resolveRevisionEntryForDate', () => {
     expect(resolved?.revision.code).toBe('2024');
   });
 
-  it('returns confirmed medical rules while the future revision remains draft', () => {
+  it('returns confirmed 2026 medical rules for dates after effectiveFrom', () => {
     const rules = resolveBillingRulesForDate({
       payerBasis: 'medical',
       asOfDate: new Date('2026-06-15T00:00:00.000Z'),
