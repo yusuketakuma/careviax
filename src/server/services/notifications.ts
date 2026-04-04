@@ -169,10 +169,12 @@ export async function dispatchNotificationEvent(
     );
   }
 
-  const smsUserIds = await resolveTargetUserIds(tx, input, rules, 'sms');
-  const lineUserIds = await resolveTargetUserIds(tx, input, rules, 'line');
-  const faxUserIds = await resolveTargetUserIds(tx, input, rules, 'fax');
-  const mcsUserIds = await resolveTargetUserIds(tx, input, rules, 'mcs');
+  const [smsUserIds, lineUserIds, faxUserIds, mcsUserIds] = await Promise.all([
+    resolveTargetUserIds(tx, input, rules, 'sms'),
+    resolveTargetUserIds(tx, input, rules, 'line'),
+    resolveTargetUserIds(tx, input, rules, 'fax'),
+    resolveTargetUserIds(tx, input, rules, 'mcs'),
+  ]);
   const externalUserIds = uniqueStrings([...smsUserIds, ...lineUserIds, ...faxUserIds, ...mcsUserIds]);
 
   if (externalUserIds.length > 0) {
@@ -189,16 +191,18 @@ export async function dispatchNotificationEvent(
     });
     const usersById = new Map(users.map((user) => [user.id, user]));
 
-    for (const userId of smsUserIds) {
-      const phoneNumber = usersById.get(userId)?.phone;
-      if (!phoneNumber) continue;
-      await smsAdapter.sendSms(phoneNumber, `${input.title}\n${input.message}`);
-    }
-
-    for (const userId of lineUserIds) {
-      if (!usersById.has(userId)) continue;
-      await lineAdapter.sendMessage(userId, `${input.title}\n${input.message}`);
-    }
+    await Promise.all([
+      ...smsUserIds
+        .filter((userId) => usersById.get(userId)?.phone)
+        .map((userId) =>
+          smsAdapter.sendSms(usersById.get(userId)!.phone!, `${input.title}\n${input.message}`)
+        ),
+      ...lineUserIds
+        .filter((userId) => usersById.has(userId))
+        .map((userId) =>
+          lineAdapter.sendMessage(userId, `${input.title}\n${input.message}`)
+        ),
+    ]);
   }
 
   return notifications;

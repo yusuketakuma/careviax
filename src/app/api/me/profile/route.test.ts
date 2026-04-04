@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
+  getAuthAccessTokenMock,
   userFindUniqueMock,
   userUpdateMock,
   resolveLocalUserByIdentityMock,
@@ -9,6 +11,7 @@ const {
   updateCognitoUserProfileMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
+  getAuthAccessTokenMock: vi.fn(),
   userFindUniqueMock: vi.fn(),
   userUpdateMock: vi.fn(),
   resolveLocalUserByIdentityMock: vi.fn(),
@@ -18,6 +21,7 @@ const {
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
+  getAuthAccessToken: getAuthAccessTokenMock,
 }));
 
 vi.mock('@/lib/auth/user-resolution', () => ({
@@ -47,13 +51,13 @@ describe('/api/me/profile', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({
-      accessToken: 'token',
       user: {
         id: 'user_1',
         email: 'user@example.com',
         cognitoSub: 'sub_1',
       },
     });
+    getAuthAccessTokenMock.mockResolvedValue('token');
     userFindUniqueMock.mockResolvedValue({
       id: 'user_1',
       org_id: 'org_1',
@@ -85,7 +89,7 @@ describe('/api/me/profile', () => {
   });
 
   it('returns the current user profile with MFA state', async () => {
-    const response = await GET();
+    const response = await GET(new NextRequest('http://localhost/api/me/profile'));
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -101,11 +105,13 @@ describe('/api/me/profile', () => {
 
   it('updates the current user profile and syncs Cognito', async () => {
     const response = await PATCH({
+      nextUrl: new URL('http://localhost/api/me/profile'),
+      url: 'http://localhost/api/me/profile',
       json: async () => ({
         name: '更新後 名前',
         phone: '090-9999-0000',
       }),
-    } as Request);
+    } as NextRequest);
 
     expect(response.status).toBe(200);
     expect(updateCognitoUserProfileMock).toHaveBeenCalledWith({

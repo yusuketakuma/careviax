@@ -132,8 +132,6 @@ test.describe('dispensing queue', () => {
     await waitForStableUi(page);
 
     // Should show either task cards or an empty state message
-    const hasTaskCards = await page.locator('[data-testid]').filter({ hasText: /調剤/ }).count() > 0;
-    const hasEmptyState = await page.getByText(/調剤待ちの処方はありません|タスクはありません|0件/).isVisible().catch(() => false);
     const hasContent = await page.locator('main').textContent();
 
     // Page should have meaningful content (not blank)

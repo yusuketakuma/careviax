@@ -15,7 +15,7 @@ const effectiveDateFields = {
 };
 
 const configField = {
-  config: z.record(z.string(), z.any()).default({}),
+  config: z.record(z.string(), z.unknown()).default({}),
 };
 
 export const pharmacySiteInsuranceConfigCreateSchema = z

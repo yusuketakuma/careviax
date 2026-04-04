@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
+  getAuthAccessTokenMock,
   userFindUniqueMock,
   resolveLocalUserByIdentityMock,
   verifyTotpForAccessTokenMock,
   issueMfaRecoveryCodesMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
+  getAuthAccessTokenMock: vi.fn(),
   userFindUniqueMock: vi.fn(),
   resolveLocalUserByIdentityMock: vi.fn(),
   verifyTotpForAccessTokenMock: vi.fn(),
@@ -16,6 +19,7 @@ const {
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
+  getAuthAccessToken: getAuthAccessTokenMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -41,7 +45,7 @@ vi.mock('@/server/services/mfa-recovery', () => ({
 import { POST } from './route';
 
 function createRequest(body: unknown) {
-  return new Request('http://localhost/api/me/mfa/verify', {
+  return new NextRequest('http://localhost/api/me/mfa/verify', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -53,6 +57,7 @@ function createRequest(body: unknown) {
 describe('/api/me/mfa/verify POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getAuthAccessTokenMock.mockResolvedValue('access-token');
     verifyTotpForAccessTokenMock.mockResolvedValue(undefined);
     issueMfaRecoveryCodesMock.mockResolvedValue(['ABCD-EFGH', 'JKLM-NPQR']);
     userFindUniqueMock.mockResolvedValue({ id: 'user_1' });
@@ -69,7 +74,6 @@ describe('/api/me/mfa/verify POST', () => {
 
   it('returns 400 when code is missing', async () => {
     authMock.mockResolvedValue({
-      accessToken: 'access-token',
       user: { id: 'user_1', email: 'pharmacist@example.com' },
     });
 
@@ -83,7 +87,6 @@ describe('/api/me/mfa/verify POST', () => {
 
   it('verifies totp and returns recovery codes for the current user', async () => {
     authMock.mockResolvedValue({
-      accessToken: 'access-token',
       user: { id: 'user_1', email: 'pharmacist@example.com' },
     });
 
@@ -104,7 +107,6 @@ describe('/api/me/mfa/verify POST', () => {
 
   it('falls back to identity resolution when session user id is not a local user', async () => {
     authMock.mockResolvedValue({
-      accessToken: 'access-token',
       user: {
         id: 'external-user',
         email: 'pharmacist@example.com',
@@ -126,7 +128,6 @@ describe('/api/me/mfa/verify POST', () => {
 
   it('returns 400 when the totp code is invalid', async () => {
     authMock.mockResolvedValue({
-      accessToken: 'access-token',
       user: { id: 'user_1', email: 'pharmacist@example.com' },
     });
     verifyTotpForAccessTokenMock.mockRejectedValue(new Error('bad code'));

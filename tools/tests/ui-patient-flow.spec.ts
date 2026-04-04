@@ -27,7 +27,7 @@ test.describe('patient list and navigation flow', () => {
     expect(rowCount).toBeGreaterThan(0);
 
     // Page header should show title
-    await expect(page.getByRole('heading', { name: '患者一覧' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '患者一覧', level: 1 })).toBeVisible();
 
     // New patient registration link should be accessible
     const newPatientLink = page.getByRole('link', { name: '新規登録' });
@@ -106,7 +106,7 @@ test.describe('patient list and navigation flow', () => {
 
     // Should be back on patient list
     await expect(page).toHaveURL(/\/patients$/);
-    await expect(page.getByRole('heading', { name: '患者一覧' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '患者一覧', level: 1 })).toBeVisible();
 
     expect(errors).toEqual([]);
   });
@@ -159,6 +159,9 @@ test.describe('patient list filters', () => {
     // Filter selects (by aria-label)
     await expect(page.getByLabel('リスクフィルタ')).toBeVisible();
     await expect(page.getByLabel('ステータスフィルタ')).toBeVisible();
+
+    await page.getByRole('button', { name: /詳細フィルタ|詳細を閉じる/ }).click();
+    await expect(page.getByLabel('同意状態フィルタ')).toBeVisible();
     await expect(page.getByLabel('施設フィルタ')).toBeVisible();
 
     expect(errors).toEqual([]);
@@ -287,8 +290,6 @@ test.describe('patient detail page', () => {
     }
 
     // Phone is a few fields below - find by position relative to the name input
-    // All inputs in the patient master section
-    const allInputs = page.locator('main input[type="text"], main input:not([type])');
     // The phone field is the 5th field in the master card (after name, kana, date, gender-select)
     // Find it by nearby label text
     const phoneLabelParent = page.locator('div').filter({ has: page.locator('label:text("電話番号")') }).filter({ has: page.locator('input') }).first();

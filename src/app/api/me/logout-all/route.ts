@@ -1,13 +1,15 @@
-import { auth } from '@/lib/auth/config';
+import { auth, getAuthAccessToken } from '@/lib/auth/config';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { externalError, success, unauthorized } from '@/lib/api/response';
 import { globalSignOutWithAccessToken } from '@/server/services/cognito-auth';
+import type { NextRequest } from 'next/server';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   const session = await auth();
+  const accessToken = await getAuthAccessToken(request);
   const userId = session?.user?.id?.trim();
-  if (!session?.accessToken || !userId) {
+  if (!session || !accessToken || !userId) {
     return unauthorized();
   }
 
@@ -40,7 +42,7 @@ export async function POST() {
     });
 
     try {
-      await globalSignOutWithAccessToken(session.accessToken);
+      await globalSignOutWithAccessToken(accessToken);
     } catch (error) {
       if ((error as Error).message !== 'COGNITO_NOT_CONFIGURED') {
         throw error;

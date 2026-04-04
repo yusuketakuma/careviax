@@ -519,6 +519,36 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     },
   });
 
+  const autoRefreshMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/jobs/drug-master-auto-refresh', {
+        method: 'POST',
+        headers: { 'x-org-id': orgId },
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(json?.message ?? '一括更新の実行に失敗しました');
+      }
+      return json as { data?: { processedCount?: number } };
+    },
+    onSuccess: async (result) => {
+      const processedCount = result.data?.processedCount;
+      toast.success(
+        processedCount != null
+          ? `フリーマスター一括更新が完了しました（${processedCount.toLocaleString()}件）`
+          : 'フリーマスター一括更新が完了しました',
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['drug-masters'] }),
+        queryClient.invalidateQueries({ queryKey: ['drug-master-import-logs'] }),
+        queryClient.invalidateQueries({ queryKey: ['drug-master-status'] }),
+      ]);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '一括更新に失敗しました');
+    },
+  });
+
   const stockMutation = useMutation({
     mutationFn: async (payload: {
       site_id: string;
@@ -728,26 +758,12 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
               variant="outline"
               size="sm"
               className="mt-2 w-full"
-              disabled={importMutation.isPending}
-              onClick={() => {
-                fetch('/api/jobs/drug-master-auto-refresh', {
-                  method: 'POST',
-                  headers: { 'x-org-id': orgId },
-                }).then(async (res) => {
-                  if (res.ok) {
-                    toast.success('フリーマスター一括更新を開始しました');
-                    await Promise.all([
-                      queryClient.invalidateQueries({ queryKey: ['drug-masters'] }),
-                      queryClient.invalidateQueries({ queryKey: ['drug-master-import-logs'] }),
-                      queryClient.invalidateQueries({ queryKey: ['drug-master-status'] }),
-                    ]);
-                  } else {
-                    toast.error('一括更新の開始に失敗しました');
-                  }
-                });
-              }}
+              disabled={importMutation.isPending || autoRefreshMutation.isPending}
+              onClick={() => autoRefreshMutation.mutate()}
             >
-              フリーマスター一括更新（SSK→MHLW）
+              {autoRefreshMutation.isPending
+                ? 'フリーマスター一括更新中…'
+                : 'フリーマスター一括更新（SSK→MHLW）'}
             </Button>
           </CardContent>
         </Card>

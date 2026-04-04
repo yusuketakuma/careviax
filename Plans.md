@@ -84,6 +84,8 @@ flowchart LR
 ---
 
 ## 直近トラック: 訪問支援・処方/調剤・共有要約 `cc:完了`
+<details>
+<summary>完了済み詳細 — クリックで展開</summary>
 
 > 最終更新: 2026-03-27 19:27 JST
 > 目的: 薬局薬剤師の訪問薬剤管理指導に必要な「訪問前の要点」「処方履歴差分」「調剤方法」「多職種共有」を、患者詳細・訪問準備・外部共有で一貫して確認できる状態まで引き上げる。
@@ -339,6 +341,8 @@ flowchart LR
 4. VB-04 算定ブロッカーの解消導線
 5. VB-05 家族・施設セルフ報告の履歴化
 
+
+</details>
 ---
 
 ## Phase 0: 基盤構築・データ定義 `cc:WIP` <!-- 0-2i PMDA登録 + 0-5 I-04 バックアップ実地 が残存 -->
@@ -364,6 +368,9 @@ flowchart LR
 - 請求候補の高度ルールエンジン
 
 ### 0-1. プロジェクト初期化 `cc:完了`
+<details>
+<summary>完了済み詳細 — クリックで展開</summary>
+
 
 > DoD: `pnpm dev` 起動、`pnpm build` 成功、CI green、AWS全サービス接続確認
 
@@ -373,7 +380,12 @@ flowchart LR
 - [x] Prisma 7（RDS接続）, NextAuth v5 + Cognito, Serwist 9 PWA
 - [x] `.env.example`, Vitest 4, Playwright, セキュリティヘッダー, CI(GitHub Actions), IaC(AWS CDK)
 
+
+</details>
 ### 0-2. データモデル全体（Prisma Schema） `cc:完了`
+<details>
+<summary>完了済み詳細 — クリックで展開</summary>
+
 
 > depends: 0-1 | DoD: `prisma migrate deploy` 成功、全テーブル作成、シード完了
 > ※ 全テーブル同時マイグレーション。グループ分けは設計整理用。Prisma multi-file schema（prisma/schema/\*.prisma）でファイル分割。
@@ -499,6 +511,8 @@ flowchart LR
   - グローバル参照マスタと共通辞書は `org_id` 例外として責任分界表に明記
   - `pnpm db:generate` / `pnpm exec eslint prisma/seed.ts` を確認
 
+
+</details>
 ### 0-2i. 医薬品マスタ取込パイプライン `cc:WIP`
 
 > depends: 0-2e（マスタテーブル作成後） | DoD: 全データソースから取込完了、DrugMaster 1万3千品目+、相互作用データ検索可能
@@ -564,6 +578,9 @@ flowchart LR
 - [x] 手動取込トリガーボタン（管理者権限）
 
 ### 0-3. 認証・権限・RLS基盤 (FR-501) `cc:完了`
+<details>
+<summary>完了済み詳細 — クリックで展開</summary>
+
 
 > depends: 0-2 | DoD: RLS正当性テスト通過
 
@@ -588,7 +605,12 @@ flowchart LR
   - 通知設定（種別ごとのON/OFF、ブラウザPush許可）
   - 薬剤師: 自分の訪問実績サマリー、今月の訪問カウンター
 
+
+</details>
 ### 0-4. 共通基盤 `cc:完了`
+<details>
+<summary>完了済み詳細 — クリックで展開</summary>
+
 
 > depends: 0-3 | DoD: App Shell動作、監査ログ書込み、CRUD 1つ動作
 
@@ -718,6 +740,8 @@ flowchart LR
 - [x] フィルタ: Zod スキーマで型安全なクエリパラメータ（`?status=active&from=2026-01-01&pharmacistId=xxx`）
 - [x] ソート: `?sort=scheduled_date&order=asc`（デフォルトソートは各エンドポイントで定義）
 
+
+</details>
 ### 0-5. 監視・バックアップ・ガイドライン準拠 `cc:WIP`
 
 > depends: 0-1 | DoD: 復旧試験完了、監視稼働、ガイドライン文書5点+本番インフラ完備
@@ -799,6 +823,9 @@ flowchart LR
   - METI/MIC v1.1 の統制項目ごとの充足チェックリスト（`docs/compliance/meti-mic-v1.1-mapping.md`）
 
 ### 0-6. バックグラウンドジョブ・定期タスク `cc:完了`
+<details>
+<summary>完了済み詳細 — クリックで展開</summary>
+
 
 > depends: 0-4 | DoD: 全ジョブが CloudWatch Events (EventBridge) or cron で稼働
 
@@ -820,6 +847,8 @@ flowchart LR
   - 経営指標集計 → 処方箋集中率、後発品割合、在宅訪問実績の月次スナップショット保存
 - [x] ジョブ共通: 実行ログ（IntegrationJob）、失敗時リトライ（最大3回）、管理者通知
 
+
+</details>
 ---
 
 ## Phase 1a: MVP — 患者・訪問・記録 `cc:WIP` <!-- 1a-6 ISMS が残存 -->
@@ -829,6 +858,9 @@ flowchart LR
 > ※ MVP でも `MedicationCycle` を維持するため、①〜⑤の全量実装は後段でも「薄い upstream slice」は先に入れる
 
 ### 1a-1. 患者・案件管理 `cc:完了`
+<details>
+<summary>完了済み詳細 — クリックで展開</summary>
+
 
 > depends: 0-4 | DoD: 患者CRUD→ケース作成→状態遷移→終了処理→計画書作成が動作
 
@@ -844,7 +876,12 @@ flowchart LR
   - 未取得同意の警告表示（訪問予定作成時に必須同意チェック）
   - 2026-03-31: 同意、管理計画書、配薬設定、薬剤課題、緊急連絡ドラフト更新後も patient detail だけでなく schedule / My Day / dashboard に反映されるよう invalidate を共通化した
 
+
+</details>
 ### 1a-2. ⑥ 訪問計画・ルート最適化 `cc:完了`
+<details>
+<summary>完了済み詳細 — クリックで展開</summary>
+
 
 > depends: 1a-1 | DoD: 訪問予定作成→定期スケジュール生成→準備チェック→当日表示→予定変更連絡が動作
 
@@ -925,7 +962,12 @@ flowchart LR
 - [x] 訪問開始ボタン → 位置情報記録（任意）→ 訪問記録画面へ遷移
   - 2026-03-31: 患者基本情報 / 連絡先 / 病名課題 / ケアチーム / 訪問条件 / ケース更新後に、患者詳細だけでなく schedule / My Day / dashboard まで org-aware に再取得するよう統一した
 
+
+</details>
 ### 1a-3. ⑦ 訪問実施・記録 `cc:完了`
+<details>
+<summary>完了済み詳細 — クリックで展開</summary>
+
 
 > depends: 1a-2 | DoD: SOAP記録→残薬入力→次回提案→当日参照オフラインが動作
 
@@ -976,7 +1018,12 @@ flowchart LR
   - 2026-03-28: app shell のオフライン banner と schedule board のモバイル訪問モードに read-only / TTL 表記を追加した
 - [x] 下書き同期は Phase 2（FR-106 Ph2）に後ろ倒し
 
+
+</details>
 ### 1a-4. 薬学的課題 + QRコード `cc:完了`
+<details>
+<summary>完了済み詳細 — クリックで展開</summary>
+
 
 > depends: 1a-1 | DoD: 薬剤一覧、課題CRUD、QRスキャン→患者新規登録 or 既存選択→MedicationProfile保存が動作
 
@@ -989,7 +1036,12 @@ flowchart LR
   - 該当あり → 患者選択 → MedicationProfile へ薬剤情報を保存
 - [x] お薬手帳QRコード生成（発行方向）: 調剤済み薬剤→JAHIS Ver.2.5形式QR生成（`qrcode` npm + Shift-JISエンコード）→印刷/画面表示
 
+
+</details>
 ### 1a-5. ⑧ 報告・連携 `cc:完了`
+<details>
+<summary>完了済み詳細 — クリックで展開</summary>
+
 
 > depends: 1a-1（連携ログ）, 1a-3（報告書） | DoD: 主要報告書の作成/送付/失敗追跡が動作
 
@@ -1009,6 +1061,8 @@ flowchart LR
   - FAX/メール/SES のチャネル別送達記録
 - [x] 文書テンプレート(FR-302) + タスク管理(FR-304)
 
+
+</details>
 ### 1a-6. ダッシュボード + テスト `cc:WIP` <!-- ISMS認証が残存 -->
 
 > depends: 1a-1〜1a-5 | DoD: E2E通過、パイロットデモ完了
@@ -1027,6 +1081,9 @@ flowchart LR
 - [x] RLSテスト + セッション管理UI + シードデータ
 
 ### 1a-7. モバイル/タブレットUI `cc:完了`
+<details>
+<summary>完了済み詳細 — クリックで展開</summary>
+
 
 > depends: 1a-1〜1a-6 | DoD: スマートフォン/タブレットで訪問業務の一日が完結する
 
@@ -1059,6 +1116,8 @@ flowchart LR
 - [x] カメラ連携: 処方箋スキャン、残薬写真、QR読取のネイティブカメラAPI統合
 - [x] GPS連携: 訪問開始/終了時の位置情報記録（任意、プライバシー設定で無効化可能）
 
+
+</details>
 ---
 
 ## Phase 1b: ①処方箋応需→②調剤→③調剤鑑査→処方安全チェック `cc:WIP` <!-- 1b-6 ISMS + 1b-9 UAT が残存 -->
@@ -1067,6 +1126,9 @@ flowchart LR
 > 出口条件: 処方箋応需→疑義照会→調剤→鑑査→訪問→報告の完全サイクルが回る
 
 ### 1b-1. ① 処方箋応需（処方受付〜調剤開始前） `cc:完了`
+<details>
+<summary>完了済み詳細 — クリックで展開</summary>
+
 
 > depends: 1a-1 | DoD: 全経路の処方受付→構造化→疑義照会→MedicationCycle生成が動作
 
@@ -1106,7 +1168,12 @@ flowchart LR
   - 処方差分サマリーを VisitPreparation に反映
   - carry_items_ready / partial / blocked を VisitSchedule に反映
 
+
+</details>
 ### 1b-2. ② 調剤 + ③ 調剤鑑査 `cc:完了`
+<details>
+<summary>完了済み詳細 — クリックで展開</summary>
+
 
 > depends: 1b-1 | DoD: 調剤キュー→実績→鑑査→MedicationCycle状態遷移が動作
 
@@ -1134,7 +1201,12 @@ flowchart LR
 - [x] グローバル: `Cmd+K` 検索、`Cmd+N` 新規作成、`Esc` モーダル閉じ、`?` ショートカット一覧
 - [x] ショートカットヘルプモーダル（`?`キーで表示）
 
+
+</details>
 ### 1b-3. 処方安全チェック（臨床意思決定支援） `cc:完了`
+<details>
+<summary>完了済み詳細 — クリックで展開</summary>
+
 
 > depends: 1b-2, 0-2i（医薬品マスタ取込済み） | DoD: 調剤時・訪問記録時にアラート表示
 
@@ -1152,7 +1224,12 @@ flowchart LR
 - [x] 減数調剤WF: 残薬調整→処方医報告→禁止薬剤(麻薬/抗がん剤)ブロック
 - [x] 初回訪問文書の自動生成+交付記録
 
+
+</details>
 ### 1b-4. トレーシングレポート + 依頼/照会ワークフロー `cc:完了`
+<details>
+<summary>完了済み詳細 — クリックで展開</summary>
+
 
 > depends: 1a-5 | DoD: トレーシングレポート送付、依頼→返信→クローズが動作
 
@@ -1160,7 +1237,12 @@ flowchart LR
 - [x] CommunicationRequest/Response: 状態遷移9段階
 - [x] 返信待ち一覧 + エスカレーション
 
+
+</details>
 ### 1b-5. 最小セット運用（Pilot前必須） `cc:完了`
+<details>
+<summary>完了済み詳細 — クリックで展開</summary>
+
 
 > depends: 1b-2 | DoD: セットが必要な患者に対して、最小限のセット→確認→持参反映が動作
 
@@ -1170,6 +1252,8 @@ flowchart LR
 - [x] 部分承認時は carry_items_partial と再作業タスクを自動起票
 - [x] 持参チェックリストへ確定反映
 
+
+</details>
 ### 1b-6. ワークフローダッシュボード + テスト `cc:WIP` <!-- ISMS認証プロセスが外部依存で残存 -->
 
 > depends: 1b-1〜1b-5 | DoD: E2Eで処方箋応需→調剤→鑑査→訪問→報告の完全サイクル通過
@@ -1184,6 +1268,9 @@ flowchart LR
   - 2026-04-01: `pilot:dossier` / `/api/admin/pilot-launch-dossier` から comparison table / decision memo の未着手を継続検出できる状態を確認。残作業は外部見積取得と社内意思決定のみ
 
 ### 1b-7. テストカバレッジ強化 `cc:完了`
+<details>
+<summary>完了済み詳細 — クリックで展開</summary>
+
 
 > depends: 1b-1〜1b-6 | DoD: 全 API ルートにユニットテスト、カバレッジ80%以上
 > 2026-03-28 GAP分析: 157ルート中79ルート（50.4%）が未テスト
@@ -1236,7 +1323,12 @@ flowchart LR
 - [x] 管理系: `notification-rules`, `pharmacist-shifts`, `pharmacy-sites`, `consent-records` `cc:完了` (2026-03-30)
 - [x] その他: `business-holidays`, `conference-notes`, `community-activities`, `external-access`, `templates`, `settings` `cc:完了` (2026-03-30)
 
+
+</details>
 ### 1b-8. 機能的ギャップ修正 `cc:完了`
+<details>
+<summary>完了済み詳細 — クリックで展開</summary>
+
 
 > 2026-03-28 GAP分析: ワークフロー横断で検出した機能的な隙間
 
@@ -1258,6 +1350,8 @@ flowchart LR
   - `prisma/migrations/20260328234500_rls_context_failsafe/migration.sql` の `app_enforced_org_id()` で RLS コンテキスト未設定時を明示エラー化
   - `src/lib/db/rls.ts` で `app.rls_context_applied=true` を注入し、request context と orgId の不整合を transaction 開始前に拒否
 
+
+</details>
 ### 1b-9. パイロット薬局 UAT + フィードバック反映 `cc:TODO`
 
 > depends: 1b-6 | DoD: パイロット薬局で1週間の実運用テスト完了、フィードバック反映
@@ -1277,6 +1371,9 @@ flowchart LR
 ---
 
 ## Phase 2: セット・月次運用・連携強化 `cc:完了`
+<details>
+<summary>6 subsections completed — click to expand</summary>
+
 
 > depends: Phase 1b 完了 | 出口条件: セット運用安定化 + 締め処理の見える化
 
@@ -1339,9 +1436,14 @@ flowchart LR
 
 - [x] 外部連携者ロール + CSV/NSIPS + FAX + オフライン下書き+同期(FR-106 Ph2)
 
+
+</details>
 ---
 
 ## Phase 2b: 実務機能強化 `cc:完了`
+<details>
+<summary>10 subsections completed — click to expand</summary>
+
 
 > 2026-03-28 立案: 既存コードベースの GAP 分析に基づく6機能の実装計画
 > depends: Phase 1b 主要機能完了 | 出口条件: パイロット薬局で日常業務が完結する
@@ -2041,9 +2143,14 @@ ConferenceNote ─────┼─→ [報告書] CareReport + DeliveryRecord
   - 2026-04-03 追記: mobile-chromium を local config に追加し、患者一覧 / 報告書の詳細フィルタを折りたたみ化。PC では主要フィルタ優先、モバイルでは検索優先の配置へ再編
   - 2026-04-03 追記: workflow / billing の上段を判断帯へ整理し、visit detail ページも共通 scaffold と操作クラスタへ統一。患者詳細 / 訪問詳細の Playwright 検証を追加
 
+
+</details>
 ---
 
 ## Phase 2c: マスター機能整備 + データリンク強化 `cc:完了`
+<details>
+<summary>9 subsections completed — click to expand</summary>
+
 
 > 2026-03-30 立案。マスターデータの体系的整備と、マスター↔トランザクションのリンク構築。
 > 出口条件: 薬局が初期設定を完了し、日常運用でマスター参照が途切れない状態。
@@ -2209,9 +2316,14 @@ PrescriptionIntake
       FacilityContact / ExternalProfessional / PrescriberInstitution の
       既定連絡チャネル候補とフォールバック順に反映
 
+
+</details>
 ---
 
 ## Phase 3: 外部連携・最適化・通知高度化 `cc:完了`
+<details>
+<summary>5 subsections completed — click to expand</summary>
+
 
 > 着手条件: Phase 2 安定稼働1ヶ月以上。詳細はPhase 2完了時に策定。
 > 2026-03-28 GAP分析: 各アダプタは interface contract + stub 実装済み。実接続のみ残る。
@@ -2244,7 +2356,12 @@ PrescriptionIntake
   - `src/app/(dashboard)/admin/uat/uat-content.tsx` から `src/app/api/admin/uat-feedback/route.ts` を呼び出し、優先度・進捗・チェック項目を DB 保存
   - 保存済みフィードバック一覧を UAT 画面に表示し、実運用レビューを画面内で追跡可能化
 
+
+</details>
 ## Phase 4: コードリファクタリング `cc:完了` (2026-03-31)
+<details>
+<summary>5 subsections completed — click to expand</summary>
+
 
 > 重い API ルートの構造的リファクタリング。God handler 分解、重複除去、Service 層抽出。
 > 詳細プラン: `.omc/plans/api-route-refactoring.md`
@@ -2271,6 +2388,8 @@ PrescriptionIntake
   - `facility` / `name-resolver` / `workflow-dashboard-sections` の単体テストを追加
   - `workflow` / `patients` / `visit-schedules` のスナップショット回帰を追加
 
+
+</details>
 ---
 
 ## 設計判断 → [docs/decisions.md](docs/decisions.md)
@@ -2312,3 +2431,972 @@ PrescriptionIntake
   - 2026-03-31: 開始時期 / 予算の最終確定は審査機関見積と経営判断待ち
 - [x] Google Maps Platform の利用料金確認（Routes API: $5/1000リクエスト目安）
   - 2026-03-28: Google 公式 pricing overview / price list を確認。`Routes: Compute Routes Essentials` は 10,000 回/月まで free cap、その後は $5 / 1,000 events。`Route Optimization - Single Vehicle Routing` は 5,000 回/月まで free cap、その後は $10 / 1,000 events。必要なら subscription plan は Starter $100 / Essentials $275 / Pro $1,200。
+
+---
+
+## Phase 5-PRE: 患者モデル変更の前提基盤 `cc:TODO`
+
+> Phase 5 は Patient モデルを根本変更するため、安全な実行基盤が必須。
+> 医療システムでデータ移行失敗 = 請求エラー・CDS 機能停止・患者安全リスク。
+
+### PRE-01: 一括 cutover 戦略 `cc:TODO`
+
+- [ ] Phase 5 は feature flag なしの同期リリース前提で実施する
+- [ ] デプロイ順序を固定
+  - schema migration
+  - backfill
+  - API / UI / jobs / PDF / shared の同時デプロイ
+- [ ] 切替中に旧コードが新スキーマを読まない時間窓を最小化する手順を定義
+- [ ] 切替失敗時は PRE-05 のロールバックへ即移行する判断基準を定義
+- **受入条件**: feature flag なしで一括切替できるリリース手順が存在すること
+
+### PRE-02: マイグレーション直列化戦略 `cc:TODO`
+
+- [ ] Phase 5 の全スキーマ変更を単一ブランチで直列管理
+- [ ] P-01/P-04/P-06/P-07/P-08 のマイグレーションタイムスタンプ順序を事前確定
+- [ ] 並列開発時のマイグレーション競合防止ルール文書化
+- **受入条件**: 全マイグレーションが競合なく順序適用可能
+
+### PRE-03: データマイグレーション検証フレームワーク `cc:TODO`
+
+- [ ] 各マイグレーションに: pre-count check / post-integrity check / rollback SQL
+- [ ] テスト用本番相当データセットの準備
+- [ ] 検証スクリプトテンプレート作成
+- [ ] `VisitRecord.structured_soap.objective.lab_values` から `PatientLabObservation` への backfill 検証手順を追加
+- [ ] allergy / insurance / packaging だけでなく、lab history 移行の検算項目を用意
+- **受入条件**: 全データマイグレーションにロールバック手順が存在すること
+
+### PRE-04: API / UI 同期切替戦略 `cc:TODO`
+
+- [ ] Patient API レスポンス形式変更時の SW キャッシュ無効化戦略
+- [ ] デプロイ時の SW バージョンバンプ自動化
+- [ ] 破壊的変更を伴う対象を固定
+  - patient detail
+  - patient edit
+  - external share
+  - patient list
+  - schedule / visit brief
+- [ ] QR 取込の `gender='unknown'` を cutover 時点で正規化する方針を定義
+- [ ] API snapshot / route contract / shared payload の更新順序と検証手順を定義
+- [ ] 患者編集導線の再接続時データロスト対策を Phase 5 前提として扱う
+  - `reloadOnOnline` の soft refetch 化、または patient edit 導線のみ先行保護
+- **受入条件**: 旧契約を残さず、新契約へ同時切替できること
+
+### PRE-05: Phase 5 ロールバックプレイブック `cc:TODO`
+
+- [ ] 各スキーマ変更のロールバック SQL 作成
+- [ ] データ復元手順（特に allergy_info の多形式→構造化の逆変換）
+- [ ] 影響範囲別の判断基準（請求影響 = 即ロールバック等）
+- **受入条件**: 各変更のロールバックが 30 分以内に実行可能なこと
+
+### PRE-06: 患者 UI/UX 移行設計 `cc:TODO`
+
+- [ ] `docs/ui-ux-design-guidelines.md` に基づき、Patient 詳細の情報アーキテクチャを先に設計
+  - ヘッダー
+  - サマリー帯
+  - 主要作業
+  - 補助情報/履歴
+- [ ] 追加項目の優先順位を確定
+  - 重症アレルギー
+  - 最新検査値
+  - 現在有効な保険
+  - アーカイブ状態
+- [ ] アーカイブ患者の UI 状態設計
+  - 一覧
+  - 詳細
+  - スケジュール
+  - 外部共有
+- [ ] モバイルで順序を変えずに縦積みできる wireframe を作成
+- [ ] 画面版 / 印刷版 / PDF / shared の患者要約表示ルールを統一
+- **受入条件**: Phase 5 実装前に、Patient 詳細・共有・印刷の IA と状態表現が決まっていること
+
+---
+
+## Phase 5: 患者情報機能改善 `cc:TODO`
+
+> **前提**: Phase 5-PRE (PRE-01〜06) + Phase 12-1 (CI/CD) が完了していること。  
+> Patient モデルはシステムの重力中心。変更は CDS・請求・報告・外部共有・オフライン・患者詳細 IA に波及する。  
+> 2026-04-04 追記: UI/UX SSOT に基づき、Patient 詳細は「即時判断」「主要作業」「補助情報」の順で再編しながら段階移行する。
+
+### 統合依存関係グラフ（フェーズ横断）
+
+```
+12-1 (CI/CD) → PRE-01〜06 (前提基盤 + UI/同期切替設計)
+                    │
+P-00 (現況調査)     │
+ ├→ P-01 (allergy構造化 + 検査値管理基盤)  ← 最重要・最大リスク
+ │    ├→ P-02 (CDS allergy改善)
+ │    ├→ P-03 (検査値連携 + renal CDS改善)
+ │    ├→ P-12 (患者詳細/共有 UI 再編)
+ │    ├→ Phase 7-1 (SOAP wizard 検査値連携)
+ │    ├→ Phase 8 (外部共有・PDF更新)
+ │    └→ Phase 10 (オフライン/再接続保護)
+ │
+ ├→ P-04 (PatientInsurance Phase 1)
+ │    └→ P-05 (PatientInsurance Phase 2: asOf 参照切替)
+ │         ├→ Phase 7-2 (訪問請求プレビュー)
+ │         ├→ Phase 9 (請求KPI・月次ジョブ)
+ │         └→ P-12 (保険 UI current/upcoming/history)
+ │
+ ├→ P-06 (gender enum + QR 正規化)
+ ├→ P-07 (packaging統合)
+ ├→ P-08 (アーカイブ + 履歴可視性境界)
+ ├→ P-09 (インテーク構造化)
+ ├→ P-10 (管理計画 印刷/PDF 統一レンダリング)
+ ├→ P-11 (セルフレポート GET)
+ └→ P-12 (患者詳細/共有 UI 再編)
+```
+
+### 並列実行グループ
+
+- **Wave 1** (独立・同時着手可): P-00, P-04, P-06, P-07, P-10, P-11, P-12a(UI 設計)
+- **Wave 2** (Wave 1 依存): P-01 (←P-00), P-05 (←P-04), P-08, P-09
+- **Wave 3** (Wave 2 依存): P-02 (←P-01), P-03 (←P-01, Phase 7-1), P-12b(UI 実装)
+
+### 5-0. P-00: 患者モデル変更の現況調査 `cc:TODO`
+
+- [ ] `Patient.allergy_info` カラムの実データパターン分析
+  - パターン A: `string[]` — 患者登録時の `z.array(z.string())` 由来
+  - パターン B: `AllergyEntry[]` — `{ drug_name, therapeutic_category, substance }` CDS 由来
+  - パターン C: `{ egfr: number }` 混在 — checker.ts のハック
+  - パターン D: `null`
+- [ ] 検査値の現行流入元棚卸し
+  - SOAP wizard の `structured_soap.objective.lab_values`
+  - PDF / 報告書 / patient detail / visit brief への反映経路
+  - 外部共有・オフラインキャッシュへの混入有無
+- [ ] `structured_soap` 周辺の型境界棚卸し
+  - `createVisitRecordSchema`
+  - `soap-text-builder`
+  - visit handoff
+  - PDF / report generator
+- [ ] `medical_insurance_number` / `care_insurance_number` 直接参照箇所の棚卸し
+  - patient list / patient detail / billing preview / billing evidence / dashboard / monthly job / masking
+- [ ] `packaging_preferences` と `PatientPackagingProfile` の read/write 分岐棚卸し
+- [ ] QR 取込の `gender='unknown'` 流入経路の棚卸し
+- [ ] 患者アーカイブ時に影響を受ける read path の棚卸し
+  - schedule / visit brief / billing evidence / report generator / monthly stats / monthly job
+- [ ] 患者アーカイブ時に影響を受けるジョブ/通知経路の棚卸し
+  - daily.ts
+  - next-day.ts
+  - operational task metadata
+  - notification link
+- **受入条件**: 変換ルール・同期切替対象・UI 影響面が文書化されていること
+
+### 5-1. P-01: allergy_info 構造化 + 検査値管理基盤 `cc:TODO`
+
+> **最重要タスク** — allergy duck-type と `allergy_info` への eGFR 混在を廃止し、患者単位の検査値履歴と最新値参照を正本化する
+
+**ブロッカー**: P-00 完了
+
+#### スキーマ変更
+
+- [ ] `allergy_info Json?` の型を明確化（Zod schema で `AllergyEntry[]` を定義）
+  ```ts
+  AllergyEntry {
+    drug_name: string
+    therapeutic_category?: string
+    substance?: string
+    category: 'drug' | 'food' | 'other'
+    severity: 'mild' | 'moderate' | 'severe' | 'unknown'
+    confirmed_at?: string
+    source?: string
+  }
+  ```
+- [ ] `PatientLabObservation` モデル新設
+  ```prisma
+  model PatientLabObservation {
+    id                 String   @id @default(cuid())
+    org_id             String
+    patient_id         String
+    analyte_code       LabAnalyteCode
+    measured_at        DateTime
+    value_numeric      Float?
+    value_text         String?
+    unit               String?
+    abnormal_flag      String?   // high / low / critical / normal
+    reference_low      Float?
+    reference_high     Float?
+    source_type        String    // visit_record / imported_pdf / manual / external
+    source_visit_record_id String?
+    note               String?
+    created_at         DateTime @default(now())
+    updated_at         DateTime @updatedAt
+  }
+  ```
+- [ ] `PatientLabSnapshot` もしくは `latest_by_analyte` projection 方針を決定
+  - patient detail / visit brief / CDS は履歴スキャンではなく最新値参照を使う
+- [ ] `LabAnalyteCode` enum を追加
+  - **初期対象項目（2026-04-04 調査ベース）**
+  - 処方安全・薬学的介入で使用頻度が高い中核: `wbc`, `neut`, `hb`, `plt`, `pt_inr`, `ast`, `alt`, `t_bil`, `scr`, `egfr`, `ck`, `crp`, `k`, `hba1c`
+  - 在宅療養での栄養・脱水・循環評価の拡張: `tp`, `alb`, `na`, `cl`, `bun`, `bnp`, `nt_pro_bnp`, `blood_glucose`
+- [ ] `allergy_info` データ移行 SQL と `PatientLabObservation` 初期投入/逆変換手順を作成
+- [ ] 既存 `VisitRecord.structured_soap.objective.lab_values` から検査値履歴を backfill
+  - `measured_at` は visit_date ベース
+  - source_type は `visit_record`
+  - source_visit_record_id を保存
+- [ ] 既存報告書 / brief / text builder が参照する検査値出力を `PatientLabObservation` / latest projection に寄せる
+
+#### API 変更
+
+- [ ] `createPatientSchema` / `updatePatientSchema` の `allergy_info` を `AllergyEntry[]` に変更
+- [ ] `GET /api/patients/[id]` に `lab_summary`（最新値 + 測定日 + stale 判定）を追加
+- [ ] `GET /api/patients/[id]/labs` — 検査値履歴一覧
+- [ ] `POST /api/patients/[id]/labs` — 手入力/外部取込
+- [ ] `PATCH /api/patients/[id]/labs/[labId]` — 補正・注記
+- [ ] `GET /api/patients/[id]` / shared payload で `allergy_info` は表示用 formatter を通して返す
+- [ ] `structured_soap` と `lab_summary` の責務分離を明文化
+  - 訪問時点のスナップショットは `structured_soap`
+  - 患者最新値は `PatientLabObservation` / snapshot
+- [ ] `src/types/structured-soap.ts` の `LabValues` 型を対象 analyte に合わせて拡張
+- [ ] `createVisitRecordSchema` との整合を取る
+
+#### UI 変更
+
+- [ ] `patient-master-card.tsx` のアレルギー欄を構造化入力 UI に改善
+  - タグ + severity + 情報源
+  - 重症アレルギーは patient summary 帯にも再掲
+- [ ] 患者詳細 基本情報タブに `検査値サマリー` カード追加
+  - まず `eGFR / Scr / K / CRP / HbA1c / PT-INR / Alb` を優先表示
+  - stale（例: 30/90/180 日超）バッジを表示
+- [ ] 患者詳細に `検査値履歴` セクションまたはタブを追加
+  - 最新値一覧
+  - analyte ごとの履歴テーブル
+  - モバイルでは縦積みで最新値 → 履歴 CTA の順
+- [ ] visit brief / visit preparation / medications で最新検査値を抜粋表示
+- [ ] 検査値詳細画面で analyte 切替・時系列閲覧・異常値強調を可能にする
+- [ ] disease-specific panel を用意
+  - CKD: `Scr / eGFR / K / BUN`
+  - 糖尿病: `HbA1c / blood_glucose`
+  - 感染: `WBC / Neut / CRP`
+  - 栄養: `Alb / TP / Hb`
+  - 心不全: `BNP / NT-proBNP / eGFR`
+
+#### 調査メモ（2026-04-04）
+
+- [ ] 処方安全で薬局疑義照会に使われやすい検査値として、九州大学病院の院外処方せん表示 14 項目を初期候補に採用
+  - WBC, Neut, Hb, PLT, PT-INR, AST, ALT, T-Bil, Scr, eGFR, CK, CRP, K, HbA1c
+- [ ] 在宅高齢患者の栄養アセスメントで利用頻度の高い項目を拡張候補に採用
+  - TP, Alb, Na, K, Cl, BUN, Cr, Hb, WBC, CRP
+- [ ] 心不全在宅患者向けの拡張候補として `BNP / NT-proBNP` を disease-specific panel に追加
+
+- **受入条件**: 患者単位で検査値の最新値と履歴を保持でき、`allergy_info` から eGFR を読むコードが消えること
+
+### 5-2. P-02: CDS checkAllergyReactions 改善 `cc:TODO`
+
+**ブロッカー**: P-01 完了
+
+- [ ] `AllergyEntry.severity` による重み付け
+  - `severe` → critical
+  - `moderate` → warning
+  - `mild` → info
+- [ ] `AllergyEntry.category` によるマッチ精度向上
+  - `drug` のみ薬効分類マッチ対象
+  - `food` / `other` は自由記述アラート
+- [ ] `CdsAlertPanel` の表示に severity バッジ反映
+- [ ] patient detail のサマリー帯に「重症アレルギーあり」を表示
+- **受入条件**: 既存アラートルールとの整合性維持、checker / UI テスト追加
+
+### 5-3. P-03: 検査値連携 + CDS renal / monitoring 改善 `cc:TODO`
+
+**ブロッカー**: P-01 完了、Phase 7-1 の structured SOAP 連携方針確定
+
+- [ ] `buildStructuredSoap` が wizard の検査値入力を破棄しないよう修正方針を確定
+- [ ] `visit-record-form` で入力した検査値を `PatientLabObservation` へ反映
+  - 案A: 訪問記録保存時に自動同期
+  - 案B: 差分確認ダイアログ付きで同期
+- [ ] `createVisitRecordSchema` / `structured_soap` に検査値項目の型境界を設ける
+  - `lab_values` の許可項目
+  - 数値/単位の正規化
+- [ ] `StructuredSoap.LabValues` と form / persistence / text builder の型差分を解消
+- [ ] `checkRenalDoseAdjustment` は `latest analyte = egfr` を直接参照
+- [ ] `renal_dose` 以外にも検査値ベース alert の拡張余地を設計
+  - `pt_inr` × 抗凝固薬
+  - `k` × 利尿薬/RAA 系
+  - `crp / wbc` × 感染フォロー
+- [ ] `visit-record-form.tsx` の `VISIT_RECORD_ALERT_TYPES` と patient summary 帯の表示整合を取る
+- [ ] `soap-text-builder` / visit handoff / report template で新しい検査値候補の表示戦略を決める
+- **受入条件**: 最新検査値が visit record → patient summary → CDS に一貫反映されること
+
+### 5-4. P-04: PatientInsurance モデル新設 (Phase 1) `cc:TODO`
+
+#### スキーマ
+
+- [ ] `PatientInsurance` モデル新設
+  ```prisma
+  model PatientInsurance {
+    id                String   @id @default(cuid())
+    org_id            String
+    patient_id        String
+    insurance_type    InsuranceType  // medical, care, public_subsidy
+    insurer_number    String?
+    symbol            String?
+    number            String?
+    branch_number     String?
+    copay_ratio       Int?
+    valid_from        DateTime? @db.Date
+    valid_until       DateTime? @db.Date
+    is_active         Boolean  @default(true)
+    notes             String?
+    created_at        DateTime @default(now())
+    updated_at        DateTime @updatedAt
+  }
+  ```
+- [ ] `InsuranceType` enum: `medical`, `care`, `public_subsidy`
+- [ ] Prisma マイグレーション + RLS ポリシー
+- [ ] 既存 `medical_insurance_number` / `care_insurance_number` からのデータ移行スクリプト
+
+#### API
+
+- [ ] `GET /api/patients/[id]/insurance` — 保険情報一覧
+- [ ] `POST /api/patients/[id]/insurance` — 保険追加
+- [ ] `PUT /api/patients/[id]/insurance/[insuranceId]` — 期間・番号更新
+- [ ] 既存履歴を消さずに current/upcoming/history を更新する契約にする
+- [ ] `resolvePatientInsurance(patientId, type, asOf)` / `resolvePatientPayerBasis(patientId, asOf, visitType)` ヘルパー作成
+- [ ] `patient-service.ts` の新規患者作成で `PatientInsurance` を同時作成する
+
+#### UI
+
+- [ ] 患者詳細 基本情報タブに `保険情報` を再設計
+  - `現在有効`
+  - `次回適用予定`
+  - `履歴`
+- [ ] 患者登録フォームに保険入力セクション追加
+  - current の最小入力
+  - history は後編集
+- [ ] 保険情報カードは flat 2項目ではなく、期限・負担割合・種別バッジを持つ意味グループ化 UI にする
+
+- **受入条件**: `asOf` ベースの解決関数を通じて current/upcoming/history を扱えること
+
+### 5-5. P-05: PatientInsurance 既存参照切替 (Phase 2) `cc:TODO`
+
+**ブロッカー**: P-04 完了
+
+- [ ] `billing-payer-basis` の参照切替
+- [ ] `billing-evidence/core.ts` の参照切替
+- [ ] `visit-schedule-billing-preview.ts` の参照切替
+- [ ] `visit-schedule-proposals` の参照切替
+- [ ] `visit-schedules/generate` から `insurance_type` クライアント入力依存を撤廃
+  - サーバー側で patient insurance を解決して上限判定
+- [ ] `patient-service.ts` の `payer_basis` フィルタ切替
+- [ ] `patient-service.ts` の create/update で旧列ではなく `PatientInsurance` を書き込む
+- [ ] 患者一覧テーブル / patient detail / privacy masking / dashboard monthly stats / monthly job の参照切替
+- [ ] `Patient.medical_insurance_number` / `care_insurance_number` を Phase 5 cutover で参照停止し、削除時期を確定する
+- [ ] 回帰テスト追加
+  - patient list filter
+  - patient detail badges / visits tab
+  - billing preview / billing evidence
+  - monthly stats / monthly job
+- **受入条件**: 全画面・集計・請求が同じ `asOf` 解決ロジックで動作すること
+
+### 5-6. P-06: gender String → Enum 化 + QR 正規化 `cc:TODO`
+
+- [ ] `Gender` enum 追加: `male`, `female`, `other`
+- [ ] Prisma マイグレーション: `ALTER COLUMN "gender" TYPE "Gender" USING ...`
+- [ ] QR 取込の `unknown` を cutover 時点で `other` に正規化
+- [ ] `patients/check-duplicate` / patient form / qr-scan / medications のラベル整合を取る
+- [ ] TypeScript 型の整合確認
+- **受入条件**: QR 由来患者登録が壊れず、UI 上の表記ゆれがないこと
+
+### 5-7. P-07: packaging_preferences 二重管理解消 `cc:TODO`
+
+- [ ] **設計決定**: `PatientPackagingProfile` に一本化、`Patient.packaging_preferences` Json を廃止
+- [ ] `PatientPackagingProfile` を拡張
+  - `box_config`
+  - `special_instructions`
+  - `cognitive_note`
+- [ ] 新規患者作成 / 患者更新 API / set-plan / set-batches / packaging summary を `PatientPackagingProfile` 参照へ一括切替
+- [ ] backfill 完了後に `Patient.packaging_preferences` カラム削除
+- **受入条件**: set-plan / dispensing / patient detail で表示差分なく移行できること
+
+### 5-8. P-08: 患者アーカイブ（論理削除） `cc:TODO`
+
+#### 設計決定（実装前に確定）
+
+- [ ] 「通常一覧では非表示」「履歴請求・印刷・既存訪問・月次集計では参照可能」の境界を決める
+- [ ] 方式選定: RLS ポリシーに `archived_at IS NULL` 組込み vs Prisma middleware
+  - **推奨**: RLS を基本にしつつ、履歴系 read path は includeArchived 可能にする
+- [ ] アーカイブ時の関連エンティティ処理
+  - CareCase
+  - VisitSchedule
+  - BillingEvidence
+  - report generator
+  - monthly stats / monthly job
+  - daily job
+  - next-day job
+  - operational task / notification link
+
+#### UI / UX
+
+- [ ] 患者一覧に `アーカイブ済み含む` フィルタ + 状態バッジ追加
+- [ ] 患者詳細に `アーカイブ中` バナー + read-only 表示 + 復元 CTA を追加
+- [ ] スケジュール / visit brief / shared links にアーカイブ患者の識別子を表示
+- [ ] モバイルでも順序を変えず、通常患者との区別が一目で分かる表現にする
+
+#### 実装
+
+- [ ] `Patient` に `archived_at DateTime?`, `archived_by String?` 追加
+- [ ] `PATCH /api/patients/[id]/archive` / `PATCH /api/patients/[id]/restore`
+- [ ] `withOrgContext` に `includeArchived` オプション追加
+- [ ] plain `prisma.find*` 経路も含めて履歴系の archived 参照方針を統一
+- [ ] `daily.ts` / `next-day.ts` の patient read path と通知リンクをアーカイブ耐性化
+- **受入条件**: 通常運用では隠れ、履歴/請求/印刷/集計では落ちないこと
+
+### 5-9. P-09: インテークデータ構造化 `cc:TODO`
+
+- [ ] `PatientSchedulePreference` に専用カラム追加
+  - `adl_level String?`
+  - `dementia_level String?`
+  - `swallowing_route String?`
+  - `care_level String?`
+  - `infection_isolation Boolean @default(false)`
+- [ ] `CareCase.required_visit_support` Json 内の重複データとの整合ルール決定
+- [ ] 既存 `patientIntakeSchema` の該当フィールドとマッピング
+- [ ] `patient-intake-summary-card.tsx` を専用カラムから読み取りに変更
+- [ ] 表示グループを再設計
+  - 訪問条件
+  - 介護・生活背景
+  - 感染/医療注意
+- [ ] 患者一覧での ADL / 認知症レベルフィルタ追加（任意）
+- **受入条件**: インテーク表示が構造化され、患者詳細で上から順に判断できること
+
+### 5-10. P-10: ManagementPlan 印刷 / PDF の構造化レンダリング統一 `cc:TODO`
+
+- [ ] `ManagementPlan.content` の型定義策定
+  ```ts
+  ManagementPlanContent {
+    goals: string[]
+    assessment_items: AssessmentItem[]
+    guidance_content: string
+    monitoring_items: string[]
+    special_notes?: string
+  }
+  ```
+- [ ] Zod schema 作成
+- [ ] `management-plan/print/page.tsx` の `JSON.stringify` を廃止
+- [ ] `pdf-documents.tsx` 側の管理計画レンダラも同じセクション順に揃える
+- [ ] 画面版 / 印刷版 / PDF で見出し順を統一
+- **受入条件**: どの出力面でも同じ情報階層で読めること
+
+### 5-11. P-11: GET /api/patient-self-reports/[id] 追加 `cc:TODO`
+
+- [ ] `src/app/api/patient-self-reports/[id]/route.ts` に GET ハンドラ追加
+- [ ] 既存テストファイルの仕様確認・整合
+- [ ] プライバシーマスキング適用
+- [ ] patient detail / communications から単票参照できる導線を追加
+- **受入条件**: 既存 PATCH と同じ認可チェック、テスト通過
+
+### 5-12. P-12: 患者詳細 / 共有 UI 再編 `cc:TODO`
+
+> UI/UX SSOT に従い、Patient 詳細・患者編集・外部共有を「即時判断」「主要作業」「補助情報」の順に再設計する
+
+#### 情報設計
+
+- [ ] 患者詳細画面の IA 再設計
+  - ヘッダー
+  - サマリー帯
+  - 詳細タブ/主要作業
+  - 補助情報/履歴
+- [ ] サマリー帯に優先表示する情報を定義
+  - 重症アレルギー
+  - 最新検査値（eGFR, K, CRP, HbA1c, PT-INR, Alb）
+  - 現在有効な保険
+  - アーカイブ状態
+- [ ] patient master 編集は 1 枚の巨大フォームではなく意味グループに分割
+  - 基本属性
+  - 連絡/住所
+  - 保険
+  - アレルギー
+  - 補助メモ
+- [ ] shared viewer は内部 key 表示ではなく利用者向け表示名へ変換
+- [ ] `allergy_info` / lab summary / insurance summary の共有用 formatter を設計
+
+#### Cutover UX
+
+- [ ] オンライン復帰時の hard reload による患者編集ロストを避ける
+  - `reloadOnOnline` 対策を Phase 10 待ちにせず患者編集導線の前提条件へ格上げ
+
+#### モバイル / 画面横断
+
+- [ ] モバイルでは順序を変えず縦積みする
+- [ ] schedule / patient list / visit brief に patient state badge を揃える
+- [ ] print / PDF / shared / dashboard の患者要約表現を統一
+- [ ] schedule / day-view / jobs が使う patient summary 契約を定義
+  - patient name
+  - archived badge
+  - insurance summary
+  - critical allergy / lab flags
+- [ ] `schedule-includes.ts` / `day-view.shared.ts` / `day-view.tsx` の DTO 拡張タスクを明記
+  - patient summary 契約に必要な項目を select へ追加
+  - day-view の badge / summary 表示へ反映
+- [ ] `shared-viewer` は raw JSON 表示を廃止し、利用者向け表示名と説明へ変換
+- [ ] `soap-text-builder` / PDF / shared formatter の共通ヘルパー化方針を決める
+
+- **受入条件**: 患者詳細・共有・印刷で情報階層が揃い、追加項目が「項目追加」ではなく意味グループとして読めること
+
+---
+
+## Phase 6: 処方・調剤ワークフロー改善 `cc:TODO`
+
+> 処方受付→調剤→鑑査→セットの日常業務フローの品質・効率改善
+
+### 6-1. 調剤中からの疑義照会起票 `cc:TODO`
+
+- [ ] `dispensing/[taskId]/dispense-form.tsx` に「疑義照会を起票」ボタン追加
+- [ ] `POST /api/inquiry-records` を調剤画面から直接呼出し（API側は対応済み）
+- [ ] 起票後に該当明細を `blockedInquiryByLineId` に自動追加
+- **受入条件**: 調剤中に疑義照会を起票→部分調剤保存→解決後に再開できること
+
+### 6-2. QRドラフト確定時の packaging_method 送信修正 `cc:TODO`
+
+- [ ] `qr-drafts/[id]/page.tsx` L285-300: 確定ペイロードに `packaging_method` を含める
+- [ ] `packaging_instruction_tags` も同様に送信
+- **受入条件**: QR経由のセット計画で packaging_method が正しく設定されること
+
+### 6-3. セットバッチ quantity_per_slot 小数丸め処理 `cc:TODO`
+
+- [ ] `set-plans/[id]/generate-batches/route.ts` L251-254: 小数発生時に切り上げ or 薬剤師確認フラグ
+- [ ] 一包化薬で 0.5 錠等の非現実的値を防止
+- **受入条件**: 3錠/2スロット → 適切な分配ルールが適用されること
+
+### 6-4. 疑義照会解決→調剤再開の自動誘導 `cc:TODO`
+
+- [ ] `inquiry_resolved` 状態のサイクルに対するタスク生成 or 通知
+- [ ] 調剤一覧での `inquiry_resolved` サイクル表示（「調剤再開可」バッジ）
+- **受入条件**: 疑義照会解決後に調剤担当者が即座に再開できること
+
+### 6-5. QRドラフト一覧の未照合患者フィルタ `cc:TODO`
+
+- [ ] `GET /api/qr-scan-drafts?unmatched=true` クエリパラメータ追加
+- [ ] 一覧に「未照合」フィルタタブ + 件数バッジ
+- **受入条件**: 未照合ドラフトを一覧レベルで即座に把握できること
+
+### 6-6. 鑑査差戻し理由のコード体系化 `cc:TODO`
+
+- [ ] `reject_reason` にコード値追加（`drug_name_mismatch`, `quantity_error`, `packaging_error` 等）
+- [ ] フリーテキスト補足も維持（`reject_reason_code` + `reject_reason_detail`）
+- [ ] 差戻し理由の集計ダッシュボード（admin）
+- **受入条件**: 月次で差戻し理由別件数を集計できること
+
+### 6-7. 疑義照会 status フィルタ + line_update フィールド拡張 `cc:TODO`
+
+- [ ] `GET /api/inquiry-records?status=unresolved` フィルタ追加
+- [ ] `line_update` に `drug_code`, `packaging_instructions`, `route` を追加
+- **受入条件**: ダッシュボードで未解決疑義照会件数を効率的に取得できること
+
+---
+
+## Phase 7: 訪問・スケジュールワークフロー改善 `cc:TODO`
+
+> 訪問計画→実施→記録の品質改善。SOAP構造化データの実効性確保が最重要。
+
+### 7-1. buildStructuredSoap の wizard 入力反映修正 ★Critical `cc:TODO`
+
+- [ ] `visit-record-form.tsx` L140-161: `buildStructuredSoap` を wizard state から組立てに変更
+- [ ] `symptom_checks`, `adherence_score`, `side_effect_checks`, `problem_checks`, `intervention_checks` を実データで送信
+- [ ] PDF/報告書テンプレートでの adherence_score/intervention 展開が正しく動作確認
+- **受入条件**: ウィザードで入力した構造化SOAPデータがDBに保存・PDF出力されること
+
+### 7-2. specialCapEligible の初期バリデーション渡し `cc:TODO`
+
+- [ ] `visit-schedule-proposals/route.ts` L308-315: `specialCapEligible` を `validateProposalBillingExclusions` に渡す
+- [ ] 特定加算患者の月8回上限チェックが正しく動作
+- **受入条件**: 麻薬/TPN/CV ポート患者の月上限が正しく適用されること
+
+### 7-3. 施設バッチ DELETE API + ユニット横断対応 `cc:TODO`
+
+- [ ] `DELETE /api/facility-visit-batches/[id]` — バッチ解除
+- [ ] `PATCH /api/facility-visit-batches/[id]` — 順序のみ部分更新
+- [ ] `mixed_facility_unit` エラーのオプション許容パラメータ追加
+- **受入条件**: 施設バッチの作成・並替・解除・ユニット横断が一通り動作すること
+
+### 7-4. SOAP 完了時バリデーション追加 `cc:TODO`
+
+- [ ] `outcome_status: 'completed'` 時に S or P のいずれかに入力必須
+- [ ] `visit-record.ts` に条件付き superRefine 追加
+- **受入条件**: 空SOAPでの完了保存がブロックされること
+
+### 7-5. ルーティングプロバイダ抽象化 `cc:TODO`
+
+- [ ] `road-routing.ts` に `RoutingProvider` インターフェース追加
+- [ ] `OsrmProvider` / `GoogleRoutesProvider` 実装
+- [ ] `ROUTING_API_PROVIDER` 環境変数で切替
+- **受入条件**: OSRM → Google Routes API への切替がコード変更なしで可能
+
+### 7-6. 訪問準備チェックリストのテンプレート化 `cc:TODO`
+
+- [ ] `checklist: z.record(...)` → org/facility レベルのテンプレートから生成
+- [ ] 感染対策・麻薬持参等の施設固有チェック項目を追加可能に
+- **受入条件**: 施設ごとにカスタムチェック項目が設定・表示されること
+
+---
+
+## Phase 8: 報告・連携・通知改善 `cc:TODO`
+
+> サイレント失敗の解消と通知チャネルの実効性確保
+
+### 8-1. メール送信サイレントスタブの解消 ★Critical `cc:TODO`
+
+- [ ] `email.ts` L25-27: `SES_FROM_EMAIL` 未設定時に明示的エラーを throw
+- [ ] 呼出元でエラーハンドリング + UI通知
+- **受入条件**: メール設定不備が即座にユーザーに通知されること
+
+### 8-2. FAX チャネルの実装 or 明示的無効化 ★Critical `cc:TODO`
+
+- [ ] 方針決定: FAX gateway 実装（eFax/InterFAX 等）or UI から FAX チャネル除去
+- [ ] `tracing-reports/[id]/route.ts` L162: `channel: 'fax'` ハードコードを送信チャネルに基づき動的化
+- **受入条件**: FAX が選択可能なら実際に送信、不可なら UI に表示しない
+
+### 8-3. MCS 同期のデータ保全修正 ★Critical `cc:TODO`
+
+- [ ] `patient-mcs.ts` L858-870: 既存メッセージの全削除を廃止 → 差分マージ（upsert のみ）
+- [ ] `patient-mcs.ts` L422-446: 患者名マッチングの精度向上（部分一致→完全一致 or スコア閾値）
+- [ ] AI サマリー生成失敗時に既存サマリーを保持（削除しない）
+- **受入条件**: 同期で既存データが消失しないこと
+
+### 8-4. Push 通知の実発送実装 `cc:TODO`
+
+- [ ] `PushSubscription` 登録は完了 → `web-push` による実発送ロジック追加
+- [ ] `dispatchNotificationEvent` から push チャネル呼出し
+- **受入条件**: 通知設定済みユーザーにブラウザ push が届くこと
+
+### 8-5. SSE ストリームの自動再接続 `cc:TODO`
+
+- [ ] クライアント側で `EventSource` close 後の自動再接続ロジック追加
+- [ ] 5分タイムアウト後にバックオフ付き再接続
+- **受入条件**: 5分以上開いたタブでもリアルタイム通知が継続すること
+
+### 8-6. 外部共有 OTP セキュリティ強化 `cc:TODO`
+
+- [ ] OTP を URL クエリパラメータからリクエストヘッダ or POST body に移行
+- [ ] 検証エンドポイントにレート制限追加（IP あたり 5回/分）
+- [ ] SMS 送信失敗時のエラー表示（現在は silent fallback to manual）
+- **受入条件**: OTP がサーバーログ/ブラウザ履歴に露出しないこと
+
+### 8-7. トレーシングレポート改善 `cc:TODO`
+
+- [ ] 一覧に患者名表示（現在 patient_id のみ）
+- [ ] `DELETE /api/tracing-reports/[id]` 追加（draft のみ削除可）
+- [ ] `channel` を実際の送信チャネルに基づき動的設定（fax ハードコード解消）
+- **受入条件**: 一覧で患者名が表示、下書きの削除が可能
+
+---
+
+## Phase 9: 請求・管理機能改善 `cc:TODO`
+
+> 管理系の silent failure 解消と運用効率改善
+
+### 9-1. 監査ログのサンプルデータ表示バグ修正 ★Critical `cc:TODO`
+
+- [ ] `audit-logs-content.tsx` L115-122: API 404 時の `SAMPLE_LOGS` フォールバック削除
+- [ ] 代わりに「ログがありません」の EmptyState 表示
+- **受入条件**: 本番環境でサンプルデータが表示されないこと
+
+### 9-2. 請求候補のページネーション実装 `cc:TODO`
+
+- [ ] `billing-candidates-content.tsx` L216: `limit=100` → cursor ベースの無限スクロール or ページネーション
+- [ ] API の `hasMore` / `nextCursor` をUI で使用
+- [ ] 候補テーブルに患者名カラム追加
+- **受入条件**: 100件超の候補が正しく表示されること
+
+### 9-3. 施設削除の確認ダイアログ追加 `cc:TODO`
+
+- [ ] `facilities-content.tsx` L388: `deleteMutation.mutate()` 直呼出し → 確認ダイアログ挟む
+- **受入条件**: マスタデータ削除前に確認が必須
+
+### 9-4. グローバル検索の検索スコープ拡張 `cc:TODO`
+
+- [ ] 処方、訪問記録、施設、スタッフ、タスクを検索対象に追加
+- [ ] 結果のキーボードナビゲーション（矢印キー）
+- [ ] カテゴリ別「すべて表示」リンク
+- **受入条件**: Cmd+K で患者・薬剤以外のエンティティも検索できること
+
+### 9-5. ダッシュボードに請求 KPI 追加 `cc:TODO`
+
+- [ ] 当月請求候補数、未確定数、ブロッカー数の表示
+- [ ] `delivery_incomplete` / `not_claimable` カウンタのUI表示
+- **受入条件**: メインダッシュボードから請求状況が一目で把握できること
+
+---
+
+## Phase 10: UX・パフォーマンス・オフライン改善 `cc:TODO`
+
+> PWA 品質の底上げと訪問現場での操作性改善
+
+### 10-1. SW に API ルートキャッシュ追加 ★Critical `cc:TODO`
+
+- [ ] `sw.ts`: `/api/**` に `NetworkFirst` (5s timeout) ルール追加
+- [ ] オフライン時のデータ取得をSWキャッシュでカバー
+- **受入条件**: オフライン遷移後もデータ表示が維持されること
+
+### 10-2. 処方入力フォームの自動保存 ★Critical `cc:TODO`
+
+- [ ] `prescription-intake-form.tsx` に IndexedDB ドラフト保存追加（visit-record-form と同パターン）
+- [ ] ページ離脱時の確認ダイアログ
+- [ ] `reloadOnOnline` による全喪失を防止
+- **受入条件**: QRスキャン後のデータがリロードでも復元されること
+
+### 10-3. ダッシュボード error.tsx 追加 `cc:TODO`
+
+- [ ] `/(dashboard)/error.tsx` — ルートセグメントレベルのエラーバウンダリ
+- [ ] 主要サブルート（patients, prescriptions, visits, dispensing）にも個別 error.tsx
+- **受入条件**: 子ルートのクラッシュが全画面エラーにならないこと
+
+### 10-4. loading.tsx の網羅 `cc:TODO`
+
+- [ ] `admin/*` 全サブルート + `patients/[id]/*` + `prescriptions/[id]` + `dispensing/[taskId]` に loading.tsx 追加
+- **受入条件**: 全ナビゲーションでスケルトンが表示されること
+
+### 10-5. reloadOnOnline の soft refetch 化 `cc:TODO`
+
+- [ ] `next.config.ts` L20: `reloadOnOnline: false` に変更
+- [ ] オンライン復帰時に `queryClient.invalidateQueries()` で soft refetch
+- [ ] フォーム入力中のデータ保護
+- **受入条件**: オンライン復帰でフォーム入力が失われないこと
+
+### 10-6. 訪問記録フォームのキーボードショートカット `cc:TODO`
+
+- [ ] `Cmd+S` で保存、`Cmd+Enter` で完了保存
+- [ ] SOAP ステップ間のキーボードナビゲーション
+- **受入条件**: 訪問中にキーボードのみで記録を完了できること
+
+### 10-7. CSV エクスポートの UTF-8 BOM 追加 `cc:TODO`
+
+- [ ] `data-table.tsx` L267: CSV 先頭に `\uFEFF` (BOM) 追加
+- [ ] Windows Excel での日本語文字化け解消
+- **受入条件**: Excel (Windows) で文字化けなく開けること
+
+### 10-8. 処方入力フォームのインラインエラー表示 `cc:TODO`
+
+- [ ] `prescription-intake-form.tsx`: フィールド単位の `aria-invalid` + エラーメッセージ表示
+- [ ] `aria-describedby` をエラー ID に紐付け
+- **受入条件**: WCAG AA 準拠のフォームバリデーション UX
+
+### 10-9. 印刷ページの薬局名ハードコード解消 `cc:TODO`
+
+- [ ] `visit-records/print/page.tsx` L147, `medications/print/page.tsx` L117: org 設定から薬局名取得
+- **受入条件**: マルチテナントで各薬局名が正しく印刷されること
+
+---
+
+## Phase 11: セキュリティ・コンプライアンス強化 `cc:TODO`
+
+> 3省2ガイドライン準拠の残ギャップ解消。HIGH 4件 + MEDIUM 6件。
+
+### 11-1. x-org-id ヘッダーのサーバー検証 ★HIGH `cc:TODO`
+
+> テナントバイパス脆弱性 — 認証ユーザーが任意の org_id を送信可能
+
+- [ ] `context.ts` L60,104: `x-org-id` をセッショントークンの所属 org と照合
+- [ ] セッション JWT に `org_id` クレームを埋め込み、サーバー側で検証
+- [ ] マルチ org 所属ユーザーの場合のみ `x-org-id` 切替を許可（membership 検証付き）
+- **受入条件**: 他テナントの `x-org-id` 送信で 403 が返ること
+- **ガイドライン**: MHLW v6.0 §6.2.1 アクセス制御
+
+### 11-2. オフライン PHI 暗号鍵の保護強化 ★HIGH `cc:TODO`
+
+> AES-256 鍵が localStorage に平文保存 — XSS/共有端末で鍵露出
+
+- [ ] `crypto.ts` L31-38: localStorage → PBKDF2 ユーザー資格情報ベースの鍵導出
+- [ ] `CryptoKey` を `extractable: false` で IndexedDB に保存
+- [ ] ログアウト時に鍵を明示削除
+- **受入条件**: localStorage に暗号鍵が保存されないこと
+- **ガイドライン**: MHLW v6.0 §6.3 端末内データ保護
+
+### 11-3. レート制限の DynamoDB バックエンド必須化 ★HIGH `cc:TODO`
+
+> サーバーレスでメモリ内レート制限が機能しない
+
+- [ ] `rate-limit.ts`: `RATE_LIMIT_STORE=dynamodb` を本番環境で必須化
+- [ ] 未設定時に起動エラー or ヘルスチェック警告
+- [ ] 認証エンドポイントのレート制限を 60回/分 → 5回/分 に引き締め
+- **受入条件**: 複数 Lambda インスタンス跨ぎでレート制限が有効なこと
+- **ガイドライン**: MHLW v6.0 §6.2.1 不正アクセス防止
+
+### 11-4. 外部共有 OTP の bcrypt ハッシュ化 ★HIGH `cc:TODO`
+
+> SHA-256 unsalted — DB 漏洩時に6桁 OTP を瞬時に逆算可能
+
+- [ ] `external-access/route.ts` L161: `createHash('sha256')` → `bcrypt.hash(rawOtp, 12)`
+- [ ] 検証時に `bcrypt.compare`
+- **受入条件**: DB 上の OTP ハッシュから元の OTP を導出不可能なこと
+- **ガイドライン**: APPI 要配慮個人情報
+
+### 11-5. Cognito トークンリフレッシュ実装 `cc:TODO`
+
+- [ ] `config.ts` jwt callback: `accessToken` 有効期限チェック + `refreshToken` で更新
+- [ ] Cognito アカウント無効化時のセッション即時失効
+- **受入条件**: 1時間以上のセッションで Cognito API が 401 にならないこと
+
+### 11-6. session_version のリクエスト毎検証 `cc:TODO`
+
+- [ ] `requireAuthContext` で `User.session_version` を JWT クレームと照合
+- [ ] `logout-all` 後の旧トークンが即座に無効化されること
+- **受入条件**: logout-all 後 30秒以内に旧セッションが無効化
+
+### 11-7. 一括薬歴 PDF エクスポートの監査ログ追加 `cc:TODO`
+
+- [ ] `bulk-export/route.ts`: `recordDataExportAudit` 追加（actorId, orgId, patientIds, IP）
+- **受入条件**: 一括エクスポートが監査ログに記録されること
+- **ガイドライン**: MHLW v6.0 §6.8 操作ログ
+
+### 11-8. 外部アクセストークンの専用シークレット必須化 `cc:TODO`
+
+- [ ] `external-access.ts` L52-57: `NEXTAUTH_SECRET` フォールバック廃止 → 専用シークレット必須
+- **受入条件**: `EXTERNAL_ACCESS_TOKEN_SECRET` 未設定時にエラー
+
+### 11-9. 監査ログエクスポートの行数制限 `cc:TODO`
+
+- [ ] `audit-logs/export/route.ts`: `take: 10000` + 切り捨て警告ヘッダー
+- **受入条件**: 無制限の PHI 一括抽出が防止されること
+
+### 11-10. dangerouslySetInnerHTML の監査・DOMPurify 導入 `cc:TODO`
+
+- [ ] 全 `dangerouslySetInnerHTML` 使用箇所を特定・ユーザー入力由来か確認
+- [ ] ユーザー入力由来の場合 DOMPurify 適用
+- **受入条件**: ユーザー入力がサニタイズされること
+
+---
+
+## Phase 12: インフラ・運用基盤整備 `cc:TODO`
+
+> 本番運用の信頼性確保。CI/CD・監視・シークレット管理
+
+### 12-1. CI/CD パイプライン構築 ★Critical `cc:TODO`
+
+- [ ] `amplify.yml` or GitHub Actions workflow 作成
+- [ ] ビルド → テスト → lint → デプロイの自動化
+- [ ] PR プレビューデプロイ
+- [ ] 本番デプロイの承認ゲート
+- **受入条件**: git push → 自動テスト → 自動デプロイが動作すること
+
+### 12-2. エラートラッキング導入 ★Critical `cc:TODO`
+
+- [ ] Sentry or Datadog SDK 導入（サーバー + クライアント）
+- [ ] `console.error` → 構造化ログ + 外部送信
+- [ ] リクエスト ID / トレース ID の付与
+- [ ] エラー率アラート設定
+- **受入条件**: 本番エラーが Sentry/Datadog で即座に可視化されること
+
+### 12-3. CloudWatch アラームの通知先設定 ★Critical `cc:TODO`
+
+- [ ] SNS トピック作成 + Slack/PagerDuty 連携
+- [ ] 全5アラームに `alarmActions` 設定
+- [ ] RDS コネクション数アラーム追加
+- [ ] Cognito/SES ヘルスチェック追加
+- **受入条件**: アラーム発火時に担当者に即座に通知が届くこと
+
+### 12-4. ステージング環境構築 `cc:TODO`
+
+- [ ] `APP_ENV=staging` 環境変数 + 環境別設定
+- [ ] ステージング用 RDS + Cognito ユーザープール
+- [ ] `.env.example` 作成（全必須環境変数のドキュメント化）
+- **受入条件**: staging 環境で本番同等のテストが可能なこと
+
+### 12-5. シークレット管理の AWS Secrets Manager 移行 `cc:TODO`
+
+- [ ] `DATABASE_URL`, `JOB_API_KEY`, `NEXTAUTH_SECRET` 等を Secrets Manager に格納
+- [ ] アプリ起動時に Secrets Manager から取得
+- [ ] `JOB_API_KEY` のローテーション Lambda 作成
+- **受入条件**: 平文環境変数にシークレットが存在しないこと
+
+### 12-6. ジョブ実行の並行実行ガード `cc:TODO`
+
+- [ ] `runner.ts`: 同一 jobType の `status: 'running'` レコード存在チェック
+- [ ] 重複実行時はスキップ or キュー
+- **受入条件**: EventBridge リトライで二重実行が防止されること
+
+### 12-7. パフォーマンスメトリクスの CloudWatch 連携 `cc:TODO`
+
+- [ ] `performance.ts` のインメモリストア → CloudWatch カスタムメトリクス送信
+- [ ] p95 レイテンシ劣化アラート
+- [ ] RUM (Core Web Vitals) 導入
+- **受入条件**: p95 レイテンシが CloudWatch でモニタリング可能なこと
+
+### 12-8. バックアップ復旧実地訓練 `cc:TODO`
+
+- [ ] RDS スナップショットからの実際のリストア実行
+- [ ] S3 バージョニングからのオブジェクト復元テスト
+- [ ] RTO/RPO の実測値を `backup-recovery-drill.md` に記録
+- **受入条件**: RTO 4時間以内が実証されること
+
+---
+
+## Phase 13: テスト・品質基盤強化 `cc:TODO`
+
+> テストカバレッジ拡大と E2E の信頼性向上
+
+### 13-1. E2E 認証フロー追加 `cc:TODO`
+
+- [ ] ログイン → MFA → パスワードリセットの E2E spec
+- **受入条件**: 認証フロー全体が E2E でカバーされること
+
+### 13-2. E2E 請求ワークフロー追加 `cc:TODO`
+
+- [ ] 候補生成 → 確認/除外 → エクスポートの E2E spec
+- **受入条件**: 請求フロー全体が E2E でカバーされること
+
+### 13-3. E2E 処方受付→調剤完了フロー追加 `cc:TODO`
+
+- [ ] QR スキャン → ドラフト確定 → 調剤 → 鑑査の E2E spec
+- **受入条件**: 処方→調剤フロー全体が E2E でカバーされること
+
+### 13-4. カバレッジ閾値の強化 `cc:TODO`
+
+- [ ] `vitest.config.ts`: branch/line/function 閾値追加（statements 80% に加えて）
+- [ ] `qr-scan-drafts/[id]/route.test.ts` 追加（唯一のテスト未作成 API）
+- **受入条件**: 全カバレッジ指標が閾値以上
+
+### 13-5. E2E 並列実行化 `cc:TODO`
+
+- [ ] `playwright.config.ts`: `fullyParallel: true`, `workers: 4` に変更
+- [ ] テスト間の状態依存を解消
+- **受入条件**: E2E 実行時間が 1/3 以下に短縮
+
+---
+
+## Phase 14: 外部連携・データパイプライン `cc:TODO`
+
+> レセコン連携・電子処方箋・OQC の実運用化
+
+### 14-1. オンライン資格確認（OQC）の UI 統合 `cc:TODO`
+
+- [ ] `QualificationCheckAdapter` を処方受付 or 患者登録フローに接続
+- [ ] `POST /api/patients/[id]/qualification-check` API 作成
+- [ ] UI: 保険情報カードに「資格確認」ボタン追加
+- [ ] MHLW API 接続設定の管理画面
+- **受入条件**: 患者の保険資格をオンラインで確認できること
+
+### 14-2. 電子処方箋の受付フロー統合 `cc:TODO`
+
+- [ ] `EPrescriptionAdapter` を処方受付フローに接続
+- [ ] JAHIS QR 以外の処方箋受付パス追加
+- [ ] HPKI 証明書ハンドリング
+- [ ] `confirmDispense` の調剤完了時自動呼出し
+- **受入条件**: 電子処方箋の受付→調剤→完了通知が動作すること
+
+### 14-3. レセコン連携の API 化 `cc:TODO`
+
+- [ ] 請求データの構造化エクスポート（CSV → CLAIMS-XML or ORCA API）
+- [ ] Outbound webhook 基盤構築（イベント駆動の外部通知）
+- **受入条件**: 手動 CSV ハンドオフなしで請求データが レセコンに到達すること
+
+### 14-4. マルチテナントプロビジョニング API `cc:TODO`
+
+- [ ] `POST /api/admin/organizations` — 新規組織作成
+- [ ] 初期データ自動シード（billing rules, packaging methods, source-of-truth matrix）
+- [ ] 招待フロー（管理者招待 → Cognito ユーザー作成 → membership 付与）
+- **受入条件**: DB 直接アクセスなしで新規薬局をセットアップできること
+
+### 14-5. API バージョニング戦略 `cc:TODO`
+
+- [ ] バージョニング方式決定（URL prefix vs ヘッダー）
+- [ ] 既存エンドポイントの v1 ラベリング
+- [ ] 破壊的変更の deprecation ポリシー文書化
+- **受入条件**: 外部連携先に影響なく API 変更が可能なこと
+
+### 14-6. 患者データ構造化エクスポート `cc:TODO`
+
+- [ ] `GET /api/patients/export` — 患者一覧 CSV
+- [ ] `GET /api/patients/[id]/prescriptions/export` — 処方履歴 CSV
+- [ ] FHIR Patient リソース出力（将来拡張ポイント）
+- **受入条件**: 患者データが構造化形式でエクスポート可能なこと

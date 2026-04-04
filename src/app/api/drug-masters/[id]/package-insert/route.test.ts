@@ -60,6 +60,12 @@ function createRequest() {
   } as unknown as NextRequest;
 }
 
+async function invokeGet(id = 'drug_1') {
+  return (await GET(createRequest(), {
+    params: Promise.resolve({ id }),
+  })) as Response;
+}
+
 const mockDrug = {
   id: 'drug_1',
   yj_code: '1234567890123',
@@ -108,9 +114,7 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
       response: new Response(JSON.stringify({ code: 'AUTH_UNAUTHENTICATED' }), { status: 401 }),
     });
 
-    const response = await GET(createRequest(), {
-      params: Promise.resolve({ id: 'drug_1' }),
-    });
+    const response = await invokeGet();
 
     expect(response.status).toBe(401);
   });
@@ -118,9 +122,7 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
   it('returns 404 when drug is not found', async () => {
     drugMasterFindUniqueMock.mockResolvedValue(null);
 
-    const response = await GET(createRequest(), {
-      params: Promise.resolve({ id: 'nonexistent' }),
-    });
+    const response = await invokeGet('nonexistent');
 
     expect(response.status).toBe(404);
     const body = await response.json();
@@ -128,9 +130,7 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
   });
 
   it('returns 200 with drug and package insert data on success', async () => {
-    const response = await GET(createRequest(), {
-      params: Promise.resolve({ id: 'drug_1' }),
-    });
+    const response = await invokeGet();
 
     expect(response.status).toBe(200);
     const body = await response.json();
@@ -151,9 +151,7 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
   it('returns null package_insert when no package insert exists', async () => {
     drugPackageInsertFindManyMock.mockResolvedValue([]);
 
-    const response = await GET(createRequest(), {
-      params: Promise.resolve({ id: 'drug_1' }),
-    });
+    const response = await invokeGet();
 
     expect(response.status).toBe(200);
     const body = await response.json();
@@ -162,9 +160,7 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
   });
 
   it('returns structured sections from package insert', async () => {
-    const response = await GET(createRequest(), {
-      params: Promise.resolve({ id: 'drug_1' }),
-    });
+    const response = await invokeGet();
 
     const body = await response.json();
     const sections = body.package_insert.sections;
@@ -194,9 +190,7 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
     };
     drugPackageInsertFindManyMock.mockResolvedValue([mockPackageInsert, olderInsert]);
 
-    const response = await GET(createRequest(), {
-      params: Promise.resolve({ id: 'drug_1' }),
-    });
+    const response = await invokeGet();
 
     const body = await response.json();
     expect(body.version_history).toHaveLength(2);
@@ -206,8 +200,6 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
 
   it('returns interactions from both directions merged into a unified list', async () => {
     const drugB = { id: 'drug_2', drug_name: '薬B錠', yj_code: '9876543210987' };
-    const drugA = { id: 'drug_1', drug_name: 'テスト薬A錠', yj_code: '1234567890123' };
-
     drugInteractionFindManyMock
       .mockResolvedValueOnce([
         {
@@ -230,9 +222,7 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
         },
       ]);
 
-    const response = await GET(createRequest(), {
-      params: Promise.resolve({ id: 'drug_1' }),
-    });
+    const response = await invokeGet();
 
     const body = await response.json();
     expect(body.interactions).toHaveLength(2);
@@ -275,9 +265,7 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
       },
     ]);
 
-    const response = await GET(createRequest(), {
-      params: Promise.resolve({ id: 'drug_1' }),
-    });
+    const response = await invokeGet();
 
     const body = await response.json();
     expect(body.applicable_alert_rules).toHaveLength(2);
@@ -296,9 +284,7 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
       },
     ]);
 
-    const response = await GET(createRequest(), {
-      params: Promise.resolve({ id: 'drug_1' }),
-    });
+    const response = await invokeGet();
 
     const body = await response.json();
     expect(body.applicable_alert_rules).toHaveLength(0);

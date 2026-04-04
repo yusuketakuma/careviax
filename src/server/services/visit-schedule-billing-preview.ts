@@ -5,6 +5,8 @@ import {
   type BillingCadencePreview,
   type BillingRequirementAlert,
 } from './billing-requirement-validator';
+import { resolveBillingPayerBasis } from './billing-payer-basis';
+import { findLatestPrescriptionIntakeClassification } from './prescription-intake-classification';
 
 export type VisitScheduleBillingPreview = {
   alerts: BillingRequirementAlert[];
@@ -13,19 +15,6 @@ export type VisitScheduleBillingPreview = {
   recommended_priority: 'normal' | 'urgent' | 'emergency';
   recommended_candidate_count: number;
 };
-
-function resolveProposalPayerBasis(args: {
-  medicalInsuranceNumber?: string | null;
-  careInsuranceNumber?: string | null;
-  visitType: string;
-}) {
-  if (args.visitType === 'emergency') {
-    return args.medicalInsuranceNumber || args.careInsuranceNumber ? 'medical' : 'self_pay';
-  }
-  if (args.careInsuranceNumber) return 'care';
-  if (args.medicalInsuranceNumber) return 'medical';
-  return 'self_pay';
-}
 
 export async function buildVisitScheduleBillingPreview(args: {
   orgId: string;
@@ -64,22 +53,15 @@ export async function buildVisitScheduleBillingPreview(args: {
   });
   if (!careCase) return null;
 
-  const latestIntake = await prisma.prescriptionIntake.findFirst({
-    where: {
-      org_id: args.orgId,
-      cycle: { case_id: args.caseId },
-    },
-    orderBy: [{ created_at: 'desc' }],
-    select: {
-      prescription_category: true,
-      emergency_category: true,
-    },
+  const latestIntake = await findLatestPrescriptionIntakeClassification(prisma, {
+    orgId: args.orgId,
+    caseId: args.caseId,
   });
 
   const visitType =
     args.visitType ??
     (latestIntake?.prescription_category === 'emergency' ? 'emergency' : 'regular');
-  const payerBasis = resolveProposalPayerBasis({
+  const payerBasis = resolveBillingPayerBasis({
     medicalInsuranceNumber: careCase.patient.medical_insurance_number,
     careInsuranceNumber: careCase.patient.care_insurance_number,
     visitType,

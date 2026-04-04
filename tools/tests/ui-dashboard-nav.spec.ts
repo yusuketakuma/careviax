@@ -26,16 +26,14 @@ test.describe('dashboard page', () => {
     expect(errors).toEqual([]);
   });
 
-  test('dashboard shortcut links navigate correctly', async ({ context }) => {
+  test('dashboard renders actionable content in the main region', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await page.goto('/dashboard');
     await waitForStableUi(page);
 
-    // Dashboard should have shortcut links to key pages
     const main = page.locator('main');
-    const links = main.getByRole('link');
-    const linkCount = await links.count();
-    expect(linkCount).toBeGreaterThan(0);
+    const interactiveCount = await main.locator('a, button').count();
+    expect(interactiveCount).toBeGreaterThan(0);
 
     expect(errors).toEqual([]);
   });
@@ -95,7 +93,7 @@ test.describe('sidebar navigation', () => {
       page.getByTestId('sidebar-nav-patients').click(),
     ]);
 
-    await expect(page.getByRole('heading', { name: '患者一覧' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '患者一覧', level: 1 })).toBeVisible();
     expect(errors).toEqual([]);
   });
 

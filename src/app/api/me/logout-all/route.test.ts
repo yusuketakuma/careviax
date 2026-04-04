@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
+  getAuthAccessTokenMock,
   userUpdateMock,
   auditLogCreateMock,
   withOrgContextMock,
   globalSignOutWithAccessTokenMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
+  getAuthAccessTokenMock: vi.fn(),
   userUpdateMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -16,6 +19,7 @@ const {
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
+  getAuthAccessToken: getAuthAccessTokenMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -40,9 +44,9 @@ describe('/api/me/logout-all POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({
-      accessToken: 'access-token',
       user: { id: 'user_1' },
     });
+    getAuthAccessTokenMock.mockResolvedValue('access-token');
     userUpdateMock.mockResolvedValue({
       id: 'user_1',
       org_id: 'org_1',
@@ -59,7 +63,7 @@ describe('/api/me/logout-all POST', () => {
   });
 
   it('increments the session version, records an audit event, and revokes Cognito sessions', async () => {
-    const response = await POST();
+    const response = await POST(new NextRequest('http://localhost/api/me/logout-all', { method: 'POST' }));
 
     expect(response.status).toBe(200);
     expect(userUpdateMock).toHaveBeenCalledWith({
@@ -96,7 +100,7 @@ describe('/api/me/logout-all POST', () => {
   it('returns 401 when the session is missing', async () => {
     authMock.mockResolvedValue(null);
 
-    const response = await POST();
+    const response = await POST(new NextRequest('http://localhost/api/me/logout-all', { method: 'POST' }));
 
     expect(response.status).toBe(401);
     expect(userUpdateMock).not.toHaveBeenCalled();

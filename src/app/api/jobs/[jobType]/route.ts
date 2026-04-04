@@ -83,7 +83,7 @@ export async function POST(
     const result = await handler();
     return success({ jobType, ...result }) as NextResponse;
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return error('EXTERNAL_JOB_FAILED', `ジョブの実行に失敗しました: ${message}`, 500) as NextResponse;
+    console.error(`[job:${jobType}]`, err);
+    return error('EXTERNAL_JOB_FAILED', 'ジョブの実行に失敗しました', 500) as NextResponse;
   }
 }

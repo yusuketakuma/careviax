@@ -25,8 +25,9 @@ export type CareLevelCategory = 'care_required' | 'support_required';
 
 export function validateCareBillingEligibility(
   careLevelCategory: CareLevelCategory | null,
-  buildingTier: 'single' | 'multi_2_9' | 'multi_10_plus',
+  _buildingTier: 'single' | 'multi_2_9' | 'multi_10_plus',
 ): { eligible: boolean; reason?: string } {
+  void _buildingTier;
   if (!careLevelCategory) {
     return { eligible: false, reason: '介護保険認定情報が未設定です' };
   }

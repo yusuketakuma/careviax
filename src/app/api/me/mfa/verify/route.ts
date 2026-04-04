@@ -1,13 +1,14 @@
-import { auth } from '@/lib/auth/config';
+import { auth, getAuthAccessToken } from '@/lib/auth/config';
 import { externalError, success, unauthorized, validationError } from '@/lib/api/response';
 import { verifyTotpForAccessToken } from '@/server/services/cognito-auth';
 import { issueMfaRecoveryCodes } from '@/server/services/mfa-recovery';
 import { prisma } from '@/lib/db/client';
 import { resolveLocalUserByIdentity } from '@/lib/auth/user-resolution';
+import type { NextRequest } from 'next/server';
 
 async function resolveCurrentUserId() {
   const session = await auth();
-  if (!session?.accessToken) {
+  if (!session) {
     return { session, userId: null as string | null };
   }
 
@@ -15,7 +16,7 @@ async function resolveCurrentUserId() {
   const directUser = sessionUserId
     ? await prisma.user.findUnique({
         where: { id: sessionUserId },
-      select: { id: true },
+        select: { id: true },
       })
     : null;
 
@@ -31,9 +32,10 @@ async function resolveCurrentUserId() {
   return { session, userId: resolvedUser?.id ?? null };
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   const { session, userId } = await resolveCurrentUserId();
-  if (!session?.accessToken) {
+  const accessToken = await getAuthAccessToken(req);
+  if (!session || !accessToken) {
     return unauthorized();
   }
 
@@ -45,7 +47,7 @@ export async function POST(req: Request) {
 
   try {
     await verifyTotpForAccessToken({
-      accessToken: session.accessToken,
+      accessToken,
       code,
       deviceName: 'CareViaX TOTP',
     });

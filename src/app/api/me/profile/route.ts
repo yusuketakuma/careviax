@@ -1,4 +1,5 @@
-import { auth } from '@/lib/auth/config';
+import { auth, getAuthAccessToken } from '@/lib/auth/config';
+import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/db/client';
 import { resolveLocalUserByIdentity } from '@/lib/auth/user-resolution';
 import { externalError, success, unauthorized, validationError } from '@/lib/api/response';
@@ -58,10 +59,10 @@ async function resolveCurrentUser() {
 
   if (!user) return null;
 
-  return { session, user };
+  return { user };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const resolved = await resolveCurrentUser();
   if (!resolved) {
     return unauthorized();
@@ -69,10 +70,11 @@ export async function GET() {
 
   const membership = resolved.user.memberships[0];
   let mfaEnabled = false;
+  const accessToken = await getAuthAccessToken(request);
 
-  if (resolved.session.accessToken) {
+  if (accessToken) {
     try {
-      const mfaState = await getUserMfaState(resolved.session.accessToken);
+      const mfaState = await getUserMfaState(accessToken);
       mfaEnabled = mfaState.enabled;
     } catch (error) {
       if ((error as Error).message !== 'COGNITO_NOT_CONFIGURED') {
@@ -98,7 +100,7 @@ export async function GET() {
   });
 }
 
-export async function PATCH(req: Request) {
+export async function PATCH(req: NextRequest) {
   const resolved = await resolveCurrentUser();
   if (!resolved) {
     return unauthorized();

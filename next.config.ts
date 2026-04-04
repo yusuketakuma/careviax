@@ -2,7 +2,7 @@ import type { NextConfig } from 'next';
 import withSerwistInit from '@serwist/next';
 
 // NOTE: Content-Security-Policy and other security headers are set dynamically
-// in src/middleware.ts using a per-request nonce. Static headers here would
+// in src/proxy.ts using a per-request nonce. Static headers here would
 // conflict with the nonce-based CSP and are intentionally omitted.
 
 const nextConfig: NextConfig = {

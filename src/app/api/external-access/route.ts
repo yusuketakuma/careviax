@@ -3,10 +3,13 @@ import { createHash, randomInt, randomUUID } from 'crypto';
 import { withAuthContext } from '@/lib/auth/context';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError } from '@/lib/api/response';
+import { error, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { SmsNotificationAdapter } from '@/server/adapters/sms';
-import { issueExternalAccessToken } from '@/server/services/external-access';
+import {
+  issueExternalAccessToken,
+  MissingExternalAccessSecretError,
+} from '@/server/services/external-access';
 import { z } from 'zod';
 
 const createGrantSchema = z.object({
@@ -161,47 +164,59 @@ export const POST = withAuthContext(
     const provisionalToken = `provisional:${randomUUID()}`;
     const provisionalTokenHash = createHash('sha256').update(provisionalToken).digest('hex');
 
-    const grant = await withOrgContext(ctx.orgId, async (tx) => {
-      const created = await tx.externalAccessGrant.create({
-        data: {
-          org_id: ctx.orgId,
-          patient_id,
-          token_hash: provisionalTokenHash,
-          otp_hash: otpHash,
-          granted_to_name,
-          granted_to_contact: normalizedGrantedToContact,
-          scope: scope as import('@prisma/client').Prisma.InputJsonValue,
-          expires_at: expiresAt,
-        },
-        select: {
-          id: true,
-          patient_id: true,
-          granted_to_name: true,
-          granted_to_contact: true,
-          scope: true,
-          expires_at: true,
-          created_at: true,
-        },
-      });
+    let grant;
+    try {
+      grant = await withOrgContext(ctx.orgId, async (tx) => {
+        const created = await tx.externalAccessGrant.create({
+          data: {
+            org_id: ctx.orgId,
+            patient_id,
+            token_hash: provisionalTokenHash,
+            otp_hash: otpHash,
+            granted_to_name,
+            granted_to_contact: normalizedGrantedToContact,
+            scope: scope as import('@prisma/client').Prisma.InputJsonValue,
+            expires_at: expiresAt,
+          },
+          select: {
+            id: true,
+            patient_id: true,
+            granted_to_name: true,
+            granted_to_contact: true,
+            scope: true,
+            expires_at: true,
+            created_at: true,
+          },
+        });
 
-      const jwtToken = await issueExternalAccessToken({
-        grantId: created.id,
-        orgId: ctx.orgId,
-        patientId: patient_id,
-        expiresHours: expires_hours,
-      });
+        const jwtToken = await issueExternalAccessToken({
+          grantId: created.id,
+          orgId: ctx.orgId,
+          patientId: patient_id,
+          expiresHours: expires_hours,
+        });
 
-      const finalTokenHash = createHash('sha256').update(jwtToken).digest('hex');
-      await tx.externalAccessGrant.update({
-        where: { id: created.id },
-        data: { token_hash: finalTokenHash },
-      });
+        const finalTokenHash = createHash('sha256').update(jwtToken).digest('hex');
+        await tx.externalAccessGrant.update({
+          where: { id: created.id },
+          data: { token_hash: finalTokenHash },
+        });
 
-      return {
-        ...created,
-        token: jwtToken,
-      };
-    });
+        return {
+          ...created,
+          token: jwtToken,
+        };
+      });
+    } catch (errorValue) {
+      if (errorValue instanceof MissingExternalAccessSecretError) {
+        return error(
+          'EXTERNAL_ACCESS_SECRET_MISSING',
+          '外部共有リンクの署名設定が不足しています',
+          500
+        );
+      }
+      throw errorValue;
+    }
 
     let otpDelivery: 'sms' | 'manual' = 'manual';
     let otpDeliveryDestination: string | null = null;

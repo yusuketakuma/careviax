@@ -1,11 +1,12 @@
-import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth/config';
+import { NextRequest, NextResponse } from 'next/server';
+import { auth, getAuthAccessToken } from '@/lib/auth/config';
 import { externalError, unauthorized, validationError } from '@/lib/api/response';
 import { changePasswordWithAccessToken } from '@/server/services/cognito-auth';
 
-export async function PATCH(req: Request) {
+export async function PATCH(req: NextRequest) {
   const session = await auth();
-  if (!session?.accessToken) {
+  const accessToken = await getAuthAccessToken(req);
+  if (!session || !accessToken) {
     return unauthorized();
   }
 
@@ -29,7 +30,7 @@ export async function PATCH(req: Request) {
 
   try {
     await changePasswordWithAccessToken({
-      accessToken: session.accessToken,
+      accessToken,
       currentPassword,
       newPassword,
     });

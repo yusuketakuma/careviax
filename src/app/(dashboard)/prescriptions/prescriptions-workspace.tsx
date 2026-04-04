@@ -11,8 +11,6 @@ import { useKeyboardShortcuts, type ShortcutDefinition } from '@/components/feat
 import { useSelectableQueueState } from '../dispensing/dispense-work-queue.shared';
 import { PrescriptionsTable, type PrescriptionIntakeRow } from './prescriptions-table';
 import { PrescriptionInlineDetail } from './prescription-inline-detail';
-import { SOURCE_LABELS } from './new/prescription-form.shared';
-import { CYCLE_STATUS_CONFIG } from './prescription.shared';
 
 // ---------------------------------------------------------------------------
 // Filter options
@@ -106,7 +104,6 @@ export function PrescriptionsWorkspace() {
   // Selection state
   const {
     selectedItem,
-    selectedRowIndex,
     handleMoveUp,
     handleMoveDown,
     handleRowClick,
@@ -240,7 +237,6 @@ export function PrescriptionsWorkspace() {
             items={filteredItems}
             isLoading={!orgId || isLoading}
             selectedId={selectedId}
-            selectedRowIndex={selectedRowIndex}
             onRowClick={handleRowClick}
           />
         </div>

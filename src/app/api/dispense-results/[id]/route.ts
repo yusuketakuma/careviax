@@ -54,15 +54,14 @@ export async function PATCH(
     }
 
     const updated = await withOrgContext(authReq.orgId, async (tx) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const existing = await (tx.dispenseResult.findFirst as any)({
+      const existing = await tx.dispenseResult.findFirst({
         where: { id, org_id: authReq.orgId },
         select: {
           id: true,
           task_id: true,
           version: true,
         },
-      }) as { id: string; task_id: string; version: number } | null;
+      });
       if (!existing) return null;
 
       // B2: Version lock — reject if client version is stale

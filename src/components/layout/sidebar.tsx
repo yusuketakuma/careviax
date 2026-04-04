@@ -301,7 +301,6 @@ interface SidebarProps {
 }
 
 export function Sidebar({ className }: SidebarProps) {
-  const pathname = usePathname();
   const { sidebarOpen, sidebarPinned, toggleSidebar, toggleSidebarPinned } = useUIStore();
 
   return (

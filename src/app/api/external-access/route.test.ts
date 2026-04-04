@@ -8,6 +8,7 @@ const {
   sendSmsMock,
   createMock,
   updateMock,
+  MissingExternalAccessSecretErrorMock,
 } = vi.hoisted(() => ({
   validateOrgReferencesMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -15,6 +16,12 @@ const {
   sendSmsMock: vi.fn(),
   createMock: vi.fn(),
   updateMock: vi.fn(),
+  MissingExternalAccessSecretErrorMock: class MissingExternalAccessSecretError extends Error {
+    constructor() {
+      super('External access token secret is not configured');
+      this.name = 'MissingExternalAccessSecretError';
+    }
+  },
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -48,6 +55,7 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/server/services/external-access', () => ({
   issueExternalAccessToken: issueExternalAccessTokenMock,
+  MissingExternalAccessSecretError: MissingExternalAccessSecretErrorMock,
 }));
 
 vi.mock('@/server/adapters/sms', () => ({
@@ -175,5 +183,26 @@ describe('/api/external-access POST', () => {
       select: expect.any(Object),
     });
     expect(sendSmsMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 when the external access signing secret is missing', async () => {
+    issueExternalAccessTokenMock.mockRejectedValue(new MissingExternalAccessSecretErrorMock());
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: null,
+        scope: { medication_list: true },
+        expires_hours: 24,
+      }),
+      { params: Promise.resolve({}) }
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'EXTERNAL_ACCESS_SECRET_MISSING',
+    });
   });
 });

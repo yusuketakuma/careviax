@@ -10,6 +10,8 @@ import {
 import {
   resolveBillingRulesForDate,
 } from '@/server/services/billing-rules';
+import { resolveBillingPayerBasis } from '@/server/services/billing-payer-basis';
+import { findLatestPrescriptionIntakeClassification } from '@/server/services/prescription-intake-classification';
 import { generateVisitScheduleProposalDrafts } from '@/server/services/visit-schedule-planner';
 import { formatVisitWorkflowGateIssues, type VisitWorkflowGateIssue } from '@/server/services/management-plans';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
@@ -17,19 +19,6 @@ import { validateBillingRequirements, type BillingRequirementAlert } from '@/ser
 
 function startOfMonth(value: Date) {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
-}
-
-function resolveProposalPayerBasis(args: {
-  medicalInsuranceNumber?: string | null;
-  careInsuranceNumber?: string | null;
-  visitType: string;
-}) {
-  if (args.visitType === 'emergency') {
-    return args.medicalInsuranceNumber || args.careInsuranceNumber ? 'medical' : 'self_pay';
-  }
-  if (args.careInsuranceNumber) return 'care';
-  if (args.medicalInsuranceNumber) return 'medical';
-  return 'self_pay';
 }
 
 /**
@@ -73,7 +62,7 @@ async function validateProposalBillingExclusions(args: {
     return { blockingMessages: ['ケースが見つかりません'], alerts: [] };
   }
 
-  const payerBasis = resolveProposalPayerBasis({
+  const payerBasis = resolveBillingPayerBasis({
     medicalInsuranceNumber: careCase.patient.medical_insurance_number,
     careInsuranceNumber: careCase.patient.care_insurance_number,
     visitType: args.visitType,
@@ -138,6 +127,19 @@ async function validateProposalBillingExclusions(args: {
   }
 
   return { blockingMessages, alerts };
+}
+
+function dedupeBillingAlerts(alerts: BillingRequirementAlert[]) {
+  const seen = new Set<string>();
+
+  return alerts.filter((alert) => {
+    const key = `${alert.type}:${alert.severity}:${alert.message}:${JSON.stringify(alert.details)}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
@@ -291,13 +293,9 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   if (hasExplicitVisitType) {
     resolvedVisitType = parsed.data.visit_type;
   } else {
-    const activeIntake = await prisma.prescriptionIntake.findFirst({
-      where: {
-        org_id: req.orgId,
-        cycle: { case_id: parsed.data.case_id },
-      },
-      orderBy: { created_at: 'desc' },
-      select: { prescription_category: true },
+    const activeIntake = await findLatestPrescriptionIntakeClassification(prisma, {
+      orgId: req.orgId,
+      caseId: parsed.data.case_id,
     });
     resolvedVisitType = activeIntake?.prescription_category === 'emergency' ? 'emergency' : 'regular';
   }
@@ -349,6 +347,58 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     return validationError('シフト・休日・期限条件に合う候補を生成できませんでした');
   }
 
+  const perDraftValidationKeys = new Set<string>();
+  const draftValidationPairs = await Promise.all(
+    drafts.map(async (draft) => {
+      const validationKey = `${draft.proposed_pharmacist_id}:${draft.proposed_date.toISOString()}`;
+      if (perDraftValidationKeys.has(validationKey)) {
+        return { draft, validation: null };
+      }
+      perDraftValidationKeys.add(validationKey);
+
+      const validation = await validateProposalBillingExclusions({
+        orgId: req.orgId,
+        caseId: parsed.data.case_id,
+        visitType: resolvedVisitType,
+        targetDate: draft.proposed_date,
+        pharmacistId: draft.proposed_pharmacist_id,
+        prescriptionCategory: resolvedVisitType === 'emergency' ? 'emergency' : 'regular',
+      });
+
+      return { draft, validation };
+    }),
+  );
+
+  const validationByKey = new Map(
+    draftValidationPairs
+      .filter((pair): pair is { draft: typeof drafts[number]; validation: NonNullable<typeof pair.validation> } => pair.validation != null)
+      .map((pair) => [
+        `${pair.draft.proposed_pharmacist_id}:${pair.draft.proposed_date.toISOString()}`,
+        pair.validation,
+      ]),
+  );
+  const validDrafts = drafts.filter((draft) => {
+    const validation = validationByKey.get(
+      `${draft.proposed_pharmacist_id}:${draft.proposed_date.toISOString()}`,
+    );
+    return (validation?.blockingMessages.length ?? 0) === 0;
+  });
+  const allBlockingMessages = Array.from(
+    new Set([
+      ...blockingMessages,
+      ...Array.from(validationByKey.values()).flatMap((validation) => validation.blockingMessages),
+    ]),
+  );
+  if (validDrafts.length === 0) {
+    return validationError(
+      allBlockingMessages.join(' / ') || '算定要件を満たす訪問候補を生成できませんでした',
+    );
+  }
+  const allAlerts = dedupeBillingAlerts([
+    ...billingAlerts,
+    ...Array.from(validationByKey.values()).flatMap((validation) => validation.alerts),
+  ]);
+
   const proposals = await withOrgContext(req.orgId, async (tx) => {
     if (!parsed.data.reschedule_source_schedule_id) {
       await tx.visitScheduleProposal.updateMany({
@@ -366,7 +416,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     }
 
     return Promise.all(
-      drafts.map((draft) =>
+      validDrafts.map((draft) =>
         tx.visitScheduleProposal.create({
           data: draft,
         })
@@ -379,7 +429,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     payload: { source: 'visit_schedule_proposals_create', case_id: parsed.data.case_id },
   });
 
-  return success({ data: proposals, alerts: billingAlerts }, 201);
+  return success({ data: proposals, alerts: allAlerts }, 201);
 }, {
   permission: 'canVisit',
   message: '訪問候補の生成権限がありません',

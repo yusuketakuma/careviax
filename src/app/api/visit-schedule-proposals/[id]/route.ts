@@ -200,10 +200,11 @@ async function buildRoutePreview(args: {
       travelMode: 'DRIVE',
       waypoints,
     });
-  } catch (error) {
+  } catch (routeError) {
+    console.error('[route-preview]', routeError);
     plan = {
       status: 'unavailable',
-      note: error instanceof Error ? error.message : 'ルートプレビューの計算に失敗しました',
+      note: 'ルートプレビューの計算に失敗しました',
       travelMode: 'DRIVE',
       origin: site
         ? {

@@ -1,12 +1,17 @@
 import { z } from 'zod';
 import { externalError, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
-import { clearMfaRecoveryCodes, verifyMfaRecoveryCode } from '@/server/services/mfa-recovery';
+import {
+  clearMfaRecoveryCodes,
+  MfaRecoveryConfigError,
+  restoreMfaRecoveryCodes,
+  takeMfaRecoveryCodesForRecovery,
+} from '@/server/services/mfa-recovery';
 import { disableCognitoTotpForUser } from '@/server/services/cognito-admin';
 
 const recoverySchema = z.object({
-  email: z.string().email('メールアドレス形式が不正です'),
-  recoveryCode: z.string().min(1, 'リカバリーコードを入力してください'),
+  email: z.string().trim().email('メールアドレス形式が不正です'),
+  recoveryCode: z.string().trim().min(1, 'リカバリーコードを入力してください'),
 });
 
 export async function POST(req: Request) {
@@ -35,8 +40,19 @@ export async function POST(req: Request) {
     return externalError('AUTH_RECOVERY_CODE_INVALID', 'リカバリーコードが正しくありません', 400);
   }
 
-  const isValidRecoveryCode = await verifyMfaRecoveryCode(user.id, parsed.data.recoveryCode);
-  if (!isValidRecoveryCode) {
+  let recoverySnapshot;
+  try {
+    recoverySnapshot = await takeMfaRecoveryCodesForRecovery(
+      user.id,
+      parsed.data.recoveryCode,
+    );
+  } catch (error) {
+    if (error instanceof MfaRecoveryConfigError) {
+      return externalError('EXTERNAL_MFA_RECOVERY_FAILED', 'MFAリカバリー設定が未完了です', 503);
+    }
+    throw error;
+  }
+  if (!recoverySnapshot) {
     return externalError('AUTH_RECOVERY_CODE_INVALID', 'リカバリーコードが正しくありません', 400);
   }
 
@@ -44,6 +60,9 @@ export async function POST(req: Request) {
     await disableCognitoTotpForUser(user.cognito_username ?? user.email);
     await clearMfaRecoveryCodes(user.id);
   } catch {
+    await restoreMfaRecoveryCodes(user.id, recoverySnapshot).catch((restoreError) => {
+      console.error('[mfa-recovery] Failed to restore recovery codes after Cognito error', restoreError);
+    });
     return externalError('EXTERNAL_MFA_RECOVERY_FAILED', 'MFAリカバリー処理に失敗しました', 502);
   }
 

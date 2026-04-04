@@ -1,16 +1,17 @@
-import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth/config';
+import { NextRequest, NextResponse } from 'next/server';
+import { auth, getAuthAccessToken } from '@/lib/auth/config';
 import { externalError, unauthorized } from '@/lib/api/response';
 import { associateTotpForAccessToken } from '@/server/services/cognito-auth';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   const session = await auth();
-  if (!session?.accessToken || !session.user?.email) {
+  const accessToken = await getAuthAccessToken(request);
+  if (!session?.user?.email || !accessToken) {
     return unauthorized();
   }
 
   try {
-    const result = await associateTotpForAccessToken(session.accessToken);
+    const result = await associateTotpForAccessToken(accessToken);
     if (!result.SecretCode) {
       throw new Error('MFA_SECRET_MISSING');
     }

@@ -10,11 +10,34 @@ vi.mock('./seeder', () => ({
 }));
 
 import { buildBillingCandidateSpecs } from './rule-engine';
-import type { BillingEvidenceContext } from './types';
+import type { BillingEvidenceContext, BillingRuleConditions } from './types';
 
 // ── Helpers ──
 
-function makeBaseRule(overrides: Record<string, unknown> = {}) {
+type MockBillingRule = {
+  id: string;
+  ssot_key: string;
+  rule_type: 'base' | 'addition' | 'regional_addition' | 'reduction';
+  code: string;
+  name: string;
+  amount: number;
+  billing_scope: string;
+  service_type: 'medical_home_visit' | 'care_home_management' | 'generic';
+  payer_basis: 'medical' | 'care';
+  provider_scope: 'pharmacy' | 'hospital_clinic' | null;
+  selection_mode: 'auto' | 'manual';
+  calculation_unit: 'point' | 'unit' | 'percent';
+  source_url: string;
+  source_note: string;
+  is_active: boolean;
+  effective_from: Date | null;
+  effective_to: Date | null;
+  created_at: Date;
+  conditions: BillingRuleConditions;
+  exclusion_rules?: Record<string, unknown>;
+};
+
+function makeBaseRule(overrides: Partial<MockBillingRule> = {}): MockBillingRule {
   return {
     id: 'rule_base_1',
     ssot_key: 'medical.home_visit.single',
@@ -39,7 +62,7 @@ function makeBaseRule(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makeAdditionRule(overrides: Record<string, unknown> = {}) {
+function makeAdditionRule(overrides: Partial<MockBillingRule> = {}): MockBillingRule {
   return {
     id: 'rule_add_1',
     ssot_key: 'medical.addition.narcotic',
@@ -79,7 +102,7 @@ function makeContext(overrides: Partial<BillingEvidenceContext> = {}): BillingEv
 }
 
 /** Build a mock tx that feeds rules into the real getHomeCareBillingSsotSummary */
-function makeTx(rules: ReturnType<typeof makeBaseRule>[]) {
+function makeTx(rules: MockBillingRule[]) {
   return {
     sourceOfTruthMatrix: {
       findFirst: vi.fn().mockResolvedValue({ id: 'matrix_1', entity_type: 'billing' }),

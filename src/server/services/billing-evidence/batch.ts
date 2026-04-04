@@ -6,6 +6,7 @@ import {
 import type { Tx } from './core';
 import {
   startOfMonth,
+  asRecord,
   readBillingCandidateWorkflowState,
   writeBillingCandidateWorkflowState,
   mergeCandidateSourceSnapshot,
@@ -26,6 +27,27 @@ export async function generateBillingCandidatesForMonth(
     },
     orderBy: [{ created_at: 'asc' }],
   });
+  const visitRecordClient = (tx as unknown as {
+    visitRecord?: {
+      findMany?: (args: {
+        where: { id: { in: string[] } };
+        select: { id: true; visit_date: true };
+      }) => Promise<Array<{ id: string; visit_date: Date }>>;
+    };
+  }).visitRecord;
+  const visitRecordIds = evidences
+    .map((evidence) => evidence.visit_record_id)
+    .filter((value): value is string => typeof value === 'string' && value.length > 0);
+  const visitDates =
+    visitRecordClient?.findMany && visitRecordIds.length > 0
+      ? await visitRecordClient.findMany({
+          where: { id: { in: visitRecordIds } },
+          select: { id: true, visit_date: true },
+        })
+      : [];
+  const visitDateByRecordId = new Map(
+    visitDates.map((visitRecord) => [visitRecord.id, visitRecord.visit_date]),
+  );
 
   const created = [];
   const rules = await tx.billingRule.findMany({
@@ -80,10 +102,34 @@ export async function generateBillingCandidatesForMonth(
       blockedEvidenceIds.push(evidence.id);
       continue;
     }
+    const calculationContext = asRecord(evidence.calculation_context);
+    const regionAddOnEligible = Array.isArray(calculationContext.region_add_on_eligible)
+      ? calculationContext.region_add_on_eligible.filter(
+          (value): value is 'special_15' | 'small_office_10' | 'resident_5' =>
+            value === 'special_15' || value === 'small_office_10' || value === 'resident_5'
+        )
+      : [];
+    const emergencyCategory =
+      calculationContext.emergency_category === 'planned_disease_exacerbation' ||
+      calculationContext.emergency_category === 'other_exacerbation' ||
+      calculationContext.emergency_category === 'online'
+        ? calculationContext.emergency_category
+        : null;
+    const afterHoursVisit =
+      calculationContext.after_hours_visit === 'night' ||
+      calculationContext.after_hours_visit === 'holiday' ||
+      calculationContext.after_hours_visit === 'midnight'
+        ? calculationContext.after_hours_visit
+        : null;
+    const careLevelCategory =
+      calculationContext.care_level_category === 'care_required' ||
+      calculationContext.care_level_category === 'support_required'
+        ? calculationContext.care_level_category
+        : null;
 
     const specs = await buildBillingCandidateSpecs(tx, {
       orgId: args.orgId,
-      asOfDate: monthStart,
+      asOfDate: visitDateByRecordId.get(evidence.visit_record_id) ?? monthStart,
       payerBasis: evidence.payer_basis,
       serviceType:
         evidence.billing_service_type === 'care_home_management'
@@ -96,9 +142,20 @@ export async function generateBillingCandidatesForMonth(
       weeklyVisitCount: evidence.weekly_count_snapshot ?? 0,
       claimable: evidence.claimable,
       exclusionReason: evidence.exclusion_reason,
-      specialCapEligible: false,
-      onlineEligible: false,
-      regionAddOnEligible: [],
+      specialCapEligible: calculationContext.special_cap_eligible === true,
+      onlineEligible: calculationContext.online_eligible === true,
+      regionAddOnEligible,
+      visitType:
+        typeof calculationContext.visit_type === 'string' ? calculationContext.visit_type : null,
+      emergencyCategory,
+      afterHoursVisit,
+      infantEligible: calculationContext.infant_eligible === true,
+      pediatricAge: calculationContext.pediatric_age === true,
+      narcoticRequired: calculationContext.narcotic_required === true,
+      narcoticInjectionRequired: calculationContext.narcotic_injection_required === true,
+      centralVenousRequired: calculationContext.central_venous_required === true,
+      enteralRequired: calculationContext.enteral_required === true,
+      careLevelCategory,
     });
 
     for (const spec of specs) {

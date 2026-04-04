@@ -37,9 +37,7 @@ export const PATCH = withAuthContext<{ table: string; id: string }>(
           return notFound('対象レコードが見つかりません');
         }
       }
-      return validationError(
-        error instanceof Error ? error.message : 'レコード更新に失敗しました'
-      );
+      return validationError('レコード更新に失敗しました');
     }
   },
   {

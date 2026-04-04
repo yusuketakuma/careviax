@@ -187,6 +187,103 @@ describe('billing-evidence service', () => {
     expect(created).toHaveLength(1);
   });
 
+  it('reuses persisted calculation context when regenerating monthly billing candidates', async () => {
+    const billingMonth = new Date(2026, 2, 1);
+
+    buildBillingCandidateSpecsMock.mockResolvedValue([]);
+
+    const tx = {
+      billingEvidence: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'evidence_ok',
+            patient_id: 'patient_1',
+            cycle_id: 'cycle_1',
+            visit_record_id: 'visit_1',
+            payer_basis: 'medical',
+            billing_service_type: 'medical_home_visit',
+            provider_scope: 'pharmacy',
+            building_patient_count: 1,
+            monthly_count_snapshot: 3,
+            weekly_count_snapshot: 2,
+            claimable: true,
+            exclusion_reason: null,
+            calculation_context: {
+              building_id: 'building_1',
+              unit_name: '201',
+              assignment_scope: 'building',
+              building_patient_count: 4,
+              unit_patient_count: 2,
+              special_cap_eligible: true,
+              online_eligible: true,
+              region_add_on_eligible: ['special_15'],
+              visit_type: 'emergency',
+              emergency_category: 'online',
+              after_hours_visit: 'midnight',
+              infant_eligible: true,
+              pediatric_age: true,
+              narcotic_required: true,
+              narcotic_injection_required: true,
+              central_venous_required: true,
+              enteral_required: true,
+              care_level_category: 'care_required',
+            },
+          },
+        ]),
+      },
+      billingRule: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      visitRecord: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'visit_1',
+            visit_date: new Date('2026-03-18T09:00:00.000Z'),
+          },
+        ]),
+      },
+      billingCandidate: {
+        findMany: vi.fn().mockResolvedValue([]),
+        upsert: vi.fn(),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      tracingReport: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      careReport: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      inquiryRecord: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+    };
+
+    await generateBillingCandidatesForMonth(tx as never, {
+      orgId: 'org_1',
+      billingMonth,
+    });
+
+    expect(buildBillingCandidateSpecsMock).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        asOfDate: new Date('2026-03-18T09:00:00.000Z'),
+        specialCapEligible: true,
+        onlineEligible: true,
+        regionAddOnEligible: ['special_15'],
+        visitType: 'emergency',
+        emergencyCategory: 'online',
+        afterHoursVisit: 'midnight',
+        infantEligible: true,
+        pediatricAge: true,
+        narcoticRequired: true,
+        narcoticInjectionRequired: true,
+        centralVenousRequired: true,
+        enteralRequired: true,
+        careLevelCategory: 'care_required',
+      }),
+    );
+  });
+
   it('includes unclaimable billing evidence in blocker summary even when no billing candidates exist', async () => {
     const tx = {
       billingCandidate: {
@@ -786,7 +883,87 @@ describe('billing-evidence service', () => {
         afterHoursVisit: 'night',
         specialCapEligible: true,
         onlineEligible: false,
+        regionAddOnEligible: [],
       }),
     );
+    expect(upsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          calculation_context: expect.objectContaining({
+            special_cap_eligible: true,
+            online_eligible: false,
+            visit_type: 'regular',
+            emergency_category: 'planned_disease_exacerbation',
+            after_hours_visit: 'night',
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('uses delivery sent_at month when collecting care manager report candidates', async () => {
+    const billingMonth = new Date(2026, 2, 1);
+
+    buildBillingCandidateSpecsMock.mockResolvedValue([]);
+
+    const careReportFindManyMock = vi.fn().mockResolvedValue([]);
+    const tx = {
+      billingEvidence: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      billingRule: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      billingCandidate: {
+        findMany: vi.fn().mockResolvedValue([]),
+        upsert: vi.fn(),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      tracingReport: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      careReport: {
+        findMany: careReportFindManyMock,
+      },
+      inquiryRecord: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+    };
+
+    await generateBillingCandidatesForMonth(tx as never, {
+      orgId: 'org_1',
+      billingMonth,
+    });
+
+    expect(careReportFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        report_type: 'care_manager_report',
+        status: { in: ['sent', 'confirmed'] },
+        OR: [
+          {
+            delivery_records: {
+              some: {
+                status: { in: ['sent', 'confirmed'] },
+                sent_at: { gte: billingMonth, lte: new Date(2026, 2, 31, 23, 59, 59, 999) },
+              },
+            },
+          },
+          {
+            delivery_records: {
+              none: {},
+            },
+            updated_at: { gte: billingMonth, lte: new Date(2026, 2, 31, 23, 59, 59, 999) },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        patient_id: true,
+        case_id: true,
+        content: true,
+        status: true,
+      },
+    });
   });
 });

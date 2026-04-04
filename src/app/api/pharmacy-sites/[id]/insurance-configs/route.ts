@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
@@ -105,7 +106,7 @@ export async function POST(
         revision_label: parsed.data.revision_label ?? null,
         effective_from: nextStart,
         effective_to: nextEnd,
-        config: parsed.data.config,
+        config: parsed.data.config as Prisma.InputJsonValue,
       },
     });
 

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { render, screen } from '@testing-library/react';
+import Link from 'next/link';
 import { describe, expect, it } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { WorkflowPageHeader } from './workflow-page-header';
@@ -18,7 +19,7 @@ describe('WorkflowPageHeader', () => {
         supportingContent={<p>高リスクと同意不足を先に確認します。</p>}
         childrenLabel="関連導線"
       >
-        <a href="/prescriptions">処方受付</a>
+        <Link href="/prescriptions">処方受付</Link>
       </WorkflowPageHeader>,
     );
 

@@ -20,6 +20,7 @@ import {
   hashExternalAccessOtp,
   hashExternalAccessToken,
   issueExternalAccessToken,
+  MissingExternalAccessSecretError,
   validateExternalAccessGrant,
 } from './external-access';
 
@@ -215,6 +216,26 @@ describe('validateExternalAccessGrant', () => {
 
     const result = await validateExternalAccessGrant(token, null);
 
+    expect(result).toMatchObject({
+      ok: false,
+      kind: 'not_found',
+    });
+  });
+
+  it('fails closed when no external access signing secret is configured', async () => {
+    delete process.env.NEXTAUTH_SECRET;
+    delete process.env.EXTERNAL_ACCESS_TOKEN_SECRET;
+
+    await expect(
+      issueExternalAccessToken({
+        grantId: 'grant_1',
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        expiresHours: 72,
+      })
+    ).rejects.toBeInstanceOf(MissingExternalAccessSecretError);
+
+    const result = await validateExternalAccessGrant('forged-token', null);
     expect(result).toMatchObject({
       ok: false,
       kind: 'not_found',

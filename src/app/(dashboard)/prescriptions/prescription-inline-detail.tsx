@@ -4,18 +4,15 @@ import { useQuery } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
-  AlertTriangle,
   CheckCircle2,
   Clock,
   ExternalLink,
   MessageSquare,
-  Pill,
   RefreshCw,
 } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { SOURCE_LABELS } from './new/prescription-form.shared';
 import { CYCLE_STATUS_CONFIG } from './prescription.shared';

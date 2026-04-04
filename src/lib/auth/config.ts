@@ -1,6 +1,8 @@
 import NextAuth, { getServerSession, type NextAuthOptions } from 'next-auth';
+import { getToken } from 'next-auth/jwt';
 import CognitoProvider from 'next-auth/providers/cognito';
 import CredentialsProvider from 'next-auth/providers/credentials';
+import type { NextRequest } from 'next/server';
 import { getAuthBaseUrl, getAuthSecret } from './secret';
 import { markLocalUserActive, resolveLocalUserByIdentity } from './user-resolution';
 import {
@@ -129,14 +131,7 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.userId;
         session.user.cognitoSub =
           typeof token.cognitoSub === 'string' ? token.cognitoSub : undefined;
-        session.accessToken =
-          typeof token.accessToken === 'string' ? token.accessToken : undefined;
-        session.refreshToken =
-          typeof token.refreshToken === 'string' ? token.refreshToken : undefined;
-        session.idToken =
-          typeof token.idToken === 'string' ? token.idToken : undefined;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (session as any).cognitoGroups = token.cognitoGroups;
+        session.cognitoGroups = token.cognitoGroups;
       }
       return session;
     },
@@ -152,6 +147,15 @@ export const authOptions: NextAuthOptions = {
 
 export function auth() {
   return getServerSession(authOptions);
+}
+
+export async function getAuthAccessToken(request: NextRequest) {
+  const token = await getToken({
+    req: request,
+    secret: getAuthSecret(),
+  });
+
+  return typeof token?.accessToken === 'string' ? token.accessToken : undefined;
 }
 
 export const authHandler = NextAuth(authOptions);

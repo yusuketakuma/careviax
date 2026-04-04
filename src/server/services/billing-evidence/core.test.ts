@@ -293,6 +293,31 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
     );
   });
 
+  it('keeps legacy sent reports claimable when delivery records are not backfilled yet', async () => {
+    const tx = makeTx({
+      careReport: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'report_1', status: 'sent' }]),
+      },
+      deliveryRecord: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+    });
+
+    await upsertBillingEvidenceForVisit(tx as never, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_1',
+    });
+
+    expect(tx.billingEvidence.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          claimable: true,
+          exclusion_reason: null,
+        }),
+      }),
+    );
+  });
+
   // ── 7. Multiple blockers simultaneously ──
   it('picks the highest-priority blocker when multiple exist', async () => {
     findActiveVisitConsentMock.mockResolvedValue(null);

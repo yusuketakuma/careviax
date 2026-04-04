@@ -1,6 +1,5 @@
 'use client';
 
-import { useMemo } from 'react';
 import { format, parseISO, differenceInCalendarDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { AlertTriangle, Clock, FilePlus, FileText, RefreshCw } from 'lucide-react';
@@ -98,7 +97,6 @@ type PrescriptionsTableProps = {
   items: PrescriptionIntakeRow[];
   isLoading: boolean;
   selectedId: string | null;
-  selectedRowIndex: number;
   onRowClick: (index: number) => void;
 };
 
@@ -106,7 +104,6 @@ export function PrescriptionsTable({
   items,
   isLoading,
   selectedId,
-  selectedRowIndex,
   onRowClick,
 }: PrescriptionsTableProps) {
   if (isLoading) {

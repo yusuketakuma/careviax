@@ -2,6 +2,8 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { findActiveVisitConsent, findCurrentManagementPlan } from '../management-plans';
 import { upsertOperationalTask, resolveOperationalTasks } from '../operational-tasks';
+import { resolveBillingPayerBasis } from '../billing-payer-basis';
+import { findLatestPrescriptionIntakeClassification } from '../prescription-intake-classification';
 import {
   buildBillingCandidateSpecs,
   ensureHomeCareBillingSsot,
@@ -117,36 +119,30 @@ function isClaimableOutcome(outcome: string) {
   return ['completed', 'completed_with_issue', 'revisit_needed'].includes(outcome);
 }
 
-/**
- * Determine the payer basis (insurance type) for billing.
- *
- * Rules (令和6年度):
- * - 介護認定あり (care_insurance_number exists) → 介護保険 (care)
- * - 介護認定なし → 医療保険 (medical)
- * - 緊急訪問 (visit_type === 'emergency') → 常に医療保険 (medical)
- *   ※ 在宅患者緊急訪問薬剤管理指導料は介護認定ありでも医療保険で算定
- * - 保険番号なし → 自費 (self_pay)
- */
-function getPayerBasis(args: {
-  medicalInsuranceNumber?: string | null;
-  careInsuranceNumber?: string | null;
-  visitType?: string | null;
-}) {
-  // 緊急訪問は介護認定の有無に関わらず医療保険で算定
-  const isEmergencyVisit = args.visitType === 'emergency';
+function hasDeliveredReportStatus(status: string) {
+  return ['sent', 'confirmed'].includes(status);
+}
 
-  if (isEmergencyVisit) {
-    // 緊急訪問は常に医療保険（在宅患者緊急訪問薬剤管理指導料）
-    if (args.medicalInsuranceNumber || args.careInsuranceNumber) {
-      return 'medical' as const;
-    }
-    return 'self_pay' as const;
+function areReportsDelivered(args: {
+  reports: Array<{ status: string }>;
+  deliveryRecords: Array<{ status: string }>;
+  expectedReportCount?: number;
+}) {
+  if (args.expectedReportCount != null && args.reports.length !== args.expectedReportCount) {
+    return false;
+  }
+  if (args.reports.length === 0) {
+    return false;
+  }
+  if (!args.reports.every((report) => hasDeliveredReportStatus(report.status))) {
+    return false;
   }
 
-  // 通常訪問: 介護認定あり → 介護保険優先
-  if (args.careInsuranceNumber) return 'care' as const;
-  if (args.medicalInsuranceNumber) return 'medical' as const;
-  return 'self_pay' as const;
+  // Legacy records may not have DeliveryRecord rows yet; preserve sent/confirmed CareReport semantics.
+  return (
+    args.deliveryRecords.length === 0 ||
+    args.deliveryRecords.every((delivery) => hasDeliveredReportStatus(delivery.status))
+  );
 }
 
 function buildBillingTaskKey(visitRecordId: string) {
@@ -839,16 +835,9 @@ export async function upsertBillingEvidenceForVisit(
       },
     }),
     visitRecord.schedule.cycle_id
-      ? tx.prescriptionIntake.findFirst({
-          where: {
-            org_id: args.orgId,
-            cycle_id: visitRecord.schedule.cycle_id,
-          },
-          orderBy: [{ created_at: 'desc' }],
-          select: {
-            prescription_category: true,
-            emergency_category: true,
-          },
+      ? findLatestPrescriptionIntakeClassification(tx, {
+          orgId: args.orgId,
+          cycleId: visitRecord.schedule.cycle_id,
         })
       : Promise.resolve(null),
     tx.businessHoliday.findFirst({
@@ -937,7 +926,7 @@ export async function upsertBillingEvidenceForVisit(
     )
   );
 
-  const payerBasis = getPayerBasis({
+  const payerBasis = resolveBillingPayerBasis({
     medicalInsuranceNumber: patient.medical_insurance_number,
     careInsuranceNumber: patient.care_insurance_number,
     visitType: visitRecord.schedule.visit_type,
@@ -946,11 +935,17 @@ export async function upsertBillingEvidenceForVisit(
   const hasConferenceReports = conferenceReports.length > 0;
   const allReportsDelivered =
     (hasVisitReports || hasConferenceReports) &&
-    reports.every((report) => ['sent', 'confirmed'].includes(report.status)) &&
-    deliveryRecords.every((delivery) => ['sent', 'confirmed'].includes(delivery.status)) &&
-    conferenceReports.length === conferenceGeneratedReportIds.length &&
-    conferenceReports.every((report) => ['sent', 'confirmed'].includes(report.status)) &&
-    conferenceDeliveryRecords.every((delivery) => ['sent', 'confirmed'].includes(delivery.status));
+    (!hasVisitReports ||
+      areReportsDelivered({
+        reports,
+        deliveryRecords,
+      })) &&
+    (!hasConferenceReports ||
+      areReportsDelivered({
+        reports: conferenceReports,
+        deliveryRecords: conferenceDeliveryRecords,
+        expectedReportCount: conferenceGeneratedReportIds.length,
+      }));
 
   const exclusionFlags = {
     missing_visit_consent: !consent,
@@ -1044,6 +1039,26 @@ export async function upsertBillingEvidenceForVisit(
   const billingServiceType =
     payerBasis === 'care' ? 'care_home_management' : 'medical_home_visit';
   const providerScope = 'pharmacy';
+  const siteId = visitRecord.schedule.site_id;
+  const siteConfigRow = siteId
+    ? await tx.pharmacySiteInsuranceConfig.findFirst({
+        where: {
+          org_id: args.orgId,
+          site_id: siteId,
+          insurance_type: payerBasis === 'care' ? 'care' : 'medical',
+          effective_from: { lte: visitDateOnly },
+          OR: [{ effective_to: null }, { effective_to: { gte: visitDateOnly } }],
+        },
+        orderBy: { effective_from: 'desc' },
+      })
+    : null;
+  const config = (siteConfigRow?.config ?? {}) as Record<string, unknown>;
+  const regionAddOnEligible: Array<'special_15' | 'small_office_10' | 'resident_5'> = [];
+  if (payerBasis === 'care') {
+    if (config.region_special_15) regionAddOnEligible.push('special_15');
+    if (config.region_small_office_10) regionAddOnEligible.push('small_office_10');
+    if (config.region_resident_5) regionAddOnEligible.push('resident_5');
+  }
   const candidateSpecs = await buildBillingCandidateSpecs(tx, {
     orgId: args.orgId,
     asOfDate: visitDate,
@@ -1057,7 +1072,7 @@ export async function upsertBillingEvidenceForVisit(
     exclusionReason,
     specialCapEligible,
     onlineEligible: emergencyCategory === 'online',
-    regionAddOnEligible: [],
+    regionAddOnEligible,
     visitType: visitRecord.schedule.visit_type,
     emergencyCategory,
     afterHoursVisit,
@@ -1072,21 +1087,7 @@ export async function upsertBillingEvidenceForVisit(
   });
 
   // ── 薬局情報から体制加算を判定 ──
-  const siteId = visitRecord.schedule.site_id;
-  if (siteId) {
-    const siteConfigRow = await tx.pharmacySiteInsuranceConfig.findFirst({
-      where: {
-        org_id: args.orgId,
-        site_id: siteId,
-        insurance_type: payerBasis === 'care' ? 'care' : 'medical',
-        effective_from: { lte: visitDateOnly },
-        OR: [{ effective_to: null }, { effective_to: { gte: visitDateOnly } }],
-      },
-      orderBy: { effective_from: 'desc' },
-    });
-
-    const config = (siteConfigRow?.config ?? {}) as Record<string, unknown>;
-
+  if (siteId && siteConfigRow) {
     if (siteConfigRow && payerBasis === 'medical') {
       // 在宅薬学総合体制加算 (level_2: 50点 > level_1: 15点、排他)
       const homeLevel = config.home_comprehensive_level as string | undefined;
@@ -1117,15 +1118,11 @@ export async function upsertBillingEvidenceForVisit(
 
     // 介護保険の地域加算を薬局情報から自動判定
     if (siteConfigRow && payerBasis === 'care') {
-      const regionAddOns: Array<'special_15' | 'small_office_10' | 'resident_5'> = [];
-      if (config.region_special_15) regionAddOns.push('special_15');
-      if (config.region_small_office_10) regionAddOns.push('small_office_10');
-      if (config.region_resident_5) regionAddOns.push('resident_5');
-      if (regionAddOns.length > 0) {
+      if (regionAddOnEligible.length > 0) {
         for (const spec of candidateSpecs) {
           const cond = spec.calculationBreakdown as Record<string, unknown>;
           const regionKey = (cond.conditions as Record<string, unknown>)?.region_add_on;
-          if (typeof regionKey === 'string' && regionAddOns.includes(regionKey as 'special_15' | 'small_office_10' | 'resident_5')) {
+          if (typeof regionKey === 'string' && regionAddOnEligible.includes(regionKey as 'special_15' | 'small_office_10' | 'resident_5')) {
             if (spec.status === 'excluded' && claimable) {
               spec.status = 'candidate';
               spec.exclusionReason = 'SSOT上の追加算定候補です。要件確認後に採否を確定してください';
@@ -1186,6 +1183,19 @@ export async function upsertBillingEvidenceForVisit(
         assignment_scope: billingAssignment.assignment_scope,
         monthly_visit_count: monthlyVisitCount,
         weekly_visit_count: weeklyVisitCount,
+        special_cap_eligible: specialCapEligible,
+        online_eligible: emergencyCategory === 'online',
+        region_add_on_eligible: regionAddOnEligible,
+        visit_type: visitRecord.schedule.visit_type,
+        emergency_category: emergencyCategory,
+        after_hours_visit: afterHoursVisit,
+        infant_eligible: infantEligible,
+        pediatric_age: pediatricAge,
+        narcotic_required: narcoticRequired,
+        narcotic_injection_required: narcoticInjectionRequired,
+        central_venous_required: centralVenousRequired,
+        enteral_required: enteralRequired,
+        care_level_category: careLevelCategory,
       } as Prisma.InputJsonValue,
       same_month_exclusion_flags: exclusionFlags as Prisma.InputJsonValue,
       validation_notes: claimable
@@ -1233,6 +1243,19 @@ export async function upsertBillingEvidenceForVisit(
         assignment_scope: billingAssignment.assignment_scope,
         monthly_visit_count: monthlyVisitCount,
         weekly_visit_count: weeklyVisitCount,
+        special_cap_eligible: specialCapEligible,
+        online_eligible: emergencyCategory === 'online',
+        region_add_on_eligible: regionAddOnEligible,
+        visit_type: visitRecord.schedule.visit_type,
+        emergency_category: emergencyCategory,
+        after_hours_visit: afterHoursVisit,
+        infant_eligible: infantEligible,
+        pediatric_age: pediatricAge,
+        narcotic_required: narcoticRequired,
+        narcotic_injection_required: narcoticInjectionRequired,
+        central_venous_required: centralVenousRequired,
+        enteral_required: enteralRequired,
+        care_level_category: careLevelCategory,
       } as Prisma.InputJsonValue,
       same_month_exclusion_flags: exclusionFlags as Prisma.InputJsonValue,
       validation_notes: claimable

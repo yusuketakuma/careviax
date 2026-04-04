@@ -103,7 +103,8 @@
     "overrides": {
       "@auth/core>cookie": "0.7.2",
       "minimatch@3>brace-expansion": "1.1.13",
-      "minimatch@9>brace-expansion": "2.0.3"
+      "minimatch@9>brace-expansion": "2.0.3",
+      "defu": ">=6.1.5"
     }
   }
 }

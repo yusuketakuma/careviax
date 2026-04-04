@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
@@ -64,7 +65,7 @@ export async function PATCH(
         revision_label: parsed.data.revision_label ?? null,
         effective_from: nextStart,
         effective_to: nextEnd,
-        config: parsed.data.config,
+        config: parsed.data.config as Prisma.InputJsonValue,
       },
     });
 
@@ -75,7 +76,7 @@ export async function PATCH(
         action: 'insurance_config_updated',
         target_type: 'PharmacySiteInsuranceConfig',
         target_id: configId,
-        changes: parsed.data,
+        changes: parsed.data as Prisma.InputJsonValue,
         ip_address: ctx.ipAddress,
         user_agent: ctx.userAgent,
       },

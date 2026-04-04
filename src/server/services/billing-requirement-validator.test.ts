@@ -259,6 +259,24 @@ describe('validateBillingRequirements', () => {
     expect(consentAlert!.details.consent_exists).toBe(true);
   });
 
+  it('warns when consent expires before the proposed visit date even if it is not yet expired today', async () => {
+    findActiveVisitConsentMock.mockResolvedValue({
+      id: 'consent_1',
+      expiry_date: new Date('2026-04-10T00:00:00.000Z'),
+    });
+
+    const alerts = await validateBillingRequirements({
+      ...baseArgs,
+      proposedDate: new Date('2026-04-15T09:00:00.000Z'),
+    });
+    const consentAlert = alerts.find(
+      (a) => a.type === 'consent_expired_or_missing',
+    );
+    expect(consentAlert).toBeDefined();
+    expect(consentAlert!.message).toContain('訪問予定日時点');
+    expect(consentAlert!.details.proposed_date).toBe('2026-04-15T09:00:00.000Z');
+  });
+
   it('does not warn when consent has no expiry', async () => {
     findActiveVisitConsentMock.mockResolvedValue({
       id: 'consent_1',

@@ -138,7 +138,12 @@ describe('/api/visit-schedule-proposals', () => {
     findCurrentManagementPlanMock.mockResolvedValue({ current: { id: 'plan_1', status: 'approved' }, reviewOverdue: false });
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
     generateVisitScheduleProposalDraftsMock.mockResolvedValue([
-      { org_id: 'org_1', case_id: 'case_1', proposed_pharmacist_id: 'user_2' },
+      {
+        org_id: 'org_1',
+        case_id: 'case_1',
+        proposed_pharmacist_id: 'user_2',
+        proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+      },
     ]);
     visitScheduleProposalCreateMock.mockResolvedValue({ id: 'proposal_2' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -276,5 +281,27 @@ describe('/api/visit-schedule-proposals', () => {
         priority: 'emergency',
       })
     );
+  });
+
+  it('still returns billing alerts for generated pharmacists when preferred_pharmacist_id is omitted', async () => {
+    userFindFirstMock.mockResolvedValueOnce({ max_weekly_visits: 1 });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+      })
+    ))!;
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      alerts: expect.arrayContaining([
+        expect.objectContaining({
+          type: 'pharmacist_weekly_capacity',
+          severity: 'warning',
+        }),
+      ]),
+    });
   });
 });

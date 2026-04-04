@@ -41,12 +41,20 @@ type ExternalAccessTokenPayload = {
   purpose: 'external_access_grant';
 };
 
+export class MissingExternalAccessSecretError extends Error {
+  constructor() {
+    super('External access token secret is not configured');
+    this.name = 'MissingExternalAccessSecretError';
+  }
+}
+
 function getExternalAccessSecret() {
-  return (
-    process.env.EXTERNAL_ACCESS_TOKEN_SECRET ??
-    process.env.NEXTAUTH_SECRET ??
-    'careviax-external-access'
-  );
+  const secret =
+    process.env.EXTERNAL_ACCESS_TOKEN_SECRET ?? process.env.NEXTAUTH_SECRET;
+  if (!secret) {
+    throw new MissingExternalAccessSecretError();
+  }
+  return secret;
 }
 
 function isExternalAccessTokenPayload(
@@ -81,11 +89,16 @@ export async function issueExternalAccessToken(args: {
 }
 
 async function decodeExternalAccessToken(token: string) {
-  const payload = await decode({
-    token,
-    secret: getExternalAccessSecret(),
-    salt: EXTERNAL_ACCESS_TOKEN_SALT,
-  }).catch(() => null);
+  let payload: Awaited<ReturnType<typeof decode>> | null = null;
+  try {
+    payload = await decode({
+      token,
+      secret: getExternalAccessSecret(),
+      salt: EXTERNAL_ACCESS_TOKEN_SALT,
+    });
+  } catch {
+    return null;
+  }
 
   if (!payload || !isExternalAccessTokenPayload(payload as Record<string, unknown>)) {
     return null;

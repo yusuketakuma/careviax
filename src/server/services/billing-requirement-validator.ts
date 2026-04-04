@@ -362,15 +362,16 @@ export async function validateBillingRequirements(
       details: { consent_exists: false },
       as_of: asOf,
     });
-  } else if (consent.expiry_date && consent.expiry_date < new Date()) {
+  } else if (consent.expiry_date && consent.expiry_date < args.proposedDate) {
     alerts.push({
       type: 'consent_expired_or_missing',
       severity: 'warning',
-      message: `訪問薬剤管理指導の同意書が${consent.expiry_date.toISOString().slice(0, 10)}に期限切れです。更新が必要です`,
+      message: `訪問予定日時点で同意書が${consent.expiry_date.toISOString().slice(0, 10)}に期限切れです。更新が必要です`,
       details: {
         consent_exists: true,
         consent_id: consent.id,
         expiry_date: consent.expiry_date.toISOString(),
+        proposed_date: args.proposedDate.toISOString(),
       },
       as_of: asOf,
     });

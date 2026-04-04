@@ -3,7 +3,6 @@ import { HOME_CARE_BILLING_RULESET_VERSION } from '../home-care-billing-ssot';
 import type {
   Tx,
   AdditionalBillingRuleDefinition,
-  BillingCandidateWorkflowState,
 } from './core';
 import {
   startOfMonth,
@@ -126,7 +125,22 @@ export async function generateInformationProvisionCandidates(
         org_id: args.orgId,
         report_type: 'care_manager_report',
         status: { in: ['sent', 'confirmed'] },
-        updated_at: { gte: monthStart, lte: monthEnd },
+        OR: [
+          {
+            delivery_records: {
+              some: {
+                status: { in: ['sent', 'confirmed'] },
+                sent_at: { gte: monthStart, lte: monthEnd },
+              },
+            },
+          },
+          {
+            delivery_records: {
+              none: {},
+            },
+            updated_at: { gte: monthStart, lte: monthEnd },
+          },
+        ],
       },
       select: {
         id: true,
@@ -134,7 +148,6 @@ export async function generateInformationProvisionCandidates(
         case_id: true,
         content: true,
         status: true,
-        updated_at: true,
       },
     }),
   ]);
