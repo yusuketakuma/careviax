@@ -641,11 +641,22 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       <Card>
         <CardContent className="pt-6">
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_240px] lg:items-center">
-            <p className="text-sm text-muted-foreground">
-              HOT は `HOT_MASTER_URL` または明示 URL、PMDA は `PMDA_PACKAGE_INSERT_FULL_URL` /
-              `PMDA_PACKAGE_INSERT_DELTA_URL` を使います。PMDA 実ファイルの取得自体は
-              メディナビ/マイ医薬品集の登録が前提です。
-            </p>
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                HOTコードマスターおよびPMDA添付文書の連携が未設定の場合は、システム管理者に連絡してください。
+                PMDA添付文書の取得にはメディナビ/マイ医薬品集の登録が必要です。
+              </p>
+              <details className="group">
+                <summary className="cursor-pointer text-xs text-muted-foreground/70 hover:text-muted-foreground">
+                  技術詳細を表示
+                </summary>
+                <p className="mt-1 rounded-md bg-muted/40 px-3 py-2 font-mono text-xs text-muted-foreground">
+                  HOT: <code>HOT_MASTER_URL</code> または明示 URL
+                  <br />
+                  PMDA: <code>PMDA_PACKAGE_INSERT_FULL_URL</code> / <code>PMDA_PACKAGE_INSERT_DELTA_URL</code>
+                </p>
+              </details>
+            </div>
             <label className="space-y-1">
               <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
                 <Building2 className="size-3.5" aria-hidden="true" />

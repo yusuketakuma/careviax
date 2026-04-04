@@ -367,9 +367,9 @@ export function Sidebar({ className }: SidebarProps) {
       <nav className="flex-1 overflow-y-auto p-2" aria-label="ワークフローナビ">
         {mainNavGroups.map((group, groupIndex) => (
           <div key={group.label}>
-            {groupIndex > 0 && <div className="my-1.5 border-t border-border/50" />}
+            {groupIndex > 0 && <div className="my-2 border-t border-border/50" />}
             {sidebarOpen && (
-              <p className="mb-0.5 px-3 pt-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+              <p className="mb-0.5 px-3 pt-2 text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
                 {group.label}
               </p>
             )}

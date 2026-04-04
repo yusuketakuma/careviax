@@ -184,8 +184,8 @@ export function PrescriptionsWorkspace() {
       </div>
 
       {/* ━━ フィルタバー ━━ */}
-      <div className="flex flex-wrap items-center gap-1.5 border-b px-3 py-1">
-        <span className="text-[10px] font-medium text-muted-foreground">状態</span>
+      <div className="flex items-center gap-1.5 overflow-x-auto border-b px-3 py-1 scrollbar-hide">
+        <span className="shrink-0 text-[10px] font-medium text-muted-foreground">状態</span>
         {STATUS_FILTER_OPTIONS.map((opt) => {
           const isActive = statusFilter === opt.value;
           const count = opt.value === 'all' ? allItems.length : (statusCounts[opt.value] ?? 0);
@@ -194,7 +194,7 @@ export function PrescriptionsWorkspace() {
               key={opt.value}
               type="button"
               onClick={() => handleFilterStatus(opt.value)}
-              className={`inline-flex h-5 items-center gap-0.5 rounded px-1.5 text-[10px] font-medium transition-colors ${
+              className={`inline-flex h-5 shrink-0 items-center gap-0.5 rounded px-1.5 text-[10px] font-medium transition-colors ${
                 isActive
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-muted/50 text-muted-foreground hover:bg-muted'
@@ -210,9 +210,9 @@ export function PrescriptionsWorkspace() {
           );
         })}
 
-        <div className="mx-1 h-3 w-px bg-border" />
+        <div className="mx-1 h-3 w-px shrink-0 bg-border" />
 
-        <span className="text-[10px] font-medium text-muted-foreground">種別</span>
+        <span className="shrink-0 text-[10px] font-medium text-muted-foreground">種別</span>
         {SOURCE_FILTER_OPTIONS.map((opt) => {
           const isActive = sourceFilter === opt.value;
           return (
@@ -220,7 +220,7 @@ export function PrescriptionsWorkspace() {
               key={opt.value}
               type="button"
               onClick={() => handleFilterSource(opt.value)}
-              className={`inline-flex h-5 items-center rounded px-1.5 text-[10px] font-medium transition-colors ${
+              className={`inline-flex h-5 shrink-0 items-center rounded px-1.5 text-[10px] font-medium transition-colors ${
                 isActive
                   ? 'bg-secondary text-secondary-foreground'
                   : 'text-muted-foreground hover:bg-muted/50'

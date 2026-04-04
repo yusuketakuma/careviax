@@ -3,6 +3,7 @@ import { DashboardContent } from './dashboard-content';
 import { DashboardSectionGroup } from './dashboard-section-group';
 import { DeviceSupportMatrix } from './device-support-matrix';
 import { OnboardingChecklist } from './onboarding-checklist';
+import { OnboardingDismissable, OnboardingRestoreLink } from './onboarding-dismissable';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { DASHBOARD_HEADER_SHORTCUTS } from '@/lib/dashboard/home-config';
 import { PageScaffold } from '@/components/layout/page-scaffold';
@@ -18,7 +19,10 @@ export default function DashboardPage() {
           description="在宅訪問薬局業務・連携プラットフォーム"
           supportingContent={
             <div className="space-y-1">
-              <p className="text-sm font-medium text-foreground">最初に把握すること</p>
+              <div className="flex items-center gap-3">
+                <p className="text-sm font-medium text-foreground">最初に把握すること</p>
+                <OnboardingRestoreLink />
+              </div>
               <p className="text-sm text-muted-foreground">
                 今日の全体状況、自分の予定、優先タスク、中核フローごとの滞留件数をここから確認します。
               </p>
@@ -30,7 +34,9 @@ export default function DashboardPage() {
         </WorkflowPageHeader>
       </div>
       <PageScaffold variant="bare">
-        <OnboardingChecklist />
+        <OnboardingDismissable>
+          <OnboardingChecklist />
+        </OnboardingDismissable>
         <DashboardContent />
         <DashboardSectionGroup
           id="dashboard-environment-guidance"

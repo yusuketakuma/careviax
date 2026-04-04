@@ -582,13 +582,19 @@ export function AdminDashboardContent() {
         variant={variant}
         title="管理者ダッシュボードを読み込めませんでした"
         description={firstError.message}
+        detail={
+          <p className="text-sm text-muted-foreground">
+            データベース接続またはネットワークを確認してください。
+          </p>
+        }
         action={{
-          label: '再試行',
+          label: '再読み込み',
           onClick: () => {
             void overdueQuery.refetch();
             void monthlyStatsQuery.refetch();
             void workflowQuery.refetch();
           },
+          size: 'lg',
         }}
         secondaryAction={{
           label: 'ホームへ移動',
