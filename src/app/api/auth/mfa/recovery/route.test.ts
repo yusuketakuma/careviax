@@ -40,7 +40,12 @@ vi.mock('@/server/services/cognito-admin', () => ({
   disableCognitoTotpForUser: disableCognitoTotpForUserMock,
 }));
 
+vi.mock('@/lib/api/rate-limit', () => ({
+  checkAuthRateLimit: vi.fn().mockResolvedValue({ allowed: true, remaining: 4, resetAt: Date.now() + 60000 }),
+}));
+
 import { POST } from './route';
+import { checkAuthRateLimit } from '@/lib/api/rate-limit';
 
 function createRequest(body: unknown) {
   return new Request('http://localhost/api/auth/mfa/recovery', {
@@ -55,6 +60,7 @@ function createRequest(body: unknown) {
 describe('/api/auth/mfa/recovery POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(checkAuthRateLimit).mockResolvedValue({ allowed: true, remaining: 4, resetAt: Date.now() + 60000 });
     userFindUniqueMock.mockResolvedValue({
       id: 'user_1',
       email: 'pharmacist@example.com',

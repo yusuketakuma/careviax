@@ -7,7 +7,11 @@ const BOM = '\uFEFF';
 
 function escapeCsv(value: string | null | undefined): string {
   if (value == null) return '';
-  const str = String(value);
+  let str = String(value);
+  // Prevent CSV formula injection (Excel/Sheets interpret leading =, +, -, @, tab, CR as formulas)
+  if (str.length > 0 && /^[=+\-@\t\r]/.test(str)) {
+    str = "'" + str;
+  }
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {
     return `"${str.replace(/"/g, '""')}"`;
   }
@@ -38,11 +42,13 @@ export const GET = withAuthContext(
     });
     if (!patient) return notFound('患者が見つかりません');
 
+    const EXPORT_LIMIT = 10000;
     const intakes = await prisma.prescriptionIntake.findMany({
       where: {
         org_id: ctx.orgId,
         cycle: { patient_id: patientId },
       },
+      take: EXPORT_LIMIT,
       orderBy: { prescribed_date: 'desc' },
       select: {
         id: true,
@@ -149,6 +155,7 @@ export const GET = withAuthContext(
 
     const csv = BOM + [header, ...rows].join('\r\n') + '\r\n';
     const filename = `prescriptions_${patient.name}_${new Date().toISOString().slice(0, 10)}.csv`;
+    const truncated = intakes.length === EXPORT_LIMIT;
 
     return new NextResponse(csv, {
       status: 200,
@@ -156,6 +163,7 @@ export const GET = withAuthContext(
         'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
         'Cache-Control': 'no-store',
+        ...(truncated ? { 'X-Export-Truncated': 'true' } : {}),
       },
     });
   }

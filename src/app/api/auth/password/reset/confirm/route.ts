@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { externalError, validationError } from '@/lib/api/response';
+import { checkAuthRateLimit } from '@/lib/api/rate-limit';
 import { confirmForgotPassword } from '@/server/services/cognito-auth';
 
 const schema = z.object({
@@ -47,6 +48,12 @@ function classifyPasswordResetConfirmError(error: unknown) {
 }
 
 export async function POST(req: Request) {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const rateLimit = await checkAuthRateLimit(ip, '/api/auth/password/reset/confirm');
+  if (!rateLimit.allowed) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = schema.safeParse(body);
 

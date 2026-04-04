@@ -7,7 +7,11 @@ const BOM = '\uFEFF';
 
 function escapeCsv(value: string | null | undefined): string {
   if (value == null) return '';
-  const str = String(value);
+  let str = String(value);
+  // Prevent CSV formula injection (Excel/Sheets interpret leading =, +, -, @, tab, CR as formulas)
+  if (str.length > 0 && /^[=+\-@\t\r]/.test(str)) {
+    str = "'" + str;
+  }
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {
     return `"${str.replace(/"/g, '""')}"`;
   }
@@ -47,11 +51,13 @@ export async function GET(req: NextRequest) {
       ? (caseStatusParam as CaseStatus)
       : undefined;
 
+  const EXPORT_LIMIT = 10000;
   const patients = await prisma.patient.findMany({
     where: {
       org_id: ctx.orgId,
       ...(caseStatus ? { cases: { some: { status: caseStatus } } } : {}),
     },
+    take: EXPORT_LIMIT,
     orderBy: [{ name_kana: 'asc' }, { name: 'asc' }],
     include: {
       residences: {
@@ -100,6 +106,7 @@ export async function GET(req: NextRequest) {
   });
 
   const csv = BOM + [header, ...rows].join('\r\n') + '\r\n';
+  const truncated = patients.length === EXPORT_LIMIT;
 
   return new NextResponse(csv, {
     status: 200,
@@ -107,6 +114,7 @@ export async function GET(req: NextRequest) {
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="patients_${new Date().toISOString().slice(0, 10)}.csv"`,
       'Cache-Control': 'no-store',
+      ...(truncated ? { 'X-Export-Truncated': 'true' } : {}),
     },
   });
 }

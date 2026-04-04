@@ -5,6 +5,7 @@
  * 登録済み webhook エンドポイントにイベントを非同期送信する。
  * 実装は in-process HTTP dispatch（スタブ）。将来的には SQS/EventBridge に移行。
  */
+import { createHmac } from 'node:crypto';
 
 export type WebhookEventType =
   | 'prescription.created'
@@ -41,13 +42,27 @@ export type WebhookDeliveryResult = {
 };
 
 /**
- * HMAC-SHA256 署名ヘッダを生成する（スタブ: 実際の crypto は将来実装）。
+ * Validate that a webhook URL is safe to send outbound requests to.
+ * Rejects non-HTTPS URLs and private/loopback/link-local address ranges
+ * to prevent SSRF attacks.
+ */
+export function isAllowedWebhookUrl(rawUrl: string): boolean {
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol !== 'https:') return false;
+    const hostname = url.hostname;
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return false;
+    if (hostname.startsWith('169.254.') || hostname.startsWith('10.') || hostname.startsWith('192.168.')) return false;
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(hostname)) return false;
+    return true;
+  } catch { return false; }
+}
+
+/**
+ * HMAC-SHA256 署名ヘッダを生成する。
  */
 function buildSignatureHeader(secret: string, body: string): string {
-  void secret;
-  void body;
-  // TODO(phase-future): implement HMAC-SHA256: `X-CareViaX-Signature: sha256=<hex>`
-  return 'sha256=stub';
+  return 'sha256=' + createHmac('sha256', secret).update(body).digest('hex');
 }
 
 /**

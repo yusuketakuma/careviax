@@ -14,6 +14,9 @@ Sentry.init({
     if (event.request?.cookies) {
       event.request.cookies = {};
     }
+    if (event.request?.data) {
+      event.request.data = '[REDACTED]';
+    }
     if (event.request?.headers) {
       const allowed = ['content-type', 'x-request-id', 'x-trace-id', 'user-agent'];
       const headers: Record<string, string> = {};

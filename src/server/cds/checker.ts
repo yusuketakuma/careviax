@@ -313,13 +313,22 @@ async function checkMaxDays(
 ): Promise<CdsAlert[]> {
   const alerts: CdsAlert[] = [];
 
+  const drugCodes = prescriptionLines
+    .map((l) => l.drug_code)
+    .filter((c): c is string => c !== null);
+
+  if (drugCodes.length === 0) return alerts;
+
+  const drugs = await prisma.drugMaster.findMany({
+    where: { yj_code: { in: drugCodes } },
+    select: { yj_code: true, max_administration_days: true, drug_name: true },
+  });
+
+  const drugByCode = new Map(drugs.map((d) => [d.yj_code, d]));
+
   for (const line of prescriptionLines) {
     if (!line.drug_code) continue;
-
-    const drug = await prisma.drugMaster.findFirst({
-      where: { yj_code: line.drug_code },
-      select: { max_administration_days: true, drug_name: true },
-    });
+    const drug = drugByCode.get(line.drug_code);
 
     if (drug?.max_administration_days && line.days > drug.max_administration_days) {
       alerts.push({
@@ -341,10 +350,14 @@ async function checkMaxDays(
 // 3b. Package insert audit (contraindications, adverse effects, elderly)
 // ---------------------------------------------------------------------------
 
+type PatientForChecks = {
+  birth_date: Date | null;
+  allergy_info: Prisma.JsonValue | null;
+};
+
 async function checkPackageInsertAudit(
   prescriptionLines: PrescriptionLine[],
-  patientId: string,
-  orgId: string,
+  patient: PatientForChecks | null,
 ): Promise<CdsAlert[]> {
   const alerts: CdsAlert[] = [];
 
@@ -362,11 +375,6 @@ async function checkPackageInsertAudit(
 
   if (packageInserts.length === 0) return alerts;
 
-  // Check patient age for elderly precautions
-  const patient = await prisma.patient.findFirst({
-    where: { id: patientId, org_id: orgId },
-    select: { birth_date: true },
-  });
   const patientAge = patient?.birth_date
     ? differenceInYears(new Date(), patient.birth_date)
     : null;
@@ -490,16 +498,9 @@ async function checkTransitionalExpiry(
 
 async function checkAllergyReactions(
   prescriptionLines: PrescriptionLine[],
-  patientId: string,
-  orgId: string,
+  patient: PatientForChecks | null,
 ): Promise<CdsAlert[]> {
   const alerts: CdsAlert[] = [];
-
-  // Fetch patient allergy info
-  const patient = await prisma.patient.findFirst({
-    where: { id: patientId, org_id: orgId },
-    select: { allergy_info: true },
-  });
 
   if (!patient?.allergy_info) return alerts;
 
@@ -832,16 +833,9 @@ async function checkDoPrescriptionRisk(
 
 async function checkElderlyPIM(
   prescriptionLines: PrescriptionLine[],
-  patientId: string,
-  orgId: string,
+  patient: PatientForChecks | null,
 ): Promise<CdsAlert[]> {
   const alerts: CdsAlert[] = [];
-
-  // Fetch patient birth_date
-  const patient = await prisma.patient.findFirst({
-    where: { id: patientId, org_id: orgId },
-    select: { birth_date: true },
-  });
 
   if (!patient?.birth_date) return alerts;
 
@@ -1141,6 +1135,12 @@ export async function checkDispenseAlerts(
     }
   }
 
+  // Fetch patient once for all checks that need it
+  const patient = await prisma.patient.findFirst({
+    where: { id: patientId, org_id: orgId },
+    select: { birth_date: true, allergy_info: true },
+  });
+
   // Run all checks in parallel
   const results = await Promise.all([
     managedAlertStates.get('interaction')
@@ -1154,7 +1154,7 @@ export async function checkDispenseAlerts(
       : Promise.resolve([]),
     checkTransitionalExpiry(prescriptionLines),
     managedAlertStates.get('allergy_cross')
-      ? checkAllergyReactions(prescriptionLines, patientId, orgId)
+      ? checkAllergyReactions(prescriptionLines, patient)
       : Promise.resolve([]),
     managedAlertStates.get('narcotic')
       ? checkNarcoticFlags(prescriptionLines)
@@ -1164,13 +1164,13 @@ export async function checkDispenseAlerts(
       : Promise.resolve([]),
     checkDoPrescriptionRisk(orgId, cycleId, patientId),
     managedAlertStates.get('pim_elderly')
-      ? checkElderlyPIM(prescriptionLines, patientId, orgId)
+      ? checkElderlyPIM(prescriptionLines, patient)
       : Promise.resolve([]),
     managedAlertStates.get('renal_dose')
       ? checkRenalDoseAdjustment(prescriptionLines, patientId, orgId)
       : Promise.resolve([]),
     // Package insert audit — always enabled (regulatory information)
-    checkPackageInsertAudit(prescriptionLines, patientId, orgId),
+    checkPackageInsertAudit(prescriptionLines, patient),
     // PT-INR / K monitoring — always enabled
     checkMonitoringAlerts(prescriptionLines, patientId, orgId),
   ]);

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { externalError, validationError } from '@/lib/api/response';
+import { checkAuthRateLimit } from '@/lib/api/rate-limit';
 import { prisma } from '@/lib/db/client';
 import {
   clearMfaRecoveryCodes,
@@ -15,6 +16,12 @@ const recoverySchema = z.object({
 });
 
 export async function POST(req: Request) {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const rateLimit = await checkAuthRateLimit(ip, '/api/auth/mfa/recovery');
+  if (!rateLimit.allowed) {
+    return Response.json({ error: 'Too many requests' }, { status: 429 });
+  }
+
   const body = (await req.json().catch(() => null)) as
     | { email?: string; recoveryCode?: string }
     | null;

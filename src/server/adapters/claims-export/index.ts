@@ -67,6 +67,19 @@ export type ClaimsExportAdapterConfig = {
   accessToken?: string;
 };
 
+/**
+ * Escape a string for safe interpolation into an XML attribute value.
+ * Replaces the five predefined XML entities.
+ */
+function escapeXmlAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 class StubClaimsExportAdapter implements ClaimsExportAdapterContract {
   getCapabilities(): ClaimsExportCapabilities {
     return {
@@ -81,13 +94,13 @@ class StubClaimsExportAdapter implements ClaimsExportAdapterContract {
     const lines = payload.records
       .map(
         (record) =>
-          `  <Claim patientId="${record.patientId}" billingCode="${record.billingCode}" points="${record.points}" month="${record.billingMonth}" insuranceType="${record.insuranceType}"/>`
+          `  <Claim patientId="${escapeXmlAttr(record.patientId)}" billingCode="${escapeXmlAttr(record.billingCode)}" points="${escapeXmlAttr(String(record.points))}" month="${escapeXmlAttr(record.billingMonth)}" insuranceType="${escapeXmlAttr(record.insuranceType)}"/>`
       )
       .join('\n');
 
     const xml = [
       '<?xml version="1.0" encoding="UTF-8"?>',
-      `<ClaimsExport orgId="${payload.orgId}" siteId="${payload.siteId}" billingMonth="${payload.billingMonth}" generatedAt="${new Date().toISOString()}">`,
+      `<ClaimsExport orgId="${escapeXmlAttr(payload.orgId)}" siteId="${escapeXmlAttr(payload.siteId)}" billingMonth="${escapeXmlAttr(payload.billingMonth)}" generatedAt="${escapeXmlAttr(new Date().toISOString())}">`,
       lines,
       '</ClaimsExport>',
     ].join('\n');

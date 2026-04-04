@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, notFound } from '@/lib/api/response';
+import { success, notFound, conflict } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 
 export async function PATCH(
@@ -9,7 +9,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canVisit',
+    permission: 'canAdmin',
     message: '患者の復元権限がありません',
   });
   if ('response' in authResult) return authResult.response;
@@ -22,6 +22,7 @@ export async function PATCH(
     select: { id: true, archived_at: true },
   });
   if (!existing) return notFound('患者が見つかりません');
+  if (!existing.archived_at) return conflict('患者はアーカイブされていません');
 
   const updated = await withOrgContext(ctx.orgId, async (tx) => {
     return tx.patient.update({
