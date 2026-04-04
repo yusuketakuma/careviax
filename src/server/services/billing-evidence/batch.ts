@@ -27,20 +27,12 @@ export async function generateBillingCandidatesForMonth(
     },
     orderBy: [{ created_at: 'asc' }],
   });
-  const visitRecordClient = (tx as unknown as {
-    visitRecord?: {
-      findMany?: (args: {
-        where: { id: { in: string[] } };
-        select: { id: true; visit_date: true };
-      }) => Promise<Array<{ id: string; visit_date: Date }>>;
-    };
-  }).visitRecord;
   const visitRecordIds = evidences
     .map((evidence) => evidence.visit_record_id)
     .filter((value): value is string => typeof value === 'string' && value.length > 0);
   const visitDates =
-    visitRecordClient?.findMany && visitRecordIds.length > 0
-      ? await visitRecordClient.findMany({
+    visitRecordIds.length > 0
+      ? await tx.visitRecord.findMany({
           where: { id: { in: visitRecordIds } },
           select: { id: true, visit_date: true },
         })

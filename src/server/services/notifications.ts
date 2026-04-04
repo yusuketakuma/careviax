@@ -128,16 +128,15 @@ export async function dispatchNotificationEvent(
     }
   }
 
-  const notifications = [];
-  for (const userId of targetUserIds) {
-    if (input.dedupeKey) {
-      notifications.push(
-        await tx.notification.upsert({
+  const notifications = await Promise.all(
+    targetUserIds.map((userId) => {
+      if (input.dedupeKey) {
+        return tx.notification.upsert({
           where: {
             org_id_user_id_dedupe_key: {
               org_id: input.orgId,
               user_id: userId,
-              dedupe_key: input.dedupeKey,
+              dedupe_key: input.dedupeKey!,
             },
           },
           create: {
@@ -161,13 +160,9 @@ export async function dispatchNotificationEvent(
             is_read: false,
             read_at: null,
           },
-        })
-      );
-      continue;
-    }
-
-    notifications.push(
-      await tx.notification.create({
+        });
+      }
+      return tx.notification.create({
         data: {
           org_id: input.orgId,
           user_id: userId,
@@ -178,9 +173,9 @@ export async function dispatchNotificationEvent(
           link: input.link ?? null,
           metadata: input.metadata ?? Prisma.JsonNull,
         },
-      })
-    );
-  }
+      });
+    })
+  );
 
   const [smsUserIds, lineUserIds, faxUserIds, mcsUserIds] = await Promise.all([
     resolveTargetUserIds(tx, input, rules, 'sms'),

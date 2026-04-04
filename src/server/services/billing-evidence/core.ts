@@ -405,8 +405,13 @@ export function mergeCandidateSourceSnapshot(args: {
  *   ③ 対象患者数 ≤ 建物の総戸数の 10%
  *   ④ グループホーム (ユニット数 3 以下) → ユニット単位でカウント
  */
-async function resolveBuildingPatientCount(tx: Tx, args: { orgId: string; patientId: string }) {
-  const primaryResidence = await tx.residence.findFirst({
+type PrimaryResidenceForBilling = Awaited<ReturnType<typeof fetchPrimaryResidenceForBilling>>;
+
+async function fetchPrimaryResidenceForBilling(
+  tx: Tx,
+  args: { orgId: string; patientId: string }
+) {
+  return tx.residence.findFirst({
     where: {
       org_id: args.orgId,
       patient_id: args.patientId,
@@ -414,6 +419,7 @@ async function resolveBuildingPatientCount(tx: Tx, args: { orgId: string; patien
     },
     select: {
       building_id: true,
+      unit_name: true,
       facility_id: true,
       facility_unit_id: true,
       facility: {
@@ -426,6 +432,16 @@ async function resolveBuildingPatientCount(tx: Tx, args: { orgId: string; patien
       },
     },
   });
+}
+
+async function resolveBuildingPatientCount(
+  tx: Tx,
+  args: { orgId: string; patientId: string },
+  primaryResidence?: PrimaryResidenceForBilling
+) {
+  if (primaryResidence === undefined) {
+    primaryResidence = await fetchPrimaryResidenceForBilling(tx, args);
+  }
 
   // 在宅個人宅 (施設なし) → 1人
   const facilityId = primaryResidence?.facility_id;
@@ -473,18 +489,14 @@ async function resolveBuildingPatientCount(tx: Tx, args: { orgId: string; patien
   return totalPatientsInBuilding;
 }
 
-async function resolveBillingAssignment(tx: Tx, args: { orgId: string; patientId: string }) {
-  const primaryResidence = await tx.residence.findFirst({
-    where: {
-      org_id: args.orgId,
-      patient_id: args.patientId,
-      is_primary: true,
-    },
-    select: {
-      building_id: true,
-      unit_name: true,
-    },
-  });
+async function resolveBillingAssignment(
+  tx: Tx,
+  args: { orgId: string; patientId: string },
+  primaryResidence?: PrimaryResidenceForBilling
+) {
+  if (primaryResidence === undefined) {
+    primaryResidence = await fetchPrimaryResidenceForBilling(tx, args);
+  }
 
   if (!primaryResidence?.building_id) {
     return {
@@ -748,6 +760,10 @@ export async function upsertBillingEvidenceForVisit(
   const billingMonth = startOfMonth(visitRecord.visit_date);
   const weekStart = startOfWeek(visitRecord.visit_date);
   const weekEnd = endOfWeek(weekStart);
+  const primaryResidence = await fetchPrimaryResidenceForBilling(tx, {
+    orgId: args.orgId,
+    patientId: visitRecord.patient_id,
+  });
   const [
     consent,
     plan,
@@ -804,11 +820,11 @@ export async function upsertBillingEvidenceForVisit(
     resolveBuildingPatientCount(tx, {
       orgId: args.orgId,
       patientId: visitRecord.patient_id,
-    }),
+    }, primaryResidence),
     resolveBillingAssignment(tx, {
       orgId: args.orgId,
       patientId: visitRecord.patient_id,
-    }),
+    }, primaryResidence),
     tx.careReport.findMany({
       where: {
         org_id: args.orgId,
@@ -1147,6 +1163,53 @@ export async function upsertBillingEvidenceForVisit(
     }
   }
 
+  const calculationContext: Prisma.InputJsonValue = {
+    billing_service_type: billingServiceType,
+    provider_scope: providerScope,
+    building_patient_count: buildingPatientCount,
+    unit_patient_count: billingAssignment.unit_patient_count,
+    building_id: billingAssignment.building_id,
+    unit_name: billingAssignment.unit_name,
+    assignment_scope: billingAssignment.assignment_scope,
+    monthly_visit_count: monthlyVisitCount,
+    weekly_visit_count: weeklyVisitCount,
+    special_cap_eligible: specialCapEligible,
+    online_eligible: emergencyCategory === 'online',
+    region_add_on_eligible: regionAddOnEligible,
+    visit_type: visitRecord.schedule.visit_type,
+    emergency_category: emergencyCategory,
+    after_hours_visit: afterHoursVisit,
+    infant_eligible: infantEligible,
+    pediatric_age: pediatricAge,
+    narcotic_required: narcoticRequired,
+    narcotic_injection_required: narcoticInjectionRequired,
+    central_venous_required: centralVenousRequired,
+    enteral_required: enteralRequired,
+    care_level_category: careLevelCategory,
+  };
+
+  const sharedReportDeliveryRef = csvFromUnique([
+    ...deliveryRecords.map((record) => record.id),
+    ...conferenceDeliveryRecords.map((record) => record.id),
+  ]);
+
+  const sharedAppliedRuleKeys = candidateSpecs
+    .filter((spec) => spec.status === 'confirmed')
+    .map((spec) => spec.ssotKey) as Prisma.InputJsonValue;
+
+  const sharedRecommendedRuleKeys = Array.from(
+    new Set([
+      ...candidateSpecs
+        .filter((spec) => spec.status === 'candidate')
+        .map((spec) => spec.ssotKey),
+      ...conferenceRecommendedRuleKeys,
+    ])
+  ) as Prisma.InputJsonValue;
+
+  const sharedValidationNotes = claimable
+    ? '同意・管理計画書・報告送付を満たしています'
+    : exclusionReason;
+
   const evidence = await tx.billingEvidence.upsert({
     where: {
       org_id_visit_record_id: {
@@ -1167,54 +1230,17 @@ export async function upsertBillingEvidenceForVisit(
       exclusion_reason: exclusionReason,
       consent_ref: consent?.id ?? null,
       management_plan_ref: plan.current?.id ?? null,
-      report_delivery_ref: csvFromUnique([
-        ...deliveryRecords.map((record) => record.id),
-        ...conferenceDeliveryRecords.map((record) => record.id),
-      ]),
+      report_delivery_ref: sharedReportDeliveryRef,
       conference_note_ref: csvFromUnique(conferenceNoteIds),
       visit_record_ref: visitRecord.id,
       building_patient_count: buildingPatientCount,
       monthly_count_snapshot: monthlyVisitCount,
       weekly_count_snapshot: weeklyVisitCount,
-      applied_rule_keys: candidateSpecs
-        .filter((spec) => spec.status === 'confirmed')
-        .map((spec) => spec.ssotKey) as Prisma.InputJsonValue,
-      recommended_rule_keys: Array.from(
-        new Set([
-          ...candidateSpecs
-            .filter((spec) => spec.status === 'candidate')
-            .map((spec) => spec.ssotKey),
-          ...conferenceRecommendedRuleKeys,
-        ])
-      ) as Prisma.InputJsonValue,
-      calculation_context: {
-        billing_service_type: billingServiceType,
-        provider_scope: providerScope,
-        building_patient_count: buildingPatientCount,
-        unit_patient_count: billingAssignment.unit_patient_count,
-        building_id: billingAssignment.building_id,
-        unit_name: billingAssignment.unit_name,
-        assignment_scope: billingAssignment.assignment_scope,
-        monthly_visit_count: monthlyVisitCount,
-        weekly_visit_count: weeklyVisitCount,
-        special_cap_eligible: specialCapEligible,
-        online_eligible: emergencyCategory === 'online',
-        region_add_on_eligible: regionAddOnEligible,
-        visit_type: visitRecord.schedule.visit_type,
-        emergency_category: emergencyCategory,
-        after_hours_visit: afterHoursVisit,
-        infant_eligible: infantEligible,
-        pediatric_age: pediatricAge,
-        narcotic_required: narcoticRequired,
-        narcotic_injection_required: narcoticInjectionRequired,
-        central_venous_required: centralVenousRequired,
-        enteral_required: enteralRequired,
-        care_level_category: careLevelCategory,
-      } as Prisma.InputJsonValue,
+      applied_rule_keys: sharedAppliedRuleKeys,
+      recommended_rule_keys: sharedRecommendedRuleKeys,
+      calculation_context: calculationContext,
       same_month_exclusion_flags: exclusionFlags as Prisma.InputJsonValue,
-      validation_notes: claimable
-        ? '同意・管理計画書・報告送付を満たしています'
-        : exclusionReason,
+      validation_notes: sharedValidationNotes,
     },
     update: {
       patient_id: visitRecord.patient_id,
@@ -1227,54 +1253,17 @@ export async function upsertBillingEvidenceForVisit(
       exclusion_reason: exclusionReason,
       consent_ref: consent?.id ?? null,
       management_plan_ref: plan.current?.id ?? null,
-      report_delivery_ref: csvFromUnique([
-        ...deliveryRecords.map((record) => record.id),
-        ...conferenceDeliveryRecords.map((record) => record.id),
-      ]),
+      report_delivery_ref: sharedReportDeliveryRef,
       conference_note_ref: csvFromUnique(conferenceNoteIds),
       visit_record_ref: visitRecord.id,
       building_patient_count: buildingPatientCount,
       monthly_count_snapshot: monthlyVisitCount,
       weekly_count_snapshot: weeklyVisitCount,
-      applied_rule_keys: candidateSpecs
-        .filter((spec) => spec.status === 'confirmed')
-        .map((spec) => spec.ssotKey) as Prisma.InputJsonValue,
-      recommended_rule_keys: Array.from(
-        new Set([
-          ...candidateSpecs
-            .filter((spec) => spec.status === 'candidate')
-            .map((spec) => spec.ssotKey),
-          ...conferenceRecommendedRuleKeys,
-        ])
-      ) as Prisma.InputJsonValue,
-      calculation_context: {
-        billing_service_type: billingServiceType,
-        provider_scope: providerScope,
-        building_patient_count: buildingPatientCount,
-        unit_patient_count: billingAssignment.unit_patient_count,
-        building_id: billingAssignment.building_id,
-        unit_name: billingAssignment.unit_name,
-        assignment_scope: billingAssignment.assignment_scope,
-        monthly_visit_count: monthlyVisitCount,
-        weekly_visit_count: weeklyVisitCount,
-        special_cap_eligible: specialCapEligible,
-        online_eligible: emergencyCategory === 'online',
-        region_add_on_eligible: regionAddOnEligible,
-        visit_type: visitRecord.schedule.visit_type,
-        emergency_category: emergencyCategory,
-        after_hours_visit: afterHoursVisit,
-        infant_eligible: infantEligible,
-        pediatric_age: pediatricAge,
-        narcotic_required: narcoticRequired,
-        narcotic_injection_required: narcoticInjectionRequired,
-        central_venous_required: centralVenousRequired,
-        enteral_required: enteralRequired,
-        care_level_category: careLevelCategory,
-      } as Prisma.InputJsonValue,
+      applied_rule_keys: sharedAppliedRuleKeys,
+      recommended_rule_keys: sharedRecommendedRuleKeys,
+      calculation_context: calculationContext,
       same_month_exclusion_flags: exclusionFlags as Prisma.InputJsonValue,
-      validation_notes: claimable
-        ? '同意・管理計画書・報告送付を満たしています'
-        : exclusionReason,
+      validation_notes: sharedValidationNotes,
     },
   });
 

@@ -117,21 +117,21 @@ async function notifyAdminsOfJobFailure(
       where: membershipFilter,
       select: { user_id: true, org_id: true },
     });
-    const admins = adminMemberships.map((m) => ({ id: m.user_id, org_id: m.org_id }));
+    const dedupeKey = `job-failure:${jobType}:${new Date().toISOString().slice(0, 10)}`;
+    const message = `ジョブ「${jobType}」が${MAX_RETRIES}回リトライ後に失敗しました: ${errorMessage.slice(0, 200)}`;
 
-    for (const admin of admins) {
-      await prisma.notification.create({
-        data: {
-          org_id: admin.org_id,
-          user_id: admin.id,
-          type: 'urgent',
-          title: 'ジョブ実行失敗',
-          message: `ジョブ「${jobType}」が${MAX_RETRIES}回リトライ後に失敗しました: ${errorMessage.slice(0, 200)}`,
-          link: '/admin/jobs',
-          dedupe_key: `job-failure:${jobType}:${new Date().toISOString().slice(0, 10)}`,
-        },
-      });
-    }
+    await prisma.notification.createMany({
+      data: adminMemberships.map((m) => ({
+        org_id: m.org_id,
+        user_id: m.user_id,
+        type: 'urgent' as const,
+        title: 'ジョブ実行失敗',
+        message,
+        link: '/admin/jobs',
+        dedupe_key: dedupeKey,
+      })),
+      skipDuplicates: true,
+    });
   } catch {
     // Notification failure should not mask the original job error
     console.error(`[runner] Failed to notify admins about job failure: ${jobType}`);

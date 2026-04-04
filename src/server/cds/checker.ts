@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db/client';
-import { Prisma } from '@prisma/client';
+import { Prisma, type LabAnalyteCode } from '@prisma/client';
 import { differenceInYears } from 'date-fns';
 
 export type CdsAlert = {
@@ -29,6 +29,17 @@ type CurrentMed = {
 };
 
 type MasterInfo = { id: string; yj_code: string; drug_name: string; therapeutic_category: string | null };
+
+type DrugMasterForCds = {
+  id: string;
+  yj_code: string;
+  drug_name: string;
+  therapeutic_category: string | null;
+  max_administration_days: number | null;
+  transitional_expiry_date: Date | null;
+  is_narcotic: boolean;
+  is_psychotropic: boolean;
+};
 
 type AllergyEntry = {
   drug_name?: string;
@@ -310,6 +321,7 @@ async function checkDuplicates(
 
 async function checkMaxDays(
   prescriptionLines: PrescriptionLine[],
+  drugMasterMap?: Map<string, DrugMasterForCds>,
 ): Promise<CdsAlert[]> {
   const alerts: CdsAlert[] = [];
 
@@ -319,12 +331,16 @@ async function checkMaxDays(
 
   if (drugCodes.length === 0) return alerts;
 
-  const drugs = await prisma.drugMaster.findMany({
-    where: { yj_code: { in: drugCodes } },
-    select: { yj_code: true, max_administration_days: true, drug_name: true },
-  });
-
-  const drugByCode = new Map(drugs.map((d) => [d.yj_code, d]));
+  let drugByCode: Map<string, Pick<DrugMasterForCds, 'yj_code' | 'max_administration_days' | 'drug_name'>>;
+  if (drugMasterMap) {
+    drugByCode = drugMasterMap;
+  } else {
+    const drugs = await prisma.drugMaster.findMany({
+      where: { yj_code: { in: drugCodes } },
+      select: { yj_code: true, max_administration_days: true, drug_name: true },
+    });
+    drugByCode = new Map(drugs.map((d) => [d.yj_code, d]));
+  }
 
   for (const line of prescriptionLines) {
     if (!line.drug_code) continue;
@@ -446,6 +462,7 @@ async function checkPackageInsertAudit(
 
 async function checkTransitionalExpiry(
   prescriptionLines: PrescriptionLine[],
+  drugMasterMap?: Map<string, DrugMasterForCds>,
 ): Promise<CdsAlert[]> {
   const alerts: CdsAlert[] = [];
 
@@ -457,13 +474,20 @@ async function checkTransitionalExpiry(
 
   const now = new Date();
 
-  const drugs = await prisma.drugMaster.findMany({
-    where: {
-      yj_code: { in: drugCodes },
-      transitional_expiry_date: { not: null },
-    },
-    select: { yj_code: true, drug_name: true, transitional_expiry_date: true },
-  });
+  let drugs: Array<{ yj_code: string; drug_name: string; transitional_expiry_date: Date | null }>;
+  if (drugMasterMap) {
+    drugs = drugCodes
+      .map((code) => drugMasterMap.get(code))
+      .filter((d): d is DrugMasterForCds => d !== undefined && d.transitional_expiry_date !== null);
+  } else {
+    drugs = await prisma.drugMaster.findMany({
+      where: {
+        yj_code: { in: drugCodes },
+        transitional_expiry_date: { not: null },
+      },
+      select: { yj_code: true, drug_name: true, transitional_expiry_date: true },
+    });
+  }
 
   for (const drug of drugs) {
     if (!drug.transitional_expiry_date) continue;
@@ -499,6 +523,7 @@ async function checkTransitionalExpiry(
 async function checkAllergyReactions(
   prescriptionLines: PrescriptionLine[],
   patient: PatientForChecks | null,
+  drugMasterMap?: Map<string, DrugMasterForCds>,
 ): Promise<CdsAlert[]> {
   const alerts: CdsAlert[] = [];
 
@@ -522,14 +547,18 @@ async function checkAllergyReactions(
     .map((l) => l.drug_code)
     .filter((c): c is string => c !== null);
 
-  const prescribedDrugs = drugCodes.length > 0
-    ? await prisma.drugMaster.findMany({
-        where: { yj_code: { in: drugCodes } },
-        select: { yj_code: true, drug_name: true, therapeutic_category: true },
-      })
-    : [];
-
-  const drugByCode = new Map(prescribedDrugs.map((d) => [d.yj_code, d]));
+  let drugByCode: Map<string, Pick<DrugMasterForCds, 'yj_code' | 'drug_name' | 'therapeutic_category'>>;
+  if (drugMasterMap) {
+    drugByCode = drugMasterMap;
+  } else {
+    const prescribedDrugs = drugCodes.length > 0
+      ? await prisma.drugMaster.findMany({
+          where: { yj_code: { in: drugCodes } },
+          select: { yj_code: true, drug_name: true, therapeutic_category: true },
+        })
+      : [];
+    drugByCode = new Map(prescribedDrugs.map((d) => [d.yj_code, d]));
+  }
 
   for (const line of prescriptionLines) {
     if (!line.drug_code) continue;
@@ -597,6 +626,7 @@ async function checkAllergyReactions(
 
 async function checkNarcoticFlags(
   prescriptionLines: PrescriptionLine[],
+  drugMasterMap?: Map<string, DrugMasterForCds>,
 ): Promise<CdsAlert[]> {
   const alerts: CdsAlert[] = [];
 
@@ -606,12 +636,16 @@ async function checkNarcoticFlags(
 
   if (drugCodes.length === 0) return alerts;
 
-  const drugs = await prisma.drugMaster.findMany({
-    where: { yj_code: { in: drugCodes } },
-    select: { yj_code: true, drug_name: true, is_narcotic: true, is_psychotropic: true },
-  });
-
-  const drugByCode = new Map(drugs.map((d) => [d.yj_code, d]));
+  let drugByCode: Map<string, Pick<DrugMasterForCds, 'yj_code' | 'drug_name' | 'is_narcotic' | 'is_psychotropic'>>;
+  if (drugMasterMap) {
+    drugByCode = drugMasterMap;
+  } else {
+    const drugs = await prisma.drugMaster.findMany({
+      where: { yj_code: { in: drugCodes } },
+      select: { yj_code: true, drug_name: true, is_narcotic: true, is_psychotropic: true },
+    });
+    drugByCode = new Map(drugs.map((d) => [d.yj_code, d]));
+  }
 
   for (const line of prescriptionLines) {
     if (!line.drug_code) continue;
@@ -646,6 +680,7 @@ async function checkNarcoticFlags(
 
 async function checkHighRiskDrugs(
   prescriptionLines: PrescriptionLine[],
+  drugMasterMap?: Map<string, DrugMasterForCds>,
 ): Promise<CdsAlert[]> {
   const alerts: CdsAlert[] = [];
 
@@ -660,14 +695,18 @@ async function checkHighRiskDrugs(
     .map((l) => l.drug_code)
     .filter((c): c is string => c !== null);
 
-  const prescribedDrugs = drugCodes.length > 0
-    ? await prisma.drugMaster.findMany({
-        where: { yj_code: { in: drugCodes } },
-        select: { yj_code: true, therapeutic_category: true },
-      })
-    : [];
-
-  const drugByCode = new Map(prescribedDrugs.map((d) => [d.yj_code, d]));
+  let drugByCode: Map<string, Pick<DrugMasterForCds, 'yj_code' | 'therapeutic_category'>>;
+  if (drugMasterMap) {
+    drugByCode = drugMasterMap;
+  } else {
+    const prescribedDrugs = drugCodes.length > 0
+      ? await prisma.drugMaster.findMany({
+          where: { yj_code: { in: drugCodes } },
+          select: { yj_code: true, therapeutic_category: true },
+        })
+      : [];
+    drugByCode = new Map(prescribedDrugs.map((d) => [d.yj_code, d]));
+  }
 
   for (const line of prescriptionLines) {
     if (!line.drug_code) continue;
@@ -834,6 +873,7 @@ async function checkDoPrescriptionRisk(
 async function checkElderlyPIM(
   prescriptionLines: PrescriptionLine[],
   patient: PatientForChecks | null,
+  drugMasterMap?: Map<string, DrugMasterForCds>,
 ): Promise<CdsAlert[]> {
   const alerts: CdsAlert[] = [];
 
@@ -853,14 +893,18 @@ async function checkElderlyPIM(
     .map((l) => l.drug_code)
     .filter((c): c is string => c !== null);
 
-  const prescribedDrugs = drugCodes.length > 0
-    ? await prisma.drugMaster.findMany({
-        where: { yj_code: { in: drugCodes } },
-        select: { yj_code: true, therapeutic_category: true },
-      })
-    : [];
-
-  const drugByCode = new Map(prescribedDrugs.map((d) => [d.yj_code, d]));
+  let drugByCode: Map<string, Pick<DrugMasterForCds, 'yj_code' | 'therapeutic_category'>>;
+  if (drugMasterMap) {
+    drugByCode = drugMasterMap;
+  } else {
+    const prescribedDrugs = drugCodes.length > 0
+      ? await prisma.drugMaster.findMany({
+          where: { yj_code: { in: drugCodes } },
+          select: { yj_code: true, therapeutic_category: true },
+        })
+      : [];
+    drugByCode = new Map(prescribedDrugs.map((d) => [d.yj_code, d]));
+  }
 
   for (const line of prescriptionLines) {
     if (!line.drug_code) continue;
@@ -985,6 +1029,7 @@ async function checkMonitoringAlerts(
   prescriptionLines: PrescriptionLine[],
   patientId: string,
   orgId: string,
+  drugMasterMap?: Map<string, DrugMasterForCds>,
 ): Promise<CdsAlert[]> {
   const alerts: CdsAlert[] = [];
 
@@ -992,14 +1037,18 @@ async function checkMonitoringAlerts(
     .map((l) => l.drug_code)
     .filter((c): c is string => c !== null);
 
-  const prescribedDrugs = drugCodes.length > 0
-    ? await prisma.drugMaster.findMany({
-        where: { yj_code: { in: drugCodes } },
-        select: { yj_code: true, therapeutic_category: true },
-      })
-    : [];
-
-  const drugByCode = new Map(prescribedDrugs.map((d) => [d.yj_code, d]));
+  let drugByCode: Map<string, Pick<DrugMasterForCds, 'yj_code' | 'therapeutic_category'>>;
+  if (drugMasterMap) {
+    drugByCode = drugMasterMap;
+  } else {
+    const prescribedDrugs = drugCodes.length > 0
+      ? await prisma.drugMaster.findMany({
+          where: { yj_code: { in: drugCodes } },
+          select: { yj_code: true, therapeutic_category: true },
+        })
+      : [];
+    drugByCode = new Map(prescribedDrugs.map((d) => [d.yj_code, d]));
+  }
 
   let hasAnticoagulant = false;
   let hasDiuretic = false;
@@ -1023,7 +1072,7 @@ async function checkMonitoringAlerts(
   if (hasDiuretic) analyteCodes.push('k');
 
   const latestLabs = await prisma.patientLabObservation.findMany({
-    where: { patient_id: patientId, org_id: orgId, analyte_code: { in: analyteCodes as never[] } },
+    where: { patient_id: patientId, org_id: orgId, analyte_code: { in: analyteCodes as LabAnalyteCode[] } },
     orderBy: { measured_at: 'desc' },
     select: { analyte_code: true, value_numeric: true },
   });
@@ -1141,6 +1190,29 @@ export async function checkDispenseAlerts(
     select: { birth_date: true, allergy_info: true },
   });
 
+  // Single batch fetch for all drugMaster columns needed across all sub-checks
+  const prescriptionDrugCodes = prescriptionLines
+    .map((l) => l.drug_code)
+    .filter((c): c is string => c !== null);
+  const allDrugMasters = prescriptionDrugCodes.length > 0
+    ? await prisma.drugMaster.findMany({
+        where: { yj_code: { in: prescriptionDrugCodes } },
+        select: {
+          id: true,
+          yj_code: true,
+          drug_name: true,
+          therapeutic_category: true,
+          max_administration_days: true,
+          transitional_expiry_date: true,
+          is_narcotic: true,
+          is_psychotropic: true,
+        },
+      })
+    : [];
+  const drugMasterMap = new Map<string, DrugMasterForCds>(
+    allDrugMasters.map((d) => [d.yj_code, d])
+  );
+
   // Run all checks in parallel
   const results = await Promise.all([
     managedAlertStates.get('interaction')
@@ -1150,21 +1222,21 @@ export async function checkDispenseAlerts(
       ? checkDuplicates(prescriptionLines, currentMeds, masterByMedId)
       : Promise.resolve([]),
     managedAlertStates.get('max_days')
-      ? checkMaxDays(prescriptionLines)
+      ? checkMaxDays(prescriptionLines, drugMasterMap)
       : Promise.resolve([]),
-    checkTransitionalExpiry(prescriptionLines),
+    checkTransitionalExpiry(prescriptionLines, drugMasterMap),
     managedAlertStates.get('allergy_cross')
-      ? checkAllergyReactions(prescriptionLines, patient)
+      ? checkAllergyReactions(prescriptionLines, patient, drugMasterMap)
       : Promise.resolve([]),
     managedAlertStates.get('narcotic')
-      ? checkNarcoticFlags(prescriptionLines)
+      ? checkNarcoticFlags(prescriptionLines, drugMasterMap)
       : Promise.resolve([]),
     managedAlertStates.get('high_risk')
-      ? checkHighRiskDrugs(prescriptionLines)
+      ? checkHighRiskDrugs(prescriptionLines, drugMasterMap)
       : Promise.resolve([]),
     checkDoPrescriptionRisk(orgId, cycleId, patientId),
     managedAlertStates.get('pim_elderly')
-      ? checkElderlyPIM(prescriptionLines, patient)
+      ? checkElderlyPIM(prescriptionLines, patient, drugMasterMap)
       : Promise.resolve([]),
     managedAlertStates.get('renal_dose')
       ? checkRenalDoseAdjustment(prescriptionLines, patientId, orgId)
@@ -1172,7 +1244,7 @@ export async function checkDispenseAlerts(
     // Package insert audit — always enabled (regulatory information)
     checkPackageInsertAudit(prescriptionLines, patient),
     // PT-INR / K monitoring — always enabled
-    checkMonitoringAlerts(prescriptionLines, patientId, orgId),
+    checkMonitoringAlerts(prescriptionLines, patientId, orgId, drugMasterMap),
   ]);
 
   return results.flat();

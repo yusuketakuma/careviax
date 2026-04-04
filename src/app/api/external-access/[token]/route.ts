@@ -6,6 +6,7 @@ import {
   validateExternalAccessGrant,
 } from '@/server/services/external-access';
 import { createRateLimiter } from '@/lib/api/rate-limit';
+import { getClientIp } from '@/lib/api/request-ip';
 
 const otpRateLimiter = createRateLimiter({ windowMs: 60_000, maxRequests: 5 });
 
@@ -18,8 +19,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
-  const ip =
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const ip = getClientIp(req) ?? 'unknown';
   const rl = await otpRateLimiter(`otp-verify:${ip}`);
   if (!rl.allowed) {
     return error(

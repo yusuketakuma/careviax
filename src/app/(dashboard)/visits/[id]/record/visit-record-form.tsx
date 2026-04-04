@@ -705,7 +705,11 @@ export function VisitRecordForm({ id }: { id: string }) {
                 body: JSON.stringify({ analyte_code: code, measured_at: measuredAt, value_numeric: value, source_type: 'visit_record', source_visit_record_id: record.id }),
               }),
             ),
-        );
+        ).then((results) => {
+          if (results.some((r) => r.status === 'rejected')) {
+            toast.warning('検査値の一部が保存できませんでした');
+          }
+        });
       }
 
       if (selectedAttachments.length === 0) {

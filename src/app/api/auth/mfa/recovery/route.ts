@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import { externalError, validationError } from '@/lib/api/response';
+import { externalError, validationError, error } from '@/lib/api/response';
 import { checkAuthRateLimit } from '@/lib/api/rate-limit';
+import { getClientIp } from '@/lib/api/request-ip';
 import { prisma } from '@/lib/db/client';
 import {
   clearMfaRecoveryCodes,
@@ -16,10 +17,10 @@ const recoverySchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const ip = getClientIp(req) ?? 'unknown';
   const rateLimit = await checkAuthRateLimit(ip, '/api/auth/mfa/recovery');
   if (!rateLimit.allowed) {
-    return Response.json({ error: 'Too many requests' }, { status: 429 });
+    return error('RATE_LIMIT_EXCEEDED', 'Too many requests', 429);
   }
 
   const body = (await req.json().catch(() => null)) as
