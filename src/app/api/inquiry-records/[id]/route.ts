@@ -53,11 +53,18 @@ export async function PATCH(
           ...(line_update.drug_name !== undefined
             ? { drug_name: line_update.drug_name }
             : {}),
+          ...(line_update.drug_code !== undefined
+            ? { drug_code: line_update.drug_code }
+            : {}),
           ...(line_update.dose !== undefined ? { dose: line_update.dose } : {}),
           ...(line_update.frequency !== undefined
             ? { frequency: line_update.frequency }
             : {}),
           ...(line_update.days !== undefined ? { days: line_update.days } : {}),
+          ...(line_update.packaging_instructions !== undefined
+            ? { packaging_instructions: line_update.packaging_instructions }
+            : {}),
+          ...(line_update.route !== undefined ? { route: line_update.route } : {}),
         },
       });
     }

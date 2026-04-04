@@ -8,6 +8,7 @@ import { ja } from 'date-fns/locale';
 import { Download, Search, Filter } from 'lucide-react';
 import { toast } from 'sonner';
 import { DataTable } from '@/components/ui/data-table';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -64,16 +65,6 @@ const ACTION_OPTIONS = [
   ...Object.entries(ACTION_LABEL_MAP).map(([value, label]) => ({ value, label })),
 ];
 
-// --- Sample data ---
-
-const SAMPLE_LOGS: AuditLog[] = [
-  { id: '1', actor_id: 'u1', actor_name: '鈴木薬剤師', action: 'create', target_type: 'visit_record', target_id: 'vr_001', ip_address: '192.168.1.10', created_at: '2026-03-26T09:30:00Z' },
-  { id: '2', actor_id: 'u2', actor_name: '田中管理者', action: 'update', target_type: 'patient', target_id: 'p_001', ip_address: '192.168.1.11', created_at: '2026-03-26T08:15:00Z' },
-  { id: '3', actor_id: 'u1', actor_name: '鈴木薬剤師', action: 'export', target_type: 'prescription', target_id: 'rx_042', ip_address: '192.168.1.10', created_at: '2026-03-25T16:45:00Z' },
-  { id: '4', actor_id: 'u3', actor_name: '山本薬剤師', action: 'approve', target_type: 'dispense', target_id: 'disp_011', ip_address: '192.168.1.12', created_at: '2026-03-25T14:00:00Z' },
-  { id: '5', actor_id: 'u2', actor_name: '田中管理者', action: 'login', target_type: 'user', target_id: 'u2', ip_address: '192.168.1.11', created_at: '2026-03-25T08:00:00Z' },
-];
-
 // --- Helpers ---
 
 function actionBadgeClass(action: string): string {
@@ -112,14 +103,13 @@ export function AuditLogsContent() {
       const res = await fetch(`/api/audit-logs?${queryParams}`, {
         headers: { 'x-org-id': orgId },
       });
-      if (res.status === 404) return { data: SAMPLE_LOGS };
       if (!res.ok) throw new Error('監査ログの取得に失敗しました');
       return res.json() as Promise<{ data: AuditLog[] }>;
     },
     enabled: !!orgId,
   });
 
-  const logs = data?.data ?? SAMPLE_LOGS;
+  const logs = data?.data ?? [];
 
   const columns = useMemo<ColumnDef<AuditLog>[]>(
     () => [
@@ -314,12 +304,20 @@ export function AuditLogsContent() {
       </div>
 
       {/* Table */}
-      <DataTable
-        columns={columns}
-        data={logs}
-        isLoading={isLoading}
-        caption="監査ログ一覧"
-      />
+      {!isLoading && logs.length === 0 ? (
+        <EmptyState
+          icon={Filter}
+          title="ログがありません"
+          description="フィルタ条件を変更するか、期間を広げてください。"
+        />
+      ) : (
+        <DataTable
+          columns={columns}
+          data={logs}
+          isLoading={isLoading}
+          caption="監査ログ一覧"
+        />
+      )}
     </div>
   );
 }

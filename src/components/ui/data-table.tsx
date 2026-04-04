@@ -265,7 +265,7 @@ export function DataTable<TData>({
     );
 
     const csv = [toCsvRow(headers), ...rows.map((row) => toCsvRow(row))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = objectUrl;

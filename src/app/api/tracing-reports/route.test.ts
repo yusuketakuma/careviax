@@ -4,10 +4,12 @@ import type { NextRequest } from 'next/server';
 const {
   tracingReportFindManyMock,
   tracingReportCreateMock,
+  patientFindManyMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   tracingReportFindManyMock: vi.fn(),
   tracingReportCreateMock: vi.fn(),
+  patientFindManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -29,6 +31,9 @@ vi.mock('@/lib/db/client', () => ({
     tracingReport: {
       findMany: tracingReportFindManyMock,
     },
+    patient: {
+      findMany: patientFindManyMock,
+    },
   },
 }));
 
@@ -43,6 +48,9 @@ describe('/api/tracing-reports', () => {
     vi.clearAllMocks();
     tracingReportFindManyMock.mockResolvedValue([
       { id: 'report_1', patient_id: 'patient_1', status: 'draft' },
+    ]);
+    patientFindManyMock.mockResolvedValue([
+      { id: 'patient_1', name: '山田太郎' },
     ]);
     tracingReportCreateMock.mockResolvedValue({
       id: 'report_2',

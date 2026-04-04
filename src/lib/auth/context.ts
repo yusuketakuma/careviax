@@ -129,7 +129,28 @@ export async function requireAuthContext(
     };
   }
 
-  const orgId = requestedOrgId || resolvedUser?.org_id || (await resolveOrgIdFromUserId(userId));
+  // session_version verification: invalidate tokens issued before logout-all
+  const tokenSessionVersion = session?.user?.sessionVersion;
+  if (tokenSessionVersion !== undefined) {
+    const dbUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { session_version: true },
+    });
+    if (dbUser && dbUser.session_version !== tokenSessionVersion) {
+      logSecurityEvent({
+        event_type: 'auth_failure',
+        ip_address: ipAddress,
+        user_id: userId,
+        path,
+        method,
+        details: { reason: 'session_version_mismatch' },
+      });
+      return { response: await unauthorized() };
+    }
+  }
+
+  const sessionOrgId = session?.user?.orgId;
+  const orgId = requestedOrgId || resolvedUser?.org_id || sessionOrgId || (await resolveOrgIdFromUserId(userId));
   if (!orgId) {
     logSecurityEvent({
       event_type: 'auth_failure',
@@ -142,6 +163,19 @@ export async function requireAuthContext(
     return {
       response: await authNoOrg(),
     };
+  }
+
+  // Audit org switches: when client sends x-org-id that differs from the session's primary org
+  if (requestedOrgId && sessionOrgId && requestedOrgId !== sessionOrgId) {
+    logSecurityEvent({
+      event_type: 'org_switch',
+      ip_address: ipAddress,
+      user_id: userId,
+      org_id: requestedOrgId,
+      path,
+      method,
+      details: { from_org: sessionOrgId, to_org: requestedOrgId },
+    });
   }
 
   const membership = await getMembership(userId, orgId);

@@ -1,4 +1,5 @@
-import { createHash, timingSafeEqual } from 'crypto';
+import { createHash } from 'crypto';
+import bcrypt from 'bcryptjs';
 import { startOfDay } from 'date-fns';
 import { decode, encode } from 'next-auth/jwt';
 import { prisma } from '@/lib/db/client';
@@ -28,8 +29,9 @@ export function hashExternalAccessToken(token: string) {
   return createHash('sha256').update(token).digest('hex');
 }
 
-export function hashExternalAccessOtp(otp: string) {
-  return createHash('sha256').update(otp).digest('hex');
+/** @deprecated Use bcrypt.hash directly for new OTP hashes; kept for migration compatibility. */
+export async function hashExternalAccessOtp(otp: string) {
+  return bcrypt.hash(otp, 12);
 }
 
 const EXTERNAL_ACCESS_TOKEN_SALT = 'careviax-external-access';
@@ -49,8 +51,7 @@ export class MissingExternalAccessSecretError extends Error {
 }
 
 function getExternalAccessSecret() {
-  const secret =
-    process.env.EXTERNAL_ACCESS_TOKEN_SECRET ?? process.env.NEXTAUTH_SECRET;
+  const secret = process.env.EXTERNAL_ACCESS_TOKEN_SECRET;
   if (!secret) {
     throw new MissingExternalAccessSecretError();
   }
@@ -165,12 +166,8 @@ export async function validateExternalAccessGrant(
       };
     }
 
-    const expected = Buffer.from(grant.otp_hash, 'hex');
-    const actual = Buffer.from(hashExternalAccessOtp(otp), 'hex');
-    if (
-      expected.length !== actual.length ||
-      !timingSafeEqual(expected, actual)
-    ) {
+    const isValid = await bcrypt.compare(otp, grant.otp_hash);
+    if (!isValid) {
       return {
         ok: false,
         kind: 'validation',

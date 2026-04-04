@@ -40,6 +40,7 @@ export const generateVisitScheduleProposalSchema = z.object({
   preferred_time_to: z.string().optional(),
   preferred_pharmacist_id: z.string().optional(),
   reschedule_source_schedule_id: z.string().optional(),
+  special_cap_eligible: z.boolean().optional(),
 });
 
 export const updateVisitScheduleProposalSchema = z.discriminatedUnion('action', [

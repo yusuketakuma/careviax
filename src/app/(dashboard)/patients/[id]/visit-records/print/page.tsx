@@ -76,6 +76,20 @@ export default function PatientVisitRecordsPrintPage() {
   const dateFrom = searchParams.get('dateFrom') ?? '';
   const dateTo = searchParams.get('dateTo') ?? '';
 
+  const orgQuery = useQuery<{ name: string }>({
+    queryKey: ['me-org', orgId],
+    enabled: Boolean(orgId),
+    queryFn: async () => {
+      const response = await fetch('/api/me/org', {
+        headers: { 'x-org-id': orgId },
+        cache: 'no-store',
+      });
+      if (!response.ok) throw new Error('薬局情報を取得できませんでした');
+      return response.json().then((r) => r.data);
+    },
+    staleTime: 60_000,
+  });
+
   const patientQuery = useQuery<PatientResponse>({
     queryKey: ['visit-record-print-patient', patientId, orgId],
     enabled: Boolean(patientId && orgId),
@@ -144,7 +158,7 @@ export default function PatientVisitRecordsPrintPage() {
         shortcuts={getPatientVisitRecordPrintShortcutLinks(patientId)}
       />
 
-      <PrintLayout pharmacyName="CareViaX薬局">
+      <PrintLayout pharmacyName={orgQuery.data?.name || 'CareViaX薬局'}>
         <div className="space-y-4 text-sm">
           <div className="border-b-2 border-black pb-2">
             <h1 className="text-center text-xl font-bold">訪問記録一覧（薬歴）</h1>

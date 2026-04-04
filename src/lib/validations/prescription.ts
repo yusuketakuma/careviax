@@ -159,9 +159,12 @@ export const createInquiryRecordSchema = z.object({
 
 const inquiryLineUpdateSchema = z.object({
   drug_name: z.string().min(1, '薬剤名は必須です').optional(),
+  drug_code: z.string().optional(),
   dose: z.string().min(1, '用量は必須です').optional(),
   frequency: z.string().min(1, '用法は必須です').optional(),
   days: z.number().int().min(1, '投与日数は1以上です').optional(),
+  packaging_instructions: z.string().optional(),
+  route: z.string().optional(),
 });
 
 export const updateInquiryRecordSchema = z.object({

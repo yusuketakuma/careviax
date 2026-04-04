@@ -57,8 +57,20 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   });
 
   const hasMore = reports.length > limit;
-  const data = hasMore ? reports.slice(0, limit) : reports;
-  const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
+  const rawData = hasMore ? reports.slice(0, limit) : reports;
+
+  const patientIds = [...new Set(rawData.map((r) => r.patient_id))];
+  const patients = await prisma.patient.findMany({
+    where: { id: { in: patientIds } },
+    select: { id: true, name: true },
+  });
+  const patientNameById = new Map(patients.map((p) => [p.id, p.name]));
+
+  const data = rawData.map((r) => ({
+    ...r,
+    patient_name: patientNameById.get(r.patient_id) ?? null,
+  }));
+  const nextCursor = hasMore ? rawData[rawData.length - 1]?.id : undefined;
 
   return success({ data, hasMore, nextCursor });
 }, {

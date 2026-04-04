@@ -83,9 +83,14 @@ function buildDraftParsedData(args: {
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const { searchParams } = new URL(req.url);
   const { cursor, limit } = parsePaginationParams(searchParams);
+  const unmatched = searchParams.get('unmatched') === 'true';
 
   const drafts = await prisma.qrScanDraft.findMany({
-    where: { org_id: req.orgId, status: 'pending' },
+    where: {
+      org_id: req.orgId,
+      status: 'pending',
+      ...(unmatched ? { patient_id: null } : {}),
+    },
     take: limit + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     orderBy: [{ created_at: 'desc' }, { id: 'desc' }],

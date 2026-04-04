@@ -65,11 +65,20 @@ export type OfflineVisitBriefCache = {
   updatedAt: Date;
 };
 
+export type OfflinePrescriptionDraft = {
+  id?: number;
+  orgId: string;
+  payload: string; // encrypted JSON of form state snapshot
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 class CareViaXOfflineDB extends Dexie {
   visitDrafts!: Table<OfflineVisitDraft, number>;
   residualDrafts!: Table<OfflineResidualDraft, number>;
   syncQueue!: Table<OfflineSyncQueue, number>;
   visitBriefCache!: Table<OfflineVisitBriefCache, number>;
+  prescriptionDrafts!: Table<OfflinePrescriptionDraft, number>;
 
   constructor() {
     super('CareViaXOffline');
@@ -108,6 +117,14 @@ class CareViaXOfflineDB extends Dexie {
       residualDrafts: '++id, patientId, synced',
       syncQueue: '++id, entityType, scope_id, retryCount, createdAt, conflict_state',
       visitBriefCache: '++id, scheduleId, scheduledDate, patientId, updatedAt',
+    });
+
+    this.version(5).stores({
+      visitDrafts: '++id, scheduleId, patientId, synced',
+      residualDrafts: '++id, patientId, synced',
+      syncQueue: '++id, entityType, scope_id, retryCount, createdAt, conflict_state',
+      visitBriefCache: '++id, scheduleId, scheduledDate, patientId, updatedAt',
+      prescriptionDrafts: '++id, orgId, updatedAt',
     });
   }
 }

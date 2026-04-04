@@ -338,3 +338,33 @@ export async function globalSignOutWithAccessToken(accessToken: string) {
     })
   );
 }
+
+export async function refreshCognitoTokens(args: {
+  refreshToken: string;
+  username: string;
+}) {
+  const { clientId } = getRequiredCognitoAuthConfig();
+  const username = normalizeEmail(args.username);
+  const secretHash = buildSecretHash(username);
+
+  const output = await getClient().send(
+    new InitiateAuthCommand({
+      ClientId: clientId,
+      AuthFlow: 'REFRESH_TOKEN_AUTH',
+      AuthParameters: {
+        REFRESH_TOKEN: args.refreshToken,
+        ...(secretHash ? { SECRET_HASH: secretHash, USERNAME: username } : {}),
+      },
+    })
+  );
+
+  if (!output.AuthenticationResult?.AccessToken) {
+    throw new Error('REFRESH_FAILED');
+  }
+
+  return {
+    accessToken: output.AuthenticationResult.AccessToken,
+    idToken: output.AuthenticationResult.IdToken,
+    expiresIn: output.AuthenticationResult.ExpiresIn ?? 3600,
+  };
+}

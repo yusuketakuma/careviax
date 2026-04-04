@@ -7,6 +7,8 @@ import {
   MedicationHistoryBulkExportError,
   queueMedicationHistoryBulkExport,
 } from '@/server/services/pdf-bulk-export';
+import { prisma } from '@/lib/db/client';
+import { recordDataExportAudit } from '@/server/services/export-audit';
 
 export const runtime = 'nodejs';
 
@@ -41,6 +43,19 @@ export async function POST(req: NextRequest) {
         // The queued job remains pending and can be drained later via the job endpoint.
       });
     }
+
+    void recordDataExportAudit(prisma, {
+      orgId: authResult.ctx.orgId,
+      actorId: authResult.ctx.userId,
+      targetType: 'medication_history',
+      format: 'pdf',
+      recordCount: parsed.data.patient_ids.length,
+      metadata: { patient_ids: parsed.data.patient_ids },
+      ipAddress: authResult.ctx.ipAddress,
+      userAgent: authResult.ctx.userAgent,
+    }).catch(() => {
+      // Audit log failure must not block the export response.
+    });
 
     return success({ data }, 202);
   } catch (cause) {

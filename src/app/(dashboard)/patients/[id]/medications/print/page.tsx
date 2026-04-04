@@ -47,6 +47,20 @@ export default function MedicationPrintPage() {
   const isBootstrappingOrg = !orgId;
   const patientId = typeof params.id === 'string' ? params.id : '';
 
+  const orgQuery = useQuery<{ name: string }>({
+    queryKey: ['me-org', orgId],
+    enabled: Boolean(orgId),
+    queryFn: async () => {
+      const response = await fetch('/api/me/org', {
+        headers: { 'x-org-id': orgId },
+        cache: 'no-store',
+      });
+      if (!response.ok) throw new Error('薬局情報を取得できませんでした');
+      return response.json().then((r) => r.data);
+    },
+    staleTime: 60_000,
+  });
+
   const patientQuery = useQuery<PatientResponse>({
     queryKey: ['patient-print', patientId, orgId],
     enabled: Boolean(patientId && orgId),
@@ -114,7 +128,7 @@ export default function MedicationPrintPage() {
         shortcuts={getPatientMedicationPrintShortcutLinks(patientId)}
       />
 
-      <PrintLayout pharmacyName="CareViaX薬局">
+      <PrintLayout pharmacyName={orgQuery.data?.name || 'CareViaX薬局'}>
         <div className="space-y-4 text-sm">
           <div className="border-b-2 border-black pb-2">
             <h1 className="text-center text-xl font-bold">薬歴・服薬一覧</h1>

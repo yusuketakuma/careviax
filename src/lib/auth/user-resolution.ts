@@ -11,6 +11,7 @@ type LocalUserIdentity = {
   is_active: boolean;
   account_status: 'invited' | 'active' | 'suspended' | 'retired';
   activated_at: Date | null;
+  session_version: number;
 };
 
 export async function resolveLocalUserByIdentity(args: {
@@ -33,6 +34,7 @@ export async function resolveLocalUserByIdentity(args: {
         is_active: true,
         account_status: true,
         activated_at: true,
+        session_version: true,
       },
     });
     if (user) return user;
@@ -53,6 +55,7 @@ export async function resolveLocalUserByIdentity(args: {
       is_active: true,
       account_status: true,
       activated_at: true,
+      session_version: true,
     },
   });
 }
@@ -90,6 +93,7 @@ export async function markLocalUserActive(user: LocalUserIdentity) {
       is_active: true,
       account_status: true,
       activated_at: true,
+      session_version: true,
     },
   });
 }

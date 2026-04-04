@@ -250,7 +250,7 @@ export const POST = withAuthContext<{ id: string }>(
         });
         const quantityPerSlot =
           line.quantity != null && slots.length > 0
-            ? line.quantity / slots.length
+            ? Math.ceil(line.quantity / slots.length)
             : 1;
         const carryType = resolveCarryType(line.notes, line.packaging_instructions);
         const resolvedPackaging = resolvePackagingSettings({

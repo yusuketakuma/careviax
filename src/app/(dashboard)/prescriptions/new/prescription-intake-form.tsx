@@ -6,7 +6,10 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Plus, Trash2, AlertTriangle, Shield, Camera, Upload, CheckCircle2, ArrowRight, Minus, QrCode, ClipboardCopy } from 'lucide-react';
+import { toast } from 'sonner';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { usePrescriptionDraft } from '@/lib/hooks/use-prescription-draft';
+import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { PatientMcsSummarySection } from '@/components/patient-mcs/patient-mcs-summary-section';
 import { Badge } from '@/components/ui/badge';
 import { DrugSuggest, type DrugSelection } from '@/components/features/pharmacy/drug-suggest';
@@ -327,9 +330,61 @@ export function PrescriptionIntakeForm() {
   const hydrateLinesWithPrevious = hydrateLinesFromPrevious;
 
   const [error, setError] = useState<string | null>(null);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const submitBlockersId = 'prescription-submit-blockers';
+
+  // Draft auto-save
+  const { loadDraft, saveDraft, clearDraft } = usePrescriptionDraft(orgId);
+  const [draftHydrated, setDraftHydrated] = useState(false);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isDirty = selectedPatientId !== '' || lines.some((l) => l.drug_name.trim() !== '');
+  const allowNavigation = useUnsavedChangesGuard({ enabled: isDirty });
+
+  // Load draft on mount
+  useEffect(() => {
+    if (draftHydrated || !orgId) return;
+    let active = true;
+    void loadDraft().then((draft) => {
+      if (!active || !draft) return;
+      updatePatientSelection({
+        patientSearch: draft.patientSelection.patientSearch,
+        selectedPatientId: draft.patientSelection.selectedPatientId,
+        selectedPatientName: draft.patientSelection.selectedPatientName,
+        selectedCaseId: draft.patientSelection.selectedCaseId,
+      });
+      setPrescriptionMeta(draft.prescriptionMeta);
+      setLines(draft.lines);
+      updateInquiry(draft.inquiry);
+      toast.info('処方受付の下書きを復元しました');
+    }).finally(() => {
+      if (active) setDraftHydrated(true);
+    });
+    return () => { active = false; };
+  }, [draftHydrated, loadDraft, orgId, updatePatientSelection, updateInquiry]);
+
+  // Auto-save every 30s
+  useEffect(() => {
+    if (!draftHydrated || !orgId) return;
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => {
+      void saveDraft({
+        patientSelection: { patientSearch, selectedPatientId, selectedPatientName, selectedCaseId },
+        prescriptionMeta,
+        lines,
+        inquiry: { inquiryReason, inquiryToPhysician, inquiryContent, inquiryDueDate },
+      });
+    }, 30_000);
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+  }, [
+    draftHydrated, orgId, saveDraft,
+    patientSearch, selectedPatientId, selectedPatientName, selectedCaseId,
+    prescriptionMeta, lines,
+    inquiryReason, inquiryToPhysician, inquiryContent, inquiryDueDate,
+  ]);
 
   // Fetch patients for search
   const { data: patientsData } = useQuery({
@@ -920,6 +975,7 @@ function hydrateLinesFromPrevious(
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSubmitAttempted(true);
 
     const submitBlockers = getPrescriptionSubmitBlockers({
       sourceType,
@@ -942,6 +998,8 @@ function hydrateLinesFromPrevious(
 
       try {
         await submitFacilityBatchMutation.mutateAsync();
+        await clearDraft();
+        allowNavigation();
         router.push('/prescriptions');
       } catch (err) {
         setError(err instanceof Error ? err.message : '施設まとめ処方の登録に失敗しました');
@@ -963,6 +1021,8 @@ function hydrateLinesFromPrevious(
 
     try {
       await submitMutation.mutateAsync();
+      await clearDraft();
+      allowNavigation();
       router.push('/prescriptions');
     } catch (err) {
       setError(err instanceof Error ? err.message : '処方受付に失敗しました');
@@ -1300,8 +1360,15 @@ function hydrateLinesFromPrevious(
                 }
               }}
             placeholder="氏名またはフリガナで検索"
-            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            aria-invalid={submitAttempted && !selectedPatientId && sourceType !== 'facility_batch' ? true : undefined}
+            aria-describedby={submitAttempted && !selectedPatientId && sourceType !== 'facility_batch' ? 'patient-search-error' : undefined}
+            className={`h-9 w-full rounded-md border bg-background px-3 text-sm ${submitAttempted && !selectedPatientId && sourceType !== 'facility_batch' ? 'border-destructive' : 'border-input'}`}
           />
+          {submitAttempted && !selectedPatientId && sourceType !== 'facility_batch' && (
+            <p id="patient-search-error" className="mt-1 text-xs text-destructive">
+              患者を選択してください
+            </p>
+          )}
           {patientsData?.data && patientsData.data.length > 0 && !selectedPatientId && (
             <ul className="mt-1 max-h-40 overflow-y-auto rounded-md border bg-popover text-sm shadow-md">
               {patientsData.data.map((p) => (
@@ -1349,7 +1416,9 @@ function hydrateLinesFromPrevious(
               id="case-select"
               value={selectedCaseId}
               onChange={(e) => updatePatientSelection({ selectedCaseId: e.target.value })}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              aria-invalid={submitAttempted && !selectedCaseId && sourceType !== 'facility_batch' ? true : undefined}
+              aria-describedby={submitAttempted && !selectedCaseId && sourceType !== 'facility_batch' ? 'case-select-error' : undefined}
+              className={`h-9 w-full rounded-md border bg-background px-3 text-sm ${submitAttempted && !selectedCaseId && sourceType !== 'facility_batch' ? 'border-destructive' : 'border-input'}`}
             >
               <option value="">ケースを選択</option>
               {casesData.data.map((c) => (
@@ -1358,6 +1427,11 @@ function hydrateLinesFromPrevious(
                 </option>
               ))}
             </select>
+            {submitAttempted && !selectedCaseId && sourceType !== 'facility_batch' && (
+              <p id="case-select-error" className="mt-1 text-xs text-destructive">
+                ケースを選択してください
+              </p>
+            )}
           </div>
         )}
       </fieldset>
@@ -1435,13 +1509,20 @@ function hydrateLinesFromPrevious(
                 data-testid="emergency-category"
                 value={emergencyCategory}
                 onChange={(e) => updatePrescriptionMeta({ emergencyCategory: e.target.value })}
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                aria-invalid={submitAttempted && prescriptionCategory === 'emergency' && !emergencyCategory ? true : undefined}
+                aria-describedby={submitAttempted && prescriptionCategory === 'emergency' && !emergencyCategory ? 'emergency-category-error' : undefined}
+                className={`h-9 w-full rounded-md border bg-background px-3 text-sm ${submitAttempted && prescriptionCategory === 'emergency' && !emergencyCategory ? 'border-destructive' : 'border-input'}`}
               >
                 <option value="">選択してください</option>
                 <option value="planned_disease_exacerbation">計画的訪問の対象疾患の急変 (500点)</option>
                 <option value="other_exacerbation">それ以外の急変 (200点)</option>
                 <option value="online">オンライン (59点)</option>
               </select>
+              {submitAttempted && prescriptionCategory === 'emergency' && !emergencyCategory && (
+                <p id="emergency-category-error" className="mt-1 text-xs text-destructive">
+                  緊急区分を選択してください
+                </p>
+              )}
             </div>
           )}
         </div>

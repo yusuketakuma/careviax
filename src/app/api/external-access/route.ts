@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createHash, randomInt, randomUUID } from 'crypto';
+import bcrypt from 'bcryptjs';
 import { withAuthContext } from '@/lib/auth/context';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { withOrgContext } from '@/lib/db/rls';
@@ -159,7 +160,7 @@ export const POST = withAuthContext(
     if (!refResult.ok) return refResult.response;
 
     const rawOtp = randomInt(100000, 999999).toString();
-    const otpHash = createHash('sha256').update(rawOtp).digest('hex');
+    const otpHash = await bcrypt.hash(rawOtp, 12);
     const expiresAt = new Date(Date.now() + expires_hours * 60 * 60 * 1000);
     const provisionalToken = `provisional:${randomUUID()}`;
     const provisionalTokenHash = createHash('sha256').update(provisionalToken).digest('hex');

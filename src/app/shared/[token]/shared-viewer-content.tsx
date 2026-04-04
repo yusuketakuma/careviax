@@ -104,9 +104,9 @@ export function SharedViewerContent({
     queryKey: ['shared-viewer', token, activeOtp],
     enabled: activeOtp.trim().length > 0,
     queryFn: async () => {
-      const response = await fetch(
-        `/api/external-access/${token}?otp=${encodeURIComponent(activeOtp)}`
-      );
+      const response = await fetch(`/api/external-access/${token}`, {
+        headers: { 'x-otp': activeOtp },
+      });
 
       const payload = await response.json();
       if (!response.ok) {

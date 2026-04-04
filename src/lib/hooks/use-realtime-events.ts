@@ -81,6 +81,14 @@ export function useRealtimeEvents({ onEvent, enabled = true }: UseRealtimeEvents
             }
           }
         }
+
+        // Stream closed normally (e.g. server-side 5-minute timeout).
+        // Reconnect immediately with a clean backoff counter.
+        if (!unmounted) {
+          setConnected(false);
+          reconnectAttemptRef.current = 0;
+          timerRef.current = setTimeout(connect, 1_000);
+        }
       } catch {
         if (unmounted) return;
         setConnected(false);

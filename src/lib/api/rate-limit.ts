@@ -27,6 +27,12 @@ export const RATE_LIMIT_READ_MAX = 300;
 export const RATE_LIMIT_WRITE_MAX = 60;
 
 /**
+ * Strict limit for authentication endpoints (login, OTP, password reset).
+ * 5 attempts per minute to mitigate brute-force attacks.
+ */
+export const RATE_LIMIT_AUTH_MAX = 5;
+
+/**
  * How often (in ms) the cleanup routine removes expired entries.
  * Prevents unbounded memory growth in long-running processes.
  */
@@ -220,6 +226,17 @@ function getRateLimitStore(): RateLimitStore {
 
   const memoryStore = new MemoryRateLimitStore();
   const dynamoConfig = resolveDynamoRateLimitConfig();
+
+  // Production guard: in-memory store is not safe for multi-instance deployments.
+  // RATE_LIMIT_STORE=dynamodb must be configured in production to prevent bypass.
+  if (process.env.NODE_ENV === 'production' && !dynamoConfig) {
+    console.error(
+      '[rate-limit] CRITICAL: RATE_LIMIT_STORE is not set to "dynamodb" in production. ' +
+        'In-memory rate limiting is per-process and can be bypassed across instances. ' +
+        'Set RATE_LIMIT_STORE=dynamodb and RATE_LIMIT_DDB_TABLE_NAME to enable distributed limiting.'
+    );
+  }
+
   cachedRateLimitStore = dynamoConfig
     ? new DynamoRateLimitStore(dynamoConfig, memoryStore)
     : memoryStore;
@@ -266,6 +283,21 @@ export async function checkRateLimit(
   const key = `${methodBucket}:${identifier}:${pathname}`;
 
   return getRateLimitStore().increment(key, RATE_LIMIT_WINDOW_MS, maxRequests);
+}
+
+/**
+ * Check rate limit for authentication endpoints (login, OTP, MFA).
+ * Uses a strict 5 requests/minute limit to mitigate brute-force attacks.
+ *
+ * @param identifier - IP address or user ID
+ * @param pathname   - Request pathname
+ */
+export async function checkAuthRateLimit(
+  identifier: string,
+  pathname: string,
+): Promise<RateLimitResult> {
+  const key = `auth:${identifier}:${pathname}`;
+  return getRateLimitStore().increment(key, RATE_LIMIT_WINDOW_MS, RATE_LIMIT_AUTH_MAX);
 }
 
 /**

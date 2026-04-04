@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, subMonths, addMonths } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -18,6 +18,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 type BillingCandidate = {
   id: string;
   patient_id: string;
+  patient_name: string | null;
   billing_month: string;
   billing_code: string;
   billing_name: string;
@@ -104,6 +105,7 @@ type BillingCandidateSummary = {
 type BillingCandidatesResponse = {
   data: BillingCandidate[];
   hasMore: boolean;
+  nextCursor?: string;
   summary: BillingCandidateSummary;
 };
 
@@ -209,21 +211,30 @@ export function BillingCandidatesContent() {
   const billingMonthStr = format(currentMonth, 'yyyy-MM-dd');
   const billingMonthLabel = format(currentMonth, 'yyyy年M月', { locale: ja });
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ['billing-candidates', orgId, billingMonthStr],
-    queryFn: async () => {
-      const res = await fetch(
-        `/api/billing-candidates?billing_month=${billingMonthStr}&limit=100`,
-        { headers: { 'x-org-id': orgId } }
-      );
+    queryFn: async ({ pageParam }) => {
+      const params = new URLSearchParams({ billing_month: billingMonthStr, limit: '50' });
+      if (pageParam) params.set('cursor', pageParam);
+      const res = await fetch(`/api/billing-candidates?${params}`, {
+        headers: { 'x-org-id': orgId },
+      });
       if (!res.ok) throw new Error('請求候補の取得に失敗しました');
       return res.json() as Promise<BillingCandidatesResponse>;
     },
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    initialPageParam: undefined as string | undefined,
     enabled: !!orgId,
   });
 
-  const candidates = data?.data ?? [];
-  const summary = data?.summary ?? null;
+  const candidates = data?.pages.flatMap((p) => p.data) ?? [];
+  const summary = data?.pages[0]?.summary ?? null;
 
   const generateMutation = useMutation({
     mutationFn: async () => {
@@ -334,6 +345,17 @@ export function BillingCandidatesContent() {
         },
         cell: ({ row }) => (
           <span className="text-sm">{row.original.billing_name}</span>
+        ),
+      },
+      {
+        accessorKey: 'patient_name',
+        header: '患者名',
+        meta: {
+          label: '患者名',
+          mobileLabel: '患者',
+        },
+        cell: ({ row }) => (
+          <span className="text-sm">{row.original.patient_name ?? row.original.patient_id}</span>
         ),
       },
       {
@@ -803,6 +825,19 @@ export function BillingCandidatesContent() {
           <p className="text-sm text-muted-foreground">
             {billingMonthLabel} の請求候補はありません
           </p>
+        </div>
+      )}
+
+      {hasNextPage && (
+        <div className="flex justify-center pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void fetchNextPage()}
+            disabled={isFetchingNextPage}
+          >
+            {isFetchingNextPage ? '読み込み中...' : 'さらに読み込む'}
+          </Button>
         </div>
       )}
     </div>

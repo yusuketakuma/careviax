@@ -249,6 +249,7 @@ describe('/api/visit-records POST', () => {
           patient_id: 'patient_1',
           visit_date: '2026-03-26',
           outcome_status: 'completed',
+          soap_subjective: '服薬状況問題なし',
         },
         { 'x-org-id': 'org_1' }
       )
@@ -313,6 +314,7 @@ describe('/api/visit-records POST', () => {
           patient_id: 'patient_1',
           visit_date: '2026-03-26',
           outcome_status: 'completed',
+          soap_subjective: '服薬状況問題なし',
         },
         { 'x-org-id': 'org_1' }
       )
@@ -344,6 +346,7 @@ describe('/api/visit-records POST', () => {
           patient_id: 'patient_1',
           visit_date: '2026-03-26',
           outcome_status: 'completed',
+          soap_subjective: '服薬状況問題なし',
           residual_medications: [
             {
               drug_name: 'アムロジピン錠5mg',
@@ -449,6 +452,7 @@ describe('/api/visit-records POST', () => {
           patient_id: 'patient_1',
           visit_date: '2026-03-26',
           outcome_status: 'completed',
+          soap_subjective: '服薬状況問題なし',
           receipt_person_name: '長男 山田',
           receipt_at: '2026-03-26T10:30',
         },

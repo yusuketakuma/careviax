@@ -20,7 +20,7 @@ import {
   LocateFixed,
 } from 'lucide-react';
 import { z } from 'zod';
-import { createVisitRecordSchema } from '@/lib/validations/visit-record';
+import { visitRecordBaseSchema } from '@/lib/validations/visit-record';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useIsMobile } from '@/lib/hooks/use-media-query';
 import { useSpeechRecognition } from '@/lib/hooks/use-speech-recognition';
@@ -109,7 +109,7 @@ const relationOptions = [
   { value: 'other', label: 'その他' },
 ];
 
-const formSchema = createVisitRecordSchema.extend({
+const formSchema = visitRecordBaseSchema.extend({
   residual_medications: z
     .array(
       z.object({
@@ -138,26 +138,59 @@ type UploadedVisitAttachment = {
 const { maxAttachments: MAX_VISIT_ATTACHMENTS } = getVisitAttachmentConstraints();
 
 function buildStructuredSoap(values: FormValues): StructuredSoap {
+  const wizard = values.structured_soap as Partial<StructuredSoap> | undefined;
   return {
     subjective: {
-      symptom_checks: [],
-      free_text: values.soap_subjective || undefined,
+      symptom_checks: wizard?.subjective?.symptom_checks ?? [],
+      free_text: values.soap_subjective || wizard?.subjective?.free_text || undefined,
     },
     objective: {
-      medication_status: 'free_text_only',
-      adherence_score: 3,
-      side_effect_checks: [],
-      free_text: values.soap_objective || undefined,
+      medication_status: wizard?.objective?.medication_status ?? 'free_text_only',
+      adherence_score: wizard?.objective?.adherence_score ?? 3,
+      side_effect_checks: wizard?.objective?.side_effect_checks ?? [],
+      free_text: values.soap_objective || wizard?.objective?.free_text || undefined,
+      ...(wizard?.objective?.vitals ? { vitals: wizard.objective.vitals } : {}),
+      ...(wizard?.objective?.lab_values ? { lab_values: wizard.objective.lab_values } : {}),
+      ...(wizard?.objective?.self_management_ability != null
+        ? { self_management_ability: wizard.objective.self_management_ability }
+        : {}),
+      ...(wizard?.objective?.medication_calendar_used != null
+        ? { medication_calendar_used: wizard.objective.medication_calendar_used }
+        : {}),
+      ...(wizard?.objective?.functional_assessment
+        ? { functional_assessment: wizard.objective.functional_assessment }
+        : {}),
+      ...(wizard?.objective?.adverse_events
+        ? { adverse_events: wizard.objective.adverse_events }
+        : {}),
     },
     assessment: {
-      problem_checks: [],
-      free_text: values.soap_assessment || undefined,
+      problem_checks: wizard?.assessment?.problem_checks ?? [],
+      free_text: values.soap_assessment || wizard?.assessment?.free_text || undefined,
+      ...(wizard?.assessment?.severity ? { severity: wizard.assessment.severity } : {}),
+      ...(wizard?.assessment?.drug_related_problems
+        ? { drug_related_problems: wizard.assessment.drug_related_problems }
+        : {}),
     },
     plan: {
-      intervention_checks: [],
-      next_visit_date: values.next_visit_suggestion_date || undefined,
-      free_text: values.soap_plan || undefined,
+      intervention_checks: wizard?.plan?.intervention_checks ?? [],
+      next_visit_date:
+        values.next_visit_suggestion_date || wizard?.plan?.next_visit_date || undefined,
+      free_text: values.soap_plan || wizard?.plan?.free_text || undefined,
+      ...(wizard?.plan?.prescription_proposal
+        ? { prescription_proposal: wizard.plan.prescription_proposal }
+        : {}),
+      ...(wizard?.plan?.physician_report_items
+        ? { physician_report_items: wizard.plan.physician_report_items }
+        : {}),
+      ...(wizard?.plan?.care_manager_report_items
+        ? { care_manager_report_items: wizard.plan.care_manager_report_items }
+        : {}),
+      ...(wizard?.plan?.care_service_coordination
+        ? { care_service_coordination: wizard.plan.care_service_coordination }
+        : {}),
     },
+    ...(wizard?.residual_medications ? { residual_medications: wizard.residual_medications } : {}),
   };
 }
 
@@ -363,6 +396,7 @@ export function VisitRecordForm({ id }: { id: string }) {
             soap_objective: draft.structuredSoap.objective.free_text ?? '',
             soap_assessment: draft.structuredSoap.assessment.free_text ?? '',
             soap_plan: draft.structuredSoap.plan.free_text ?? '',
+            structured_soap: draft.structuredSoap as Record<string, unknown>,
             receipt_person_name: draft.receiptPersonName ?? '',
             receipt_person_relation: draft.receiptPersonRelation ?? '',
             receipt_at: draft.receiptAt ?? `${draft.visitDate ?? today}T00:00`,
@@ -781,6 +815,31 @@ export function VisitRecordForm({ id }: { id: string }) {
       summary?.focus();
     });
   }, [errorSummaryId]);
+
+  const shortcutStateRef = useRef({ watchedValues, visitGeoLog, onSubmit });
+  useEffect(() => {
+    shortcutStateRef.current = { watchedValues, visitGeoLog, onSubmit };
+  });
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!e.metaKey && !e.ctrlKey) return;
+      const { watchedValues: vals, visitGeoLog: geoLog, onSubmit: submit } = shortcutStateRef.current;
+      if (e.key === 's') {
+        e.preventDefault();
+        void saveDraft(
+          buildStructuredSoap(vals),
+          0,
+          buildDraftMetadata(vals, geoLog)
+        ).then(() => toast.info('下書きを保存しました'));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        void form.handleSubmit(submit, scrollToErrorSummary)();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [form, saveDraft, scrollToErrorSummary]);
 
   const attachmentsField = (
     <VisitAttachmentsField

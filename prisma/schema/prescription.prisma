@@ -233,20 +233,22 @@ model DispenseResult {
 }
 
 model DispenseAudit {
-  id            String             @id @default(cuid())
-  org_id        String
-  task_id       String
-  task          DispenseTask       @relation(fields: [task_id], references: [id])
-  result        DispenseAuditResult
-  reject_reason String?
-  reject_detail String?
-  audited_by    String // User ID
-  audited_at    DateTime
-  created_at    DateTime           @default(now())
-  updated_at    DateTime           @updatedAt
+  id                 String             @id @default(cuid())
+  org_id             String
+  task_id            String
+  task               DispenseTask       @relation(fields: [task_id], references: [id])
+  result             DispenseAuditResult
+  reject_reason      String?
+  reject_reason_code String?            // drug_name_mismatch | quantity_error | packaging_error | carry_type_error | labeling_error | other
+  reject_detail      String?
+  audited_by         String // User ID
+  audited_at         DateTime
+  created_at         DateTime           @default(now())
+  updated_at         DateTime           @updatedAt
 
   @@index([org_id])
   @@index([task_id])
+  @@index([org_id, reject_reason_code])
 }
 
 /// DispensingDecision captures the pharmacist's confirmed dispensing method

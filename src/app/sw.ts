@@ -20,6 +20,13 @@ declare const self: ServiceWorkerGlobalScope;
 
 const runtimeCaching: RuntimeCaching[] = [
   {
+    matcher: ({ url }) => url.pathname.startsWith('/api/'),
+    handler: new NetworkFirst({
+      cacheName: 'api-cache',
+      networkTimeoutSeconds: 5,
+    }),
+  },
+  {
     matcher: ({ request }) => request.mode === 'navigate',
     handler: new NetworkFirst({
       cacheName: 'pages',

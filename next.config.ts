@@ -1,5 +1,6 @@
 import type { NextConfig } from 'next';
 import withSerwistInit from '@serwist/next';
+import { withSentryConfig } from '@sentry/nextjs';
 
 // NOTE: Content-Security-Policy and other security headers are set dynamically
 // in src/proxy.ts using a per-request nonce. Static headers here would
@@ -17,7 +18,17 @@ const withSerwist = withSerwistInit({
   swDest: 'public/sw.js',
   disable: process.env.NODE_ENV !== 'production',
   cacheOnNavigation: true,
-  reloadOnOnline: true,
+  reloadOnOnline: false,
 });
 
-export default withSerwist(nextConfig);
+const sentryConfig = {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  silent: !process.env.CI,
+  sourcemaps: {
+    disable: process.env.NODE_ENV !== 'production',
+  },
+  reactComponentAnnotation: { enabled: true },
+};
+
+export default withSentryConfig(withSerwist(nextConfig), sentryConfig);

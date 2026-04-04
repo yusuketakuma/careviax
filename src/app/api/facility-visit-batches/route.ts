@@ -13,6 +13,7 @@ const upsertFacilityVisitBatchSchema = z
     site_id: z.string().trim().optional(),
     ordered_schedule_ids: z.array(z.string().trim().min(1)).optional(),
     carry_items_confirmed: z.boolean().optional(),
+    allow_mixed_unit: z.boolean().optional(),
   })
   .superRefine((value, ctx) => {
     if (value.schedule_ids?.length) {
@@ -199,7 +200,7 @@ export const POST = withAuth(
             (schedule) => schedule.case_.patient.residences[0]?.facility_unit_id ?? 'unit:none'
           )
       );
-      if (facilityUnitIdSet.size > 1) {
+      if (facilityUnitIdSet.size > 1 && !parsed.data.allow_mixed_unit) {
         return { error: 'mixed_facility_unit' as const };
       }
 

@@ -4,9 +4,9 @@ import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Controller, useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, CheckCircle2, History, Info } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, History, Info, MessageSquarePlus } from 'lucide-react';
 import { z } from 'zod';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PreviousStageSummary } from '@/components/features/workflow/previous-stage-summary';
@@ -35,6 +35,13 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
@@ -201,9 +208,17 @@ type DispenseFormProps = {
   taskId: string;
 };
 
+type InquiryDialogState = {
+  open: boolean;
+  lineId: string | null;
+  drugName: string;
+  cycleId: string;
+};
+
 export function DispenseForm({ taskId }: DispenseFormProps) {
   const router = useRouter();
   const orgId = useOrgId();
+  const queryClient = useQueryClient();
   const isBootstrappingOrg = !orgId;
   const errorSummaryId = 'dispense-form-error-summary';
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -212,6 +227,17 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
   const [editedLines, setEditedLines] = useState<Map<string, Partial<DispensePrefillLine>>>(new Map());
   const [unitDoseLines, setUnitDoseLines] = useState<Map<string, boolean>>(new Map());
   const [crushedLines, setCrushedLines] = useState<Map<string, boolean>>(new Map());
+  const [inquiryDialog, setInquiryDialog] = useState<InquiryDialogState>({
+    open: false,
+    lineId: null,
+    drugName: '',
+    cycleId: '',
+  });
+  const [inquiryForm, setInquiryForm] = useState({
+    reason: '',
+    inquiry_to_physician: '',
+    inquiry_content: '',
+  });
 
   const { data: task, isLoading } = useQuery({
     queryKey: ['dispense-task', taskId, orgId],
@@ -401,6 +427,38 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
     },
     onError: (err: Error) => {
       toast.error('エラー', { description: err.message });
+    },
+  });
+
+  const inquiryMutation = useMutation({
+    mutationFn: async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      const res = await fetch('/api/inquiry-records', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify({
+          cycle_id: inquiryDialog.cycleId,
+          line_id: inquiryDialog.lineId ?? undefined,
+          reason: inquiryForm.reason,
+          inquiry_to_physician: inquiryForm.inquiry_to_physician,
+          inquiry_content: inquiryForm.inquiry_content,
+          inquired_at: today,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { message?: string }).message ?? '疑義照会の起票に失敗しました');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success('疑義照会を起票しました');
+      setInquiryDialog({ open: false, lineId: null, drugName: '', cycleId: '' });
+      setInquiryForm({ reason: '', inquiry_to_physician: '', inquiry_content: '' });
+      queryClient.invalidateQueries({ queryKey: ['dispense-task', taskId, orgId] });
+    },
+    onError: (err: Error) => {
+      toast.error('起票エラー', { description: err.message });
     },
   });
 
@@ -1017,7 +1075,28 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                       detail={blockedInquiry.change_detail ?? blockedInquiry.inquiry_content}
                     />
                   </div>
-                ) : null}
+                ) : (
+                  <div className="mt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 text-amber-700 border-amber-300 hover:bg-amber-50"
+                      onClick={() => {
+                        setInquiryDialog({
+                          open: true,
+                          lineId: originalLine?.id ?? null,
+                          drugName: originalLine?.drug_name ?? '',
+                          cycleId: task.cycle.id,
+                        });
+                        setInquiryForm({ reason: '', inquiry_to_physician: '', inquiry_content: '' });
+                      }}
+                    >
+                      <MessageSquarePlus className="size-3.5" aria-hidden="true" />
+                      疑義照会を起票
+                    </Button>
+                  </div>
+                )}
               </CardHeader>
               <CardContent className="space-y-3">
                 <Separator />
@@ -1175,6 +1254,86 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
           調剤完了
         </LoadingButton>
       </div>
+
+      {/* Inquiry filing dialog */}
+      <Dialog
+        open={inquiryDialog.open}
+        onOpenChange={(open) => setInquiryDialog((prev) => ({ ...prev, open }))}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">疑義照会を起票</DialogTitle>
+            {inquiryDialog.drugName && (
+              <p className="text-xs text-muted-foreground">対象: {inquiryDialog.drugName}</p>
+            )}
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="inq-reason" className="text-xs">
+                照会理由 <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="inq-reason"
+                value={inquiryForm.reason}
+                onChange={(e) => setInquiryForm((p) => ({ ...p, reason: e.target.value }))}
+                placeholder="例: 用量疑義 / 相互作用 / 禁忌確認"
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="inq-physician" className="text-xs">
+                照会先医師名 <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="inq-physician"
+                value={inquiryForm.inquiry_to_physician}
+                onChange={(e) =>
+                  setInquiryForm((p) => ({ ...p, inquiry_to_physician: e.target.value }))
+                }
+                placeholder="例: 田中 太郎"
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="inq-content" className="text-xs">
+                照会内容 <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                id="inq-content"
+                value={inquiryForm.inquiry_content}
+                onChange={(e) =>
+                  setInquiryForm((p) => ({ ...p, inquiry_content: e.target.value }))
+                }
+                placeholder="照会する具体的な内容を記入してください"
+                className="min-h-[80px] text-sm"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setInquiryDialog((prev) => ({ ...prev, open: false }))}
+              disabled={inquiryMutation.isPending}
+            >
+              キャンセル
+            </Button>
+            <LoadingButton
+              type="button"
+              loading={inquiryMutation.isPending}
+              loadingLabel="起票中..."
+              disabled={
+                !inquiryForm.reason.trim() ||
+                !inquiryForm.inquiry_to_physician.trim() ||
+                !inquiryForm.inquiry_content.trim()
+              }
+              onClick={() => inquiryMutation.mutate()}
+            >
+              起票する
+            </LoadingButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </form>
   );
 }

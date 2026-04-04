@@ -17,7 +17,19 @@ vi.mock('@/server/services/external-access', () => ({
   buildExternalAccessPayload: buildExternalAccessPayloadMock,
 }));
 
+vi.mock('@/lib/api/rate-limit', () => ({
+  createRateLimiter: () => async () => ({ allowed: true, remaining: 4, resetAt: new Date() }),
+}));
+
 import { GET } from './route';
+
+function makeRequest(otp: string) {
+  const headersMap: Record<string, string> = { 'x-otp': otp };
+  return {
+    nextUrl: new URL('http://localhost/api/external-access/token_1'),
+    headers: { get: (key: string) => headersMap[key] ?? null },
+  } as unknown as NextRequest;
+}
 
 describe('/api/external-access/[token]', () => {
   beforeEach(() => {
@@ -32,9 +44,7 @@ describe('/api/external-access/[token]', () => {
   });
 
   it('returns the external access payload for a valid token and otp', async () => {
-    const response = await GET({
-      nextUrl: new URL('http://localhost/api/external-access/token_1?otp=1234'),
-    } as NextRequest, {
+    const response = await GET(makeRequest('1234'), {
       params: Promise.resolve({ token: 'token_1' }),
     });
 

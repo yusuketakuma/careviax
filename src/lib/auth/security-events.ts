@@ -6,7 +6,8 @@ export type SecurityEventType =
   | 'rate_limit_exceeded'
   | 'rls_context_missing'
   | 'unauthorized_access'
-  | 'session_expired';
+  | 'session_expired'
+  | 'org_switch';
 
 interface SecurityEvent {
   event_type: SecurityEventType;

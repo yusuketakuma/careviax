@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { upsertVisitPreparationSchema } from '@/lib/validations/visit-preparation';
+import { buildChecklistFromTemplate, mergeChecklistWithTemplate } from '@/lib/visits/checklist-template';
 import {
   describeOperationalTask,
   upsertOperationalTask,
@@ -609,6 +610,18 @@ export async function PUT(
     parsed.data.route_confirmed &&
     parsed.data.offline_synced;
 
+  const templateOpts = parsed.data.template_options;
+  const effectiveChecklist: Record<string, unknown> = templateOpts
+    ? mergeChecklistWithTemplate(parsed.data.checklist, {
+        narcoticsCarry: templateOpts.narcotics_carry,
+        infectionControl: templateOpts.infection_control,
+        coldChainRequired: templateOpts.cold_chain_required,
+        facilityCustomItems: templateOpts.facility_custom_items,
+      })
+    : Object.keys(parsed.data.checklist).length === 0
+      ? buildChecklistFromTemplate()
+      : parsed.data.checklist;
+
   const result = await withOrgContext(ctx.orgId, async (tx) => {
     const preparation = await tx.visitPreparation.upsert({
       where: {
@@ -617,7 +630,7 @@ export async function PUT(
       create: {
         org_id: ctx.orgId,
         schedule_id: schedule.id,
-        checklist: parsed.data.checklist as Prisma.InputJsonValue,
+        checklist: effectiveChecklist as Prisma.InputJsonValue,
         medication_changes_reviewed: parsed.data.medication_changes_reviewed,
         carry_items_confirmed: parsed.data.carry_items_confirmed,
         previous_issues_reviewed: parsed.data.previous_issues_reviewed,
@@ -627,7 +640,7 @@ export async function PUT(
         prepared_at: allChecklistComplete ? new Date() : null,
       },
       update: {
-        checklist: parsed.data.checklist as Prisma.InputJsonValue,
+        checklist: effectiveChecklist as Prisma.InputJsonValue,
         medication_changes_reviewed: parsed.data.medication_changes_reviewed,
         carry_items_confirmed: parsed.data.carry_items_confirmed,
         previous_issues_reviewed: parsed.data.previous_issues_reviewed,

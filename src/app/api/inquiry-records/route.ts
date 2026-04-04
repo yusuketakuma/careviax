@@ -10,6 +10,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const { searchParams } = new URL(req.url);
   const cycleId = searchParams.get('cycle_id') ?? undefined;
   const patientId = searchParams.get('patient_id') ?? undefined;
+  const status = searchParams.get('status') ?? undefined;
 
   const where = {
     org_id: req.orgId,
@@ -20,6 +21,12 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
             patient_id: patientId,
           },
         }
+      : {}),
+    ...(status === 'unresolved'
+      ? { OR: [{ result: null }, { result: 'pending' }] }
+      : {}),
+    ...(status === 'resolved'
+      ? { result: { in: ['changed', 'unchanged'] } }
       : {}),
   };
 

@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useKeyboardShortcuts, type ShortcutDefinition } from '@/components/features/keyboard/use-keyboard-shortcuts';
 import { compareDispenseWorkflowOrder } from '@/lib/dispensing/workflow-order';
+import { Badge } from '@/components/ui/badge';
 import {
   QueueDueDate,
   QueueFacilityLabel,
@@ -37,6 +38,7 @@ type DispenseTaskRow = {
   cycle: {
     id: string;
     patient_id: string;
+    overall_status: string;
     case_: {
       patient: {
         id: string;
@@ -69,12 +71,20 @@ const columns: ColumnDef<DispenseTaskRow>[] = [
     header: '患者名',
     cell: ({ row }) => {
       const p = row.original.cycle.case_.patient;
+      const isInquiryResolved = row.original.cycle.overall_status === 'inquiry_resolved';
       return (
-        <QueuePatientLink
-          href={`/dispensing/${row.original.id}`}
-          name={p.name}
-          nameKana={p.name_kana}
-        />
+        <div className="space-y-0.5">
+          <QueuePatientLink
+            href={`/dispensing/${row.original.id}`}
+            name={p.name}
+            nameKana={p.name_kana}
+          />
+          {isInquiryResolved && (
+            <Badge variant="outline" className="border-emerald-400 text-emerald-700 text-[10px] py-0">
+              調剤再開可
+            </Badge>
+          )}
+        </div>
       );
     },
   },

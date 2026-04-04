@@ -52,6 +52,7 @@ interface JahisQRLine {
   quantity?: number;
   unit?: string;
   isGeneric?: boolean;
+  packagingMethod?: string;
   packagingInstructions?: string;
   packagingInstructionTags?: string[];
   route?: string;
@@ -103,7 +104,9 @@ interface DraftLine {
   days: number | '';
   quantity: number | '';
   unit: string;
+  packaging_method: string;
   packaging_instructions: string;
+  packaging_instruction_tags: string[];
   route: string;
   dispensing_method: string;
   start_date: string;
@@ -166,7 +169,9 @@ function buildInitialLines(
       days: line.days ?? '',
       quantity: line.quantity ?? '',
       unit: line.unit ?? '',
+      packaging_method: line.packagingMethod ?? '',
       packaging_instructions: line.packagingInstructions ?? '',
+      packaging_instruction_tags: line.packagingInstructionTags ?? [],
       route: line.route ?? '',
       dispensing_method: line.dispensingMethod ?? '',
       start_date: line.startDate ?? '',
@@ -291,7 +296,10 @@ export default function QrDraftReviewPage() {
             days: typeof l.days === 'number' ? l.days : Number(l.days),
             quantity: l.quantity !== '' ? Number(l.quantity) : undefined,
             unit: l.unit || undefined,
+            packaging_method: l.packaging_method || undefined,
             packaging_instructions: l.packaging_instructions || undefined,
+            packaging_instruction_tags:
+              l.packaging_instruction_tags.length > 0 ? l.packaging_instruction_tags : undefined,
             route: l.route || undefined,
             dispensing_method: l.dispensing_method || undefined,
             start_date: l.start_date || undefined,

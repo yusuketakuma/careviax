@@ -135,7 +135,7 @@ describe('/api/tracing-reports/[id] PATCH', () => {
         data: expect.objectContaining({
           event_type: 'tracing_report',
           counterpart_name: '在宅主治医',
-          channel: 'fax',
+          channel: 'other', // dynamic; defaults to 'other' when not specified in request body
         }),
       })
     );

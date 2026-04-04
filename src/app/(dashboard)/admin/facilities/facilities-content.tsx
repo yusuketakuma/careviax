@@ -26,6 +26,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type FacilityContact = {
@@ -172,6 +173,7 @@ export function FacilitiesContent() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-facilities', orgId],
@@ -384,7 +386,7 @@ export function FacilitiesContent() {
             <Button
               size="sm"
               variant="destructive"
-              onClick={() => deleteMutation.mutate(row.original.id)}
+              onClick={() => setDeleteTargetId(row.original.id)}
               disabled={deleteMutation.isPending}
             >
               削除
@@ -797,6 +799,20 @@ export function FacilitiesContent() {
           </div>
         </SheetContent>
       </Sheet>
+
+      <ConfirmDialog
+        open={deleteTargetId !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTargetId(null); }}
+        title="施設を削除しますか？"
+        description="この操作は取り消せません。施設マスターから完全に削除されます。"
+        confirmLabel="削除する"
+        cancelLabel="キャンセル"
+        variant="destructive"
+        onConfirm={() => {
+          if (deleteTargetId) deleteMutation.mutate(deleteTargetId);
+          setDeleteTargetId(null);
+        }}
+      />
     </div>
   );
 }

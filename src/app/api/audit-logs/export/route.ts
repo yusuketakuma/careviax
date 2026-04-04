@@ -53,10 +53,13 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       : {}),
   };
 
+  const EXPORT_LIMIT = 10000;
   const logs = await prisma.auditLog.findMany({
     where,
     orderBy: { created_at: 'desc' },
+    take: EXPORT_LIMIT,
   });
+  const truncated = logs.length === EXPORT_LIMIT;
 
   await recordDataExportAudit(prisma, {
     orgId: req.orgId,
@@ -87,6 +90,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       headers: {
         'Content-Type': 'application/json',
         'Content-Disposition': `attachment; filename="audit-logs-${Date.now()}.json"`,
+        ...(truncated ? { 'X-Export-Truncated': 'true', 'X-Export-Limit': String(EXPORT_LIMIT) } : {}),
       },
     });
   }
@@ -122,6 +126,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="audit-logs-${Date.now()}.csv"`,
+      ...(truncated ? { 'X-Export-Truncated': 'true', 'X-Export-Limit': String(EXPORT_LIMIT) } : {}),
     },
   });
 }, {

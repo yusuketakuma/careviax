@@ -120,9 +120,10 @@ function QrDraftList() {
   const isBootstrappingOrg = !orgId;
   const router = useRouter();
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [filterMode, setFilterMode] = useState<'all' | 'unmatched'>('all');
 
-  const { data, isLoading } = useRealtimeQuery({
-    queryKey: ['qr-drafts', orgId],
+  const { data: allData, isLoading: allLoading } = useRealtimeQuery({
+    queryKey: ['qr-drafts', orgId, 'all'],
     queryFn: async () => {
       const res = await fetch('/api/qr-scan-drafts', {
         headers: { 'x-org-id': orgId },
@@ -135,7 +136,26 @@ function QrDraftList() {
     invalidateOn: ['qr_draft_created', 'qr_draft_confirmed'],
   });
 
-  const drafts = useMemo(() => data?.data ?? [], [data]);
+  const { data: unmatchedData } = useRealtimeQuery({
+    queryKey: ['qr-drafts', orgId, 'unmatched'],
+    queryFn: async () => {
+      const res = await fetch('/api/qr-scan-drafts?unmatched=true', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('QRスキャン下書きの取得に失敗しました');
+      return res.json() as Promise<{ data: QrDraftRow[] }>;
+    },
+    enabled: !!orgId,
+    refetchInterval: 30_000,
+    invalidateOn: ['qr_draft_created', 'qr_draft_confirmed'],
+  });
+
+  const isLoading = allLoading;
+  const drafts = useMemo(
+    () => (filterMode === 'unmatched' ? (unmatchedData?.data ?? []) : (allData?.data ?? [])),
+    [filterMode, allData, unmatchedData],
+  );
+  const unmatchedCount = unmatchedData?.data.length ?? 0;
 
   const handleMoveUp = useCallback(() => {
     setSelectedIndex((prev) => Math.max(0, prev - 1));
@@ -167,19 +187,52 @@ function QrDraftList() {
   useKeyboardShortcuts(shortcuts);
 
   return (
-    <DataTable
-      columns={columns}
-      data={drafts}
-      isLoading={isBootstrappingOrg || isLoading}
-      caption="QRスキャン下書き一覧"
-      selectedRowIndex={selectedIndex}
-      onRowClick={(index) => {
-        setSelectedIndex(index);
-        const draft = drafts[index];
-        if (draft) router.push(`/prescriptions/qr-drafts/${draft.id}`);
-      }}
-      emptyMessage="QRスキャンの下書きはありません"
-    />
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => { setFilterMode('all'); setSelectedIndex(0); }}
+          className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+            filterMode === 'all'
+              ? 'bg-primary text-primary-foreground'
+              : 'border border-input bg-background text-foreground hover:bg-accent'
+          }`}
+        >
+          全て
+        </button>
+        <button
+          type="button"
+          onClick={() => { setFilterMode('unmatched'); setSelectedIndex(0); }}
+          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+            filterMode === 'unmatched'
+              ? 'bg-primary text-primary-foreground'
+              : 'border border-input bg-background text-foreground hover:bg-accent'
+          }`}
+        >
+          未照合
+          {unmatchedCount > 0 && (
+            <span className={`inline-flex size-5 items-center justify-center rounded-full text-[11px] font-semibold ${
+              filterMode === 'unmatched' ? 'bg-primary-foreground text-primary' : 'bg-amber-100 text-amber-800'
+            }`}>
+              {unmatchedCount}
+            </span>
+          )}
+        </button>
+      </div>
+      <DataTable
+        columns={columns}
+        data={drafts}
+        isLoading={isBootstrappingOrg || isLoading}
+        caption="QRスキャン下書き一覧"
+        selectedRowIndex={selectedIndex}
+        onRowClick={(index) => {
+          setSelectedIndex(index);
+          const draft = drafts[index];
+          if (draft) router.push(`/prescriptions/qr-drafts/${draft.id}`);
+        }}
+        emptyMessage={filterMode === 'unmatched' ? '未照合の下書きはありません' : 'QRスキャンの下書きはありません'}
+      />
+    </div>
   );
 }
 

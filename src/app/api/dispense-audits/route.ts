@@ -125,10 +125,20 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   message: '調剤鑑査の閲覧権限がありません',
 });
 
+const REJECT_REASON_CODES = [
+  'drug_name_mismatch',
+  'quantity_error',
+  'packaging_error',
+  'carry_type_error',
+  'labeling_error',
+  'other',
+] as const;
+
 const createDispenseAuditSchema = z.object({
   task_id: z.string().min(1),
   result: z.enum(['approved', 'rejected', 'hold', 'emergency_approved']),
   reject_reason: z.string().optional(),
+  reject_reason_code: z.enum(REJECT_REASON_CODES).optional(),
   reject_detail: z.string().optional(),
   external_audit: z
     .object({
@@ -183,7 +193,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const { task_id, result, reject_reason, reject_detail, external_audit } = parsed.data;
+  const { task_id, result, reject_reason, reject_reason_code, reject_detail, external_audit } = parsed.data;
 
   if (result === 'rejected' && !reject_reason) {
     return validationError('差戻し時は理由コードが必須です');
@@ -276,6 +286,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
             task_id,
             result,
             reject_reason: reject_reason ?? null,
+            reject_reason_code: reject_reason_code ?? null,
             reject_detail: mergeRejectDetail({
               rejectDetail: reject_detail,
               externalAudit: external_audit,

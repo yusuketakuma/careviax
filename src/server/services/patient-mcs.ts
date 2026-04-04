@@ -436,12 +436,7 @@ export function matchesPatientIdentity(
   }
 
   return localCandidates.some((localCandidate) =>
-    remoteCandidates.some(
-      (remoteCandidate) =>
-        localCandidate === remoteCandidate ||
-        localCandidate.includes(remoteCandidate) ||
-        remoteCandidate.includes(localCandidate)
-    )
+    remoteCandidates.some((remoteCandidate) => localCandidate === remoteCandidate)
   );
 }
 
@@ -856,11 +851,10 @@ export async function syncPatientMcsTimeline({
       }
 
       const currentMessageIds = preparedMessages.map((message) => message.sourceMessageId);
-      if (currentMessageIds.length === 0) {
-        await tx.patientMcsMessage.deleteMany({
-          where: { link_id: link.id },
-        });
-      } else {
+      // Only remove messages that are no longer present on the remote side.
+      // When the sync returns an empty set we skip deletion entirely to preserve
+      // existing data (avoids data loss from transient scraping failures).
+      if (currentMessageIds.length > 0) {
         await tx.patientMcsMessage.deleteMany({
           where: {
             link_id: link.id,
@@ -883,11 +877,9 @@ export async function syncPatientMcsTimeline({
             ...buildPatientMcsSummaryFields(summary),
           },
         });
-      } else {
-        await txWithSummary.patientMcsSummary.deleteMany({
-          where: { patient_id: patientId, org_id: orgId },
-        });
       }
+      // When summary generation fails or returns null, preserve the existing summary
+      // rather than deleting it. Deletion only occurs on explicit user-initiated removal.
 
       const savedSummary = await txWithSummary.patientMcsSummary.findUnique({
         where: { patient_id: patientId },

@@ -1,9 +1,10 @@
 'use client';
 
-import { CalendarDays, FolderKanban, ListChecks, Settings2, Users } from 'lucide-react';
+import { CalendarDays, FolderKanban, ListChecks, Receipt, Settings2, Users } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { AdminNavigation } from './admin-navigation';
+import { BillingKpiSection } from './billing-kpi-section';
 import { DashboardSectionGroup } from './dashboard-section-group';
 import { PatientGridSection } from './patient-grid-section';
 import { CoordinationNavigation } from './coordination-navigation';
@@ -95,6 +96,24 @@ export function DashboardContent() {
             </div>
           </section>
         </div>
+      </DashboardSectionGroup>
+
+      <DashboardSectionGroup
+        id="dashboard-billing-kpi"
+        eyebrow="Billing KPI"
+        title="請求状況"
+        description="当月の請求候補・未確定・締めブロッカーをひと目で確認し、月次締め前に対処が必要な項目を把握します。"
+      >
+        <section className="space-y-4" aria-labelledby="dashboard-billing-kpi-section">
+          <SectionHeader
+            icon={Receipt}
+            title="当月請求 KPI"
+            description="候補数・未確定・ブロッカーを確認し、月次締めの準備状況を把握します。"
+          />
+          <div id="dashboard-billing-kpi-section">
+            <BillingKpiSection />
+          </div>
+        </section>
       </DashboardSectionGroup>
 
       <DashboardSectionGroup

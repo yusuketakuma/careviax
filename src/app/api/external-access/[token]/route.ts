@@ -1,21 +1,37 @@
 import { NextRequest } from 'next/server';
-import { success, notFound, validationError } from '@/lib/api/response';
+import { success, notFound, validationError, error } from '@/lib/api/response';
 import {
   buildExternalAccessPayload,
   markExternalAccessViewed,
   validateExternalAccessGrant,
 } from '@/server/services/external-access';
+import { createRateLimiter } from '@/lib/api/rate-limit';
+
+const otpRateLimiter = createRateLimiter({ windowMs: 60_000, maxRequests: 5 });
 
 /**
  * Public endpoint — no authentication required.
  * Validates token + OTP, returns scoped patient data.
+ * OTP is read from the `x-otp` request header (not a URL query param).
  */
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
+  const ip =
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const rl = await otpRateLimiter(`otp-verify:${ip}`);
+  if (!rl.allowed) {
+    return error(
+      'RATE_LIMIT_EXCEEDED',
+      'リクエストが多すぎます。しばらく待ってから再試行してください。',
+      429
+    );
+  }
+
   const { token } = await params;
-  const otpParam = req.nextUrl.searchParams.get('otp');
+  // OTP is transmitted via header to avoid leaking it in server logs / browser history.
+  const otpParam = req.headers.get('x-otp');
   const validation = await validateExternalAccessGrant(token, otpParam);
 
   if (!validation.ok) {

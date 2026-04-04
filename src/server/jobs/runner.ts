@@ -3,12 +3,34 @@ import { prisma } from '@/lib/db';
 
 const MAX_RETRIES = 3;
 
+/**
+ * Concurrency guard: ensure only one job of the same type runs at a time.
+ * Returns true if a running job already exists (caller should skip/abort).
+ */
+async function isJobAlreadyRunning(jobType: string, orgId?: string): Promise<boolean> {
+  const existing = await prisma.integrationJob.findFirst({
+    where: {
+      job_type: jobType,
+      status: 'running',
+      ...(orgId ? { org_id: orgId } : {}),
+    },
+    select: { id: true },
+  });
+  return existing !== null;
+}
+
 export async function runJob(
   jobType: string,
   fn: () => Promise<{ processedCount: number; errors?: string[] }>,
   orgId?: string,
   dedupeKey?: string
 ) {
+  // Skip if the same job type is already in progress
+  if (await isJobAlreadyRunning(jobType, orgId)) {
+    console.warn(`[runner] Skipping duplicate job execution: ${jobType} (already running)`);
+    return { processedCount: 0, skipped: true };
+  }
+
   const job = await prisma.integrationJob.create({
     data: {
       job_type: jobType,

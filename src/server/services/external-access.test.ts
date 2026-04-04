@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import bcrypt from 'bcryptjs';
 
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
@@ -17,7 +18,6 @@ vi.mock('@/lib/db/client', () => ({
 
 import {
   buildExternalAccessPayload,
-  hashExternalAccessOtp,
   hashExternalAccessToken,
   issueExternalAccessToken,
   MissingExternalAccessSecretError,
@@ -166,7 +166,7 @@ describe('validateExternalAccessGrant', () => {
       id: 'grant_1',
       org_id: 'org_1',
       patient_id: 'patient_1',
-      otp_hash: hashExternalAccessOtp('123456'),
+      otp_hash: bcrypt.hashSync('123456', 4),
       expires_at: new Date('2026-04-01T00:00:00.000Z'),
       revoked_at: null,
       scope: { medication_list: true },

@@ -18,7 +18,7 @@ export const visitGeoLogSchema = z.object({
   end: visitGeoPointSchema.nullable(),
 });
 
-export const createVisitRecordSchema = z.object({
+export const visitRecordBaseSchema = z.object({
   schedule_id: z.string().min(1, 'スケジュールIDは必須です'),
   patient_id: z.string().min(1, '患者IDは必須です'),
   visit_date: z.string().regex(/^\d{4}-\d{2}-\d{2}/, '日付形式が不正です（YYYY-MM-DD）'),
@@ -68,7 +68,22 @@ export const createVisitRecordSchema = z.object({
   visit_geo_log: visitGeoLogSchema.optional(),
 });
 
-export const updateVisitRecordSchema = createVisitRecordSchema
+export const createVisitRecordSchema = visitRecordBaseSchema.superRefine((data, ctx) => {
+  if (data.outcome_status === 'completed') {
+    const hasS = Boolean(data.soap_subjective?.trim());
+    const hasP = Boolean(data.soap_plan?.trim());
+    const hasStructuredSoap = data.structured_soap != null && Object.keys(data.structured_soap).length > 0;
+    if (!hasS && !hasP && !hasStructuredSoap) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['soap_subjective'],
+        message: '完了時はS（主観）またはP（計画）のいずれかの記入が必要です',
+      });
+    }
+  }
+});
+
+export const updateVisitRecordSchema = visitRecordBaseSchema
   .partial()
   .extend({
     version: z.number().int().positive(),

@@ -23,8 +23,9 @@ export async function sendEmail({ to, subject, htmlBody, textBody }: SendEmailPa
   const toAddresses = Array.isArray(to) ? to : [to];
 
   if (!FROM_EMAIL) {
-    console.info('[EMAIL-STUB]', { to: toAddresses, subject });
-    return { messageId: `stub-${Date.now()}`, stub: true };
+    throw new Error(
+      'SES_FROM_EMAIL is not configured. Set the environment variable to enable email sending.'
+    );
   }
 
   const client = getClient();

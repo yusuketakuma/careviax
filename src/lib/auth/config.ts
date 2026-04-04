@@ -7,9 +7,13 @@ import { getAuthBaseUrl, getAuthSecret } from './secret';
 import { markLocalUserActive, resolveLocalUserByIdentity } from './user-resolution';
 import {
   authenticateWithPassword,
+  refreshCognitoTokens,
   respondToNewPasswordChallenge,
   respondToSoftwareTokenChallenge,
 } from '@/server/services/cognito-auth';
+
+// Refresh access token 5 minutes before expiry
+const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
 const authBaseUrl = getAuthBaseUrl();
 
@@ -104,6 +108,7 @@ export const authOptions: NextAuthOptions = {
         token.accessToken = credentialUser.accessToken;
         token.refreshToken = credentialUser.refreshToken;
         token.idToken = credentialUser.idToken;
+        token.accessTokenExpiry = Date.now() + 3600 * 1000;
       }
 
       if (!token.userId || account) {
@@ -121,6 +126,29 @@ export const authOptions: NextAuthOptions = {
           const syncedUser = await markLocalUserActive(localUser);
           token.userId = syncedUser.id;
           token.cognitoSub = syncedUser.cognito_sub;
+          token.orgId = syncedUser.org_id;
+          token.sessionVersion = syncedUser.session_version;
+        }
+      }
+
+      // Refresh Cognito access token before it expires (credentials flow only)
+      if (
+        token.refreshToken &&
+        token.accessTokenExpiry &&
+        Date.now() > (token.accessTokenExpiry as number) - TOKEN_REFRESH_BUFFER_MS
+      ) {
+        try {
+          const refreshed = await refreshCognitoTokens({
+            refreshToken: token.refreshToken as string,
+            username: typeof token.email === 'string' ? token.email : '',
+          });
+          token.accessToken = refreshed.accessToken;
+          if (refreshed.idToken) token.idToken = refreshed.idToken;
+          token.accessTokenExpiry = Date.now() + refreshed.expiresIn * 1000;
+          token.error = undefined;
+        } catch {
+          // Cognito rejected refresh (account disabled / token revoked)
+          token.error = 'RefreshAccessTokenError';
         }
       }
 
@@ -131,7 +159,11 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.userId;
         session.user.cognitoSub =
           typeof token.cognitoSub === 'string' ? token.cognitoSub : undefined;
+        session.user.orgId = typeof token.orgId === 'string' ? token.orgId : undefined;
+        session.user.sessionVersion =
+          typeof token.sessionVersion === 'number' ? token.sessionVersion : undefined;
         session.cognitoGroups = token.cognitoGroups;
+        session.error = token.error;
       }
       return session;
     },

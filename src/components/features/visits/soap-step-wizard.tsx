@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 import {
   MessageSquare,
@@ -91,6 +91,21 @@ export function SoapStepWizard({
       setCurrentStep((prev) => prev - 1);
     }
   }
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!e.altKey) return;
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setCurrentStep((prev) => Math.min(prev + 1, STEPS.length - 1));
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setCurrentStep((prev) => Math.max(prev - 1, 0));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const StepIcon = STEPS[currentStep].icon;
 

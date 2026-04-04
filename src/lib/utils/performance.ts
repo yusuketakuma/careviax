@@ -233,3 +233,83 @@ export function resetPerformanceMetrics(): void {
     routes: new Map(),
   };
 }
+
+/**
+ * Flush the current performance snapshot as CloudWatch custom metrics.
+ * Emits p50/p95 latency and error rate per route.
+ * Call this on a schedule (e.g., every 5 minutes) from a cron API route.
+ * Silently no-ops when not in a Node.js server context.
+ */
+export async function flushPerformanceMetricsToCloudWatch(options?: {
+  targetMs?: number;
+}): Promise<void> {
+  // Dynamic import so the CloudWatch SDK is never bundled into the client
+  const { putMetrics, StandardUnit } = await import('@/lib/aws/cloudwatch');
+  const snapshot = getPerformanceSnapshot(options);
+
+  if (snapshot.routes.length === 0) return;
+
+  const timestamp = new Date();
+  const datums = snapshot.routes.flatMap((route) => [
+    {
+      MetricName: 'RouteP50LatencyMs',
+      Value: route.p50_ms,
+      Unit: StandardUnit.Milliseconds,
+      Timestamp: timestamp,
+      Dimensions: [
+        { Name: 'Route', Value: route.route },
+        { Name: 'Method', Value: route.method },
+      ],
+    },
+    {
+      MetricName: 'RouteP95LatencyMs',
+      Value: route.p95_ms,
+      Unit: StandardUnit.Milliseconds,
+      Timestamp: timestamp,
+      Dimensions: [
+        { Name: 'Route', Value: route.route },
+        { Name: 'Method', Value: route.method },
+      ],
+    },
+    {
+      MetricName: 'RouteErrorRate',
+      Value: route.error_count > 0 ? (route.error_count / route.request_count) * 100 : 0,
+      Unit: StandardUnit.Percent,
+      Timestamp: timestamp,
+      Dimensions: [
+        { Name: 'Route', Value: route.route },
+        { Name: 'Method', Value: route.method },
+      ],
+    },
+    {
+      MetricName: 'RouteSlowRate',
+      Value: route.slow_rate,
+      Unit: StandardUnit.Percent,
+      Timestamp: timestamp,
+      Dimensions: [
+        { Name: 'Route', Value: route.route },
+        { Name: 'Method', Value: route.method },
+      ],
+    },
+  ]);
+
+  // Overall summary metrics (no Route dimension)
+  datums.push(
+    {
+      MetricName: 'OverallP95LatencyMs',
+      Value: snapshot.summary.overall_p95_ms,
+      Unit: StandardUnit.Milliseconds,
+      Timestamp: timestamp,
+      Dimensions: [],
+    },
+    {
+      MetricName: 'SlowRequestRate',
+      Value: snapshot.summary.slow_request_rate,
+      Unit: StandardUnit.Percent,
+      Timestamp: timestamp,
+      Dimensions: [],
+    }
+  );
+
+  await putMetrics(datums);
+}

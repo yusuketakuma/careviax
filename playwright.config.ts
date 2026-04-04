@@ -10,10 +10,10 @@ const shouldReuseExistingServer = !process.env.CI && process.env.PLAYWRIGHT_REUS
 export default defineConfig({
   testDir: './tools/tests',
   outputDir: PLAYWRIGHT_OUTPUT_DIR,
-  fullyParallel: false,
+  fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: 1,
+  workers: process.env.CI ? 4 : 2,
   reporter: [['html', { outputFolder: PLAYWRIGHT_REPORT_DIR, open: 'never' }]],
   use: {
     baseURL: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',

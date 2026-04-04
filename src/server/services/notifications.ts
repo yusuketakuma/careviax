@@ -1,6 +1,19 @@
 import { Prisma, type NotificationType } from '@prisma/client';
+import webpush from 'web-push';
 import { LineNotificationAdapter } from '@/server/adapters/line';
 import { SmsNotificationAdapter } from '@/server/adapters/sms';
+
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? 'mailto:noreply@careviax.jp';
+
+function getWebPushEnabled() {
+  return Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+}
+
+if (getWebPushEnabled()) {
+  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY!, VAPID_PRIVATE_KEY!);
+}
 
 type Tx = Prisma.TransactionClient;
 type NotificationChannel = 'in_app' | 'sms' | 'line' | 'email' | 'fax' | 'mcs';
@@ -176,6 +189,29 @@ export async function dispatchNotificationEvent(
     resolveTargetUserIds(tx, input, rules, 'mcs'),
   ]);
   const externalUserIds = uniqueStrings([...smsUserIds, ...lineUserIds, ...faxUserIds, ...mcsUserIds]);
+
+  // Web Push — send to all subscriptions for in-app notification recipients
+  if (getWebPushEnabled() && targetUserIds.length > 0) {
+    const pushSubscriptions = await tx.pushSubscription.findMany({
+      where: { org_id: input.orgId, user_id: { in: targetUserIds } },
+      select: { endpoint: true, p256dh: true, auth: true },
+    });
+
+    const pushPayload = JSON.stringify({
+      title: input.title,
+      body: input.message,
+      link: input.link ?? null,
+    });
+
+    await Promise.allSettled(
+      pushSubscriptions.map((sub) =>
+        webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          pushPayload
+        )
+      )
+    );
+  }
 
   if (externalUserIds.length > 0) {
     const users = await tx.user.findMany({

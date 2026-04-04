@@ -1,6 +1,16 @@
 const OFFLINE_ENCRYPTION_PREFIX = 'encv1:';
-const OFFLINE_KEY_STORAGE_KEY = 'careviax.offline.key.v1';
 const AES_GCM_IV_LENGTH = 12;
+
+// IndexedDB settings for key storage
+const IDB_DB_NAME = 'careviax-offline-keys';
+const IDB_DB_VERSION = 1;
+const IDB_STORE_NAME = 'crypto-keys';
+const IDB_KEY_RECORD_ID = 'offline-enc-key-v2';
+
+// Salt stored in localStorage (salt is not secret; only raw key bytes must be protected)
+const OFFLINE_SALT_STORAGE_KEY = 'careviax.offline.salt.v2';
+
+const PBKDF2_ITERATIONS = 100_000;
 
 function getOfflineCryptoApi() {
   if (typeof window === 'undefined') return null;
@@ -24,20 +34,112 @@ function base64ToBytes(value: string) {
   return bytes;
 }
 
-async function getOfflineEncryptionKey() {
+function openKeyDatabase(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_DB_NAME, IDB_DB_VERSION);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(IDB_STORE_NAME);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function putKeyInIndexedDB(key: CryptoKey): Promise<void> {
+  const db = await openKeyDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+    tx.objectStore(IDB_STORE_NAME).put(key, IDB_KEY_RECORD_ID);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+  });
+}
+
+async function getKeyFromIndexedDB(): Promise<CryptoKey | null> {
+  const db = await openKeyDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE_NAME, 'readonly');
+    const req = tx.objectStore(IDB_STORE_NAME).get(IDB_KEY_RECORD_ID);
+    req.onsuccess = () => { db.close(); resolve((req.result as CryptoKey | undefined) ?? null); };
+    req.onerror = () => { db.close(); reject(req.error); };
+  });
+}
+
+async function deleteKeyFromIndexedDB(): Promise<void> {
+  const db = await openKeyDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+    tx.objectStore(IDB_STORE_NAME).delete(IDB_KEY_RECORD_ID);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+  });
+}
+
+function getOrCreateSalt(cryptoApi: Crypto): Uint8Array {
+  const stored = localStorage.getItem(OFFLINE_SALT_STORAGE_KEY);
+  if (stored) return base64ToBytes(stored);
+  const salt = cryptoApi.getRandomValues(new Uint8Array(16));
+  localStorage.setItem(OFFLINE_SALT_STORAGE_KEY, bytesToBase64(salt));
+  return salt;
+}
+
+async function deriveKeyFromUserId(userId: string, salt: Uint8Array, cryptoApi: Crypto): Promise<CryptoKey> {
+  const enc = new TextEncoder();
+  const keyMaterial = await cryptoApi.subtle.importKey(
+    'raw',
+    enc.encode(userId),
+    'PBKDF2',
+    false,
+    ['deriveKey']
+  );
+  return cryptoApi.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false, // extractable: false — raw key bytes cannot be exported via JS
+    ['encrypt', 'decrypt']
+  );
+}
+
+/**
+ * Initialize the offline encryption key from the user's identity.
+ * Must be called after login before any offline PHI can be encrypted/decrypted.
+ * The derived CryptoKey is stored in IndexedDB with extractable:false.
+ */
+export async function initOfflineEncryptionKey(userId: string): Promise<void> {
+  const cryptoApi = getOfflineCryptoApi();
+  if (!cryptoApi || typeof window === 'undefined') return;
+  try {
+    const salt = getOrCreateSalt(cryptoApi);
+    const key = await deriveKeyFromUserId(userId, salt, cryptoApi);
+    await putKeyInIndexedDB(key);
+  } catch {
+    // Non-fatal: offline encryption degrades gracefully if init fails
+  }
+}
+
+/**
+ * Remove the offline encryption key from IndexedDB.
+ * Must be called on logout to ensure PHI cannot be decrypted without re-authentication.
+ */
+export async function clearOfflineEncryptionKey(): Promise<void> {
+  if (typeof window === 'undefined' || !window.indexedDB) return;
+  try {
+    await deleteKeyFromIndexedDB();
+    localStorage.removeItem(OFFLINE_SALT_STORAGE_KEY);
+  } catch {
+    // best effort
+  }
+}
+
+async function getOfflineEncryptionKey(): Promise<CryptoKey | null> {
   const cryptoApi = getOfflineCryptoApi();
   if (!cryptoApi || typeof window === 'undefined') return null;
-
-  const stored = window.localStorage.getItem(OFFLINE_KEY_STORAGE_KEY);
-  const keyBytes = stored
-    ? base64ToBytes(stored)
-    : (() => {
-        const generated = cryptoApi.getRandomValues(new Uint8Array(32));
-        window.localStorage.setItem(OFFLINE_KEY_STORAGE_KEY, bytesToBase64(generated));
-        return generated;
-      })();
-
-  return cryptoApi.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['encrypt', 'decrypt']);
+  try {
+    return await getKeyFromIndexedDB();
+  } catch {
+    return null;
+  }
 }
 
 export async function encryptOfflinePayload(value: string) {
