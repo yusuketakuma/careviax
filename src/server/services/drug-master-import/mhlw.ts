@@ -1,5 +1,4 @@
 import { Prisma } from '@prisma/client';
-import * as XLSX from 'xlsx';
 import {
   DrugMasterImportDbClient,
   FetchLike,
@@ -11,6 +10,7 @@ import {
   resolveAbsoluteUrl,
   withImportLog,
 } from './shared';
+import { loadWorkbook, readWorkbookRowsFromWorkbook } from './excel';
 
 export const MHLW_MASTER_INDEX_PAGE_URL =
   'https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/0000078916.html';
@@ -42,25 +42,39 @@ type ParsedGenericNameEntry = {
   }>;
 };
 
-function workbookToRows(buffer: Buffer, preferredSheet?: string) {
-  const workbook = XLSX.read(buffer, { type: 'buffer', raw: false });
-  const sheetName =
-    (preferredSheet && workbook.SheetNames.includes(preferredSheet) && preferredSheet) ||
-    workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-  return XLSX.utils.sheet_to_json<(string | null)[]>(sheet, {
-    header: 1,
-    defval: null,
-    raw: false,
-  });
-}
-
 function findHeaderIndex(rows: Array<Array<string | null>>, requiredHeader: string) {
   const index = rows.findIndex((row) => row.some((cell) => normalizeCell(cell) === requiredHeader));
   if (index < 0) {
     throw new Error(`Excel内に必要なヘッダー '${requiredHeader}' が見つかりませんでした`);
   }
   return index;
+}
+
+function hasHeader(rows: Array<Array<string | null>>, requiredHeader: string) {
+  return rows.findIndex((row) => row.some((cell) => normalizeCell(cell) === requiredHeader)) >= 0;
+}
+
+async function loadPriceWorkbookRows(buffer: Buffer) {
+  const workbook = await loadWorkbook(buffer);
+  const preferredSheetNames = ['ＨＰ用', 'HP用'];
+
+  for (const sheetName of preferredSheetNames) {
+    const worksheet = workbook.getWorksheet(sheetName);
+    if (!worksheet) continue;
+    const rows = readWorkbookRowsFromWorkbook(workbook, sheetName);
+    if (hasHeader(rows, '薬価基準収載医薬品コード')) {
+      return rows;
+    }
+  }
+
+  for (const worksheet of workbook.worksheets) {
+    const rows = readWorkbookRowsFromWorkbook(workbook, worksheet.name);
+    if (hasHeader(rows, '薬価基準収載医薬品コード')) {
+      return rows;
+    }
+  }
+
+  throw new Error("Excel ワークシート内に '薬価基準収載医薬品コード' ヘッダーが見つかりませんでした");
 }
 
 function indexHeaderMap(headerRow: Array<string | null>) {
@@ -110,7 +124,7 @@ export async function parseMhlwPriceWorkbook(
     options.workbookUrl ??
     resolveLatestMhlwPriceWorkbookUrl(await fetchText(MHLW_MASTER_INDEX_PAGE_URL, fetchImpl));
 
-  const rows = workbookToRows(await fetchBytes(workbookUrl, fetchImpl));
+  const rows = await loadPriceWorkbookRows(await fetchBytes(workbookUrl, fetchImpl));
   const headerIndex = findHeaderIndex(rows, '薬価基準収載医薬品コード');
   const headerMap = indexHeaderMap(rows[headerIndex]);
   const records: ParsedMhlwPriceRecord[] = [];
@@ -229,8 +243,9 @@ export async function parseGenericNameWorkbook(
     options.workbookUrl ??
     resolveLatestGenericNameWorkbookUrl(await fetchText(MHLW_MASTER_INDEX_PAGE_URL, fetchImpl));
   const buffer = await fetchBytes(workbookUrl, fetchImpl);
-  const masterRows = workbookToRows(buffer, '一般名処方マスタ（R8.4.1版） 全体');
-  const exceptionRows = workbookToRows(buffer, '例外コード品目対照表');
+  const workbook = await loadWorkbook(buffer);
+  const masterRows = readWorkbookRowsFromWorkbook(workbook, '一般名処方マスタ（R8.4.1版） 全体');
+  const exceptionRows = readWorkbookRowsFromWorkbook(workbook, '例外コード品目対照表');
 
   const masterHeaderIndex = findHeaderIndex(masterRows, '一般名コード');
   const masterHeaderMap = indexHeaderMap(masterRows[masterHeaderIndex]);

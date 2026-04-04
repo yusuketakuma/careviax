@@ -19,12 +19,12 @@ export function PageShortcutLinks({ links }: PageShortcutLinksProps) {
 
   if (!grouped) {
     return (
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className="flex flex-wrap justify-start gap-2 sm:justify-end">
         {links.map((link) => (
           <Link
             key={`${link.href}:${link.label}`}
             href={link.href}
-            className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-8')}
+            className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-9 sm:h-8')}
           >
             {link.label}
           </Link>
@@ -53,12 +53,12 @@ export function PageShortcutLinks({ links }: PageShortcutLinksProps) {
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             {group.label}
           </p>
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="flex flex-wrap justify-start gap-2 sm:justify-end">
             {group.links.map((link) => (
               <Link
                 key={`${group.label}:${link.href}:${link.label}`}
                 href={link.href}
-                className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-8')}
+                className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-9 sm:h-8')}
               >
                 {link.label}
               </Link>

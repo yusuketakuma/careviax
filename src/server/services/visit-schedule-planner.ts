@@ -70,6 +70,7 @@ type CandidateScoreBreakdown = {
   workloadPenalty: number;
   slackPenalty: number;
   lockPenalty: number;
+  cadencePenalty: number;
 };
 
 type PreferenceWindow = {
@@ -111,6 +112,14 @@ function normalizeWeekdays(value: Prisma.JsonValue | null | undefined) {
 
 function buildWeekKey(value: Date) {
   return format(startOfWeek(value, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+}
+
+function startOfMonthDate(value: Date) {
+  return new Date(value.getFullYear(), value.getMonth(), 1);
+}
+
+function endOfMonthDate(value: Date) {
+  return new Date(value.getFullYear(), value.getMonth() + 1, 0, 23, 59, 59, 999);
 }
 
 function readTimeString(value: Date | null | undefined) {
@@ -517,6 +526,20 @@ export async function generateVisitScheduleProposalDrafts(
   if (careCase.backup_pharmacist_id) {
     preferenceNotes.push('副担当薬剤師を優先考慮');
   }
+  const intakeJson = (careCase.required_visit_support as Record<string, unknown> | null)
+    ?.home_visit_intake as Record<string, unknown> | null;
+  const specialProcedures = Array.isArray(intakeJson?.special_medical_procedures)
+    ? (intakeJson.special_medical_procedures as string[])
+    : [];
+  const specialCapEligible =
+    specialProcedures.includes('narcotics') ||
+    specialProcedures.includes('narcotics_injection') ||
+    specialProcedures.includes('tpn') ||
+    specialProcedures.includes('cv_port') ||
+    specialProcedures.includes('central_venous') ||
+    specialProcedures.includes('terminal_pain');
+  const monthlyCap = specialCapEligible ? 8 : 4;
+  const weeklyCap = specialCapEligible ? 2 : null;
 
   const cycle = await prisma.medicationCycle.findFirst({
     where: {
@@ -653,6 +676,9 @@ export async function generateVisitScheduleProposalDrafts(
 
   const confirmedSchedulesByDayAndPharmacist = new Map<string, typeof confirmedSchedules>();
   const confirmedSchedulesByWeekAndPharmacist = new Map<string, typeof confirmedSchedules>();
+  const confirmedSchedulesForPatient = confirmedSchedules.filter(
+    (schedule) => schedule.case_.patient.id === careCase.patient_id,
+  );
   for (const schedule of confirmedSchedules) {
     const key = `${schedule.pharmacist_id}:${toDateKey(schedule.scheduled_date)}`;
     const list = confirmedSchedulesByDayAndPharmacist.get(key);
@@ -829,12 +855,28 @@ export async function generateVisitScheduleProposalDrafts(
             : remainingSlackMinutes < DEFAULT_VISIT_DURATION_MINUTES * 2
               ? 6
               : 0;
+        const monthlyCountForCandidate = confirmedSchedulesForPatient.filter(
+          (schedule) =>
+            schedule.scheduled_date >= startOfMonthDate(shift.date) &&
+            schedule.scheduled_date <= endOfMonthDate(shift.date),
+        ).length;
+        const weeklyCountForCandidate =
+          weeklyCap == null
+            ? 0
+            : confirmedSchedulesForPatient.filter(
+                (schedule) =>
+                  buildWeekKey(schedule.scheduled_date) === buildWeekKey(shift.date),
+              ).length;
+        const cadencePenalty =
+          (monthlyCountForCandidate >= monthlyCap ? 120 : 0) +
+          (weeklyCap != null && weeklyCountForCandidate >= weeklyCap ? 80 : 0);
         const scoreBreakdown: CandidateScoreBreakdown = {
           geocodePenalty,
           facilityBonus,
           workloadPenalty,
           slackPenalty,
           lockPenalty,
+          cadencePenalty,
         };
         const score =
           routeInsertion.travelScore +
@@ -846,6 +888,7 @@ export async function generateVisitScheduleProposalDrafts(
           scoreBreakdown.workloadPenalty +
           scoreBreakdown.slackPenalty +
           scoreBreakdown.lockPenalty +
+          scoreBreakdown.cadencePenalty +
           priorityBonus;
 
         return {
@@ -905,6 +948,9 @@ export async function generateVisitScheduleProposalDrafts(
         ...(candidate.scoreBreakdown.geocodePenalty > 0
           ? ['住所座標未整備のため補正スコアを適用']
           : []),
+        ...(candidate.scoreBreakdown.cadencePenalty > 0
+          ? ['算定間隔・回数制限に近いため後方候補として評価']
+          : ['算定間隔・回数上は提案可能日']),
         ...(candidate.lockedSchedules > 0
           ? [`確定済み・進行中予定 ${candidate.lockedSchedules} 件を固定したまま提案`]
           : ['未確定枠が中心のため再配置余地あり']),

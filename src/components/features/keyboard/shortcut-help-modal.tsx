@@ -19,6 +19,8 @@ const SCOPE_LABELS: Record<string, string> = {
   global: 'グローバル',
   dispensing: '調剤キュー',
   auditing: '鑑査',
+  'qr-drafts': 'QR下書き',
+  prescriptions: '処方受付',
 };
 
 function formatKey(shortcut: ShortcutDefinition): string {
@@ -50,7 +52,7 @@ export function ShortcutHelpModal({ open, onOpenChange, shortcuts }: ShortcutHel
     return acc;
   }, {});
 
-  const scopeOrder = ['global', 'dispensing', 'auditing'];
+  const scopeOrder = ['global', 'dispensing', 'auditing', 'qr-drafts', 'prescriptions'];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

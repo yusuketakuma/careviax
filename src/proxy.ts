@@ -33,6 +33,30 @@ const CSP_STATIC_TAIL = [
 
 const IS_DEV = process.env.NODE_ENV === 'development';
 const IS_E2E = process.env.PLAYWRIGHT === '1';
+const PROTECTED_ROUTE_PREFIXES = [
+  '/admin',
+  '/auditing',
+  '/billing',
+  '/communications',
+  '/conferences',
+  '/dashboard',
+  '/dispensing',
+  '/external',
+  '/handoff',
+  '/medication-sets',
+  '/my-day',
+  '/notifications',
+  '/patients',
+  '/prescriptions',
+  '/qr-scan',
+  '/referrals',
+  '/reports',
+  '/schedules',
+  '/settings',
+  '/tasks',
+  '/visits',
+  '/workflow',
+] as const;
 
 // ---------------------------------------------------------------------------
 // CSRF helpers
@@ -72,6 +96,12 @@ function isValidOrigin(request: NextRequest): boolean {
   if (request.headers.get('x-api-key')) return true;
 
   return false;
+}
+
+function isProtectedAppRoute(pathname: string) {
+  return PROTECTED_ROUTE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -132,7 +162,7 @@ export async function proxy(request: NextRequest) {
       });
       return NextResponse.json(
         { code: 'CSRF_VALIDATION_FAILED', message: 'リクエストの送信元が不正です' },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
@@ -140,7 +170,7 @@ export async function proxy(request: NextRequest) {
     const result = await checkRateLimit(
       identity.identifier,
       request.nextUrl.pathname,
-      request.method
+      request.method,
     );
 
     if (!result.allowed) {
@@ -164,7 +194,7 @@ export async function proxy(request: NextRequest) {
             'X-RateLimit-Remaining': '0',
             'X-RateLimit-Reset': String(result.resetAt),
           },
-        }
+        },
       );
     }
 
@@ -179,6 +209,30 @@ export async function proxy(request: NextRequest) {
   }
 
   // --- Step 2: Non-API routes — nonce + security headers only ---
+  if (isProtectedAppRoute(request.nextUrl.pathname)) {
+    const secret = getAuthSecret();
+    if (secret) {
+      try {
+        const token = await getToken({ req: request, secret });
+        if (!token) {
+          const loginUrl = request.nextUrl.clone();
+          loginUrl.pathname = '/login';
+          loginUrl.search = '';
+          const callbackUrl = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+          loginUrl.searchParams.set('callbackUrl', callbackUrl);
+          return NextResponse.redirect(loginUrl);
+        }
+      } catch {
+        const loginUrl = request.nextUrl.clone();
+        loginUrl.pathname = '/login';
+        loginUrl.search = '';
+        const callbackUrl = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+        loginUrl.searchParams.set('callbackUrl', callbackUrl);
+        return NextResponse.redirect(loginUrl);
+      }
+    }
+  }
+
   return buildResponse(request, null);
 }
 
@@ -188,7 +242,7 @@ export async function proxy(request: NextRequest) {
 
 function buildResponse(
   request: NextRequest,
-  rateLimitHeaders: { remaining: string; reset: string } | null
+  rateLimitHeaders: { remaining: string; reset: string } | null,
 ): NextResponse {
   // Fix 1: btoa + Array.from — works in Edge Runtime (no Buffer)
   const nonceBytes = new Uint8Array(16);
@@ -217,10 +271,7 @@ function buildResponse(
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('X-XSS-Protection', '1; mode=block');
-  response.headers.set(
-    'Strict-Transport-Security',
-    'max-age=63072000; includeSubDomains; preload'
-  );
+  response.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
 
   if (rateLimitHeaders) {
@@ -236,7 +287,5 @@ export const config = {
    * Match all routes except Next.js internals and static assets.
    * API routes are included so CSRF + rate limiting applies.
    */
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|icons/|manifest.json|sw.js|workbox-).*)',
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|icons/|manifest.json|sw.js|workbox-).*)'],
 };

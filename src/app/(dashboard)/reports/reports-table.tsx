@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { type ColumnDef, type Row } from '@tanstack/react-table';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { RotateCcw, Search } from 'lucide-react';
+import { RotateCcw, Search, SlidersHorizontal } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
@@ -328,147 +328,294 @@ export function ReportsTable() {
     });
   }
 
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const reportsWithDelivery = (data?.data ?? []).filter((report) => report.delivery_records.length > 0).length;
+
   return (
-    <div className="space-y-4">
-      <div
-        className="grid gap-3 rounded-xl border border-border/70 bg-card/80 p-4 lg:grid-cols-5 xl:grid-cols-6"
+    <div className="space-y-6">
+      <section className="space-y-4 rounded-xl border border-border/70 bg-card/80 p-4">
+        <SectionIntro
+          title="優先確認"
+          description="一覧に入る前に、送達で滞留している報告と追跡対象の件数を先に確認できます。"
+        />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <OverviewMetricCard label="対象報告" value={`${data?.data.length ?? 0}件`} />
+          <OverviewMetricCard
+            label="返信待ち"
+            value={`${data?.deliverySummary.pending_delivery_count ?? 0}件`}
+            tone={(data?.deliverySummary.pending_delivery_count ?? 0) > 0 ? 'warning' : 'default'}
+          />
+          <OverviewMetricCard
+            label="失敗"
+            value={`${data?.deliverySummary.failed_delivery_count ?? 0}件`}
+            tone={(data?.deliverySummary.failed_delivery_count ?? 0) > 0 ? 'danger' : 'default'}
+          />
+          <OverviewMetricCard label="送達履歴あり" value={`${reportsWithDelivery}件`} />
+        </div>
+      </section>
+
+      <section
+        className="space-y-4 rounded-xl border border-border/70 bg-card/80 p-4"
         data-testid="reports-filter-panel"
+        aria-labelledby="reports-filter-panel-heading"
       >
-        <div className="space-y-1.5 lg:col-span-2">
-          <LabelText>患者名</LabelText>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <SectionIntro
+          id="reports-filter-panel-heading"
+          title="絞り込みと対象選定"
+          description="送付待ち、返信待ち、送付先を先に絞り込み、確認すべき報告書を先頭で固めます。"
+        />
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_repeat(2,minmax(0,0.8fr))_auto]">
+          <div className="space-y-1.5">
+            <LabelText>患者名</LabelText>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={filters.patient}
+                onChange={(event) => updateFilter('patient', event.target.value)}
+                placeholder="患者名 / フリガナ"
+                className="h-10 pl-8 sm:h-9"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <LabelText>送付先</LabelText>
             <Input
-              value={filters.patient}
-              onChange={(event) => updateFilter('patient', event.target.value)}
-              placeholder="患者名 / フリガナ"
-              className="pl-8"
+              value={filters.recipient}
+              onChange={(event) => updateFilter('recipient', event.target.value)}
+              placeholder="主治医 / ケアマネ"
+              className="h-10 sm:h-9"
             />
           </div>
-        </div>
-        <div className="space-y-1.5">
-          <LabelText>送付先</LabelText>
-          <Input
-            value={filters.recipient}
-            onChange={(event) => updateFilter('recipient', event.target.value)}
-            placeholder="主治医 / ケアマネ"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <LabelText>キーワード</LabelText>
-          <Input
-            value={filters.keyword}
-            onChange={(event) => updateFilter('keyword', event.target.value)}
-            placeholder="SOAP / 要点"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <LabelText>報告状態</LabelText>
-          <Select value={filters.status} onValueChange={(value) => updateFilter('status', value ?? ALL_VALUE)}>
-            <SelectTrigger>
-              <SelectValue placeholder="すべて" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_VALUE}>すべて</SelectItem>
-              {Object.entries(REPORT_STATUS_CONFIG).map(([key, cfg]) => (
-                <SelectItem key={key} value={key}>
-                  {cfg.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <LabelText>送達状態</LabelText>
-          <Select
-            value={filters.deliveryStatus}
-            onValueChange={(value) => updateFilter('deliveryStatus', value ?? ALL_VALUE)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="すべて" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_VALUE}>すべて</SelectItem>
-              {Object.entries(REPORT_STATUS_CONFIG).map(([key, cfg]) => (
-                <SelectItem key={key} value={key}>
-                  {cfg.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <LabelText>報告書種別</LabelText>
-          <Select
-            value={filters.reportType}
-            onValueChange={(value) => updateFilter('reportType', value ?? ALL_VALUE)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="すべて" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_VALUE}>すべて</SelectItem>
-              {Object.entries(REPORT_TYPE_LABELS).map(([key, label]) => (
-                <SelectItem key={key} value={key}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <LabelText>作成日 From</LabelText>
-          <Input type="date" value={filters.createdFrom} onChange={(event) => updateFilter('createdFrom', event.target.value)} />
-        </div>
-        <div className="space-y-1.5">
-          <LabelText>作成日 To</LabelText>
-          <Input type="date" value={filters.createdTo} onChange={(event) => updateFilter('createdTo', event.target.value)} />
-        </div>
-        <div className="space-y-1.5">
-          <LabelText>送付日 From</LabelText>
-          <Input type="date" value={filters.sentFrom} onChange={(event) => updateFilter('sentFrom', event.target.value)} />
-        </div>
-        <div className="space-y-1.5">
-          <LabelText>送付日 To</LabelText>
-          <Input type="date" value={filters.sentTo} onChange={(event) => updateFilter('sentTo', event.target.value)} />
-        </div>
-        <div className="flex items-end lg:col-span-2 xl:col-span-1">
-          <Button type="button" variant="outline" className="w-full" onClick={resetFilters}>
-            <RotateCcw className="mr-1.5 size-4" aria-hidden="true" />
-            リセット
-          </Button>
-        </div>
-      </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline">適用中フィルタ {activeFilterCount}件</Badge>
-        <Badge variant="outline">返信待ち {data?.deliverySummary.pending_delivery_count ?? 0}件</Badge>
-        <Badge variant="outline">失敗 {data?.deliverySummary.failed_delivery_count ?? 0}件</Badge>
-        <Badge variant="outline">報告書名か患者名から詳細へ移動</Badge>
-      </div>
+          <div className="space-y-1.5">
+            <LabelText>報告状態</LabelText>
+            <Select
+              value={filters.status}
+              onValueChange={(value) => updateFilter('status', value ?? ALL_VALUE)}
+            >
+              <SelectTrigger className="h-10 sm:h-9">
+                <SelectValue placeholder="すべて" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_VALUE}>すべて</SelectItem>
+                {Object.entries(REPORT_STATUS_CONFIG).map(([key, cfg]) => (
+                  <SelectItem key={key} value={key}>
+                    {cfg.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-      <DataTable
-        columns={columns}
-        data={data?.data ?? []}
-        isLoading={isBootstrappingOrg || isLoading}
-        caption="報告書一覧"
-        renderExpandedRow={renderExpandedRow}
-        toolbar={{
-          enableColumnVisibility: true,
-          enableExport: true,
-          exportFileName: 'care-reports-filtered.csv',
-        }}
-      />
+          <div className="space-y-1.5">
+            <LabelText>送達状態</LabelText>
+            <Select
+              value={filters.deliveryStatus}
+              onValueChange={(value) => updateFilter('deliveryStatus', value ?? ALL_VALUE)}
+            >
+              <SelectTrigger className="h-10 sm:h-9">
+                <SelectValue placeholder="すべて" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_VALUE}>すべて</SelectItem>
+                {Object.entries(REPORT_STATUS_CONFIG).map(([key, cfg]) => (
+                  <SelectItem key={key} value={key}>
+                    {cfg.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-      {!isBootstrappingOrg && !isLoading && (data?.data.length ?? 0) === 0 && (
-        <div className="flex min-h-[120px] items-center justify-center rounded-md border border-dashed border-border">
-          <p className="text-sm text-muted-foreground">報告書がありません</p>
+          <div className="space-y-1.5 md:max-w-56">
+            <LabelText>詳細フィルタ</LabelText>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 w-full justify-between sm:h-9"
+              onClick={() => setShowAdvancedFilters((current) => !current)}
+            >
+              <span className="inline-flex items-center gap-2">
+                <SlidersHorizontal className="size-4" aria-hidden="true" />
+                {showAdvancedFilters ? '詳細を閉じる' : '詳細フィルタ'}
+              </span>
+              <span className="text-xs text-muted-foreground">{activeFilterCount}件</span>
+            </Button>
+          </div>
         </div>
-      )}
+
+        {showAdvancedFilters ? (
+          <div className="grid gap-3 border-t border-border/70 pt-4 md:grid-cols-2 xl:grid-cols-5">
+            <div className="space-y-1.5">
+              <LabelText>キーワード</LabelText>
+              <Input
+                value={filters.keyword}
+                onChange={(event) => updateFilter('keyword', event.target.value)}
+                placeholder="SOAP / 要点"
+                className="h-10 sm:h-9"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <LabelText>報告書種別</LabelText>
+              <Select
+                value={filters.reportType}
+                onValueChange={(value) => updateFilter('reportType', value ?? ALL_VALUE)}
+              >
+                <SelectTrigger className="h-10 sm:h-9">
+                  <SelectValue placeholder="すべて" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VALUE}>すべて</SelectItem>
+                  {Object.entries(REPORT_TYPE_LABELS).map(([key, label]) => (
+                    <SelectItem key={key} value={key}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <LabelText>作成日 From</LabelText>
+              <Input
+                type="date"
+                value={filters.createdFrom}
+                onChange={(event) => updateFilter('createdFrom', event.target.value)}
+                className="h-10 sm:h-9"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <LabelText>作成日 To</LabelText>
+              <Input
+                type="date"
+                value={filters.createdTo}
+                onChange={(event) => updateFilter('createdTo', event.target.value)}
+                className="h-10 sm:h-9"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <LabelText>送付日 From</LabelText>
+              <Input
+                type="date"
+                value={filters.sentFrom}
+                onChange={(event) => updateFilter('sentFrom', event.target.value)}
+                className="h-10 sm:h-9"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <LabelText>送付日 To</LabelText>
+              <Input
+                type="date"
+                value={filters.sentTo}
+                onChange={(event) => updateFilter('sentTo', event.target.value)}
+                className="h-10 sm:h-9"
+              />
+            </div>
+
+            <div className="flex items-end md:col-span-2 xl:col-span-1">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 w-full sm:h-9"
+                onClick={resetFilters}
+              >
+                <RotateCcw className="mr-1.5 size-4" aria-hidden="true" />
+                リセット
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="space-y-4 rounded-xl border border-border/70 bg-card/80 p-4">
+        <SectionIntro
+          title="送達状況サマリー"
+          description="一覧を開く前に、滞留や失敗件数をひと目で確認できる補助グループです。"
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">適用中フィルタ {activeFilterCount}件</Badge>
+          <Badge variant="outline">返信待ち {data?.deliverySummary.pending_delivery_count ?? 0}件</Badge>
+          <Badge variant="outline">失敗 {data?.deliverySummary.failed_delivery_count ?? 0}件</Badge>
+          <Badge variant="outline">報告書名か患者名から詳細へ移動</Badge>
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-xl border border-border/70 bg-card/80 p-4">
+        <SectionIntro
+          title="報告書一覧"
+          description="報告書名または患者名から本文と送達履歴を確認し、必要に応じて個別フォローへ進みます。"
+        />
+        <DataTable
+          columns={columns}
+          data={data?.data ?? []}
+          isLoading={isBootstrappingOrg || isLoading}
+          caption="報告書一覧"
+          renderExpandedRow={renderExpandedRow}
+          toolbar={{
+            enableColumnVisibility: true,
+            enableExport: true,
+            exportFileName: 'care-reports-filtered.csv',
+          }}
+        />
+
+        {!isBootstrappingOrg && !isLoading && (data?.data.length ?? 0) === 0 && (
+          <div className="flex min-h-[120px] items-center justify-center rounded-md border border-dashed border-border">
+            <p className="text-sm text-muted-foreground">報告書がありません</p>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
 
 function LabelText({ children }: { children: ReactNode }) {
   return <p className="text-xs font-medium text-muted-foreground">{children}</p>;
+}
+
+function SectionIntro({
+  id,
+  title,
+  description,
+}: {
+  id?: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <h2 id={id} className="text-base font-semibold text-foreground">
+        {title}
+      </h2>
+      <p className="text-sm text-muted-foreground">{description}</p>
+    </div>
+  );
+}
+
+function OverviewMetricCard({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string;
+  value: string;
+  tone?: 'default' | 'warning' | 'danger';
+}) {
+  const toneClassName =
+    tone === 'danger'
+      ? 'border-rose-200/80 bg-rose-50/80'
+      : tone === 'warning'
+        ? 'border-amber-200/80 bg-amber-50/80'
+        : 'border-border/70 bg-background';
+
+  return (
+    <div className={`rounded-lg border px-4 py-3 ${toneClassName}`}>
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{value}</p>
+    </div>
+  );
 }

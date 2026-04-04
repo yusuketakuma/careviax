@@ -29,6 +29,7 @@ import {
   resolveCommunicationEntityLink,
 } from '@/lib/communications/navigation';
 import { toast } from 'sonner';
+import { SectionIntro } from '@/components/ui/section-intro';
 
 type CommunicationRequestRow = {
   id: string;
@@ -78,15 +79,20 @@ const STATUS_CONFIG: Record<
 
 type StatusTransition = {
   label: string;
-  nextStatus: 'sent' | 'received' | 'in_progress' | 'responded' | 'closed' | 'escalated' | 'expired';
+  nextStatus:
+    | 'sent'
+    | 'received'
+    | 'in_progress'
+    | 'responded'
+    | 'closed'
+    | 'escalated'
+    | 'expired';
   variant: 'outline';
   action?: 'response_dialog';
 };
 
 const STATUS_TRANSITIONS: Record<string, StatusTransition[]> = {
-  draft: [
-    { label: '送信済みにする', nextStatus: 'sent', variant: 'outline' },
-  ],
+  draft: [{ label: '送信済みにする', nextStatus: 'sent', variant: 'outline' }],
   sent: [
     { label: '受信済み', nextStatus: 'received', variant: 'outline' },
     { label: 'エスカレ', nextStatus: 'escalated', variant: 'outline' },
@@ -100,9 +106,7 @@ const STATUS_TRANSITIONS: Record<string, StatusTransition[]> = {
     { label: '返信記録', nextStatus: 'responded', variant: 'outline', action: 'response_dialog' },
     { label: 'エスカレ', nextStatus: 'escalated', variant: 'outline' },
   ],
-  responded: [
-    { label: '完了', nextStatus: 'closed', variant: 'outline' },
-  ],
+  responded: [{ label: '完了', nextStatus: 'closed', variant: 'outline' }],
   escalated: [
     { label: '対応再開', nextStatus: 'in_progress', variant: 'outline' },
     { label: '返信記録', nextStatus: 'responded', variant: 'outline', action: 'response_dialog' },
@@ -301,10 +305,13 @@ export function CommunicationRequestsContent({
       if (patientFilter) params.set('patient_id', patientFilter);
       if (relatedEntityTypeFilter) params.set('related_entity_type', relatedEntityTypeFilter);
       if (relatedEntityIdFilter) params.set('related_entity_id', relatedEntityIdFilter);
-      return fetchAllCursorPages<CommunicationRequestRow, {
-        data: CommunicationRequestRow[];
-        hasMore: boolean;
-      }>({
+      return fetchAllCursorPages<
+        CommunicationRequestRow,
+        {
+          data: CommunicationRequestRow[];
+          hasMore: boolean;
+        }
+      >({
         path: '/api/communication-requests',
         params,
         init: { headers: { 'x-org-id': orgId } },
@@ -319,10 +326,13 @@ export function CommunicationRequestsContent({
     queryFn: async () => {
       const params = new URLSearchParams();
       if (patientFilter) params.set('patient_id', patientFilter);
-      return fetchAllCursorPages<CommunicationEventRow, {
-        data: CommunicationEventRow[];
-        hasMore: boolean;
-      }>({
+      return fetchAllCursorPages<
+        CommunicationEventRow,
+        {
+          data: CommunicationEventRow[];
+          hasMore: boolean;
+        }
+      >({
         path: '/api/communication-events',
         params,
         init: { headers: { 'x-org-id': orgId } },
@@ -361,9 +371,7 @@ export function CommunicationRequestsContent({
       {
         accessorKey: 'channel',
         header: 'チャネル',
-        cell: ({ row }) => (
-          <Badge variant="outline">{row.original.channel}</Badge>
-        ),
+        cell: ({ row }) => <Badge variant="outline">{row.original.channel}</Badge>,
       },
       {
         id: 'counterpart',
@@ -394,7 +402,7 @@ export function CommunicationRequestsContent({
         ),
       },
     ],
-    []
+    [],
   );
 
   const columns = useMemo<ColumnDef<CommunicationRequestRow>[]>(
@@ -404,8 +412,7 @@ export function CommunicationRequestsContent({
         header: '依頼タイプ',
         cell: ({ row }) => (
           <span className="whitespace-nowrap text-sm">
-            {REQUEST_TYPE_LABELS[row.original.request_type] ??
-              row.original.request_type}
+            {REQUEST_TYPE_LABELS[row.original.request_type] ?? row.original.request_type}
           </span>
         ),
       },
@@ -413,9 +420,7 @@ export function CommunicationRequestsContent({
         accessorKey: 'subject',
         header: '件名',
         cell: ({ row }) => (
-          <span className="max-w-xs truncate text-sm font-medium">
-            {row.original.subject}
-          </span>
+          <span className="max-w-xs truncate text-sm font-medium">{row.original.subject}</span>
         ),
       },
       {
@@ -423,12 +428,8 @@ export function CommunicationRequestsContent({
         header: '宛先',
         cell: ({ row }) => (
           <div className="text-sm">
-            <p className="font-medium">
-              {row.original.recipient_name ?? '宛先未設定'}
-            </p>
-            <p className="text-muted-foreground">
-              {row.original.recipient_role ?? '役割未設定'}
-            </p>
+            <p className="font-medium">{row.original.recipient_name ?? '宛先未設定'}</p>
+            <p className="text-muted-foreground">{row.original.recipient_role ?? '役割未設定'}</p>
           </div>
         ),
       },
@@ -474,9 +475,7 @@ export function CommunicationRequestsContent({
         cell: ({ row }) => {
           const cfg = STATUS_CONFIG[row.original.status];
           return (
-            <Badge variant={cfg?.variant ?? 'outline'}>
-              {cfg?.label ?? row.original.status}
-            </Badge>
+            <Badge variant={cfg?.variant ?? 'outline'}>{cfg?.label ?? row.original.status}</Badge>
           );
         },
       },
@@ -496,16 +495,8 @@ export function CommunicationRequestsContent({
           if (!d) return <span className="text-muted-foreground">—</span>;
           const isOverdue = new Date(d) < new Date();
           return (
-            <span
-              className={
-                isOverdue
-                  ? 'flex items-center gap-1 text-destructive'
-                  : ''
-              }
-            >
-              {isOverdue && (
-                <AlertTriangle className="size-3" aria-hidden="true" />
-              )}
+            <span className={isOverdue ? 'flex items-center gap-1 text-destructive' : ''}>
+              {isOverdue && <AlertTriangle className="size-3" aria-hidden="true" />}
               {format(parseISO(d), 'M/d', { locale: ja })}
             </span>
           );
@@ -525,8 +516,7 @@ export function CommunicationRequestsContent({
             );
           return (
             <span className="text-sm text-muted-foreground">
-              {r.responder_name}{' '}
-              {format(parseISO(r.responded_at), 'M/d', { locale: ja })}
+              {r.responder_name} {format(parseISO(r.responded_at), 'M/d', { locale: ja })}
             </span>
           );
         },
@@ -563,12 +553,15 @@ export function CommunicationRequestsContent({
         },
       },
     ],
-    [responseMutation.isPending, statusMutation]
+    [responseMutation.isPending, statusMutation],
   );
 
   return (
-    <div className="space-y-4">
-      {/* Status filter tabs */}
+    <div className="space-y-6">
+      <SectionIntro
+        title="絞り込みと文脈"
+        description="返信待ち、対応中、患者文脈を先に絞り込み、確認すべき依頼だけに集中できるようにします。"
+      />
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
         <div className="flex flex-wrap gap-2">
           {FILTER_TABS.map((tab) => (
@@ -591,16 +584,24 @@ export function CommunicationRequestsContent({
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-sm">
           <span className="font-medium text-foreground">適用中の文脈:</span>
           {patientFilter ? (
-            <Link href={`/patients/${patientFilter}`} className="text-primary underline-offset-4 hover:underline">
+            <Link
+              href={`/patients/${patientFilter}`}
+              className="text-primary underline-offset-4 hover:underline"
+            >
               <Badge variant="outline">患者詳細</Badge>
             </Link>
           ) : null}
           {relatedEntityTypeFilter ? (
             <Badge variant="outline">関連種別 {relatedEntityTypeFilter}</Badge>
           ) : null}
-          {relatedEntityIdFilter ? <Badge variant="outline">関連ID {relatedEntityIdFilter}</Badge> : null}
+          {relatedEntityIdFilter ? (
+            <Badge variant="outline">関連ID {relatedEntityIdFilter}</Badge>
+          ) : null}
           {relatedEntityLink ? (
-            <Link href={relatedEntityLink.href} className="text-primary underline-offset-4 hover:underline">
+            <Link
+              href={relatedEntityLink.href}
+              className="text-primary underline-offset-4 hover:underline"
+            >
               {relatedEntityLink.label}
             </Link>
           ) : null}
@@ -613,6 +614,10 @@ export function CommunicationRequestsContent({
         </div>
       ) : null}
 
+      <SectionIntro
+        title="依頼・照会一覧"
+        description="対象ごとのステータス、期限、返信状況を見ながら、次の操作へ進めます。"
+      />
       <DataTable
         columns={columns}
         data={data?.data ?? []}
@@ -620,6 +625,10 @@ export function CommunicationRequestsContent({
         caption="依頼・照会一覧"
       />
 
+      <SectionIntro
+        title="連携タイムライン"
+        description="主要イベントを時系列で追い、直近の動きと患者影響を把握する補助グループです。"
+      />
       <Card>
         <CardHeader>
           <CardTitle className="text-base">連携タイムライン</CardTitle>
@@ -665,6 +674,10 @@ export function CommunicationRequestsContent({
         </CardContent>
       </Card>
 
+      <SectionIntro
+        title="連携ログ一覧"
+        description="タイムラインより広い履歴を一覧で確認するための履歴グループです。"
+      />
       <DataTable
         columns={eventColumns}
         data={eventData?.data ?? []}

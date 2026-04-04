@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { DocumentDeliveryRuleManager } from './document-delivery-rule-manager';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 
 type TemplateType =
   | 'care_report'
@@ -117,10 +118,9 @@ export function DocumentTemplateContent() {
       }
 
       const suffix = params.toString();
-      const res = await fetch(
-        `/api/templates${suffix ? `?${suffix}` : ''}`,
-        { headers: { 'x-org-id': orgId } }
-      );
+      const res = await fetch(`/api/templates${suffix ? `?${suffix}` : ''}`, {
+        headers: { 'x-org-id': orgId },
+      });
       if (!res.ok) throw new Error('文書テンプレートの取得に失敗しました');
       return res.json() as Promise<{ data: DocumentTemplateRow[] }>;
     },
@@ -165,7 +165,9 @@ export function DocumentTemplateContent() {
       return res.json();
     },
     onSuccess: async () => {
-      toast.success(editingTemplateId ? 'テンプレートを更新しました' : 'テンプレートを登録しました');
+      toast.success(
+        editingTemplateId ? 'テンプレートを更新しました' : 'テンプレートを登録しました',
+      );
       resetForm();
       await queryClient.invalidateQueries({ queryKey: ['document-templates', orgId] });
     },
@@ -248,9 +250,7 @@ export function DocumentTemplateContent() {
     {
       accessorKey: 'version',
       header: '版',
-      cell: ({ row }) => (
-        <span className="text-sm tabular-nums">v{row.original.version}</span>
-      ),
+      cell: ({ row }) => <span className="text-sm tabular-nums">v{row.original.version}</span>,
     },
     {
       accessorKey: 'updated_at',
@@ -285,7 +285,7 @@ export function DocumentTemplateContent() {
   ];
 
   return (
-    <div className="space-y-6 p-6">
+    <PageScaffold>
       <AdminPageHeader
         title="文書テンプレート管理"
         description="報告書や同意書のテンプレート版管理と、相手別の自動送達ルールをまとめて管理します。"
@@ -299,9 +299,7 @@ export function DocumentTemplateContent() {
               <FileText className="h-4 w-4 text-blue-600" aria-hidden="true" />
               {editingTemplateId ? 'テンプレートを編集' : 'テンプレートを登録'}
             </CardTitle>
-            <CardDescription>
-              JSON 形式でブロック構成や固定文言を管理します。
-            </CardDescription>
+            <CardDescription>JSON 形式でブロック構成や固定文言を管理します。</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -363,8 +361,7 @@ export function DocumentTemplateContent() {
                 <Select
                   value={form.format}
                   onValueChange={(value) =>
-                    value &&
-                    setForm((current) => ({ ...current, format: value as TemplateFormat }))
+                    value && setForm((current) => ({ ...current, format: value as TemplateFormat }))
                   }
                 >
                   <SelectTrigger id="template-format">
@@ -418,9 +415,7 @@ export function DocumentTemplateContent() {
             <div className="flex items-center justify-between rounded-lg border px-3 py-2">
               <div>
                 <p className="text-sm font-medium">既定テンプレート</p>
-                <p className="text-xs text-muted-foreground">
-                  同種別の既定は 1 件だけ保持します
-                </p>
+                <p className="text-xs text-muted-foreground">同種別の既定は 1 件だけ保持します</p>
               </div>
               <Switch
                 checked={form.isDefault}
@@ -449,11 +444,7 @@ export function DocumentTemplateContent() {
                 onClick={() => saveMutation.mutate()}
                 disabled={saveMutation.isPending || form.name.trim().length === 0}
               >
-                {saveMutation.isPending
-                  ? '保存中...'
-                  : editingTemplateId
-                    ? '更新する'
-                    : '登録する'}
+                {saveMutation.isPending ? '保存中...' : editingTemplateId ? '更新する' : '登録する'}
               </Button>
               {editingTemplateId ? (
                 <Button variant="outline" onClick={resetForm}>
@@ -503,6 +494,6 @@ export function DocumentTemplateContent() {
       </div>
 
       <DocumentDeliveryRuleManager />
-    </div>
+    </PageScaffold>
   );
 }

@@ -13,6 +13,7 @@ import {
 import { listCommunicationQueue } from '@/server/services/communication-queue';
 import { listPatientRiskSummaries } from '@/server/services/patient-risk';
 import { getHomeCareFeatureSummary } from '@/server/services/home-care-ops';
+import { buildVisitScheduleBillingPreviewBatch } from '@/server/services/visit-schedule-billing-preview';
 
 export type WorkflowCoreData = {
   cycleCounts: Array<{ overall_status: string; _count: { id: number } }>;
@@ -89,6 +90,11 @@ export type WorkflowCoreData = {
       };
     };
     site: { id: string; name: string } | null;
+    cadence_preview?: {
+      next_billable_date: string | null;
+      remaining_month_count: number;
+      warning_messages: string[];
+    } | null;
   }>;
   recentSchedules: Array<{
     id: string;
@@ -377,6 +383,7 @@ export async function fetchWorkflowCoreData(
       select: {
         id: true,
         case_id: true,
+        visit_type: true,
         scheduled_date: true,
         time_window_start: true,
         time_window_end: true,
@@ -799,6 +806,17 @@ export async function fetchWorkflowCoreData(
     }),
   ]);
 
+  const cadencePreviewByScheduleId = await buildVisitScheduleBillingPreviewBatch(
+    upcomingSchedules.map((schedule) => ({
+      key: schedule.id,
+      caseId: schedule.case_id,
+      proposedDate: schedule.scheduled_date.toISOString().slice(0, 10),
+      pharmacistId: schedule.pharmacist_id,
+      visitType: schedule.visit_type,
+    })),
+    orgId,
+  );
+
   return {
     cycleCounts,
     exceptionCount,
@@ -809,7 +827,21 @@ export async function fetchWorkflowCoreData(
     pendingTasks,
     overdueVisits,
     awaitingReports,
-    upcomingSchedules,
+    upcomingSchedules: upcomingSchedules.map((schedule) => {
+      const preview = cadencePreviewByScheduleId[schedule.id];
+      return {
+        ...schedule,
+        cadence_preview: preview
+          ? {
+              next_billable_date: preview.cadence.next_billable_date,
+              remaining_month_count: preview.cadence.remaining_month_count,
+              warning_messages: preview.alerts
+                .filter((alert) => alert.severity !== 'info')
+                .map((alert) => alert.message),
+            }
+          : null,
+      };
+    }),
     recentSchedules,
     pendingProposals,
     deliveryFailures,

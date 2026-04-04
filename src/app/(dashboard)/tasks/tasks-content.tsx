@@ -25,6 +25,8 @@ import {
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { describeOperationalTask } from '@/lib/tasks/operational-task-presentation';
+import { badgeToneClass } from '@/lib/ui/badge-semantics';
+import { SectionIntro } from '@/components/ui/section-intro';
 
 // --- Types ---
 
@@ -76,17 +78,17 @@ const TASK_TYPE_OPTIONS = [
 ];
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  pending:     { label: '未着手',   className: 'bg-blue-100 text-blue-800 border-blue-200' },
-  in_progress: { label: '進行中',   className: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
-  completed:   { label: '完了',     className: 'bg-gray-100 text-gray-600 border-gray-200' },
-  cancelled:   { label: 'キャンセル', className: 'bg-red-100 text-red-800 border-red-200' },
+  pending: { label: '未着手', className: badgeToneClass('info') },
+  in_progress: { label: '進行中', className: badgeToneClass('attention') },
+  completed: { label: '完了', className: badgeToneClass('neutral') },
+  cancelled: { label: 'キャンセル', className: badgeToneClass('urgent') },
 };
 
 const PRIORITY_CONFIG: Record<string, { label: string; className: string }> = {
-  urgent: { label: '緊急', className: 'bg-red-100 text-red-800 border-red-200' },
-  high:   { label: '高',   className: 'bg-orange-100 text-orange-800 border-orange-200' },
-  normal: { label: '通常', className: 'bg-blue-50 text-blue-700 border-blue-200' },
-  low:    { label: '低',   className: 'bg-gray-100 text-gray-600 border-gray-200' },
+  urgent: { label: '緊急', className: badgeToneClass('urgent') },
+  high: { label: '高', className: badgeToneClass('attention') },
+  normal: { label: '通常', className: badgeToneClass('info') },
+  low: { label: '低', className: badgeToneClass('neutral') },
 };
 
 function formatDate(value: string | null) {
@@ -138,8 +140,8 @@ export function TasksContent() {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
             body: JSON.stringify({ status: 'completed' }),
-          })
-        )
+          }),
+        ),
       );
       const failed = results.filter((r) => r.status === 'rejected').length;
       return { total: ids.length, failed };
@@ -158,7 +160,9 @@ export function TasksContent() {
     },
   });
 
-  const completableTasks = selectedTasks.filter((t) => t.status !== 'completed' && t.status !== 'cancelled');
+  const completableTasks = selectedTasks.filter(
+    (t) => t.status !== 'completed' && t.status !== 'cancelled',
+  );
 
   const columns = useMemo<ColumnDef<Task>[]>(
     () => [
@@ -217,9 +221,7 @@ export function TasksContent() {
         accessorKey: 'assigned_to',
         header: '担当',
         cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground">
-            {row.original.assigned_to ?? '—'}
-          </span>
+          <span className="text-xs text-muted-foreground">{row.original.assigned_to ?? '—'}</span>
         ),
         size: 120,
       },
@@ -230,11 +232,11 @@ export function TasksContent() {
           const due = row.original.sla_due_at ?? row.original.due_date;
           const label = formatDate(due);
           const isOverdue =
-            due && row.original.status !== 'completed'
-              ? new Date(due) < new Date()
-              : false;
+            due && row.original.status !== 'completed' ? new Date(due) < new Date() : false;
           return (
-            <span className={`text-xs tabular-nums ${isOverdue ? 'font-semibold text-red-600' : 'text-muted-foreground'}`}>
+            <span
+              className={`text-xs tabular-nums ${isOverdue ? 'font-semibold text-red-600' : 'text-muted-foreground'}`}
+            >
               {label}
             </span>
           );
@@ -242,12 +244,15 @@ export function TasksContent() {
         size: 70,
       },
     ],
-    []
+    [],
   );
 
   return (
-    <div className="space-y-4">
-      {/* Filters */}
+    <div className="space-y-6">
+      <SectionIntro
+        title="絞り込み"
+        description="状態、種別、優先度、自分担当を先に絞り込み、処理対象のタスクだけに集中できるようにします。"
+      />
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
@@ -304,10 +309,7 @@ export function TasksContent() {
             </div>
             <div className="flex items-end pb-0.5">
               <label className="flex cursor-pointer items-center gap-2 text-sm">
-                <Checkbox
-                  checked={assignedToMe}
-                  onCheckedChange={(v) => setAssignedToMe(!!v)}
-                />
+                <Checkbox checked={assignedToMe} onCheckedChange={(v) => setAssignedToMe(!!v)} />
                 自分に割り当て
               </label>
             </div>
@@ -315,7 +317,10 @@ export function TasksContent() {
         </CardContent>
       </Card>
 
-      {/* Bulk actions bar */}
+      <SectionIntro
+        title="実行サマリー"
+        description="現在の件数と一括完了アクションをまとめ、処理の着手前に全体量を把握します。"
+      />
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">{tasks.length}件</p>
         {completableTasks.length > 0 && (
@@ -330,7 +335,10 @@ export function TasksContent() {
         )}
       </div>
 
-      {/* Table */}
+      <SectionIntro
+        title="タスク一覧"
+        description="選択した条件に合うタスクを一覧し、各業務画面へ直接移動できます。"
+      />
       <DataTable
         columns={columns}
         data={tasks}
@@ -341,7 +349,10 @@ export function TasksContent() {
         getRowId={(row) => row.id}
       />
 
-      {/* Mobile card list */}
+      <SectionIntro
+        title="モバイル表示"
+        description="小さい画面では同じタスクをカード単位で確認し、移動先を見失わないようにします。"
+      />
       <div className="sm:hidden space-y-3">
         {tasks.map((task) => {
           const cfg = STATUS_CONFIG[task.status];
@@ -350,10 +361,7 @@ export function TasksContent() {
           const due = task.sla_due_at ?? task.due_date;
           const isOverdue = due && task.status !== 'completed' ? new Date(due) < new Date() : false;
           return (
-            <div
-              key={task.id}
-              className="rounded-xl border border-border/70 p-4 space-y-2"
-            >
+            <div key={task.id} className="rounded-xl border border-border/70 p-4 space-y-2">
               <div className="flex flex-wrap items-center gap-1.5">
                 {priCfg && (
                   <Badge variant="outline" className={`text-xs ${priCfg.className}`}>
@@ -368,7 +376,9 @@ export function TasksContent() {
               </div>
               <p className="text-sm font-medium">{task.title}</p>
               <div className="flex items-center justify-between">
-                <span className={`text-xs ${isOverdue ? 'font-semibold text-red-600' : 'text-muted-foreground'}`}>
+                <span
+                  className={`text-xs ${isOverdue ? 'font-semibold text-red-600' : 'text-muted-foreground'}`}
+                >
                   期限: {formatDate(due)}
                 </span>
                 <Link href={actionHref} className="text-xs text-primary hover:underline">

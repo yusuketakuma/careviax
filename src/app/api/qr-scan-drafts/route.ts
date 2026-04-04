@@ -25,6 +25,59 @@ const createQrDraftSchema = z.object({
   session_id: z.string().optional(),
 });
 
+function buildDraftParsedData(args: {
+  qrData: JahisQRData;
+  mapResult: Awaited<ReturnType<typeof mapJahisToIntake>> | null;
+}) {
+  const mapResult = args.mapResult;
+
+  return {
+    patient: args.qrData.patient,
+    medications: args.qrData.medications,
+    prescribingInstitution: args.qrData.prescribingInstitution,
+    dispensingInstitution: args.qrData.dispensingInstitution,
+    remarks: args.qrData.remarks,
+    patientNotes: args.qrData.patientNotes,
+    splitInfo: args.qrData.splitInfo ?? null,
+    rawText: args.qrData.rawText,
+    patientName: args.qrData.patient.name,
+    patientNameKana: args.qrData.patient.nameKana ?? '',
+    patientBirthdate: args.qrData.patient.birthDate ?? '',
+    patientGender: args.qrData.patient.gender ?? '',
+    prescriptionDate: mapResult?.prescribedDate ?? args.qrData.dispensingDate ?? '',
+    prescriberName: mapResult?.prescriberName ?? args.qrData.prescribingDoctor ?? '',
+    prescriberInstitution:
+      mapResult?.prescriberInstitution ?? args.qrData.prescribingInstitution.name ?? '',
+    prescriberInstitutionCode:
+      mapResult?.prescriberInstitutionCode ?? args.qrData.prescribingInstitution.institutionCode ?? '',
+    prescriberInstitutionId: mapResult?.prescriberInstitutionId ?? null,
+    isNewInstitution: mapResult?.isNewInstitution ?? false,
+    lines:
+      mapResult?.lines.map((line) => ({
+        drugName: line.drug_name,
+        drugCode: line.drug_code,
+        dosageForm: line.dosage_form,
+        dose: line.dose,
+        frequency: line.frequency,
+        days: line.days,
+        quantity: line.quantity,
+        unit: line.unit,
+        isGeneric: line.is_generic,
+        packagingMethod: line.packaging_method,
+        packagingInstructions: line.packaging_instructions,
+        packagingInstructionTags: line.packaging_instruction_tags,
+        route: line.route,
+        dispensingMethod: line.dispensing_method,
+        startDate: line.start_date,
+        endDate: line.end_date,
+        notes: line.notes,
+      })) ??
+      [],
+    unmatchedDrugs: mapResult?.unmatchedDrugs ?? [],
+    formularyStatus: mapResult?.formularyStatus ?? [],
+  };
+}
+
 // ── GET: list pending drafts (paginated) ──
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
@@ -95,23 +148,20 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   const multiQrInfo = detectMultiQR(qr_texts[0]);
   const expected_qr_count = multiQrInfo?.splitCount ?? null;
 
-  // Run mapper only when patient_id is provided
   let autoCompleted: unknown = null;
-  if (patient_id) {
-    try {
-      // mapJahisToIntake requires caseId — we store auto_completed fields only,
-      // so we pass a placeholder caseId and only use autoCompletedFields from the result.
-      const mapResult = await mapJahisToIntake(mergedData, {
-        orgId: req.orgId,
-        siteId: site_id,
-        patientId: patient_id,
-        caseId: '',
-        scannedBy: req.userId,
-      });
-      autoCompleted = mapResult.autoCompletedFields;
-    } catch {
-      // Mapper failure is non-fatal; continue without auto-completed fields
-    }
+  let draftParsedData = buildDraftParsedData({ qrData: mergedData, mapResult: null });
+  try {
+    const mapResult = await mapJahisToIntake(mergedData, {
+      orgId: req.orgId,
+      siteId: site_id,
+      patientId: patient_id ?? '',
+      caseId: '',
+      scannedBy: req.userId,
+    });
+    autoCompleted = mapResult.autoCompletedFields;
+    draftParsedData = buildDraftParsedData({ qrData: mergedData, mapResult });
+  } catch {
+    // Mapper failure is non-fatal; continue with raw parsed data only
   }
 
   // Duplicate detection: look for an existing pending draft for the same patient
@@ -157,7 +207,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         status: 'pending',
         schema_version: 1,
         raw_qr_texts: qr_texts,
-        parsed_data: mergedData as never,
+        parsed_data: draftParsedData as never,
         parse_errors:
           allErrors.length > 0 ? (allErrors as never) : Prisma.JsonNull,
         auto_completed: autoCompleted as never,

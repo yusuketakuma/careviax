@@ -4,6 +4,7 @@ import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { Loading } from '@/components/ui/loading';
 import { CommunicationRequestsContent } from './requests-content';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
   title: '依頼・照会一覧 — CareViaX',
@@ -23,10 +24,20 @@ export default async function CommunicationRequestsPage({
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
 
   return (
-    <div className="p-6">
+    <PageScaffold>
       <WorkflowPageHeader
+        eyebrow="Communications"
         title="依頼・照会一覧"
         description="返信待ち・対応中・完了の依頼・照会を管理します"
+        supportingContent={
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-foreground">最初に見るポイント</p>
+            <p className="text-sm text-muted-foreground">
+              返信待ち、期限超過、関連する報告や通知を先に確認し、対応導線を短くします。
+            </p>
+          </div>
+        }
+        childrenLabel="関連導線"
       >
         <PageShortcutLinks
           links={[
@@ -46,6 +57,6 @@ export default async function CommunicationRequestsPage({
           initialRelatedEntityId={readString(resolvedSearchParams?.related_entity_id)}
         />
       </Suspense>
-    </div>
+    </PageScaffold>
   );
 }

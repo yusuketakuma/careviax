@@ -2,16 +2,11 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { AlertTriangle, CheckCircle2, Info, FileX, XCircle } from 'lucide-react';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { AlertTriangle, CheckCircle2, Info, FileX } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { SectionIntro } from '@/components/ui/section-intro';
 
 type BillingStats = {
   not_claimable: number;
@@ -94,109 +89,71 @@ export function BillingDashboardContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start gap-3 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-        <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-        <div>
-          <p className="font-medium">請求閉鎖の運用ダッシュボード</p>
-          <p className="mt-0.5 text-blue-700">
-            同意書・計画書・報告送付・SSOT ルールを横断し、月次締め可能件数とレビュー待ちを見える化します。
-          </p>
-          <p className="mt-1 text-xs text-blue-700">
-            公式ルール数: {stats?.ssot_rule_count ?? 0} / 今月候補: {stats?.current_month_candidates ?? 0} / 締め待ち: {stats?.current_month_close_ready ?? 0}
-          </p>
-        </div>
-      </div>
+      <SectionIntro
+        title="月次締めの入口"
+        description="まず今月候補、締めブロック、レビュー待ちを確認し、候補一覧へ進むための導入グループです。"
+      />
+      <Card data-testid="billing-action-strip">
+        <CardContent className="space-y-4 p-4 sm:p-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex items-start gap-3 text-sm text-blue-900">
+              <Info className="mt-0.5 size-4 shrink-0 text-blue-700" aria-hidden="true" />
+              <div>
+                <p className="font-medium">月次締めの判断を先に行う</p>
+                <p className="mt-0.5 text-blue-800">
+                  まずレビュー待ちと締めブロックを確認し、その後に候補一覧で確定・除外・CSV出力へ進みます。
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/billing/candidates"
+              className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              候補一覧を開く
+            </Link>
+          </div>
 
-      {/* Summary cards */}
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <XCircleIcon />
-              締めブロック
-            </CardTitle>
-            <CardDescription className="text-xs">
-              月次締めを止めている候補
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="h-8 w-12 animate-pulse rounded bg-muted" />
-            ) : (
-              <span
-                className={`text-3xl font-bold tabular-nums ${
-                  (stats?.current_month_close_blocked ?? 0) > 0 ? 'text-destructive' : ''
-                }`}
-              >
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3">
+              <p className="text-xs text-muted-foreground">今月候補</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
+                {stats?.current_month_candidates ?? 0}
+              </p>
+            </div>
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+              <p className="text-xs text-rose-700">締めブロック</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-rose-700">
                 {stats?.current_month_close_blocked ?? 0}
-              </span>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <AlertTriangle className="size-4" aria-hidden="true" />
-              締め準備
-            </CardTitle>
-            <CardDescription className="text-xs">
-              月次締め可能な候補
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="h-8 w-12 animate-pulse rounded bg-muted" />
-            ) : (
-              <span
-                className={`text-3xl font-bold tabular-nums ${
-                  (stats?.current_month_close_ready ?? 0) > 0
-                    ? 'text-orange-600'
-                    : ''
-                }`}
-              >
-                {stats?.current_month_close_ready ?? 0}
-              </span>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <FileX className="size-4" aria-hidden="true" />
-              レビュー待ち
-            </CardTitle>
-            <CardDescription className="text-xs">
-              手当てが必要な請求候補
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="h-8 w-12 animate-pulse rounded bg-muted" />
-            ) : (
-              <span
-                className={`text-3xl font-bold tabular-nums ${
-                  (stats?.review_required_candidates ?? 0) > 0
-                    ? 'text-orange-600'
-                    : ''
-                }`}
-              >
+              </p>
+            </div>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-xs text-amber-700">レビュー待ち</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-amber-700">
                 {stats?.review_required_candidates ?? 0}
-              </span>
-            )}
-          </CardContent>
-        </Card>
+              </p>
+            </div>
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <p className="text-xs text-emerald-700">締め準備</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-700">
+                {stats?.current_month_close_ready ?? 0}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
+      <SectionIntro
+        title="主要指標"
+        description="締め済み、根拠、レビュー待ち、訪問前ブロックなど、今すぐ判断に使う指標をまとめています。"
+      />
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card size="sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <CheckCircle2 className="size-4" aria-hidden="true" />
               締め済み
             </CardTitle>
-            <CardDescription className="text-xs">
-              月次締め済み候補
-            </CardDescription>
+            <CardDescription className="text-xs">月次締め済み候補</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -215,9 +172,7 @@ export function BillingDashboardContent() {
               <Info className="size-4" aria-hidden="true" />
               今月の根拠
             </CardTitle>
-            <CardDescription className="text-xs">
-              claimable / unclaimable の内訳
-            </CardDescription>
+            <CardDescription className="text-xs">claimable / unclaimable の内訳</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -225,7 +180,8 @@ export function BillingDashboardContent() {
             ) : (
               <div className="space-y-1 text-sm">
                 <p className="font-semibold tabular-nums">
-                  {stats?.current_month_claimable_evidence ?? 0} / {stats?.current_month_unclaimable_evidence ?? 0}
+                  {stats?.current_month_claimable_evidence ?? 0} /{' '}
+                  {stats?.current_month_unclaimable_evidence ?? 0}
                 </p>
                 <p className="text-xs text-muted-foreground">算定可 / 算定不可</p>
               </div>
@@ -237,18 +193,20 @@ export function BillingDashboardContent() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <FileX className="size-4" aria-hidden="true" />
-              開タスク
+              レビュー待ち
             </CardTitle>
-            <CardDescription className="text-xs">
-              請求根拠レビュー待ち
-            </CardDescription>
+            <CardDescription className="text-xs">手当てが必要な請求候補</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <div className="h-8 w-12 animate-pulse rounded bg-muted" />
             ) : (
-              <span className="text-3xl font-bold tabular-nums">
-                {stats?.open_billing_review_tasks ?? 0}
+              <span
+                className={`text-3xl font-bold tabular-nums ${
+                  (stats?.review_required_candidates ?? 0) > 0 ? 'text-orange-600' : ''
+                }`}
+              >
+                {stats?.review_required_candidates ?? 0}
               </span>
             )}
           </CardContent>
@@ -260,9 +218,7 @@ export function BillingDashboardContent() {
               <AlertTriangle className="size-4" aria-hidden="true" />
               訪問前ブロック
             </CardTitle>
-            <CardDescription className="text-xs">
-              同意・計画書未整備の予定
-            </CardDescription>
+            <CardDescription className="text-xs">同意・計画書未整備の予定</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -285,9 +241,7 @@ export function BillingDashboardContent() {
               <FileX className="size-4" aria-hidden="true" />
               報告ドラフト滞留
             </CardTitle>
-            <CardDescription className="text-xs">
-              送達待ち・下書きの報告書
-            </CardDescription>
+            <CardDescription className="text-xs">送達待ち・下書きの報告書</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -303,8 +257,31 @@ export function BillingDashboardContent() {
             )}
           </CardContent>
         </Card>
+
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <FileX className="size-4" aria-hidden="true" />
+              開タスク
+            </CardTitle>
+            <CardDescription className="text-xs">請求根拠レビュー待ち</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="h-8 w-12 animate-pulse rounded bg-muted" />
+            ) : (
+              <span className="text-3xl font-bold tabular-nums">
+                {stats?.open_billing_review_tasks ?? 0}
+              </span>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
+      <SectionIntro
+        title="分析"
+        description="月次の成立率、締め進捗、主要請求コードを見て、今月の請求状態を俯瞰します。"
+      />
       <div className="grid gap-4 xl:grid-cols-3">
         <Card size="sm">
           <CardHeader>
@@ -369,7 +346,10 @@ export function BillingDashboardContent() {
             ) : analytics?.top_codes.length ? (
               <div className="space-y-2">
                 {analytics.top_codes.slice(0, 3).map((item) => (
-                  <div key={`${item.billing_code}:${item.billing_name}`} className="flex items-start justify-between gap-3 text-sm">
+                  <div
+                    key={`${item.billing_code}:${item.billing_name}`}
+                    className="flex items-start justify-between gap-3 text-sm"
+                  >
                     <div className="min-w-0">
                       <p className="truncate font-medium">{item.billing_name}</p>
                       <p className="font-mono text-xs text-muted-foreground">{item.billing_code}</p>
@@ -385,6 +365,10 @@ export function BillingDashboardContent() {
         </Card>
       </div>
 
+      <SectionIntro
+        title="月次推移と主要ブロッカー"
+        description="最近の推移と、算定不可の主因を並べて確認する補助グループです。"
+      />
       <div className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
         <Card>
           <CardHeader>
@@ -418,10 +402,16 @@ export function BillingDashboardContent() {
                       <tr key={row.month} className="border-t border-border/60">
                         <td className="px-2 py-2 font-medium">{row.month}</td>
                         <td className="px-2 py-2 tabular-nums">{row.total_candidates}</td>
-                        <td className="px-2 py-2 tabular-nums text-orange-700">{row.review_pending}</td>
+                        <td className="px-2 py-2 tabular-nums text-orange-700">
+                          {row.review_pending}
+                        </td>
                         <td className="px-2 py-2 tabular-nums text-sky-700">{row.exported}</td>
-                        <td className="px-2 py-2 tabular-nums text-green-700">{row.claimable_evidence}</td>
-                        <td className="px-2 py-2 tabular-nums text-rose-700">{row.unclaimable_evidence}</td>
+                        <td className="px-2 py-2 tabular-nums text-green-700">
+                          {row.claimable_evidence}
+                        </td>
+                        <td className="px-2 py-2 tabular-nums text-rose-700">
+                          {row.unclaimable_evidence}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -436,9 +426,7 @@ export function BillingDashboardContent() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">主要ブロッカー</CardTitle>
-            <CardDescription>
-              算定不可の主因を上位から表示します。
-            </CardDescription>
+            <CardDescription>算定不可の主因を上位から表示します。</CardDescription>
           </CardHeader>
           <CardContent>
             {analyticsLoading ? (
@@ -450,7 +438,10 @@ export function BillingDashboardContent() {
             ) : analytics?.blocker_reasons.length ? (
               <div className="space-y-3">
                 {analytics.blocker_reasons.map((item) => (
-                  <div key={item.reason} className="flex items-start justify-between gap-3 rounded-md border border-border/60 px-3 py-2 text-sm">
+                  <div
+                    key={item.reason}
+                    className="flex items-start justify-between gap-3 rounded-md border border-border/60 px-3 py-2 text-sm"
+                  >
                     <p className="min-w-0 text-foreground">{item.reason}</p>
                     <Badge variant="secondary">{item.count}件</Badge>
                   </div>
@@ -463,6 +454,10 @@ export function BillingDashboardContent() {
         </Card>
       </div>
 
+      <SectionIntro
+        title="実行ワークベンチ"
+        description="最終的な確定、除外、締め、CSV 出力へ進むアクションをここでまとめます。"
+      />
       <Card>
         <CardHeader>
           <CardTitle className="text-base">月次締めワークベンチ</CardTitle>
@@ -470,22 +465,20 @@ export function BillingDashboardContent() {
             レビュー待ちの解消、月次締め、CSV 出力は候補一覧から処理します。
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-3 text-sm">
+        <CardContent className="flex flex-col gap-3 text-sm md:flex-row md:items-center md:justify-between">
+          <p className="text-muted-foreground">
+            未レビュー {stats?.review_required_candidates ?? 0} 件 / 締め準備{' '}
+            {stats?.current_month_close_ready ?? 0} 件 / 締め済み {stats?.exported_candidates ?? 0}{' '}
+            件
+          </p>
           <Link
             href="/billing/candidates"
             className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
             候補一覧を開く
           </Link>
-          <p className="text-muted-foreground">
-            未レビュー {stats?.review_required_candidates ?? 0} 件 / 締め準備 {stats?.current_month_close_ready ?? 0} 件 / 締め済み {stats?.exported_candidates ?? 0} 件
-          </p>
         </CardContent>
       </Card>
     </div>
   );
-}
-
-function XCircleIcon() {
-  return <XCircle className="size-4" aria-hidden="true" />;
 }

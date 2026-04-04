@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildFacilityVisibility,
   buildRemediationGuidance,
+  buildUnifiedWorkbench,
 } from './workflow-dashboard-sections';
 
 describe('workflow-dashboard-sections', () => {
@@ -70,5 +71,67 @@ describe('workflow-dashboard-sections', () => {
       expect.objectContaining({ id: 'visit_intake_linkage', count: 1 }),
       expect.objectContaining({ id: 'self_report_triage', count: 4 }),
     ]);
+  });
+
+  it('includes cadence summary in visit workbench items when preview is available', () => {
+    const result = buildUnifiedWorkbench(
+      [],
+      [],
+      [
+        {
+          id: 'schedule_1',
+          case_id: 'case_1',
+          scheduled_date: new Date('2026-04-10T00:00:00.000Z'),
+          time_window_start: null,
+          time_window_end: null,
+          confirmed_at: null,
+          schedule_status: 'planned',
+          priority: 'normal',
+          pharmacist_id: 'user_1',
+          assignment_mode: 'primary',
+          carry_items_status: null,
+          route_order: null,
+          escalation_reason: null,
+          preparation: {
+            medication_changes_reviewed: false,
+            carry_items_confirmed: false,
+            previous_issues_reviewed: false,
+            route_confirmed: false,
+            offline_synced: false,
+            prepared_at: null,
+          },
+          override_request: null,
+          applied_override: null,
+          case_: {
+            patient: {
+              id: 'patient_1',
+              name: '患者A',
+              residences: [{ address: '東京都港区1-1-1', building_id: null }],
+            },
+          },
+          site: null,
+          cadence_preview: {
+            next_billable_date: '2026-04-17',
+            remaining_month_count: 1,
+            warning_messages: ['月上限に近いです'],
+          },
+        },
+      ] as never,
+      [],
+      0,
+      [],
+      { summary: { unconfirmed_count: 0 }, items: [] } as never,
+      new Map([['user_1', '薬剤師A']]),
+      new Map([['patient_1', '患者A']]),
+    );
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'visit:schedule_1',
+          summary: expect.stringContaining('次回算定可 2026-04-17'),
+        }),
+      ]),
+    );
   });
 });

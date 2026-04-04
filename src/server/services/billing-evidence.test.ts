@@ -19,7 +19,7 @@ const {
 vi.mock('./home-care-billing-ssot', () => ({
   ensureHomeCareBillingSsot: ensureHomeCareBillingSsotMock,
   buildBillingCandidateSpecs: buildBillingCandidateSpecsMock,
-  HOME_CARE_BILLING_RULESET_VERSION: '2026-revision-v1',
+  HOME_CARE_BILLING_RULESET_VERSION: 'home-care-ssot-registry-v2',
 }));
 
 vi.mock('./management-plans', () => ({
@@ -358,7 +358,7 @@ describe('billing-evidence service', () => {
           source_snapshot: expect.objectContaining({
             validation_layers: expect.objectContaining({
               evidence: expect.objectContaining({ state: 'passed' }),
-              rule_engine: expect.objectContaining({ version: '2026-revision-v1' }),
+              rule_engine: expect.objectContaining({ version: 'home-care-ssot-registry-v2' }),
             }),
           }),
         }),
@@ -477,6 +477,12 @@ describe('billing-evidence service', () => {
             },
           },
         ]),
+      },
+      prescriptionIntake: {
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+      businessHoliday: {
+        findFirst: vi.fn().mockResolvedValue(null),
       },
       conferenceNote: {
         findMany: vi.fn().mockResolvedValue([
@@ -606,6 +612,12 @@ describe('billing-evidence service', () => {
       billingCandidate: {
         findMany: vi.fn().mockResolvedValue([]),
       },
+      prescriptionIntake: {
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+      businessHoliday: {
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
       conferenceNote: {
         findMany: vi.fn().mockResolvedValue([]),
       },
@@ -638,6 +650,143 @@ describe('billing-evidence service', () => {
           building_patient_count: 3,
         }),
       })
+    );
+  });
+
+  it('treats pharmacy site insurance config effective_to as inclusive for the visit date', async () => {
+    const upsertMock = vi.fn().mockResolvedValue({ id: 'evidence_1', claimable: true });
+    const siteConfigFindFirstMock = vi.fn().mockResolvedValue({
+      id: 'site_config_1',
+      config: {},
+    });
+
+    buildBillingCandidateSpecsMock.mockResolvedValue([]);
+
+    const tx = {
+      visitRecord: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'visit_1',
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          visit_date: new Date('2026-03-20T09:00:00.000Z'),
+          outcome_status: 'completed',
+          schedule: {
+            cycle_id: 'cycle_1',
+            patient_id: 'patient_1',
+            site_id: 'site_1',
+            visit_type: 'regular',
+          },
+          cycle: {
+            id: 'cycle_1',
+            patient_id: 'patient_1',
+            overall_status: 'visit_completed',
+          },
+          patient: {
+            id: 'patient_1',
+            birth_date: null,
+            medical_insurance_number: 'med-1',
+            care_insurance_number: null,
+            cases: [
+              {
+                required_visit_support: null,
+              },
+            ],
+          },
+        }),
+        count: vi.fn().mockResolvedValue(1),
+      },
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          birth_date: null,
+          medical_insurance_number: 'med-1',
+          care_insurance_number: null,
+          cases: [
+            {
+              required_visit_support: {
+                home_visit_intake: {
+                  special_medical_procedures: ['terminal_pain'],
+                },
+              },
+            },
+          ],
+        }),
+      },
+      residence: {
+        findFirst: vi.fn().mockResolvedValue({
+          building_id: 'building_a',
+          unit_name: '101',
+        }),
+        count: vi.fn().mockResolvedValue(1),
+      },
+      consentRecord: {
+        findFirst: vi.fn(),
+      },
+      managementPlan: {
+        findMany: vi.fn(),
+      },
+      careReport: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 'report_1', status: 'sent' },
+        ]),
+      },
+      deliveryRecord: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 'delivery_1', report_id: 'report_1', status: 'sent' },
+        ]),
+      },
+      billingCandidate: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      prescriptionIntake: {
+        findFirst: vi.fn().mockResolvedValue({
+          prescription_category: 'emergency',
+          emergency_category: 'planned_disease_exacerbation',
+        }),
+      },
+      businessHoliday: {
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+      conferenceNote: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      pharmacySiteInsuranceConfig: {
+        findFirst: siteConfigFindFirstMock,
+      },
+      billingEvidence: {
+        upsert: upsertMock,
+      },
+    };
+
+    findActiveVisitConsentMock.mockResolvedValueOnce({ id: 'consent_1' });
+    findCurrentManagementPlanMock.mockResolvedValueOnce({
+      current: { id: 'plan_1' },
+      reviewOverdue: false,
+    });
+
+    await upsertBillingEvidenceForVisit(tx as never, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_1',
+    });
+
+    expect(siteConfigFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        site_id: 'site_1',
+        insurance_type: 'medical',
+        effective_from: { lte: new Date('2026-03-20T00:00:00.000Z') },
+        OR: [{ effective_to: null }, { effective_to: { gte: new Date('2026-03-20T00:00:00.000Z') } }],
+      },
+      orderBy: { effective_from: 'desc' },
+    });
+    expect(buildBillingCandidateSpecsMock).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        emergencyCategory: 'planned_disease_exacerbation',
+        afterHoursVisit: 'night',
+        specialCapEligible: true,
+        onlineEligible: false,
+      }),
     );
   });
 });

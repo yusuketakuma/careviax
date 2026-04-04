@@ -14,11 +14,11 @@ import {
   type PatientMcsSummaryMessage,
   type PatientMcsSummarySnapshot,
 } from './patient-mcs-ai';
+import { ALLOWED_MCS_HOSTS } from '@/lib/patient-mcs/source';
 
 const execFileAsync = promisify(execFile);
 
 const MCS_HOST = 'www.medical-care.net';
-const ALLOWED_MCS_HOSTS = new Set(['www.medical-care.net', 'medical-care.net']);
 const DEFAULT_CDP_TARGET = '18800';
 const DEFAULT_MAX_MESSAGES = 50;
 const TOKYO_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -217,6 +217,7 @@ async function runAgentBrowser(args: string[]) {
   try {
     const { stdout } = await execFileAsync(getAgentBrowserBinary(), args, {
       maxBuffer: 10 * 1024 * 1024,
+      timeout: 30_000,
     });
     return extractMeaningfulOutput(stdout);
   } catch (error) {
@@ -310,8 +311,12 @@ export function normalizeMedicalCareStationUrl(input: string) {
   return normalized;
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function extractPathId(pathname: string, prefix: string) {
-  const match = pathname.match(new RegExp(`^${prefix}/([^/]+)`));
+  const match = pathname.match(new RegExp(`^${escapeRegExp(prefix)}/([^/]+)`));
   return match?.[1] ?? null;
 }
 
@@ -825,26 +830,30 @@ export async function syncPatientMcsTimeline({
         };
       };
 
-      await Promise.all(
-        preparedMessages.map((message) =>
-          tx.patientMcsMessage.upsert({
-            where: {
-              link_id_source_message_id: {
+      const UPSERT_CHUNK_SIZE = 10;
+      for (let i = 0; i < preparedMessages.length; i += UPSERT_CHUNK_SIZE) {
+        const chunk = preparedMessages.slice(i, i + UPSERT_CHUNK_SIZE);
+        await Promise.all(
+          chunk.map((message) =>
+            tx.patientMcsMessage.upsert({
+              where: {
+                link_id_source_message_id: {
+                  link_id: link.id,
+                  source_message_id: message.sourceMessageId,
+                },
+              },
+              create: {
+                org_id: orgId,
+                patient_id: patientId,
                 link_id: link.id,
                 source_message_id: message.sourceMessageId,
+                ...buildMessageFields(message),
               },
-            },
-            create: {
-              org_id: orgId,
-              patient_id: patientId,
-              link_id: link.id,
-              source_message_id: message.sourceMessageId,
-              ...buildMessageFields(message),
-            },
-            update: buildMessageFields(message),
-          })
-        )
-      );
+              update: buildMessageFields(message),
+            })
+          )
+        );
+      }
 
       const currentMessageIds = preparedMessages.map((message) => message.sourceMessageId);
       if (currentMessageIds.length === 0) {
@@ -933,59 +942,60 @@ export async function getPatientMcsOverview(args: {
   patientId: string;
   limit?: number;
 }): Promise<PatientMcsOverview> {
-  const prismaWithSummary = prisma as typeof prisma & {
-    patientMcsSummary: typeof prisma.patientMcsSummary;
-  };
-  const link = await prisma.patientMcsLink.findFirst({
-    where: { patient_id: args.patientId, org_id: args.orgId },
-    select: {
-      id: true,
-      source_url: true,
-      mcs_patient_id: true,
-      mcs_patient_url: true,
-      mcs_project_id: true,
-      mcs_project_url: true,
-      project_title: true,
-      project_memo: true,
-      member_count: true,
-      last_sync_attempt_at: true,
-      last_synced_at: true,
-      last_sync_status: true,
-      last_sync_error: true,
-    },
+  return withOrgContext(args.orgId, async (tx) => {
+    const txWithSummary = tx as typeof tx & {
+      patientMcsSummary: typeof prisma.patientMcsSummary;
+    };
+    const link = await tx.patientMcsLink.findFirst({
+      where: { patient_id: args.patientId },
+      select: {
+        id: true,
+        source_url: true,
+        mcs_patient_id: true,
+        mcs_patient_url: true,
+        mcs_project_id: true,
+        mcs_project_url: true,
+        project_title: true,
+        project_memo: true,
+        member_count: true,
+        last_sync_attempt_at: true,
+        last_synced_at: true,
+        last_sync_status: true,
+        last_sync_error: true,
+      },
+    });
+    const [summary, messages] = await Promise.all([
+      link
+        ? txWithSummary.patientMcsSummary.findFirst({
+            where: { patient_id: args.patientId },
+            select: selectPatientMcsSummaryRecord(),
+          })
+        : null,
+      link && args.limit !== 0
+        ? tx.patientMcsMessage.findMany({
+            where: { link_id: link.id },
+            orderBy: [{ posted_at: 'desc' }, { sort_order: 'asc' }, { created_at: 'desc' }],
+            take: args.limit ?? DEFAULT_MAX_MESSAGES,
+            select: {
+              id: true,
+              source_message_id: true,
+              author_name: true,
+              author_role: true,
+              author_organization: true,
+              author_descriptor: true,
+              posted_at: true,
+              posted_at_label: true,
+              body: true,
+              reaction_count: true,
+              reply_count: true,
+              sort_order: true,
+              source_url: true,
+              synced_at: true,
+            },
+          })
+        : [],
+    ]);
+
+    return { link, summary, messages };
   });
-  const summary =
-    !link
-      ? null
-      : await prismaWithSummary.patientMcsSummary.findFirst({
-          where: { patient_id: args.patientId, org_id: args.orgId },
-          select: selectPatientMcsSummaryRecord(),
-        });
-
-  const messages =
-    !link || args.limit === 0
-      ? []
-      : await prisma.patientMcsMessage.findMany({
-          where: { link_id: link.id, org_id: args.orgId },
-          orderBy: [{ posted_at: 'desc' }, { sort_order: 'asc' }, { created_at: 'desc' }],
-          take: args.limit ?? DEFAULT_MAX_MESSAGES,
-          select: {
-            id: true,
-            source_message_id: true,
-            author_name: true,
-            author_role: true,
-            author_organization: true,
-            author_descriptor: true,
-            posted_at: true,
-            posted_at_label: true,
-            body: true,
-            reaction_count: true,
-            reply_count: true,
-            sort_order: true,
-            source_url: true,
-            synced_at: true,
-          },
-        });
-
-  return { link, summary, messages };
 }

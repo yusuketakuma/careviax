@@ -24,12 +24,15 @@ import { proxy } from './proxy';
 function createRequest(args?: {
   pathname?: string;
   method?: string;
+  search?: string;
   headers?: Record<string, string>;
 }) {
   const pathname = args?.pathname ?? '/api/patients';
   const method = args?.method ?? 'GET';
+  const search = args?.search ?? '';
+  const nextUrl = new URL(`http://localhost${pathname}${search}`);
   const headers = new Map(
-    Object.entries(args?.headers ?? {}).map(([key, value]) => [key.toLowerCase(), value])
+    Object.entries(args?.headers ?? {}).map(([key, value]) => [key.toLowerCase(), value]),
   );
 
   return {
@@ -38,7 +41,9 @@ function createRequest(args?: {
       get: (key: string) => headers.get(key.toLowerCase()) ?? null,
     },
     nextUrl: {
-      pathname,
+      pathname: nextUrl.pathname,
+      search: nextUrl.search,
+      clone: () => new URL(nextUrl.toString()),
     },
   } as unknown as NextRequest;
 }
@@ -55,7 +60,12 @@ describe('proxy', () => {
   });
 
   it('skips non-api routes', async () => {
-    const response = await proxy(createRequest({ pathname: '/dashboard', method: 'GET' }));
+    const response = await proxy(
+      createRequest({
+        pathname: '/public-preview',
+        method: 'GET',
+      }),
+    );
 
     expect(response.status).toBe(200);
     expect(response.headers.get('X-RateLimit-Remaining')).toBeNull();
@@ -65,20 +75,49 @@ describe('proxy', () => {
     expect(response.headers.get('Content-Security-Policy')).not.toContain("'unsafe-inline'");
   });
 
+  it('redirects unauthenticated protected routes to login with callbackUrl', async () => {
+    getTokenMock.mockResolvedValueOnce(null);
+
+    const response = await proxy(
+      createRequest({
+        pathname: '/patients',
+        search: '?tab=active',
+        method: 'GET',
+      }),
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe(
+      'http://localhost/login?callbackUrl=%2Fpatients%3Ftab%3Dactive',
+    );
+  });
+
+  it('allows authenticated protected routes to continue', async () => {
+    getTokenMock.mockResolvedValueOnce({ userId: 'user_1' });
+
+    const response = await proxy(
+      createRequest({
+        pathname: '/dashboard',
+        method: 'GET',
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Security-Policy')).toContain("script-src 'self' 'nonce-");
+  });
+
   it('allows safe API methods without origin validation and returns rate-limit headers', async () => {
     const response = await proxy(
       createRequest({
         headers: {
           'x-forwarded-for': '203.0.113.10',
         },
-      })
+      }),
     );
 
     expect(response.status).toBe(200);
     // GET uses RATE_LIMIT_READ_MAX; first request consumes one slot
-    expect(response.headers.get('X-RateLimit-Remaining')).toBe(
-      String(RATE_LIMIT_READ_MAX - 1)
-    );
+    expect(response.headers.get('X-RateLimit-Remaining')).toBe(String(RATE_LIMIT_READ_MAX - 1));
     expect(response.headers.get('X-RateLimit-Reset')).not.toBeNull();
   });
 
@@ -91,7 +130,7 @@ describe('proxy', () => {
           origin: 'https://attacker.example',
           'x-forwarded-for': '203.0.113.10',
         },
-      })
+      }),
     );
 
     expect(response.status).toBe(403);
@@ -103,7 +142,7 @@ describe('proxy', () => {
         event_type: 'csrf_rejected',
         path: '/api/patients',
         method: 'POST',
-      })
+      }),
     );
   });
 
@@ -116,21 +155,19 @@ describe('proxy', () => {
           'x-api-key': 'test-key',
           'x-forwarded-for': '203.0.113.10',
         },
-      })
+      }),
     );
 
     expect(response.status).toBe(200);
     // POST uses RATE_LIMIT_WRITE_MAX; first request consumes one slot
-    expect(response.headers.get('X-RateLimit-Remaining')).toBe(
-      String(RATE_LIMIT_WRITE_MAX - 1)
-    );
+    expect(response.headers.get('X-RateLimit-Remaining')).toBe(String(RATE_LIMIT_WRITE_MAX - 1));
   });
 
   it('skips long-lived stream endpoints', async () => {
     const response = await proxy(
       createRequest({
         pathname: '/api/notifications/stream',
-      })
+      }),
     );
 
     expect(response.status).toBe(200);
@@ -160,7 +197,7 @@ describe('proxy', () => {
         event_type: 'rate_limit_exceeded',
         path: '/api/patients',
         method: 'GET',
-      })
+      }),
     );
   });
 

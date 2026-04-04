@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 
 type DrugAlertRule = {
   id: string;
@@ -70,20 +71,23 @@ export default function AlertRulesPage() {
         throw new Error('条件(JSON) の形式が不正です');
       }
 
-      const res = await fetch(form.id ? `/api/drug-alert-rules/${form.id}` : '/api/drug-alert-rules', {
-        method: form.id ? 'PATCH' : 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
+      const res = await fetch(
+        form.id ? `/api/drug-alert-rules/${form.id}` : '/api/drug-alert-rules',
+        {
+          method: form.id ? 'PATCH' : 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-org-id': orgId,
+          },
+          body: JSON.stringify({
+            alert_type: form.alert_type,
+            severity: form.severity,
+            is_active: form.is_active,
+            message: form.message,
+            condition: parsedCondition,
+          }),
         },
-        body: JSON.stringify({
-          alert_type: form.alert_type,
-          severity: form.severity,
-          is_active: form.is_active,
-          message: form.message,
-          condition: parsedCondition,
-        }),
-      });
+      );
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.message ?? '処方安全アラートルールの保存に失敗しました');
@@ -91,7 +95,9 @@ export default function AlertRulesPage() {
       return res.json();
     },
     onSuccess: async () => {
-      toast.success(form.id ? '処方安全アラートルールを更新しました' : '処方安全アラートルールを登録しました');
+      toast.success(
+        form.id ? '処方安全アラートルールを更新しました' : '処方安全アラートルールを登録しました',
+      );
       setForm({
         id: '',
         alert_type: 'interaction',
@@ -133,7 +139,9 @@ export default function AlertRulesPage() {
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error((payload as { message?: string }).message ?? '処方安全チェックの実行に失敗しました');
+        throw new Error(
+          (payload as { message?: string }).message ?? '処方安全チェックの実行に失敗しました',
+        );
       }
       return payload as { alerts: Array<{ message: string; severity: string }> };
     },
@@ -148,7 +156,7 @@ export default function AlertRulesPage() {
   const rules = rulesQuery.data?.data ?? [];
 
   return (
-    <div className="space-y-6 p-6">
+    <PageScaffold>
       <AdminPageHeader
         title="処方安全アラートルール"
         description="相互作用、重複、高齢者 PIM などのルールを ON/OFF と条件 JSON で管理します。"
@@ -159,7 +167,9 @@ export default function AlertRulesPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">{form.id ? 'ルールを編集' : 'ルールを登録'}</CardTitle>
-            <CardDescription>空条件 `{}` でも種別単位の ON/OFF ルールとして利用できます。</CardDescription>
+            <CardDescription>
+              空条件 `{}` でも種別単位の ON/OFF ルールとして利用できます。
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -167,7 +177,9 @@ export default function AlertRulesPage() {
               <select
                 id="alert_type"
                 value={form.alert_type}
-                onChange={(event) => setForm((current) => ({ ...current, alert_type: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, alert_type: event.target.value }))
+                }
                 className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
               >
                 {Object.entries(ALERT_TYPE_LABELS).map(([value, label]) => (
@@ -200,11 +212,15 @@ export default function AlertRulesPage() {
             <div className="flex items-center justify-between rounded-lg border px-3 py-2">
               <div>
                 <p className="text-sm font-medium">有効化</p>
-                <p className="text-xs text-muted-foreground">OFF にするとこのルールは実行対象から外れます</p>
+                <p className="text-xs text-muted-foreground">
+                  OFF にするとこのルールは実行対象から外れます
+                </p>
               </div>
               <Switch
                 checked={form.is_active}
-                onCheckedChange={(checked) => setForm((current) => ({ ...current, is_active: checked }))}
+                onCheckedChange={(checked) =>
+                  setForm((current) => ({ ...current, is_active: checked }))
+                }
               />
             </div>
 
@@ -213,7 +229,9 @@ export default function AlertRulesPage() {
               <Input
                 id="message"
                 value={form.message}
-                onChange={(event) => setForm((current) => ({ ...current, message: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, message: event.target.value }))
+                }
                 placeholder="例: 併用禁忌候補を再確認してください"
               />
             </div>
@@ -225,7 +243,9 @@ export default function AlertRulesPage() {
                 rows={8}
                 className="font-mono text-xs"
                 value={form.conditionText}
-                onChange={(event) => setForm((current) => ({ ...current, conditionText: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, conditionText: event.target.value }))
+                }
               />
             </div>
 
@@ -258,7 +278,9 @@ export default function AlertRulesPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">テスト実行</CardTitle>
-              <CardDescription>既存の処方サイクル ID を指定すると処方安全チェックを即時実行します。</CardDescription>
+              <CardDescription>
+                既存の処方サイクル ID を指定すると処方安全チェックを即時実行します。
+              </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap items-end gap-3">
               <div className="space-y-2">
@@ -286,13 +308,17 @@ export default function AlertRulesPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               {rules.length === 0 ? (
-                <p className="text-sm text-muted-foreground">まだ処方安全アラートルールはありません。</p>
+                <p className="text-sm text-muted-foreground">
+                  まだ処方安全アラートルールはありません。
+                </p>
               ) : (
                 rules.map((rule) => (
                   <div key={rule.id} className="rounded-lg border border-border/60 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <p className="font-medium text-foreground">{ALERT_TYPE_LABELS[rule.alert_type] ?? rule.alert_type}</p>
+                        <p className="font-medium text-foreground">
+                          {ALERT_TYPE_LABELS[rule.alert_type] ?? rule.alert_type}
+                        </p>
                         <Badge variant={rule.is_active ? 'default' : 'outline'}>
                           {rule.is_active ? '有効' : '停止'}
                         </Badge>
@@ -336,6 +362,6 @@ export default function AlertRulesPage() {
           </Card>
         </div>
       </div>
-    </div>
+    </PageScaffold>
   );
 }

@@ -437,22 +437,24 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
           <h1 className="text-2xl font-bold tracking-tight text-foreground">{patient.name}</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{patient.name_kana}</p>
         </div>
-        <Link
-          href={prescriptionIntakeHref}
-          className={buttonVariants({ size: 'sm' })}
-        >
+        <Link href={prescriptionIntakeHref} className={buttonVariants({ size: 'sm' })}>
           <ClipboardPlus className="mr-1.5 size-4" aria-hidden="true" />
           処方受付
         </Link>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as PatientDetailTabValue)}>
-        <div className="space-y-4 md:hidden">
-          <VisitBriefCard
-            brief={patient.visit_brief}
-            title="患者サマリー"
-            description="処方変更、調剤方法、他職種共有、未解決事項を1画面に要約しています。"
-          />
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as PatientDetailTabValue)}
+      >
+        <div className="space-y-4">
+          <div className="md:hidden">
+            <VisitBriefCard
+              brief={patient.visit_brief}
+              title="患者サマリー"
+              description="処方変更、調剤方法、他職種共有、未解決事項を1画面に要約しています。"
+            />
+          </div>
           <TabsList
             variant="line"
             className="w-full overflow-x-auto"
@@ -531,7 +533,9 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
                   </div>
                   <div className="rounded-lg border border-border/70 p-3">
                     <p className="text-muted-foreground">未完了タスク</p>
-                    <p className="mt-1 font-medium text-foreground">{patient.open_tasks.length}件</p>
+                    <p className="mt-1 font-medium text-foreground">
+                      {patient.open_tasks.length}件
+                    </p>
                   </div>
                   <div className="rounded-lg border border-border/70 p-3">
                     <p className="text-muted-foreground">ステータス</p>
@@ -545,7 +549,9 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  {patient.medical_insurance_number ? <Badge variant="outline">医療保険</Badge> : null}
+                  {patient.medical_insurance_number ? (
+                    <Badge variant="outline">医療保険</Badge>
+                  ) : null}
                   {patient.care_insurance_number ? <Badge variant="outline">介護保険</Badge> : null}
                   {patient.communication_queue.summary.overdue_count > 0 ? (
                     <Badge variant="destructive">
@@ -615,8 +621,14 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
                   </CardHeader>
                   <CardContent>
                     <dl className="space-y-3 text-sm">
-                      <DetailRow label="医療保険番号" value={patient.medical_insurance_number ?? '—'} />
-                      <DetailRow label="介護保険番号" value={patient.care_insurance_number ?? '—'} />
+                      <DetailRow
+                        label="医療保険番号"
+                        value={patient.medical_insurance_number ?? '—'}
+                      />
+                      <DetailRow
+                        label="介護保険番号"
+                        value={patient.care_insurance_number ?? '—'}
+                      />
                     </dl>
                   </CardContent>
                 </Card>
@@ -681,7 +693,11 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
                 />
                 <PatientCareTeamPanel patientId={patient.id} orgId={orgId} cases={patient.cases} />
                 <PatientMcsLinkCard patientId={patient.id} />
-                <CommunicationQueueCard queue={patient.communication_queue} orgId={orgId} patientId={patient.id} />
+                <CommunicationQueueCard
+                  queue={patient.communication_queue}
+                  orgId={orgId}
+                  patientId={patient.id}
+                />
                 <TaskAndIssueCard
                   tasks={patient.open_tasks}
                   issues={patient.medication_issues}
@@ -772,7 +788,8 @@ function FirstVisitDocumentsPanel({
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        作成日時 {format(new Date(document.created_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
+                        作成日時{' '}
+                        {format(new Date(document.created_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         交付先 {document.delivered_to ?? '未記録'} / 交付日時{' '}
@@ -880,17 +897,17 @@ function PatientVisitsTab({
   if (dateFrom) exportQuery.set('date_from', dateFrom);
   if (dateTo) exportQuery.set('date_to', dateTo);
   const exportHref = `/api/patients/${patientId}/visit-records/pdf${exportQuery.size > 0 ? `?${exportQuery.toString()}` : ''}`;
-  const printHref = `/patients/${patientId}/visit-records/print${dateFrom || dateTo ? `?${new URLSearchParams({
-    ...(dateFrom ? { dateFrom } : {}),
-    ...(dateTo ? { dateTo } : {}),
-  }).toString()}` : ''}`;
+  const printHref = `/patients/${patientId}/visit-records/print${
+    dateFrom || dateTo
+      ? `?${new URLSearchParams({
+          ...(dateFrom ? { dateFrom } : {}),
+          ...(dateTo ? { dateTo } : {}),
+        }).toString()}`
+      : ''
+  }`;
   const monthlyCountBadges = [
-    ...(medicalInsuranceNumber
-      ? [{ label: '医療', limit: 4 }]
-      : []),
-    ...(careInsuranceNumber
-      ? [{ label: '介護', limit: 2 }]
-      : []),
+    ...(medicalInsuranceNumber ? [{ label: '医療', limit: 4 }] : []),
+    ...(careInsuranceNumber ? [{ label: '介護', limit: 2 }] : []),
   ];
 
   return (
@@ -956,7 +973,11 @@ function PatientVisitsTab({
                 <FileDown className="mr-1.5 size-3.5" aria-hidden="true" />
                 PDF
               </Link>
-              <Link href={printHref} target="_blank" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+              <Link
+                href={printHref}
+                target="_blank"
+                className={buttonVariants({ variant: 'outline', size: 'sm' })}
+              >
                 <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
                 印刷
               </Link>
@@ -966,7 +987,9 @@ function PatientVisitsTab({
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-3">
             <div className="space-y-1">
-              <Label htmlFor="patient-visit-date-from" className="text-xs">開始日</Label>
+              <Label htmlFor="patient-visit-date-from" className="text-xs">
+                開始日
+              </Label>
               <Input
                 id="patient-visit-date-from"
                 type="date"
@@ -976,7 +999,9 @@ function PatientVisitsTab({
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="patient-visit-date-to" className="text-xs">終了日</Label>
+              <Label htmlFor="patient-visit-date-to" className="text-xs">
+                終了日
+              </Label>
               <Input
                 id="patient-visit-date-to"
                 type="date"
@@ -995,19 +1020,28 @@ function PatientVisitsTab({
               <div key={item.id} className="rounded-lg border border-border p-3 text-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <Link href={`/visits/${item.id}`} className="font-medium text-primary hover:underline">
-                      {format(new Date(item.visit_date ?? item.created_at), 'yyyy年M月d日(E)', { locale: ja })}
+                    <Link
+                      href={`/visits/${item.id}`}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {format(new Date(item.visit_date ?? item.created_at), 'yyyy年M月d日(E)', {
+                        locale: ja,
+                      })}
                     </Link>
                     <p className="text-muted-foreground">結果: {item.outcome_status}</p>
                   </div>
                   {item.next_visit_suggestion_date ? (
                     <Badge variant="outline">
-                      次回提案 {format(new Date(item.next_visit_suggestion_date), 'M/d', { locale: ja })}
+                      次回提案{' '}
+                      {format(new Date(item.next_visit_suggestion_date), 'M/d', { locale: ja })}
                     </Badge>
                   ) : null}
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  {item.revisit_reason ?? item.postpone_reason ?? item.cancellation_reason ?? '特記事項なし'}
+                  {item.revisit_reason ??
+                    item.postpone_reason ??
+                    item.cancellation_reason ??
+                    '特記事項なし'}
                 </p>
               </div>
             ))
@@ -1048,7 +1082,9 @@ function PatientTimelineTab({
                   </div>
                   <Badge variant="outline">{item.event_type}</Badge>
                 </div>
-                {item.summary ? <p className="mt-2 text-xs text-muted-foreground">{item.summary}</p> : null}
+                {item.summary ? (
+                  <p className="mt-2 text-xs text-muted-foreground">{item.summary}</p>
+                ) : null}
               </div>
             ))
           )}
@@ -1111,17 +1147,9 @@ function PatientTimelineTab({
   );
 }
 
-function PatientRiskCard({
-  riskSummary,
-}: {
-  riskSummary: Patient['risk_summary'];
-}) {
+function PatientRiskCard({ riskSummary }: { riskSummary: Patient['risk_summary'] }) {
   const levelLabel =
-    riskSummary?.level === 'high'
-      ? '高'
-      : riskSummary?.level === 'watch'
-        ? '注意'
-        : '安定';
+    riskSummary?.level === 'high' ? '高' : riskSummary?.level === 'watch' ? '注意' : '安定';
 
   return (
     <Card>
@@ -1324,7 +1352,9 @@ export function PatientMcsLinkCard({ patientId }: { patientId: string }) {
             : status.description}
         </p>
         <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-sm">
-          <p className="font-medium text-foreground">患者別タイムラインを保存済みデータとして利用</p>
+          <p className="font-medium text-foreground">
+            患者別タイムラインを保存済みデータとして利用
+          </p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             看護師やケアマネの投稿を患者詳細から見返せるようにし、システム内の判断材料として残します。
           </p>
@@ -1388,9 +1418,7 @@ function TaskAndIssueCard({
           {tasks.slice(0, 3).map((task) => (
             <div key={task.id} className="rounded-lg border border-border p-3 text-sm">
               <p className="font-medium">{task.title}</p>
-              <p className="text-xs text-muted-foreground">
-                {task.description ?? task.task_type}
-              </p>
+              <p className="text-xs text-muted-foreground">{task.description ?? task.task_type}</p>
             </div>
           ))}
           {issues.slice(0, 2).map((issue) => (
@@ -1406,10 +1434,15 @@ function TaskAndIssueCard({
             .filter((evidence) => evidence.blockers.length > 0)
             .slice(0, 2)
             .map((evidence) => (
-              <div key={evidence.id} className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm">
+              <div
+                key={evidence.id}
+                className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm"
+              >
                 <p className="font-medium text-rose-900">算定ブロッカー</p>
                 <p className="mt-1 text-xs text-rose-800">
-                  {evidence.blockers[0]?.reason ?? evidence.exclusion_reason ?? '算定条件を確認してください'}
+                  {evidence.blockers[0]?.reason ??
+                    evidence.exclusion_reason ??
+                    '算定条件を確認してください'}
                 </p>
               </div>
             ))}

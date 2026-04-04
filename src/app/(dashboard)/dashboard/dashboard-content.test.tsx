@@ -36,14 +36,17 @@ vi.mock('./patient-grid-section', () => ({
 }));
 
 describe('DashboardContent', () => {
-  it('describes the primary workflow area as a focused first-step section', () => {
+  it('groups the dashboard into daily operations, workflow navigation, and patient monitoring', () => {
     render(<DashboardContent />);
 
+    expect(screen.getByText('今日の運用')).toBeTruthy();
+    expect(screen.getByText('業務導線')).toBeTruthy();
+    expect(screen.getByText('患者確認')).toBeTruthy();
     expect(screen.getByText('主要フロー入口')).toBeTruthy();
     expect(
       screen.getByText(
-        '最初に始める入口を3つに絞って上段へ置き、その後の処理フローは一段下で続けてたどれるようにしています。'
-      )
+        '開始導線と補助メニューを一つの業務メニューとしてまとめ、入口と支援機能の関係が追いやすい構造にしています。',
+      ),
     ).toBeTruthy();
     expect(screen.getByTestId('dashboard-priority-actions')).toBeTruthy();
   });

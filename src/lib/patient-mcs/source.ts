@@ -1,7 +1,7 @@
 export const PATIENT_MCS_SOURCE_URL_MESSAGE =
   'MCS の患者 URL または医療・介護側タイムライン URL を入力してください';
 
-const ALLOWED_MCS_HOSTS = new Set(['www.medical-care.net', 'medical-care.net']);
+export const ALLOWED_MCS_HOSTS = new Set(['www.medical-care.net', 'medical-care.net']);
 
 function isSupportedMedicalCareStationPath(pathname: string) {
   return (

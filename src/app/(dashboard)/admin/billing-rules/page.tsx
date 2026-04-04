@@ -37,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 
 // --- Types ---
 
@@ -288,9 +289,7 @@ function RuleFormDialog({
               className="font-mono text-xs"
               placeholder='{"visit_count_min": 1}'
             />
-            {conditionsError && (
-              <p className="text-xs text-destructive">{conditionsError}</p>
-            )}
+            {conditionsError && <p className="text-xs text-destructive">{conditionsError}</p>}
           </div>
 
           {/* Amount */}
@@ -310,9 +309,7 @@ function RuleFormDialog({
             <Label htmlFor="rule-active">有効/無効</Label>
             <Select
               value={form.is_active ? 'true' : 'false'}
-              onValueChange={(v) =>
-                setForm((f) => ({ ...f, is_active: v === 'true' }))
-              }
+              onValueChange={(v) => setForm((f) => ({ ...f, is_active: v === 'true' }))}
             >
               <SelectTrigger id="rule-active">
                 <SelectValue />
@@ -372,8 +369,7 @@ export default function BillingRulesPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: object }) =>
-      updateBillingRule(id, body),
+    mutationFn: ({ id, body }: { id: string; body: object }) => updateBillingRule(id, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['billing-rules'] });
       setEditTarget(null);
@@ -413,7 +409,8 @@ export default function BillingRulesPage() {
         <div className="space-y-1">
           <span className="font-medium text-foreground">{row.original.name}</span>
           <p className="text-xs text-muted-foreground">
-            {row.original.service_type} / {row.original.payer_basis ?? '—'} / {row.original.provider_scope ?? '—'}
+            {row.original.service_type} / {row.original.payer_basis ?? '—'} /{' '}
+            {row.original.provider_scope ?? '—'}
           </p>
         </div>
       ),
@@ -440,16 +437,22 @@ export default function BillingRulesPage() {
       accessorKey: 'amount',
       header: '算定値',
       cell: ({ row }) =>
-        row.original.amount !== null ? `${row.original.amount}${row.original.calculation_unit === 'unit' ? '単位' : row.original.calculation_unit === 'percent' ? '%' : '点'}` : '-',
+        row.original.amount !== null
+          ? `${row.original.amount}${row.original.calculation_unit === 'unit' ? '単位' : row.original.calculation_unit === 'percent' ? '%' : '点'}`
+          : '-',
     },
     {
       accessorKey: 'is_active',
       header: '状態',
       cell: ({ row }) =>
         row.original.is_active ? (
-          <Badge variant="secondary" className="text-green-700">有効</Badge>
+          <Badge variant="secondary" className="text-green-700">
+            有効
+          </Badge>
         ) : (
-          <Badge variant="outline" className="text-muted-foreground">無効</Badge>
+          <Badge variant="outline" className="text-muted-foreground">
+            無効
+          </Badge>
         ),
     },
     {
@@ -481,7 +484,7 @@ export default function BillingRulesPage() {
   ];
 
   return (
-    <div className="space-y-6 p-6">
+    <PageScaffold>
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0 flex-1">
           <AdminPageHeader
@@ -547,10 +550,7 @@ export default function BillingRulesPage() {
       )}
 
       {/* Delete Confirmation */}
-      <AlertDialog
-        open={!!deleteTarget}
-        onOpenChange={(v) => !v && setDeleteTarget(null)}
-      >
+      <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>算定ルールを削除しますか？</AlertDialogTitle>
@@ -569,6 +569,6 @@ export default function BillingRulesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageScaffold>
   );
 }

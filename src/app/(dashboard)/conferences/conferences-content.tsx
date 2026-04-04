@@ -53,10 +53,8 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
-import {
-  sectionTemplatesFor,
-  type StructuredSectionDraft,
-} from './conference-note-templates';
+import { sectionTemplatesFor, type StructuredSectionDraft } from './conference-note-templates';
+import { SectionIntro } from '@/components/ui/section-intro';
 
 type Participant = {
   name: string;
@@ -173,7 +171,7 @@ function NoteCard({
   });
 
   const pendingActionCount = (note.action_items ?? []).filter(
-    (item) => !item.converted_task_id
+    (item) => !item.converted_task_id,
   ).length;
   const hasPending = pendingActionCount > 0;
 
@@ -252,22 +250,24 @@ function NoteCard({
           </div>
         ) : null}
 
-        {(note.note_type === 'pre_discharge' ||
-          note.note_type === 'service_manager' ||
-          note.note_type === 'death_conference' ||
-          note.note_type === 'care_team') ? (
+        {note.note_type === 'pre_discharge' ||
+        note.note_type === 'service_manager' ||
+        note.note_type === 'death_conference' ||
+        note.note_type === 'care_team' ? (
           <div className="space-y-3">
             {note.sync_summary || note.generated_report_id ? (
               <div className="rounded-md border border-sky-200 bg-sky-50/50 p-3">
                 <p className="text-xs font-medium text-sky-900">保存後アクション</p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <Badge variant="outline">
-                    報告書ドラフト {
+                    報告書ドラフト{' '}
+                    {
                       new Set([
                         ...(note.sync_summary?.report_draft_ids ?? []),
                         ...(note.generated_report_id ? [note.generated_report_id] : []),
                       ]).size
-                    }件
+                    }
+                    件
                   </Badge>
                   <Badge variant="outline">
                     タスク化 {note.sync_summary?.tasks_created ?? 0}件
@@ -350,9 +350,7 @@ function ActivityCard({ activity }: { activity: CommunityActivity }) {
             </p>
           </div>
           {activity.follow_up_required ? (
-            <Badge className="bg-amber-100 text-amber-900 hover:bg-amber-100">
-              要フォロー
-            </Badge>
+            <Badge className="bg-amber-100 text-amber-900 hover:bg-amber-100">要フォロー</Badge>
           ) : (
             <Badge variant="outline">完了</Badge>
           )}
@@ -423,7 +421,7 @@ export function ConferencesContent() {
     Partial<Record<ConferenceNote['note_type'], Record<string, string>>>
   >({});
   const [structuredSectionDrafts, setStructuredSectionDrafts] = useState<StructuredSectionDraft[]>(
-    () => sectionTemplatesFor('regular')
+    () => sectionTemplatesFor('regular'),
   );
   const [participantDrafts, setParticipantDrafts] = useState<ParticipantDraft[]>([
     { name: '', role: '', attended: true, is_report_recipient: false },
@@ -675,7 +673,9 @@ export function ConferencesContent() {
     onSuccess: (payload) => {
       toast.success(
         `報告書ドラフトを${payload.data.report_draft_ids.length}件生成しました${
-          payload.data.queued_recipients?.length ? ` / 送付下書き ${payload.data.queued_recipients.length}件` : ''
+          payload.data.queued_recipients?.length
+            ? ` / 送付下書き ${payload.data.queued_recipients.length}件`
+            : ''
         }`,
       );
       setReportDialogNote(null);
@@ -702,7 +702,7 @@ export function ConferencesContent() {
     const nextDraftStore = {
       ...structuredSectionDraftStore,
       [noteType]: Object.fromEntries(
-        structuredSectionDrafts.map((section) => [section.key, section.body])
+        structuredSectionDrafts.map((section) => [section.key, section.body]),
       ),
     };
     setNoteType(value);
@@ -711,7 +711,7 @@ export function ConferencesContent() {
       sectionTemplatesFor(value).map((section) => ({
         ...section,
         body: nextDraftStore[value]?.[section.key] ?? '',
-      }))
+      })),
     );
   }
 
@@ -813,7 +813,7 @@ export function ConferencesContent() {
     }
 
     const index = (note.action_items ?? []).findIndex(
-      (candidate) => candidate.title === item.title && candidate.assignee === item.assignee
+      (candidate) => candidate.title === item.title && candidate.assignee === item.assignee,
     );
     if (index < 0) {
       toast.error('アクションアイテムを特定できませんでした');
@@ -864,8 +864,7 @@ export function ConferencesContent() {
   const calendarNotes = conferenceCalendarQuery.data?.data ?? [];
   const activities = activitiesQuery.data?.data ?? [];
   const externalProfessionals = externalProfessionalsQuery.data?.data ?? [];
-  const prescriberInstitutionSuggestion =
-    prescriberInstitutionSuggestionQuery.data?.data ?? null;
+  const prescriberInstitutionSuggestion = prescriberInstitutionSuggestionQuery.data?.data ?? null;
   const calendarMonthStart = startOfMonth(calendarMonth);
   const calendarMonthEnd = endOfMonth(calendarMonth);
   const calendarDays = eachDayOfInterval({
@@ -883,10 +882,13 @@ export function ConferencesContent() {
     }
   }
   const selectedCalendarNotes = selectedCalendarDate
-    ? calendarNotesByDate.get(format(selectedCalendarDate, 'yyyy-MM-dd')) ?? []
+    ? (calendarNotesByDate.get(format(selectedCalendarDate, 'yyyy-MM-dd')) ?? [])
     : [];
 
-  function updateParticipantAt(index: number, updater: (draft: ParticipantDraft) => ParticipantDraft) {
+  function updateParticipantAt(
+    index: number,
+    updater: (draft: ParticipantDraft) => ParticipantDraft,
+  ) {
     setParticipantDrafts((current) =>
       current.map((draft, draftIndex) => (draftIndex === index ? updater(draft) : draft)),
     );
@@ -928,7 +930,7 @@ export function ConferencesContent() {
     const alreadyExists = participantDrafts.some(
       (participant) =>
         participant.name.trim() === suggestedName &&
-        (participant.fax?.trim() || '') === (prescriberInstitutionSuggestion.fax ?? '')
+        (participant.fax?.trim() || '') === (prescriberInstitutionSuggestion.fax ?? ''),
     );
     if (alreadyExists) {
       toast.info('処方元医療機関候補は既に参加者に追加されています');
@@ -949,6 +951,10 @@ export function ConferencesContent() {
 
   return (
     <div className="space-y-6">
+      <SectionIntro
+        title="会議と活動の入口"
+        description="カンファレンス記録と地域活動の件数を先に確認し、どちらに着手するかを最初に判断します。"
+      />
       <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
         <Card className="border-slate-200">
           <CardHeader className="pb-3">
@@ -957,7 +963,9 @@ export function ConferencesContent() {
           <CardContent className="flex items-center justify-between gap-4 text-sm">
             <div>
               <p className="font-medium">{notes.length}件の記録</p>
-              <p className="text-muted-foreground">医師・看護師・ケアマネとの情報共有を一元管理します。</p>
+              <p className="text-muted-foreground">
+                医師・看護師・ケアマネとの情報共有を一元管理します。
+              </p>
             </div>
             <Button size="sm" onClick={() => setNewNoteOpen(true)}>
               <Plus className="mr-1.5 size-3.5" aria-hidden="true" />
@@ -973,7 +981,9 @@ export function ConferencesContent() {
           <CardContent className="flex items-center justify-between gap-4 text-sm">
             <div>
               <p className="font-medium">{activities.length}件の活動</p>
-              <p className="text-muted-foreground">勉強会・地域連携・相談会の実績と紹介導線を記録します。</p>
+              <p className="text-muted-foreground">
+                勉強会・地域連携・相談会の実績と紹介導線を記録します。
+              </p>
             </div>
             <Button size="sm" variant="outline" onClick={() => setNewActivityOpen(true)}>
               <Plus className="mr-1.5 size-3.5" aria-hidden="true" />
@@ -994,6 +1004,10 @@ export function ConferencesContent() {
         </div>
       ) : null}
 
+      <SectionIntro
+        title="カンファレンス記録"
+        description="会議記録は一覧またはカレンダーで確認し、タスク化や報告書生成へつなげます。"
+      />
       <section className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -1007,7 +1021,9 @@ export function ConferencesContent() {
               <button
                 type="button"
                 className={`rounded-md px-3 py-1 text-xs font-medium ${
-                  noteViewMode === 'list' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
+                  noteViewMode === 'list'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground'
                 }`}
                 onClick={() => setNoteViewMode('list')}
               >
@@ -1027,9 +1043,7 @@ export function ConferencesContent() {
             </div>
             <Tabs
               value={selectedNoteType}
-              onValueChange={(value) =>
-                setSelectedNoteType(value as typeof selectedNoteType)
-              }
+              onValueChange={(value) => setSelectedNoteType(value as typeof selectedNoteType)}
             >
               <TabsList variant="line">
                 <TabsTrigger value="all">全て</TabsTrigger>
@@ -1128,7 +1142,7 @@ export function ConferencesContent() {
                       type="button"
                       onClick={() =>
                         setSelectedCalendarDate((current) =>
-                          current && isSameDay(current, day) ? null : day
+                          current && isSameDay(current, day) ? null : day,
                         )
                       }
                       className={`min-h-[110px] border-b border-r p-2 text-left align-top last:border-r-0 ${
@@ -1177,11 +1191,7 @@ export function ConferencesContent() {
                       {selectedCalendarNotes.length}件の会議
                     </p>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setSelectedCalendarDate(null)}
-                  >
+                  <Button size="sm" variant="ghost" onClick={() => setSelectedCalendarDate(null)}>
                     閉じる
                   </Button>
                 </div>
@@ -1206,6 +1216,10 @@ export function ConferencesContent() {
         )}
       </section>
 
+      <SectionIntro
+        title="地域活動と紹介導線"
+        description="地域活動の実績と、後続フォローが必要な案件を同じまとまりで追います。"
+      />
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-foreground">地域活動と紹介導線</h2>
@@ -1217,50 +1231,61 @@ export function ConferencesContent() {
               地域活動はまだありません
             </div>
           ) : (
-            activities.map((activity) => (
-              <ActivityCard key={activity.id} activity={activity} />
-            ))
+            activities.map((activity) => <ActivityCard key={activity.id} activity={activity} />)
           )}
         </div>
       </section>
 
       {lastSyncSummary ? (
-        <Card className="border-sky-200 bg-sky-50/60">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">保存後アクション</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-slate-700">
-              「{lastSyncSummary.title}」の保存に連動して、必要な後続処理を作成しました。
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="outline">報告書ドラフト {lastSyncSummary.reportDraftIds?.length ?? 0}件</Badge>
-              <Badge variant="outline">タスク化 {lastSyncSummary.tasksCreated ?? 0}件</Badge>
-              <Badge variant="outline">薬学課題 {lastSyncSummary.medicationIssuesCreated ?? 0}件</Badge>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Link href="/reports" className="inline-flex rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted">
-                報告書を確認
-              </Link>
-              {lastSyncSummary.billingCandidateId ? (
+        <>
+          <SectionIntro
+            title="保存後アクション"
+            description="会議保存に連動して生成された報告書、タスク、候補導線を確認します。"
+          />
+          <Card className="border-sky-200 bg-sky-50/60">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">保存後アクション</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-slate-700">
+                「{lastSyncSummary.title}」の保存に連動して、必要な後続処理を作成しました。
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline">
+                  報告書ドラフト {lastSyncSummary.reportDraftIds?.length ?? 0}件
+                </Badge>
+                <Badge variant="outline">タスク化 {lastSyncSummary.tasksCreated ?? 0}件</Badge>
+                <Badge variant="outline">
+                  薬学課題 {lastSyncSummary.medicationIssuesCreated ?? 0}件
+                </Badge>
+              </div>
+              <div className="flex flex-wrap gap-2">
                 <Link
-                  href="/billing/candidates"
+                  href="/reports"
                   className="inline-flex rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
                 >
-                  算定候補を確認
+                  報告書を確認
                 </Link>
-              ) : null}
-              {lastSyncSummary.visitProposalId ? (
-                <Link
-                  href="/schedules/proposals"
-                  className="inline-flex rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
-                >
-                  訪問候補を確認
-                </Link>
-              ) : null}
-            </div>
-          </CardContent>
-        </Card>
+                {lastSyncSummary.billingCandidateId ? (
+                  <Link
+                    href="/billing/candidates"
+                    className="inline-flex rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
+                  >
+                    算定候補を確認
+                  </Link>
+                ) : null}
+                {lastSyncSummary.visitProposalId ? (
+                  <Link
+                    href="/schedules/proposals"
+                    className="inline-flex rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
+                  >
+                    訪問候補を確認
+                  </Link>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+        </>
       ) : null}
 
       <Dialog
@@ -1281,7 +1306,9 @@ export function ConferencesContent() {
               <Label htmlFor="conf-type">会議種別</Label>
               <Select
                 value={noteType}
-                onValueChange={(value) => handleNoteTypeChange(value as ConferenceNote['note_type'])}
+                onValueChange={(value) =>
+                  handleNoteTypeChange(value as ConferenceNote['note_type'])
+                }
               >
                 <SelectTrigger id="conf-type" className="w-full">
                   <SelectValue />
@@ -1367,7 +1394,10 @@ export function ConferencesContent() {
                         <Select
                           value={participant.external_professional_id ?? 'manual'}
                           onValueChange={(value) =>
-                            applyExternalProfessional(index, !value || value === 'manual' ? '' : value)
+                            applyExternalProfessional(
+                              index,
+                              !value || value === 'manual' ? '' : value,
+                            )
                           }
                         >
                           <SelectTrigger>
@@ -1389,7 +1419,9 @@ export function ConferencesContent() {
                           list={`conference-participant-suggestions-${index}`}
                           value={participant.name}
                           onChange={(event) => {
-                            const matched = externalProfessionals.find((item) => item.name === event.target.value);
+                            const matched = externalProfessionals.find(
+                              (item) => item.name === event.target.value,
+                            );
                             if (matched) {
                               applyExternalProfessional(index, matched.id);
                               return;
@@ -1526,8 +1558,8 @@ export function ConferencesContent() {
                       onChange={(event) =>
                         setStructuredSectionDrafts((current) =>
                           current.map((item) =>
-                            item.key === section.key ? { ...item, body: event.target.value } : item
-                          )
+                            item.key === section.key ? { ...item, body: event.target.value } : item,
+                          ),
                         )
                       }
                       placeholder={section.placeholder}
@@ -1658,7 +1690,9 @@ export function ConferencesContent() {
             </div>
           </div>
           <DialogFooter>
-            <DialogClose render={<Button variant="outline" size="sm" onClick={resetActivityForm} />}>
+            <DialogClose
+              render={<Button variant="outline" size="sm" onClick={resetActivityForm} />}
+            >
               キャンセル
             </DialogClose>
             <Button
@@ -1672,7 +1706,10 @@ export function ConferencesContent() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!reportDialogNote} onOpenChange={(open) => (!open ? setReportDialogNote(null) : null)}>
+      <Dialog
+        open={!!reportDialogNote}
+        onOpenChange={(open) => (!open ? setReportDialogNote(null) : null)}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>報告書を生成</DialogTitle>
@@ -1680,7 +1717,10 @@ export function ConferencesContent() {
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
               <Label>報告書種別</Label>
-              <Select value={reportTypeDraft} onValueChange={(value) => setReportTypeDraft(value ?? reportTypeDraft)}>
+              <Select
+                value={reportTypeDraft}
+                onValueChange={(value) => setReportTypeDraft(value ?? reportTypeDraft)}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -1712,7 +1752,8 @@ export function ConferencesContent() {
               <span>構造化項目を報告書本文に含める</span>
             </label>
             <p className="text-xs text-muted-foreground">
-              `is_report_recipient` が付いた参加者に、メールまたは FAX の送付下書きを自動起票します。
+              `is_report_recipient` が付いた参加者に、メールまたは FAX
+              の送付下書きを自動起票します。
             </p>
           </div>
           <DialogFooter>

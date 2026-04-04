@@ -4,6 +4,7 @@ import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminPharmacistCredentialsShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Loading } from '@/components/ui/loading';
 import { PharmacistCredentialsContent } from './pharmacist-credentials-content';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
   title: 'かかりつけ薬剤師管理 — CareViaX',
@@ -11,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function PharmacistCredentialsPage() {
   return (
-    <div className="p-6">
+    <PageScaffold>
       <AdminPageHeader
         title="かかりつけ薬剤師管理"
         description="研修認定・有効期限・勤務実績の管理"
@@ -21,6 +22,6 @@ export default function PharmacistCredentialsPage() {
       <Suspense fallback={<Loading />}>
         <PharmacistCredentialsContent />
       </Suspense>
-    </div>
+    </PageScaffold>
   );
 }

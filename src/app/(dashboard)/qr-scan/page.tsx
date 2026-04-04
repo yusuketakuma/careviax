@@ -56,13 +56,13 @@ interface PatientMatch {
 }
 
 type ScanPhase =
-  | 'camera'    // カメラスキャン中
-  | 'scanned'   // 1つのQRスキャン完了、続行 or 送信選択
-  | 'parsed'    // パース完了、患者照合中
-  | 'matched'   // 患者照合完了
-  | 'sending'   // API送信中
-  | 'done'      // 送信完了
-  | 'error';    // エラー
+  | 'camera' // カメラスキャン中
+  | 'scanned' // 1つのQRスキャン完了、続行 or 送信選択
+  | 'parsed' // パース完了、患者照合中
+  | 'matched' // 患者照合完了
+  | 'sending' // API送信中
+  | 'done' // 送信完了
+  | 'error'; // エラー
 
 // ────────────────────────────────────────────────────────────────────────────
 // Main Component
@@ -148,7 +148,7 @@ export default function QRScanPage() {
         setPhase('matched');
       }
     },
-    [orgId]
+    [orgId],
   );
 
   // ── 全QRスキャン完了時の処理 ──
@@ -169,7 +169,7 @@ export default function QRScanPage() {
       setPhase('parsed');
       void searchPatients(merged);
     },
-    [searchPatients, stopCamera]
+    [searchPatients, stopCamera],
   );
 
   // ── QR 読取結果処理 (ref で循環依存を回避) ──
@@ -181,7 +181,7 @@ export default function QRScanPage() {
 
       if (!isJahisQR(text)) {
         setCameraError(
-          'お薬手帳QRコード（JAHIS形式）ではありません。別のQRコードを読み取ってください。'
+          'お薬手帳QRコード（JAHIS形式）ではありません。別のQRコードを読み取ってください。',
         );
         setPhase('camera');
         return;
@@ -211,7 +211,7 @@ export default function QRScanPage() {
         return next;
       });
     },
-    [stopCamera, finalizeScan]
+    [stopCamera, finalizeScan],
   );
 
   // ref を最新のコールバックに同期
@@ -256,36 +256,33 @@ export default function QRScanPage() {
   }, []);
 
   // ── ファイルアップロード（フォールバック）──
-  const handleFileUpload = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-      try {
-        const { BrowserQRCodeReader } = await import('@zxing/browser');
-        const reader = new BrowserQRCodeReader();
+    try {
+      const { BrowserQRCodeReader } = await import('@zxing/browser');
+      const reader = new BrowserQRCodeReader();
 
-        const img = new Image();
-        const url = URL.createObjectURL(file);
-        img.src = url;
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.src = url;
 
-        await new Promise<void>((resolve, reject) => {
-          img.onload = () => resolve();
-          img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
-        });
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+      });
 
-        const result = await reader.decodeFromImageElement(img);
-        URL.revokeObjectURL(url);
-        handleQRResultRef.current(result.getText());
-      } catch {
-        setCameraError('QRコードを画像から読み取れませんでした。鮮明な画像をお試しください。');
-      }
+      const result = await reader.decodeFromImageElement(img);
+      URL.revokeObjectURL(url);
+      handleQRResultRef.current(result.getText());
+    } catch {
+      setCameraError('QRコードを画像から読み取れませんでした。鮮明な画像をお試しください。');
+    }
 
-      // リセット（同じファイル再選択を可能にする）
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    },
-    []
-  );
+    // リセット（同じファイル再選択を可能にする）
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, []);
 
   // ── PCに送信 ──
   const sendToDraft = async (patientId: string) => {
@@ -369,13 +366,22 @@ export default function QRScanPage() {
       : `${scannedCount}枚 スキャン済み`;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4 p-4 pb-20 md:pb-4">
+    <div className="space-y-4 p-3 pb-20 md:p-4 md:pb-4 xl:p-5">
       {/* Header */}
       <WorkflowPageIntro
         backHref="/prescriptions"
         backLabel="処方受付へ戻る"
+        eyebrow="QR Intake"
         title="お薬手帳 QR スキャン"
         description="読取後は QR 下書き一覧、処方受付、ワークフローへ横移動できます。"
+        supportingContent={
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-foreground">操作の流れ</p>
+            <p className="text-sm text-muted-foreground">
+              スキャン、確認、下書き化、患者登録または受付導線への移動を順に行います。
+            </p>
+          </div>
+        }
         className="mb-0"
         shortcuts={getQrScanShortcutLinks()}
         actions={
@@ -453,7 +459,9 @@ export default function QRScanPage() {
                 <Upload className="mr-1.5 h-4 w-4" />
                 画像から読取
               </Button>
-              <p className="text-xs text-muted-foreground">カメラが使えない場合は画像をアップロード</p>
+              <p className="text-xs text-muted-foreground">
+                カメラが使えない場合は画像をアップロード
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -479,10 +487,7 @@ export default function QRScanPage() {
                 <Camera className="mr-1.5 h-4 w-4" />
                 次のQRをスキャン
               </Button>
-              <Button
-                className="min-h-[44px] flex-1"
-                onClick={() => finalizeScan(scannedTexts)}
-              >
+              <Button className="min-h-[44px] flex-1" onClick={() => finalizeScan(scannedTexts)}>
                 <CheckCircle className="mr-1.5 h-4 w-4" />
                 スキャン完了
               </Button>
@@ -635,7 +640,7 @@ export default function QRScanPage() {
                         className={cn(
                           'flex w-full items-center justify-between rounded-md border p-3 text-left transition-colors',
                           'hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                          'min-h-[44px]'
+                          'min-h-[44px]',
                         )}
                         onClick={() => setSelectedPatient(p)}
                       >
@@ -702,9 +707,7 @@ export default function QRScanPage() {
                 <CheckCircle className="h-10 w-10 text-green-600" />
                 <div>
                   <p className="text-base font-semibold">PCに送信しました</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    PCで確認・確定してください
-                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">PCで確認・確定してください</p>
                 </div>
 
                 {/* パース結果サマリー */}
@@ -731,14 +734,15 @@ export default function QRScanPage() {
                     )}
 
                     {/* エラー（パース失敗） */}
-                    {!parseResult.success && parseResult.errors.map((e, i) => (
-                      <div key={i} className="flex items-start gap-2 text-sm text-destructive">
-                        <CircleX className="mt-0.5 h-4 w-4 shrink-0" />
-                        <span>
-                          行{e.lineNumber} ({e.recordType}): {e.message}
-                        </span>
-                      </div>
-                    ))}
+                    {!parseResult.success &&
+                      parseResult.errors.map((e, i) => (
+                        <div key={i} className="flex items-start gap-2 text-sm text-destructive">
+                          <CircleX className="mt-0.5 h-4 w-4 shrink-0" />
+                          <span>
+                            行{e.lineNumber} ({e.recordType}): {e.message}
+                          </span>
+                        </div>
+                      ))}
                   </div>
                 )}
 
@@ -794,7 +798,7 @@ export default function QRScanPage() {
                   'flex w-full items-center justify-between rounded-md border p-3 text-left transition-colors',
                   'hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   'min-h-[44px]',
-                  selectedPatient?.id === p.id && 'border-primary bg-primary/5'
+                  selectedPatient?.id === p.id && 'border-primary bg-primary/5',
                 )}
                 onClick={() => {
                   setSelectedPatient(p);

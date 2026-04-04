@@ -48,6 +48,7 @@ import {
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { usePatientListStore } from '@/lib/stores/patient-list-store';
+import { SectionIntro } from '@/components/ui/section-intro';
 import {
   CASE_STATUS_LABELS,
   CASE_STATUS_VARIANTS,
@@ -135,13 +136,13 @@ function deriveRowStatus(row: PatientRow): PatientStatusIcon {
   const risk = row.risk_summary;
   const caseStatus = row.latest_case?.status ?? null;
   const hasCompletedVisit = !!row.latest_visit;
-  const hasNextVisit = row.visit_schedules.some(
-    (v) => ['planned', 'in_preparation', 'ready'].includes(v.schedule_status)
+  const hasNextVisit = row.visit_schedules.some((v) =>
+    ['planned', 'in_preparation', 'ready'].includes(v.schedule_status),
   );
   const hasOverdueVisit = row.visit_schedules.some(
     (v) =>
       ['planned', 'in_preparation', 'ready'].includes(v.schedule_status) &&
-      new Date(v.scheduled_date) < new Date()
+      new Date(v.scheduled_date) < new Date(),
   );
 
   if (caseStatus === 'on_hold') return 'paused';
@@ -164,9 +165,7 @@ const STATUS_FILTER_OPTIONS: Array<{ value: PatientStatusIcon; label: string }> 
 ];
 
 function toggleFilter(values: string[], target: string) {
-  return values.includes(target)
-    ? values.filter((value) => value !== target)
-    : [...values, target];
+  return values.includes(target) ? values.filter((value) => value !== target) : [...values, target];
 }
 
 function formatDate(value: string | null | undefined) {
@@ -194,7 +193,11 @@ function buildPatientColumns(args: {
             variant="ghost"
             size="icon-sm"
             className="shrink-0"
-            aria-label={args.favoritePatientIds.includes(row.original.id) ? 'お気に入りを解除' : 'お気に入りに追加'}
+            aria-label={
+              args.favoritePatientIds.includes(row.original.id)
+                ? 'お気に入りを解除'
+                : 'お気に入りに追加'
+            }
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -227,9 +230,7 @@ function buildPatientColumns(args: {
         label: 'フリガナ',
         tabletHidden: true,
       },
-      cell: ({ row }) => (
-        <span className="text-muted-foreground">{row.original.name_kana}</span>
-      ),
+      cell: ({ row }) => <span className="text-muted-foreground">{row.original.name_kana}</span>,
     },
     {
       accessorKey: 'birth_date',
@@ -267,7 +268,9 @@ function buildPatientColumns(args: {
       meta: {
         label: 'ケース状態',
         exportValue: (row: PatientRow) =>
-          row.latest_case ? (CASE_STATUS_LABELS[row.latest_case.status] ?? row.latest_case.status) : '—',
+          row.latest_case
+            ? (CASE_STATUS_LABELS[row.latest_case.status] ?? row.latest_case.status)
+            : '—',
       },
       cell: ({ row }) => {
         const latestCase = row.original.latest_case;
@@ -311,10 +314,7 @@ function buildPatientColumns(args: {
         const IconComponent = STATUS_ICONS[statusKey];
         return (
           <div className="flex items-center gap-1.5">
-            <div
-              className={`shrink-0 rounded-full p-1 ${cfg.color} ${cfg.bg}`}
-              title={cfg.label}
-            >
+            <div className={`shrink-0 rounded-full p-1 ${cfg.color} ${cfg.bg}`} title={cfg.label}>
               <IconComponent className="size-3.5" aria-hidden="true" />
             </div>
             <span className={`text-xs font-medium ${cfg.color}`}>{cfg.label}</span>
@@ -439,7 +439,7 @@ export function PatientsTable() {
         onToggleFavorite: toggleFavoritePatient,
         onMarkRecent: markRecentPatient,
       }),
-    [favoritePatientIds, markRecentPatient, toggleFavoritePatient]
+    [favoritePatientIds, markRecentPatient, toggleFavoritePatient],
   );
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPatients, setSelectedPatients] = useState<PatientRow[]>([]);
@@ -465,8 +465,10 @@ export function PatientsTable() {
     if (riskFilter !== ALL_VALUE) params.set('risk_level', riskFilter);
     if (facilityFilter !== ALL_VALUE) {
       params.set(
-        facilityFilter === 'facility' || facilityFilter === 'home' ? 'facility_mode' : 'building_id',
-        facilityFilter
+        facilityFilter === 'facility' || facilityFilter === 'home'
+          ? 'facility_mode'
+          : 'building_id',
+        facilityFilter,
       );
     }
     if (pharmacistFilter !== ALL_VALUE) params.set('primary_pharmacist_id', pharmacistFilter);
@@ -578,7 +580,7 @@ export function PatientsTable() {
   }, [data]);
   const patientNameById = useMemo(
     () => new Map((data?.data ?? []).map((patient) => [patient.id, patient.name])),
-    [data]
+    [data],
   );
   const favoritePatients = favoritePatientIds
     .map((patientId) => ({
@@ -592,6 +594,7 @@ export function PatientsTable() {
       name: patientNameById.get(patientId) ?? null,
     }))
     .filter((patient) => patient.name);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   function resetFilters() {
     setSearchQuery('');
@@ -609,211 +612,304 @@ export function PatientsTable() {
   }
 
   return (
-    <div className="space-y-4">
-      <div
-        className="grid gap-3 rounded-xl border border-border/70 bg-card/80 p-4 lg:grid-cols-[1.4fr_repeat(4,minmax(0,0.75fr))] xl:grid-cols-[1.4fr_repeat(5,minmax(0,0.72fr))]"
+    <div className="space-y-6">
+      <section className="space-y-4 rounded-xl border border-border/70 bg-card/80 p-4">
+        <SectionIntro
+          title="優先確認"
+          description="まず件数で優先度を掴み、その後に絞り込みと一覧確認へ進める構成にしています。"
+        />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <OverviewMetricCard label="対象患者" value={`${data?.summary.total ?? 0}名`} />
+          <OverviewMetricCard
+            label="高リスク"
+            value={`${data?.summary.by_risk.high ?? 0}名`}
+            tone={(data?.summary.by_risk.high ?? 0) > 0 ? 'danger' : 'default'}
+          />
+          <OverviewMetricCard
+            label="要観察"
+            value={`${data?.summary.by_risk.watch ?? 0}名`}
+            tone={(data?.summary.by_risk.watch ?? 0) > 0 ? 'warning' : 'default'}
+          />
+          <OverviewMetricCard
+            label="同意不足"
+            value={`${data?.summary.missing_consent_count ?? 0}名`}
+            tone={(data?.summary.missing_consent_count ?? 0) > 0 ? 'warning' : 'default'}
+          />
+          <OverviewMetricCard label="施設患者" value={`${data?.summary.facility_count ?? 0}名`} />
+        </div>
+      </section>
+
+      <section
+        className="space-y-4 rounded-xl border border-border/70 bg-card/80 p-4"
         data-testid="patients-filter-panel"
+        aria-labelledby="patients-filter-panel-heading"
       >
-        <div className="space-y-1.5">
-          <LabelText>患者検索</LabelText>
-          <div className="relative">
-            <Search
-              className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden="true"
-            />
-            <Input
-              type="search"
-              placeholder="氏名・ふりがなを検索"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              className="pl-8"
-              aria-label="患者検索"
-            />
+        <SectionIntro
+          id="patients-filter-panel-heading"
+          title="絞り込みと対象選定"
+          description="今日優先して見る患者を先に絞り込み、対象を固めてから一覧へ進みます。"
+        />
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,0.8fr))_auto] xl:grid-cols-[minmax(0,1.8fr)_repeat(4,minmax(0,0.72fr))_auto]">
+          <div className="space-y-1.5">
+            <LabelText>患者検索</LabelText>
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Input
+                type="search"
+                placeholder="氏名・ふりがなを検索"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                className="h-10 pl-8 sm:h-9"
+                aria-label="患者検索"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <LabelText>ケース状態</LabelText>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<Button variant="outline" className="h-10 w-full justify-between sm:h-9" />}
+              >
+                <span className="flex items-center gap-2">
+                  <SlidersHorizontal className="size-4" aria-hidden="true" />
+                  {caseStatusFilters.length > 0 ? `${caseStatusFilters.length}件選択` : 'すべて'}
+                </span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56" align="start">
+                <DropdownMenuLabel>表示するケース状態</DropdownMenuLabel>
+                {caseStatuses.map((status) => (
+                  <DropdownMenuCheckboxItem
+                    key={status}
+                    checked={caseStatusFilters.includes(status)}
+                    onCheckedChange={() =>
+                      setCaseStatusFilters((current) => toggleFilter(current, status))
+                    }
+                  >
+                    {CASE_STATUS_LABELS[status]}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          <div className="space-y-1.5">
+            <LabelText>リスク</LabelText>
+            <Select value={riskFilter} onValueChange={(value) => setRiskFilter(value ?? ALL_VALUE)}>
+              <SelectTrigger aria-label="リスクフィルタ" className="h-10 sm:h-9">
+                <SelectValue placeholder="すべて" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_VALUE}>すべて</SelectItem>
+                <SelectItem value="high">高リスク</SelectItem>
+                <SelectItem value="watch">要観察</SelectItem>
+                <SelectItem value="stable">安定</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <LabelText>ステータス</LabelText>
+            <Select
+              value={statusFilter}
+              onValueChange={(value) => setStatusFilter(value ?? ALL_VALUE)}
+            >
+              <SelectTrigger aria-label="ステータスフィルタ" className="h-10 sm:h-9">
+                <SelectValue placeholder="すべて" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_VALUE}>すべて</SelectItem>
+                {STATUS_FILTER_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5 md:max-w-56">
+            <LabelText>詳細フィルタ</LabelText>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 w-full justify-between sm:h-9"
+              onClick={() => setShowAdvancedFilters((current) => !current)}
+            >
+              <span className="inline-flex items-center gap-2">
+                <SlidersHorizontal className="size-4" aria-hidden="true" />
+                {showAdvancedFilters ? '詳細を閉じる' : '詳細フィルタ'}
+              </span>
+              <span className="text-xs text-muted-foreground">{activeFilterCount}件</span>
+            </Button>
           </div>
         </div>
 
-        <div className="space-y-1.5">
-          <LabelText>ケース状態</LabelText>
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="outline" className="w-full justify-between" />}>
-              <span className="flex items-center gap-2">
-                <SlidersHorizontal className="size-4" aria-hidden="true" />
-                {caseStatusFilters.length > 0 ? `${caseStatusFilters.length}件選択` : 'すべて'}
-              </span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56" align="start">
-              <DropdownMenuLabel>表示するケース状態</DropdownMenuLabel>
-              {caseStatuses.map((status) => (
-                <DropdownMenuCheckboxItem
-                  key={status}
-                  checked={caseStatusFilters.includes(status)}
-                  onCheckedChange={() =>
-                    setCaseStatusFilters((current) => toggleFilter(current, status))
-                  }
-                >
-                  {CASE_STATUS_LABELS[status]}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        {showAdvancedFilters ? (
+          <div className="grid gap-3 border-t border-border/70 pt-4 md:grid-cols-2 xl:grid-cols-5">
+            <div className="space-y-1.5">
+              <LabelText>施設・建物</LabelText>
+              <Select
+                value={facilityFilter}
+                onValueChange={(value) => setFacilityFilter(value ?? ALL_VALUE)}
+              >
+                <SelectTrigger aria-label="施設フィルタ" className="h-10 sm:h-9">
+                  <SelectValue placeholder="すべて" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VALUE}>すべて</SelectItem>
+                  <SelectItem value="facility">施設患者</SelectItem>
+                  <SelectItem value="home">在宅患者</SelectItem>
+                  {buildingOptions.map((buildingId) => (
+                    <SelectItem key={buildingId} value={buildingId}>
+                      建物: {buildingId}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-        <div className="space-y-1.5">
-          <LabelText>リスク</LabelText>
-          <Select value={riskFilter} onValueChange={(value) => setRiskFilter(value ?? ALL_VALUE)}>
-            <SelectTrigger aria-label="リスクフィルタ">
-              <SelectValue placeholder="すべて" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_VALUE}>すべて</SelectItem>
-              <SelectItem value="high">高リスク</SelectItem>
-              <SelectItem value="watch">要観察</SelectItem>
-              <SelectItem value="stable">安定</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+            <div className="space-y-1.5">
+              <LabelText>同意状態</LabelText>
+              <Select
+                value={consentFilter}
+                onValueChange={(value) => setConsentFilter(value ?? ALL_VALUE)}
+              >
+                <SelectTrigger aria-label="同意状態フィルタ" className="h-10 sm:h-9">
+                  <SelectValue placeholder="すべて" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VALUE}>すべて</SelectItem>
+                  <SelectItem value="complete">同意あり</SelectItem>
+                  <SelectItem value="missing">同意不足</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-        <div className="space-y-1.5">
-          <LabelText>ステータス</LabelText>
-          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value ?? ALL_VALUE)}>
-            <SelectTrigger aria-label="ステータスフィルタ">
-              <SelectValue placeholder="すべて" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_VALUE}>すべて</SelectItem>
-              {STATUS_FILTER_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+            <div className="space-y-1.5">
+              <LabelText>担当薬剤師</LabelText>
+              <Select
+                value={pharmacistFilter}
+                onValueChange={(value) => setPharmacistFilter(value ?? ALL_VALUE)}
+              >
+                <SelectTrigger aria-label="担当薬剤師フィルタ" className="h-10 sm:h-9">
+                  <SelectValue placeholder="すべて" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VALUE}>すべて</SelectItem>
+                  {pharmacistOptions.map(([id, name]) => (
+                    <SelectItem key={id} value={id}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-        <div className="space-y-1.5">
-          <LabelText>施設・建物</LabelText>
-          <Select value={facilityFilter} onValueChange={(value) => setFacilityFilter(value ?? ALL_VALUE)}>
-            <SelectTrigger aria-label="施設フィルタ">
-              <SelectValue placeholder="すべて" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_VALUE}>すべて</SelectItem>
-              <SelectItem value="facility">施設患者</SelectItem>
-              <SelectItem value="home">在宅患者</SelectItem>
-              {buildingOptions.map((buildingId) => (
-                <SelectItem key={buildingId} value={buildingId}>
-                  建物: {buildingId}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+            <div className="space-y-1.5">
+              <LabelText>請求支援</LabelText>
+              <Select
+                value={billingSupportFilter}
+                onValueChange={(value) => setBillingSupportFilter(value ?? ALL_VALUE)}
+              >
+                <SelectTrigger aria-label="請求支援フィルタ" className="h-10 sm:h-9">
+                  <SelectValue placeholder="すべて" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VALUE}>すべて</SelectItem>
+                  <SelectItem value="true">要支援</SelectItem>
+                  <SelectItem value="false">通常</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-        <div className="space-y-1.5">
-          <LabelText>同意状態</LabelText>
-          <Select value={consentFilter} onValueChange={(value) => setConsentFilter(value ?? ALL_VALUE)}>
-            <SelectTrigger aria-label="同意状態フィルタ">
-              <SelectValue placeholder="すべて" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_VALUE}>すべて</SelectItem>
-              <SelectItem value="complete">同意あり</SelectItem>
-              <SelectItem value="missing">同意不足</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+            <div className="space-y-1.5">
+              <LabelText>保険種別</LabelText>
+              <Select
+                value={payerFilter}
+                onValueChange={(value) => setPayerFilter(value ?? ALL_VALUE)}
+              >
+                <SelectTrigger aria-label="保険種別フィルタ" className="h-10 sm:h-9">
+                  <SelectValue placeholder="すべて" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VALUE}>すべて</SelectItem>
+                  <SelectItem value="medical">医療</SelectItem>
+                  <SelectItem value="care">介護</SelectItem>
+                  <SelectItem value="self">自費</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-        <div className="space-y-1.5">
-          <LabelText>担当薬剤師</LabelText>
-          <Select
-            value={pharmacistFilter}
-            onValueChange={(value) => setPharmacistFilter(value ?? ALL_VALUE)}
-          >
-            <SelectTrigger aria-label="担当薬剤師フィルタ">
-              <SelectValue placeholder="すべて" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_VALUE}>すべて</SelectItem>
-              {pharmacistOptions.map(([id, name]) => (
-                <SelectItem key={id} value={id}>
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="patients-last-visit-from"
+                className="text-xs font-medium text-muted-foreground"
+              >
+                最終訪問 From
+              </Label>
+              <Input
+                id="patients-last-visit-from"
+                type="date"
+                value={lastVisitFrom}
+                onChange={(event) => setLastVisitFrom(event.target.value)}
+                className="h-10 sm:h-9"
+              />
+            </div>
 
-        <div className="space-y-1.5">
-          <LabelText>請求支援</LabelText>
-          <Select
-            value={billingSupportFilter}
-            onValueChange={(value) => setBillingSupportFilter(value ?? ALL_VALUE)}
-          >
-            <SelectTrigger aria-label="請求支援フィルタ">
-              <SelectValue placeholder="すべて" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_VALUE}>すべて</SelectItem>
-              <SelectItem value="true">要支援</SelectItem>
-              <SelectItem value="false">通常</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="patients-last-visit-to"
+                className="text-xs font-medium text-muted-foreground"
+              >
+                最終訪問 To
+              </Label>
+              <Input
+                id="patients-last-visit-to"
+                type="date"
+                value={lastVisitTo}
+                onChange={(event) => setLastVisitTo(event.target.value)}
+                className="h-10 sm:h-9"
+              />
+            </div>
 
-        <div className="space-y-1.5">
-          <LabelText>保険種別</LabelText>
-          <Select value={payerFilter} onValueChange={(value) => setPayerFilter(value ?? ALL_VALUE)}>
-            <SelectTrigger aria-label="保険種別フィルタ">
-              <SelectValue placeholder="すべて" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_VALUE}>すべて</SelectItem>
-              <SelectItem value="medical">医療</SelectItem>
-              <SelectItem value="care">介護</SelectItem>
-              <SelectItem value="self">自費</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+            <div className="flex items-end gap-2 md:col-span-2 xl:col-span-1">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 w-full sm:h-9"
+                onClick={resetFilters}
+              >
+                <RotateCcw className="mr-1.5 size-4" aria-hidden="true" />
+                リセット
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </section>
 
-        <div className="space-y-1.5">
-          <Label
-            htmlFor="patients-last-visit-from"
-            className="text-xs font-medium text-muted-foreground"
-          >
-            最終訪問 From
-          </Label>
-          <Input
-            id="patients-last-visit-from"
-            type="date"
-            value={lastVisitFrom}
-            onChange={(event) => setLastVisitFrom(event.target.value)}
+      <section className="space-y-4 rounded-xl border border-border/70 bg-card/80 p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <SectionIntro
+            title="現在の状況"
+            description="件数サマリーと一括操作を同じまとまりに置き、絞り込み結果の影響をすぐ確認できるようにしています。"
           />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label
-            htmlFor="patients-last-visit-to"
-            className="text-xs font-medium text-muted-foreground"
+          <LoadingButton
+            type="button"
+            variant="outline"
+            className="shrink-0"
+            loading={bulkExportMutation.isPending}
+            loadingLabel="ZIP生成をキュー登録中..."
+            disabled={selectedPatients.length === 0}
+            onClick={() => bulkExportMutation.mutate(selectedPatients.map((patient) => patient.id))}
           >
-            最終訪問 To
-          </Label>
-          <Input
-            id="patients-last-visit-to"
-            type="date"
-            value={lastVisitTo}
-            onChange={(event) => setLastVisitTo(event.target.value)}
-          />
+            <Archive className="size-4" aria-hidden="true" />
+            薬歴PDFを一括出力
+          </LoadingButton>
         </div>
-
-        <div className="flex items-end gap-2 lg:col-span-2 xl:col-span-1">
-          <Button type="button" variant="outline" className="w-full" onClick={resetFilters}>
-            <RotateCcw className="mr-1.5 size-4" aria-hidden="true" />
-            リセット
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">適用中フィルタ {activeFilterCount}件</Badge>
           <Badge variant="outline">対象患者 {data?.summary.total ?? 0}名</Badge>
@@ -821,19 +917,7 @@ export function PatientsTable() {
           <Badge variant="outline">同意不足 {data?.summary.missing_consent_count ?? 0}名</Badge>
           <Badge variant="outline">お気に入り {favoritePatientIds.length}名</Badge>
         </div>
-        <LoadingButton
-          type="button"
-          variant="outline"
-          className="shrink-0"
-          loading={bulkExportMutation.isPending}
-          loadingLabel="ZIP生成をキュー登録中..."
-          disabled={selectedPatients.length === 0}
-          onClick={() => bulkExportMutation.mutate(selectedPatients.map((patient) => patient.id))}
-        >
-          <Archive className="size-4" aria-hidden="true" />
-          薬歴PDFを一括出力
-        </LoadingButton>
-      </div>
+      </section>
 
       {exportFeedback ? (
         <div
@@ -847,74 +931,112 @@ export function PatientsTable() {
         </div>
       ) : null}
 
-      {(favoritePatients.length > 0 || recentPatients.length > 0) && (
-        <div className="grid gap-3 lg:grid-cols-2">
-          <div className="rounded-lg border border-border/70 bg-card/80 p-4">
-            <p className="mb-2 text-sm font-medium text-foreground">お気に入り患者</p>
-            <div className="flex flex-wrap gap-2">
-              {favoritePatients.length === 0 ? (
-                <span className="text-sm text-muted-foreground">お気に入りは未登録です</span>
-              ) : (
-                favoritePatients.map((patient) => (
-                  <Link
-                    key={patient.id}
-                    href={`/patients/${patient.id}`}
-                    className={buttonVariants({ size: 'sm', variant: 'outline' })}
-                    onClick={() => markRecentPatient(patient.id)}
-                  >
-                    {patient.name}
-                  </Link>
-                ))
-              )}
-            </div>
-          </div>
-          <div className="rounded-lg border border-border/70 bg-card/80 p-4">
-            <p className="mb-2 text-sm font-medium text-foreground">最近表示した患者</p>
-            <div className="flex flex-wrap gap-2">
-              {recentPatients.length === 0 ? (
-                <span className="text-sm text-muted-foreground">最近表示した患者はありません</span>
-              ) : (
-                recentPatients.map((patient) => (
-                  <Link
-                    key={patient.id}
-                    href={`/patients/${patient.id}`}
-                    className={buttonVariants({ size: 'sm', variant: 'ghost' })}
-                    onClick={() => markRecentPatient(patient.id)}
-                  >
-                    {patient.name}
-                  </Link>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <section className="space-y-4 rounded-xl border border-border/70 bg-card/80 p-4">
+        <SectionIntro
+          title="患者一覧"
+          description="対象患者の詳細へ進み、薬歴、処方受付、訪問候補へそのまま遷移できます。"
+        />
+        <DataTable
+          columns={columns}
+          data={
+            statusFilter !== ALL_VALUE
+              ? (data?.data ?? []).filter((row) => deriveRowStatus(row) === statusFilter)
+              : (data?.data ?? [])
+          }
+          isLoading={isLoading}
+          caption="患者一覧"
+          enableRowSelection
+          getRowId={(row) => row.id}
+          onSelectionChange={(rows) => {
+            setSelectedPatients(rows);
+            setExportFeedback(null);
+          }}
+          toolbar={{
+            enableColumnVisibility: true,
+            enableExport: true,
+            exportFileName: 'patients-filtered.csv',
+          }}
+        />
+      </section>
 
-      <DataTable
-        columns={columns}
-        data={
-          statusFilter !== ALL_VALUE
-            ? (data?.data ?? []).filter((row) => deriveRowStatus(row) === statusFilter)
-            : (data?.data ?? [])
-        }
-        isLoading={isLoading}
-        caption="患者一覧"
-        enableRowSelection
-        getRowId={(row) => row.id}
-        onSelectionChange={(rows) => {
-          setSelectedPatients(rows);
-          setExportFeedback(null);
-        }}
-        toolbar={{
-          enableColumnVisibility: true,
-          enableExport: true,
-          exportFileName: 'patients-filtered.csv',
-        }}
-      />
+      {(favoritePatients.length > 0 || recentPatients.length > 0) && (
+        <section className="space-y-4 rounded-xl border border-border/70 bg-card/80 p-4">
+          <SectionIntro
+            title="補助導線"
+            description="よく使う患者と最近見た患者を本文一覧から分離し、再訪問や再確認の導線を短くしています。"
+          />
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div className="rounded-lg border border-border/70 bg-background p-4">
+              <p className="mb-2 text-sm font-medium text-foreground">お気に入り患者</p>
+              <div className="flex flex-wrap gap-2">
+                {favoritePatients.length === 0 ? (
+                  <span className="text-sm text-muted-foreground">お気に入りは未登録です</span>
+                ) : (
+                  favoritePatients.map((patient) => (
+                    <Link
+                      key={patient.id}
+                      href={`/patients/${patient.id}`}
+                      className={buttonVariants({ size: 'sm', variant: 'outline' })}
+                      onClick={() => markRecentPatient(patient.id)}
+                    >
+                      {patient.name}
+                    </Link>
+                  ))
+                )}
+              </div>
+            </div>
+            <div className="rounded-lg border border-border/70 bg-background p-4">
+              <p className="mb-2 text-sm font-medium text-foreground">最近表示した患者</p>
+              <div className="flex flex-wrap gap-2">
+                {recentPatients.length === 0 ? (
+                  <span className="text-sm text-muted-foreground">
+                    最近表示した患者はありません
+                  </span>
+                ) : (
+                  recentPatients.map((patient) => (
+                    <Link
+                      key={patient.id}
+                      href={`/patients/${patient.id}`}
+                      className={buttonVariants({ size: 'sm', variant: 'ghost' })}
+                      onClick={() => markRecentPatient(patient.id)}
+                    >
+                      {patient.name}
+                    </Link>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
 
 function LabelText({ children }: { children: ReactNode }) {
   return <p className="text-xs font-medium text-muted-foreground">{children}</p>;
+}
+
+function OverviewMetricCard({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string;
+  value: string;
+  tone?: 'default' | 'warning' | 'danger';
+}) {
+  const toneClassName =
+    tone === 'danger'
+      ? 'border-rose-200/80 bg-rose-50/80'
+      : tone === 'warning'
+        ? 'border-amber-200/80 bg-amber-50/80'
+        : 'border-border/70 bg-background';
+
+  return (
+    <div className={`rounded-lg border px-4 py-3 ${toneClassName}`}>
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{value}</p>
+    </div>
+  );
 }

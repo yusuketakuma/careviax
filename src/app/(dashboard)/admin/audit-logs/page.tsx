@@ -4,6 +4,7 @@ import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminAuditLogsShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Loading } from '@/components/ui/loading';
 import { AuditLogsContent } from './audit-logs-content';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
   title: '監査ログ — CareViaX',
@@ -11,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function AuditLogsPage() {
   return (
-    <div className="p-6">
+    <PageScaffold>
       <AdminPageHeader
         title="監査ログ"
         description="操作履歴の閲覧・フィルタリング・CSV出力（3省2ガイドライン対応）"
@@ -21,6 +22,6 @@ export default function AuditLogsPage() {
       <Suspense fallback={<Loading />}>
         <AuditLogsContent />
       </Suspense>
-    </div>
+    </PageScaffold>
   );
 }

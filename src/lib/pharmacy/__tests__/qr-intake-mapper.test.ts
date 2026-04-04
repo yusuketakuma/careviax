@@ -648,7 +648,7 @@ describe('mapJahisToIntake', () => {
       expect(result.lines[0].quantity).toBe(70);
     });
 
-    it('sets packaging_method, route, and dispensing_method to null by default', async () => {
+    it('defaults route to internal when no external or injection hint exists', async () => {
       prismaMock.drugMaster.findFirst.mockResolvedValueOnce(mockDrugMaster);
       prismaMock.pharmacyDrugStock.findFirst.mockResolvedValueOnce(null);
 
@@ -658,7 +658,7 @@ describe('mapJahisToIntake', () => {
 
       const result = await mapJahisToIntake(qrData, baseInput);
       expect(result.lines[0].packaging_method).toBeNull();
-      expect(result.lines[0].route).toBeNull();
+      expect(result.lines[0].route).toBe('internal');
       expect(result.lines[0].dispensing_method).toBeNull();
     });
   });
@@ -726,6 +726,53 @@ describe('mapJahisToIntake', () => {
 
       const result = await mapJahisToIntake(qrData, baseInput);
       expect(result.unmatchedDrugs).toHaveLength(0);
+    });
+  });
+
+  describe('route and packaging inference', () => {
+    it('infers external route from dosage form and packaging instructions from notes', async () => {
+      prismaMock.drugMaster.findFirst.mockResolvedValueOnce({
+        ...mockDrugMaster,
+        dosage_form: '軟膏',
+      });
+      prismaMock.pharmacyDrugStock.findFirst.mockResolvedValueOnce(null);
+
+      const qrData = makeQrData({
+        medications: [
+          makeMed({
+            drugCode: '123456789012',
+            drugName: 'ヘパリン類似物質軟膏',
+            usage: '1日2回患部に塗布',
+            supplements: ['別包', '一包化しない'],
+            usageNotes: ['冷所保管'],
+          }),
+        ],
+      });
+
+      const result = await mapJahisToIntake(qrData, baseInput);
+      expect(result.lines[0].route).toBe('external');
+      expect(result.lines[0].packaging_instructions).toContain('別包');
+      expect(result.lines[0].packaging_instruction_tags).toContain('separate_pack');
+      expect(result.lines[0].notes).toContain('冷所保管');
+    });
+
+    it('maps crushing instructions into packaging and dispensing flags', async () => {
+      prismaMock.drugMaster.findFirst.mockResolvedValueOnce(mockDrugMaster);
+      prismaMock.pharmacyDrugStock.findFirst.mockResolvedValueOnce(null);
+
+      const qrData = makeQrData({
+        medications: [
+          makeMed({
+            drugCode: '123456789012',
+            drugName: 'アムロジピン錠5mg',
+            supplements: ['粉砕'],
+          }),
+        ],
+      });
+
+      const result = await mapJahisToIntake(qrData, baseInput);
+      expect(result.lines[0].packaging_method).toBe('crush_and_pack');
+      expect(result.lines[0].dispensing_method).toBe('crushed');
     });
   });
 });

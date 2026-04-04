@@ -106,6 +106,8 @@ model PrescriptionIntake {
   prescriber_institution_ref PrescriberInstitution? @relation(fields: [prescriber_institution_id], references: [id])
   prescriber_institution    String?
   original_document_url     String? // S3
+  prescription_category     String                  @default("regular") // regular | emergency
+  emergency_category        String? // planned_disease_exacerbation | other_exacerbation | online (only when emergency)
   original_collected_at     DateTime?
   original_collected_by     String?
   refill_remaining_count    Int?
@@ -153,9 +155,10 @@ model PrescriptionLine {
   created_at                   DateTime           @default(now())
   updated_at                   DateTime           @updatedAt
 
-  inquiry_records InquiryRecord[]
-  dispense_results DispenseResult[]
-  set_batches     SetBatch[]
+  inquiry_records      InquiryRecord[]
+  dispense_results     DispenseResult[]
+  dispensing_decisions  DispensingDecision[]
+  set_batches          SetBatch[]
 
   @@index([org_id])
   @@index([intake_id])
@@ -197,8 +200,9 @@ model DispenseTask {
   created_at  DateTime        @default(now())
   updated_at  DateTime        @updatedAt
 
-  results DispenseResult[]
-  audits  DispenseAudit[]
+  results              DispenseResult[]
+  audits               DispenseAudit[]
+  dispensing_decisions  DispensingDecision[]
 
   @@index([org_id])
   @@index([status])
@@ -243,6 +247,41 @@ model DispenseAudit {
 
   @@index([org_id])
   @@index([task_id])
+}
+
+/// DispensingDecision captures the pharmacist's confirmed dispensing method
+/// BEFORE actual dispensing occurs.
+///
+/// Flow: PrescriptionLine (draft packaging fields from intake)
+///     -> DispensingDecision (pharmacist confirms/adjusts method, packaging, temperature)
+///     -> DispenseResult (records what was actually dispensed: drug name, quantity, carry type)
+///
+/// DispensingDecision answers "HOW to dispense" (method, packaging, temperature).
+/// DispenseResult answers "WHAT was actually dispensed" (drug, quantity, outcome).
+model DispensingDecision {
+  id                         String                   @id @default(cuid())
+  org_id                     String
+  task_id                    String
+  task                       DispenseTask             @relation(fields: [task_id], references: [id])
+  line_id                    String
+  line                       PrescriptionLine         @relation(fields: [line_id], references: [id])
+  dispensing_method           String? // standard/unit_dose/crushed/other
+  packaging_method            PackagingMethod?
+  packaging_instructions      String?
+  packaging_instruction_tags  PackagingInstructionTag[] @default([])
+  packaging_group_id          String?
+  carry_type_override         String? // carry/facility_deposit/deferred
+  special_handling_notes       String?
+  temperature_category         String? // ambient/cold/frozen
+  decided_by                  String // User ID
+  decided_at                  DateTime
+  created_at                  DateTime                 @default(now())
+  updated_at                  DateTime                 @updatedAt
+
+  @@unique([task_id, line_id])
+  @@index([org_id])
+  @@index([task_id])
+  @@index([line_id])
 }
 
 model SetPlan {

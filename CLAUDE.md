@@ -1,20 +1,27 @@
 # CareViaX Pharmacy - Project Configuration
 
 ## Project Overview
+
 在宅訪問に強い保険薬局向けの業務・連携プラットフォーム。
 3省2ガイドライン（MHLW v6.0 + METI/MIC v1.1）準拠の医療情報システム。
 
 仕様書:
+
 - `docs/careviax_pharmacy_workflow_spec_project_context.md` — ワークフロー詳細仕様
 - `docs/careviax_pharmacy_multidisciplinary_collaboration_spec_project_context.md` — 多職種連携詳細仕様
 - `docs/decisions.md` — 設計判断
+- `docs/ui-ux-design-guidelines.md` — UI/UX 設計の SSOT。UI/UX 変更時は必ず先に参照すること
 
 ## Design Principles
+
 - Workflow First / Mobile First / Structured Data First
 - Audit by Default / Integration by Adapter / Monolith First
 - **Compliance by Design**: 3省2ガイドライン準拠を設計の前提とする
 
 ## UI Design: 医療システムデザイン方針
+
+- UI/UX を変更する前に `docs/ui-ux-design-guidelines.md` を読み、ページ構成、グルーピング、区切り線、見出し階層、情報優先順位の判断根拠にすること
+- 今後の Claude による UI/UX 提案・実装・レビューでは `docs/ui-ux-design-guidelines.md` を必ず参照すること
 - **配色**: 落ち着いたブルー系をプライマリ（信頼・清潔感）。白ベースで高コントラスト。警告色は赤/橙/黄の3段階のみ（重大/注意/情報）。派手にしない。
 - **タイポグラフィ**: Noto Sans JP。本文14px以上、ラベル12px以上。データ密度の高い画面でも行間1.6以上確保。
 - **情報密度**: 一覧画面はデータ密度重視（Excel的）、入力画面はゆとり重視（1カラム中心）。モバイルは最小限の情報で次のアクションが明確。
@@ -24,6 +31,7 @@
 - **shadcn/ui カスタマイズ**: デフォルトのスレートグレーをブルーグレーに変更。コンポーネント角丸は控えめ(radius: 0.375rem)。医療データテーブルは zebra stripe + sticky header。
 
 ## Compliance Framework
+
 - **MHLW ガイドライン v6.0**: 医療情報システムの安全管理
 - **METI/MIC 提供事業者ガイドライン v1.1**: SaaS事業者の安全管理
 - **個人情報保護法 (APPI)**: 要配慮個人情報（医療データ）の取扱い
@@ -48,6 +56,7 @@
 ```
 
 ### Data Access: Prisma + PostgreSQL RLS
+
 - Prisma がメイン ORM（スキーマ定義・マイグレーション・クエリ・型生成）
 - PostgreSQL RLS をテナント分離に使用
 - 各リクエストで `SET LOCAL app.current_org_id = '...'` → RLS が org_id でフィルタ
@@ -57,6 +66,7 @@
 ## Tech Stack (versions pinned 2026-03-25)
 
 ### Frontend
+
 - `next@16.2.1` (App Router)
 - `react@19.2.4` / `react-dom@19.2.4`
 - `typescript@6.0.2`
@@ -68,17 +78,19 @@
 - `dexie@4.3.0` — オフライン (IndexedDB)
 
 ### 医薬品マスタ（全て無料取得）
-| データソース | 提供元 | 形式 | 更新頻度 | 用途 |
-|---|---|---|---|---|
-| SSK基本マスター | 社会保険診療報酬支払基金 | CSV/ZIP | 改定時+月次 | 薬剤本体（YJコード/薬価/薬効分類/後発品/麻薬区分） |
-| HOTコードマスター | MEDIS | ZIP | 随時 | コード横断結合キー（HOT↔YJ↔レセ電↔JAN） |
-| 薬価基準収載品目リスト | 厚労省 | Excel | 年1-2回 | 薬価・後発品区分 |
-| 一般名処方マスタ | 厚労省 | Excel | 年1回 | 一般名→後発品対応 |
-| PMDA添付文書 | PMDA | XML(新)/SGML(旧) | 随時 | 禁忌・相互作用・副作用（メディナビ経由DL） |
-| 高齢者PIMリスト | 厚労省 | PDF | 数年 | 高齢者不適正薬（手動構造化） |
-| 腎機能別用量調整 | JSNP | PDF | 年1回 | 腎機能別投与量（手動構造化） |
+
+| データソース           | 提供元                   | 形式             | 更新頻度    | 用途                                               |
+| ---------------------- | ------------------------ | ---------------- | ----------- | -------------------------------------------------- |
+| SSK基本マスター        | 社会保険診療報酬支払基金 | CSV/ZIP          | 改定時+月次 | 薬剤本体（YJコード/薬価/薬効分類/後発品/麻薬区分） |
+| HOTコードマスター      | MEDIS                    | ZIP              | 随時        | コード横断結合キー（HOT↔YJ↔レセ電↔JAN）            |
+| 薬価基準収載品目リスト | 厚労省                   | Excel            | 年1-2回     | 薬価・後発品区分                                   |
+| 一般名処方マスタ       | 厚労省                   | Excel            | 年1回       | 一般名→後発品対応                                  |
+| PMDA添付文書           | PMDA                     | XML(新)/SGML(旧) | 随時        | 禁忌・相互作用・副作用（メディナビ経由DL）         |
+| 高齢者PIMリスト        | 厚労省                   | PDF              | 数年        | 高齢者不適正薬（手動構造化）                       |
+| 腎機能別用量調整       | JSNP                     | PDF              | 年1回       | 腎機能別投与量（手動構造化）                       |
 
 ### Backend / Data Access
+
 - `prisma@7.5.0` / `@prisma/client@7.5.0` — ORM + RLS連携
 - `zod@4.3.6` — バリデーション
 - `@aws-sdk/client-cognito-identity-provider` — Cognito認証
@@ -87,10 +99,12 @@
 - `next-auth@5` (Auth.js) — Cognito連携のセッション管理
 
 ### QR Code
+
 - `@zxing/browser@0.1.5` (dynamic import)
 - `@zxing/text-encoding@0.9.0` — Shift-JIS
 
 ### Infrastructure (全て ISMAP 対象、ap-northeast-1)
+
 - **AWS Amplify Hosting** — Next.js デプロイ（東京リージョン固定）
 - **Amazon RDS PostgreSQL** — Multi-AZ、暗号化at rest (KMS)
 - **Amazon Cognito** — 認証・MFA (TOTP/FIDO2)・ユーザー管理
@@ -102,6 +116,7 @@
 - **AWS Secrets Manager** — 接続情報・APIキー管理
 
 ### Dev Tools
+
 - `pnpm` — パッケージマネージャ
 - `eslint@10.1.0` — flat config
 - `prettier@3.8.1`
@@ -110,12 +125,14 @@
 - `date-fns@4.1.0` — 日付（日本語ロケール）
 
 ## Language
+
 - Communication: 日本語
 - Commit messages: English
 - Code / comments / variables: English (camelCase)
 - DB columns: English (snake_case)
 
 ## Directory Structure
+
 ```
 careviax/
 ├── docs/               # 仕様書・設計・ガイドライン準拠文書
@@ -139,6 +156,7 @@ careviax/
 ```
 
 ## Environment Variables
+
 ```
 # AWS
 AWS_REGION=ap-northeast-1
@@ -175,6 +193,7 @@ JWT_SIGNING_SECRET=    # External sharing token
 ```
 
 ## Commands
+
 ```bash
 pnpm dev              # Start dev server
 pnpm build            # Production build

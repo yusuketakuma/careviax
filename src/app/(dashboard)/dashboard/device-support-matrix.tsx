@@ -63,60 +63,79 @@ function SupportBadge({ value }: { value: string }) {
   );
 }
 
-export function DeviceSupportMatrix() {
+function DeviceSupportMatrixContent() {
+  return (
+    <div className="space-y-4">
+      <div className="hidden overflow-x-auto lg:block">
+        <table className="w-full border-separate border-spacing-0 overflow-hidden rounded-lg border text-sm">
+          <thead className="bg-slate-50 text-left text-slate-600">
+            <tr>
+              <th className="border-b px-4 py-3 font-medium">画面</th>
+              <th className="border-b px-4 py-3 font-medium">デスクトップ</th>
+              <th className="border-b px-4 py-3 font-medium">タブレット</th>
+              <th className="border-b px-4 py-3 font-medium">モバイル</th>
+            </tr>
+          </thead>
+          <tbody>
+            {deviceSupportRows.map((row) => (
+              <tr key={row.screen} className="odd:bg-white even:bg-slate-50/60">
+                <td className="border-b px-4 py-3 font-medium text-foreground">{row.screen}</td>
+                <td className="border-b px-4 py-3">
+                  <SupportBadge value={row.desktop} />
+                </td>
+                <td className="border-b px-4 py-3">
+                  <SupportBadge value={row.tablet} />
+                </td>
+                <td className="border-b px-4 py-3">
+                  <SupportBadge value={row.mobile} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="grid gap-3 lg:hidden">
+        {deviceSupportRows.map((row) => (
+          <div key={row.screen} className="rounded-lg border p-4">
+            <h3 className="text-sm font-semibold text-foreground">{row.screen}</h3>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">デスクトップ</p>
+                <SupportBadge value={row.desktop} />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">タブレット</p>
+                <SupportBadge value={row.tablet} />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">モバイル</p>
+                <SupportBadge value={row.mobile} />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function DeviceSupportMatrix({ embedded = false }: { embedded?: boolean }) {
+  if (embedded) {
+    return <DeviceSupportMatrixContent />;
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>デバイス対応マトリクス</CardTitle>
         <CardDescription>
-          現行 breakpoint 実装に合わせた推奨端末です。モバイルは訪問運用に集中し、調剤系と管理設定は desktop/tablet を前提にします。
+          現行 breakpoint 実装に合わせた推奨端末です。モバイルは訪問運用に集中し、調剤系と管理設定は
+          desktop/tablet を前提にします。
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="hidden overflow-x-auto lg:block">
-          <table className="w-full border-separate border-spacing-0 overflow-hidden rounded-lg border text-sm">
-            <thead className="bg-slate-50 text-left text-slate-600">
-              <tr>
-                <th className="border-b px-4 py-3 font-medium">画面</th>
-                <th className="border-b px-4 py-3 font-medium">デスクトップ</th>
-                <th className="border-b px-4 py-3 font-medium">タブレット</th>
-                <th className="border-b px-4 py-3 font-medium">モバイル</th>
-              </tr>
-            </thead>
-            <tbody>
-              {deviceSupportRows.map((row) => (
-                <tr key={row.screen} className="odd:bg-white even:bg-slate-50/60">
-                  <td className="border-b px-4 py-3 font-medium text-foreground">{row.screen}</td>
-                  <td className="border-b px-4 py-3"><SupportBadge value={row.desktop} /></td>
-                  <td className="border-b px-4 py-3"><SupportBadge value={row.tablet} /></td>
-                  <td className="border-b px-4 py-3"><SupportBadge value={row.mobile} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="grid gap-3 lg:hidden">
-          {deviceSupportRows.map((row) => (
-            <div key={row.screen} className="rounded-lg border p-4">
-              <h3 className="text-sm font-semibold text-foreground">{row.screen}</h3>
-              <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">デスクトップ</p>
-                  <SupportBadge value={row.desktop} />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">タブレット</p>
-                  <SupportBadge value={row.tablet} />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">モバイル</p>
-                  <SupportBadge value={row.mobile} />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+      <CardContent>
+        <DeviceSupportMatrixContent />
       </CardContent>
     </Card>
   );

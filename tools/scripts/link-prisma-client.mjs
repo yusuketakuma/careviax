@@ -14,11 +14,22 @@ if (!existsSync(generatedPrismaDir)) {
   process.exit(0);
 }
 
+function lstatIfExists(path) {
+  try {
+    return lstatSync(path);
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  }
+}
+
 mkdirSync(projectNodeModules, { recursive: true });
 
-if (existsSync(rootPrismaDir)) {
-  const stat = lstatSync(rootPrismaDir);
-  if (stat.isSymbolicLink()) {
+const existingStat = lstatIfExists(rootPrismaDir);
+if (existingStat) {
+  if (existingStat.isSymbolicLink()) {
     const linkedPath = resolve(projectNodeModules, readlinkSync(rootPrismaDir));
     if (linkedPath === generatedPrismaDir) {
       console.log(`[link-prisma-client] Reusing existing link ${rootPrismaDir}`);
@@ -29,5 +40,30 @@ if (existsSync(rootPrismaDir)) {
   rmSync(rootPrismaDir, { recursive: true, force: true });
 }
 
-symlinkSync(generatedPrismaDir, rootPrismaDir, 'dir');
+try {
+  symlinkSync(generatedPrismaDir, rootPrismaDir, 'dir');
+} catch (error) {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    error.code === 'EEXIST' &&
+    existsSync(rootPrismaDir)
+  ) {
+    const stat = lstatIfExists(rootPrismaDir);
+    if (stat?.isSymbolicLink()) {
+      const linkedPath = resolve(projectNodeModules, readlinkSync(rootPrismaDir));
+      if (linkedPath === generatedPrismaDir) {
+        console.log(`[link-prisma-client] Reusing concurrently created link ${rootPrismaDir}`);
+        process.exit(0);
+      }
+    }
+
+    rmSync(rootPrismaDir, { recursive: true, force: true });
+    symlinkSync(generatedPrismaDir, rootPrismaDir, 'dir');
+  } else {
+    throw error;
+  }
+}
+
 console.log(`[link-prisma-client] Linked ${rootPrismaDir} -> ${generatedPrismaDir}`);

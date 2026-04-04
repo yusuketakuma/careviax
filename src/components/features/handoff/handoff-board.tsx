@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
+import { badgeToneClass } from '@/lib/ui/badge-semantics';
 import { resolveHandoffEntityAction } from './handoff-board.helpers';
 
 type HandoffItem = {
@@ -41,15 +42,15 @@ type HandoffBoardData = {
 const PRIORITY_CONFIG: Record<string, { label: string; className: string }> = {
   urgent: {
     label: '緊急',
-    className: 'border-red-300 bg-red-100 text-red-700',
+    className: badgeToneClass('urgent'),
   },
   high: {
     label: '高',
-    className: 'border-amber-300 bg-amber-100 text-amber-700',
+    className: badgeToneClass('attention'),
   },
   normal: {
     label: '通常',
-    className: 'border-slate-300 bg-slate-100 text-slate-700',
+    className: badgeToneClass('neutral'),
   },
 };
 
@@ -152,6 +153,10 @@ export function HandoffBoard() {
 
   return (
     <div className="space-y-6">
+      <SectionIntro
+        title="対象日の選択"
+        description="まず対象日を選び、その日の申し送りだけに集中できるようにします。"
+      />
       <div className="flex items-center gap-4">
         <input
           type="date"
@@ -161,20 +166,20 @@ export function HandoffBoard() {
         />
       </div>
 
-      {isLoading && (
-        <p className="text-sm text-muted-foreground">読み込み中...</p>
-      )}
+      {isLoading && <p className="text-sm text-muted-foreground">読み込み中...</p>}
 
       {!isLoading && sortedItems.length === 0 && (
         <Card className="border-slate-200 shadow-sm">
           <CardContent className="py-8 text-center">
-            <p className="text-sm text-muted-foreground">
-              この日の申し送り項目はありません。
-            </p>
+            <p className="text-sm text-muted-foreground">この日の申し送り項目はありません。</p>
           </CardContent>
         </Card>
       )}
 
+      <SectionIntro
+        title="申し送り一覧"
+        description="優先度順に並んだ申し送りを確認し、関連業務へそのまま移動できます。"
+      />
       <div className="space-y-3">
         {sortedItems.map((item) => {
           const isRead = userId ? item.read_by.includes(userId) : false;
@@ -190,15 +195,10 @@ export function HandoffBoard() {
                 <div className="flex items-start gap-3">
                   <div className="flex-1 space-y-2">
                     <div className="flex items-center gap-2">
-                      <Badge
-                        variant="outline"
-                        className={`text-xs ${config.className}`}
-                      >
+                      <Badge variant="outline" className={`text-xs ${config.className}`}>
                         {config.label}
                       </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {item.created_by_name}
-                      </span>
+                      <span className="text-xs text-muted-foreground">{item.created_by_name}</span>
                       <span className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Clock className="size-3" aria-hidden="true" />
                         {new Date(item.created_at).toLocaleString('ja-JP', {
@@ -249,6 +249,10 @@ export function HandoffBoard() {
         })}
       </div>
 
+      <SectionIntro
+        title="新規追加"
+        description="必要な引き継ぎ事項を優先度付きで追加し、次シフトへ確実に残します。"
+      />
       <Card className="border-slate-200 shadow-sm">
         <CardHeader className="pb-3">
           <CardTitle className="text-base">新規追加</CardTitle>
@@ -263,7 +267,12 @@ export function HandoffBoard() {
               className="resize-none text-sm"
             />
             <div className="flex items-center gap-3">
-              <Select value={newPriority} onValueChange={(v) => { if (v) setNewPriority(v); }}>
+              <Select
+                value={newPriority}
+                onValueChange={(v) => {
+                  if (v) setNewPriority(v);
+                }}
+              >
                 <SelectTrigger className="w-32">
                   <SelectValue />
                 </SelectTrigger>
@@ -285,6 +294,15 @@ export function HandoffBoard() {
           </form>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function SectionIntro({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="space-y-1">
+      <h2 className="text-base font-semibold text-foreground">{title}</h2>
+      <p className="text-sm text-muted-foreground">{description}</p>
     </div>
   );
 }

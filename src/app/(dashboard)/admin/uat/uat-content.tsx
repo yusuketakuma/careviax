@@ -444,7 +444,7 @@ export function UatContent() {
   }
 
   return (
-    <div className="space-y-8 max-w-2xl">
+    <div className="space-y-8">
       <Card size="sm">
         <CardHeader>
           <CardTitle className="text-sm font-semibold">Pilot Launch Dossier</CardTitle>

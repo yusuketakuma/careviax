@@ -117,9 +117,7 @@ type ChecklistItemId = (typeof CHECKLIST_ITEMS)[number]['id'];
 // ---------------------------------------------------------------------------
 
 function hasHighRiskDrug(results: DispenseResult[]): boolean {
-  return results.some((r) =>
-    HIGH_RISK_KEYWORDS.some((kw) => r.actual_drug_name.includes(kw))
-  );
+  return results.some((r) => HIGH_RISK_KEYWORDS.some((kw) => r.actual_drug_name.includes(kw)));
 }
 
 function hasColdStorageDrug(results: DispenseResult[]): boolean {
@@ -207,7 +205,7 @@ export function DispenseConfirmContent() {
         body: JSON.stringify({ task_id: taskId, lines }),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({})) as { message?: string };
+        const err = (await res.json().catch(() => ({}))) as { message?: string };
         throw new Error(err.message ?? '調剤完了の登録に失敗しました');
       }
       return res.json();
@@ -247,9 +245,7 @@ export function DispenseConfirmContent() {
     return true;
   });
 
-  const requiredUnchecked = visibleItems.filter(
-    (item) => item.required && !checked[item.id]
-  );
+  const requiredUnchecked = visibleItems.filter((item) => item.required && !checked[item.id]);
   const isSubmitDisabled = requiredUnchecked.length > 0 || submitMutation.isPending;
 
   const toggleCheck = (id: ChecklistItemId) => {
@@ -273,14 +269,23 @@ export function DispenseConfirmContent() {
       </div>
 
       <WorkflowPageHeader
+        eyebrow="Dispense Confirmation"
         title="調剤確認チェックリスト"
         description="全ての必須項目にチェックしてから調剤完了してください"
+        supportingContent={
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-foreground">確認の流れ</p>
+            <p className="text-sm text-muted-foreground">
+              処方との差異、安全アラート、必須チェックを順に確認してから調剤完了へ進みます。
+            </p>
+          </div>
+        }
         className="mb-4"
       >
         <PageShortcutLinks links={getDispenseConfirmShortcutLinks(taskId)} />
       </WorkflowPageHeader>
 
-      <div className="mx-auto max-w-3xl space-y-6">
+      <div className="space-y-6">
         {/* Patient / task summary */}
         <Card>
           <CardHeader className="pb-3">
@@ -320,8 +325,7 @@ export function DispenseConfirmContent() {
                     {results.map((result, index) => {
                       const prescribed = prescriptionLineMap.get(result.line_id);
                       const hasDrugDiscrepancy =
-                        prescribed &&
-                        result.actual_drug_name !== prescribed.drug_name;
+                        prescribed && result.actual_drug_name !== prescribed.drug_name;
                       const hasQtyDiscrepancy =
                         prescribed &&
                         result.actual_quantity !== (prescribed.quantity ?? result.actual_quantity);
@@ -331,7 +335,7 @@ export function DispenseConfirmContent() {
                           key={result.id}
                           className={cn(
                             'align-top',
-                            (hasDrugDiscrepancy || hasQtyDiscrepancy) && 'bg-destructive/5'
+                            (hasDrugDiscrepancy || hasQtyDiscrepancy) && 'bg-destructive/5',
                           )}
                         >
                           <td className="py-2 pr-3 font-medium text-muted-foreground">
@@ -353,7 +357,7 @@ export function DispenseConfirmContent() {
                             <p
                               className={cn(
                                 'font-medium',
-                                hasDrugDiscrepancy && 'text-destructive'
+                                hasDrugDiscrepancy && 'text-destructive',
                               )}
                             >
                               {result.actual_drug_name}
@@ -361,7 +365,7 @@ export function DispenseConfirmContent() {
                             <p
                               className={cn(
                                 'text-muted-foreground',
-                                hasQtyDiscrepancy && 'text-destructive'
+                                hasQtyDiscrepancy && 'text-destructive',
                               )}
                             >
                               {result.actual_quantity}
@@ -390,10 +394,7 @@ export function DispenseConfirmContent() {
             <CardTitle className="text-sm">処方安全アラート確認</CardTitle>
           </CardHeader>
           <CardContent>
-            <CdsAlertPanel
-              alerts={cdsData?.alerts ?? []}
-              isLoading={cdsLoading}
-            />
+            <CdsAlertPanel alerts={cdsData?.alerts ?? []} isLoading={cdsLoading} />
           </CardContent>
         </Card>
 
@@ -424,7 +425,10 @@ export function DispenseConfirmContent() {
                           : '用法変更';
                   return (
                     <li key={i} className="flex items-start gap-2 text-sm">
-                      <Badge variant="outline" className={cn('mt-0.5 shrink-0 text-[10px]', badgeClass)}>
+                      <Badge
+                        variant="outline"
+                        className={cn('mt-0.5 shrink-0 text-[10px]', badgeClass)}
+                      >
                         {changeLabel}
                       </Badge>
                       <span className="flex-1">
@@ -454,7 +458,10 @@ export function DispenseConfirmContent() {
               <ul className="space-y-2">
                 {dateWarnings.map((w) => (
                   <li key={w.lineId} className="flex items-start gap-2 text-sm text-amber-800">
-                    <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" aria-hidden="true" />
+                    <AlertTriangle
+                      className="mt-0.5 size-4 shrink-0 text-amber-500"
+                      aria-hidden="true"
+                    />
                     <span>
                       {w.type === 'gap'
                         ? `${w.drugName}: 前回終了 ${w.prevEndDate} → 今回開始 ${w.currentStartDate}（${w.gapDays}日間のギャップ）`
@@ -498,7 +505,7 @@ export function DispenseConfirmContent() {
                       <span
                         className={cn(
                           'text-sm leading-snug',
-                          isChecked && 'text-muted-foreground line-through'
+                          isChecked && 'text-muted-foreground line-through',
                         )}
                       >
                         {item.label}

@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { SectionIntro } from '@/components/ui/section-intro';
 
 type ExternalGrant = {
   id: string;
@@ -100,7 +101,7 @@ export function ExternalViewerContent() {
   const grants = grantsQuery.data?.data ?? [];
   const selfReports = selfReportsQuery.data?.data ?? [];
   const activeSelfReports = selfReports.filter(
-    (item) => item.status !== 'resolved' && item.status !== 'dismissed'
+    (item) => item.status !== 'resolved' && item.status !== 'dismissed',
   );
   const followUps = (activitiesQuery.data?.data ?? []).filter((item) => item.follow_up_required);
 
@@ -173,6 +174,10 @@ export function ExternalViewerContent() {
 
   return (
     <div className="space-y-6">
+      <SectionIntro
+        title="外部連携サマリー"
+        description="有効な共有、未解消の自己申告、地域フォローを先に把握する導入グループです。"
+      />
       <div className="grid gap-4 xl:grid-cols-3">
         <SummaryCard
           title="有効な共有"
@@ -194,6 +199,10 @@ export function ExternalViewerContent() {
         />
       </div>
 
+      <SectionIntro
+        title="共有とフォロー"
+        description="共有 grant、自己申告キュー、地域活動フォローを役割ごとに分けて確認します。"
+      />
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <Card>
           <CardHeader>
@@ -226,7 +235,8 @@ export function ExternalViewerContent() {
                   </div>
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                     <span>
-                      有効期限: {format(new Date(grant.expires_at), 'yyyy年M月d日 HH:mm', { locale: ja })}
+                      有効期限:{' '}
+                      {format(new Date(grant.expires_at), 'yyyy年M月d日 HH:mm', { locale: ja })}
                     </span>
                     <span>{grant.accessed_at ? '閲覧済み' : '未閲覧'}</span>
                   </div>
@@ -235,7 +245,10 @@ export function ExternalViewerContent() {
                     <span>未解決 {grant.self_report_summary.open} 件</span>
                     {grant.self_report_summary.latest_at ? (
                       <span>
-                        最新 {format(new Date(grant.self_report_summary.latest_at), 'M/d HH:mm', { locale: ja })}
+                        最新{' '}
+                        {format(new Date(grant.self_report_summary.latest_at), 'M/d HH:mm', {
+                          locale: ja,
+                        })}
                       </span>
                     ) : null}
                   </div>
@@ -341,8 +354,8 @@ export function ExternalViewerContent() {
                       {activity.partner_name ? ` / ${activity.partner_name}` : ''}
                     </p>
                     <p className="mt-2 text-xs text-muted-foreground">
-                      紹介件数: {activity.referrals_generated ?? 0} /
-                      実施日: {format(new Date(activity.activity_date), 'yyyy年M月d日', { locale: ja })}
+                      紹介件数: {activity.referrals_generated ?? 0} / 実施日:{' '}
+                      {format(new Date(activity.activity_date), 'yyyy年M月d日', { locale: ja })}
                     </p>
                   </div>
                 ))

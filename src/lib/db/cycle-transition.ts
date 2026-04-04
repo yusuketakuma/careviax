@@ -155,3 +155,34 @@ export async function getPreHoldStatus(
 
   return log?.from_status ?? null;
 }
+
+/**
+ * Display-only phase grouping for UI labels and logging.
+ * NOT a transition gate. ALLOWED_TRANSITIONS is the sole SSOT for valid transitions.
+ * Do NOT use getCyclePhase() or CYCLE_PHASES to block or gate state transitions.
+ */
+export const CYCLE_PHASES = {
+  intake: ['intake_received', 'structuring', 'inquiry_pending', 'inquiry_resolved'],
+  dispensing: ['ready_to_dispense', 'dispensing', 'dispensed'],
+  audit: ['audit_pending', 'audited'],
+  setting: ['setting', 'set_audited'],
+  delivery: ['visit_ready', 'visit_completed', 'reported'],
+  terminal: ['on_hold', 'cancelled'],
+} as const;
+
+export type CyclePhase = keyof typeof CYCLE_PHASES;
+
+const STATUS_TO_PHASE = new Map<string, CyclePhase>();
+for (const [phase, statuses] of Object.entries(CYCLE_PHASES)) {
+  for (const status of statuses) {
+    STATUS_TO_PHASE.set(status, phase as CyclePhase);
+  }
+}
+
+/**
+ * Resolve the phase for a given MedicationCycle status.
+ * @remarks Display/logging only. Not a transition gate.
+ */
+export function getCyclePhase(status: string): CyclePhase | null {
+  return STATUS_TO_PHASE.get(status) ?? null;
+}

@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: '報告書送達分析 — CareViaX' 
 
 export default function ReportsAnalyticsPage() {
   return (
-    <div className="p-6">
+    <div className="p-3 md:p-4 xl:p-5">
       <div className="mb-6">
         <WorkflowBackLink href="/reports" label="報告書一覧へ戻る" className="mb-3" />
         <WorkflowPageHeader

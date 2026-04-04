@@ -1,0 +1,22 @@
+{
+  "directives": [
+    {
+      "directive": "Before any UI/UX proposal, implementation, or review, consult docs/ui-ux-design-guidelines.md and treat it as the CareViaX UI/UX SSOT. Apply its grouping, boundary, heading hierarchy, and information-priority rules unless a higher-priority task instruction explicitly overrides them.",
+      "priority": "high",
+      "context": "Cross-session rule for Codex/Claude style agents working on CareViaX UI.",
+      "timestamp": "2026-04-02T23:26:20.141Z"
+    },
+    {
+      "directive": "最重要クリティカルパスは『処方登録 → 調剤 → 調剤監査 → セット → セット監査 → 訪問 → 報告書作成/スケジュール管理』。この業務線は全機能中で最優先とし、関連変更ではこの連鎖の整合性・回帰防止・E2E検証を優先する。",
+      "priority": "high",
+      "timestamp": "2026-04-03T08:20:20.763Z"
+    }
+  ],
+  "notes": [
+    {
+      "category": "architecture",
+      "content": "業務の根幹フローは『処方登録 → 調剤 → 調剤監査 → セット → セット監査 → 訪問 → 報告書作成/スケジュール管理』。今後の設計・実装・レビューではこのワークフローをSSOTレベルの優先対象として扱う。",
+      "timestamp": "2026-04-03T08:20:20.826Z"
+    }
+  ]
+}

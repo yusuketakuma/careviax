@@ -1,6 +1,7 @@
 export const SOURCE_CONFIG = [
   { value: 'paper', label: '紙処方箋' },
   { value: 'fax', label: 'FAX' },
+  { value: 'qr_scan', label: '電子お薬手帳QR' },
   { value: 'e_prescription', label: '電子処方箋' },
   { value: 'facility_batch', label: '施設一括' },
   { value: 'refill', label: 'リフィル' },

@@ -29,7 +29,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/lib/stores/ui-store', () => ({
   useUIStore: () => ({
     sidebarOpen: true,
-    sidebarPinned: true,
+    sidebarPinned: false,
     setSidebarOpen: mockSetSidebarOpen,
     toggleSidebar: vi.fn(),
     toggleSidebarPinned: vi.fn(),

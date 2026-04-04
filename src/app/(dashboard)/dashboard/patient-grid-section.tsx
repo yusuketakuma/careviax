@@ -17,7 +17,7 @@ async function fetchPatients(
   orgId: string,
   search: string,
   sort: string,
-  page: number
+  page: number,
 ): Promise<DashboardPatientsResponse> {
   const params = new URLSearchParams();
   if (search) params.set('search', search);
@@ -76,19 +76,24 @@ export function PatientGridSection() {
             <Users className="size-4" aria-hidden="true" />
             患者一覧
             {data && (
-              <span className="text-sm font-normal text-muted-foreground">
-                ({data.total}名)
-              </span>
+              <span className="text-sm font-normal text-muted-foreground">({data.total}名)</span>
             )}
           </CardTitle>
           <div className="flex items-center gap-2">
             <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" aria-hidden="true" />
+              <Search
+                className="absolute left-2.5 top-2.5 size-4 text-muted-foreground"
+                aria-hidden="true"
+              />
               <Input
+                id="dashboard-patient-search"
                 type="search"
                 placeholder="患者名で検索..."
                 value={search}
-                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
                 className="h-9 w-44 pl-8"
                 aria-label="患者名で検索"
               />
@@ -96,7 +101,10 @@ export function PatientGridSection() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => { setSort(sort === 'risk' ? 'name' : 'risk'); setPage(1); }}
+              onClick={() => {
+                setSort(sort === 'risk' ? 'name' : 'risk');
+                setPage(1);
+              }}
               title={sort === 'risk' ? 'リスク順' : '名前順'}
             >
               <SortAsc className="size-3.5" aria-hidden="true" />

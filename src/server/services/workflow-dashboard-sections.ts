@@ -476,6 +476,12 @@ export function buildUnifiedWorkbench(
       if (!prep?.offline_synced) reasons.push('同期確認');
       if (schedule.assignment_mode === 'fallback') reasons.push('引継ぎ確認');
       if (schedule.override_request?.status === 'pending') reasons.push('変更承認待ち');
+      if (schedule.cadence_preview?.next_billable_date) {
+        reasons.push(`次回算定可 ${schedule.cadence_preview.next_billable_date}`);
+      }
+      if ((schedule.cadence_preview?.warning_messages.length ?? 0) > 0) {
+        reasons.push(schedule.cadence_preview?.warning_messages[0] ?? '算定要件確認');
+      }
       return {
         id: `visit:${schedule.id}`,
         item_type: 'visit' as const,

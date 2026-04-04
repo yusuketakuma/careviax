@@ -4,12 +4,13 @@ import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminJobsShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Loading } from '@/components/ui/loading';
 import { JobsDashboardContent } from './jobs-dashboard-content';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = { title: 'ジョブ監視 — CareViaX' };
 
 export default function JobsDashboardPage() {
   return (
-    <div className="p-6">
+    <PageScaffold>
       <AdminPageHeader
         title="ジョブ監視"
         description="IntegrationJob の実行状況・エラーログ・手動再実行"
@@ -18,6 +19,6 @@ export default function JobsDashboardPage() {
       <Suspense fallback={<Loading />}>
         <JobsDashboardContent />
       </Suspense>
-    </div>
+    </PageScaffold>
   );
 }

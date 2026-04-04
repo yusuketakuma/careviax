@@ -9,7 +9,7 @@ export type ShortcutDefinition = {
   shiftKey?: boolean;
   handler: () => void;
   description: string;
-  scope: 'global' | 'dispensing' | 'auditing' | 'qr-drafts';
+  scope: 'global' | 'dispensing' | 'auditing' | 'qr-drafts' | 'prescriptions';
 };
 
 /**

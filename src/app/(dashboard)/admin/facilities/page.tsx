@@ -4,6 +4,7 @@ import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminFacilitiesShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Loading } from '@/components/ui/loading';
 import { FacilitiesContent } from './facilities-content';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
   title: '施設マスター — CareViaX',
@@ -11,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function FacilitiesPage() {
   return (
-    <div className="p-6">
+    <PageScaffold>
       <AdminPageHeader
         title="施設マスター"
         description="施設基本情報と連絡先を管理し、患者登録・訪問計画に利用します。"
@@ -21,6 +22,6 @@ export default function FacilitiesPage() {
       <Suspense fallback={<Loading />}>
         <FacilitiesContent />
       </Suspense>
-    </div>
+    </PageScaffold>
   );
 }

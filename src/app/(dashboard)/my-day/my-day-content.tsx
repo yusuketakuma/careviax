@@ -39,6 +39,7 @@ import {
   VISIT_TYPE_LABELS,
 } from '@/app/(dashboard)/schedules/day-view.shared';
 import type { PatientStatusIcon } from '@/types/dashboard-home';
+import { SectionIntro } from '@/components/ui/section-intro';
 
 type Task = {
   id: string;
@@ -124,9 +125,12 @@ export function MyDayContent() {
   const statusChangesQuery = useQuery({
     queryKey: ['my-day-status-changes', orgId, today],
     queryFn: async () => {
-      const res = await fetch(`/api/audit-logs?action=patient_status_change&limit=10&date_from=${today}`, {
-        headers: { 'x-org-id': orgId },
-      });
+      const res = await fetch(
+        `/api/audit-logs?action=patient_status_change&limit=10&date_from=${today}`,
+        {
+          headers: { 'x-org-id': orgId },
+        },
+      );
       if (!res.ok) return [];
       const json = await res.json();
       return (json.data ?? []) as Array<{
@@ -147,11 +151,11 @@ export function MyDayContent() {
 
   const todayVisits = visitsQuery.data?.data ?? [];
   const pendingTasks = (tasksQuery.data?.data ?? []).filter(
-    (t) => t.status === 'pending' || t.status === 'in_progress'
+    (t) => t.status === 'pending' || t.status === 'in_progress',
   );
   const pipeline = actionsQuery.data?.pipeline ?? [];
   const urgentActions = (actionsQuery.data?.actions ?? []).filter(
-    (a) => a.priority === 'urgent' || a.priority === 'high'
+    (a) => a.priority === 'urgent' || a.priority === 'high',
   );
   const unpreparedVisits = todayVisits.filter((v) => !v.preparation?.prepared_at);
   const statusChanges = statusChangesQuery.data ?? [];
@@ -160,15 +164,26 @@ export function MyDayContent() {
 
   return (
     <div className="space-y-4 p-4 max-w-lg mx-auto">
-      {/* Quick stats bar */}
+      <SectionIntro
+        title="今日の概要"
+        description="今日の訪問、タスク、パイプライン、緊急件数を最初に把握する導入グループです。"
+      />
       <div className="grid grid-cols-4 gap-2">
         <QuickStat label="訪問" value={todayVisits.length} loading={visitsQuery.isLoading} />
         <QuickStat label="タスク" value={pendingTasks.length} loading={tasksQuery.isLoading} />
         <QuickStat label="パイプライン" value={totalPipeline} loading={actionsQuery.isLoading} />
-        <QuickStat label="緊急" value={urgentActions.length} loading={actionsQuery.isLoading} urgent={urgentActions.length > 0} />
+        <QuickStat
+          label="緊急"
+          value={urgentActions.length}
+          loading={actionsQuery.isLoading}
+          urgent={urgentActions.length > 0}
+        />
       </div>
 
-      {/* Urgent actions */}
+      <SectionIntro
+        title="優先対応"
+        description="緊急アクションと今日の訪問準備を先に処理するための優先グループです。"
+      />
       {urgentActions.length > 0 && (
         <Card className="border-red-200 bg-red-50/50">
           <CardHeader className="pb-2">
@@ -187,7 +202,8 @@ export function MyDayContent() {
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{item.title}</p>
                   <p className="text-xs text-muted-foreground">
-                    {item.patient_name && `${item.patient_name} / `}{item.queue_label}
+                    {item.patient_name && `${item.patient_name} / `}
+                    {item.queue_label}
                   </p>
                 </div>
                 <Badge variant="outline" className={PRIORITY_STYLES[item.priority] ?? ''}>
@@ -199,7 +215,6 @@ export function MyDayContent() {
         </Card>
       )}
 
-      {/* Today's visits */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-sm">
@@ -238,7 +253,10 @@ export function MyDayContent() {
                       {SCHEDULE_STATUS_LABELS[visit.schedule_status] ?? visit.schedule_status}
                     </Badge>
                     {!visit.preparation?.prepared_at && (
-                      <Badge variant="outline" className="border-orange-300 text-[10px] text-orange-600">
+                      <Badge
+                        variant="outline"
+                        className="border-orange-300 text-[10px] text-orange-600"
+                      >
                         準備未
                       </Badge>
                     )}
@@ -250,7 +268,6 @@ export function MyDayContent() {
         </CardContent>
       </Card>
 
-      {/* Preparation alert */}
       {unpreparedVisits.length > 0 && (
         <Link
           href="/schedules"
@@ -262,7 +279,10 @@ export function MyDayContent() {
         </Link>
       )}
 
-      {/* Pipeline summary */}
+      <SectionIntro
+        title="進行中の業務"
+        description="パイプラインと未完了タスクを見て、今日の作業順を組み立てるグループです。"
+      />
       {pipeline.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
@@ -270,18 +290,19 @@ export function MyDayContent() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-4 gap-2">
-              {pipeline.filter((p) => p.count > 0).map((step) => (
-                <div key={step.key} className="rounded-md border p-2 text-center">
-                  <p className="text-lg font-bold text-foreground">{step.count}</p>
-                  <p className="text-[10px] text-muted-foreground leading-tight">{step.label}</p>
-                </div>
-              ))}
+              {pipeline
+                .filter((p) => p.count > 0)
+                .map((step) => (
+                  <div key={step.key} className="rounded-md border p-2 text-center">
+                    <p className="text-lg font-bold text-foreground">{step.count}</p>
+                    <p className="text-[10px] text-muted-foreground leading-tight">{step.label}</p>
+                  </div>
+                ))}
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Pending tasks */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-sm">
@@ -296,7 +317,9 @@ export function MyDayContent() {
           {tasksQuery.isLoading ? (
             <SectionSkeleton />
           ) : pendingTasks.length === 0 ? (
-            <p className="py-3 text-center text-sm text-muted-foreground">未完了のタスクはありません</p>
+            <p className="py-3 text-center text-sm text-muted-foreground">
+              未完了のタスクはありません
+            </p>
           ) : (
             pendingTasks.slice(0, 8).map((task) => {
               const presentation = describeOperationalTask(task);
@@ -330,7 +353,10 @@ export function MyDayContent() {
         </CardContent>
       </Card>
 
-      {/* Status changes today */}
+      <SectionIntro
+        title="補助情報"
+        description="患者ステータス変更やショートカットを確認し、必要な別画面へ移動する補助グループです。"
+      />
       {statusChanges.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
@@ -368,7 +394,6 @@ export function MyDayContent() {
         </Card>
       )}
 
-      {/* Quick links */}
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
         <Link
           href="/dashboard"
@@ -423,7 +448,9 @@ function QuickStat({
   urgent?: boolean;
 }) {
   return (
-    <div className={`rounded-lg border p-2.5 text-center ${urgent ? 'border-red-200 bg-red-50' : ''}`}>
+    <div
+      className={`rounded-lg border p-2.5 text-center ${urgent ? 'border-red-200 bg-red-50' : ''}`}
+    >
       <p className={`text-xl font-bold ${urgent ? 'text-red-600' : 'text-foreground'}`}>
         {loading ? '…' : value}
       </p>

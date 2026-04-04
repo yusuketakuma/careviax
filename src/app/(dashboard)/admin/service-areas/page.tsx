@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 
 type PharmacySite = {
   id: string;
@@ -124,7 +125,7 @@ export default function ServiceAreasPage() {
   const serviceAreas = areasQuery.data?.data ?? [];
 
   return (
-    <div className="space-y-6 p-6">
+    <PageScaffold>
       <AdminPageHeader
         title="訪問エリア設定"
         description="拠点ごとの訪問可能エリアを管理します。`match_keywords` や `facility_ids` を使うと患者登録時に警告できます。"
@@ -134,8 +135,13 @@ export default function ServiceAreasPage() {
       <div className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">{form.id ? '訪問エリアを編集' : '訪問エリアを登録'}</CardTitle>
-            <CardDescription>GeoJSON をそのまま保存しても構いません。警告判定には `match_keywords` と `facility_ids` を利用します。</CardDescription>
+            <CardTitle className="text-base">
+              {form.id ? '訪問エリアを編集' : '訪問エリアを登録'}
+            </CardTitle>
+            <CardDescription>
+              GeoJSON をそのまま保存しても構いません。警告判定には `match_keywords` と
+              `facility_ids` を利用します。
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -143,7 +149,9 @@ export default function ServiceAreasPage() {
               <select
                 id="service-area-site"
                 value={form.site_id}
-                onChange={(event) => setForm((current) => ({ ...current, site_id: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, site_id: event.target.value }))
+                }
                 className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
               >
                 <option value="">拠点を選択</option>
@@ -160,7 +168,9 @@ export default function ServiceAreasPage() {
               <Input
                 id="service-area-name"
                 value={form.name}
-                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, name: event.target.value }))
+                }
                 placeholder="北多摩エリア"
               />
             </div>
@@ -170,7 +180,12 @@ export default function ServiceAreasPage() {
               <select
                 id="service-area-type"
                 value={form.area_type}
-                onChange={(event) => setForm((current) => ({ ...current, area_type: event.target.value as 'radius' | 'polygon' }))}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    area_type: event.target.value as 'radius' | 'polygon',
+                  }))
+                }
                 className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
               >
                 <option value="radius">radius</option>
@@ -185,7 +200,9 @@ export default function ServiceAreasPage() {
                 rows={12}
                 className="font-mono text-xs"
                 value={form.geoText}
-                onChange={(event) => setForm((current) => ({ ...current, geoText: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, geoText: event.target.value }))
+                }
               />
             </div>
 
@@ -195,12 +212,17 @@ export default function ServiceAreasPage() {
                 id="service-area-notes"
                 rows={3}
                 value={form.notes}
-                onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, notes: event.target.value }))
+                }
               />
             </div>
 
             <div className="flex gap-2">
-              <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !form.site_id || !form.name}>
+              <Button
+                onClick={() => saveMutation.mutate()}
+                disabled={saveMutation.isPending || !form.site_id || !form.name}
+              >
                 {saveMutation.isPending ? '保存中...' : form.id ? '更新する' : '登録する'}
               </Button>
               {form.id ? (
@@ -267,7 +289,9 @@ export default function ServiceAreasPage() {
                       </Button>
                     </div>
                   </div>
-                  {area.notes ? <p className="mt-2 text-sm text-muted-foreground">{area.notes}</p> : null}
+                  {area.notes ? (
+                    <p className="mt-2 text-sm text-muted-foreground">{area.notes}</p>
+                  ) : null}
                   <pre className="mt-3 overflow-x-auto rounded-md bg-muted/40 p-3 text-xs leading-5 text-foreground">
                     {JSON.stringify(area.geo_data ?? {}, null, 2)}
                   </pre>
@@ -277,6 +301,6 @@ export default function ServiceAreasPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageScaffold>
   );
 }

@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { zipSync } from 'fflate';
+import { buildWorkbookBuffer } from './excel';
 import { importHotMaster, parseHotMasterFile } from './hot';
 
 describe('parseHotMasterFile', () => {
@@ -25,6 +27,80 @@ describe('parseHotMasterFile', () => {
         manufacturer: 'Ｔ’ｓ製薬',
       },
     ]);
+  });
+
+  it('parses XLSX-based HOT master content', async () => {
+    const workbook = await buildWorkbookBuffer({
+      HOT: [
+        ['HOTコード', 'YJコード', '販売名', 'メーカー名'],
+        ['1234567890123', '1124001F1022', 'ユーロジン１ｍｇ錠', 'Ｔ’ｓ製薬'],
+      ],
+    });
+
+    const parsed = await parseHotMasterFile({
+      fileUrl: 'https://example.com/hot.xlsx',
+      fetchImpl: async () =>
+        new Response(new Blob([workbook]), {
+          status: 200,
+          headers: {
+            'content-type':
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          },
+        }),
+    });
+
+    expect(parsed.records).toEqual([
+      {
+        hot_code: '1234567890123',
+        yj_code: '1124001F1022',
+        drug_name: 'ユーロジン１ｍｇ錠',
+        manufacturer: 'Ｔ’ｓ製薬',
+      },
+    ]);
+  });
+
+  it('parses ZIP archives that contain a CSV hot master', async () => {
+    const csv = [
+      'HOTコード,YJコード,販売名,メーカー名',
+      '1234567890123,1124001F1022,ユーロジン１ｍｇ錠,Ｔ’ｓ製薬',
+    ].join('\n');
+    const zip = zipSync({
+      'hot.csv': new TextEncoder().encode(csv),
+    });
+
+    const parsed = await parseHotMasterFile({
+      fileUrl: 'https://example.com/hot.zip',
+      fetchImpl: async () =>
+        new Response(new Blob([Buffer.from(zip)]), {
+          status: 200,
+          headers: { 'content-type': 'application/zip' },
+        }),
+    });
+
+    expect(parsed.records).toEqual([
+      {
+        hot_code: '1234567890123',
+        yj_code: '1124001F1022',
+        drug_name: 'ユーロジン１ｍｇ錠',
+        manufacturer: 'Ｔ’ｓ製薬',
+      },
+    ]);
+  });
+
+  it('surfaces workbook parsing failures for .xlsx files', async () => {
+    await expect(
+      parseHotMasterFile({
+        fileUrl: 'https://example.com/broken.xlsx',
+        fetchImpl: async () =>
+          new Response(new Blob([Buffer.from('not-an-xlsx', 'utf8')]), {
+            status: 200,
+            headers: {
+              'content-type':
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            },
+          }),
+      })
+    ).rejects.toThrow();
   });
 });
 

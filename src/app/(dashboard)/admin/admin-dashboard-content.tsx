@@ -3,13 +3,7 @@
 import { useState, type ElementType } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import {
-  addMonths,
-  differenceInCalendarDays,
-  format,
-  parseISO,
-  startOfMonth,
-} from 'date-fns';
+import { addMonths, differenceInCalendarDays, format, parseISO, startOfMonth } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
   AlertTriangle,
@@ -22,18 +16,13 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Loading } from '@/components/ui/loading';
 import { SegmentedProgressBar } from '@/components/ui/segmented-progress-bar';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { SectionIntro } from '@/components/ui/section-intro';
 
 type OverdueDashboard = {
   summary: {
@@ -154,7 +143,7 @@ function priorityVariant(value: string) {
 }
 
 function workflowExceptionSeverityMeta(
-  value: WorkflowDashboard['workflow_exceptions']['items'][number]['severity']
+  value: WorkflowDashboard['workflow_exceptions']['items'][number]['severity'],
 ) {
   switch (value) {
     case 'critical':
@@ -175,16 +164,17 @@ async function fetchJson<T>(url: string, orgId: string, fallbackMessage: string)
     });
   } catch {
     const error = new AdminDashboardFetchError(
-      'ネットワークエラーが発生しました。接続を確認してください。'
+      'ネットワークエラーが発生しました。接続を確認してください。',
     );
     error.status = 0;
     throw error;
   }
 
   if (!res.ok) {
-    const payload = (await res.json().catch(() => null)) as
-      | { message?: string; code?: string }
-      | null;
+    const payload = (await res.json().catch(() => null)) as {
+      message?: string;
+      code?: string;
+    } | null;
     const error = new AdminDashboardFetchError(payload?.message ?? fallbackMessage);
     error.status = res.status;
     error.code = payload?.code;
@@ -238,14 +228,7 @@ function ProgressBar({ value, max }: { value: number; max: number }) {
   const tone =
     percentage >= 100 ? 'bg-emerald-500' : percentage >= 50 ? 'bg-blue-500' : 'bg-amber-400';
 
-  return (
-    <SegmentedProgressBar
-      value={value}
-      max={max}
-      className="h-2"
-      filledClassName={tone}
-    />
-  );
+  return <SegmentedProgressBar value={value} max={max} className="h-2" filledClassName={tone} />;
 }
 
 function MonthlyProgressSection({
@@ -319,38 +302,38 @@ function MonthlyProgressSection({
             {items.map((item) => {
               const status = monthlyStatusMeta(item.status);
               return (
-                <li
-                  key={`${item.patient_id}:${item.insurance_basis}`}
-                >
-                <Link
-                  href={`/patients/${item.patient_id}`}
-                  className="block rounded-2xl border border-border/70 bg-background px-4 py-4 transition-colors hover:border-primary/40 hover:bg-muted/30"
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-medium text-foreground">{item.patient_name}</p>
-                        <Badge variant="outline">{insuranceBasisLabel(item.insurance_basis)}</Badge>
-                        <Badge variant={status.variant}>{status.label}</Badge>
+                <li key={`${item.patient_id}:${item.insurance_basis}`}>
+                  <Link
+                    href={`/patients/${item.patient_id}`}
+                    className="block rounded-2xl border border-border/70 bg-background px-4 py-4 transition-colors hover:border-primary/40 hover:bg-muted/30"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-medium text-foreground">{item.patient_name}</p>
+                          <Badge variant="outline">
+                            {insuranceBasisLabel(item.insurance_basis)}
+                          </Badge>
+                          <Badge variant={status.variant}>{status.label}</Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {item.visit_count} / {item.monthly_limit} 回
+                        </p>
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        {item.visit_count} / {item.monthly_limit} 回
-                      </p>
+                      <div className="min-w-32 text-left sm:text-right">
+                        <p className="text-xs text-muted-foreground">到達率</p>
+                        <p className="text-sm font-medium tabular-nums text-foreground">
+                          {item.monthly_limit > 0
+                            ? Math.round((item.visit_count / item.monthly_limit) * 100)
+                            : 0}
+                          %
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-32 text-left sm:text-right">
-                      <p className="text-xs text-muted-foreground">到達率</p>
-                      <p className="text-sm font-medium tabular-nums text-foreground">
-                        {item.monthly_limit > 0
-                          ? Math.round((item.visit_count / item.monthly_limit) * 100)
-                          : 0}
-                        %
-                      </p>
+                    <div className="mt-3">
+                      <ProgressBar value={item.visit_count} max={item.monthly_limit} />
                     </div>
-                  </div>
-                  <div className="mt-3">
-                    <ProgressBar value={item.visit_count} max={item.monthly_limit} />
-                  </div>
-                </Link>
+                  </Link>
                 </li>
               );
             })}
@@ -361,11 +344,7 @@ function MonthlyProgressSection({
   );
 }
 
-function UnrecordedVisitsSection({
-  visits,
-}: {
-  visits: OverdueDashboard['unrecorded_visits'];
-}) {
+function UnrecordedVisitsSection({ visits }: { visits: OverdueDashboard['unrecorded_visits'] }) {
   return (
     <Card>
       <CardHeader>
@@ -398,11 +377,7 @@ function UnrecordedVisitsSection({
   );
 }
 
-function UnsentReportsSection({
-  reports,
-}: {
-  reports: OverdueDashboard['unsent_reports'];
-}) {
+function UnsentReportsSection({ reports }: { reports: OverdueDashboard['unsent_reports'] }) {
   return (
     <Card>
       <CardHeader>
@@ -445,11 +420,7 @@ function UnsentReportsSection({
   );
 }
 
-function OverdueTasksSection({
-  tasks,
-}: {
-  tasks: OverdueDashboard['overdue_tasks'];
-}) {
+function OverdueTasksSection({ tasks }: { tasks: OverdueDashboard['overdue_tasks'] }) {
   return (
     <Card>
       <CardHeader>
@@ -473,7 +444,12 @@ function OverdueTasksSection({
                   </div>
                   <p className="text-xs text-muted-foreground">{task.task_type}</p>
                   <p className="text-xs text-muted-foreground">
-                    期限 {task.sla_due_at ? formatDateLabel(task.sla_due_at) : task.due_date ? formatDateLabel(task.due_date) : '未設定'}
+                    期限{' '}
+                    {task.sla_due_at
+                      ? formatDateLabel(task.sla_due_at)
+                      : task.due_date
+                        ? formatDateLabel(task.due_date)
+                        : '未設定'}
                   </p>
                 </Link>
               </li>
@@ -544,7 +520,7 @@ export function AdminDashboardContent() {
       fetchJson<OverdueDashboard>(
         '/api/dashboard/overdue',
         orgId,
-        '期限超過ダッシュボードの取得に失敗しました。'
+        '期限超過ダッシュボードの取得に失敗しました。',
       ),
     staleTime: 60_000,
     retry: false,
@@ -557,7 +533,7 @@ export function AdminDashboardContent() {
       fetchJson<MonthlyStats>(
         `/api/dashboard/monthly-stats?month=${currentMonth}`,
         orgId,
-        '月間訪問回数進捗の取得に失敗しました。'
+        '月間訪問回数進捗の取得に失敗しました。',
       ),
     staleTime: 60_000,
     retry: false,
@@ -570,15 +546,14 @@ export function AdminDashboardContent() {
       fetchJson<{ data: WorkflowDashboard }>(
         '/api/dashboard/workflow',
         orgId,
-        'ワークフロー例外の取得に失敗しました。'
+        'ワークフロー例外の取得に失敗しました。',
       ),
     staleTime: 60_000,
     retry: false,
     enabled: !!orgId,
   });
 
-  const firstError =
-    overdueQuery.error ?? monthlyStatsQuery.error ?? workflowQuery.error ?? null;
+  const firstError = overdueQuery.error ?? monthlyStatsQuery.error ?? workflowQuery.error ?? null;
 
   if (!orgId) {
     return <Loading label="組織情報を読み込み中..." />;
@@ -661,12 +636,20 @@ export function AdminDashboardContent() {
 
   return (
     <div className="space-y-8">
+      <SectionIntro
+        title="管理サマリー"
+        description="重大な滞留や超過を先に把握するための概要グループです。"
+      />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {summaryCards.map((card) => (
           <SummaryCard key={card.title} {...card} />
         ))}
       </div>
 
+      <SectionIntro
+        title="月間進捗"
+        description="患者ごとの訪問回数進捗と上限超過状況を確認する主要グループです。"
+      />
       <MonthlyProgressSection
         month={monthlyStats?.month ?? currentMonth}
         summary={
@@ -682,13 +665,15 @@ export function AdminDashboardContent() {
         onNextMonth={() => setSelectedMonth((value) => addMonths(value, 1))}
       />
 
+      <SectionIntro
+        title="滞留と例外"
+        description="未記録、未送付、期限超過、ワークフロー例外をまとめて確認する運用監視グループです。"
+      />
       <div className="grid gap-6 xl:grid-cols-2">
         <UnrecordedVisitsSection visits={overdue?.unrecorded_visits ?? []} />
         <UnsentReportsSection reports={overdue?.unsent_reports ?? []} />
         <OverdueTasksSection tasks={overdue?.overdue_tasks ?? []} />
-        <WorkflowExceptionsSection
-          exceptions={workflow?.workflow_exceptions.items ?? []}
-        />
+        <WorkflowExceptionsSection exceptions={workflow?.workflow_exceptions.items ?? []} />
       </div>
 
       {(overdue?.summary.total ?? 0) === 0 &&

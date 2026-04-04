@@ -6,6 +6,7 @@ import { Loading } from '@/components/ui/loading';
 import { UsersContent } from '@/app/(dashboard)/admin/users/users-content';
 import { StaffBulkActions } from './staff-bulk-actions';
 import { StaffKpiPanel } from './staff-kpi-panel';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
   title: 'スタッフ運用管理 — CareViaX',
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
 
 export default function StaffPage() {
   return (
-    <div className="space-y-6 p-6">
+    <PageScaffold>
       <AdminPageHeader
         title="スタッフ運用管理"
         description="採用、配置、勤怠負荷、一括取込を 1 画面で扱います。"
@@ -31,6 +32,6 @@ export default function StaffPage() {
       <Suspense fallback={<Loading />}>
         <UsersContent />
       </Suspense>
-    </div>
+    </PageScaffold>
   );
 }

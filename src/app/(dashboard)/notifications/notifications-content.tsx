@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { badgeToneClass } from '@/lib/ui/badge-semantics';
+import { SectionIntro } from '@/components/ui/section-intro';
 
 // --- Types ---
 
@@ -27,27 +29,36 @@ type Notification = {
   created_at: string;
 };
 
-const NOTIFICATION_STREAM_DISABLED =
-  process.env.NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM === '1';
+const NOTIFICATION_STREAM_DISABLED = process.env.NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM === '1';
 
 // --- Constants ---
 
-const TYPE_CONFIG: Record<NotificationType, { label: string; icon: React.ElementType; badgeClass: string }> = {
-  urgent: { label: '緊急', icon: AlertTriangle, badgeClass: 'bg-red-100 text-red-800 border-red-200' },
-  business: { label: '業務', icon: Bell, badgeClass: 'bg-blue-100 text-blue-800 border-blue-200' },
-  reminder: { label: 'リマインダー', icon: Clock, badgeClass: 'bg-orange-100 text-orange-800 border-orange-200' },
-  system: { label: 'システム', icon: Cpu, badgeClass: 'bg-gray-100 text-gray-700 border-gray-200' },
+const TYPE_CONFIG: Record<
+  NotificationType,
+  { label: string; icon: React.ElementType; badgeClass: string }
+> = {
+  urgent: {
+    label: '緊急',
+    icon: AlertTriangle,
+    badgeClass: badgeToneClass('urgent'),
+  },
+  business: { label: '業務', icon: Bell, badgeClass: badgeToneClass('info') },
+  reminder: {
+    label: 'リマインダー',
+    icon: Clock,
+    badgeClass: badgeToneClass('attention'),
+  },
+  system: { label: 'システム', icon: Cpu, badgeClass: badgeToneClass('neutral') },
 };
 
 function mergeNotifications(current: Notification[], incoming: Notification[]) {
   const merged = [...incoming, ...current];
   const unique = merged.filter(
     (notification, index, all) =>
-      all.findIndex((candidate) => candidate.id === notification.id) === index
+      all.findIndex((candidate) => candidate.id === notification.id) === index,
   );
   unique.sort(
-    (left, right) =>
-      new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+    (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
   );
   return unique.slice(0, 50);
 }
@@ -72,7 +83,9 @@ function NotificationCard({
   return (
     <Card className={notification.is_read ? 'opacity-70' : 'border-blue-200 bg-blue-50/30'}>
       <CardContent className="flex items-start gap-3 p-4">
-        <div className={`mt-0.5 rounded-full p-1.5 ${notification.is_read ? 'bg-muted' : 'bg-blue-100'}`}>
+        <div
+          className={`mt-0.5 rounded-full p-1.5 ${notification.is_read ? 'bg-muted' : 'bg-blue-100'}`}
+        >
           <Icon
             className={`size-4 ${notification.is_read ? 'text-muted-foreground' : 'text-blue-700'}`}
             aria-hidden="true"
@@ -81,10 +94,7 @@ function NotificationCard({
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge
-              variant="outline"
-              className={`text-[10px] ${cfg.badgeClass}`}
-            >
+            <Badge variant="outline" className={`text-[10px] ${cfg.badgeClass}`}>
               {cfg.label}
             </Badge>
             {!notification.is_read && (
@@ -183,13 +193,13 @@ export function NotificationsContent() {
                 ['notifications', orgId, 'unread'],
                 (current) => ({
                   data: mergeNotifications(current?.data ?? [], nextNotifications),
-                })
+                }),
               );
               queryClient.setQueryData<{ data: Notification[] }>(
                 ['notifications', orgId, 'all'],
                 (current) => ({
                   data: mergeNotifications(current?.data ?? [], nextNotifications),
-                })
+                }),
               );
             } catch {
               // Ignore malformed SSE payloads and keep the stream alive.
@@ -245,7 +255,11 @@ export function NotificationsContent() {
   const isLoading = tab === 'unread' ? unreadLoading : allLoading;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      <SectionIntro
+        title="絞り込み"
+        description="未読・全件・通知種別で先に絞り込み、処理すべき通知だけを残します。"
+      />
       <div className="flex items-center justify-between">
         <Tabs value={tab} onValueChange={(v) => setTab(v as 'unread' | 'all')}>
           <TabsList>
@@ -326,13 +340,13 @@ export function NotificationsContent() {
         </div>
       )}
 
+      <SectionIntro
+        title="通知一覧"
+        description="絞り込み後の通知を、未読と重要度を見ながら順に処理します。"
+      />
       <div className="space-y-2">
         {filteredList.map((notification) => (
-          <NotificationCard
-            key={notification.id}
-            notification={notification}
-            onRead={handleRead}
-          />
+          <NotificationCard key={notification.id} notification={notification} onRead={handleRead} />
         ))}
       </div>
     </div>

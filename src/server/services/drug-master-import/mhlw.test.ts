@@ -1,18 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import * as XLSX from 'xlsx';
 import {
   importGenericNameMappings,
   parseMhlwPriceWorkbook,
+  parseGenericNameWorkbook,
   resolveLatestGenericNameWorkbookUrl,
   resolveLatestMhlwPriceWorkbookUrl,
 } from './mhlw';
+import { buildWorkbookBuffer } from './excel';
 
-function workbookBlob(sheets: Record<string, (string | null)[][]>) {
-  const workbook = XLSX.utils.book_new();
-  for (const [sheetName, rows] of Object.entries(sheets)) {
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), sheetName);
-  }
-  return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
+async function workbookBlob(sheets: Record<string, (string | null)[][]>) {
+  return buildWorkbookBuffer(sheets);
 }
 
 function toWorkbookResponse(buffer: Buffer) {
@@ -55,7 +52,7 @@ describe('resolveLatestGenericNameWorkbookUrl', () => {
 
 describe('parseMhlwPriceWorkbook', () => {
   it('parses official-like price rows and generic indicators', async () => {
-    const workbook = workbookBlob({
+    const workbook = await workbookBlob({
       'ＨＰ用': [
         [
           '区分',
@@ -118,6 +115,34 @@ describe('parseMhlwPriceWorkbook', () => {
       '2027-03-31T00:00:00.000Z'
     );
   });
+
+  it('finds the price sheet even when it is not the first worksheet', async () => {
+    const workbook = await workbookBlob({
+      概要: [['このシートは無関係です']],
+      'ＨＰ用': [
+        [
+          '区分',
+          '薬価基準収載医薬品コード',
+          '品名',
+          'メーカー名',
+          '薬価',
+        ],
+        ['内用薬', '1124001F1022', 'ユーロジン１ｍｇ錠', 'Ｔ’ｓ製薬', '6.30'],
+      ],
+    });
+
+    const parsed = await parseMhlwPriceWorkbook({
+      workbookUrl: 'https://example.com/price.xlsx',
+      fetchImpl: async () => toWorkbookResponse(workbook),
+    });
+
+    expect(parsed.records).toHaveLength(1);
+    expect(parsed.records[0]).toMatchObject({
+      yj_code: '1124001F1022',
+      drug_name: 'ユーロジン１ｍｇ錠',
+      manufacturer: 'Ｔ’ｓ製薬',
+    });
+  });
 });
 
 describe('importGenericNameMappings', () => {
@@ -160,7 +185,7 @@ describe('importGenericNameMappings', () => {
   });
 
   it('rebuilds GenericDrugMapping entries from the workbook', async () => {
-    const workbook = workbookBlob({
+    const workbook = await workbookBlob({
       '一般名処方マスタ（R8.4.1版） 全体': [
         ['一般名処方マスタ'],
         [null, null, null, null, null, null, null, null, '令和8年4月1日適用'],
@@ -249,5 +274,20 @@ describe('importGenericNameMappings', () => {
         }),
       },
     });
+  });
+});
+
+describe('parseGenericNameWorkbook', () => {
+  it('fails when the expected named worksheets are missing', async () => {
+    const workbook = await workbookBlob({
+      Other: [['header']],
+    });
+
+    await expect(
+      parseGenericNameWorkbook({
+        workbookUrl: 'https://example.com/generic.xlsx',
+        fetchImpl: async () => toWorkbookResponse(workbook),
+      })
+    ).rejects.toThrow("Excel ワークシート '一般名処方マスタ（R8.4.1版） 全体' を解決できませんでした");
   });
 });

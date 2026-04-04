@@ -9,6 +9,10 @@
 import { prisma } from '@/lib/db/client';
 import type { JahisQRData, JahisMedication } from './jahis-qr';
 import { parseDaysOrTimes } from './jahis-qr';
+import {
+  extractPackagingInstructionTags,
+  parsePackagingMethod,
+} from '@/lib/prescription/packaging';
 
 // ── Types ──
 
@@ -32,8 +36,12 @@ export interface QrIntakeLineInput {
   unit: string | null;
   is_generic: boolean;
   packaging_method: string | null;
+  packaging_instructions: string | null;
+  packaging_instruction_tags: string[];
   route: string | null;
   dispensing_method: string | null;
+  start_date: string | null;
+  end_date: string | null;
   notes: string | null;
 }
 
@@ -97,6 +105,8 @@ export async function mapJahisToIntake(
       med,
       i,
       input.siteId,
+      qrData.dispensingDate ?? null,
+      qrData.remarks,
     );
     lines.push({ ...line, line_number: i + 1 });
     autoCompletedFields.push(...autoCompleted);
@@ -198,6 +208,8 @@ async function mapMedicationLine(
   med: JahisMedication,
   index: number,
   siteId: string,
+  prescribedDate: string | null,
+  qrRemarks: string[],
 ): Promise<{
   line: Omit<QrIntakeLineInput, 'line_number'>;
   autoCompleted: AutoCompletedField[];
@@ -297,6 +309,39 @@ async function mapMedicationLine(
     stockQty,
   };
 
+  const detailNotes = Array.from(
+    new Set(
+      [...med.supplements, ...med.usageNotes, ...qrRemarks]
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0)
+    )
+  );
+  const noteText = detailNotes.length > 0 ? detailNotes.join(' / ') : null;
+  const packagingText = detailNotes
+    .filter((value) => /一包|粉砕|別包|別袋|分包|PTP|ヒート|冷所|麻薬|ラベル/i.test(value))
+    .join(' / ') || null;
+  const parsedPackaging = parsePackagingMethod(packagingText);
+  const route = inferRoute({
+    dosageForm: drugMaster?.dosage_form ?? null,
+    formCode: med.formCode,
+    usage: med.usage ?? null,
+    drugName: med.drugName,
+  });
+  const dispensingMethod =
+    parsedPackaging.method === 'unit_dose' || parsedPackaging.method === 'morning_evening_unit_dose'
+      ? 'unit_dose'
+      : parsedPackaging.method === 'crush_and_pack'
+        ? 'crushed'
+        : null;
+  const packagingInstructionTags = extractPackagingInstructionTags({
+    packagingInstructions: packagingText,
+    notes: noteText,
+    packagingMethod:
+      parsedPackaging.method === null || parsedPackaging.method === 'other'
+        ? null
+        : parsedPackaging.method,
+  });
+
   const line: Omit<QrIntakeLineInput, 'line_number'> = {
     drug_name: med.drugName,
     drug_code: drugMaster?.yj_code ?? med.drugCode ?? null,
@@ -307,13 +352,44 @@ async function mapMedicationLine(
     quantity: med.dispensedQuantity ? parseFloat(med.dispensedQuantity) || null : null,
     unit: med.unit ?? null,
     is_generic: isGeneric,
-    packaging_method: null,
-    route: null,
-    dispensing_method: null,
-    notes: null,
+    packaging_method: parsedPackaging.method,
+    packaging_instructions: packagingText,
+    packaging_instruction_tags: packagingInstructionTags,
+    route,
+    dispensing_method: dispensingMethod,
+    start_date: prescribedDate,
+    end_date: null,
+    notes: noteText,
   };
 
   return { line, autoCompleted, unmatched, formulary };
+}
+
+function inferRoute(args: {
+  dosageForm: string | null;
+  formCode?: number;
+  usage: string | null;
+  drugName: string;
+}) {
+  const basis = `${args.dosageForm ?? ''} ${args.usage ?? ''} ${args.drugName}`.trim();
+
+  if (/注射|注入|シリンジ|アンプル|バイアル/i.test(basis)) {
+    return 'injection';
+  }
+
+  if (/軟膏|クリーム|貼付|テープ|坐剤|点眼|点鼻|吸入|ローション|ゲル|外用/i.test(basis)) {
+    return 'external';
+  }
+
+  if (args.formCode === 3 || args.formCode === 4) {
+    return 'external';
+  }
+
+  if (args.formCode === 5 || args.formCode === 6) {
+    return 'injection';
+  }
+
+  return 'internal';
 }
 
 /**

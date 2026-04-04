@@ -85,7 +85,6 @@ type VisitRecordFull = {
   } | null;
 };
 
-
 const relationLabel: Record<string, string> = {
   self: '本人',
   spouse: '配偶者',
@@ -159,7 +158,12 @@ function GeoLocationCard({
   point,
 }: {
   label: string;
-  point: { latitude: number; longitude: number; captured_at: string; accuracy_meters: number | null } | null;
+  point: {
+    latitude: number;
+    longitude: number;
+    captured_at: string;
+    accuracy_meters: number | null;
+  } | null;
 }) {
   return (
     <div className="rounded-lg border border-border/70 px-3 py-3">
@@ -167,16 +171,13 @@ function GeoLocationCard({
       {point ? (
         <>
           <p className="mt-1 text-sm font-medium">
-            {formatGeoCoordinate(point.latitude)},{' '}
-            {formatGeoCoordinate(point.longitude)}
+            {formatGeoCoordinate(point.latitude)}, {formatGeoCoordinate(point.longitude)}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             {format(parseISO(point.captured_at), 'yyyy/MM/dd HH:mm', {
               locale: ja,
             })}
-            {point.accuracy_meters != null
-              ? ` / 精度 ±${point.accuracy_meters}m`
-              : ''}
+            {point.accuracy_meters != null ? ` / 精度 ±${point.accuracy_meters}m` : ''}
           </p>
         </>
       ) : (
@@ -317,97 +318,116 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">{visitDateFormatted} 訪問記録</h1>
-          <div className="mt-1 flex items-center gap-2">
-            <Badge variant={OUTCOME_VARIANTS[record.outcome_status] ?? 'outline'}>
-              {OUTCOME_LABELS[record.outcome_status] ?? record.outcome_status}
-            </Badge>
-            {record.schedule && (
-              <span className="text-sm text-muted-foreground">
-                {record.schedule.visit_type}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Link
-            href={`/api/visit-records/${recordId}/pdf`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={buttonVariants({ variant: 'outline', size: 'sm', className: 'gap-1' })}
-            aria-label="訪問記録 PDF を開く"
-          >
-            <FileDown className="size-3.5" aria-hidden="true" />
-            PDF出力
-          </Link>
-
-          {/* Report generation dropdown */}
-          <div className="relative" ref={menuRef}>
-            <Button
-              size="sm"
-              className="gap-1"
-              onClick={() => setShowReportMenu((v) => !v)}
-              disabled={generateReportMutation.isPending}
-              aria-haspopup="menu"
-              aria-expanded={showReportMenu}
-            >
-              <FileText className="size-3.5" aria-hidden="true" />
-              {generateReportMutation.isPending ? '生成中...' : '報告書生成'}
-            </Button>
-            {showReportMenu && (
-              <div
-                role="menu"
-                className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-border bg-popover shadow-md"
-              >
-                <button
-                  role="menuitem"
-                  className="w-full px-3 py-2.5 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-none"
-                  onClick={() => handleGenerateReport('physician_report')}
-                >
-                  医師向け報告書を作成
-                </button>
-                <button
-                  role="menuitem"
-                  className="w-full px-3 py-2.5 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-none"
-                  onClick={() => handleGenerateReport('care_manager_report')}
-                >
-                  ケアマネ向け情報提供書を作成
-                </button>
-                <div className="border-t border-border" />
-                <button
-                  role="menuitem"
-                  className="w-full px-3 py-2.5 text-left text-sm font-medium text-primary hover:bg-accent focus:bg-accent focus:outline-none"
-                  onClick={() => handleGenerateReport()}
-                >
-                  自動判定（保険種別に応じて生成）
-                </button>
+      <Card>
+        <CardHeader className="space-y-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-2">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  訪問サマリー
+                </p>
+                <p className="mt-1 text-xl font-bold tracking-tight text-foreground">
+                  {visitDateFormatted} 訪問記録
+                </p>
               </div>
-            )}
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={OUTCOME_VARIANTS[record.outcome_status] ?? 'outline'}>
+                  {OUTCOME_LABELS[record.outcome_status] ?? record.outcome_status}
+                </Badge>
+                {record.schedule ? (
+                  <Badge variant="outline">{record.schedule.visit_type}</Badge>
+                ) : null}
+                <Badge variant="outline">v{record.version}</Badge>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Link
+                href={`/api/visit-records/${recordId}/pdf`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={buttonVariants({
+                  variant: 'outline',
+                  size: 'sm',
+                  className: 'h-10 w-full gap-1 sm:h-8 sm:w-auto',
+                })}
+                aria-label="訪問記録 PDF を開く"
+              >
+                <FileDown className="size-3.5" aria-hidden="true" />
+                PDF出力
+              </Link>
+
+              <div className="relative" ref={menuRef}>
+                <Button
+                  size="sm"
+                  className="h-10 w-full gap-1 sm:h-8 sm:w-auto"
+                  onClick={() => setShowReportMenu((v) => !v)}
+                  disabled={generateReportMutation.isPending}
+                  aria-haspopup="menu"
+                  aria-expanded={showReportMenu}
+                >
+                  <FileText className="size-3.5" aria-hidden="true" />
+                  {generateReportMutation.isPending ? '生成中...' : '報告書生成'}
+                </Button>
+                {showReportMenu && (
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-border bg-popover shadow-md"
+                  >
+                    <button
+                      role="menuitem"
+                      className="w-full px-3 py-2.5 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-none"
+                      onClick={() => handleGenerateReport('physician_report')}
+                    >
+                      医師向け報告書を作成
+                    </button>
+                    <button
+                      role="menuitem"
+                      className="w-full px-3 py-2.5 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-none"
+                      onClick={() => handleGenerateReport('care_manager_report')}
+                    >
+                      ケアマネ向け情報提供書を作成
+                    </button>
+                    <div className="border-t border-border" />
+                    <button
+                      role="menuitem"
+                      className="w-full px-3 py-2.5 text-left text-sm font-medium text-primary hover:bg-accent focus:bg-accent focus:outline-none"
+                      onClick={() => handleGenerateReport()}
+                    >
+                      自動判定（保険種別に応じて生成）
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
-        </div>
-      </div>
-
-      {/* Audit info (e-document authenticity) */}
-      <div className="flex flex-wrap items-center gap-4 rounded-lg border border-border bg-muted/30 px-4 py-2.5 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <Clock className="size-3" aria-hidden="true" />
-          作成: {format(parseISO(record.created_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
-        </span>
-        <span className="flex items-center gap-1">
-          <Clock className="size-3" aria-hidden="true" />
-          最終更新: {format(parseISO(record.updated_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
-        </span>
-        <span>バージョン: v{record.version}</span>
-        <span>記録者: {record.pharmacist_name ?? record.pharmacist_id}</span>
-        <span>
-          最終更新者: {record.last_modified_by_name ?? record.last_modified_by_id ?? record.pharmacist_name ?? record.pharmacist_id}
-        </span>
-      </div>
+          <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2 xl:grid-cols-5">
+            <div className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2">
+              <span className="flex items-center gap-1">
+                <Clock className="size-3" aria-hidden="true" />
+                作成: {format(parseISO(record.created_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
+              </span>
+            </div>
+            <div className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2">
+              <span className="flex items-center gap-1">
+                <Clock className="size-3" aria-hidden="true" />
+                最終更新: {format(parseISO(record.updated_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
+              </span>
+            </div>
+            <div className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2">
+              記録者: {record.pharmacist_name ?? record.pharmacist_id}
+            </div>
+            <div className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 sm:col-span-2 xl:col-span-2">
+              最終更新者:{' '}
+              {record.last_modified_by_name ??
+                record.last_modified_by_id ??
+                record.pharmacist_name ??
+                record.pharmacist_id}
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
 
       {/* Reason fields */}
       {record.cancellation_reason && (
@@ -480,7 +500,8 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
                 <dt className="text-xs text-muted-foreground">続柄</dt>
                 <dd className="mt-0.5">
                   {record.receipt_person_relation
-                    ? (relationLabel[record.receipt_person_relation] ?? record.receipt_person_relation)
+                    ? (relationLabel[record.receipt_person_relation] ??
+                      record.receipt_person_relation)
                     : '—'}
                 </dd>
               </div>
@@ -550,8 +571,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
                     pharmacist_id: record.schedule.pharmacist_id,
                     time_window_start:
                       formatTimeWindow(record.schedule.time_window_start) ?? undefined,
-                    time_window_end:
-                      formatTimeWindow(record.schedule.time_window_end) ?? undefined,
+                    time_window_end: formatTimeWindow(record.schedule.time_window_end) ?? undefined,
                     recurrence_rule: record.schedule.recurrence_rule ?? undefined,
                   });
                 }}
@@ -642,11 +662,21 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
                 <caption className="sr-only">残薬一覧</caption>
                 <thead className="bg-muted/60">
                   <tr className="border-b border-border">
-                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">薬剤名</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">処方量</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">残数</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">余剰日数</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">区分</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
+                      薬剤名
+                    </th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
+                      処方量
+                    </th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
+                      残数
+                    </th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
+                      余剰日数
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
+                      区分
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -666,10 +696,15 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
                       <td className="px-3 py-2">
                         <div className="flex flex-wrap gap-1">
                           {med.is_prohibited_reduction && (
-                            <Badge variant="destructive" className="text-xs">減数禁止</Badge>
+                            <Badge variant="destructive" className="text-xs">
+                              減数禁止
+                            </Badge>
                           )}
                           {med.is_reduction_target && !med.is_prohibited_reduction && (
-                            <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">
+                            <Badge
+                              variant="outline"
+                              className="text-xs text-amber-600 border-amber-300"
+                            >
                               減数対象
                             </Badge>
                           )}

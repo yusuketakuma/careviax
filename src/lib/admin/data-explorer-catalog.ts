@@ -67,6 +67,7 @@ const COVERAGE_CATEGORY_ENTRIES = {
     'DispenseTask',
     'DispenseResult',
     'DispenseAudit',
+    'DispensingDecision',
     'SetBatch',
     'WorkflowException',
     'VisitSchedule',

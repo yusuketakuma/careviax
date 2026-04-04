@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useId, useState, type ReactNode, type ReactElement } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { buildIntakeBadges, getHomeVisitIntake } from '@/lib/patient/intake-display';
+import { GENDER_LABELS } from '@/lib/constants/status-labels';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 
 type FacilityOption = {
@@ -180,10 +181,21 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
             />
           </Field>
           <Field label="性別">
-            <Input
+            <Select
               value={form.gender}
-              onChange={(event) => setForm((current) => ({ ...current, gender: event.target.value }))}
-            />
+              onValueChange={(value) => setForm((current) => ({ ...current, gender: value ?? current.gender }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="性別を選択">
+                  {GENDER_LABELS[form.gender] ?? form.gender}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="male">男性</SelectItem>
+                <SelectItem value="female">女性</SelectItem>
+                <SelectItem value="other">その他</SelectItem>
+              </SelectContent>
+            </Select>
           </Field>
           <Field label="電話番号">
             <Input
@@ -307,10 +319,21 @@ function Field({
   children: ReactNode;
   className?: string;
 }) {
+  const autoId = useId();
+  const fieldId = `field-${autoId}`;
+
+  // Check if the child is a native input-like element that supports htmlFor/id binding.
+  // Select (Radix) doesn't forward id to its trigger, so we skip cloneElement for it.
+  const isNativeInput =
+    isValidElement(children) &&
+    typeof children.type === 'string';
+
   return (
     <div className={className}>
-      <Label className="mb-1.5 block">{label}</Label>
-      {children}
+      <Label htmlFor={isNativeInput ? fieldId : undefined} className="mb-1.5 block">{label}</Label>
+      {isNativeInput
+        ? cloneElement(children as ReactElement<{ id?: string }>, { id: fieldId })
+        : children}
     </div>
   );
 }

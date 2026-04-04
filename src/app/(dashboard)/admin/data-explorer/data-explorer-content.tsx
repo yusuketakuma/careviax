@@ -6,19 +6,23 @@ import { RefreshCcw, Save, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminDataExplorerShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
-import {
-  COVERAGE_CATEGORY_LABELS,
-  type CoverageCategory,
-} from '@/lib/admin/data-explorer-catalog';
+import { COVERAGE_CATEGORY_LABELS, type CoverageCategory } from '@/lib/admin/data-explorer-catalog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { LoadingButton } from '@/components/ui/loading-button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 
 type ExplorerField = {
   name: string;
@@ -74,15 +78,12 @@ function summarizeRow(row: Record<string, unknown>) {
   return typeof row.id === 'string' ? row.id : 'レコード';
 }
 
-function extractEditablePatch(
-  row: Record<string, unknown> | null,
-  columns: ExplorerField[]
-) {
+function extractEditablePatch(row: Record<string, unknown> | null, columns: ExplorerField[]) {
   if (!row) return {};
   return Object.fromEntries(
     columns
       .filter((column) => column.isEditable)
-      .map((column) => [column.name, row[column.name] ?? null])
+      .map((column) => [column.name, row[column.name] ?? null]),
   );
 }
 
@@ -116,10 +117,11 @@ export function DataExplorerContent() {
       (modelsQuery.data?.data ?? []).filter((model) => {
         if (categoryFilter !== 'all' && model.coverageCategory !== categoryFilter) return false;
         if (!deferredModelFilter) return true;
-        const haystack = `${model.tableName} ${model.modelName} ${model.coverageLabel}`.toLowerCase();
+        const haystack =
+          `${model.tableName} ${model.modelName} ${model.coverageLabel}`.toLowerCase();
         return haystack.includes(deferredModelFilter);
       }),
-    [categoryFilter, deferredModelFilter, modelsQuery.data?.data]
+    [categoryFilter, deferredModelFilter, modelsQuery.data?.data],
   );
 
   useEffect(() => {
@@ -128,7 +130,7 @@ export function DataExplorerContent() {
     }
 
     const selectedTableStillVisible = filteredModels.some(
-      (model) => model.tableName === selectedTable
+      (model) => model.tableName === selectedTable,
     );
 
     if (!selectedTable || !selectedTableStillVisible) {
@@ -144,9 +146,12 @@ export function DataExplorerContent() {
       const params = new URLSearchParams({ limit: '25' });
       if (deferredRowSearch) params.set('search', deferredRowSearch);
 
-      const response = await fetch(`/api/admin/data-explorer/${selectedTable}?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
-      });
+      const response = await fetch(
+        `/api/admin/data-explorer/${selectedTable}?${params.toString()}`,
+        {
+          headers: { 'x-org-id': orgId },
+        },
+      );
       if (!response.ok) throw new Error('テーブルデータの取得に失敗しました');
       return response.json() as Promise<{ data: ExplorerRowsPayload }>;
     },
@@ -223,7 +228,7 @@ export function DataExplorerContent() {
     tableData?.columns.filter((column) => column.isEditable).map((column) => column.name) ?? [];
 
   return (
-    <div className="space-y-6 p-6">
+    <PageScaffold>
       <AdminPageHeader
         title="データ探索"
         description="監査ドキュメントで未露出だった backend graph を含め、全テーブルを一覧・閲覧・更新します。seed で投入した代表データを画面から直接検証・補正できます。"
@@ -400,7 +405,11 @@ export function DataExplorerContent() {
                       onClick={() => {
                         if (!tableData || !selectedRow) return;
                         setEditorValue(
-                          JSON.stringify(extractEditablePatch(selectedRow, tableData.columns), null, 2)
+                          JSON.stringify(
+                            extractEditablePatch(selectedRow, tableData.columns),
+                            null,
+                            2,
+                          ),
                         );
                       }}
                       disabled={!selectedRow}
@@ -414,7 +423,9 @@ export function DataExplorerContent() {
 
               <TabsContent value="raw" className="min-h-0 flex-1">
                 <pre className="h-full min-h-[24rem] overflow-auto rounded-xl border bg-muted/30 p-4 font-mono text-xs leading-6 text-foreground">
-                  {selectedRow ? JSON.stringify(selectedRow, null, 2) : 'レコードを選択してください'}
+                  {selectedRow
+                    ? JSON.stringify(selectedRow, null, 2)
+                    : 'レコードを選択してください'}
                 </pre>
               </TabsContent>
 
@@ -434,9 +445,7 @@ export function DataExplorerContent() {
                           <Badge variant="outline">readonly</Badge>
                         )}
                         {column.isList ? <Badge variant="outline">list</Badge> : null}
-                        {!column.isRequired ? (
-                          <Badge variant="outline">nullable</Badge>
-                        ) : null}
+                        {!column.isRequired ? <Badge variant="outline">nullable</Badge> : null}
                       </div>
                     </div>
                   ))}
@@ -446,6 +455,6 @@ export function DataExplorerContent() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageScaffold>
   );
 }

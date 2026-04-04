@@ -36,8 +36,17 @@ export function HandoffReviewContent({ visitRecordId }: { visitRecordId: string 
       </div>
 
       <WorkflowPageHeader
+        eyebrow="Handoff Review"
         title="申し送り確認"
         description="訪問後の申し送り内容を確認し、次の対応面へつなげます。"
+        supportingContent={
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-foreground">確認順序</p>
+            <p className="text-sm text-muted-foreground">
+              抽出された申し送りを確認し、必要な対応面や関連患者情報へ戻ります。
+            </p>
+          </div>
+        }
         className="mb-0"
       >
         <PageShortcutLinks links={getVisitHandoffShortcutLinks(visitRecordId)} />

@@ -185,7 +185,7 @@ export default function ReportDetailPage() {
 
   if (isBootstrappingOrg || isLoading) {
     return (
-      <div className="p-6">
+      <div className="p-3 md:p-4 xl:p-5">
         <Loading />
       </div>
     );
@@ -193,7 +193,7 @@ export default function ReportDetailPage() {
 
   if (!report) {
     return (
-      <div className="p-6">
+      <div className="p-3 md:p-4 xl:p-5">
         <p className="text-sm text-muted-foreground">報告書が見つかりません</p>
       </div>
     );

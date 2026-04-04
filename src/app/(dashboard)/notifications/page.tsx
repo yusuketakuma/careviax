@@ -4,6 +4,7 @@ import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { Loading } from '@/components/ui/loading';
 import { NotificationsContent } from './notifications-content';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
   title: '通知 — CareViaX',
@@ -11,10 +12,20 @@ export const metadata: Metadata = {
 
 export default function NotificationsPage() {
   return (
-    <div className="p-6">
+    <PageScaffold>
       <WorkflowPageHeader
+        eyebrow="Notifications"
         title="通知"
         description="未読・既読の通知一覧"
+        supportingContent={
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-foreground">確認順序</p>
+            <p className="text-sm text-muted-foreground">
+              未読通知から優先対応を見つけ、必要に応じてタスクや外部連携画面へ移動します。
+            </p>
+          </div>
+        }
+        childrenLabel="関連導線"
       >
         <PageShortcutLinks
           links={[
@@ -28,6 +39,6 @@ export default function NotificationsPage() {
       <Suspense fallback={<Loading />}>
         <NotificationsContent />
       </Suspense>
-    </div>
+    </PageScaffold>
   );
 }

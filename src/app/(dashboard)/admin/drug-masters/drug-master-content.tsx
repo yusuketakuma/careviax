@@ -3,7 +3,17 @@
 import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
-import { Search, Pill, AlertTriangle, Shield, Database, Download, History, CheckCircle2, Building2 } from 'lucide-react';
+import {
+  Search,
+  Pill,
+  AlertTriangle,
+  Shield,
+  Database,
+  Download,
+  History,
+  CheckCircle2,
+  Building2,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import {
@@ -23,6 +33,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 
 type DrugMasterRow = {
   id: string;
@@ -145,9 +156,7 @@ const columns: ColumnDef<DrugMasterRow>[] = [
   {
     accessorKey: 'dosage_form',
     header: '剤形',
-    cell: ({ row }) => (
-      <span className="text-sm">{row.original.dosage_form ?? '—'}</span>
-    ),
+    cell: ({ row }) => <span className="text-sm">{row.original.dosage_form ?? '—'}</span>,
   },
   {
     id: 'flags',
@@ -155,16 +164,20 @@ const columns: ColumnDef<DrugMasterRow>[] = [
     cell: ({ row }) => (
       <div className="flex flex-wrap gap-1">
         {row.original.is_generic && (
-          <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">後発</Badge>
+          <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">
+            後発
+          </Badge>
         )}
         {row.original.is_narcotic && (
           <span className="inline-flex items-center gap-0.5 rounded bg-red-100 px-1 py-0.5 text-[10px] font-medium text-red-700">
-            <AlertTriangle className="size-2.5" aria-hidden="true" />麻薬
+            <AlertTriangle className="size-2.5" aria-hidden="true" />
+            麻薬
           </span>
         )}
         {row.original.is_psychotropic && (
           <span className="inline-flex items-center gap-0.5 rounded bg-orange-100 px-1 py-0.5 text-[10px] font-medium text-orange-700">
-            <Shield className="size-2.5" aria-hidden="true" />向精神
+            <Shield className="size-2.5" aria-hidden="true" />
+            向精神
           </span>
         )}
       </div>
@@ -192,9 +205,7 @@ const columns: ColumnDef<DrugMasterRow>[] = [
     accessorKey: 'max_administration_days',
     header: '最大日数',
     cell: ({ row }) => (
-      <span className="text-sm tabular-nums">
-        {row.original.max_administration_days ?? '—'}
-      </span>
+      <span className="text-sm tabular-nums">{row.original.max_administration_days ?? '—'}</span>
     ),
   },
 ];
@@ -400,7 +411,12 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   });
 
   const preferredGenericCandidatesQuery = useQuery({
-    queryKey: ['preferred-generic-candidates', orgId, selectedDrugId, detailQuery.data?.generic_name],
+    queryKey: [
+      'preferred-generic-candidates',
+      orgId,
+      selectedDrugId,
+      detailQuery.data?.generic_name,
+    ],
     queryFn: async () => {
       const genericName = detailQuery.data?.generic_name?.trim();
       if (!genericName) return { data: [] as GenericCandidateOption[] };
@@ -451,7 +467,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     },
     onSuccess: async (result) => {
       toast.success(
-        `${result.definition.label}が完了しました（${result.response.data.importedCount.toLocaleString()}件）`
+        `${result.definition.label}が完了しました（${result.response.data.importedCount.toLocaleString()}件）`,
       );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['drug-masters'] }),
@@ -486,11 +502,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       return json as { data: PharmacyDrugStockConfig };
     },
     onSuccess: async (result) => {
-      toast.success(
-        result.data.is_stocked
-          ? '採用品設定を保存しました'
-          : '採用品から外しました'
-      );
+      toast.success(result.data.is_stocked ? '採用品設定を保存しました' : '採用品から外しました');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock'] }),
         queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks'] }),
@@ -539,9 +551,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       ? '拠点ごとの採用品設定と優先後発品を確認し、処方受付で使う採用薬候補を整備します。'
       : 'SSK基本マスター・PMDA添付文書データベースの管理';
   const headerShortcuts =
-    variant === 'formulary'
-      ? getAdminFormularyShortcutLinks()
-      : getAdminDrugMasterShortcutLinks();
+    variant === 'formulary' ? getAdminFormularyShortcutLinks() : getAdminDrugMasterShortcutLinks();
 
   const statusLabel = (status: DrugMasterImportLog['status']) => {
     switch (status) {
@@ -557,7 +567,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   };
 
   return (
-    <div className="space-y-6 p-6">
+    <PageScaffold>
       <div className="space-y-4">
         <AdminPageHeader
           title={headerTitle}
@@ -619,9 +629,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
             </label>
           </div>
           {activeImport && importMutation.isPending && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              実行中: {activeImport.label}
-            </p>
+            <p className="mt-2 text-xs text-muted-foreground">実行中: {activeImport.label}</p>
           )}
         </CardContent>
       </Card>
@@ -657,11 +665,10 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                     </Badge>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {new Date(log.imported_at).toLocaleString('ja-JP')} ・ {log.record_count.toLocaleString()}件
+                    {new Date(log.imported_at).toLocaleString('ja-JP')} ・{' '}
+                    {log.record_count.toLocaleString()}件
                   </div>
-                  {log.error_log && (
-                    <div className="text-xs text-red-600">{log.error_log}</div>
-                  )}
+                  {log.error_log && <div className="text-xs text-red-600">{log.error_log}</div>}
                 </div>
               </div>
             ))
@@ -677,7 +684,10 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
         <CardContent>
           <div className="flex flex-wrap items-end gap-3">
             <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-2.5 top-2 size-4 text-muted-foreground" aria-hidden="true" />
+              <Search
+                className="absolute left-2.5 top-2 size-4 text-muted-foreground"
+                aria-hidden="true"
+              />
               <input
                 type="text"
                 value={searchQuery}
@@ -694,7 +704,9 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
               aria-label="薬効分類フィルタ"
             >
               {CATEGORY_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
               ))}
             </select>
             <label className="flex items-center gap-1.5 text-sm">
@@ -743,9 +755,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       >
         <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
           <SheetHeader className="border-b border-border/60">
-            <SheetTitle>
-              {detailQuery.data?.drug_name ?? '医薬品詳細'}
-            </SheetTitle>
+            <SheetTitle>{detailQuery.data?.drug_name ?? '医薬品詳細'}</SheetTitle>
             <SheetDescription>
               行を選択すると最新の添付文書要約と相互作用を確認できます。
             </SheetDescription>
@@ -775,7 +785,8 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <p className="text-sm font-medium text-foreground">
-                            {sites.find((site) => site.id === effectiveSelectedSiteId)?.name ?? '対象拠点'}
+                            {sites.find((site) => site.id === effectiveSelectedSiteId)?.name ??
+                              '対象拠点'}
                           </p>
                           <p className="mt-1 text-xs text-muted-foreground">
                             {stockConfig?.is_stocked
@@ -802,14 +813,12 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                                 site_id: effectiveSelectedSiteId,
                                 drug_master_id: detailQuery.data.id,
                                 is_stocked: !(stockConfig?.is_stocked ?? false),
-                                preferred_generic_id:
-                                  stockConfig?.is_stocked
-                                    ? null
-                                    : effectivePreferredGenericId || null,
-                                reorder_point:
-                                  stockConfig?.is_stocked
-                                    ? null
-                                    : stockConfig?.reorder_point ?? null,
+                                preferred_generic_id: stockConfig?.is_stocked
+                                  ? null
+                                  : effectivePreferredGenericId || null,
+                                reorder_point: stockConfig?.is_stocked
+                                  ? null
+                                  : (stockConfig?.reorder_point ?? null),
                               })
                             }
                           >
@@ -823,7 +832,8 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                           <div>
                             <p className="text-sm font-medium text-foreground">採用後発薬</p>
                             <p className="mt-1 text-xs text-muted-foreground">
-                              一般名 {detailQuery.data.generic_name ?? '未設定'} に対する採用後発薬を設定します。
+                              一般名 {detailQuery.data.generic_name ?? '未設定'}{' '}
+                              に対する採用後発薬を設定します。
                             </p>
                           </div>
                           <select
@@ -874,7 +884,9 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                         </div>
                         <div className="flex flex-wrap items-end gap-2">
                           <label className="space-y-1">
-                            <span className="text-xs font-medium text-muted-foreground">下限数量</span>
+                            <span className="text-xs font-medium text-muted-foreground">
+                              下限数量
+                            </span>
                             <Input
                               ref={reorderPointInputRef}
                               type="number"
@@ -913,7 +925,10 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                           </LoadingButton>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          現在値: {stockConfig?.reorder_point != null ? `${stockConfig.reorder_point}単位` : '未設定'}
+                          現在値:{' '}
+                          {stockConfig?.reorder_point != null
+                            ? `${stockConfig.reorder_point}単位`
+                            : '未設定'}
                         </p>
                       </div>
                     </div>
@@ -927,9 +942,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                       <Badge variant="outline">HOT {detailQuery.data.hot_code}</Badge>
                     )}
                     {detailQuery.data.is_generic && <Badge variant="outline">後発品</Badge>}
-                    {detailQuery.data.is_narcotic && (
-                      <Badge variant="destructive">麻薬</Badge>
-                    )}
+                    {detailQuery.data.is_narcotic && <Badge variant="destructive">麻薬</Badge>}
                     {detailQuery.data.is_psychotropic && (
                       <Badge variant="outline" className="border-orange-300 text-orange-700">
                         向精神
@@ -977,7 +990,9 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                       </dt>
                       <dd className="mt-1 text-sm text-foreground">
                         {detailQuery.data.transitional_expiry_date
-                          ? new Date(detailQuery.data.transitional_expiry_date).toLocaleDateString('ja-JP')
+                          ? new Date(detailQuery.data.transitional_expiry_date).toLocaleDateString(
+                              'ja-JP',
+                            )
                           : '—'}
                       </dd>
                     </div>
@@ -1066,13 +1081,11 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                 </section>
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                一覧から医薬品を選択してください。
-              </p>
+              <p className="text-sm text-muted-foreground">一覧から医薬品を選択してください。</p>
             )}
           </div>
         </SheetContent>
       </Sheet>
-    </div>
+    </PageScaffold>
   );
 }

@@ -9,6 +9,7 @@ import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-
 import { InterventionPanel } from '@/components/features/medications/intervention-panel';
 import { PatientVisitBriefSection } from '@/components/visit-brief/patient-visit-brief-section';
 import { MedicationsContent } from './medications-content';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 
 const introActionLinkClassName =
   'inline-flex h-7 items-center justify-center gap-1 rounded-[min(var(--radius-md),12px)] border border-border bg-background px-2.5 text-[0.8rem] font-medium whitespace-nowrap transition-all outline-none hover:bg-muted hover:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50';
@@ -17,20 +18,25 @@ export const metadata: Metadata = {
   title: '服薬管理 — CareViaX',
 };
 
-export default async function MedicationsPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function MedicationsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
   return (
-    <div className="p-6">
+    <PageScaffold>
       <WorkflowPageIntro
         backHref={`/patients/${id}`}
         backLabel="患者詳細へ戻る"
+        eyebrow="Medication Management"
         title="服薬管理"
         description="服薬中薬剤・残薬記録を管理します"
+        supportingContent={
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-foreground">最初に見るポイント</p>
+            <p className="text-sm text-muted-foreground">
+              処方要点、共有事項、残薬や介入ポイントを先に確認し、その後に個別薬剤を見ます。
+            </p>
+          </div>
+        }
         shortcuts={getPatientMedicationShortcutLinks(id)}
         className="mb-6"
         actions={
@@ -44,10 +50,7 @@ export default async function MedicationsPage({
               <FileText className="mr-1.5 size-4" aria-hidden="true" />
               PDFを開く
             </Link>
-            <Link
-              href={`/patients/${id}/medications/print`}
-              className={introActionLinkClassName}
-            >
+            <Link href={`/patients/${id}/medications/print`} className={introActionLinkClassName}>
               <Printer className="mr-1.5 size-4" aria-hidden="true" />
               印刷ビュー
             </Link>
@@ -85,6 +88,6 @@ export default async function MedicationsPage({
           </section>
         </Suspense>
       </div>
-    </div>
+    </PageScaffold>
   );
 }

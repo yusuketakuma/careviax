@@ -20,12 +20,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -372,10 +367,7 @@ function buildInquiryResolutionDetail(args: {
   ].join(' | ');
 }
 
-const CYCLE_STATUS_LABELS: Record<
-  string,
-  { label: string; color: string }
-> = {
+const CYCLE_STATUS_LABELS: Record<string, { label: string; color: string }> = {
   intake_received: { label: '応需受付', color: 'bg-blue-100 text-blue-800' },
   structuring: { label: '構造化中', color: 'bg-blue-100 text-blue-800' },
   inquiry_pending: {
@@ -596,10 +588,7 @@ export function WorkflowDashboardContent() {
     return inquiryEdits[item.inquiry_id] ?? buildInquiryEditState(item);
   };
 
-  const updateInquiryEditState = (
-    item: InquiryWorkbenchItem,
-    patch: Partial<InquiryEditState>
-  ) => {
+  const updateInquiryEditState = (item: InquiryWorkbenchItem, patch: Partial<InquiryEditState>) => {
     if (!item.inquiry_id) return;
     const inquiryId = item.inquiry_id;
     setInquiryEdits((prev) => ({
@@ -663,129 +652,129 @@ export function WorkflowDashboardContent() {
     );
   }
 
-  const cycleStatusEntries = Object.entries(
-    workflow?.cycle_status_counts ?? {}
-  ).filter(([, count]) => count > 0);
+  const cycleStatusEntries = Object.entries(workflow?.cycle_status_counts ?? {}).filter(
+    ([, count]) => count > 0,
+  );
 
   return (
     <div className="space-y-8">
-      {((workflow?.workflow_exceptions.open ?? 0) > 0 ||
-        (workflow?.communication_requests.overdue ?? 0) > 0 ||
-        (workflow?.delivery.failures ?? 0) > 0 ||
-        (workflow?.visit_operations.overdue ?? 0) > 0 ||
-        (workflow?.visit_operations.awaiting_reports ?? 0) > 0 ||
-        (workflow?.visit_operations.missing_visit_consent ?? 0) > 0 ||
-        (workflow?.visit_operations.missing_management_plan ?? 0) > 0 ||
-        (workflow?.operations_queue.self_reports_triage ?? 0) > 0 ||
-        (workflow?.route_control.pending_override_requests ?? 0) > 0 ||
-        (workflow?.route_control.locked_schedules ?? 0) > 0 ||
-        (workflow?.route_control.emergency_impact_items ?? 0) > 0) && (
-        <div className="flex flex-wrap gap-3">
-          {(workflow?.workflow_exceptions.open ?? 0) > 0 && (
-            <AlertPill label="ワークフロー例外" value={workflow?.workflow_exceptions.open ?? 0} />
-          )}
-          {(workflow?.communication_requests.overdue ?? 0) > 0 && (
-            <AlertPill label="期限超過依頼" value={workflow?.communication_requests.overdue ?? 0} />
-          )}
-          {(workflow?.delivery.failures ?? 0) > 0 && (
-            <AlertPill label="送付失敗" value={workflow?.delivery.failures ?? 0} />
-          )}
-          {(workflow?.visit_operations.overdue ?? 0) > 0 && (
-            <AlertPill label="訪問期限超過" value={workflow?.visit_operations.overdue ?? 0} />
-          )}
-          {(workflow?.visit_operations.awaiting_reports ?? 0) > 0 && (
-            <AlertPill label="報告待ち" value={workflow?.visit_operations.awaiting_reports ?? 0} />
-          )}
-          {(workflow?.operations_queue.self_reports_triage ?? 0) > 0 && (
-            <AlertPill
-              label="セルフレポート triage"
-              value={workflow?.operations_queue.self_reports_triage ?? 0}
-            />
-          )}
-          {(workflow?.route_control.pending_override_requests ?? 0) > 0 && (
-            <AlertPill
-              label="変更承認待ち"
-              value={workflow?.route_control.pending_override_requests ?? 0}
-            />
-          )}
-          {(workflow?.route_control.locked_schedules ?? 0) > 0 && (
-            <AlertPill
-              label="確定ロック"
-              value={workflow?.route_control.locked_schedules ?? 0}
-            />
-          )}
-          {(workflow?.route_control.emergency_impact_items ?? 0) > 0 && (
-            <AlertPill
-              label="緊急影響"
-              value={workflow?.route_control.emergency_impact_items ?? 0}
-            />
-          )}
+      <section className="space-y-4" data-testid="workflow-control-center">
+        <div className="space-y-1">
+          <h2 className="text-base font-semibold text-foreground">コントロールセンター</h2>
+          <p className="text-sm text-muted-foreground">
+            まず例外、ルート変更、役割別 inbox
+            をまとめて確認し、当日対応の入口をここに集約しています。
+          </p>
         </div>
-      )}
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+          <Card>
+            <CardContent className="space-y-4 p-4 sm:p-5">
+              {((workflow?.workflow_exceptions.open ?? 0) > 0 ||
+                (workflow?.communication_requests.overdue ?? 0) > 0 ||
+                (workflow?.delivery.failures ?? 0) > 0 ||
+                (workflow?.visit_operations.overdue ?? 0) > 0 ||
+                (workflow?.visit_operations.awaiting_reports ?? 0) > 0 ||
+                (workflow?.visit_operations.missing_visit_consent ?? 0) > 0 ||
+                (workflow?.visit_operations.missing_management_plan ?? 0) > 0 ||
+                (workflow?.operations_queue.self_reports_triage ?? 0) > 0 ||
+                (workflow?.route_control.pending_override_requests ?? 0) > 0 ||
+                (workflow?.route_control.locked_schedules ?? 0) > 0 ||
+                (workflow?.route_control.emergency_impact_items ?? 0) > 0) && (
+                <div className="flex flex-wrap gap-3">
+                  {(workflow?.workflow_exceptions.open ?? 0) > 0 && (
+                    <AlertPill
+                      label="ワークフロー例外"
+                      value={workflow?.workflow_exceptions.open ?? 0}
+                    />
+                  )}
+                  {(workflow?.communication_requests.overdue ?? 0) > 0 && (
+                    <AlertPill
+                      label="期限超過依頼"
+                      value={workflow?.communication_requests.overdue ?? 0}
+                    />
+                  )}
+                  {(workflow?.delivery.failures ?? 0) > 0 && (
+                    <AlertPill label="送付失敗" value={workflow?.delivery.failures ?? 0} />
+                  )}
+                  {(workflow?.visit_operations.overdue ?? 0) > 0 && (
+                    <AlertPill
+                      label="訪問期限超過"
+                      value={workflow?.visit_operations.overdue ?? 0}
+                    />
+                  )}
+                  {(workflow?.visit_operations.awaiting_reports ?? 0) > 0 && (
+                    <AlertPill
+                      label="報告待ち"
+                      value={workflow?.visit_operations.awaiting_reports ?? 0}
+                    />
+                  )}
+                  {(workflow?.operations_queue.self_reports_triage ?? 0) > 0 && (
+                    <AlertPill
+                      label="セルフレポート triage"
+                      value={workflow?.operations_queue.self_reports_triage ?? 0}
+                    />
+                  )}
+                </div>
+              )}
+              <div className="grid gap-3 md:grid-cols-3">
+                <MetricCard
+                  icon={Route}
+                  label="確定ロック"
+                  value={workflow?.route_control.locked_schedules ?? 0}
+                  caption="電話確定済み"
+                />
+                <MetricCard
+                  icon={RefreshCw}
+                  label="変更承認待ち"
+                  value={workflow?.route_control.pending_override_requests ?? 0}
+                  caption="専用リスケ待ち"
+                />
+                <MetricCard
+                  icon={AlertTriangle}
+                  label="緊急影響"
+                  value={workflow?.route_control.emergency_impact_items ?? 0}
+                  caption="割込・緊急訪問"
+                />
+              </div>
+            </CardContent>
+          </Card>
 
-      <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">
-          ルート制御
-        </h2>
-        <div className="grid gap-3 md:grid-cols-3">
-          <MetricCard
-            icon={Route}
-            label="確定ロック"
-            value={workflow?.route_control.locked_schedules ?? 0}
-            caption="電話確定済み"
-          />
-          <MetricCard
-            icon={RefreshCw}
-            label="変更承認待ち"
-            value={workflow?.route_control.pending_override_requests ?? 0}
-            caption="専用リスケ待ち"
-          />
-          <MetricCard
-            icon={AlertTriangle}
-            label="緊急影響"
-            value={workflow?.route_control.emergency_impact_items ?? 0}
-            caption="割込・緊急訪問"
-          />
-        </div>
-      </section>
-
-      <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">
-          役割別 inbox
-        </h2>
-        <div className="grid gap-3 lg:grid-cols-3">
-          {workflow?.role_inboxes.buckets.map((bucket) => (
-            <Card key={bucket.role} size="sm">
-              <CardContent className="space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-foreground">{bucket.label}</p>
-                  <Badge
-                    variant={workflow?.role_inboxes.current_role === bucket.role ? 'default' : 'outline'}
+          <Card>
+            <CardContent className="space-y-3 p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-foreground">役割別 inbox</p>
+                <Badge variant="outline">{workflow?.role_inboxes.current_role ?? 'unknown'}</Badge>
+              </div>
+              <div className="space-y-3">
+                {workflow?.role_inboxes.buckets.map((bucket) => (
+                  <div
+                    key={bucket.role}
+                    className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3"
                   >
-                    {bucket.role}
-                  </Badge>
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-sm">
-                  <LoadPill label="未処理" value={bucket.open_items} />
-                  <LoadPill label="至急" value={bucket.urgent_items} />
-                  <LoadPill label="連絡" value={bucket.communication_items} />
-                </div>
-                <Link
-                  href={bucket.action_href}
-                  className="text-xs font-medium text-primary hover:underline"
-                >
-                  inbox を開く
-                </Link>
-              </CardContent>
-            </Card>
-          ))}
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-foreground">{bucket.label}</p>
+                      <Link
+                        href={bucket.action_href}
+                        className="text-xs font-medium text-primary hover:underline"
+                      >
+                        inbox を開く
+                      </Link>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                      <LoadPill label="未処理" value={bucket.open_items} />
+                      <LoadPill label="至急" value={bucket.urgent_items} />
+                      <LoadPill label="連絡" value={bucket.communication_items} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </section>
 
       <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">
-          連絡キュー
-        </h2>
+        <h2 className="mb-3 text-base font-semibold text-foreground">連絡キュー</h2>
         <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
           <MetricCard
             icon={BellRing}
@@ -864,7 +853,10 @@ export function WorkflowDashboardContent() {
                   <p className="text-sm text-muted-foreground">緊急ドラフト候補はありません</p>
                 ) : (
                   workflow?.communication_queue.emergency_drafts.map((draft) => (
-                    <div key={draft.id} className="rounded-lg border border-border px-3 py-2 text-sm">
+                    <div
+                      key={draft.id}
+                      className="rounded-lg border border-border px-3 py-2 text-sm"
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="font-medium text-foreground">{draft.title}</p>
@@ -879,7 +871,9 @@ export function WorkflowDashboardContent() {
                           {draft.action_label}
                         </Link>
                       </div>
-                      <p className="mt-2 text-xs leading-5 text-muted-foreground">{draft.summary}</p>
+                      <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                        {draft.summary}
+                      </p>
                       <div className="mt-3 flex justify-end">
                         <Button
                           size="sm"
@@ -905,7 +899,10 @@ export function WorkflowDashboardContent() {
                   <p className="text-sm text-muted-foreground">共有履歴はありません</p>
                 ) : (
                   workflow?.communication_queue.timeline.map((item) => (
-                    <div key={item.id} className="rounded-lg border border-border px-3 py-2 text-sm">
+                    <div
+                      key={item.id}
+                      className="rounded-lg border border-border px-3 py-2 text-sm"
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="font-medium text-foreground">{item.title}</p>
@@ -930,9 +927,7 @@ export function WorkflowDashboardContent() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">
-          疑義照会ワークベンチ
-        </h2>
+        <h2 className="mb-3 text-base font-semibold text-foreground">疑義照会ワークベンチ</h2>
         {(workflow?.inquiry_workbench.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">未処理の疑義照会はありません</p>
         ) : (
@@ -943,14 +938,12 @@ export function WorkflowDashboardContent() {
               const canSubmitChanged =
                 item.item_type !== 'inquiry' ||
                 item.line_id == null ||
-                (
-                  inquiryEdit != null &&
+                (inquiryEdit != null &&
                   inquiryEdit.drugName.trim().length > 0 &&
                   inquiryEdit.dose.trim().length > 0 &&
                   inquiryEdit.frequency.trim().length > 0 &&
                   Number.isInteger(parsedDays) &&
-                  parsedDays > 0
-                );
+                  parsedDays > 0);
 
               return (
                 <Card key={item.id} size="sm">
@@ -958,9 +951,13 @@ export function WorkflowDashboardContent() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-semibold text-foreground">{item.patient_name}</p>
+                          <p className="text-sm font-semibold text-foreground">
+                            {item.patient_name}
+                          </p>
                           <Badge variant="outline">{item.queue_state}</Badge>
-                          <Badge variant="secondary">{item.item_type === 'issue' ? '候補' : '照会中'}</Badge>
+                          <Badge variant="secondary">
+                            {item.item_type === 'issue' ? '候補' : '照会中'}
+                          </Badge>
                           <StagnationIndicator updatedAt={item.created_at} />
                         </div>
                         <p className="mt-1 text-xs text-muted-foreground">
@@ -981,7 +978,8 @@ export function WorkflowDashboardContent() {
                             <div className="space-y-1">
                               <p className="text-xs font-medium text-foreground">変更反映対象</p>
                               <p className="text-xs text-muted-foreground">
-                                現在: {item.line.drug_name} / {item.line.dose} / {item.line.frequency} / {item.line.days}日
+                                現在: {item.line.drug_name} / {item.line.dose} /{' '}
+                                {item.line.frequency} / {item.line.days}日
                               </p>
                             </div>
                             <div className="grid gap-2 md:grid-cols-2">
@@ -1187,9 +1185,7 @@ export function WorkflowDashboardContent() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">
-          患者リスク
-        </h2>
+        <h2 className="mb-3 text-base font-semibold text-foreground">患者リスク</h2>
         {(workflow?.patient_risk_queue.items.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">優先介入が必要な患者はありません</p>
         ) : (
@@ -1201,7 +1197,8 @@ export function WorkflowDashboardContent() {
                     <div>
                       <p className="text-sm font-semibold text-foreground">{item.patient_name}</p>
                       <p className="text-xs text-muted-foreground">
-                        自己申告 {item.unresolved_self_reports} / 課題 {item.open_issues} / タスク {item.open_tasks}
+                        自己申告 {item.unresolved_self_reports} / 課題 {item.open_issues} / タスク{' '}
+                        {item.open_tasks}
                       </p>
                     </div>
                     <Badge variant={item.level === 'high' ? 'destructive' : 'outline'}>
@@ -1223,9 +1220,7 @@ export function WorkflowDashboardContent() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">
-          運用レディネス
-        </h2>
+        <h2 className="mb-3 text-base font-semibold text-foreground">運用レディネス</h2>
         <div className="grid gap-3 md:grid-cols-3">
           <MetricCard
             icon={Clock}
@@ -1254,8 +1249,14 @@ export function WorkflowDashboardContent() {
             <CardContent className="space-y-3">
               <p className="text-sm font-semibold text-foreground">地域・紹介パイプライン</p>
               <div className="grid grid-cols-3 gap-2 text-sm">
-                <LoadPill label="活動フォロー" value={workflow?.regional_pipeline.follow_up_activities ?? 0} />
-                <LoadPill label="会議Action" value={workflow?.regional_pipeline.conference_action_items ?? 0} />
+                <LoadPill
+                  label="活動フォロー"
+                  value={workflow?.regional_pipeline.follow_up_activities ?? 0}
+                />
+                <LoadPill
+                  label="会議Action"
+                  value={workflow?.regional_pipeline.conference_action_items ?? 0}
+                />
                 <LoadPill label="導入案件" value={workflow?.regional_pipeline.intake_cases ?? 0} />
               </div>
             </CardContent>
@@ -1264,9 +1265,15 @@ export function WorkflowDashboardContent() {
             <CardContent className="space-y-3">
               <p className="text-sm font-semibold text-foreground">請求予防</p>
               <div className="grid grid-cols-3 gap-2 text-sm">
-                <LoadPill label="訪問前ブロック" value={workflow?.billing_prevention.previsit_blockers ?? 0} />
+                <LoadPill
+                  label="訪問前ブロック"
+                  value={workflow?.billing_prevention.previsit_blockers ?? 0}
+                />
                 <LoadPill label="レビュー" value={workflow?.billing_prevention.review_tasks ?? 0} />
-                <LoadPill label="報告滞留" value={workflow?.billing_prevention.report_delivery_backlog ?? 0} />
+                <LoadPill
+                  label="報告滞留"
+                  value={workflow?.billing_prevention.report_delivery_backlog ?? 0}
+                />
               </div>
             </CardContent>
           </Card>
@@ -1288,9 +1295,7 @@ export function WorkflowDashboardContent() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">
-          統合ワークベンチ
-        </h2>
+        <h2 className="mb-3 text-base font-semibold text-foreground">統合ワークベンチ</h2>
         {(workflow?.unified_workbench.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">未処理の項目はありません</p>
         ) : (
@@ -1340,9 +1345,7 @@ export function WorkflowDashboardContent() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">
-          是正ガイダンス
-        </h2>
+        <h2 className="mb-3 text-base font-semibold text-foreground">是正ガイダンス</h2>
         {(workflow?.remediation_guidance.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">即時対応が必要な前提不足はありません</p>
         ) : (
@@ -1377,9 +1380,7 @@ export function WorkflowDashboardContent() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">
-          例外コマンドセンター
-        </h2>
+        <h2 className="mb-3 text-base font-semibold text-foreground">例外コマンドセンター</h2>
         {(workflow?.exception_command_center.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">重大例外はありません</p>
         ) : (
@@ -1423,9 +1424,7 @@ export function WorkflowDashboardContent() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">
-          工程・アウトカム
-        </h2>
+        <h2 className="mb-3 text-base font-semibold text-foreground">工程・アウトカム</h2>
         <div className="grid gap-3 md:grid-cols-5">
           <MetricCard
             icon={ClipboardList}
@@ -1461,9 +1460,7 @@ export function WorkflowDashboardContent() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">
-          担当負荷
-        </h2>
+        <h2 className="mb-3 text-base font-semibold text-foreground">担当負荷</h2>
         {(workflow?.workload_metrics.pharmacists.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">表示可能な担当データがありません</p>
         ) : (
@@ -1473,9 +1470,7 @@ export function WorkflowDashboardContent() {
                 <CardContent className="space-y-3">
                   <div className="flex items-center gap-2">
                     <UserRound className="size-4 text-muted-foreground" aria-hidden="true" />
-                    <p className="text-sm font-semibold text-foreground">
-                      {item.pharmacist_name}
-                    </p>
+                    <p className="text-sm font-semibold text-foreground">{item.pharmacist_name}</p>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <LoadPill label="確定訪問" value={item.confirmed_visits} />
@@ -1492,9 +1487,7 @@ export function WorkflowDashboardContent() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">
-          施設モード可視化
-        </h2>
+        <h2 className="mb-3 text-base font-semibold text-foreground">施設モード可視化</h2>
         {(workflow?.facility_visibility.clusters.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">同日集約の候補はありません</p>
         ) : (
@@ -1506,13 +1499,12 @@ export function WorkflowDashboardContent() {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <Building2 className="size-4 text-muted-foreground" aria-hidden="true" />
-                        <p className="text-sm font-semibold text-foreground">
-                          {cluster.label}
-                        </p>
+                        <p className="text-sm font-semibold text-foreground">{cluster.label}</p>
                       </div>
                       <p className="text-xs text-muted-foreground">
                         {format(parseISO(cluster.date), 'M/d(E)', { locale: ja })} /{' '}
-                        {cluster.site_name ?? '拠点未設定'} / {cluster.pharmacist_name ?? '担当未設定'}
+                        {cluster.site_name ?? '拠点未設定'} /{' '}
+                        {cluster.pharmacist_name ?? '担当未設定'}
                       </p>
                     </div>
                     <Badge variant="outline">{cluster.patient_count}名</Badge>
@@ -1528,9 +1520,7 @@ export function WorkflowDashboardContent() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">
-          Intake から訪問への接続
-        </h2>
+        <h2 className="mb-3 text-base font-semibold text-foreground">Intake から訪問への接続</h2>
         {(workflow?.intake_linkage.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">未接続の処方受付はありません</p>
         ) : (
@@ -1540,9 +1530,7 @@ export function WorkflowDashboardContent() {
                 <CardContent className="space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-foreground">
-                        {item.patient_name}
-                      </p>
+                      <p className="text-sm font-semibold text-foreground">{item.patient_name}</p>
                       <p className="text-xs text-muted-foreground">{item.category}</p>
                     </div>
                     <a
@@ -1569,9 +1557,7 @@ export function WorkflowDashboardContent() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">
-          患者・家族セルフレポート
-        </h2>
+        <h2 className="mb-3 text-base font-semibold text-foreground">患者・家族セルフレポート</h2>
         {(workflow?.self_reports.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">triage 対象の申告はありません</p>
         ) : (
@@ -1581,9 +1567,7 @@ export function WorkflowDashboardContent() {
                 <CardContent className="space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-foreground">
-                        {report.patient_name}
-                      </p>
+                      <p className="text-sm font-semibold text-foreground">{report.patient_name}</p>
                       <p className="text-xs text-muted-foreground">
                         {report.reported_by_name}
                         {report.relation ? ` (${report.relation})` : ''}
@@ -1615,13 +1599,9 @@ export function WorkflowDashboardContent() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">
-          処方サイクル工程別件数
-        </h2>
+        <h2 className="mb-3 text-base font-semibold text-foreground">処方サイクル工程別件数</h2>
         {cycleStatusEntries.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            進行中のサイクルはありません
-          </p>
+          <p className="text-sm text-muted-foreground">進行中のサイクルはありません</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
             {cycleStatusEntries.map(([status, count]) => {
@@ -1656,44 +1636,87 @@ export function WorkflowDashboardContent() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">
-          連携ダッシュボード
-        </h2>
+        <h2 className="mb-3 text-base font-semibold text-foreground">連携ダッシュボード</h2>
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
-          <MetricCard icon={BellRing} label="返信待ち依頼" value={workflow?.communication_requests.pending ?? 0} caption="未完了" />
-          <MetricCard icon={Clock} label="期限超過" value={workflow?.communication_requests.overdue ?? 0} caption="依頼" />
-          <MetricCard icon={XCircle} label="送付失敗" value={workflow?.delivery.failures ?? 0} caption="送信" />
-          <MetricCard icon={AlertTriangle} label="例外未解消" value={workflow?.workflow_exceptions.open ?? 0} caption="workflow" />
-          <MetricCard icon={Route} label="確定ロック" value={workflow?.route_operations.locked_confirmed_visits ?? 0} caption="route" />
-          <MetricCard icon={UserRound} label="代替担当" value={workflow?.route_operations.fallback_assignments ?? 0} caption="handoff" />
+          <MetricCard
+            icon={BellRing}
+            label="返信待ち依頼"
+            value={workflow?.communication_requests.pending ?? 0}
+            caption="未完了"
+          />
+          <MetricCard
+            icon={Clock}
+            label="期限超過"
+            value={workflow?.communication_requests.overdue ?? 0}
+            caption="依頼"
+          />
+          <MetricCard
+            icon={XCircle}
+            label="送付失敗"
+            value={workflow?.delivery.failures ?? 0}
+            caption="送信"
+          />
+          <MetricCard
+            icon={AlertTriangle}
+            label="例外未解消"
+            value={workflow?.workflow_exceptions.open ?? 0}
+            caption="workflow"
+          />
+          <MetricCard
+            icon={Route}
+            label="確定ロック"
+            value={workflow?.route_operations.locked_confirmed_visits ?? 0}
+            caption="route"
+          />
+          <MetricCard
+            icon={UserRound}
+            label="代替担当"
+            value={workflow?.route_operations.fallback_assignments ?? 0}
+            caption="handoff"
+          />
         </div>
       </section>
 
       <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">
-          運用キュー
-        </h2>
+        <h2 className="mb-3 text-base font-semibold text-foreground">運用キュー</h2>
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-7">
-          <QueueCard label="訪問候補承認待ち" count={workflow?.operations_queue.visit_demands ?? 0} />
-          <QueueCard label="再架電待ち" count={workflow?.operations_queue.callback_followups ?? 0} />
-          <QueueCard label="計画見直し" count={workflow?.operations_queue.management_plan_reviews ?? 0} />
-          <QueueCard label="訪問準備未完了" count={workflow?.operations_queue.preparation_pending ?? 0} />
-          <QueueCard label="変更承認待ち" count={workflow?.route_operations.override_pending ?? 0} />
+          <QueueCard
+            label="訪問候補承認待ち"
+            count={workflow?.operations_queue.visit_demands ?? 0}
+          />
+          <QueueCard
+            label="再架電待ち"
+            count={workflow?.operations_queue.callback_followups ?? 0}
+          />
+          <QueueCard
+            label="計画見直し"
+            count={workflow?.operations_queue.management_plan_reviews ?? 0}
+          />
+          <QueueCard
+            label="訪問準備未完了"
+            count={workflow?.operations_queue.preparation_pending ?? 0}
+          />
+          <QueueCard
+            label="変更承認待ち"
+            count={workflow?.route_operations.override_pending ?? 0}
+          />
           <QueueCard label="住所座標確認" count={workflow?.operations_queue.geocode_reviews ?? 0} />
           <QueueCard label="Intake未接続" count={workflow?.operations_queue.intake_linkages ?? 0} />
-          <QueueCard label="セルフレポート" count={workflow?.operations_queue.self_reports_triage ?? 0} />
-          <QueueCard label="緊急候補" count={workflow?.route_operations.emergency_candidates ?? 0} />
+          <QueueCard
+            label="セルフレポート"
+            count={workflow?.operations_queue.self_reports_triage ?? 0}
+          />
+          <QueueCard
+            label="緊急候補"
+            count={workflow?.route_operations.emergency_candidates ?? 0}
+          />
         </div>
       </section>
 
       <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">
-          継続調剤 — 次回対応
-        </h2>
+        <h2 className="mb-3 text-base font-semibold text-foreground">継続調剤 — 次回対応</h2>
         {(workflow?.refill_upcoming.length ?? 0) === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            継続調剤の予定はありません
-          </p>
+          <p className="text-sm text-muted-foreground">継続調剤の予定はありません</p>
         ) : (
           <div className="overflow-hidden rounded-md border border-border">
             <table className="w-full text-sm">
@@ -1715,13 +1738,8 @@ export function WorkflowDashboardContent() {
               </thead>
               <tbody>
                 {workflow?.refill_upcoming.map((item, index) => (
-                  <tr
-                    key={item.id}
-                    className={index % 2 === 0 ? 'bg-background' : 'bg-muted/20'}
-                  >
-                    <td className="px-4 py-2 font-medium">
-                      {item.cycle.case_.patient.name}
-                    </td>
+                  <tr key={item.id} className={index % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
+                    <td className="px-4 py-2 font-medium">{item.cycle.case_.patient.name}</td>
                     <td className="px-4 py-2">
                       {item.upcoming_kind === 'refill' ? (
                         <div className="flex flex-wrap items-center gap-2">
@@ -1796,9 +1814,7 @@ function QueueCard({ label, count }: { label: string; count: number }) {
   return (
     <Card size="sm">
       <CardHeader>
-        <CardTitle className="text-sm font-medium text-muted-foreground">
-          {label}
-        </CardTitle>
+        <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
       </CardHeader>
       <CardContent>
         <span className={`text-3xl font-bold tabular-nums ${count > 0 ? 'text-orange-600' : ''}`}>

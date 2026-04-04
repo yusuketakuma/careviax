@@ -14,8 +14,12 @@ import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
-import { useKeyboardShortcuts, type ShortcutDefinition } from '@/components/features/keyboard/use-keyboard-shortcuts';
+import {
+  useKeyboardShortcuts,
+  type ShortcutDefinition,
+} from '@/components/features/keyboard/use-keyboard-shortcuts';
 import { cn } from '@/lib/utils';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 
 type QrDraftMedication = {
   name: string;
@@ -50,9 +54,7 @@ const columns: ColumnDef<QrDraftRow>[] = [
     id: 'scanned_by',
     header: 'スキャン者',
     cell: ({ row }) => (
-      <span className="text-sm">
-        {row.original.scanned_by_name ?? row.original.scanned_by}
-      </span>
+      <span className="text-sm">{row.original.scanned_by_name ?? row.original.scanned_by}</span>
     ),
   },
   {
@@ -151,7 +153,12 @@ function QrDraftList() {
   const shortcuts: ShortcutDefinition[] = useMemo(
     () => [
       { key: 'ArrowUp', handler: handleMoveUp, description: '前の行へ移動', scope: 'qr-drafts' },
-      { key: 'ArrowDown', handler: handleMoveDown, description: '次の行へ移動', scope: 'qr-drafts' },
+      {
+        key: 'ArrowDown',
+        handler: handleMoveDown,
+        description: '次の行へ移動',
+        scope: 'qr-drafts',
+      },
       { key: 'Enter', handler: handleSelect, description: '選択した行を開く', scope: 'qr-drafts' },
     ],
     [handleMoveUp, handleMoveDown, handleSelect],
@@ -178,8 +185,9 @@ function QrDraftList() {
 
 export default function QrDraftsPage() {
   return (
-    <div className="p-6">
+    <PageScaffold>
       <WorkflowPageHeader
+        eyebrow="QR Drafts"
         title="QRスキャン下書き"
         description="スタッフがスキャンしたQR処方箋の下書き一覧です"
         action={{
@@ -187,6 +195,14 @@ export default function QrDraftsPage() {
           label: 'QRスキャンへ',
           icon: <QrCode className="size-4" aria-hidden="true" />,
         }}
+        supportingContent={
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-foreground">確認順序</p>
+            <p className="text-sm text-muted-foreground">
+              未確認の下書きを先に見つけ、患者照合と受付確定へつなげます。
+            </p>
+          </div>
+        }
       >
         <PageShortcutLinks
           links={[
@@ -197,6 +213,6 @@ export default function QrDraftsPage() {
       </WorkflowPageHeader>
 
       <QrDraftList />
-    </div>
+    </PageScaffold>
   );
 }

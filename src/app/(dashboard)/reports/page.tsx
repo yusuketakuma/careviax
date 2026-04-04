@@ -7,25 +7,38 @@ import { ReportsTable } from './reports-table';
 import { TracingReportsTable } from './tracing-reports-table';
 import { Loading } from '@/components/ui/loading';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = { title: '報告書一覧 — CareViaX' };
 
 export default function ReportsPage() {
   return (
-    <div className="p-6">
+    <PageScaffold>
       <WorkflowPageHeader
+        eyebrow="Care Reports"
         title="報告書"
         description="まず一覧から対象報告を開き、必要に応じて関連依頼や外部連携へ進みます。送達分析は一覧の下段でまとめて確認できます。"
+        supportingContent={
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-foreground">確認順序</p>
+            <p className="text-sm text-muted-foreground">
+              送付待ち・返信待ちを上段で絞り込み、対象報告の本文確認後に送達分析で滞留を追います。
+            </p>
+          </div>
+        }
+        childrenLabel="関連導線"
       >
         <PageShortcutLinks links={getReportsOverviewShortcutLinks()} />
       </WorkflowPageHeader>
       <Suspense fallback={<Loading />}>
-        <div className="space-y-6">
-          <ReportsTable />
-          <TracingReportsTable />
-          <ReportDeliveryDashboard />
-        </div>
+        <ReportsTable />
       </Suspense>
-    </div>
+      <Suspense fallback={<Loading />}>
+        <TracingReportsTable />
+      </Suspense>
+      <Suspense fallback={<Loading />}>
+        <ReportDeliveryDashboard />
+      </Suspense>
+    </PageScaffold>
   );
 }

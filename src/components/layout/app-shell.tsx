@@ -250,7 +250,7 @@ export function AppShell({ children }: AppShellProps) {
             open={mobileSidebarOpen}
             onOpenChange={setSidebarOpen}
           >
-            <SheetContent side="left" className="w-56 p-0">
+            <SheetContent side="left" className="w-48 p-0">
               <Sidebar className="border-r-0" />
             </SheetContent>
           </Sheet>

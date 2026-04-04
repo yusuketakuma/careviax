@@ -7,22 +7,26 @@ import { WorkflowPageHeader } from './workflow-page-header';
 type WorkflowPageIntroProps = {
   backHref: string;
   backLabel: string;
+  eyebrow?: string;
   title: string;
   description: string;
   shortcuts?: readonly PageShortcutLink[];
   actions?: ReactNode;
   controls?: ReactNode;
+  supportingContent?: ReactNode;
   className?: string;
 };
 
 export function WorkflowPageIntro({
   backHref,
   backLabel,
+  eyebrow,
   title,
   description,
   shortcuts = [],
   actions,
   controls,
+  supportingContent,
   className,
 }: WorkflowPageIntroProps) {
   const rightRail =
@@ -35,11 +39,19 @@ export function WorkflowPageIntro({
     ) : null);
 
   return (
-    <div className={cn('mb-6 space-y-3', className)}>
-      <WorkflowBackLink href={backHref} label={backLabel} />
+    <div className={cn('space-y-4', className)}>
+      <div className="border-b border-border/70 pb-3">
+        <WorkflowBackLink href={backHref} label={backLabel} />
+      </div>
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0 flex-1">
-          <WorkflowPageHeader title={title} description={description} className="mb-0" />
+          <WorkflowPageHeader
+            eyebrow={eyebrow}
+            title={title}
+            description={description}
+            supportingContent={supportingContent}
+            className="mb-0"
+          />
         </div>
         {rightRail ? (
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">{rightRail}</div>

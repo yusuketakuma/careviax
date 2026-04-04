@@ -4,6 +4,7 @@ import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminSettingsShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Loading } from '@/components/ui/loading';
 import { SettingsContent } from './settings-content';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
   title: '管理設定 — CareViaX',
@@ -11,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function SettingsPage() {
   return (
-    <div className="p-6">
+    <PageScaffold>
       <AdminPageHeader
         title="管理設定"
         description="システム・法人・店舗・個人の4層設定"
@@ -21,6 +22,6 @@ export default function SettingsPage() {
       <Suspense fallback={<Loading />}>
         <SettingsContent />
       </Suspense>
-    </div>
+    </PageScaffold>
   );
 }

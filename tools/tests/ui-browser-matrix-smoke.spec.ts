@@ -5,6 +5,8 @@ const ROUTES = [
   { path: '/dashboard', readyTestId: 'dashboard-priority-actions' },
   { path: '/patients', readyTestId: 'patients-filter-panel' },
   { path: '/reports', readyTestId: 'reports-filter-panel' },
+  { path: '/workflow', readyTestId: 'workflow-control-center' },
+  { path: '/billing', readyTestId: 'billing-action-strip' },
 ] as const;
 
 test.beforeEach(async ({ context }) => {

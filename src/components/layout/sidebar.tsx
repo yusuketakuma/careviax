@@ -54,33 +54,58 @@ interface NavItem {
   excludePrefixes?: string[];
 }
 
-const mainNavItems: NavItem[] = [
-  { label: 'ホーム', href: '/dashboard', icon: Home },
-  { label: '患者', href: '/patients', icon: Users },
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+const mainNavGroups: NavGroup[] = [
   {
-    label: '処方受付',
-    href: '/prescriptions',
-    icon: ClipboardPlus,
-    activePrefixes: ['/prescriptions'],
+    label: '基本',
+    items: [
+      { label: 'ホーム', href: '/dashboard', icon: Home },
+      { label: '患者', href: '/patients', icon: Users },
+    ],
   },
-  { label: 'スケジュール', href: '/schedules', icon: Calendar },
-  { label: '調剤', href: '/dispensing', icon: Pill },
-  { label: '鑑査', href: '/auditing', icon: ClipboardCheck },
-  { label: 'セット', href: '/medication-sets', icon: Package },
   {
-    label: '訪問',
-    href: '/visits',
-    icon: Car,
-    excludePrefixes: ['/visits/handoffs'],
+    label: '処方・調剤',
+    items: [
+      {
+        label: '処方受付',
+        href: '/prescriptions',
+        icon: ClipboardPlus,
+        activePrefixes: ['/prescriptions'],
+      },
+      { label: '調剤', href: '/dispensing', icon: Pill },
+      { label: '鑑査', href: '/auditing', icon: ClipboardCheck },
+      { label: 'セット', href: '/medication-sets', icon: Package },
+      { label: 'QRスキャン', href: '/qr-scan', icon: QrCode },
+    ],
   },
-  { label: '報告', href: '/reports', icon: FileText },
-  { label: '多職種連携', href: '/conferences', icon: Users },
-  { label: 'QRスキャン', href: '/qr-scan', icon: QrCode },
   {
-    label: '申し送り',
-    href: '/handoff',
-    icon: ClipboardList,
-    activePrefixes: ['/handoff', '/visits/handoffs'],
+    label: '訪問・報告',
+    items: [
+      { label: 'スケジュール', href: '/schedules', icon: Calendar },
+      {
+        label: '訪問',
+        href: '/visits',
+        icon: Car,
+        excludePrefixes: ['/visits/handoffs'],
+      },
+      { label: '報告', href: '/reports', icon: FileText },
+      {
+        label: '申し送り',
+        href: '/handoff',
+        icon: ClipboardList,
+        activePrefixes: ['/handoff', '/visits/handoffs'],
+      },
+    ],
+  },
+  {
+    label: '連携',
+    items: [
+      { label: '多職種連携', href: '/conferences', icon: Users },
+    ],
   },
 ];
 
@@ -95,12 +120,7 @@ const workbenchNavItems: NavItem[] = [
   { label: '外部連携', href: '/external', icon: Stethoscope },
 ];
 
-interface AdminNavGroup {
-  label: string;
-  items: NavItem[];
-}
-
-const adminNavGroups: AdminNavGroup[] = [
+const adminNavGroups: NavGroup[] = [
   {
     label: '運営',
     items: [
@@ -177,7 +197,7 @@ function matchesPathPrefix(pathname: string, prefix: string) {
 
 function SidebarNavItem({ item, collapsed }: SidebarNavItemProps) {
   const pathname = usePathname();
-  const { setSidebarOpen } = useUIStore();
+  const { sidebarPinned, setSidebarOpen } = useUIStore();
   const activePrefixes = item.activePrefixes ?? [item.href];
   const isExcluded =
     item.excludePrefixes?.some((prefix) => matchesPathPrefix(pathname, prefix)) ?? false;
@@ -191,7 +211,7 @@ function SidebarNavItem({ item, collapsed }: SidebarNavItemProps) {
   return (
     <Link
       href={item.href}
-      onClick={() => setSidebarOpen(false)}
+      onClick={() => { if (!sidebarPinned) setSidebarOpen(false); }}
       data-testid={
         item.href === '/dashboard'
           ? 'sidebar-nav-home'
@@ -220,7 +240,7 @@ function SidebarAdminGroup({
   group,
   collapsed,
 }: {
-  group: AdminNavGroup;
+  group: NavGroup;
   collapsed: boolean;
 }) {
   const pathname = usePathname();
@@ -288,7 +308,7 @@ export function Sidebar({ className }: SidebarProps) {
     <aside
       className={cn(
         'flex h-full flex-col border-r border-border bg-sidebar transition-all duration-200',
-        sidebarOpen ? 'w-56' : 'w-16',
+        sidebarOpen ? 'w-48 xl:w-56' : 'w-16',
         className
       )}
       aria-label="メインナビゲーション"
@@ -345,13 +365,23 @@ export function Sidebar({ className }: SidebarProps) {
 
       {/* Main nav */}
       <nav className="flex-1 overflow-y-auto p-2" aria-label="ワークフローナビ">
-        <ul className="space-y-0.5" role="list">
-          {mainNavItems.map((item) => (
-            <li key={item.href}>
-              <SidebarNavItem item={item} collapsed={!sidebarOpen} />
-            </li>
-          ))}
-        </ul>
+        {mainNavGroups.map((group, groupIndex) => (
+          <div key={group.label}>
+            {groupIndex > 0 && <div className="my-1.5 border-t border-border/50" />}
+            {sidebarOpen && (
+              <p className="mb-0.5 px-3 pt-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+                {group.label}
+              </p>
+            )}
+            <ul className="space-y-0.5" role="list">
+              {group.items.map((item) => (
+                <li key={item.href}>
+                  <SidebarNavItem item={item} collapsed={!sidebarOpen} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
 
         <div className="my-2 border-t border-border" />
 
@@ -378,7 +408,7 @@ export function Sidebar({ className }: SidebarProps) {
         <ul className="space-y-0.5" role="list">
           {adminNavGroups.map((group) => (
             <SidebarAdminGroup
-              key={`${group.label}:${pathname}`}
+              key={group.label}
               group={group}
               collapsed={!sidebarOpen}
             />

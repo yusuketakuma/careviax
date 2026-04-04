@@ -104,6 +104,11 @@ CREATE POLICY tenant_isolation ON "DispenseAudit"
   USING (org_id = current_setting('app.current_org_id', true))
   WITH CHECK (org_id = current_setting('app.current_org_id', true));
 
+ALTER TABLE "DispensingDecision" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "DispensingDecision"
+  USING (org_id = current_setting('app.current_org_id', true))
+  WITH CHECK (org_id = current_setting('app.current_org_id', true));
+
 ALTER TABLE "SetPlan" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON "SetPlan"
   USING (org_id = current_setting('app.current_org_id', true))
@@ -304,6 +309,47 @@ CREATE POLICY tenant_isolation ON "SourceOfTruthMatrix"
   USING (org_id = current_setting('app.current_org_id', true))
   WITH CHECK (org_id = current_setting('app.current_org_id', true));
 
+-- ─── Patient MCS Domain ────────────────────────────────────────────────────
+
+ALTER TABLE "PatientMcsLink" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "PatientMcsLink"
+  USING (org_id = current_setting('app.current_org_id', true))
+  WITH CHECK (org_id = current_setting('app.current_org_id', true));
+
+ALTER TABLE "PatientMcsSummary" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "PatientMcsSummary"
+  USING (org_id = current_setting('app.current_org_id', true))
+  WITH CHECK (org_id = current_setting('app.current_org_id', true));
+
+ALTER TABLE "PatientMcsMessage" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "PatientMcsMessage"
+  USING (org_id = current_setting('app.current_org_id', true))
+  WITH CHECK (org_id = current_setting('app.current_org_id', true));
+
+-- ─── Prescription / Workflow Domain (additional) ───────────────────────────
+
+ALTER TABLE "CycleTransitionLog" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "CycleTransitionLog"
+  USING (org_id = current_setting('app.current_org_id', true))
+  WITH CHECK (org_id = current_setting('app.current_org_id', true));
+
+ALTER TABLE "SetBatchChangeLog" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "SetBatchChangeLog"
+  USING (org_id = current_setting('app.current_org_id', true))
+  WITH CHECK (org_id = current_setting('app.current_org_id', true));
+
+ALTER TABLE "QrScanDraft" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "QrScanDraft"
+  USING (org_id = current_setting('app.current_org_id', true))
+  WITH CHECK (org_id = current_setting('app.current_org_id', true));
+
+-- ─── Visit Domain (additional) ─────────────────────────────────────────────
+
+ALTER TABLE "VisitScheduleProposal" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "VisitScheduleProposal"
+  USING (org_id = current_setting('app.current_org_id', true))
+  WITH CHECK (org_id = current_setting('app.current_org_id', true));
+
 -- ─── Drug Domain (org-scoped only) ─────────────────────────────────────────
 -- Note: DrugMaster, DrugPackageInsert, DrugInteraction, DrugAlertRule,
 -- GenericDrugMapping, DrugMasterImportLog are global (no org_id) = NO RLS
@@ -338,6 +384,7 @@ ALTER TABLE "InquiryRecord" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "DispenseTask" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "DispenseResult" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "DispenseAudit" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "DispensingDecision" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "SetPlan" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "SetBatch" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "SetAudit" FORCE ROW LEVEL SECURITY;
@@ -375,3 +422,10 @@ ALTER TABLE "Template" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "Setting" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "SourceOfTruthMatrix" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PharmacyDrugStock" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "PatientMcsLink" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "PatientMcsSummary" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "PatientMcsMessage" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "CycleTransitionLog" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "SetBatchChangeLog" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "QrScanDraft" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "VisitScheduleProposal" FORCE ROW LEVEL SECURITY;

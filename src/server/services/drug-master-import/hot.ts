@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx';
 import { unzipSync } from 'fflate';
 import {
   decodeTextBuffer,
@@ -11,6 +10,7 @@ import {
   splitDelimitedLine,
   withImportLog,
 } from './shared';
+import { readWorkbookRows } from './excel';
 
 export const MEDIS_MASTER_INDEX_PAGE_URL =
   'https://www.medis.or.jp/4_hyojyun/medis-master/riyou/index.html';
@@ -49,16 +49,6 @@ function detectHeaderIndex(headerMap: Map<string, number>, patterns: RegExp[]) {
     }
   }
   return null;
-}
-
-function parseWorkbookRows(buffer: Buffer) {
-  const workbook = XLSX.read(buffer, { type: 'buffer', raw: false });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  return XLSX.utils.sheet_to_json<(string | null)[]>(sheet, {
-    header: 1,
-    defval: null,
-    raw: false,
-  });
 }
 
 function parseTextRows(buffer: Buffer) {
@@ -119,9 +109,12 @@ export async function parseHotMasterFile(options: ImportHotMasterOptions = {}) {
     rows = parseTextRows(buffer);
   } else {
     try {
-      rows = parseWorkbookRows(buffer);
-    } catch {
-      if (isZipBuffer(buffer) && !String(fileUrl).toLowerCase().endsWith('.xlsx')) {
+      rows = await readWorkbookRows(buffer);
+    } catch (error) {
+      if (String(fileUrl).toLowerCase().endsWith('.xlsx')) {
+        throw error;
+      }
+      if (isZipBuffer(buffer)) {
         const entries = unzipSync(new Uint8Array(buffer));
         const entry = Object.entries(entries).find(([name]) =>
           /\.(csv|txt|tsv)$/i.test(name)

@@ -44,6 +44,7 @@ import {
   escalationNotifyRoles,
   escalationTriggerTypes,
 } from '@/lib/validations/escalation-rule';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 
 type NotificationRule = {
   id: string;
@@ -66,7 +67,7 @@ type EscalationRule = {
     status_in?: string[];
   } | null;
   action: (typeof escalationActionTypes)[number];
-  notify_role: ((typeof escalationNotifyRoles)[number]) | null;
+  notify_role: (typeof escalationNotifyRoles)[number] | null;
   is_active: boolean;
   created_at: string;
 };
@@ -179,7 +180,7 @@ const NOTIFICATION_CHANNEL_OPTIONS = [
 
 type SupportedNotificationChannel = (typeof NOTIFICATION_CHANNEL_OPTIONS)[number]['value'];
 const NOTIFICATION_CHANNEL_LABELS = Object.fromEntries(
-  NOTIFICATION_CHANNEL_OPTIONS.map((channel) => [channel.value, channel.label])
+  NOTIFICATION_CHANNEL_OPTIONS.map((channel) => [channel.value, channel.label]),
 ) as Record<SupportedNotificationChannel, string>;
 
 const ESCALATION_TRIGGER_OPTIONS: Array<{
@@ -245,12 +246,13 @@ export function NotificationSettingsContent() {
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(
-    'unsupported'
+    'unsupported',
   );
   const [browserNotificationsEnabled, setBrowserNotificationsEnabled] = useState(false);
   const [newEscalationOpen, setNewEscalationOpen] = useState(false);
-  const [newEscalationTrigger, setNewEscalationTrigger] =
-    useState<EscalationRule['trigger_type']>('communication_response_overdue');
+  const [newEscalationTrigger, setNewEscalationTrigger] = useState<EscalationRule['trigger_type']>(
+    'communication_response_overdue',
+  );
   const [newEscalationAction, setNewEscalationAction] =
     useState<EscalationRule['action']>('in_app_notification');
   const [newEscalationRole, setNewEscalationRole] =
@@ -291,7 +293,9 @@ export function NotificationSettingsContent() {
       const payload = (await response.json()) as { data?: EscalationRule[] };
       setEscalationRules(payload.data ?? []);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'エスカレーションルールの取得に失敗しました');
+      toast.error(
+        error instanceof Error ? error.message : 'エスカレーションルールの取得に失敗しました',
+      );
     }
   }, [orgId]);
 
@@ -324,8 +328,7 @@ export function NotificationSettingsContent() {
           rules
             .filter(
               (candidate) =>
-                candidate.event_type === config.eventType &&
-                candidate.channel === channel.value
+                candidate.event_type === config.eventType && candidate.channel === channel.value,
             )
             .sort((left, right) => right.created_at.localeCompare(left.created_at))[0] ?? null;
         return channelAcc;
@@ -336,11 +339,7 @@ export function NotificationSettingsContent() {
   }, [rules]);
 
   const toggleEvent = useCallback(
-    async (
-      eventType: string,
-      channel: SupportedNotificationChannel,
-      enabled: boolean
-    ) => {
+    async (eventType: string, channel: SupportedNotificationChannel, enabled: boolean) => {
       if (!orgId) return;
       const existing = rulesByEvent[eventType]?.[channel] ?? null;
       const savingId = `event:${eventType}:${channel}`;
@@ -362,9 +361,9 @@ export function NotificationSettingsContent() {
                     channel,
                     recipients: {},
                     enabled,
-                  }
+                  },
             ),
-          }
+          },
         );
         if (!response.ok) {
           throw new Error('通知設定の保存に失敗しました');
@@ -380,7 +379,7 @@ export function NotificationSettingsContent() {
         });
         const channelLabel = NOTIFICATION_CHANNEL_LABELS[channel];
         toast.success(
-          enabled ? `${channelLabel}通知を有効化しました` : `${channelLabel}通知を停止しました`
+          enabled ? `${channelLabel}通知を有効化しました` : `${channelLabel}通知を停止しました`,
         );
       } catch (error) {
         toast.error(error instanceof Error ? error.message : '通知設定の保存に失敗しました');
@@ -388,7 +387,7 @@ export function NotificationSettingsContent() {
         setSavingKey(null);
       }
     },
-    [orgId, rulesByEvent]
+    [orgId, rulesByEvent],
   );
 
   const enableBrowserNotifications = useCallback(async () => {
@@ -403,9 +402,7 @@ export function NotificationSettingsContent() {
     }
 
     const nextPermission =
-      Notification.permission === 'granted'
-        ? 'granted'
-        : await Notification.requestPermission();
+      Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
     setPermission(nextPermission);
 
     if (nextPermission !== 'granted') {
@@ -445,17 +442,21 @@ export function NotificationSettingsContent() {
         const payload = (await response.json()) as { data?: EscalationRule };
         if (payload.data) {
           setEscalationRules((prev) =>
-            prev.map((item) => (item.id === rule.id ? payload.data! : item))
+            prev.map((item) => (item.id === rule.id ? payload.data! : item)),
           );
         }
-        toast.success(isActive ? 'エスカレーションを有効化しました' : 'エスカレーションを停止しました');
+        toast.success(
+          isActive ? 'エスカレーションを有効化しました' : 'エスカレーションを停止しました',
+        );
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'エスカレーションルールの保存に失敗しました');
+        toast.error(
+          error instanceof Error ? error.message : 'エスカレーションルールの保存に失敗しました',
+        );
       } finally {
         setSavingKey(null);
       }
     },
-    [orgId]
+    [orgId],
   );
 
   const createEscalationRule = useCallback(async () => {
@@ -496,7 +497,9 @@ export function NotificationSettingsContent() {
       setNewEscalationThresholdHours('24');
       toast.success('エスカレーションルールを追加しました');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'エスカレーションルールの作成に失敗しました');
+      toast.error(
+        error instanceof Error ? error.message : 'エスカレーションルールの作成に失敗しました',
+      );
     } finally {
       setSavingKey(null);
     }
@@ -523,16 +526,18 @@ export function NotificationSettingsContent() {
         setEscalationRules((prev) => prev.filter((rule) => rule.id !== ruleId));
         toast.success('エスカレーションルールを削除しました');
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'エスカレーションルールの削除に失敗しました');
+        toast.error(
+          error instanceof Error ? error.message : 'エスカレーションルールの削除に失敗しました',
+        );
       } finally {
         setSavingKey(null);
       }
     },
-    [orgId]
+    [orgId],
   );
 
   return (
-    <div className="space-y-6 p-6">
+    <PageScaffold>
       <AdminPageHeader
         title="通知設定"
         description="イベントごとのアプリ内通知、ブラウザ通知、エスカレーション条件を管理します。"
@@ -543,7 +548,8 @@ export function NotificationSettingsContent() {
         <ShieldAlert className="size-4" aria-hidden="true" />
         <AlertTitle>現在の適用範囲</AlertTitle>
         <AlertDescription>
-          ここでの ON/OFF は `in_app / sms / line` の各チャネルに適用されます。ブラウザ通知は `in_app` 通知をバックグラウンド受信したときに表示されます。
+          ここでの ON/OFF は `in_app / sms / line` の各チャネルに適用されます。ブラウザ通知は
+          `in_app` 通知をバックグラウンド受信したときに表示されます。
         </AlertDescription>
       </Alert>
 
@@ -553,9 +559,7 @@ export function NotificationSettingsContent() {
             <BellRing className="size-4" aria-hidden="true" />
             ブラウザ通知
           </CardTitle>
-          <CardDescription>
-            PWA/ブラウザ権限を使ってデスクトップ通知を表示します。
-          </CardDescription>
+          <CardDescription>PWA/ブラウザ権限を使ってデスクトップ通知を表示します。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -596,7 +600,8 @@ export function NotificationSettingsContent() {
             イベント通知ルール
           </CardTitle>
           <CardDescription>
-            `in_app` は未設定でも既定で配信されます。`sms` と `line` は明示的に ON にしたイベントだけ配信されます。
+            `in_app` は未設定でも既定で配信されます。`sms` と `line` は明示的に ON
+            にしたイベントだけ配信されます。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -621,17 +626,16 @@ export function NotificationSettingsContent() {
                         {badge.label}
                       </Badge>
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      {config.description}
-                    </p>
-                    <p className="font-mono text-xs text-muted-foreground/70">
-                      {config.eventType}
-                    </p>
+                    <p className="text-sm text-muted-foreground">{config.description}</p>
+                    <p className="font-mono text-xs text-muted-foreground/70">{config.eventType}</p>
                   </div>
                   <div className="grid gap-2 sm:min-w-80">
                     {NOTIFICATION_CHANNEL_OPTIONS.map((channel) => {
                       const rule = rulesByEvent[config.eventType]?.[channel.value] ?? null;
-                      const enabled = channel.value === 'in_app' ? rule?.enabled ?? true : rule?.enabled ?? false;
+                      const enabled =
+                        channel.value === 'in_app'
+                          ? (rule?.enabled ?? true)
+                          : (rule?.enabled ?? false);
                       const isSaving = savingKey === `event:${config.eventType}:${channel.value}`;
                       const Icon = channel.icon;
 
@@ -645,8 +649,12 @@ export function NotificationSettingsContent() {
                               <Icon className="size-3.5 text-muted-foreground" aria-hidden="true" />
                             </span>
                             <span>
-                              <span className="block font-medium text-foreground">{channel.label}</span>
-                              <span className="block text-xs text-muted-foreground">{channel.description}</span>
+                              <span className="block font-medium text-foreground">
+                                {channel.label}
+                              </span>
+                              <span className="block text-xs text-muted-foreground">
+                                {channel.description}
+                              </span>
                             </span>
                           </span>
                           <span className="flex items-center gap-3">
@@ -692,7 +700,9 @@ export function NotificationSettingsContent() {
         </CardHeader>
         <CardContent className="space-y-3">
           {escalationRules.length === 0 ? (
-            <p className="text-sm text-muted-foreground">エスカレーションルールはまだありません。</p>
+            <p className="text-sm text-muted-foreground">
+              エスカレーションルールはまだありません。
+            </p>
           ) : (
             escalationRules.map((rule) => {
               const trigger =
@@ -762,7 +772,9 @@ export function NotificationSettingsContent() {
               <Label htmlFor="escalation-trigger">トリガー</Label>
               <Select
                 value={newEscalationTrigger}
-                onValueChange={(value) => setNewEscalationTrigger(value as EscalationRule['trigger_type'])}
+                onValueChange={(value) =>
+                  setNewEscalationTrigger(value as EscalationRule['trigger_type'])
+                }
               >
                 <SelectTrigger id="escalation-trigger" className="w-full">
                   <SelectValue />
@@ -781,7 +793,9 @@ export function NotificationSettingsContent() {
                 <Label htmlFor="escalation-action">アクション</Label>
                 <Select
                   value={newEscalationAction}
-                  onValueChange={(value) => setNewEscalationAction(value as EscalationRule['action'])}
+                  onValueChange={(value) =>
+                    setNewEscalationAction(value as EscalationRule['action'])
+                  }
                 >
                   <SelectTrigger id="escalation-action" className="w-full">
                     <SelectValue />
@@ -799,7 +813,9 @@ export function NotificationSettingsContent() {
                 <Label htmlFor="escalation-role">通知先</Label>
                 <Select
                   value={newEscalationRole}
-                  onValueChange={(value) => setNewEscalationRole(value as NonNullable<EscalationRule['notify_role']>)}
+                  onValueChange={(value) =>
+                    setNewEscalationRole(value as NonNullable<EscalationRule['notify_role']>)
+                  }
                 >
                   <SelectTrigger id="escalation-role" className="w-full">
                     <SelectValue />
@@ -838,6 +854,6 @@ export function NotificationSettingsContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageScaffold>
   );
 }
