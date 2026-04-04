@@ -59,25 +59,9 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Create Cognito user (invite)
-  let cognitoSub: string;
-  let cognitoUsername: string;
-  try {
-    const cognitoUser = await inviteCognitoUser({
-      email: data.admin_email,
-      name: data.admin_name,
-    });
-    cognitoSub = cognitoUser.sub;
-    cognitoUsername = cognitoUser.username;
-  } catch (cause) {
-    const message = cause instanceof Error ? cause.message : String(cause);
-    if (message.includes('UsernameExistsException')) {
-      return conflict('指定した管理者メールアドレスは既に登録されています');
-    }
-    return error('COGNITO_CREATE_FAILED', `Cognito ユーザー作成に失敗しました: ${message}`, 502);
-  }
-
-  // Transactionally create org, site, user, membership
+  // Step 1: Run DB transaction first to create org, site, user (pending_cognito), membership.
+  // Cognito user creation happens AFTER the DB transaction succeeds to avoid
+  // Cognito state existing without a corresponding DB record.
   const result = await prisma.$transaction(async (tx) => {
     const org = await tx.organization.create({
       data: {
@@ -103,11 +87,11 @@ export async function POST(req: NextRequest) {
     const user = await tx.user.create({
       data: {
         org_id: org.id,
-        cognito_sub: cognitoSub,
-        cognito_username: cognitoUsername,
+        // Temporary placeholder; will be updated after Cognito user is created
+        cognito_sub: `pending_${org.id}`,
         email: data.admin_email,
         name: data.admin_name,
-        account_status: 'invited',
+        account_status: 'pending_cognito' as const,
         invited_at: new Date(),
         invited_by: ctx.userId,
       },
@@ -129,6 +113,41 @@ export async function POST(req: NextRequest) {
     });
 
     return { org, site, user, membership };
+  });
+
+  // Step 2: Create Cognito user after DB transaction succeeded.
+  // If Cognito fails, mark the user as cognito_failed (don't rollback org).
+  let cognitoSub: string;
+  let cognitoUsername: string;
+  try {
+    const cognitoUser = await inviteCognitoUser({
+      email: data.admin_email,
+      name: data.admin_name,
+    });
+    cognitoSub = cognitoUser.sub;
+    cognitoUsername = cognitoUser.username;
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    // Mark user as cognito_failed so admins can retry without org rollback
+    await prisma.user.update({
+      where: { id: result.user.id },
+      data: { account_status: 'cognito_failed' as const },
+    });
+    console.error(`[organizations] Cognito user creation failed for user ${result.user.id}:`, cause);
+    if (message.includes('UsernameExistsException')) {
+      return conflict('指定した管理者メールアドレスは既に登録されています');
+    }
+    return error('COGNITO_CREATE_FAILED', `Cognito ユーザー作成に失敗しました: ${message}`, 502);
+  }
+
+  // Step 3: Update user record with Cognito sub and set status to invited
+  await prisma.user.update({
+    where: { id: result.user.id },
+    data: {
+      cognito_sub: cognitoSub,
+      cognito_username: cognitoUsername,
+      account_status: 'invited',
+    },
   });
 
   return success(

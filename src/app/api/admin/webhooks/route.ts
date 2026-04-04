@@ -1,25 +1,100 @@
 import { NextRequest } from 'next/server';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { NextResponse } from 'next/server';
-import type { WebhookEventType } from '@/server/services/outbound-webhook';
+import { withOrgContext } from '@/lib/db/rls';
+import { z } from 'zod';
+import { isAllowedWebhookUrl, type WebhookEventType } from '@/server/services/outbound-webhook';
+import { randomBytes } from 'node:crypto';
 
-// NOTE: Webhook registration is planned but not yet implemented.
-// The persistent store (DB table) and delivery infrastructure are not in place.
-// These endpoints return 501 until the feature is fully implemented.
+const WEBHOOK_EVENT_TYPES: WebhookEventType[] = [
+  'prescription.created',
+  'prescription.dispensed',
+  'patient.created',
+  'billing.exported',
+  'qualification.checked',
+];
 
-const NOT_IMPLEMENTED_MESSAGE =
-  'Webhook 登録機能は現在開発中です。将来のリリースで利用可能になります。';
+const createWebhookSchema = z.object({
+  url: z.string().url('有効なURLを入力してください'),
+  events: z
+    .array(z.enum(WEBHOOK_EVENT_TYPES as [WebhookEventType, ...WebhookEventType[]]))
+    .min(1, 'イベントを1件以上選択してください'),
+});
+
+function generateWebhookSecret(): string {
+  return randomBytes(32).toString('hex');
+}
 
 export const GET = withAuth(
-  async (_req: AuthenticatedRequest) => {
-    return NextResponse.json({ error: NOT_IMPLEMENTED_MESSAGE }, { status: 501 });
+  async (req: AuthenticatedRequest) => {
+    const registrations = await withOrgContext(req.orgId, async (tx) => {
+      return tx.webhookRegistration.findMany({
+        where: { org_id: req.orgId },
+        orderBy: { created_at: 'desc' },
+        select: {
+          id: true,
+          url: true,
+          events: true,
+          is_active: true,
+          created_at: true,
+          updated_at: true,
+          // Exclude secret from list response
+        },
+      });
+    });
+
+    return NextResponse.json({ data: registrations });
   },
   { permission: 'canAdmin', message: 'Webhook 設定の閲覧権限がありません' }
 );
 
 export const POST = withAuth(
-  async (_req: AuthenticatedRequest) => {
-    return NextResponse.json({ error: NOT_IMPLEMENTED_MESSAGE }, { status: 501 });
+  async (req: AuthenticatedRequest) => {
+    const body = await req.json().catch(() => null);
+    if (!body) {
+      return NextResponse.json({ error: 'リクエストボディが不正です' }, { status: 400 });
+    }
+
+    const parsed = createWebhookSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: '入力値が不正です', fieldErrors: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
+
+    const { url, events } = parsed.data;
+
+    if (!isAllowedWebhookUrl(url)) {
+      return NextResponse.json(
+        { error: 'WebhookのURLはHTTPS公開エンドポイントである必要があります' },
+        { status: 400 }
+      );
+    }
+
+    const secret = generateWebhookSecret();
+
+    const registration = await withOrgContext(req.orgId, async (tx) => {
+      return tx.webhookRegistration.create({
+        data: {
+          org_id: req.orgId,
+          url,
+          secret,
+          events,
+        },
+        select: {
+          id: true,
+          url: true,
+          events: true,
+          is_active: true,
+          created_at: true,
+          // Return secret once at creation so caller can store it
+          secret: true,
+        },
+      });
+    });
+
+    return NextResponse.json({ data: registration }, { status: 201 });
   },
   { permission: 'canAdmin', message: 'Webhook 登録権限がありません' }
 );

@@ -42,10 +42,12 @@ enum HolidayType {
 }
 
 enum UserAccountStatus {
+  pending_cognito
   invited
   active
   suspended
   retired
+  cognito_failed
 }
 
 model Organization {
@@ -64,6 +66,7 @@ model Organization {
   external_professionals ExternalProfessional[]
   prescriber_institutions PrescriberInstitution[]
   service_areas         ServiceArea[]
+  webhook_registrations WebhookRegistration[]
 
   @@index([name])
 }

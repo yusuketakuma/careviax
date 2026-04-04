@@ -15,6 +15,14 @@ vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
 }));
 
+vi.mock('@/lib/db/client', () => ({
+  prisma: {},
+}));
+
+vi.mock('@/server/services/export-audit', () => ({
+  recordDataExportAudit: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('@/server/services/pdf-bulk-export', () => ({
   MedicationHistoryBulkExportError: class MedicationHistoryBulkExportError extends Error {
     constructor(

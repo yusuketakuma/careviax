@@ -10,6 +10,9 @@ const IDB_KEY_RECORD_ID = 'offline-enc-key-v2';
 // Salt stored in localStorage (salt is not secret; only raw key bytes must be protected)
 const OFFLINE_SALT_STORAGE_KEY = 'careviax.offline.salt.v2';
 
+// OWASP recommends 600,000 iterations for PBKDF2-SHA-256 (2023 guidance).
+// 100,000 is chosen here as a practical balance for browser performance on
+// low-end mobile devices used in home-visit scenarios.
 const PBKDF2_ITERATIONS = 100_000;
 
 function getOfflineCryptoApi() {
@@ -83,11 +86,14 @@ function getOrCreateSalt(cryptoApi: Crypto): Uint8Array {
   return salt;
 }
 
-async function deriveKeyFromUserId(userId: string, salt: Uint8Array, cryptoApi: Crypto): Promise<CryptoKey> {
+async function deriveKeyFromUserId(userId: string, salt: Uint8Array, cryptoApi: Crypto, sessionSecret?: string): Promise<CryptoKey> {
   const enc = new TextEncoder();
+  // If a server-issued sessionSecret is provided, combine it with userId for
+  // higher entropy key material. Falls back to userId alone for backward compat.
+  const keyInput = sessionSecret ? `${userId}:${sessionSecret}` : userId;
   const keyMaterial = await cryptoApi.subtle.importKey(
     'raw',
-    enc.encode(userId),
+    enc.encode(keyInput),
     'PBKDF2',
     false,
     ['deriveKey']
@@ -105,13 +111,16 @@ async function deriveKeyFromUserId(userId: string, salt: Uint8Array, cryptoApi: 
  * Initialize the offline encryption key from the user's identity.
  * Must be called after login before any offline PHI can be encrypted/decrypted.
  * The derived CryptoKey is stored in IndexedDB with extractable:false.
+ *
+ * @param userId - Cognito user ID (required)
+ * @param sessionSecret - Optional server-issued secret to increase key entropy
  */
-export async function initOfflineEncryptionKey(userId: string): Promise<void> {
+export async function initOfflineEncryptionKey(userId: string, sessionSecret?: string): Promise<void> {
   const cryptoApi = getOfflineCryptoApi();
   if (!cryptoApi || typeof window === 'undefined') return;
   try {
     const salt = getOrCreateSalt(cryptoApi);
-    const key = await deriveKeyFromUserId(userId, salt, cryptoApi);
+    const key = await deriveKeyFromUserId(userId, salt, cryptoApi, sessionSecret);
     await putKeyInIndexedDB(key);
   } catch {
     // Non-fatal: offline encryption degrades gracefully if init fails

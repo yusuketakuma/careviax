@@ -310,3 +310,18 @@ model PushSubscription {
   @@index([org_id])
   @@index([user_id])
 }
+
+model WebhookRegistration {
+  id         String   @id @default(cuid())
+  org_id     String
+  url        String
+  secret     String
+  events     String[]
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  organization Organization @relation(fields: [org_id], references: [id])
+
+  @@index([org_id])
+}

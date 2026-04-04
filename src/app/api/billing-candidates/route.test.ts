@@ -89,6 +89,9 @@ describe('/api/billing-candidates', () => {
       billingCandidate: {
         findMany: billingCandidateFindManyMock,
       },
+      patient: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
     }));
   });
 
@@ -132,11 +135,13 @@ describe('/api/billing-candidates', () => {
     expect(resolvedResponse.status).toBe(200);
     expect(visitRecordFindManyMock).toHaveBeenCalledOnce();
     expect(upsertBillingEvidenceForVisitMock).toHaveBeenCalledTimes(2);
-    expect(generateBillingCandidatesForMonthMock).toHaveBeenCalledWith({
-      billingCandidate: {
-        findMany: billingCandidateFindManyMock,
-      },
-    }, {
+    expect(generateBillingCandidatesForMonthMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        billingCandidate: {
+          findMany: billingCandidateFindManyMock,
+        },
+      }),
+      {
       orgId: 'org_1',
       billingMonth: new Date(2026, 2, 1),
     });

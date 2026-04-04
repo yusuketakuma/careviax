@@ -1030,6 +1030,7 @@ describe('workflow full-cycle integration', () => {
           patient_id: 'patient_1',
           visit_date: '2026-03-28',
           outcome_status: 'completed',
+          soap_subjective: '患者の状態を確認した',
         },
         { 'x-org-id': 'org_1' }
       )

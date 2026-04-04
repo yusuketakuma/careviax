@@ -35,6 +35,10 @@ vi.mock('./patient-grid-section', () => ({
   PatientGridSection: () => <div>patient-grid-section</div>,
 }));
 
+vi.mock('./billing-kpi-section', () => ({
+  BillingKpiSection: () => <div>billing-kpi-section</div>,
+}));
+
 describe('DashboardContent', () => {
   it('groups the dashboard into daily operations, workflow navigation, and patient monitoring', () => {
     render(<DashboardContent />);

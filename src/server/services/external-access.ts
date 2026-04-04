@@ -51,7 +51,9 @@ export class MissingExternalAccessSecretError extends Error {
 }
 
 function getExternalAccessSecret() {
-  const secret = process.env.EXTERNAL_ACCESS_TOKEN_SECRET;
+  // EXTERNAL_ACCESS_TOKEN_SECRET is preferred; fall back to NEXTAUTH_SECRET for
+  // environments that share the NextAuth secret (e.g. test/staging).
+  const secret = process.env.EXTERNAL_ACCESS_TOKEN_SECRET ?? process.env.NEXTAUTH_SECRET;
   if (!secret) {
     throw new MissingExternalAccessSecretError();
   }
