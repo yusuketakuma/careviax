@@ -1,0 +1,227 @@
+import type { Prisma } from '@prisma/client';
+import {
+  buildBillingCandidateSpecs,
+  ensureHomeCareBillingSsot,
+} from '../home-care-billing-ssot';
+import type { Tx } from './core';
+import {
+  startOfMonth,
+  readBillingCandidateWorkflowState,
+  writeBillingCandidateWorkflowState,
+  mergeCandidateSourceSnapshot,
+} from './core';
+import { generateInformationProvisionCandidates } from './information-provision';
+import { generateHomeDuplicateInteractionCandidates } from './duplicate-interaction';
+
+export async function generateBillingCandidatesForMonth(
+  tx: Tx,
+  args: { orgId: string; billingMonth: Date }
+) {
+  await ensureHomeCareBillingSsot(tx, args.orgId, { asOfDate: args.billingMonth });
+  const monthStart = startOfMonth(args.billingMonth);
+  const evidences = await tx.billingEvidence.findMany({
+    where: {
+      org_id: args.orgId,
+      billing_month: monthStart,
+    },
+    orderBy: [{ created_at: 'asc' }],
+  });
+
+  const created = [];
+  const rules = await tx.billingRule.findMany({
+    where: {
+      org_id: args.orgId,
+      billing_scope: 'home_care_ssot',
+      is_active: true,
+      OR: [{ effective_from: null }, { effective_from: { lte: monthStart } }],
+      AND: [{ OR: [{ effective_to: null }, { effective_to: { gte: monthStart } }] }],
+    },
+    select: {
+      id: true,
+      ssot_key: true,
+    },
+  });
+  const ruleIdByKey = new Map(
+    rules
+      .filter((rule) => rule.ssot_key)
+      .map((rule) => [rule.ssot_key as string, rule.id])
+  );
+  const existingCandidates = await tx.billingCandidate.findMany({
+    where: {
+      org_id: args.orgId,
+      billing_month: monthStart,
+    },
+    select: {
+      dedupe_key: true,
+      source_snapshot: true,
+    },
+  });
+  const existingByKey = new Map(
+    existingCandidates
+      .filter((candidate) => candidate.dedupe_key)
+      .map((candidate) => [candidate.dedupe_key as string, candidate])
+  );
+  const blockedEvidenceIds: string[] = [];
+  const claimableEvidenceByPatient = new Map<string, { any: number; care: number }>();
+
+  for (const evidence of evidences) {
+    if (!evidence.patient_id || !evidence.claimable) continue;
+    const current = claimableEvidenceByPatient.get(evidence.patient_id) ?? { any: 0, care: 0 };
+    current.any += 1;
+    if (evidence.billing_service_type === 'care_home_management') {
+      current.care += 1;
+    }
+    claimableEvidenceByPatient.set(evidence.patient_id, current);
+  }
+
+  for (const evidence of evidences) {
+    if (!evidence.patient_id) continue;
+    if (!evidence.claimable) {
+      blockedEvidenceIds.push(evidence.id);
+      continue;
+    }
+
+    const specs = await buildBillingCandidateSpecs(tx, {
+      orgId: args.orgId,
+      asOfDate: monthStart,
+      payerBasis: evidence.payer_basis,
+      serviceType:
+        evidence.billing_service_type === 'care_home_management'
+          ? 'care_home_management'
+          : 'medical_home_visit',
+      providerScope:
+        evidence.provider_scope === 'hospital_clinic' ? 'hospital_clinic' : 'pharmacy',
+      buildingPatientCount: evidence.building_patient_count ?? 1,
+      monthlyVisitCount: evidence.monthly_count_snapshot ?? 0,
+      weeklyVisitCount: evidence.weekly_count_snapshot ?? 0,
+      claimable: evidence.claimable,
+      exclusionReason: evidence.exclusion_reason,
+      specialCapEligible: false,
+      onlineEligible: false,
+      regionAddOnEligible: [],
+    });
+
+    for (const spec of specs) {
+      const dedupeKey = `${monthStart.toISOString().slice(0, 10)}:${evidence.id}:${spec.code}`;
+      const existing = existingByKey.get(dedupeKey);
+      const existingWorkflow = readBillingCandidateWorkflowState(existing?.source_snapshot);
+      const preservedStatus =
+        existingWorkflow.closed_at
+          ? 'exported'
+          : existingWorkflow.resolution_state === 'confirmed'
+            ? 'confirmed'
+            : existingWorkflow.resolution_state === 'excluded'
+              ? 'excluded'
+              : spec.status;
+      const preservedExclusionReason =
+        preservedStatus === 'excluded' && existingWorkflow.note
+          ? existingWorkflow.note
+          : spec.exclusionReason;
+
+      const candidate = await tx.billingCandidate.upsert({
+        where: {
+          org_id_dedupe_key: {
+            org_id: args.orgId,
+            dedupe_key: dedupeKey,
+          },
+        },
+        create: {
+          org_id: args.orgId,
+          patient_id: evidence.patient_id,
+          cycle_id: evidence.cycle_id ?? null,
+          evidence_id: evidence.id,
+          rule_id: ruleIdByKey.get(spec.ssotKey) ?? null,
+          dedupe_key: dedupeKey,
+          billing_month: monthStart,
+          billing_code: spec.code,
+          billing_name: spec.name,
+          points: spec.points,
+          quantity: 1,
+          calculation_breakdown: spec.calculationBreakdown as Prisma.InputJsonValue,
+          source_snapshot: writeBillingCandidateWorkflowState(
+            mergeCandidateSourceSnapshot({
+              sourceSnapshot: spec.sourceSnapshot,
+              calculationContext: evidence.calculation_context,
+              candidateStatus: preservedStatus,
+              claimable: evidence.claimable,
+              evidenceMessage:
+                evidence.claimable
+                  ? '同意・管理計画書・報告送付を満たしています'
+                  : evidence.exclusion_reason ?? '請求根拠の確認が必要です',
+              ruleMessage:
+                spec.exclusionReason ??
+                (preservedStatus === 'candidate'
+                  ? '算定候補のため月次レビューで確定してください'
+                  : 'SSOTルールに適合しています'),
+              workflow: existingWorkflow,
+            }) as Prisma.JsonValue,
+            existingWorkflow
+          ),
+          status: preservedStatus,
+          exclusion_reason: preservedExclusionReason,
+        },
+        update: {
+          evidence_id: evidence.id,
+          cycle_id: evidence.cycle_id ?? null,
+          rule_id: ruleIdByKey.get(spec.ssotKey) ?? null,
+          billing_name: spec.name,
+          points: spec.points,
+          quantity: 1,
+          calculation_breakdown: spec.calculationBreakdown as Prisma.InputJsonValue,
+          source_snapshot: writeBillingCandidateWorkflowState(
+            mergeCandidateSourceSnapshot({
+              sourceSnapshot: spec.sourceSnapshot,
+              calculationContext: evidence.calculation_context,
+              candidateStatus: preservedStatus,
+              claimable: evidence.claimable,
+              evidenceMessage:
+                evidence.claimable
+                  ? '同意・管理計画書・報告送付を満たしています'
+                  : evidence.exclusion_reason ?? '請求根拠の確認が必要です',
+              ruleMessage:
+                spec.exclusionReason ??
+                (preservedStatus === 'candidate'
+                  ? '算定候補のため月次レビューで確定してください'
+                  : 'SSOTルールに適合しています'),
+              workflow: existingWorkflow,
+            }) as Prisma.JsonValue,
+            existingWorkflow
+          ),
+          status: preservedStatus,
+          exclusion_reason: preservedExclusionReason,
+        },
+      });
+
+      created.push(candidate);
+    }
+  }
+
+  if (blockedEvidenceIds.length > 0) {
+    await tx.billingCandidate.deleteMany({
+      where: {
+        org_id: args.orgId,
+        billing_month: monthStart,
+        evidence_id: { in: blockedEvidenceIds },
+        status: { not: 'exported' },
+      },
+    });
+  }
+
+  const [informationProvisionCandidates, homeDuplicateInteractionCandidates] = await Promise.all([
+    generateInformationProvisionCandidates(tx, {
+      orgId: args.orgId,
+      billingMonth: monthStart,
+      ruleIdByKey,
+      existingByKey,
+      claimableEvidenceByPatient,
+    }),
+    generateHomeDuplicateInteractionCandidates(tx, {
+      orgId: args.orgId,
+      billingMonth: monthStart,
+      ruleIdByKey,
+      existingByKey,
+    }),
+  ]);
+
+  return [...created, ...informationProvisionCandidates, ...homeDuplicateInteractionCandidates];
+}

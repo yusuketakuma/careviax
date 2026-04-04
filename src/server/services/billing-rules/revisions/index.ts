@@ -14,19 +14,45 @@
 import type { BillingRevision, BillingRuleSeed } from '../types';
 
 // ── 医療保険 (診療報酬改定: 2年ごと) ──
-import { MEDICAL_REVISION as MEDICAL_2024, MEDICAL_RULES_2024 } from './medical/2024';
+import {
+  MEDICAL_2024_REVISION as MEDICAL_2024,
+  MEDICAL_RULES_2024,
+  MEDICAL_2026_REVISION as MEDICAL_2026,
+  MEDICAL_RULES_2026,
+} from './medical';
 
 // ── 介護保険 (介護報酬改定: 3年ごと) ──
-import { CARE_REVISION as CARE_2024, CARE_RULES_2024 } from './care/2024';
+import { CARE_2024_REVISION as CARE_2024, CARE_RULES_2024 } from './care';
 
 // ── 薬局情報の改定別 config 型 ──
-export type { MedicalSiteConfig2024 } from './medical/site-config-2024';
-export { resolveHomeComprehensivePoints, HOME_COMPREHENSIVE_POINTS_2024, DISPENSING_FEE_POINTS_2024, REGIONAL_SUPPORT_POINTS_2024, GENERIC_DISPENSING_POINTS_2024 } from './medical/site-config-2024';
-export type { CareSiteConfig2024 } from './care/site-config-2024';
-export { resolveRegionAddOns } from './care/site-config-2024';
+export type { MedicalSiteConfig2024, MedicalSiteConfig2026 } from './medical';
+export {
+  resolveHomeComprehensivePoints,
+  HOME_COMPREHENSIVE_POINTS_2024,
+  DISPENSING_FEE_POINTS_2024,
+  REGIONAL_SUPPORT_POINTS_2024,
+  GENERIC_DISPENSING_POINTS_2024,
+  resolveHomeComprehensivePoints2026,
+  HOME_COMPREHENSIVE_POINTS_2026,
+  DISPENSING_FEE_POINTS_2026,
+  REGIONAL_SUPPORT_POINTS_2026,
+  GENERIC_DISPENSING_POINTS_2026,
+  COOPERATION_ENHANCEMENT_POINTS_2026,
+  MEDICAL_DX_PROMOTION_POINTS_2026,
+  MEDICAL_2024_OFFICIAL_RULE_POINTS,
+  MEDICAL_2024_OFFICIAL_SITE_CONFIG_POINTS,
+  MEDICAL_2024_OFFICIAL_SOURCES,
+} from './medical';
+export type { CareSiteConfig2024 } from './care';
+export {
+  resolveRegionAddOns,
+  CARE_2024_OFFICIAL_RULE_POINTS,
+  CARE_2024_OFFICIAL_SOURCES,
+} from './care';
 
 // Re-export individual revisions for direct access
 export { MEDICAL_2024, MEDICAL_RULES_2024 };
+export { MEDICAL_2026, MEDICAL_RULES_2026 };
 export { CARE_2024, CARE_RULES_2024 };
 
 export type RevisionEntry = {
@@ -34,13 +60,55 @@ export type RevisionEntry = {
   rules: BillingRuleSeed[];
 };
 
+function toUtcDay(value: Date) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+}
+
+function isRevisionRuntimeEnabled(revision: BillingRevision, includeDraft = false) {
+  return includeDraft || revision.status !== 'draft';
+}
+
+export function isRevisionEffectiveForDate(revision: BillingRevision, asOfDate: Date) {
+  const targetDay = toUtcDay(asOfDate).getTime();
+  const effectiveFrom = toUtcDay(revision.effectiveFrom).getTime();
+  const effectiveTo = revision.effectiveTo ? toUtcDay(revision.effectiveTo).getTime() : null;
+
+  return effectiveFrom <= targetDay && (effectiveTo == null || effectiveTo >= targetDay);
+}
+
+export function resolveRevisionEntryForDate(
+  revisions: RevisionEntry[],
+  asOfDate: Date,
+  options: { includeDraft?: boolean } = {},
+) {
+  const runtimeEnabled = revisions
+    .filter((entry) => isRevisionRuntimeEnabled(entry.revision, options.includeDraft))
+    .sort(
+      (left, right) => right.revision.effectiveFrom.getTime() - left.revision.effectiveFrom.getTime(),
+    );
+  const applicable = runtimeEnabled
+    .filter((entry) => isRevisionEffectiveForDate(entry.revision, asOfDate))
+    .sort(
+      (left, right) => right.revision.effectiveFrom.getTime() - left.revision.effectiveFrom.getTime(),
+    );
+
+  if (applicable.length > 0) {
+    return applicable[0];
+  }
+
+  return (
+    runtimeEnabled.find((entry) => entry.revision.effectiveFrom.getTime() <= asOfDate.getTime()) ??
+    null
+  );
+}
+
 /**
  * 全ての医療保険改定 (時系列順)
  * 新しい改定を追加する際はこの配列に追加する
  */
 export const MEDICAL_REVISIONS: RevisionEntry[] = [
   { revision: MEDICAL_2024, rules: MEDICAL_RULES_2024 },
-  // { revision: MEDICAL_2026, rules: MEDICAL_RULES_2026 },  // ← 2026年改定時に追加
+  { revision: MEDICAL_2026, rules: MEDICAL_RULES_2026 },
 ];
 
 /**
@@ -57,3 +125,16 @@ export const ALL_REVISIONS: RevisionEntry[] = [
   ...MEDICAL_REVISIONS,
   ...CARE_REVISIONS,
 ];
+
+export function resolveBillingRulesForDate(args: {
+  payerBasis: 'medical' | 'care';
+  asOfDate: Date;
+  includeDraft?: boolean;
+}) {
+  const revisions = args.payerBasis === 'care' ? CARE_REVISIONS : MEDICAL_REVISIONS;
+  return (
+    resolveRevisionEntryForDate(revisions, args.asOfDate, {
+      includeDraft: args.includeDraft,
+    })?.rules ?? []
+  );
+}

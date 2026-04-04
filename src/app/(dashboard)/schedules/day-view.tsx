@@ -118,6 +118,8 @@ import {
   type VisitPriority,
   type VisitSchedule,
   type VisitType,
+  type BillingCadencePreview,
+  type BillingRequirementAlert,
   VISIT_TYPE_LABELS,
 } from './day-view.shared';
 import {
@@ -202,6 +204,7 @@ export function ScheduleDayView() {
   const orgId = useOrgId();
   const isBootstrappingOrg = !orgId;
   const queryClient = useQueryClient();
+  const [plannerCandidateCountManual, setPlannerCandidateCountManual] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() =>
     format(new Date(), 'yyyy-MM-dd')
   );
@@ -440,6 +443,7 @@ export function ScheduleDayView() {
   const resolvedPlannerCaseId = plannerForm.case_id || cases[0]?.id || '';
   const selectedCase =
     cases.find((careCase) => careCase.id === resolvedPlannerCaseId) ?? null;
+  const selectedPlannerPharmacistId = selectedCase?.primary_pharmacist_id ?? '';
   const pharmacistNameById = useMemo(
     () => new Map(pharmacists.map((pharmacist) => [pharmacist.id, pharmacist.name])),
     [pharmacists]
@@ -452,6 +456,101 @@ export function ScheduleDayView() {
     () => new Map(schedules.map((schedule) => [schedule.id, schedule])),
     [schedules]
   );
+  const { data: billingPreviewData } = useQuery({
+    queryKey: [
+      'visit-schedule-billing-preview',
+      orgId,
+      resolvedPlannerCaseId,
+      plannerForm.start_date,
+      plannerForm.visit_type,
+      selectedPlannerPharmacistId,
+    ],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        case_id: resolvedPlannerCaseId,
+        proposed_date: plannerForm.start_date,
+      });
+      if (plannerForm.visit_type) params.set('visit_type', plannerForm.visit_type);
+      if (selectedPlannerPharmacistId) params.set('pharmacist_id', selectedPlannerPharmacistId);
+      const res = await fetch(`/api/visit-schedule-proposals/billing-preview?${params}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('算定プレビューの取得に失敗しました');
+      return res.json() as Promise<{
+        alerts: BillingRequirementAlert[];
+        cadence: BillingCadencePreview;
+        recommended_visit_type: VisitType;
+        recommended_priority: VisitPriority;
+        recommended_candidate_count: number;
+      }>;
+    },
+    enabled: !!orgId && !!resolvedPlannerCaseId && !!plannerForm.start_date,
+  });
+  const billingCadence = billingPreviewData?.cadence ?? null;
+  const billingAlerts = billingPreviewData?.alerts ?? [];
+  const billedDateSet = useMemo(
+    () => new Set(billingCadence?.scheduled_dates_current_month ?? []),
+    [billingCadence],
+  );
+  const suggestedDateSet = useMemo(
+    () => new Set(billingCadence?.suggested_dates ?? []),
+    [billingCadence],
+  );
+  const selectedDateProposals = proposals
+    .filter((proposal) => toDateKey(proposal.proposed_date) === selectedDate)
+    .sort((left, right) => {
+      if (left.route_order == null && right.route_order == null) return 0;
+      if (left.route_order == null) return 1;
+      if (right.route_order == null) return -1;
+      return left.route_order - right.route_order;
+    });
+  const proposalPreviewRequests = useMemo(
+    () =>
+      selectedDateProposals.map((proposal) => ({
+        proposalId: proposal.id,
+        caseId: proposal.case_id,
+        proposedDate: proposal.proposed_date.slice(0, 10),
+        pharmacistId: proposal.proposed_pharmacist_id,
+        visitType: proposal.visit_type,
+      })),
+    [selectedDateProposals],
+  );
+  const { data: proposalBillingPreviewMap } = useQuery({
+    queryKey: ['proposal-billing-preview-map', orgId, proposalPreviewRequests],
+    queryFn: async () => {
+      const res = await fetch('/api/visit-schedule-proposals/billing-preview-batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          items: proposalPreviewRequests.map((item) => ({
+            key: item.proposalId,
+            case_id: item.caseId,
+            proposed_date: item.proposedDate,
+            pharmacist_id: item.pharmacistId,
+            visit_type: item.visitType,
+          })),
+        }),
+      });
+      if (!res.ok) throw new Error('提案の算定プレビュー取得に失敗しました');
+      const payload = (await res.json()) as {
+        data: Record<
+          string,
+          {
+            alerts: BillingRequirementAlert[];
+            cadence: BillingCadencePreview;
+            recommended_visit_type: VisitType;
+            recommended_priority: VisitPriority;
+            recommended_candidate_count: number;
+          }
+        >;
+      };
+      return new Map(Object.entries(payload.data));
+    },
+    enabled: !!orgId && proposalPreviewRequests.length > 0,
+  });
   const schedulingTasks = useMemo(
     () =>
       tasks
@@ -522,14 +621,6 @@ export function ScheduleDayView() {
     };
   }, [orgId, refreshSyncState]);
 
-  const selectedDateProposals = proposals
-    .filter((proposal) => toDateKey(proposal.proposed_date) === selectedDate)
-    .sort((left, right) => {
-      if (left.route_order == null && right.route_order == null) return 0;
-      if (left.route_order == null) return 1;
-      if (right.route_order == null) return -1;
-      return left.route_order - right.route_order;
-    });
   const selectedDateSchedules = schedules
     .filter((schedule) => toDateKey(schedule.scheduled_date) === selectedDate)
     .sort((left, right) => {
@@ -537,6 +628,57 @@ export function ScheduleDayView() {
       const rightTime = right.time_window_start ?? '';
       return leftTime.localeCompare(rightTime);
     });
+  const effectivePlannerCandidateCount =
+    !plannerCandidateCountManual && billingPreviewData?.recommended_candidate_count
+      ? String(billingPreviewData.recommended_candidate_count)
+      : plannerForm.candidate_count;
+  const schedulePreviewRequests = useMemo(
+    () =>
+      selectedDateSchedules.map((schedule) => ({
+        scheduleId: schedule.id,
+        caseId: schedule.case_id,
+        proposedDate: schedule.scheduled_date.slice(0, 10),
+        pharmacistId: schedule.pharmacist_id,
+        visitType: schedule.visit_type,
+      })),
+    [selectedDateSchedules],
+  );
+  const { data: scheduleBillingPreviewMap } = useQuery({
+    queryKey: ['schedule-billing-preview-map', orgId, schedulePreviewRequests],
+    queryFn: async () => {
+      const res = await fetch('/api/visit-schedule-proposals/billing-preview-batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          items: schedulePreviewRequests.map((item) => ({
+            key: item.scheduleId,
+            case_id: item.caseId,
+            proposed_date: item.proposedDate,
+            pharmacist_id: item.pharmacistId,
+            visit_type: item.visitType,
+          })),
+        }),
+      });
+      if (!res.ok) throw new Error('確定予定の算定プレビュー取得に失敗しました');
+      const payload = (await res.json()) as {
+        data: Record<
+          string,
+          {
+            alerts: BillingRequirementAlert[];
+            cadence: BillingCadencePreview;
+            recommended_visit_type: VisitType;
+            recommended_priority: VisitPriority;
+            recommended_candidate_count: number;
+          }
+        >;
+      };
+      return new Map(Object.entries(payload.data));
+    },
+    enabled: !!orgId && schedulePreviewRequests.length > 0,
+  });
   const facilityTracker = useMemo(
     () => buildFacilityTracker(selectedDateSchedules),
     [selectedDateSchedules]
@@ -701,7 +843,7 @@ export function ScheduleDayView() {
         const error = await res.json().catch(() => ({}));
         throw new Error(error.message ?? 'ルート最適化の取得に失敗しました');
       }
-      return (res.json() as Promise<{ data: VisitRoutePlan }>).then((payload) => payload.data);
+      return (res.json() as Promise<{ data: VisitRoutePlan }>).then((payload) => payload.data ?? null);
     },
     enabled:
       !!orgId &&
@@ -1205,17 +1347,27 @@ export function ScheduleDayView() {
           start_date: plannerForm.start_date,
           preferred_time_from: plannerForm.preferred_time_from || undefined,
           preferred_time_to: plannerForm.preferred_time_to || undefined,
-          candidate_count: Number(plannerForm.candidate_count),
+          candidate_count: Number(effectivePlannerCandidateCount),
         }),
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
         throw new Error(error.message ?? '候補生成に失敗しました');
       }
-      return res.json() as Promise<{ data: Proposal[] }>;
+      return res.json() as Promise<{ data: Proposal[]; alerts?: BillingRequirementAlert[] }>;
     },
     onSuccess: async (data) => {
       toast.success(`${data.data.length}件の訪問候補を生成しました`);
+      if ((data.alerts?.length ?? 0) > 0) {
+        const warningMessages = data.alerts
+          ?.filter((alert) => alert.severity !== 'info')
+          .map((alert) => alert.message) ?? [];
+        if (warningMessages.length > 0) {
+          toast.warning('算定アラート', {
+            description: warningMessages.slice(0, 2).join(' / '),
+          });
+        }
+      }
       await queryClient.invalidateQueries({ queryKey: ['visit-schedule-proposals', orgId] });
       setSelectedDate(plannerForm.start_date);
     },
@@ -1793,6 +1945,9 @@ export function ScheduleDayView() {
                   (schedule) => toDateKey(schedule.scheduled_date) === dateKey
                 ).length;
                 const isSelected = dateKey === selectedDate;
+                const isBillableHistoryDate = billedDateSet.has(dateKey);
+                const isNextBillableDate = billingCadence?.next_billable_date === dateKey;
+                const isSuggestedBillableDate = suggestedDateSet.has(dateKey);
 
                 return (
                   <button
@@ -1812,6 +1967,25 @@ export function ScheduleDayView() {
                     <div className="mt-1 text-[11px] opacity-80">
                       候補 {proposalCount} / 確定 {scheduleCount}
                     </div>
+                    {(isBillableHistoryDate || isNextBillableDate) && (
+                      <div className="mt-1 flex flex-wrap gap-1 text-[10px]">
+                        {isBillableHistoryDate && (
+                          <span className="rounded bg-slate-200/70 px-1.5 py-0.5 text-slate-700">
+                            算定済
+                          </span>
+                        )}
+                        {isNextBillableDate && (
+                          <span className="rounded bg-emerald-200/80 px-1.5 py-0.5 text-emerald-900">
+                            次回算定可
+                          </span>
+                        )}
+                        {!isNextBillableDate && isSuggestedBillableDate && (
+                          <span className="rounded bg-sky-200/80 px-1.5 py-0.5 text-sky-900">
+                            候補日
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </button>
                 );
               })}
@@ -2172,10 +2346,13 @@ export function ScheduleDayView() {
                 <Select
                   value={resolvedPlannerCaseId}
                   onValueChange={(value) =>
-                    setPlannerForm((current) => ({
-                      ...current,
-                      case_id: value ?? current.case_id,
-                    }))
+                    {
+                      setPlannerCandidateCountManual(false);
+                      setPlannerForm((current) => ({
+                        ...current,
+                        case_id: value ?? current.case_id,
+                      }));
+                    }
                   }
                 >
                   <SelectTrigger id="planner-case" className="w-full">
@@ -2196,6 +2373,105 @@ export function ScheduleDayView() {
                     <p className="mt-1">
                       担当薬剤師: {selectedCase.primary_pharmacist_name ?? '未設定'}
                     </p>
+                  </div>
+                )}
+                {billingCadence && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-3 text-xs text-emerald-950">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="font-medium">算定 cadence</p>
+                        <p className="mt-1 text-emerald-900/80">{billingCadence.reason}</p>
+                      </div>
+                      {billingCadence.next_billable_date && (
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setPlannerForm((current) => ({
+                                ...current,
+                                start_date: billingCadence.next_billable_date ?? current.start_date,
+                              }))
+                            }
+                          >
+                            次回算定可能日に設定
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setPlannerCandidateCountManual(false);
+                              setPlannerForm((current) => ({
+                                ...current,
+                                start_date: billingCadence.next_billable_date ?? current.start_date,
+                                visit_type:
+                                  billingPreviewData?.recommended_visit_type ?? current.visit_type,
+                                priority:
+                                  billingPreviewData?.recommended_priority ?? current.priority,
+                                candidate_count: String(
+                                  billingPreviewData?.recommended_candidate_count ??
+                                    Number(current.candidate_count),
+                                ),
+                              }));
+                            }}
+                          >
+                            推奨値を適用
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <p>
+                        月内算定: {billingCadence.current_month_count} / {billingCadence.monthly_cap}
+                      </p>
+                      <p>残回数: {billingCadence.remaining_month_count}</p>
+                      <p>
+                        週内算定: {billingCadence.current_week_count}
+                        {billingCadence.weekly_cap != null ? ` / ${billingCadence.weekly_cap}` : ''}
+                      </p>
+                      <p>
+                        次回算定可能日: {billingCadence.next_billable_date ?? '提案不可'}
+                      </p>
+                      <p>
+                        推奨設定: {billingPreviewData?.recommended_visit_type ?? plannerForm.visit_type} /{' '}
+                        {PRIORITY_LABELS[billingPreviewData?.recommended_priority ?? plannerForm.priority]}
+                      </p>
+                      <p>
+                        推奨候補数: {billingPreviewData?.recommended_candidate_count ?? Number(effectivePlannerCandidateCount)}件
+                      </p>
+                    </div>
+                    {billingCadence.scheduled_dates_current_month.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {billingCadence.scheduled_dates_current_month.map((dateKey) => (
+                          <span
+                            key={dateKey}
+                            className="rounded bg-white/80 px-1.5 py-0.5 text-[10px] text-emerald-900"
+                          >
+                            算定済 {dateKey.slice(5)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {billingAlerts.length > 0 && (
+                      <div className="mt-3 space-y-1">
+                        {billingAlerts.map((alert) => (
+                          <p
+                            key={`${alert.type}-${alert.message}`}
+                            className={
+                              alert.severity === 'error'
+                                ? 'text-red-700'
+                                : alert.severity === 'warning'
+                                  ? 'text-amber-800'
+                                  : 'text-emerald-900'
+                            }
+                          >
+                            {alert.message}
+                          </p>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -2267,12 +2543,15 @@ export function ScheduleDayView() {
                 <div className="space-y-1.5">
                   <Label htmlFor="planner-candidate-count">候補数</Label>
                   <Select
-                    value={plannerForm.candidate_count}
+                    value={effectivePlannerCandidateCount}
                     onValueChange={(value) =>
-                      setPlannerForm((current) => ({
-                        ...current,
-                        candidate_count: value ?? current.candidate_count,
-                      }))
+                      {
+                        setPlannerCandidateCountManual(true);
+                        setPlannerForm((current) => ({
+                          ...current,
+                          candidate_count: value ?? current.candidate_count,
+                        }));
+                      }
                     }
                   >
                     <SelectTrigger id="planner-candidate-count" className="w-full">
@@ -2642,6 +2921,12 @@ export function ScheduleDayView() {
               </Card>
             ) : (
               selectedDateProposals.map((proposal) => {
+                const proposalPreview = proposalBillingPreviewMap?.get(proposal.id);
+                const proposalCadence = proposalPreview?.cadence ?? null;
+                const proposalWarningMessages =
+                  proposalPreview?.alerts
+                    ?.filter((alert) => alert.severity !== 'info')
+                    .map((alert) => alert.message) ?? [];
                 const pharmacistName =
                   proposal.proposed_pharmacist?.name ??
                   pharmacistNameById.get(proposal.proposed_pharmacist_id) ??
@@ -2771,6 +3056,20 @@ export function ScheduleDayView() {
                           <p className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-orange-800">
                             {proposal.escalation_reason}
                           </p>
+                        )}
+                        {proposalCadence && (
+                          <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-950">
+                            <p className="font-medium">算定 cadence</p>
+                            <p className="mt-1">
+                              次回算定可能日: {proposalCadence.next_billable_date ?? '提案不可'} / 残回数{' '}
+                              {proposalCadence.remaining_month_count}
+                            </p>
+                            {proposalWarningMessages.length > 0 && (
+                              <p className="mt-1 text-amber-800">
+                                {proposalWarningMessages.slice(0, 2).join(' / ')}
+                              </p>
+                            )}
+                          </div>
                         )}
                         {impactedPatientNames.length > 0 && (
                           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
@@ -3328,7 +3627,15 @@ export function ScheduleDayView() {
                 </CardContent>
               </Card>
             ) : (
-              visibleSchedules.map((schedule) => (
+              visibleSchedules.map((schedule) => {
+                const schedulePreview = scheduleBillingPreviewMap?.get(schedule.id);
+                const scheduleCadence = schedulePreview?.cadence ?? null;
+                const scheduleWarningMessages =
+                  schedulePreview?.alerts
+                    ?.filter((alert) => alert.severity !== 'info')
+                    .map((alert) => alert.message) ?? [];
+
+                return (
                 <Card key={schedule.id} className="overflow-hidden">
                   <CardContent className="space-y-4 py-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -3527,6 +3834,21 @@ export function ScheduleDayView() {
                       )}
                     </div>
 
+                    {scheduleCadence && (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-950">
+                        <p className="font-medium">算定 cadence</p>
+                        <p className="mt-1">
+                          次回算定可能日: {scheduleCadence.next_billable_date ?? '提案不可'} / 残回数{' '}
+                          {scheduleCadence.remaining_month_count}
+                        </p>
+                        {scheduleWarningMessages.length > 0 && (
+                          <p className="mt-1 text-amber-800">
+                            {scheduleWarningMessages.slice(0, 2).join(' / ')}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
                     {schedule.applied_override && (
                       <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
                         <p className="font-medium">例外変更履歴</p>
@@ -3593,7 +3915,8 @@ export function ScheduleDayView() {
                     )}
                   </CardContent>
                 </Card>
-              ))
+                );
+              })
             )}
           </TabsContent>
         </Tabs>

@@ -28,6 +28,14 @@ vi.mock('@/server/services/notifications', () => ({
   dispatchNotificationEvent: dispatchNotificationEventMock,
 }));
 
+const { upsertOperationalTaskMock } = vi.hoisted(() => ({
+  upsertOperationalTaskMock: vi.fn().mockResolvedValue({ id: 'task_operational_1' }),
+}));
+
+vi.mock('@/server/services/operational-tasks', () => ({
+  upsertOperationalTask: upsertOperationalTaskMock,
+}));
+
 import { POST } from './route';
 
 function createRequest(body: unknown) {
@@ -75,6 +83,7 @@ describe('/api/dispense-results POST', () => {
           {
             line_id: 'line_1',
             actual_drug_name: 'アムロジピン',
+            actual_drug_code: '123',
             actual_quantity: 14,
             carry_type: 'carry',
           },
@@ -143,6 +152,124 @@ describe('/api/dispense-results POST', () => {
         ],
       },
     });
+  });
+
+  it('allows fax-origin prescriptions to complete dispensing and creates a follow-up task for original collection', async () => {
+    const dispenseResultCreateMock = vi.fn().mockResolvedValue({
+      id: 'result_1',
+      line_id: 'line_1',
+      actual_drug_name: 'アムロジピン',
+      actual_drug_code: '123',
+      actual_quantity: 14,
+      actual_unit: '錠',
+      carry_type: 'carry',
+      special_notes: null,
+    });
+    const dispenseResultFindManyMock = vi.fn().mockResolvedValue([
+      {
+        line_id: 'line_1',
+        actual_drug_name: 'アムロジピン',
+        actual_drug_code: '123',
+        actual_quantity: 14,
+        actual_unit: '錠',
+        carry_type: 'carry',
+        special_notes: null,
+      },
+    ]);
+    const dispenseTaskUpdateMock = vi.fn().mockResolvedValue({});
+    const medicationCycleFindFirstMock = vi.fn().mockResolvedValue({
+      id: 'cycle_1',
+      overall_status: 'dispensing',
+      version: 1,
+    });
+    const medicationCycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const cycleTransitionLogCreateMock = vi.fn().mockResolvedValue({});
+    const visitScheduleUpdateMock = vi.fn().mockResolvedValue({});
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_1',
+            cycle_id: 'cycle_1',
+            priority: 'normal',
+            results: [],
+            cycle: {
+              id: 'cycle_1',
+              overall_status: 'dispensing',
+              inquiries: [],
+              prescription_intakes: [
+                {
+                  id: 'intake_1',
+                  source_type: 'fax',
+                  original_collected_at: null,
+                  lines: [
+                    {
+                      id: 'line_1',
+                      drug_name: 'アムロジピン',
+                      drug_code: '123',
+                      quantity: 14,
+                    },
+                  ],
+                },
+              ],
+              visit_schedules: [],
+              case_: {
+                patient: {
+                  name: '山田 太郎',
+                },
+              },
+            },
+          }),
+          update: dispenseTaskUpdateMock,
+        },
+        dispenseResult: {
+          create: dispenseResultCreateMock,
+          findMany: dispenseResultFindManyMock,
+        },
+        medicationCycle: {
+          findFirst: medicationCycleFindFirstMock,
+          findFirstOrThrow: vi.fn().mockResolvedValue({ id: 'cycle_1', overall_status: 'audit_pending' }),
+          updateMany: medicationCycleUpdateManyMock,
+        },
+        cycleTransitionLog: { create: cycleTransitionLogCreateMock },
+        visitSchedule: { update: visitScheduleUpdateMock },
+        workflowException: {
+          create: vi.fn().mockResolvedValue({}),
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
+        membership: {
+          findMany: vi.fn().mockResolvedValue([{ user_id: 'auditor_1' }]),
+        },
+      })
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_1',
+        lines: [
+          {
+            line_id: 'line_1',
+            actual_drug_name: 'アムロジピン',
+            actual_drug_code: '123',
+            actual_quantity: 14,
+            carry_type: 'carry',
+          },
+        ],
+      })
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'fax_original_followup',
+        relatedEntityType: 'prescription_intake',
+        relatedEntityId: 'intake_1',
+      }),
+    );
   });
 
   it('updates visit carry status to partial when deferred lines remain', async () => {

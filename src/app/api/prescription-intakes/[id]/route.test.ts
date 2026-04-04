@@ -207,4 +207,71 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
       })
     );
   });
+
+  it('rejects updates that would leave an emergency prescription without an emergency category', async () => {
+    prescriptionIntakeFindFirstMock.mockResolvedValue({
+      id: 'intake_5',
+      org_id: 'org_1',
+      source_type: 'paper',
+      prescription_category: 'emergency',
+      emergency_category: 'other_exacerbation',
+    });
+
+    const response = await PATCH(
+      createRequest({
+        emergency_category: null,
+      }),
+      { params: Promise.resolve({ id: 'intake_5' }) }
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '緊急処方の場合は緊急区分の選択が必須です',
+    });
+  });
+
+  it('clears the emergency category when switching the prescription back to regular', async () => {
+    prescriptionIntakeFindFirstMock.mockResolvedValue({
+      id: 'intake_6',
+      org_id: 'org_1',
+      source_type: 'paper',
+      prescription_category: 'emergency',
+      emergency_category: 'other_exacerbation',
+    });
+
+    const updateMock = vi.fn().mockResolvedValue({
+      id: 'intake_6',
+      source_type: 'paper',
+      prescription_category: 'regular',
+      emergency_category: null,
+      lines: [],
+    });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        prescriptionIntake: {
+          update: updateMock,
+        },
+      })
+    );
+
+    const response = await PATCH(
+      createRequest({
+        prescription_category: 'regular',
+      }),
+      { params: Promise.resolve({ id: 'intake_6' }) }
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          prescription_category: 'regular',
+          emergency_category: null,
+        }),
+      })
+    );
+  });
 });

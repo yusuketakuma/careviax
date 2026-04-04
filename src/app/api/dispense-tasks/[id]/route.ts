@@ -336,10 +336,12 @@ export async function GET(
               take: 1,
               select: {
                 id: true,
+                source_type: true,
                 prescribed_date: true,
                 prescriber_name: true,
                 prescriber_institution: true,
                 original_document_url: true,
+                original_collected_at: true,
                 lines: {
                   orderBy: { line_number: 'asc' },
                   select: {
@@ -398,6 +400,17 @@ export async function GET(
       site,
       stock_guidance: stockGuidance,
       prefill,
+      original_collection_check: intake
+        ? {
+            required: intake.source_type === 'fax',
+            collected: intake.original_collected_at != null,
+            collected_at: intake.original_collected_at,
+          }
+        : {
+            required: false,
+            collected: false,
+            collected_at: null,
+          },
     });
   })(req);
 }

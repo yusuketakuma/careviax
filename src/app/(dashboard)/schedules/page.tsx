@@ -7,6 +7,7 @@ import { ScheduleViewToggle } from './schedule-view-toggle';
 import { Loading } from '@/components/ui/loading';
 import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
   title: '訪問スケジュール — CareViaX',
@@ -20,19 +21,28 @@ type SchedulesPageProps = {
 
 export default async function SchedulesPage({ searchParams }: SchedulesPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const activeView =
-    resolvedSearchParams?.view === 'calendar' ? 'calendar' : 'list';
+  const activeView = resolvedSearchParams?.view === 'calendar' ? 'calendar' : 'list';
 
   return (
-    <div className="p-6">
+    <PageScaffold>
       <WorkflowPageHeader
+        eyebrow="Schedule Management"
         title="訪問スケジュール"
-        description="薬剤師の訪問予定を管理します"
+        description="全体予定と個人予定を確認し、訪問提案、準備、連携依頼へつなげる管理画面です。"
         action={{
           href: '/schedules#planner',
           label: '新規訪問予定',
           icon: <CalendarPlus className="size-4" aria-hidden="true" />,
         }}
+        supportingContent={
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-foreground">最初の確認事項</p>
+            <p className="text-sm text-muted-foreground">
+              今日の全体スケジュール、自分の予定、未承認提案や未完了準備を先に確認します。
+            </p>
+          </div>
+        }
+        childrenLabel="関連導線"
       >
         <div className="flex flex-wrap items-center justify-end gap-2">
           <PageShortcutLinks
@@ -49,6 +59,6 @@ export default async function SchedulesPage({ searchParams }: SchedulesPageProps
       <Suspense fallback={<Loading />}>
         {activeView === 'calendar' ? <CalendarView /> : <ScheduleDayView />}
       </Suspense>
-    </div>
+    </PageScaffold>
   );
 }

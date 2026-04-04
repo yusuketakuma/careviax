@@ -1,16 +1,16 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
-import { findActiveVisitConsent, findCurrentManagementPlan } from './management-plans';
-import { upsertOperationalTask, resolveOperationalTasks } from './operational-tasks';
+import { findActiveVisitConsent, findCurrentManagementPlan } from '../management-plans';
+import { upsertOperationalTask, resolveOperationalTasks } from '../operational-tasks';
 import {
   buildBillingCandidateSpecs,
   ensureHomeCareBillingSsot,
   HOME_CARE_BILLING_RULESET_VERSION,
-} from './home-care-billing-ssot';
+} from '../home-care-billing-ssot';
 
-type Tx = Prisma.TransactionClient | typeof prisma;
+export type Tx = Prisma.TransactionClient | typeof prisma;
 
-type BillingCandidateWorkflowState = {
+export type BillingCandidateWorkflowState = {
   review_state: 'pending' | 'reviewed';
   resolution_state: 'unresolved' | 'confirmed' | 'excluded';
   reviewed_at: string | null;
@@ -20,125 +20,28 @@ type BillingCandidateWorkflowState = {
   note: string | null;
 };
 
-type BillingValidationLayerState = 'passed' | 'manual_review' | 'blocked';
+export type BillingValidationLayerState = 'passed' | 'manual_review' | 'blocked';
 
-type BillingValidationLayer = {
+export type BillingValidationLayer = {
   label: string;
   state: BillingValidationLayerState;
   message: string;
   version?: string;
 };
 
-type BillingValidationLayers = {
+export type BillingValidationLayers = {
   evidence: BillingValidationLayer;
   rule_engine: BillingValidationLayer;
   close_review: BillingValidationLayer;
 };
 
-type AdditionalBillingRuleDefinition = {
+export type AdditionalBillingRuleDefinition = {
   ssotKey: string;
   code: string;
   name: string;
   points: number;
   sourceNote: string;
   targetLabel: string;
-};
-
-type InformationProvisionFeeType =
-  | '1'
-  | '2_i'
-  | '2_ro'
-  | '2_ha'
-  | '3';
-
-type HomeDuplicateInteractionFeeType =
-  | '1_i'
-  | '1_ro'
-  | '2_i'
-  | '2_ro';
-
-const INFORMATION_PROVISION_RULES: Record<
-  InformationProvisionFeeType,
-  AdditionalBillingRuleDefinition
-> = {
-  '1': {
-    ssotKey: 'medical.information_provision.1',
-    code: 'MED_INFO_PROVISION_1',
-    name: '服薬情報等提供料1',
-    points: 30,
-    sourceNote: '調剤報酬点数表 区分15の5 服薬情報等提供料1',
-    targetLabel: '医療機関依頼',
-  },
-  '2_i': {
-    ssotKey: 'medical.information_provision.2_medical',
-    code: 'MED_INFO_PROVISION_2_I',
-    name: '服薬情報等提供料2 イ',
-    points: 20,
-    sourceNote: '調剤報酬点数表 区分15の5 服薬情報等提供料2 イ',
-    targetLabel: '医療機関共有',
-  },
-  '2_ro': {
-    ssotKey: 'medical.information_provision.2_refill',
-    code: 'MED_INFO_PROVISION_2_RO',
-    name: '服薬情報等提供料2 ロ',
-    points: 20,
-    sourceNote: '調剤報酬点数表 区分15の5 服薬情報等提供料2 ロ',
-    targetLabel: 'リフィル共有',
-  },
-  '2_ha': {
-    ssotKey: 'medical.information_provision.2_care_manager',
-    code: 'MED_INFO_PROVISION_2_HA',
-    name: '服薬情報等提供料2 ハ',
-    points: 20,
-    sourceNote: '調剤報酬点数表 区分15の5 服薬情報等提供料2 ハ',
-    targetLabel: 'ケアマネ共有',
-  },
-  '3': {
-    ssotKey: 'medical.information_provision.3',
-    code: 'MED_INFO_PROVISION_3',
-    name: '服薬情報等提供料3',
-    points: 50,
-    sourceNote: '調剤報酬点数表 区分15の5 服薬情報等提供料3',
-    targetLabel: '入院前整理',
-  },
-};
-
-const HOME_DUPLICATE_INTERACTION_RULES: Record<
-  HomeDuplicateInteractionFeeType,
-  AdditionalBillingRuleDefinition
-> = {
-  '1_i': {
-    ssotKey: 'medical.home_duplicate_interaction.change_other',
-    code: 'MED_HOME_DUPLICATE_CHANGE_OTHER',
-    name: '在宅患者重複投薬・相互作用等防止管理料1 イ',
-    points: 40,
-    sourceNote: '調剤報酬点数表 区分15の6 在宅患者重複投薬・相互作用等防止管理料1 イ',
-    targetLabel: '照会後変更',
-  },
-  '1_ro': {
-    ssotKey: 'medical.home_duplicate_interaction.change_residual',
-    code: 'MED_HOME_DUPLICATE_CHANGE_RESIDUAL',
-    name: '在宅患者重複投薬・相互作用等防止管理料1 ロ',
-    points: 20,
-    sourceNote: '調剤報酬点数表 区分15の6 在宅患者重複投薬・相互作用等防止管理料1 ロ',
-    targetLabel: '残薬照会後変更',
-  },
-  '2_i': {
-    ssotKey: 'medical.home_duplicate_interaction.proposal_other',
-    code: 'MED_HOME_DUPLICATE_PROPOSAL_OTHER',
-    name: '在宅患者重複投薬・相互作用等防止管理料2 イ',
-    points: 40,
-    sourceNote: '調剤報酬点数表 区分15の6 在宅患者重複投薬・相互作用等防止管理料2 イ',
-    targetLabel: '事前提案反映',
-  },
-  '2_ro': {
-    ssotKey: 'medical.home_duplicate_interaction.proposal_residual',
-    code: 'MED_HOME_DUPLICATE_PROPOSAL_RESIDUAL',
-    name: '在宅患者重複投薬・相互作用等防止管理料2 ロ',
-    points: 20,
-    sourceNote: '調剤報酬点数表 区分15の6 在宅患者重複投薬・相互作用等防止管理料2 ロ',
-    targetLabel: '残薬事前提案反映',
-  },
 };
 
 const CONFERENCE_BILLING_RULE_KEYS: Record<string, string> = {
@@ -162,11 +65,35 @@ export type BillingEvidenceBlocker = {
   severity: 'urgent' | 'high' | 'normal';
 };
 
-function startOfMonth(value: Date) {
+function isUnderAge(birthDate: Date, referenceDate: Date, threshold: number): boolean {
+  const ageYears = referenceDate.getFullYear() - birthDate.getFullYear();
+  const hadBirthday =
+    referenceDate.getMonth() > birthDate.getMonth() ||
+    (referenceDate.getMonth() === birthDate.getMonth() && referenceDate.getDate() >= birthDate.getDate());
+  return hadBirthday ? ageYears < threshold : ageYears - 1 < threshold;
+}
+
+function resolveAfterHoursVisitCategory(args: {
+  visitDate: Date;
+  isHoliday: boolean;
+}): 'night' | 'holiday' | 'midnight' | null {
+  const hours = args.visitDate.getHours();
+  const minutes = args.visitDate.getMinutes();
+  const seconds = args.visitDate.getSeconds();
+  const hasMeaningfulTime = hours !== 0 || minutes !== 0 || seconds !== 0;
+
+  if (args.isHoliday) return 'holiday';
+  if (!hasMeaningfulTime) return null;
+  if (hours >= 22 || hours < 6) return 'midnight';
+  if (hours < 8 || hours >= 18) return 'night';
+  return null;
+}
+
+export function startOfMonth(value: Date) {
   return new Date(value.getFullYear(), value.getMonth(), 1);
 }
 
-function endOfMonth(value: Date) {
+export function endOfMonth(value: Date) {
   return new Date(value.getFullYear(), value.getMonth() + 1, 0, 23, 59, 59, 999);
 }
 
@@ -226,7 +153,7 @@ function buildBillingTaskKey(visitRecordId: string) {
   return `billing-evidence:${visitRecordId}`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
@@ -342,7 +269,7 @@ export async function evaluateInitialHomeVisitAssessmentRequirement(
   };
 }
 
-function readBillingCandidateWorkflowState(
+export function readBillingCandidateWorkflowState(
   sourceSnapshot: Prisma.JsonValue | null | undefined
 ): BillingCandidateWorkflowState {
   const workflow = isRecord(sourceSnapshot) && isRecord(sourceSnapshot.billing_close)
@@ -364,7 +291,7 @@ function readBillingCandidateWorkflowState(
   };
 }
 
-function writeBillingCandidateWorkflowState(
+export function writeBillingCandidateWorkflowState(
   sourceSnapshot: Prisma.JsonValue | null | undefined,
   workflow: Partial<BillingCandidateWorkflowState>
 ): Prisma.InputJsonValue {
@@ -380,7 +307,7 @@ function writeBillingCandidateWorkflowState(
   } as Prisma.InputJsonValue;
 }
 
-function buildValidationLayers(args: {
+export function buildValidationLayers(args: {
   evidencePassed: boolean;
   evidenceMessage: string;
   ruleMessage: string;
@@ -428,7 +355,7 @@ function buildValidationLayers(args: {
   };
 }
 
-function mergeCandidateSourceSnapshot(args: {
+export function mergeCandidateSourceSnapshot(args: {
   sourceSnapshot: Record<string, unknown>;
   calculationContext: Prisma.JsonValue | null | undefined;
   candidateStatus: string;
@@ -608,7 +535,7 @@ async function resolveBillingAssignment(tx: Tx, args: { orgId: string; patientId
   };
 }
 
-function monthLabel(value: Date) {
+export function monthLabel(value: Date) {
   return value.toISOString().slice(0, 7);
 }
 
@@ -751,552 +678,8 @@ export async function listBillingEvidenceBlockers(
   }));
 }
 
-function asRecord(value: Prisma.JsonValue | null | undefined) {
+export function asRecord(value: Prisma.JsonValue | null | undefined) {
   return isRecord(value) ? value : {};
-}
-
-function parseInformationProvisionFeeType(
-  content: Prisma.JsonValue | null | undefined,
-  fallbackType?: InformationProvisionFeeType
-): InformationProvisionFeeType {
-  const record = asRecord(content);
-  const directType = record.billing_fee_type;
-  if (
-    directType === '1' ||
-    directType === '2_i' ||
-    directType === '2_ro' ||
-    directType === '2_ha' ||
-    directType === '3'
-  ) {
-    return directType;
-  }
-
-  const category = typeof record.category === 'string' ? record.category : null;
-  const reportContext = typeof record.report_context === 'string' ? record.report_context : null;
-
-  if (category === 'residual_reduction') return '2_i';
-  if (reportContext === 'pre_admission' || category === 'pre_admission') return '3';
-  return fallbackType ?? '2_i';
-}
-
-function parseHomeDuplicateInteractionFeeType(args: {
-  reason: string;
-  changeDetail?: string | null;
-}): HomeDuplicateInteractionFeeType {
-  const normalizedReason = args.reason.trim();
-  const normalizedDetail = (args.changeDetail ?? '').trim().toLowerCase();
-  const isResidual =
-    normalizedReason.includes('残薬') || normalizedDetail.includes('residual');
-  const isProposal =
-    normalizedDetail.includes('proposal') ||
-    normalizedDetail.includes('事前提案') ||
-    normalizedDetail.includes('pre-issuance');
-
-  if (isProposal) {
-    return isResidual ? '2_ro' : '2_i';
-  }
-  return isResidual ? '1_ro' : '1_i';
-}
-
-async function generateInformationProvisionCandidates(
-  tx: Tx,
-  args: {
-    orgId: string;
-    billingMonth: Date;
-    ruleIdByKey: Map<string, string>;
-    existingByKey: Map<string, { source_snapshot: Prisma.JsonValue | null }>;
-    claimableEvidenceByPatient: Map<string, { any: number; care: number }>;
-  }
-) {
-  const monthStart = startOfMonth(args.billingMonth);
-  const monthEnd = endOfMonth(args.billingMonth);
-
-  const [tracingReports, careManagerReports] = await Promise.all([
-    tx.tracingReport.findMany({
-      where: {
-        org_id: args.orgId,
-        status: { in: ['sent', 'received', 'acknowledged'] },
-        sent_at: { gte: monthStart, lte: monthEnd },
-      },
-      select: {
-        id: true,
-        patient_id: true,
-        case_id: true,
-        content: true,
-        status: true,
-        sent_at: true,
-      },
-    }),
-    tx.careReport.findMany({
-      where: {
-        org_id: args.orgId,
-        report_type: 'care_manager_report',
-        status: { in: ['sent', 'confirmed'] },
-        updated_at: { gte: monthStart, lte: monthEnd },
-      },
-      select: {
-        id: true,
-        patient_id: true,
-        case_id: true,
-        content: true,
-        status: true,
-        updated_at: true,
-      },
-    }),
-  ]);
-
-  const created = [];
-  const claimedInfoTypes = new Set<string>();
-
-  for (const report of tracingReports) {
-    const feeType = parseInformationProvisionFeeType(report.content);
-    const rule = INFORMATION_PROVISION_RULES[feeType];
-    const claimableState = args.claimableEvidenceByPatient.get(report.patient_id) ?? {
-      any: 0,
-      care: 0,
-    };
-    const sameMonthHomeCareClaim = claimableState.any > 0;
-    const sameMonthCareManagementClaim = claimableState.care > 0;
-    const dedupeKey = `${monthLabel(monthStart)}:info:${report.id}:${feeType}`;
-    const typeScopeKey = `${report.patient_id}:${feeType}`;
-    const existing = args.existingByKey.get(dedupeKey);
-    const existingWorkflow = readBillingCandidateWorkflowState(existing?.source_snapshot);
-    const alreadyClaimedThisMonth = claimedInfoTypes.has(typeScopeKey);
-    const exclusionReason =
-      sameMonthHomeCareClaim
-        ? '同月に在宅患者訪問薬剤管理指導料等を算定しているため服薬情報等提供料は算定できません'
-        : feeType === '2_ha' && sameMonthCareManagementClaim
-          ? '同月に居宅療養管理指導費を算定しているため服薬情報等提供料2 ハは算定できません'
-          : alreadyClaimedThisMonth
-            ? '同一月内に同種の服薬情報等提供料候補が既に存在します'
-            : null;
-    const status =
-      exclusionReason != null
-        ? 'excluded'
-        : existingWorkflow.closed_at
-          ? 'exported'
-          : existingWorkflow.resolution_state === 'confirmed'
-            ? 'confirmed'
-            : existingWorkflow.resolution_state === 'excluded'
-              ? 'excluded'
-              : 'candidate';
-
-    const candidate = await tx.billingCandidate.upsert({
-      where: {
-        org_id_dedupe_key: {
-          org_id: args.orgId,
-          dedupe_key: dedupeKey,
-        },
-      },
-      create: {
-        org_id: args.orgId,
-        patient_id: report.patient_id,
-        cycle_id: null,
-        evidence_id: null,
-        rule_id: args.ruleIdByKey.get(rule.ssotKey) ?? null,
-        dedupe_key: dedupeKey,
-        billing_month: monthStart,
-        billing_code: rule.code,
-        billing_name: rule.name,
-        points: rule.points,
-        quantity: 1,
-        calculation_breakdown: {
-          source_type: 'tracing_report',
-          source_id: report.id,
-          fee_type: feeType,
-          target: rule.targetLabel,
-          same_month_home_care_claim: sameMonthHomeCareClaim,
-          same_month_care_management_claim: sameMonthCareManagementClaim,
-        } as Prisma.InputJsonValue,
-        source_snapshot: writeBillingCandidateWorkflowState(
-          mergeCandidateSourceSnapshot({
-            sourceSnapshot: {
-              billing_scope: 'home_care_ssot',
-              selection_mode: 'manual',
-              source_note: rule.sourceNote,
-              source_type: 'tracing_report',
-              source_entity_id: report.id,
-              billing_fee_type: feeType,
-              ruleset_version: HOME_CARE_BILLING_RULESET_VERSION,
-            },
-            calculationContext: null,
-            candidateStatus: status,
-            claimable: exclusionReason == null,
-            evidenceMessage:
-              exclusionReason == null
-                ? '同月の在宅請求との併算定制約なし'
-                : exclusionReason,
-            ruleMessage:
-              exclusionReason == null
-                ? `${rule.targetLabel} の情報提供候補`
-                : exclusionReason,
-            workflow: existingWorkflow,
-          }) as Prisma.JsonValue,
-          existingWorkflow
-        ),
-        status,
-        exclusion_reason: exclusionReason,
-      },
-      update: {
-        rule_id: args.ruleIdByKey.get(rule.ssotKey) ?? null,
-        billing_name: rule.name,
-        points: rule.points,
-        quantity: 1,
-        calculation_breakdown: {
-          source_type: 'tracing_report',
-          source_id: report.id,
-          fee_type: feeType,
-          target: rule.targetLabel,
-          same_month_home_care_claim: sameMonthHomeCareClaim,
-          same_month_care_management_claim: sameMonthCareManagementClaim,
-        } as Prisma.InputJsonValue,
-        source_snapshot: writeBillingCandidateWorkflowState(
-          mergeCandidateSourceSnapshot({
-            sourceSnapshot: {
-              billing_scope: 'home_care_ssot',
-              selection_mode: 'manual',
-              source_note: rule.sourceNote,
-              source_type: 'tracing_report',
-              source_entity_id: report.id,
-              billing_fee_type: feeType,
-              ruleset_version: HOME_CARE_BILLING_RULESET_VERSION,
-            },
-            calculationContext: null,
-            candidateStatus: status,
-            claimable: exclusionReason == null,
-            evidenceMessage:
-              exclusionReason == null
-                ? '同月の在宅請求との併算定制約なし'
-                : exclusionReason,
-            ruleMessage:
-              exclusionReason == null
-                ? `${rule.targetLabel} の情報提供候補`
-                : exclusionReason,
-            workflow: existingWorkflow,
-          }) as Prisma.JsonValue,
-          existingWorkflow
-        ),
-        status,
-        exclusion_reason: exclusionReason,
-      },
-    });
-
-    created.push(candidate);
-    if (status !== 'excluded') {
-      claimedInfoTypes.add(typeScopeKey);
-    }
-  }
-
-  for (const report of careManagerReports) {
-    const feeType = parseInformationProvisionFeeType(report.content, '2_ha');
-    const rule = INFORMATION_PROVISION_RULES[feeType];
-    const claimableState = args.claimableEvidenceByPatient.get(report.patient_id) ?? {
-      any: 0,
-      care: 0,
-    };
-    const sameMonthHomeCareClaim = claimableState.any > 0;
-    const sameMonthCareManagementClaim = claimableState.care > 0;
-    const dedupeKey = `${monthLabel(monthStart)}:info-care:${report.id}:${feeType}`;
-    const typeScopeKey = `${report.patient_id}:${feeType}`;
-    const existing = args.existingByKey.get(dedupeKey);
-    const existingWorkflow = readBillingCandidateWorkflowState(existing?.source_snapshot);
-    const alreadyClaimedThisMonth = claimedInfoTypes.has(typeScopeKey);
-    const exclusionReason =
-      sameMonthHomeCareClaim
-        ? '同月に在宅患者訪問薬剤管理指導料等を算定しているため服薬情報等提供料は算定できません'
-        : feeType === '2_ha' && sameMonthCareManagementClaim
-          ? '同月に居宅療養管理指導費を算定しているため服薬情報等提供料2 ハは算定できません'
-          : alreadyClaimedThisMonth
-            ? '同一月内に同種の服薬情報等提供料候補が既に存在します'
-            : null;
-    const status =
-      exclusionReason != null
-        ? 'excluded'
-        : existingWorkflow.closed_at
-          ? 'exported'
-          : existingWorkflow.resolution_state === 'confirmed'
-            ? 'confirmed'
-            : existingWorkflow.resolution_state === 'excluded'
-              ? 'excluded'
-              : 'candidate';
-
-    const candidate = await tx.billingCandidate.upsert({
-      where: {
-        org_id_dedupe_key: {
-          org_id: args.orgId,
-          dedupe_key: dedupeKey,
-        },
-      },
-      create: {
-        org_id: args.orgId,
-        patient_id: report.patient_id,
-        cycle_id: null,
-        evidence_id: null,
-        rule_id: args.ruleIdByKey.get(rule.ssotKey) ?? null,
-        dedupe_key: dedupeKey,
-        billing_month: monthStart,
-        billing_code: rule.code,
-        billing_name: rule.name,
-        points: rule.points,
-        quantity: 1,
-        calculation_breakdown: {
-          source_type: 'care_report',
-          source_id: report.id,
-          fee_type: feeType,
-          target: rule.targetLabel,
-          same_month_home_care_claim: sameMonthHomeCareClaim,
-          same_month_care_management_claim: sameMonthCareManagementClaim,
-        } as Prisma.InputJsonValue,
-        source_snapshot: writeBillingCandidateWorkflowState(
-          mergeCandidateSourceSnapshot({
-            sourceSnapshot: {
-              billing_scope: 'home_care_ssot',
-              selection_mode: 'manual',
-              source_note: rule.sourceNote,
-              source_type: 'care_report',
-              source_entity_id: report.id,
-              billing_fee_type: feeType,
-              ruleset_version: HOME_CARE_BILLING_RULESET_VERSION,
-            },
-            calculationContext: null,
-            candidateStatus: status,
-            claimable: exclusionReason == null,
-            evidenceMessage:
-              exclusionReason == null
-                ? '同月の在宅請求との併算定制約なし'
-                : exclusionReason,
-            ruleMessage:
-              exclusionReason == null
-                ? `${rule.targetLabel} の情報提供候補`
-                : exclusionReason,
-            workflow: existingWorkflow,
-          }) as Prisma.JsonValue,
-          existingWorkflow
-        ),
-        status,
-        exclusion_reason: exclusionReason,
-      },
-      update: {
-        rule_id: args.ruleIdByKey.get(rule.ssotKey) ?? null,
-        billing_name: rule.name,
-        points: rule.points,
-        quantity: 1,
-        calculation_breakdown: {
-          source_type: 'care_report',
-          source_id: report.id,
-          fee_type: feeType,
-          target: rule.targetLabel,
-          same_month_home_care_claim: sameMonthHomeCareClaim,
-          same_month_care_management_claim: sameMonthCareManagementClaim,
-        } as Prisma.InputJsonValue,
-        source_snapshot: writeBillingCandidateWorkflowState(
-          mergeCandidateSourceSnapshot({
-            sourceSnapshot: {
-              billing_scope: 'home_care_ssot',
-              selection_mode: 'manual',
-              source_note: rule.sourceNote,
-              source_type: 'care_report',
-              source_entity_id: report.id,
-              billing_fee_type: feeType,
-              ruleset_version: HOME_CARE_BILLING_RULESET_VERSION,
-            },
-            calculationContext: null,
-            candidateStatus: status,
-            claimable: exclusionReason == null,
-            evidenceMessage:
-              exclusionReason == null
-                ? '同月の在宅請求との併算定制約なし'
-                : exclusionReason,
-            ruleMessage:
-              exclusionReason == null
-                ? `${rule.targetLabel} の情報提供候補`
-                : exclusionReason,
-            workflow: existingWorkflow,
-          }) as Prisma.JsonValue,
-          existingWorkflow
-        ),
-        status,
-        exclusion_reason: exclusionReason,
-      },
-    });
-
-    created.push(candidate);
-    if (status !== 'excluded') {
-      claimedInfoTypes.add(typeScopeKey);
-    }
-  }
-
-  return created;
-}
-
-async function generateHomeDuplicateInteractionCandidates(
-  tx: Tx,
-  args: {
-    orgId: string;
-    billingMonth: Date;
-    ruleIdByKey: Map<string, string>;
-    existingByKey: Map<string, { source_snapshot: Prisma.JsonValue | null }>;
-  }
-) {
-  const monthStart = startOfMonth(args.billingMonth);
-  const monthEnd = endOfMonth(args.billingMonth);
-  const inquiries = await tx.inquiryRecord.findMany({
-    where: {
-      org_id: args.orgId,
-      inquired_at: { gte: monthStart, lte: monthEnd },
-      reason: { in: ['相互作用', '重複'] },
-    },
-    select: {
-      id: true,
-      cycle_id: true,
-      reason: true,
-      result: true,
-      change_detail: true,
-      cycle: {
-        select: {
-          patient_id: true,
-        },
-      },
-      issue: {
-        select: {
-          category: true,
-        },
-      },
-    },
-  });
-
-  const created = [];
-
-  for (const inquiry of inquiries) {
-    if (!inquiry.cycle?.patient_id) continue;
-
-    const feeType = parseHomeDuplicateInteractionFeeType({
-      reason: inquiry.reason,
-      changeDetail: inquiry.change_detail,
-    });
-    const rule = HOME_DUPLICATE_INTERACTION_RULES[feeType];
-    const dedupeKey = `${monthLabel(monthStart)}:home-dup:${inquiry.id}:${feeType}`;
-    const existing = args.existingByKey.get(dedupeKey);
-    const existingWorkflow = readBillingCandidateWorkflowState(existing?.source_snapshot);
-    const exclusionReason =
-      inquiry.result === 'changed'
-        ? null
-        : inquiry.result === 'unchanged'
-          ? '処方変更に至っていないため在宅患者重複投薬・相互作用等防止管理料は算定できません'
-          : '疑義照会の結果が未確定のため在宅患者重複投薬・相互作用等防止管理料は保留です';
-    const status =
-      exclusionReason != null
-        ? 'excluded'
-        : existingWorkflow.closed_at
-          ? 'exported'
-          : existingWorkflow.resolution_state === 'confirmed'
-            ? 'confirmed'
-            : existingWorkflow.resolution_state === 'excluded'
-              ? 'excluded'
-              : 'candidate';
-
-    const candidate = await tx.billingCandidate.upsert({
-      where: {
-        org_id_dedupe_key: {
-          org_id: args.orgId,
-          dedupe_key: dedupeKey,
-        },
-      },
-      create: {
-        org_id: args.orgId,
-        patient_id: inquiry.cycle.patient_id,
-        cycle_id: inquiry.cycle_id,
-        evidence_id: null,
-        rule_id: args.ruleIdByKey.get(rule.ssotKey) ?? null,
-        dedupe_key: dedupeKey,
-        billing_month: monthStart,
-        billing_code: rule.code,
-        billing_name: rule.name,
-        points: rule.points,
-        quantity: 1,
-        calculation_breakdown: {
-          source_type: 'inquiry_record',
-          source_id: inquiry.id,
-          fee_type: feeType,
-          inquiry_result: inquiry.result,
-          issue_category: inquiry.issue?.category ?? null,
-        } as Prisma.InputJsonValue,
-        source_snapshot: writeBillingCandidateWorkflowState(
-          mergeCandidateSourceSnapshot({
-            sourceSnapshot: {
-              billing_scope: 'home_care_ssot',
-              selection_mode: 'manual',
-              source_note: rule.sourceNote,
-              source_type: 'inquiry_record',
-              source_entity_id: inquiry.id,
-              duplicate_interaction_fee_type: feeType,
-              ruleset_version: HOME_CARE_BILLING_RULESET_VERSION,
-            },
-            calculationContext: null,
-            candidateStatus: status,
-            claimable: exclusionReason == null,
-            evidenceMessage:
-              exclusionReason == null
-                ? '照会結果の変更確定を確認'
-                : exclusionReason,
-            ruleMessage:
-              exclusionReason == null
-                ? `${rule.targetLabel} の加算候補`
-                : exclusionReason,
-            workflow: existingWorkflow,
-          }) as Prisma.JsonValue,
-          existingWorkflow
-        ),
-        status,
-        exclusion_reason: exclusionReason,
-      },
-      update: {
-        rule_id: args.ruleIdByKey.get(rule.ssotKey) ?? null,
-        billing_name: rule.name,
-        points: rule.points,
-        quantity: 1,
-        calculation_breakdown: {
-          source_type: 'inquiry_record',
-          source_id: inquiry.id,
-          fee_type: feeType,
-          inquiry_result: inquiry.result,
-          issue_category: inquiry.issue?.category ?? null,
-        } as Prisma.InputJsonValue,
-        source_snapshot: writeBillingCandidateWorkflowState(
-          mergeCandidateSourceSnapshot({
-            sourceSnapshot: {
-              billing_scope: 'home_care_ssot',
-              selection_mode: 'manual',
-              source_note: rule.sourceNote,
-              source_type: 'inquiry_record',
-              source_entity_id: inquiry.id,
-              duplicate_interaction_fee_type: feeType,
-              ruleset_version: HOME_CARE_BILLING_RULESET_VERSION,
-            },
-            calculationContext: null,
-            candidateStatus: status,
-            claimable: exclusionReason == null,
-            evidenceMessage:
-              exclusionReason == null
-                ? '照会結果の変更確定を確認'
-                : exclusionReason,
-            ruleMessage:
-              exclusionReason == null
-                ? `${rule.targetLabel} の加算候補`
-                : exclusionReason,
-            workflow: existingWorkflow,
-          }) as Prisma.JsonValue,
-          existingWorkflow
-        ),
-        status,
-        exclusion_reason: exclusionReason,
-      },
-    });
-
-    created.push(candidate);
-  }
-
-  return created;
 }
 
 export async function upsertBillingEvidenceForVisit(
@@ -1348,6 +731,10 @@ export async function upsertBillingEvidenceForVisit(
     throw new Error('PATIENT_NOT_FOUND');
   }
 
+  const visitDate = visitRecord.visit_date;
+  const visitDateOnly = new Date(
+    Date.UTC(visitDate.getUTCFullYear(), visitDate.getUTCMonth(), visitDate.getUTCDate()),
+  );
   const billingMonth = startOfMonth(visitRecord.visit_date);
   const weekStart = startOfWeek(visitRecord.visit_date);
   const weekEnd = endOfWeek(weekStart);
@@ -1362,6 +749,8 @@ export async function upsertBillingEvidenceForVisit(
     deliveryRecords,
     initialHomeVisitAssessment,
     conferenceCandidates,
+    latestPrescriptionIntake,
+    businessHoliday,
   ] =
     await Promise.all([
     findActiveVisitConsent(tx, {
@@ -1448,6 +837,27 @@ export async function upsertBillingEvidenceForVisit(
         status: true,
         source_snapshot: true,
       },
+    }),
+    visitRecord.schedule.cycle_id
+      ? tx.prescriptionIntake.findFirst({
+          where: {
+            org_id: args.orgId,
+            cycle_id: visitRecord.schedule.cycle_id,
+          },
+          orderBy: [{ created_at: 'desc' }],
+          select: {
+            prescription_category: true,
+            emergency_category: true,
+          },
+        })
+      : Promise.resolve(null),
+    tx.businessHoliday.findFirst({
+      where: {
+        org_id: args.orgId,
+        date: visitDateOnly,
+        OR: [{ site_id: null }, { site_id: visitRecord.schedule.site_id ?? null }],
+      },
+      select: { id: true },
     }),
   ]);
 
@@ -1572,29 +982,15 @@ export async function upsertBillingEvidenceForVisit(
   const claimable = exclusionReason == null;
 
   // ── 患者データからの算定条件自動判定 ──
-  const visitDate = visitRecord.visit_date;
 
-  // 乳幼児判定 (6歳未満)
-  let infantEligible = false;
-  if (patient.birth_date) {
-    const bd = new Date(patient.birth_date);
-    const ageYears = visitDate.getFullYear() - bd.getFullYear();
-    const hadBirthday =
-      visitDate.getMonth() > bd.getMonth() ||
-      (visitDate.getMonth() === bd.getMonth() && visitDate.getDate() >= bd.getDate());
-    infantEligible = hadBirthday ? ageYears < 6 : ageYears - 1 < 6;
-  }
+  const infantEligible = patient.birth_date
+    ? isUnderAge(new Date(patient.birth_date), visitDate, 6)
+    : false;
 
   // 小児特定加算判定 (18歳未満 — 障害児判定は手動のため候補提示のみ)
-  let pediatricAge = false;
-  if (patient.birth_date) {
-    const bd = new Date(patient.birth_date);
-    const ageYears = visitDate.getFullYear() - bd.getFullYear();
-    const hadBirthday =
-      visitDate.getMonth() > bd.getMonth() ||
-      (visitDate.getMonth() === bd.getMonth() && visitDate.getDate() >= bd.getDate());
-    pediatricAge = hadBirthday ? ageYears < 18 : ageYears - 1 < 18;
-  }
+  const pediatricAge = patient.birth_date
+    ? isUnderAge(new Date(patient.birth_date), visitDate, 18)
+    : false;
 
   // 介護認定レベル判定 (intake の care_level から)
   const caseData = patient.cases?.[0] ?? null;
@@ -1619,24 +1015,38 @@ export async function upsertBillingEvidenceForVisit(
   const centralVenousRequired = specialProcedures.some(p =>
     p === 'tpn' || p === 'cv_port' || p === 'central_venous'
   );
-  const narcoticInjectionRequired = specialProcedures.includes('narcotics_injection');
-  const enteralRequired = specialProcedures.includes('tube_feeding') ||
+  const narcoticInjectionRequired =
+    specialProcedures.includes('narcotics') || specialProcedures.includes('narcotics_injection');
+  const enteralRequired = specialProcedures.includes('enteral_nutrition') ||
+    specialProcedures.includes('enteral_route') ||
+    specialProcedures.includes('tube_feeding') ||
     (Array.isArray(intakeJson?.medication_support_methods) &&
      (intakeJson.medication_support_methods as string[]).includes('tube'));
 
-  // ENT処方 (intake から)
-  const entPrescription = intakeJson?.ent_prescription === true;
-
   // 特別上限対象 (末期悪性腫瘍 OR 麻薬注射 OR 中心静脈栄養)
-  const specialCapEligible = narcoticInjectionRequired || centralVenousRequired || entPrescription;
+  const terminalPainRequired = specialProcedures.includes('terminal_pain');
+  const specialCapEligible = narcoticInjectionRequired || centralVenousRequired || terminalPainRequired;
+  const emergencyCategory =
+    latestPrescriptionIntake?.prescription_category === 'emergency'
+      ? ((latestPrescriptionIntake.emergency_category as
+          | 'planned_disease_exacerbation'
+          | 'other_exacerbation'
+          | 'online'
+          | null) ?? 'other_exacerbation')
+      : null;
+  const afterHoursVisit = resolveAfterHoursVisitCategory({
+    visitDate,
+    isHoliday: businessHoliday != null || visitDate.getDay() === 0,
+  });
 
-  await ensureHomeCareBillingSsot(tx, args.orgId);
+  await ensureHomeCareBillingSsot(tx, args.orgId, { asOfDate: visitDate });
 
   const billingServiceType =
     payerBasis === 'care' ? 'care_home_management' : 'medical_home_visit';
-  const providerScope = payerBasis === 'care' ? 'pharmacy' : 'pharmacy';
+  const providerScope = 'pharmacy';
   const candidateSpecs = await buildBillingCandidateSpecs(tx, {
     orgId: args.orgId,
+    asOfDate: visitDate,
     payerBasis,
     serviceType: billingServiceType,
     providerScope,
@@ -1646,9 +1056,11 @@ export async function upsertBillingEvidenceForVisit(
     claimable,
     exclusionReason,
     specialCapEligible,
-    onlineEligible: false,
+    onlineEligible: emergencyCategory === 'online',
     regionAddOnEligible: [],
     visitType: visitRecord.schedule.visit_type,
+    emergencyCategory,
+    afterHoursVisit,
     // 自動判定された患者条件
     infantEligible,
     pediatricAge,
@@ -1667,8 +1079,8 @@ export async function upsertBillingEvidenceForVisit(
         org_id: args.orgId,
         site_id: siteId,
         insurance_type: payerBasis === 'care' ? 'care' : 'medical',
-        effective_from: { lte: visitDate },
-        OR: [{ effective_to: null }, { effective_to: { gt: visitDate } }],
+        effective_from: { lte: visitDateOnly },
+        OR: [{ effective_to: null }, { effective_to: { gte: visitDateOnly } }],
       },
       orderBy: { effective_from: 'desc' },
     });
@@ -2096,212 +1508,4 @@ export async function closeBillingCandidatesForMonth(
       billingMonth,
     }),
   };
-}
-
-export async function generateBillingCandidatesForMonth(
-  tx: Tx,
-  args: { orgId: string; billingMonth: Date }
-) {
-  await ensureHomeCareBillingSsot(tx, args.orgId);
-  const monthStart = startOfMonth(args.billingMonth);
-  const evidences = await tx.billingEvidence.findMany({
-    where: {
-      org_id: args.orgId,
-      billing_month: monthStart,
-    },
-    orderBy: [{ created_at: 'asc' }],
-  });
-
-  const created = [];
-  const rules = await tx.billingRule.findMany({
-    where: {
-      org_id: args.orgId,
-    },
-    select: {
-      id: true,
-      ssot_key: true,
-    },
-  });
-  const ruleIdByKey = new Map(
-    rules
-      .filter((rule) => rule.ssot_key)
-      .map((rule) => [rule.ssot_key as string, rule.id])
-  );
-  const existingCandidates = await tx.billingCandidate.findMany({
-    where: {
-      org_id: args.orgId,
-      billing_month: monthStart,
-    },
-    select: {
-      dedupe_key: true,
-      source_snapshot: true,
-    },
-  });
-  const existingByKey = new Map(
-    existingCandidates
-      .filter((candidate) => candidate.dedupe_key)
-      .map((candidate) => [candidate.dedupe_key as string, candidate])
-  );
-  const blockedEvidenceIds: string[] = [];
-  const claimableEvidenceByPatient = new Map<string, { any: number; care: number }>();
-
-  for (const evidence of evidences) {
-    if (!evidence.patient_id || !evidence.claimable) continue;
-    const current = claimableEvidenceByPatient.get(evidence.patient_id) ?? { any: 0, care: 0 };
-    current.any += 1;
-    if (evidence.billing_service_type === 'care_home_management') {
-      current.care += 1;
-    }
-    claimableEvidenceByPatient.set(evidence.patient_id, current);
-  }
-
-  for (const evidence of evidences) {
-    if (!evidence.patient_id) continue;
-    if (!evidence.claimable) {
-      blockedEvidenceIds.push(evidence.id);
-      continue;
-    }
-
-    const specs = await buildBillingCandidateSpecs(tx, {
-      orgId: args.orgId,
-      payerBasis: evidence.payer_basis,
-      serviceType:
-        evidence.billing_service_type === 'care_home_management'
-          ? 'care_home_management'
-          : 'medical_home_visit',
-      providerScope:
-        evidence.provider_scope === 'hospital_clinic' ? 'hospital_clinic' : 'pharmacy',
-      buildingPatientCount: evidence.building_patient_count ?? 1,
-      monthlyVisitCount: evidence.monthly_count_snapshot ?? 0,
-      weeklyVisitCount: evidence.weekly_count_snapshot ?? 0,
-      claimable: evidence.claimable,
-      exclusionReason: evidence.exclusion_reason,
-      specialCapEligible: false,
-      onlineEligible: false,
-      regionAddOnEligible: [],
-    });
-
-    for (const spec of specs) {
-      const dedupeKey = `${monthStart.toISOString().slice(0, 10)}:${evidence.id}:${spec.code}`;
-      const existing = existingByKey.get(dedupeKey);
-      const existingWorkflow = readBillingCandidateWorkflowState(existing?.source_snapshot);
-      const preservedStatus =
-        existingWorkflow.closed_at
-          ? 'exported'
-          : existingWorkflow.resolution_state === 'confirmed'
-            ? 'confirmed'
-            : existingWorkflow.resolution_state === 'excluded'
-              ? 'excluded'
-              : spec.status;
-      const preservedExclusionReason =
-        preservedStatus === 'excluded' && existingWorkflow.note
-          ? existingWorkflow.note
-          : spec.exclusionReason;
-
-      const candidate = await tx.billingCandidate.upsert({
-        where: {
-          org_id_dedupe_key: {
-            org_id: args.orgId,
-            dedupe_key: dedupeKey,
-          },
-        },
-        create: {
-          org_id: args.orgId,
-          patient_id: evidence.patient_id,
-          cycle_id: evidence.cycle_id ?? null,
-          evidence_id: evidence.id,
-          rule_id: ruleIdByKey.get(spec.ssotKey) ?? null,
-          dedupe_key: dedupeKey,
-          billing_month: monthStart,
-          billing_code: spec.code,
-          billing_name: spec.name,
-          points: spec.points,
-          quantity: 1,
-          calculation_breakdown: spec.calculationBreakdown as Prisma.InputJsonValue,
-          source_snapshot: writeBillingCandidateWorkflowState(
-            mergeCandidateSourceSnapshot({
-              sourceSnapshot: spec.sourceSnapshot,
-              calculationContext: evidence.calculation_context,
-              candidateStatus: preservedStatus,
-              claimable: evidence.claimable,
-              evidenceMessage:
-                evidence.claimable
-                  ? '同意・管理計画書・報告送付を満たしています'
-                  : evidence.exclusion_reason ?? '請求根拠の確認が必要です',
-              ruleMessage:
-                spec.exclusionReason ??
-                (preservedStatus === 'candidate'
-                  ? '算定候補のため月次レビューで確定してください'
-                  : 'SSOTルールに適合しています'),
-              workflow: existingWorkflow,
-            }) as Prisma.JsonValue,
-            existingWorkflow
-          ),
-          status: preservedStatus,
-          exclusion_reason: preservedExclusionReason,
-        },
-        update: {
-          evidence_id: evidence.id,
-          cycle_id: evidence.cycle_id ?? null,
-          rule_id: ruleIdByKey.get(spec.ssotKey) ?? null,
-          billing_name: spec.name,
-          points: spec.points,
-          quantity: 1,
-          calculation_breakdown: spec.calculationBreakdown as Prisma.InputJsonValue,
-          source_snapshot: writeBillingCandidateWorkflowState(
-            mergeCandidateSourceSnapshot({
-              sourceSnapshot: spec.sourceSnapshot,
-              calculationContext: evidence.calculation_context,
-              candidateStatus: preservedStatus,
-              claimable: evidence.claimable,
-              evidenceMessage:
-                evidence.claimable
-                  ? '同意・管理計画書・報告送付を満たしています'
-                  : evidence.exclusion_reason ?? '請求根拠の確認が必要です',
-              ruleMessage:
-                spec.exclusionReason ??
-                (preservedStatus === 'candidate'
-                  ? '算定候補のため月次レビューで確定してください'
-                  : 'SSOTルールに適合しています'),
-              workflow: existingWorkflow,
-            }) as Prisma.JsonValue,
-            existingWorkflow
-          ),
-          status: preservedStatus,
-          exclusion_reason: preservedExclusionReason,
-        },
-      });
-
-      created.push(candidate);
-    }
-  }
-
-  if (blockedEvidenceIds.length > 0) {
-    await tx.billingCandidate.deleteMany({
-      where: {
-        org_id: args.orgId,
-        billing_month: monthStart,
-        evidence_id: { in: blockedEvidenceIds },
-        status: { not: 'exported' },
-      },
-    });
-  }
-
-  const [informationProvisionCandidates, homeDuplicateInteractionCandidates] = await Promise.all([
-    generateInformationProvisionCandidates(tx, {
-      orgId: args.orgId,
-      billingMonth: monthStart,
-      ruleIdByKey,
-      existingByKey,
-      claimableEvidenceByPatient,
-    }),
-    generateHomeDuplicateInteractionCandidates(tx, {
-      orgId: args.orgId,
-      billingMonth: monthStart,
-      ruleIdByKey,
-      existingByKey,
-    }),
-  ]);
-
-  return [...created, ...informationProvisionCandidates, ...homeDuplicateInteractionCandidates];
 }

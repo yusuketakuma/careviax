@@ -1,0 +1,21 @@
+export const CARE_2024_OFFICIAL_SOURCES = {
+  standardHtml: 'https://www.mhlw.go.jp/web/t_doc?dataId=82aa0253&dataType=0&pageNo=1',
+  summaryPage: 'https://www.mhlw.go.jp/stf/newpage_38790.html',
+  noticePdf: 'https://www.mhlw.go.jp/content/12404000/1.pdf',
+} as const;
+
+export const CARE_2024_OFFICIAL_RULE_POINTS = {
+  CARE_HOME_PHARMACY_SINGLE: 518,
+  CARE_HOME_PHARMACY_MULTI_2_9: 379,
+  CARE_HOME_PHARMACY_MULTI_10_PLUS: 342,
+  CARE_PREV_PHARMACY_SINGLE: 518,
+  CARE_PREV_PHARMACY_MULTI_2_9: 379,
+  CARE_PREV_PHARMACY_MULTI_10_PLUS: 342,
+  CARE_HOME_PHARMACY_ONLINE: 46,
+  CARE_REGION_SPECIAL_15: 15,
+  CARE_REGION_SMALL_OFFICE_10: 10,
+  CARE_REGION_RESIDENT_5: 5,
+  CARE_ADD_NARCOTIC: 100,
+  CARE_ADD_NARCOTIC_INJECTION: 250,
+  CARE_ADD_CENTRAL_VENOUS: 150,
+} as const;

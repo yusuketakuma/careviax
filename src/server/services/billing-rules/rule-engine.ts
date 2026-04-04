@@ -30,7 +30,10 @@ export async function getHomeCareBillingSsotSummary(
   orgId: string,
   asOfDate?: Date
 ) {
-  const now = asOfDate ?? new Date();
+  const targetDate = asOfDate ?? new Date();
+  const now = new Date(
+    Date.UTC(targetDate.getUTCFullYear(), targetDate.getUTCMonth(), targetDate.getUTCDate()),
+  );
 
   const [matrix, rules] = await Promise.all([
     tx.sourceOfTruthMatrix.findFirst({
@@ -49,7 +52,7 @@ export async function getHomeCareBillingSsotSummary(
           { effective_from: { lte: now } },
         ],
         AND: [
-          { OR: [{ effective_to: null }, { effective_to: { gt: now } }] },
+          { OR: [{ effective_to: null }, { effective_to: { gte: now } }] },
         ],
       },
       orderBy: [{ display_order: 'asc' }, { created_at: 'asc' }],
@@ -67,16 +70,17 @@ function chooseBaseRule(
   context: BillingEvidenceContext
 ) {
   // 緊急訪問 → 在宅患者緊急訪問薬剤管理指導料を優先選択
-  // デフォルトは「2」（それ以外の急変 200点）。
-  // 「1」（計画的訪問対象疾患の急変 500点）は手動選択で昇格。
+  // emergency_category がある場合はその区分を優先し、
+  // 未指定時のみ「2」（それ以外の急変 200点）を既定とする。
   if (context.visitType === 'emergency') {
+    const targetEmergencyCategory = context.emergencyCategory ?? 'other_exacerbation';
     return (
       rules.find((rule) => {
         if (rule.rule_type !== 'base') return false;
         if (rule.payer_basis !== 'medical') return false;
         return (
           conditionValue(rule, 'visit_type') === 'emergency' &&
-          conditionValue(rule, 'emergency_category') === 'other_exacerbation'
+          conditionValue(rule, 'emergency_category') === targetEmergencyCategory
         );
       }) ?? null
     );
@@ -137,8 +141,10 @@ export async function buildBillingCandidateSpecs(
   tx: Tx,
   context: BillingEvidenceContext
 ): Promise<BillingCandidateSpec[]> {
-  await ensureHomeCareBillingSsot(tx, context.orgId);
-  const { rules } = await getHomeCareBillingSsotSummary(tx, context.orgId);
+  await ensureHomeCareBillingSsot(tx, context.orgId, {
+    asOfDate: context.asOfDate,
+  });
+  const { rules } = await getHomeCareBillingSsotSummary(tx, context.orgId, context.asOfDate);
 
   const specs: BillingCandidateSpec[] = [];
   const baseRule = chooseBaseRule(rules, context);
@@ -174,6 +180,7 @@ export async function buildBillingCandidateSpecs(
         building_patient_count: context.buildingPatientCount,
         building_tier: tier,
         online_eligible: context.onlineEligible,
+        emergency_category: context.emergencyCategory,
         monthly_visit_count: context.monthlyVisitCount,
         weekly_visit_count: context.weeklyVisitCount,
       },
@@ -191,6 +198,7 @@ export async function buildBillingCandidateSpecs(
     const conditions = (manualRule.conditions ?? {}) as Record<string, unknown>;
     const regionKey = String(conditions.region_add_on ?? '');
     const requiresOnline = conditions.requires_online_visit === true;
+    const afterHoursVisit = (conditions.after_hours_visit as string | undefined) ?? null;
     // 患者データから自動判定された条件でフィルタリング
     const narcoticMatch =
       conditions.requires_narcotic_management !== true || context.narcoticRequired === true;
@@ -206,14 +214,17 @@ export async function buildBillingCandidateSpecs(
       conditions.requires_pediatric_special_eligibility !== true || context.pediatricAge === true;
     const enteralMatch =
       conditions.requires_enteral_feeding !== true || context.enteralRequired === true;
+    const specialCapMatch =
+      conditions.special_cap_eligible !== true || context.specialCapEligible === true;
     const patientConditionsMet =
       narcoticMatch && narcoticPrescriptionMatch && narcoticInjectionMatch &&
-      centralVenousMatch && infantMatch && pediatricMatch && enteralMatch;
+      centralVenousMatch && infantMatch && pediatricMatch && enteralMatch && specialCapMatch;
 
     const suggested =
       patientConditionsMet &&
       (regionKey.length === 0 || hasRegionAddOn(context.regionAddOnEligible, regionKey)) &&
-      (!requiresOnline || context.onlineEligible);
+      (!requiresOnline || context.onlineEligible) &&
+      (afterHoursVisit == null || context.afterHoursVisit === afterHoursVisit);
 
     const ratePercent = manualRule.calculation_unit === 'percent' ? manualRule.amount : null;
     const derivedPoints =

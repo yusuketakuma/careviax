@@ -175,4 +175,18 @@ describe('describeOperationalTask', () => {
       queueLabel: '運用',
     });
   });
+
+  it('deep-links fax original follow-up tasks to the prescription detail when intake is linked', () => {
+    const result = describeOperationalTask({
+      task_type: 'fax_original_followup',
+      related_entity_type: 'prescription_intake',
+      related_entity_id: 'intake_1',
+    });
+
+    expect(result).toEqual({
+      actionHref: '/prescriptions/intake_1',
+      actionLabel: '原本回収を記録',
+      queueLabel: 'FAX原本',
+    });
+  });
 });

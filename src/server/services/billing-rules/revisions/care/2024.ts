@@ -6,6 +6,7 @@ export const CARE_REVISION: BillingRevision = {
   effectiveFrom: new Date('2024-06-01'),
   effectiveTo: null,
   source: 'https://www.mhlw.go.jp/stf/newpage_38790.html',
+  status: 'confirmed',
 };
 
 const CARE_SOURCE_URL = 'https://www.mhlw.go.jp/stf/newpage_38790.html';
@@ -97,7 +98,7 @@ export const CARE_RULES_2024: BillingRuleSeed[] = [
     display_order: 220,
     name: '居宅療養管理指導費 薬局薬剤師 単一建物10人以上',
     code: 'CARE_HOME_PHARMACY_MULTI_10_PLUS',
-    amount: 345,
+    amount: 342,
     conditions: {
       building_tier: 'multi_10_plus',
       care_level_category: 'care_required',
@@ -119,7 +120,7 @@ export const CARE_RULES_2024: BillingRuleSeed[] = [
       ],
     },
     source_url: CARE_NOTICE_URL,
-    source_note: '居宅療養管理指導費 薬局薬剤師 単一建物10人以上 345単位（令和6年改定: 344→345）',
+    source_note: '令和6年厚生労働省告示第86号（2024年3月15日）社保審-介護給付費分科会 第239回 参考資料2-1 p.5 改定前341→改定後342単位',
   },
 
   // ════════════════════════════════════════════════════════════════
@@ -212,7 +213,7 @@ export const CARE_RULES_2024: BillingRuleSeed[] = [
     display_order: 280,
     name: '介護予防居宅療養管理指導費 薬局薬剤師 単一建物10人以上',
     code: 'CARE_PREV_PHARMACY_MULTI_10_PLUS',
-    amount: 345,
+    amount: 342,
     conditions: {
       building_tier: 'multi_10_plus',
       care_level_category: 'support_required',
@@ -234,7 +235,7 @@ export const CARE_RULES_2024: BillingRuleSeed[] = [
       ],
     },
     source_url: CARE_NOTICE_URL,
-    source_note: '介護予防居宅療養管理指導費 薬局薬剤師 単一建物10人以上 345単位',
+    source_note: '令和6年厚生労働省告示第86号（2024年3月15日）社保審-介護給付費分科会 第239回 参考資料2-1 p.5 改定前341→改定後342単位',
   },
 
   // ════════════════════════════════════════════════════════════════
@@ -256,6 +257,8 @@ export const CARE_RULES_2024: BillingRuleSeed[] = [
     conditions: {
       requires_online_visit: true,
       monthly_cap_shared: true,
+      special_monthly_cap: 8,
+      special_weekly_cap: 2,
     },
     source_url: CARE_NOTICE_URL,
     source_note: '居宅療養管理指導 薬局薬剤師 情報通信機器を用いた場合 46単位/回（月4回まで）',

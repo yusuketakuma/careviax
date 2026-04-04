@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -36,10 +37,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { cn } from '@/lib/utils';
-import {
-  buildQrDraftShortcutLinks,
-  QR_DRAFT_CONFIRM_SUCCESS_HREF,
-} from './page.helpers';
+import { buildQrDraftShortcutLinks, QR_DRAFT_CONFIRM_SUCCESS_HREF } from './page.helpers';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 
 // ── Types ──
 
@@ -53,6 +52,8 @@ interface JahisQRLine {
   quantity?: number;
   unit?: string;
   isGeneric?: boolean;
+  packagingInstructions?: string;
+  packagingInstructionTags?: string[];
   route?: string;
   dispensingMethod?: string;
   startDate?: string;
@@ -68,6 +69,7 @@ interface JahisQRData {
   prescriptionDate?: string;
   prescriberName?: string;
   prescriberInstitution?: string;
+  prescriberInstitutionId?: string | null;
   prescriberInstitutionCode?: string;
   lines?: JahisQRLine[];
 }
@@ -101,9 +103,11 @@ interface DraftLine {
   days: number | '';
   quantity: number | '';
   unit: string;
+  packaging_instructions: string;
   route: string;
   dispensing_method: string;
   start_date: string;
+  end_date: string;
   notes: string;
   _autoCompleted: string[];
   _parseError: string;
@@ -146,7 +150,7 @@ function formatBirthdate(s?: string) {
 
 function buildInitialLines(
   qrLines: JahisQRLine[],
-  autoCompleted: AutoCompletedField[] | null
+  autoCompleted: AutoCompletedField[] | null,
 ): DraftLine[] {
   return qrLines.map((line, idx) => {
     const autoFields = (autoCompleted ?? [])
@@ -162,9 +166,11 @@ function buildInitialLines(
       days: line.days ?? '',
       quantity: line.quantity ?? '',
       unit: line.unit ?? '',
+      packaging_instructions: line.packagingInstructions ?? '',
       route: line.route ?? '',
       dispensing_method: line.dispensingMethod ?? '',
       start_date: line.startDate ?? '',
+      end_date: line.endDate ?? '',
       notes: line.notes ?? '',
       _autoCompleted: autoFields,
       _parseError: '',
@@ -235,20 +241,16 @@ export default function QrDraftReviewPage() {
   const { data: casesData } = useQuery({
     queryKey: ['patient-cases', draft?.patient_id, orgId],
     queryFn: async () => {
-      const res = await fetch(
-        `/api/cases?patient_id=${draft!.patient_id}&status=active&limit=20`,
-        { headers: { 'x-org-id': orgId } }
-      );
+      const res = await fetch(`/api/cases?patient_id=${draft!.patient_id}&status=active&limit=20`, {
+        headers: { 'x-org-id': orgId },
+      });
       if (!res.ok) throw new Error('ケースの取得に失敗しました');
       return res.json() as Promise<{ data: CaseOption[] }>;
     },
     enabled: !!orgId && !!draft?.patient_id,
   });
 
-  const initialLines = useMemo(
-    () => buildInitialLines(draft?.parsed_data.lines ?? [], draft?.auto_completed ?? null),
-    [draft?.parsed_data.lines, draft?.auto_completed]
-  );
+  const initialLines = buildInitialLines(draft?.parsed_data.lines ?? [], draft?.auto_completed ?? null);
   const isCurrentDraftState = draft != null && formState.draftId === draft.id;
   const lines = isCurrentDraftState && formState.lines ? formState.lines : initialLines;
   const autoSelectedCaseId = casesData?.data.length === 1 ? casesData.data[0].id : '';
@@ -278,6 +280,7 @@ export default function QrDraftReviewPage() {
           case_id: caseId,
           prescribed_date: prescribedDate,
           prescriber_name: prescriberName || undefined,
+          prescriber_institution_id: draft?.parsed_data.prescriberInstitutionId ?? undefined,
           prescriber_institution: prescriberInstitution || undefined,
           lines: lines.map((l) => ({
             drug_name: l.drug_name,
@@ -288,9 +291,11 @@ export default function QrDraftReviewPage() {
             days: typeof l.days === 'number' ? l.days : Number(l.days),
             quantity: l.quantity !== '' ? Number(l.quantity) : undefined,
             unit: l.unit || undefined,
+            packaging_instructions: l.packaging_instructions || undefined,
             route: l.route || undefined,
             dispensing_method: l.dispensing_method || undefined,
             start_date: l.start_date || undefined,
+            end_date: l.end_date || undefined,
             notes: l.notes || undefined,
           })),
         }),
@@ -329,25 +334,24 @@ export default function QrDraftReviewPage() {
   });
 
   // Validation
-  const allDaysFilled = lines.every(
-    (l) => l.days !== '' && l.days !== null && Number(l.days) > 0
-  );
+  const allDaysFilled = lines.every((l) => l.days !== '' && l.days !== null && Number(l.days) > 0);
   const allRequiredFilled =
     allDaysFilled &&
-    lines.every((l) => l.drug_name.trim() !== '' && l.dose.trim() !== '' && l.frequency.trim() !== '') &&
+    lines.every(
+      (l) => l.drug_name.trim() !== '' && l.dose.trim() !== '' && l.frequency.trim() !== '',
+    ) &&
     !!caseId &&
     !!draft?.patient_id &&
     !!prescribedDate;
 
   const updateLine = (idx: number, field: keyof DraftLine, value: string | number) => {
     setFormState((prev) => {
-      const activeLines =
-        prev.draftId === draft?.id && prev.lines ? prev.lines : initialLines;
+      const activeLines = prev.draftId === draft?.id && prev.lines ? prev.lines : initialLines;
       return {
         ...prev,
         draftId: draft?.id ?? prev.draftId,
         lines: activeLines.map((line, lineIndex) =>
-          lineIndex === idx ? { ...line, [field]: value } : line
+          lineIndex === idx ? { ...line, [field]: value } : line,
         ),
       };
     });
@@ -356,15 +360,16 @@ export default function QrDraftReviewPage() {
   if (!orgId || isLoading) return <Loading />;
   if (!draft) {
     return (
-      <div className="p-6 text-sm text-muted-foreground">
-        QRスキャン下書きが見つかりません
-      </div>
+      <div className="p-6 text-sm text-muted-foreground">QRスキャン下書きが見つかりません</div>
     );
   }
+  const registrationHref = `/prescriptions/new?qr_draft_id=${draft.id}${
+    draft.patient_id ? `&patient_id=${draft.patient_id}` : ''
+  }${caseId ? `&case_id=${caseId}` : ''}`;
 
   if (draft.status !== 'pending') {
     return (
-      <div className="p-6">
+      <PageScaffold>
         <p className="text-sm text-muted-foreground">
           この下書きはすでに{draft.status === 'confirmed' ? '確定済み' : '破棄済み'}です。
         </p>
@@ -376,7 +381,7 @@ export default function QrDraftReviewPage() {
         >
           一覧へ戻る
         </Button>
-      </div>
+      </PageScaffold>
     );
   }
 
@@ -385,13 +390,22 @@ export default function QrDraftReviewPage() {
   const hasParseErrors = (draft.parse_errors?.length ?? 0) > 0;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 px-4 py-6">
+    <div className="space-y-6 p-3 md:p-4 xl:p-5">
       {/* Page header */}
       <WorkflowPageIntro
         backHref="/prescriptions/qr-drafts"
         backLabel="QR下書き一覧へ戻る"
+        eyebrow="QR Draft Review"
         title="QR読取下書き確認"
         description={`スキャン日時: ${format(new Date(draft.created_at), 'yyyy年M月d日 HH:mm', { locale: ja })} / セッション: ${draft.session_id.slice(0, 8)}`}
+        supportingContent={
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-foreground">確認の流れ</p>
+            <p className="text-sm text-muted-foreground">
+              解析エラー、患者情報、処方情報を確認し、受付確定へ進みます。
+            </p>
+          </div>
+        }
         shortcuts={buildQrDraftShortcutLinks(draft.patient_id)}
         actions={
           hasParseErrors ? (
@@ -406,7 +420,9 @@ export default function QrDraftReviewPage() {
       {/* Parse errors banner */}
       {hasParseErrors && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          <p className="font-medium mb-1">QR解析時にエラーが検出されました。内容を確認してください。</p>
+          <p className="font-medium mb-1">
+            QR解析時にエラーが検出されました。内容を確認してください。
+          </p>
           <ul className="list-disc pl-4 space-y-0.5">
             {draft.parse_errors!.map((e, i) => (
               <li key={i} className="text-xs">
@@ -544,13 +560,18 @@ export default function QrDraftReviewPage() {
           <CardTitle className="text-sm">処方明細</CardTitle>
           <p className="text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1 mr-3">
-              <Badge variant="outline" className="border-blue-300 bg-blue-50 text-[10px] text-blue-700 py-0 px-1">
+              <Badge
+                variant="outline"
+                className="border-blue-300 bg-blue-50 text-[10px] text-blue-700 py-0 px-1"
+              >
                 自動補完
               </Badge>
               QRから自動入力されたフィールド
             </span>
             <span className="inline-flex items-center gap-1">
-              <span className="rounded bg-amber-100 px-1 text-[10px] font-medium text-amber-700">要入力</span>
+              <span className="rounded bg-amber-100 px-1 text-[10px] font-medium text-amber-700">
+                要入力
+              </span>
               入力が必要なフィールド
             </span>
           </p>
@@ -567,16 +588,20 @@ export default function QrDraftReviewPage() {
                 const isAutoDose = line._autoCompleted.includes('dose');
                 const isAutoFreq = line._autoCompleted.includes('frequency');
                 const isAutoDays = line._autoCompleted.includes('days');
-                const isDaysMissing = line.days === '' || line.days === null || Number(line.days) <= 0;
+                const isDaysMissing =
+                  line.days === '' || line.days === null || Number(line.days) <= 0;
                 const isDrugMissing = line.drug_name.trim() === '';
                 const isDoseMissing = line.dose.trim() === '';
                 const isFreqMissing = line.frequency.trim() === '';
 
                 return (
-                  <div key={idx} className={cn(
-                    'rounded-lg border p-4 space-y-3',
-                    line._parseError ? 'border-destructive/40 bg-destructive/5' : 'border-border'
-                  )}>
+                  <div
+                    key={idx}
+                    className={cn(
+                      'rounded-lg border p-4 space-y-3',
+                      line._parseError ? 'border-destructive/40 bg-destructive/5' : 'border-border',
+                    )}
+                  >
                     <div className="flex items-center gap-2">
                       <span className="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-medium">
                         {idx + 1}
@@ -601,7 +626,8 @@ export default function QrDraftReviewPage() {
                           onChange={(e) => updateLine(idx, 'drug_name', e.target.value)}
                           className={cn(
                             'h-8 text-sm',
-                            isDrugMissing && 'border-amber-300 bg-amber-50 focus-visible:ring-amber-400'
+                            isDrugMissing &&
+                              'border-amber-300 bg-amber-50 focus-visible:ring-amber-400',
                           )}
                           placeholder="例: アムロジピン錠5mg"
                         />
@@ -632,7 +658,8 @@ export default function QrDraftReviewPage() {
                           onChange={(e) => updateLine(idx, 'dose', e.target.value)}
                           className={cn(
                             'h-8 text-sm',
-                            isDoseMissing && 'border-amber-300 bg-amber-50 focus-visible:ring-amber-400'
+                            isDoseMissing &&
+                              'border-amber-300 bg-amber-50 focus-visible:ring-amber-400',
                           )}
                           placeholder="例: 1錠"
                         />
@@ -652,7 +679,8 @@ export default function QrDraftReviewPage() {
                           onChange={(e) => updateLine(idx, 'frequency', e.target.value)}
                           className={cn(
                             'h-8 text-sm',
-                            isFreqMissing && 'border-amber-300 bg-amber-50 focus-visible:ring-amber-400'
+                            isFreqMissing &&
+                              'border-amber-300 bg-amber-50 focus-visible:ring-amber-400',
                           )}
                           placeholder="例: 1日1回朝食後"
                         />
@@ -677,7 +705,8 @@ export default function QrDraftReviewPage() {
                           }}
                           className={cn(
                             'h-8 text-sm',
-                            isDaysMissing && 'border-amber-300 bg-amber-50 focus-visible:ring-amber-400'
+                            isDaysMissing &&
+                              'border-amber-300 bg-amber-50 focus-visible:ring-amber-400',
                           )}
                           placeholder="例: 28"
                         />
@@ -729,9 +758,27 @@ export default function QrDraftReviewPage() {
                           className="h-8 text-sm"
                         />
                       </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">終了日</Label>
+                        <Input
+                          type="date"
+                          value={line.end_date}
+                          onChange={(e) => updateLine(idx, 'end_date', e.target.value)}
+                          className="h-8 text-sm"
+                        />
+                      </div>
                     </div>
 
-                    {/* Notes */}
+                    <div className="space-y-1">
+                      <Label className="text-xs">包装指示</Label>
+                      <Input
+                        value={line.packaging_instructions}
+                        onChange={(e) => updateLine(idx, 'packaging_instructions', e.target.value)}
+                        className="h-8 text-sm"
+                        placeholder="例: 一包化 / 粉砕 / 別包"
+                      />
+                    </div>
+
                     <div className="space-y-1">
                       <Label className="text-xs">備考</Label>
                       <Input
@@ -802,6 +849,9 @@ export default function QrDraftReviewPage() {
         </AlertDialog>
 
         <div className="flex items-center gap-3">
+          <Link href={registrationHref} className={cn('inline-flex h-10 items-center justify-center rounded-lg border border-input bg-background px-4 text-sm font-medium hover:bg-accent')}>
+            処方登録画面で編集
+          </Link>
           <Button
             variant="outline"
             onClick={() => router.push('/prescriptions/qr-drafts')}

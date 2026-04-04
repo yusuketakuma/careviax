@@ -10,12 +10,11 @@ import {
 } from '../shared';
 import {
   PrescriberInstitutionReferenceValidationError,
-  resolvePrescriberInstitutionFields,
 } from '@/lib/prescriptions/prescriber-institutions';
 import {
-  extractPackagingInstructionTags,
-  parsePackagingMethod,
-} from '@/lib/prescription/packaging';
+  createPrescriptionIntakeInTx,
+  runPrescriptionIntakePostCreateHooks,
+} from '@/server/services/prescription-intake-service';
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
@@ -34,6 +33,8 @@ export const POST = withAuth(
       prescriber_institution_id,
       prescriber_institution,
       original_document_url,
+      prescription_category,
+      emergency_category,
       entries,
     } = parsed.data;
 
@@ -137,67 +138,77 @@ export const POST = withAuth(
         };
       }
 
-      const resolvedInstitution = await resolvePrescriberInstitutionFields(tx, req.orgId, {
-        prescriber_institution_id,
-        prescriber_institution,
-      });
-
       const createdEntries = [];
+      const hookArgs: Array<Parameters<typeof runPrescriptionIntakePostCreateHooks>[0]> = [];
       for (const entry of entries) {
         const careCase = caseById.get(entry.case_id)!;
-        const cycle = await tx.medicationCycle.create({
-          data: {
-            org_id: req.orgId,
+        const intakeResult = await createPrescriptionIntakeInTx(
+          tx,
+          {
             case_id: entry.case_id,
             patient_id: entry.patient_id,
-            overall_status: 'intake_received',
-            version: 1,
-          },
-        });
-
-        const intake = await tx.prescriptionIntake.create({
-          data: {
-            org_id: req.orgId,
-            cycle_id: cycle.id,
             source_type,
-            prescribed_date: prescribedDate,
-            prescription_expiry_date: expiryDate,
-            ...(prescriber_name ? { prescriber_name } : {}),
-            prescriber_institution_id: resolvedInstitution.prescriber_institution_id,
-            prescriber_institution: resolvedInstitution.prescriber_institution,
-            ...(original_document_url ? { original_document_url } : {}),
-            lines: {
-              create: entry.lines.map((line) => {
-                const parsedPackaging = parsePackagingMethod(line.packaging_instructions);
-                return {
-                  org_id: req.orgId,
-                  ...line,
-                  packaging_method: parsedPackaging.method,
-                  packaging_instruction_tags: extractPackagingInstructionTags({
-                    packagingInstructions: line.packaging_instructions,
-                    notes: line.notes,
-                    packagingMethod: parsedPackaging.method,
-                  }),
-                };
-              }),
-            },
+            prescribed_date,
+            prescriber_name,
+            prescriber_institution_id,
+            prescriber_institution,
+            original_document_url,
+            prescription_category,
+            emergency_category,
+            lines: entry.lines,
           },
-          include: {
-            lines: {
-              select: {
-                id: true,
-              },
-            },
-          },
-        });
+          req.orgId,
+          req.userId
+        );
+
+        if (intakeResult.kind === 'error') {
+          if (intakeResult.error === 'cycle_not_found') {
+            return {
+              error: 'case_patient_mismatch' as const,
+              caseId: entry.case_id,
+            };
+          }
+          if (intakeResult.error === 'duplicate_prescription_lines') {
+            return {
+              error: 'duplicate_prescription_lines' as const,
+              caseId: entry.case_id,
+              patientName: careCase.patient.name,
+              duplicates: intakeResult.duplicates,
+            };
+          }
+          if (intakeResult.error === 'structuring_blocked_lines') {
+            return {
+              error: 'structuring_blocked_lines' as const,
+              caseId: entry.case_id,
+              patientName: careCase.patient.name,
+              blockedLines: intakeResult.blockedLines,
+            };
+          }
+          if (intakeResult.error === 'invalid_transition') {
+            return { error: 'invalid_transition' as const };
+          }
+          if (intakeResult.error === 'version_conflict') {
+            return { error: 'version_conflict' as const };
+          }
+          return { error: 'unexpected_create_failure' as const };
+        }
 
         createdEntries.push({
-          cycle_id: cycle.id,
-          intake_id: intake.id,
+          cycle_id: intakeResult.cycle.id,
+          intake_id: intakeResult.intake.id,
           case_id: careCase.id,
           patient_id: careCase.patient.id,
           patient_name: careCase.patient.name,
-          line_count: intake.lines.length,
+          line_count: intakeResult.intake.lines.length,
+        });
+        hookArgs.push({
+          cycleId: intakeResult.cycle.id,
+          intakeId: intakeResult.intake.id,
+          patientId: careCase.patient.id,
+          orgId: req.orgId,
+          lines: entry.lines,
+          prescriberName: prescriber_name ?? null,
+          sourceType: source_type,
         });
       }
 
@@ -205,6 +216,7 @@ export const POST = withAuth(
           facility_label: Array.from(facilityLabels)[0] ?? null,
           patient_count: createdEntries.length,
           entries: createdEntries,
+          hookArgs,
         };
       });
     } catch (error) {
@@ -248,9 +260,27 @@ export const POST = withAuth(
           facilities: result.facilities,
         });
       }
+      if (result.error === 'invalid_transition') {
+        return validationError('施設まとめ処方の状態遷移が無効です');
+      }
+      if (result.error === 'version_conflict') {
+        return validationError('施設まとめ処方の登録中に他ユーザーの更新が入りました。再度実行してください');
+      }
+      if (result.error === 'unexpected_create_failure') {
+        return validationError('施設まとめ処方の登録に失敗しました');
+      }
     }
 
-    return success(result, 201);
+    await Promise.allSettled(result.hookArgs.map((args) => runPrescriptionIntakePostCreateHooks(args)));
+
+    return success(
+      {
+        facility_label: result.facility_label,
+        patient_count: result.patient_count,
+        entries: result.entries,
+      },
+      201
+    );
   },
   {
     permission: 'canVisit',

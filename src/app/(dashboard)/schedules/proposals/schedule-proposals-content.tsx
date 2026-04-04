@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
@@ -44,6 +44,8 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import {
   addressOfPatient,
+  type BillingCadencePreview,
+  type BillingRequirementAlert,
   CONTACT_STATUS_LABELS,
   PRIORITY_LABELS,
   PROPOSAL_STATUS_LABELS,
@@ -326,6 +328,45 @@ export function ScheduleProposalsContent({
     () => proposals.filter((proposal) => matchesTab(proposal, activeTab)),
     [activeTab, proposals]
   );
+  const proposalPreviewRequests = useMemo(
+    () =>
+      visibleProposals.map((proposal) => ({
+        key: proposal.id,
+        case_id: proposal.case_id,
+        proposed_date: proposal.proposed_date.slice(0, 10),
+        pharmacist_id: proposal.proposed_pharmacist_id,
+        visit_type: proposal.visit_type,
+      })),
+    [visibleProposals]
+  );
+  const { data: proposalPreviewMap } = useQuery({
+    queryKey: ['schedule-proposals-dashboard-billing-preview', orgId, proposalPreviewRequests],
+    queryFn: async () => {
+      const response = await fetch('/api/visit-schedule-proposals/billing-preview-batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({ items: proposalPreviewRequests }),
+      });
+      if (!response.ok) throw new Error('候補の算定プレビュー取得に失敗しました');
+      const payload = (await response.json()) as {
+        data: Record<
+          string,
+          {
+            alerts: BillingRequirementAlert[];
+            cadence: BillingCadencePreview;
+            recommended_visit_type: string;
+            recommended_priority: 'normal' | 'urgent' | 'emergency';
+            recommended_candidate_count: number;
+          }
+        >;
+      };
+      return new Map(Object.entries(payload.data));
+    },
+    enabled: !!orgId && proposalPreviewRequests.length > 0,
+  });
 
   const selectedProposals = useMemo(
     () => visibleProposals.filter((proposal) => selectedIds.includes(proposal.id)),
@@ -544,7 +585,11 @@ export function ScheduleProposalsContent({
           start_date: reproposalForm.start_date || detail.proposed_date.slice(0, 10),
           preferred_time_from: reproposalForm.preferred_time_from || undefined,
           preferred_time_to: reproposalForm.preferred_time_to || undefined,
-          candidate_count: Number(reproposalForm.candidate_count || '3'),
+          candidate_count: Number(
+            reproposalForm.candidate_count ||
+              proposalPreviewMap?.get(detail.id)?.recommended_candidate_count ||
+              '3'
+          ),
         }),
       });
       if (!response.ok) {
@@ -577,6 +622,7 @@ export function ScheduleProposalsContent({
       return left.proposed_date.localeCompare(right.proposed_date);
     });
   }, [detail]);
+  const detailPreview = detail ? proposalPreviewMap?.get(detail.id) ?? null : null;
 
   const routeMapPoints = useMemo(() => {
     if (!detail) return [];
@@ -742,6 +788,12 @@ export function ScheduleProposalsContent({
           </Card>
         ) : (
           visibleProposals.map((proposal) => {
+            const proposalPreview = proposalPreviewMap?.get(proposal.id);
+            const proposalCadence = proposalPreview?.cadence ?? null;
+            const proposalWarningMessages =
+              proposalPreview?.alerts
+                ?.filter((alert) => alert.severity !== 'info')
+                .map((alert) => alert.message) ?? [];
             const canApprove = ['proposed', 'reschedule_pending'].includes(proposal.proposal_status);
             const canConfirm =
               proposal.proposal_status === 'patient_contact_pending' &&
@@ -858,6 +910,20 @@ export function ScheduleProposalsContent({
                         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                           {proposal.escalation_reason}
                         </p>
+                      ) : null}
+                      {proposalCadence ? (
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                          <p className="font-medium">算定 cadence</p>
+                          <p className="mt-1">
+                            次回算定可能日: {proposalCadence.next_billable_date ?? '提案不可'} / 残回数{' '}
+                            {proposalCadence.remaining_month_count}
+                          </p>
+                          {proposalWarningMessages.length > 0 ? (
+                            <p className="mt-1 text-xs text-amber-800">
+                              {proposalWarningMessages.slice(0, 2).join(' / ')}
+                            </p>
+                          ) : null}
+                        </div>
                       ) : null}
                       {impactedCount ? (
                         <p className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-800">
@@ -995,6 +1061,15 @@ export function ScheduleProposalsContent({
                       </Link>
                     ) : null}
                   </div>
+                  {detailPreview ? (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                      <p className="font-medium">算定 cadence</p>
+                      <p className="mt-1">
+                        次回算定可能日: {detailPreview.cadence.next_billable_date ?? '提案不可'} / 残回数{' '}
+                        {detailPreview.cadence.remaining_month_count}
+                      </p>
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
 

@@ -33,6 +33,8 @@ import { fetchVisitSchedulesWindow } from '../visit-schedule-fetch.helpers';
 import {
   PRIORITY_LABELS,
   PROPOSAL_STATUS_LABELS,
+  type BillingCadencePreview,
+  type BillingRequirementAlert,
   type CaseOption,
   type Proposal,
   type VisitPriority,
@@ -284,6 +286,27 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
 
   const activeCase =
     cases.find((careCase) => careCase.id === selectedCaseId) ?? null;
+  const { data: cadencePreview } = useQuery({
+    queryKey: ['weekly-optimizer-billing-preview', orgId, selectedCaseId, dateFrom],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        case_id: selectedCaseId,
+        proposed_date: dateFrom,
+      });
+      const response = await fetch(`/api/visit-schedule-proposals/billing-preview?${params}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!response.ok) throw new Error('算定プレビューの取得に失敗しました');
+      return response.json() as Promise<{
+        alerts: BillingRequirementAlert[];
+        cadence: BillingCadencePreview;
+        recommended_visit_type: VisitType;
+        recommended_priority: VisitPriority;
+        recommended_candidate_count: number;
+      }>;
+    },
+    enabled: !!orgId && !!selectedCaseId,
+  });
 
   const pharmacists = useMemo(() => {
     const map = new Map<
@@ -612,6 +635,13 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
               <p className="text-muted-foreground">
                 主担当 {activeCase.primary_pharmacist_name ?? '未設定'} / 希望枠 {plannerSettings.preferred_time_from} - {plannerSettings.preferred_time_to}
               </p>
+              {cadencePreview ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  次回算定可能日 {cadencePreview.cadence.next_billable_date ?? '提案不可'} / 残回数{' '}
+                  {cadencePreview.cadence.remaining_month_count} / 推奨候補数{' '}
+                  {cadencePreview.recommended_candidate_count}
+                </p>
+              ) : null}
             </div>
           ) : null}
 
@@ -652,6 +682,9 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
                         draggingSchedule &&
                         !draggingSchedule.confirmedAt &&
                         shiftFitsSchedule(shift, draggingSchedule);
+                      const isSuggestedBillableDay =
+                        cadencePreview?.cadence.suggested_dates.includes(dayKey) ?? false;
+                      const isNextBillableDay = cadencePreview?.cadence.next_billable_date === dayKey;
 
                       return (
                         <div
@@ -692,6 +725,15 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
                               <Badge variant="outline">{cellSchedules.length}件</Badge>
                               {cellProposals.length > 0 ? (
                                 <Badge variant="outline">{cellProposals.length}候補</Badge>
+                              ) : null}
+                              {isNextBillableDay ? (
+                                <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                                  次回算定可
+                                </Badge>
+                              ) : isSuggestedBillableDay ? (
+                                <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">
+                                  候補日
+                                </Badge>
                               ) : null}
                             </div>
                           </div>

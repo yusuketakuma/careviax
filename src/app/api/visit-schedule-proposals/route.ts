@@ -7,17 +7,16 @@ import {
   generateVisitScheduleProposalSchema,
   proposalStatusValues,
 } from '@/lib/validations/visit-schedule-proposal';
-import { CARE_RULES_2024, MEDICAL_RULES_2024, type BillingRuleSeed } from '@/server/services/billing-rules';
+import {
+  resolveBillingRulesForDate,
+} from '@/server/services/billing-rules';
 import { generateVisitScheduleProposalDrafts } from '@/server/services/visit-schedule-planner';
 import { formatVisitWorkflowGateIssues, type VisitWorkflowGateIssue } from '@/server/services/management-plans';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+import { validateBillingRequirements, type BillingRequirementAlert } from '@/server/services/billing-requirement-validator';
 
 function startOfMonth(value: Date) {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
-}
-
-function readMonthlyCap(rule: BillingRuleSeed) {
-  return typeof rule.conditions.monthly_cap === 'number' ? rule.conditions.monthly_cap : null;
 }
 
 function resolveProposalPayerBasis(args: {
@@ -33,12 +32,27 @@ function resolveProposalPayerBasis(args: {
   return 'self_pay';
 }
 
+/**
+ * 訪問提案作成時の算定制限チェック。
+ *
+ * 新バリデーター（validateBillingRequirements）に委譲し、
+ * severity: 'error' のアラートをブロッキングメッセージに変換する。
+ * sameMonthExclusiveCodes チェック（BillingCandidate ベース）は
+ * 新バリデーターの対象外のため、ここで保持する。
+ *
+ * 戻り値:
+ * - blockingMessages: string[] — 空でなければ提案作成をブロック
+ * - alerts: BillingRequirementAlert[] — 全アラート（UI表示用）
+ */
 async function validateProposalBillingExclusions(args: {
   orgId: string;
   caseId: string;
   visitType: string;
   targetDate: Date;
-}) {
+  pharmacistId?: string;
+  prescriptionCategory?: 'regular' | 'emergency';
+  specialCapEligible?: boolean;
+}): Promise<{ blockingMessages: string[]; alerts: BillingRequirementAlert[] }> {
   const careCase = await prisma.careCase.findFirst({
     where: {
       id: args.caseId,
@@ -56,7 +70,7 @@ async function validateProposalBillingExclusions(args: {
   });
 
   if (!careCase) {
-    return ['ケースが見つかりません'];
+    return { blockingMessages: ['ケースが見つかりません'], alerts: [] };
   }
 
   const payerBasis = resolveProposalPayerBasis({
@@ -64,58 +78,66 @@ async function validateProposalBillingExclusions(args: {
     careInsuranceNumber: careCase.patient.care_insurance_number,
     visitType: args.visitType,
   });
-  if (payerBasis === 'self_pay') return [];
-
-  const targetRules = (payerBasis === 'care' ? CARE_RULES_2024 : MEDICAL_RULES_2024).filter(
-    (rule) => rule.rule_type === 'base' && rule.provider_scope === 'pharmacy',
-  );
-  const targetRuleCodes = new Set(targetRules.map((rule) => rule.code));
-  const sameMonthExclusiveCodes = new Set(
-    targetRules.flatMap((rule) => rule.exclusion_rules?.same_month_exclusive ?? []),
-  );
-  const targetMonth = startOfMonth(args.targetDate);
-
-  const existingCandidates = await prisma.billingCandidate.findMany({
-    where: {
-      org_id: args.orgId,
-      patient_id: careCase.patient_id,
-      billing_month: targetMonth,
-      status: {
-        in: ['candidate', 'confirmed', 'exported'],
-      },
-    },
-    select: {
-      billing_code: true,
-      billing_name: true,
-    },
-  });
 
   const blockingMessages: string[] = [];
-  const sameMonthExclusiveMatches = existingCandidates.filter((candidate) =>
-    sameMonthExclusiveCodes.has(candidate.billing_code),
-  );
-  if (sameMonthExclusiveMatches.length > 0) {
-    blockingMessages.push(
-      `同月併算定不可の請求候補が存在します: ${sameMonthExclusiveMatches
-        .map((candidate) => candidate.billing_name)
-        .join(' / ')}`,
+
+  // ── sameMonthExclusiveCodes チェック（BillingCandidate ベース、保持） ──
+  if (payerBasis !== 'self_pay') {
+    const targetRules = resolveBillingRulesForDate({
+      payerBasis,
+      asOfDate: args.targetDate,
+    }).filter((rule) => rule.rule_type === 'base' && rule.provider_scope === 'pharmacy');
+    const sameMonthExclusiveCodes = new Set(
+      targetRules.flatMap((rule) => rule.exclusion_rules?.same_month_exclusive ?? []),
     );
+    const targetMonth = startOfMonth(args.targetDate);
+
+    const existingCandidates = await prisma.billingCandidate.findMany({
+      where: {
+        org_id: args.orgId,
+        patient_id: careCase.patient_id,
+        billing_month: targetMonth,
+        status: { in: ['candidate', 'confirmed', 'exported'] },
+      },
+      select: { billing_code: true, billing_name: true },
+    });
+
+    const sameMonthExclusiveMatches = existingCandidates.filter((candidate) =>
+      sameMonthExclusiveCodes.has(candidate.billing_code),
+    );
+    if (sameMonthExclusiveMatches.length > 0) {
+      blockingMessages.push(
+        `同月併算定不可の請求候補が存在します: ${sameMonthExclusiveMatches
+          .map((candidate) => candidate.billing_name)
+          .join(' / ')}`,
+      );
+    }
   }
 
-  const monthlyCap = targetRules
-    .map(readMonthlyCap)
-    .filter((value): value is number => value != null)
-    .reduce<number | null>((min, value) => (min == null ? value : Math.min(min, value)), null);
-  const currentMonthVisitCount = existingCandidates.filter((candidate) =>
-    targetRuleCodes.has(candidate.billing_code),
-  ).length;
-  if (monthlyCap != null && currentMonthVisitCount >= monthlyCap) {
-    blockingMessages.push(
-      `同月の在宅訪問算定回数が上限に達しています（${currentMonthVisitCount}/${monthlyCap}件）`,
-    );
+  // ── 新バリデーターに委譲（月上限チェック含む） ──
+  let alerts: BillingRequirementAlert[] = [];
+  if (payerBasis !== 'self_pay' && args.pharmacistId) {
+    alerts = await validateBillingRequirements({
+      orgId: args.orgId,
+      caseId: args.caseId,
+      patientId: careCase.patient_id,
+      pharmacistId: args.pharmacistId,
+      visitType: args.visitType,
+      proposedDate: args.targetDate,
+      prescriptionCategory: args.prescriptionCategory,
+      payerBasis,
+      specialCapEligible: args.specialCapEligible,
+    });
+
+    // severity: 'error' のアラートをブロッキングメッセージに変換
+    for (const alert of alerts) {
+      if (alert.severity === 'error') {
+        blockingMessages.push(alert.message);
+      }
+    }
   }
 
-  return blockingMessages;
+  return { blockingMessages, alerts };
 }
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
@@ -263,14 +285,38 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   });
   if (!refResult.ok) return refResult.response;
 
-  const billingConstraintMessages = await validateProposalBillingExclusions({
+  const hasExplicitVisitType = Object.prototype.hasOwnProperty.call(body, 'visit_type');
+  // Auto-propagate visitType from active PrescriptionIntake when not provided
+  let resolvedVisitType = parsed.data.visit_type;
+  if (hasExplicitVisitType) {
+    resolvedVisitType = parsed.data.visit_type;
+  } else {
+    const activeIntake = await prisma.prescriptionIntake.findFirst({
+      where: {
+        org_id: req.orgId,
+        cycle: { case_id: parsed.data.case_id },
+      },
+      orderBy: { created_at: 'desc' },
+      select: { prescription_category: true },
+    });
+    resolvedVisitType = activeIntake?.prescription_category === 'emergency' ? 'emergency' : 'regular';
+  }
+  const hasExplicitPriority = Object.prototype.hasOwnProperty.call(body, 'priority');
+  const resolvedPriority =
+    !hasExplicitPriority && resolvedVisitType === 'emergency'
+      ? 'emergency'
+      : parsed.data.priority;
+
+  const { blockingMessages, alerts: billingAlerts } = await validateProposalBillingExclusions({
     orgId: req.orgId,
     caseId: parsed.data.case_id,
-    visitType: parsed.data.visit_type,
+    visitType: resolvedVisitType,
     targetDate: parsed.data.start_date ? new Date(parsed.data.start_date) : new Date(),
+    pharmacistId: parsed.data.preferred_pharmacist_id,
+    prescriptionCategory: resolvedVisitType === 'emergency' ? 'emergency' : 'regular',
   });
-  if (billingConstraintMessages.length > 0) {
-    return validationError(billingConstraintMessages.join(' / '));
+  if (blockingMessages.length > 0) {
+    return validationError(blockingMessages.join(' / '));
   }
 
   let drafts;
@@ -278,8 +324,8 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     drafts = await generateVisitScheduleProposalDrafts({
       orgId: req.orgId,
       caseId: parsed.data.case_id,
-      visitType: parsed.data.visit_type,
-      priority: parsed.data.priority,
+      visitType: resolvedVisitType,
+      priority: resolvedPriority,
       candidateCount: parsed.data.candidate_count,
       startDate: parsed.data.start_date ? new Date(parsed.data.start_date) : undefined,
       lockedDate: parsed.data.locked_date ? new Date(parsed.data.locked_date) : undefined,
@@ -333,7 +379,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     payload: { source: 'visit_schedule_proposals_create', case_id: parsed.data.case_id },
   });
 
-  return success({ data: proposals }, 201);
+  return success({ data: proposals, alerts: billingAlerts }, 201);
 }, {
   permission: 'canVisit',
   message: '訪問候補の生成権限がありません',

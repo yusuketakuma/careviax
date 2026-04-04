@@ -3,6 +3,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { transitionCycleStatus, InvalidTransitionError, VersionConflictError } from '@/lib/db/cycle-transition';
 import { z } from 'zod';
 
@@ -144,6 +145,8 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
               take: 1,
               select: {
                 id: true,
+                source_type: true,
+                original_collected_at: true,
                 lines: {
                   select: {
                     id: true,
@@ -210,9 +213,11 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       };
     }
 
+    const latestIntake = task.cycle.prescription_intakes[0] ?? null;
+
     const discrepancyReasonErrors = buildDiscrepancyReasonErrors({
       submittedLines: lines,
-      prescribedLines: task.cycle.prescription_intakes[0]?.lines ?? [],
+      prescribedLines: latestIntake?.lines ?? [],
     });
     if (discrepancyReasonErrors.length > 0) {
       return {
@@ -223,7 +228,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
     // B5: Line ownership validation — each submitted line_id must belong to the current intake
     const validLineIds = new Set(
-      task.cycle.prescription_intakes[0]?.lines.map((l) => l.id) ?? []
+      latestIntake?.lines.map((l) => l.id) ?? []
     );
     const invalidLines = lines.filter((l) => !validLineIds.has(l.line_id));
     if (invalidLines.length > 0) {
@@ -272,7 +277,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       )
     );
 
-    const latestIntakeLineIds = task.cycle.prescription_intakes[0]?.lines.map((line) => line.id) ?? [];
+    const latestIntakeLineIds = latestIntake?.lines.map((line) => line.id) ?? [];
     const completedLineIds = new Set([
       ...task.results.map((item) => item.line_id),
       ...results.map((item) => item.line_id),
@@ -318,7 +323,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
       // B3: Create WorkflowException for partial dispense (guard against duplicates)
       const missingLineIds = latestIntakeLineIds.filter((lineId) => !completedLineIds.has(lineId));
-      const intakeLines = task.cycle.prescription_intakes[0]?.lines ?? [];
+      const intakeLines = latestIntake?.lines ?? [];
       const missingLineNames = missingLineIds
         .map((lineId) => intakeLines.find((l) => l.id === lineId)?.drug_name ?? lineId);
       const existingPartialException = await tx.workflowException.findFirst({
@@ -333,6 +338,27 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
             severity: 'warning',
             status: 'open',
             description: `部分調剤: 未調剤の行があります (${missingLineNames.join(', ')})`,
+          },
+        });
+      }
+
+      if (latestIntake?.source_type === 'fax' && latestIntake.original_collected_at == null) {
+        const dueDate = new Date(now);
+        dueDate.setDate(dueDate.getDate() + 3);
+        await upsertOperationalTask(tx, {
+          orgId: req.orgId,
+          taskType: 'fax_original_followup',
+          title: 'FAX処方せん原本の回収確認が必要です',
+          description: '訪問時回収または後日郵送到着後に原本回収を記録してください',
+          priority: 'high',
+          dueDate,
+          slaDueAt: dueDate,
+          dedupeKey: `fax-original-followup:${latestIntake.id}`,
+          relatedEntityType: 'prescription_intake',
+          relatedEntityId: latestIntake.id,
+          metadata: {
+            cycle_id: task.cycle_id,
+            task_id,
           },
         });
       }
@@ -432,6 +458,27 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
             special_notes: line.special_notes,
           })),
           carry_items_status: resolveCarryItemsStatus(persistedResults),
+        },
+      });
+    }
+
+    if (latestIntake?.source_type === 'fax' && latestIntake.original_collected_at == null) {
+      const dueDate = new Date(now);
+      dueDate.setDate(dueDate.getDate() + 3);
+      await upsertOperationalTask(tx, {
+        orgId: req.orgId,
+        taskType: 'fax_original_followup',
+        title: 'FAX処方せん原本の回収確認が必要です',
+        description: '訪問時回収または後日郵送到着後に原本回収を記録してください',
+        priority: 'high',
+        dueDate,
+        slaDueAt: dueDate,
+        dedupeKey: `fax-original-followup:${latestIntake.id}`,
+        relatedEntityType: 'prescription_intake',
+        relatedEntityId: latestIntake.id,
+        metadata: {
+          cycle_id: task.cycle_id,
+          task_id,
         },
       });
     }

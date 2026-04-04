@@ -6,7 +6,7 @@ import { Controller, useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, History, Info } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, History, Info } from 'lucide-react';
 import { z } from 'zod';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PreviousStageSummary } from '@/components/features/workflow/previous-stage-summary';
@@ -136,9 +136,11 @@ type DispenseTaskDetail = {
     };
     prescription_intakes: Array<{
       id: string;
+      source_type: string;
       prescribed_date: string;
       prescriber_name: string | null;
       prescriber_institution: string | null;
+      original_collected_at: string | null;
       lines: PrescriptionLine[];
     }>;
     inquiries: Array<{
@@ -155,6 +157,11 @@ type DispenseTaskDetail = {
         drug_name: string;
       } | null;
     }>;
+  };
+  original_collection_check: {
+    required: boolean;
+    collected: boolean;
+    collected_at: string | null;
   };
 };
 
@@ -408,6 +415,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
   const hasLineLevelBlock = blockedInquiryByLineId.size > 0;
   const availableLineCount = intake.lines.filter((line) => !blockedInquiryByLineId.has(line.id)).length;
   const submitBlocked = cycleLevelInquiries.length > 0 || availableLineCount === 0;
+  const originalCollectionCheck = task.original_collection_check;
 
   // Prefill mode
   const isPrefillMode = usePrefill && task.prefill?.isPrefillAvailable === true && task.results.length === 0;
@@ -518,6 +526,46 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
             </p>
           </CardHeader>
         </Card>
+
+        {originalCollectionCheck.required && (
+          <Card className={originalCollectionCheck.collected ? 'border-emerald-200' : 'border-amber-300'}>
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                {originalCollectionCheck.collected ? (
+                  <CheckCircle2 className="size-4 text-emerald-600" aria-hidden="true" />
+                ) : (
+                  <AlertTriangle className="size-4 text-amber-600" aria-hidden="true" />
+                )}
+                <CardTitle className="text-sm">処方せん原本の回収チェック</CardTitle>
+                <Badge variant={originalCollectionCheck.collected ? 'outline' : 'secondary'}>
+                  {originalCollectionCheck.collected ? '回収済み' : '要確認'}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <p className="text-muted-foreground">
+                FAX受付のため、調剤は進められますが、訪問時回収または後日郵送到着後に原本回収の記録が必須です。
+              </p>
+              {originalCollectionCheck.collected ? (
+                <p className="text-emerald-700">
+                  原本回収済み: {originalCollectionCheck.collected_at ?? '記録あり'}
+                </p>
+              ) : (
+                <p className="text-amber-800">
+                  未回収です。患者詳細の処方履歴から原本回収を記録してください。
+                </p>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/patients/${patient.id}/prescriptions`)}
+              >
+                原本回収を確認
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Auto-prefill info banner */}
         <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">

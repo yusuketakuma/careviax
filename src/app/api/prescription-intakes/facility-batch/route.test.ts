@@ -4,7 +4,15 @@ import type { NextRequest } from 'next/server';
 
 const TODAY = format(new Date(), 'yyyy-MM-dd');
 
-const { withAuthMock, withOrgContextMock } = vi.hoisted(() => ({
+const {
+  withAuthMock,
+  withOrgContextMock,
+  prescriptionIntakeFindFirstMock,
+  medicationProfileFindManyMock,
+  medicationProfileCreateMock,
+  medicationProfileUpdateMock,
+  medicationProfileUpdateManyMock,
+} = vi.hoisted(() => ({
   withAuthMock: vi.fn(
     (
       handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>
@@ -18,6 +26,11 @@ const { withAuthMock, withOrgContextMock } = vi.hoisted(() => ({
     }
   ),
   withOrgContextMock: vi.fn(),
+  prescriptionIntakeFindFirstMock: vi.fn().mockResolvedValue(null),
+  medicationProfileFindManyMock: vi.fn().mockResolvedValue([]),
+  medicationProfileCreateMock: vi.fn().mockResolvedValue({}),
+  medicationProfileUpdateMock: vi.fn().mockResolvedValue({}),
+  medicationProfileUpdateManyMock: vi.fn().mockResolvedValue({ count: 0 }),
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
@@ -26,6 +39,20 @@ vi.mock('@/lib/auth/middleware', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/client', () => ({
+  prisma: {
+    prescriptionIntake: {
+      findFirst: prescriptionIntakeFindFirstMock,
+    },
+    medicationProfile: {
+      findMany: medicationProfileFindManyMock,
+      create: medicationProfileCreateMock,
+      update: medicationProfileUpdateMock,
+      updateMany: medicationProfileUpdateManyMock,
+    },
+  },
 }));
 
 import { POST } from './route';
@@ -125,12 +152,74 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
   it('creates one medication cycle and intake per patient in a facility batch', async () => {
     const cycleCreateMock = vi
       .fn()
-      .mockResolvedValueOnce({ id: 'cycle_1' })
-      .mockResolvedValueOnce({ id: 'cycle_2' });
+      .mockResolvedValueOnce({
+        id: 'cycle_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        overall_status: 'intake_received',
+        version: 1,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_2',
+        patient_id: 'patient_2',
+        case_id: 'case_2',
+        overall_status: 'intake_received',
+        version: 1,
+      });
+    const cycleFindFirstMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: 'cycle_1',
+        patient_id: 'patient_1',
+        overall_status: 'intake_received',
+        version: 1,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_1',
+        patient_id: 'patient_1',
+        overall_status: 'structuring',
+        version: 2,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_1',
+        patient_id: 'patient_1',
+        overall_status: 'ready_to_dispense',
+        version: 3,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_2',
+        patient_id: 'patient_2',
+        overall_status: 'intake_received',
+        version: 1,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_2',
+        patient_id: 'patient_2',
+        overall_status: 'structuring',
+        version: 2,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_2',
+        patient_id: 'patient_2',
+        overall_status: 'ready_to_dispense',
+        version: 3,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_2',
+        patient_id: 'patient_2',
+        case_id: 'case_2',
+      });
+    const cycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
     const intakeCreateMock = vi
       .fn()
-      .mockResolvedValueOnce({ id: 'intake_1', lines: [{ id: 'line_1' }, { id: 'line_2' }] })
-      .mockResolvedValueOnce({ id: 'intake_2', lines: [{ id: 'line_3' }] });
+      .mockResolvedValueOnce({ id: 'intake_1' })
+      .mockResolvedValueOnce({ id: 'intake_2' });
+    const dispenseTaskCreateMock = vi.fn().mockResolvedValue({ id: 'task_1' });
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -155,12 +244,33 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
               },
             },
           ]),
+          findFirst: vi.fn().mockImplementation(async ({ where }) => ({
+            id: where.id,
+            patient_id: where.patient_id,
+            primary_pharmacist_id: where.id === 'case_1' ? 'pharmacist_1' : 'pharmacist_2',
+          })),
         },
         medicationCycle: {
           create: cycleCreateMock,
+          findFirst: cycleFindFirstMock,
+          updateMany: cycleUpdateManyMock,
+        },
+        cycleTransitionLog: {
+          create: vi.fn().mockResolvedValue({}),
+        },
+        workflowException: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn(),
         },
         prescriptionIntake: {
           create: intakeCreateMock,
+        },
+        inquiryRecord: {
+          count: vi.fn().mockResolvedValue(0),
+        },
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: dispenseTaskCreateMock,
         },
       })
     );
@@ -170,6 +280,8 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
         source_type: 'facility_batch',
         prescribed_date: TODAY,
         prescriber_name: '田中 一郎',
+        prescription_category: 'emergency',
+        emergency_category: 'other_exacerbation',
         entries: [
           {
             case_id: 'case_1',
@@ -237,5 +349,15 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
     });
     expect(cycleCreateMock).toHaveBeenCalledTimes(2);
     expect(intakeCreateMock).toHaveBeenCalledTimes(2);
+    expect(dispenseTaskCreateMock).toHaveBeenCalledTimes(2);
+    expect(intakeCreateMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          prescription_category: 'emergency',
+          emergency_category: 'other_exacerbation',
+        }),
+      }),
+    );
   });
 });

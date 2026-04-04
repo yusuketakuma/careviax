@@ -75,6 +75,26 @@ export type ProposalContactLog = {
   called_by: string;
 };
 
+export type BillingRequirementAlert = {
+  type: string;
+  severity: 'error' | 'warning' | 'info';
+  message: string;
+  details: Record<string, unknown>;
+  as_of: string;
+};
+
+export type BillingCadencePreview = {
+  monthly_cap: number;
+  current_month_count: number;
+  remaining_month_count: number;
+  weekly_cap: number | null;
+  current_week_count: number;
+  scheduled_dates_current_month: string[];
+  next_billable_date: string | null;
+  suggested_dates: string[];
+  reason: string;
+};
+
 export type Proposal = {
   id: string;
   case_id: string;

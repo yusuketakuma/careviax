@@ -139,10 +139,12 @@ describe('/api/dispense-tasks/[id]', () => {
         prescription_intakes: [
           {
             id: 'intake_1',
+            source_type: 'paper',
             prescribed_date: '2026-03-28T00:00:00.000Z',
             prescriber_name: '在宅医',
             prescriber_institution: 'みなとクリニック',
             original_document_url: null,
+            original_collected_at: null,
             lines: [
               {
                 id: 'line_1',
@@ -197,6 +199,11 @@ describe('/api/dispense-tasks/[id]', () => {
         id: 'site_1',
         name: '本店',
       },
+      original_collection_check: {
+        required: false,
+        collected: false,
+        collected_at: null,
+      },
       stock_guidance: [
         expect.objectContaining({
           line_id: 'line_1',
@@ -207,6 +214,62 @@ describe('/api/dispense-tasks/[id]', () => {
       ],
     });
     expect(generateDispensePrefillMock).toHaveBeenCalledWith('cycle_1', 'org_1', 'site_1');
+  });
+
+  it('returns fax original collection check metadata for fax-origin tasks', async () => {
+    dispenseTaskFindFirstMock.mockResolvedValue({
+      id: 'task_fax_1',
+      cycle_id: 'cycle_fax_1',
+      priority: 'normal',
+      due_date: null,
+      status: 'pending',
+      results: [],
+      audits: [],
+      cycle: {
+        id: 'cycle_fax_1',
+        patient_id: 'patient_1',
+        overall_status: 'ready_to_dispense',
+        inquiries: [],
+        case_: {
+          id: 'case_1',
+          primary_pharmacist_id: 'pharmacist_1',
+          patient: {
+            id: 'patient_1',
+            name: '山田 太郎',
+            name_kana: 'ヤマダ タロウ',
+            residences: [],
+          },
+        },
+        prescription_intakes: [
+          {
+            id: 'intake_fax_1',
+            source_type: 'fax',
+            prescribed_date: '2026-03-28T00:00:00.000Z',
+            prescriber_name: '在宅医',
+            prescriber_institution: 'みなとクリニック',
+            original_document_url: null,
+            original_collected_at: null,
+            lines: [],
+          },
+        ],
+      },
+    });
+    drugMasterFindManyMock.mockResolvedValue([]);
+    pharmacyDrugStockFindManyMock.mockResolvedValue([]);
+
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'task_fax_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      original_collection_check: {
+        required: true,
+        collected: false,
+        collected_at: null,
+      },
+    });
   });
 
   it('keeps packaging groups available for completed tasks during auditing', async () => {

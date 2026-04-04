@@ -35,6 +35,8 @@ export type BillingRuleConditions = {
   emergency_category?: 'planned_disease_exacerbation' | 'other_exacerbation' | 'online';
   /** オンライン指導フラグ */
   requires_online_visit?: boolean;
+  /** 緊急訪問の時間帯加算 */
+  after_hours_visit?: 'night' | 'holiday' | 'midnight';
 
   // ── 患者要件 ──
   /** 介護認定区分: care_required(要介護) / support_required(要支援) */
@@ -177,6 +179,7 @@ export type BillingRuleSeed = {
 
 export type BillingEvidenceContext = {
   orgId: string;
+  asOfDate?: Date;
   payerBasis: PayerBasis;
   serviceType: 'medical_home_visit' | 'care_home_management';
   providerScope: 'pharmacy' | 'hospital_clinic';
@@ -190,6 +193,10 @@ export type BillingEvidenceContext = {
   regionAddOnEligible?: Array<'special_15' | 'small_office_10' | 'resident_5'>;
   /** VisitType from the schedule — drives emergency billing rule selection */
   visitType?: string | null;
+  /** Emergency category from the latest prescription intake */
+  emergencyCategory?: 'planned_disease_exacerbation' | 'other_exacerbation' | 'online' | null;
+  /** After-hours category derived from visit timing or holiday settings */
+  afterHoursVisit?: 'night' | 'holiday' | 'midnight' | null;
 
   // ── 患者データから自動判定された条件 ──
   /** 乳幼児（6歳未満） — Patient.birth_date から自動計算 */
@@ -225,4 +232,5 @@ export type BillingRevision = {
   effectiveFrom: Date;    // e.g., 2024-06-01
   effectiveTo: Date | null; // null = current
   source: string;         // URL to official gazette
+  status?: 'draft' | 'confirmed';
 };

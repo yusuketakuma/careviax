@@ -1,6 +1,7 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
+import { validateOrgReferences } from '@/lib/api/org-reference';
 import { createPrescriptionIntakeSchema } from '@/lib/validations/prescription';
 import { prisma } from '@/lib/db/client';
 import { format } from 'date-fns';
@@ -76,6 +77,13 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         select: {
           overall_status: true,
           patient_id: true,
+          case_: {
+            select: {
+              patient: {
+                select: { id: true, name: true, name_kana: true },
+              },
+            },
+          },
         },
       },
     },
@@ -101,6 +109,9 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   }
 
   const {
+    cycle_id,
+    case_id,
+    patient_id,
     split_dispense_total,
     split_dispense_current,
     split_next_dispense_date,
@@ -127,6 +138,14 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     }
   }
 
+  if (!cycle_id) {
+    const refResult = await validateOrgReferences(req.orgId, {
+      case_id,
+      patient_id,
+    });
+    if (!refResult.ok) return refResult.response;
+  }
+
   const result = await createPrescriptionIntake(
     parsed.data,
     req.orgId,
@@ -138,7 +157,11 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
 
   if (!result.ok) {
     if (result.error === 'cycle_not_found') {
-      return validationError('指定されたサイクルが見つかりません');
+      return validationError(
+        cycle_id
+          ? '指定されたサイクルが見つかりません'
+          : '指定された患者またはケースが見つかりません'
+      );
     }
     if (result.error === 'duplicate_prescription_lines') {
       return validationError('重複候補の処方明細があるため受付できません', {

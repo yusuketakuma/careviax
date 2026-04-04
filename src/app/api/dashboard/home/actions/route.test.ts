@@ -6,15 +6,19 @@ const {
   membershipFindFirstMock,
   medicationCycleGroupByMock,
   taskFindManyMock,
+  visitScheduleFindManyMock,
   communicationQueueMock,
   describeOperationalTaskMock,
+  buildVisitScheduleBillingPreviewBatchMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   medicationCycleGroupByMock: vi.fn(),
   taskFindManyMock: vi.fn(),
+  visitScheduleFindManyMock: vi.fn(),
   communicationQueueMock: vi.fn(),
   describeOperationalTaskMock: vi.fn(),
+  buildVisitScheduleBillingPreviewBatchMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -32,6 +36,9 @@ vi.mock('@/lib/db/client', () => ({
     task: {
       findMany: taskFindManyMock,
     },
+    visitSchedule: {
+      findMany: visitScheduleFindManyMock,
+    },
   },
 }));
 
@@ -41,6 +48,10 @@ vi.mock('@/server/services/communication-queue', () => ({
 
 vi.mock('@/server/services/operational-tasks', () => ({
   describeOperationalTask: describeOperationalTaskMock,
+}));
+
+vi.mock('@/server/services/visit-schedule-billing-preview', () => ({
+  buildVisitScheduleBillingPreviewBatch: buildVisitScheduleBillingPreviewBatchMock,
 }));
 
 import { GET } from './route';
@@ -82,6 +93,7 @@ describe('/api/dashboard/home/actions GET', () => {
         related_entity_id: 'case_1',
       },
     ]);
+    visitScheduleFindManyMock.mockResolvedValue([]);
     communicationQueueMock.mockResolvedValue({
       summary: {
         pending_count: 1,
@@ -107,6 +119,7 @@ describe('/api/dashboard/home/actions GET', () => {
         },
       ],
     });
+    buildVisitScheduleBillingPreviewBatchMock.mockResolvedValue({});
   });
 
   it('returns 401 when unauthenticated', async () => {
@@ -156,6 +169,47 @@ describe('/api/dashboard/home/actions GET', () => {
             item_type: 'aggregate',
             task_type: 'set_audit_queue',
             action_href: '/medication-sets',
+          }),
+        ]),
+      },
+    });
+  });
+
+  it('adds a cadence warning aggregate action when upcoming schedules have billing cadence alerts', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    visitScheduleFindManyMock.mockResolvedValue([
+      {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        scheduled_date: new Date('2026-04-05T00:00:00.000Z'),
+        pharmacist_id: 'user_2',
+        visit_type: 'regular',
+      },
+    ]);
+    buildVisitScheduleBillingPreviewBatchMock.mockResolvedValue({
+      schedule_1: {
+        alerts: [
+          {
+            type: 'monthly_cap_exceeded',
+            severity: 'warning',
+            message: '月上限に近いです',
+          },
+        ],
+      },
+    });
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        actions: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'aggregate:billing_cadence_watch',
+            task_type: 'billing_cadence_watch',
+            action_href: '/schedules',
           }),
         ]),
       },

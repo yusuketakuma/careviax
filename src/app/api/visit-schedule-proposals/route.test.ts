@@ -6,25 +6,35 @@ const {
   membershipFindFirstMock,
   visitScheduleProposalFindManyMock,
   userFindManyMock,
+  userFindFirstMock,
   careCaseFindFirstMock,
   billingCandidateFindManyMock,
+  visitScheduleCountMock,
+  prescriptionIntakeFindFirstMock,
   validateOrgReferencesMock,
   generateVisitScheduleProposalDraftsMock,
   visitScheduleProposalUpdateManyMock,
   visitScheduleProposalCreateMock,
   withOrgContextMock,
+  findActiveVisitConsentMock,
+  findCurrentManagementPlanMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   visitScheduleProposalFindManyMock: vi.fn(),
   userFindManyMock: vi.fn(),
+  userFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   billingCandidateFindManyMock: vi.fn(),
+  visitScheduleCountMock: vi.fn(),
+  prescriptionIntakeFindFirstMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
   generateVisitScheduleProposalDraftsMock: vi.fn(),
   visitScheduleProposalUpdateManyMock: vi.fn(),
   visitScheduleProposalCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  findActiveVisitConsentMock: vi.fn(),
+  findCurrentManagementPlanMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -41,6 +51,7 @@ vi.mock('@/lib/db/client', () => ({
     },
     user: {
       findMany: userFindManyMock,
+      findFirst: userFindFirstMock,
     },
     careCase: {
       findFirst: careCaseFindFirstMock,
@@ -48,7 +59,19 @@ vi.mock('@/lib/db/client', () => ({
     billingCandidate: {
       findMany: billingCandidateFindManyMock,
     },
+    visitSchedule: {
+      count: visitScheduleCountMock,
+    },
+    prescriptionIntake: {
+      findFirst: prescriptionIntakeFindFirstMock,
+    },
   },
+}));
+
+vi.mock('@/server/services/management-plans', () => ({
+  formatVisitWorkflowGateIssues: (issues: string[]) => issues.join(','),
+  findActiveVisitConsent: findActiveVisitConsentMock,
+  findCurrentManagementPlan: findCurrentManagementPlanMock,
 }));
 
 vi.mock('@/lib/api/org-reference', () => ({
@@ -57,10 +80,6 @@ vi.mock('@/lib/api/org-reference', () => ({
 
 vi.mock('@/server/services/visit-schedule-planner', () => ({
   generateVisitScheduleProposalDrafts: generateVisitScheduleProposalDraftsMock,
-}));
-
-vi.mock('@/server/services/management-plans', () => ({
-  formatVisitWorkflowGateIssues: (issues: string[]) => issues.join(','),
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -112,6 +131,11 @@ describe('/api/visit-schedule-proposals', () => {
       },
     });
     billingCandidateFindManyMock.mockResolvedValue([]);
+    visitScheduleCountMock.mockResolvedValue(0);
+    prescriptionIntakeFindFirstMock.mockResolvedValue(null);
+    userFindFirstMock.mockResolvedValue({ max_weekly_visits: 40 });
+    findActiveVisitConsentMock.mockResolvedValue({ id: 'consent_1', expiry_date: new Date('2027-12-31') });
+    findCurrentManagementPlanMock.mockResolvedValue({ current: { id: 'plan_1', status: 'approved' }, reviewOverdue: false });
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
     generateVisitScheduleProposalDraftsMock.mockResolvedValue([
       { org_id: 'org_1', case_id: 'case_1', proposed_pharmacist_id: 'user_2' },
@@ -231,5 +255,26 @@ describe('/api/visit-schedule-proposals', () => {
 
     expect(response.status).toBe(400);
     expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+  });
+
+  it('promotes derived emergency proposals to emergency priority when priority is omitted', async () => {
+    prescriptionIntakeFindFirstMock.mockResolvedValueOnce({
+      prescription_category: 'emergency',
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        candidate_count: 1,
+      })
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(generateVisitScheduleProposalDraftsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        visitType: 'emergency',
+        priority: 'emergency',
+      })
+    );
   });
 });

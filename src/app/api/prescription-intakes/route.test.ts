@@ -9,6 +9,8 @@ const {
   withAuthMock,
   withOrgContextMock,
   prescriptionIntakeFindManyMock,
+  validateOrgReferencesMock,
+  upsertOperationalTaskMock,
 } = vi.hoisted(() => ({
   withAuthMock: vi.fn((
     handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>
@@ -22,6 +24,8 @@ const {
   }),
   withOrgContextMock: vi.fn(),
   prescriptionIntakeFindManyMock: vi.fn(),
+  validateOrgReferencesMock: vi.fn().mockResolvedValue({ ok: true }),
+  upsertOperationalTaskMock: vi.fn().mockResolvedValue({ id: 'task_operational_1' }),
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
@@ -30,6 +34,15 @@ vi.mock('@/lib/auth/middleware', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/api/org-reference', () => ({
+  validateOrgReferences: validateOrgReferencesMock,
+}));
+
+vi.mock('@/server/services/operational-tasks', () => ({
+  upsertOperationalTask: upsertOperationalTaskMock,
+  resolveOperationalTasks: vi.fn(),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -308,6 +321,355 @@ describe('/api/prescription-intakes POST', () => {
     });
   });
 
+  it('creates a new cycle and completes registration in one request when case and patient are provided', async () => {
+    const cycleCreateMock = vi.fn().mockResolvedValue({
+      id: 'cycle_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      overall_status: 'intake_received',
+      version: 1,
+    });
+    const cycleFindFirstMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: 'cycle_1',
+        patient_id: 'patient_1',
+        overall_status: 'intake_received',
+        version: 1,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_1',
+        patient_id: 'patient_1',
+        overall_status: 'structuring',
+        version: 2,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_1',
+        patient_id: 'patient_1',
+        overall_status: 'ready_to_dispense',
+        version: 3,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+      });
+    const cycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const cycleTransitionLogCreateMock = vi.fn().mockResolvedValue({});
+    const intakeCreateMock = vi.fn().mockResolvedValue({ id: 'intake_1' });
+    const dispenseTaskCreateMock = vi.fn().mockResolvedValue({ id: 'task_1' });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        careCase: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'case_1',
+            patient_id: 'patient_1',
+            primary_pharmacist_id: 'pharmacist_1',
+          }),
+        },
+        medicationCycle: {
+          create: cycleCreateMock,
+          findFirst: cycleFindFirstMock,
+          updateMany: cycleUpdateManyMock,
+        },
+        cycleTransitionLog: {
+          create: cycleTransitionLogCreateMock,
+        },
+        workflowException: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn(),
+        },
+        prescriptionIntake: {
+          create: intakeCreateMock,
+        },
+        inquiryRecord: {
+          count: vi.fn().mockResolvedValue(0),
+        },
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: dispenseTaskCreateMock,
+        },
+      })
+    );
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        source_type: 'paper',
+        prescribed_date: TODAY,
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      })
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
+      case_id: 'case_1',
+      patient_id: 'patient_1',
+    });
+    expect(cycleCreateMock).toHaveBeenCalledWith({
+      data: {
+        org_id: 'org_1',
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        overall_status: 'intake_received',
+        version: 1,
+      },
+    });
+    expect(dispenseTaskCreateMock).toHaveBeenCalledWith({
+      data: {
+        org_id: 'org_1',
+        cycle_id: 'cycle_1',
+        assigned_to: 'pharmacist_1',
+        priority: 'normal',
+        status: 'pending',
+      },
+    });
+    expect(cycleUpdateManyMock).toHaveBeenNthCalledWith(1, {
+      where: { id: 'cycle_1', version: 1 },
+      data: expect.objectContaining({ overall_status: 'structuring' }),
+    });
+    expect(cycleUpdateManyMock).toHaveBeenNthCalledWith(2, {
+      where: { id: 'cycle_1', version: 2 },
+      data: expect.objectContaining({ overall_status: 'ready_to_dispense' }),
+    });
+    expect(cycleUpdateManyMock).toHaveBeenNthCalledWith(3, {
+      where: { id: 'cycle_1', version: 3 },
+      data: expect.objectContaining({ overall_status: 'dispensing' }),
+    });
+  });
+
+  it('creates inquiry artifacts within the same prescription registration request', async () => {
+    const cycleCreateMock = vi.fn().mockResolvedValue({
+      id: 'cycle_2',
+      patient_id: 'patient_2',
+      case_id: 'case_2',
+      overall_status: 'intake_received',
+      version: 1,
+    });
+    const cycleFindFirstMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: 'cycle_2',
+        patient_id: 'patient_2',
+        overall_status: 'intake_received',
+        version: 1,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_2',
+        patient_id: 'patient_2',
+        case_id: 'case_2',
+      });
+    const cycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const cycleTransitionLogCreateMock = vi.fn().mockResolvedValue({});
+    const inquiryCreateMock = vi.fn().mockResolvedValue({ id: 'inq_1' });
+    const communicationRequestCreateMock = vi.fn().mockResolvedValue({ id: 'comm_1' });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        careCase: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'case_2',
+            patient_id: 'patient_2',
+            primary_pharmacist_id: null,
+          }),
+        },
+        medicationCycle: {
+          create: cycleCreateMock,
+          findFirst: cycleFindFirstMock,
+          updateMany: cycleUpdateManyMock,
+        },
+        cycleTransitionLog: {
+          create: cycleTransitionLogCreateMock,
+        },
+        workflowException: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn(),
+        },
+        prescriptionIntake: {
+          create: vi.fn().mockResolvedValue({ id: 'intake_2' }),
+        },
+        inquiryRecord: {
+          create: inquiryCreateMock,
+          count: vi.fn().mockResolvedValue(1),
+        },
+        communicationRequest: {
+          create: communicationRequestCreateMock,
+        },
+        communicationEvent: {
+          create: vi.fn().mockResolvedValue({ id: 'event_1' }),
+        },
+        dispenseTask: {
+          findFirst: vi.fn(),
+          create: vi.fn(),
+        },
+      })
+    );
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_2',
+        patient_id: 'patient_2',
+        source_type: 'paper',
+        prescribed_date: TODAY,
+        inquiry: {
+          reason: '用量疑義',
+          inquiry_to_physician: '山田 太郎 先生',
+          inquiry_content: '用量の確認が必要です',
+          request_due_date: TODAY,
+        },
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      })
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(inquiryCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          cycle_id: 'cycle_2',
+          reason: '用量疑義',
+          inquiry_to_physician: '山田 太郎 先生',
+        }),
+      })
+    );
+    expect(communicationRequestCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          patient_id: 'patient_2',
+          case_id: 'case_2',
+          related_entity_id: 'inq_1',
+        }),
+      })
+    );
+    expect(upsertOperationalTaskMock).toHaveBeenCalled();
+    expect(cycleUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'cycle_2', version: 1 },
+      data: expect.objectContaining({ overall_status: 'inquiry_pending' }),
+    });
+  });
+
+  it('creates a fax original follow-up task for fax-based prescription intake', async () => {
+    const cycleCreateMock = vi.fn().mockResolvedValue({
+      id: 'cycle_3',
+      patient_id: 'patient_3',
+      case_id: 'case_3',
+      overall_status: 'intake_received',
+      version: 1,
+    });
+    const cycleFindFirstMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: 'cycle_3',
+        patient_id: 'patient_3',
+        overall_status: 'intake_received',
+        version: 1,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_3',
+        patient_id: 'patient_3',
+        overall_status: 'structuring',
+        version: 2,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_3',
+        patient_id: 'patient_3',
+        overall_status: 'ready_to_dispense',
+        version: 3,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_3',
+        patient_id: 'patient_3',
+        case_id: 'case_3',
+      });
+    const cycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        careCase: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'case_3',
+            patient_id: 'patient_3',
+            primary_pharmacist_id: 'pharmacist_3',
+          }),
+        },
+        medicationCycle: {
+          create: cycleCreateMock,
+          findFirst: cycleFindFirstMock,
+          updateMany: cycleUpdateManyMock,
+        },
+        cycleTransitionLog: {
+          create: vi.fn().mockResolvedValue({}),
+        },
+        workflowException: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn(),
+        },
+        prescriptionIntake: {
+          create: vi.fn().mockResolvedValue({ id: 'intake_3' }),
+        },
+        inquiryRecord: {
+          count: vi.fn().mockResolvedValue(0),
+        },
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockResolvedValue({ id: 'task_3' }),
+        },
+      })
+    );
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_3',
+        patient_id: 'patient_3',
+        source_type: 'fax',
+        prescribed_date: TODAY,
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      })
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'fax_original_followup',
+        relatedEntityType: 'prescription_intake',
+        relatedEntityId: 'intake_3',
+      }),
+    );
+  });
+
   it('auto-creates a dispense task and moves the cycle to dispensing when no inquiry exists', async () => {
     const cycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
     const cycleTransitionLogCreateMock = vi.fn().mockResolvedValue({});
@@ -381,6 +743,79 @@ describe('/api/prescription-intakes POST', () => {
     expect(cycleUpdateManyMock).toHaveBeenCalledWith({
       where: { id: 'cycle_1', version: 1 },
       data: expect.objectContaining({ overall_status: 'dispensing' }),
+    });
+  });
+
+  it('raises dispense task priority for emergency prescriptions', async () => {
+    const cycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const cycleTransitionLogCreateMock = vi.fn().mockResolvedValue({});
+    const dispenseTaskCreateMock = vi.fn().mockResolvedValue({ id: 'task_emergency_1' });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        medicationCycle: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'cycle_emergency_1',
+            patient_id: 'patient_1',
+            overall_status: 'ready_to_dispense',
+            version: 1,
+            case_: {
+              primary_pharmacist_id: 'pharmacist_1',
+            },
+            prescription_intakes: [],
+            dispense_tasks: [],
+          }),
+          updateMany: cycleUpdateManyMock,
+        },
+        cycleTransitionLog: {
+          create: cycleTransitionLogCreateMock,
+        },
+        prescriptionIntake: {
+          create: vi.fn().mockResolvedValue({
+            id: 'intake_emergency_1',
+            lines: [],
+          }),
+        },
+        inquiryRecord: {
+          count: vi.fn().mockResolvedValue(0),
+        },
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: dispenseTaskCreateMock,
+        },
+      })
+    );
+
+    const response = await POST(
+      createRequest({
+        cycle_id: 'cycle_emergency_1',
+        source_type: 'paper',
+        prescribed_date: TODAY,
+        prescription_category: 'emergency',
+        emergency_category: 'other_exacerbation',
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      })
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(dispenseTaskCreateMock).toHaveBeenCalledWith({
+      data: {
+        org_id: 'org_1',
+        cycle_id: 'cycle_emergency_1',
+        assigned_to: 'pharmacist_1',
+        priority: 'emergency',
+        status: 'pending',
+      },
     });
   });
 });

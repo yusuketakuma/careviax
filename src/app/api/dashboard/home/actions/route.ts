@@ -3,6 +3,7 @@ import { success } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { describeOperationalTask } from '@/server/services/operational-tasks';
 import { listCommunicationQueue } from '@/server/services/communication-queue';
+import { buildVisitScheduleBillingPreviewBatch } from '@/server/services/visit-schedule-billing-preview';
 import { DASHBOARD_PIPELINE_STEPS } from '@/lib/dashboard/home-config';
 import type {
   PipelineStep,
@@ -73,7 +74,12 @@ function buildCycleAggregateActionItems(statusMap: Record<string, number>): Acti
 }
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
-  const [cycleCounts, pendingTasks, communicationQueue] = await Promise.all([
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const sevenDaysFromNow = new Date(today);
+  sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+
+  const [cycleCounts, pendingTasks, communicationQueue, upcomingSchedules] = await Promise.all([
     prisma.medicationCycle.groupBy({
       by: ['overall_status'],
       where: {
@@ -103,6 +109,27 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       },
     }),
     listCommunicationQueue(prisma, { orgId: req.orgId, limit: 6 }),
+    prisma.visitSchedule.findMany({
+      where: {
+        org_id: req.orgId,
+        scheduled_date: {
+          gte: today,
+          lte: sevenDaysFromNow,
+        },
+        schedule_status: {
+          in: ['planned', 'in_preparation', 'ready'],
+        },
+      },
+      take: 8,
+      orderBy: [{ scheduled_date: 'asc' }, { time_window_start: 'asc' }],
+      select: {
+        id: true,
+        case_id: true,
+        scheduled_date: true,
+        pharmacist_id: true,
+        visit_type: true,
+      },
+    }),
   ]);
 
   // Pipeline
@@ -154,8 +181,45 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     badges: [],
   }));
 
+  const cadencePreviewByScheduleId = await buildVisitScheduleBillingPreviewBatch(
+    upcomingSchedules.map((schedule) => ({
+      key: schedule.id,
+      caseId: schedule.case_id,
+      proposedDate: schedule.scheduled_date.toISOString().slice(0, 10),
+      pharmacistId: schedule.pharmacist_id,
+      visitType: schedule.visit_type,
+    })),
+    req.orgId,
+  );
+
+  const cadenceRiskCount = Object.values(cadencePreviewByScheduleId).filter(
+    (preview) => preview != null && preview.alerts.filter((alert) => alert.severity !== 'info').length > 0,
+  ).length;
+
   const aggregateItems = buildCycleAggregateActionItems(statusMap);
-  const actions = [...taskItems, ...commItems, ...aggregateItems].sort(sortActions).slice(0, 10);
+  const cadenceItems: ActionItem[] =
+    cadenceRiskCount > 0
+      ? [
+          {
+            id: 'aggregate:billing_cadence_watch',
+            item_type: 'aggregate',
+            task_type: 'billing_cadence_watch',
+            queue_label: '算定',
+            title: '算定間隔・回数の確認が必要な訪問予定があります',
+            summary: `${cadenceRiskCount}件の確定予定で算定 cadence アラートがあります。`,
+            priority: 'high',
+            due_at: null,
+            action_href: '/schedules',
+            action_label: 'スケジュールを確認',
+            owner_name: null,
+            patient_name: null,
+            badges: ['billing_cadence'],
+          },
+        ]
+      : [];
+  const actions = [...taskItems, ...commItems, ...aggregateItems, ...cadenceItems]
+    .sort(sortActions)
+    .slice(0, 10);
 
   return success({ data: { pipeline, actions } satisfies DashboardActionsResponse });
 });

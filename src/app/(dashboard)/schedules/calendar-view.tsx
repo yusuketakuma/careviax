@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   startOfMonth,
   endOfMonth,
@@ -26,7 +27,7 @@ import {
   type CalendarVisitSchedule,
   type ScheduleStatus,
 } from './calendar-view.helpers';
-import { VISIT_TYPE_LABELS } from './day-view.shared';
+import { VISIT_TYPE_LABELS, type BillingCadencePreview, type BillingRequirementAlert } from './day-view.shared';
 
 // ---- Constants ------------------------------------------------------------
 
@@ -193,6 +194,43 @@ export function CalendarView() {
   const schedulesByDate = useMemo(() => {
     return groupCalendarSchedulesByDate(schedules);
   }, [schedules]);
+  const schedulePreviewRequests = useMemo(
+    () =>
+      schedules.map((schedule) => ({
+        key: schedule.id,
+        case_id: schedule.case_id,
+        proposed_date: schedule.scheduled_date.slice(0, 10),
+        pharmacist_id: schedule.pharmacist_id,
+        visit_type: schedule.visit_type,
+      })),
+    [schedules],
+  );
+  const { data: schedulePreviewMap } = useQuery({
+    queryKey: ['calendar-billing-preview-map', orgId, schedulePreviewRequests],
+    queryFn: async () => {
+      if (schedulePreviewRequests.length === 0) return new Map();
+      const response = await fetch('/api/visit-schedule-proposals/billing-preview-batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({ items: schedulePreviewRequests }),
+      });
+      if (!response.ok) throw new Error('算定プレビューの取得に失敗しました');
+      const payload = (await response.json()) as {
+        data: Record<
+          string,
+          {
+            alerts: BillingRequirementAlert[];
+            cadence: BillingCadencePreview;
+          }
+        >;
+      };
+      return new Map(Object.entries(payload.data));
+    },
+    enabled: Boolean(orgId) && schedulePreviewRequests.length > 0,
+  });
 
   const schedulesForDay = (day: Date) =>
     schedulesByDate.get(format(day, 'yyyy-MM-dd')) ?? [];
@@ -270,6 +308,15 @@ export function CalendarView() {
               const isToday = isSameDay(day, today);
               const visible = daySchedules.slice(0, 3);
               const overflow = daySchedules.length - visible.length;
+              const dayPreviewEntries = daySchedules
+                .map((schedule) => schedulePreviewMap?.get(schedule.id) ?? null)
+                .filter((value): value is { alerts: BillingRequirementAlert[]; cadence: BillingCadencePreview } => value != null);
+              const hasCadenceWarning = dayPreviewEntries.some((entry) =>
+                entry.alerts.some((alert) => alert.severity !== 'info'),
+              );
+              const hasNextBillable = dayPreviewEntries.some(
+                (entry) => entry.cadence.next_billable_date === format(day, 'yyyy-MM-dd'),
+              );
 
               return (
                 <button
@@ -296,6 +343,20 @@ export function CalendarView() {
                     {format(day, 'd')}
                   </span>
                   <div className="flex flex-col gap-0.5">
+                    {(hasCadenceWarning || hasNextBillable) && (
+                      <div className="mb-0.5 flex flex-wrap gap-1">
+                        {hasCadenceWarning ? (
+                          <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-medium text-amber-800">
+                            算定注意
+                          </span>
+                        ) : null}
+                        {hasNextBillable ? (
+                          <span className="rounded bg-emerald-100 px-1 py-0.5 text-[9px] font-medium text-emerald-800">
+                            次回算定可
+                          </span>
+                        ) : null}
+                      </div>
+                    )}
                     {visible.map((s) => (
                       <ScheduleBadge key={s.id} schedule={s} />
                     ))}

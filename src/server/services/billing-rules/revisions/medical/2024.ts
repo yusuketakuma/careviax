@@ -4,8 +4,9 @@ export const MEDICAL_REVISION: BillingRevision = {
   code: '2024',
   label: '令和6年度 診療報酬改定',
   effectiveFrom: new Date('2024-06-01'),
-  effectiveTo: null,
+  effectiveTo: new Date('2026-05-31'),
   source: 'https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/0000188411_00045.html',
+  status: 'confirmed',
 };
 
 const MEDICAL_SOURCE_URL =
@@ -283,8 +284,36 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
     conditions: {
       requires_pediatric_special_eligibility: true,
     },
+    exclusion_rules: {
+      same_month_exclusive: ['MED_ADD_PEDIATRIC_SPECIAL_ONLINE'],
+    },
     source_url: MEDICAL_SOURCE_URL,
     source_note: '厚労省 令和6年度診療報酬改定 小児特定加算 450点',
+  },
+  {
+    ssot_key: 'medical.addition.pediatric_special_online',
+    rule_type: 'addition',
+    service_type: 'medical_home_visit',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'auto',
+    calculation_unit: 'point',
+    display_order: 155,
+    name: '小児特定加算（オンライン）',
+    code: 'MED_ADD_PEDIATRIC_SPECIAL_ONLINE',
+    amount: 350,
+    conditions: {
+      requires_online_visit: true,
+      requires_pediatric_special_eligibility: true,
+    },
+    exclusion_rules: {
+      same_month_exclusive: ['MED_ADD_PEDIATRIC_SPECIAL'],
+    },
+    evidence_requirements: {
+      requires_visit_documentation: true,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 区分15 在宅患者訪問薬剤管理指導料 小児特定加算（オンライン） 350点',
   },
   {
     ssot_key: 'medical.information_provision.1',
@@ -508,7 +537,7 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
     display_order: 200,
     name: '在宅移行初期管理料',
     code: 'MED_HOME_TRANSITION_INITIAL',
-    amount: 240,
+    amount: 230,
     conditions: {
       requires_initial_transition: true,
       once_per_patient: true,
@@ -518,7 +547,7 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
       requires_management_plan: true,
     },
     source_url: MEDICAL_TABLE_URL,
-    source_note: '調剤報酬点数表 区分15の8 在宅移行初期管理料 240点（令和6年新設。退院処方後の在宅移行時に1回）',
+    source_note: '調剤報酬点数表 区分15の8 在宅移行初期管理料 230点（令和6年新設。退院処方後の在宅移行時に1回）',
   },
 
   // ── 退院時共同指導料 ──
@@ -632,6 +661,7 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
       visit_type: 'emergency',
       emergency_category: 'planned_disease_exacerbation',
       monthly_cap: 4,
+      special_monthly_cap: 8,
     },
     evidence_requirements: {
       requires_physician_instruction: true,
@@ -658,6 +688,7 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
       visit_type: 'emergency',
       emergency_category: 'other_exacerbation',
       monthly_cap: 4,
+      special_monthly_cap: 8,
     },
     evidence_requirements: {
       requires_physician_instruction: true,
@@ -694,6 +725,7 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
       visit_type: 'emergency',
       emergency_category: 'online',
       monthly_cap: 4,
+      special_monthly_cap: 8,
     },
     evidence_requirements: {
       requires_physician_instruction: true,
@@ -703,5 +735,68 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
     },
     source_url: MEDICAL_TABLE_URL,
     source_note: '調剤報酬点数表 区分15の3 在宅患者緊急オンライン薬剤管理指導料 59点',
+  },
+  {
+    ssot_key: 'medical.emergency_visit.night_add_on',
+    rule_type: 'addition',
+    service_type: 'medical_home_visit',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 530,
+    name: '夜間訪問加算',
+    code: 'MED_EMERGENCY_VISIT_NIGHT',
+    amount: 400,
+    conditions: {
+      visit_type: 'emergency',
+      emergency_category: 'planned_disease_exacerbation',
+      after_hours_visit: 'night',
+      special_cap_eligible: true,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 区分15の2 在宅患者緊急訪問薬剤管理指導料 夜間訪問加算 400点',
+  },
+  {
+    ssot_key: 'medical.emergency_visit.holiday_add_on',
+    rule_type: 'addition',
+    service_type: 'medical_home_visit',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 540,
+    name: '休日訪問加算',
+    code: 'MED_EMERGENCY_VISIT_HOLIDAY',
+    amount: 600,
+    conditions: {
+      visit_type: 'emergency',
+      emergency_category: 'planned_disease_exacerbation',
+      after_hours_visit: 'holiday',
+      special_cap_eligible: true,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 区分15の2 在宅患者緊急訪問薬剤管理指導料 休日訪問加算 600点',
+  },
+  {
+    ssot_key: 'medical.emergency_visit.midnight_add_on',
+    rule_type: 'addition',
+    service_type: 'medical_home_visit',
+    payer_basis: 'medical',
+    provider_scope: 'pharmacy',
+    selection_mode: 'manual',
+    calculation_unit: 'point',
+    display_order: 550,
+    name: '深夜訪問加算',
+    code: 'MED_EMERGENCY_VISIT_MIDNIGHT',
+    amount: 1000,
+    conditions: {
+      visit_type: 'emergency',
+      emergency_category: 'planned_disease_exacerbation',
+      after_hours_visit: 'midnight',
+      special_cap_eligible: true,
+    },
+    source_url: MEDICAL_TABLE_URL,
+    source_note: '調剤報酬点数表 区分15の2 在宅患者緊急訪問薬剤管理指導料 深夜訪問加算 1000点',
   },
 ];

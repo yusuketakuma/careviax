@@ -112,7 +112,10 @@ export function describeOperationalTask(
       };
     case 'fax_original_followup':
       return {
-        actionHref: '/patients',
+        actionHref:
+          task.related_entity_type === 'prescription_intake' && task.related_entity_id
+            ? `/prescriptions/${task.related_entity_id}`
+            : '/patients',
         actionLabel: '原本回収を記録',
         queueLabel: 'FAX原本',
       };

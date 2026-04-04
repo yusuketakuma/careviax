@@ -51,6 +51,19 @@ export async function GET(
               },
             },
           },
+          inquiries: {
+            orderBy: { created_at: 'desc' },
+            select: {
+              id: true,
+              reason: true,
+              inquiry_to_physician: true,
+              inquiry_content: true,
+              result: true,
+              change_detail: true,
+              inquired_at: true,
+              resolved_at: true,
+            },
+          },
         },
       },
     },
@@ -103,6 +116,12 @@ export async function PATCH(
     split_next_dispense_date !== undefined
       ? split_next_dispense_date ?? undefined
       : existing.split_next_dispense_date?.toISOString().slice(0, 10) ?? undefined;
+  const effectivePrescriptionCategory =
+    rest.prescription_category ?? existing.prescription_category ?? 'regular';
+  const effectiveEmergencyCategory =
+    rest.emergency_category !== undefined
+      ? rest.emergency_category
+      : existing.emergency_category ?? undefined;
   const hasAnySplitField =
     effectiveSplitTotal != null ||
     effectiveSplitCurrent != null ||
@@ -123,6 +142,12 @@ export async function PATCH(
     }
   }
 
+  if (effectivePrescriptionCategory === 'emergency' && !effectiveEmergencyCategory) {
+    return validationError('緊急処方の場合は緊急区分の選択が必須です', {
+      emergency_category: ['緊急処方の場合は緊急区分の選択が必須です'],
+    });
+  }
+
   let intake;
   try {
     intake = await withOrgContext(ctx.orgId, async (tx) => {
@@ -138,6 +163,7 @@ export async function PATCH(
       where: { id },
       data: {
         ...rest,
+        ...(effectivePrescriptionCategory === 'regular' ? { emergency_category: null } : {}),
         ...(resolvedInstitution
           ? {
               prescriber_institution_id: resolvedInstitution.prescriber_institution_id,

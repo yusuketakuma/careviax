@@ -33,6 +33,7 @@ const confirmQrDraftSchema = z.object({
     .min(1),
   prescribed_date: z.string().min(1),
   prescriber_name: z.string().optional(),
+  prescriber_institution_id: z.string().optional(),
   prescriber_institution: z.string().optional(),
 });
 
@@ -48,7 +49,15 @@ export const POST = withAuth(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const { patient_id, case_id, lines, prescribed_date, prescriber_name, prescriber_institution } =
+    const {
+      patient_id,
+      case_id,
+      lines,
+      prescribed_date,
+      prescriber_name,
+      prescriber_institution_id,
+      prescriber_institution,
+    } =
       parsed.data;
 
     // Fetch draft and verify it belongs to this org and is pending
@@ -67,25 +76,14 @@ export const POST = withAuth(
       return validationError('このQRスキャン下書きはすでに処理済みです');
     }
 
-    // Resolve cycle_id from case_id
-    const cycle = await withOrgContext(req.orgId, async (tx) => {
-      return tx.medicationCycle.findFirst({
-        where: { org_id: req.orgId, case_id, patient_id },
-        orderBy: { created_at: 'desc' },
-        select: { id: true },
-      });
-    });
-
-    if (!cycle) {
-      return validationError('指定された患者・ケースに対応する服薬サイクルが見つかりません');
-    }
-
     // Build intake input — data is fully validated by PC review UI
     const intakeInput = {
-      cycle_id: cycle.id,
+      case_id,
+      patient_id,
       source_type: 'qr_scan' as const,
       prescribed_date,
       prescriber_name,
+      prescriber_institution_id,
       prescriber_institution,
       lines: lines.map((line, index) => ({
         line_number: index + 1,
