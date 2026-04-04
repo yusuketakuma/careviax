@@ -179,6 +179,48 @@ async function checkInteractions(
 ): Promise<CdsAlert[]> {
   const alerts: CdsAlert[] = [];
 
+  // Collect all unique drug code pairs to check
+  const lineCodes = prescriptionLines
+    .map((l) => l.drug_code)
+    .filter((c): c is string => c !== null);
+  const medCodes = currentMeds
+    .map((m) => masterByMedId.get(m.id)?.yj_code)
+    .filter((c): c is string => c !== undefined);
+
+  if (lineCodes.length === 0 || medCodes.length === 0) return alerts;
+
+  // Single batch query for all drug pairs (contraindicated + caution)
+  const allInteractions = await prisma.drugInteraction.findMany({
+    where: {
+      severity: { in: ['contraindicated', 'caution'] },
+      OR: [
+        { drug_a: { yj_code: { in: lineCodes } }, drug_b: { yj_code: { in: medCodes } } },
+        { drug_a: { yj_code: { in: medCodes } }, drug_b: { yj_code: { in: lineCodes } } },
+      ],
+    },
+    select: {
+      severity: true,
+      mechanism: true,
+      clinical_effect: true,
+      drug_a: { select: { yj_code: true } },
+      drug_b: { select: { yj_code: true } },
+    },
+  });
+
+  // Index interactions by canonical pair key for O(1) lookup
+  const interactionsByPair = new Map<string, typeof allInteractions>();
+  for (const ix of allInteractions) {
+    const [a, b] = [ix.drug_a.yj_code, ix.drug_b.yj_code].sort();
+    const key = `${a}::${b}`;
+    const existing = interactionsByPair.get(key);
+    if (existing) {
+      existing.push(ix);
+    } else {
+      interactionsByPair.set(key, [ix]);
+    }
+  }
+
+  // Check each line × med pair using the pre-fetched index
   for (const line of prescriptionLines) {
     if (!line.drug_code) continue;
 
@@ -186,29 +228,20 @@ async function checkInteractions(
       const medMaster = masterByMedId.get(med.id);
       if (!medMaster) continue;
 
-      const interaction = await prisma.drugInteraction.findFirst({
-        where: {
-          OR: [
-            {
-              drug_a: { yj_code: line.drug_code },
-              drug_b: { yj_code: medMaster.yj_code },
-            },
-            {
-              drug_a: { yj_code: medMaster.yj_code },
-              drug_b: { yj_code: line.drug_code },
-            },
-          ],
-          severity: 'contraindicated',
-        },
-        select: { mechanism: true, clinical_effect: true },
-      });
+      const [a, b] = [line.drug_code, medMaster.yj_code].sort();
+      const key = `${a}::${b}`;
+      const matches = interactionsByPair.get(key);
+      if (!matches) continue;
 
-      if (interaction) {
+      for (const interaction of matches) {
         alerts.push({
           type: 'interaction',
-          severity: 'critical',
-          message: `併用禁忌: ${line.drug_name} × ${med.drug_name}`,
+          severity: interaction.severity === 'contraindicated' ? 'critical' : 'warning',
+          message: interaction.severity === 'contraindicated'
+            ? `併用禁忌: ${line.drug_name} × ${med.drug_name}`
+            : `併用注意: ${line.drug_name} × ${med.drug_name}`,
           details: {
+            interaction_severity: interaction.severity,
             mechanism: interaction.mechanism ?? undefined,
             effect: interaction.clinical_effect ?? undefined,
           },
@@ -288,6 +321,153 @@ async function checkMaxDays(
           max_days: drug.max_administration_days,
           prescribed_days: line.days,
         },
+      });
+    }
+  }
+
+  return alerts;
+}
+
+// ---------------------------------------------------------------------------
+// 3b. Package insert audit (contraindications, adverse effects, elderly)
+// ---------------------------------------------------------------------------
+
+async function checkPackageInsertAudit(
+  prescriptionLines: PrescriptionLine[],
+  patientId: string,
+  orgId: string,
+): Promise<CdsAlert[]> {
+  const alerts: CdsAlert[] = [];
+
+  const drugCodes = prescriptionLines
+    .map((l) => l.drug_code)
+    .filter((c): c is string => c !== null);
+
+  if (drugCodes.length === 0) return alerts;
+
+  // Batch fetch package inserts for all prescribed drugs
+  const packageInserts = await prisma.drugPackageInsert.findMany({
+    where: { drug_master: { yj_code: { in: drugCodes } } },
+    include: { drug_master: { select: { yj_code: true, drug_name: true } } },
+  });
+
+  if (packageInserts.length === 0) return alerts;
+
+  // Check patient age for elderly precautions
+  const patient = await prisma.patient.findFirst({
+    where: { id: patientId, org_id: orgId },
+    select: { birth_date: true },
+  });
+  const patientAge = patient?.birth_date
+    ? differenceInYears(new Date(), patient.birth_date)
+    : null;
+
+  const insertByCode = new Map(
+    packageInserts.map((pi) => [pi.drug_master.yj_code, pi]),
+  );
+
+  for (const line of prescriptionLines) {
+    if (!line.drug_code) continue;
+    const pi = insertByCode.get(line.drug_code);
+    if (!pi) continue;
+
+    const drugName = pi.drug_master.drug_name;
+
+    // Check contraindications
+    if (pi.contraindications && Array.isArray(pi.contraindications)) {
+      const items = pi.contraindications as Array<{ text?: string; severity?: string }>;
+      for (const item of items.slice(0, 3)) {
+        if (item.text) {
+          alerts.push({
+            type: 'package_insert_contraindication',
+            severity: 'info',
+            message: `【禁忌】${drugName}: ${item.text.slice(0, 100)}`,
+            details: { drug_code: line.drug_code, section: 'contraindication' },
+          });
+        }
+      }
+    }
+
+    // Check serious adverse effects
+    if (pi.adverse_effects && Array.isArray(pi.adverse_effects)) {
+      const items = pi.adverse_effects as Array<{ text?: string; severity?: string }>;
+      const serious = items.filter((a) => a.severity === 'serious' || a.severity === '重大');
+      for (const item of serious.slice(0, 2)) {
+        if (item.text) {
+          alerts.push({
+            type: 'package_insert_adverse_effect',
+            severity: 'info',
+            message: `【重大な副作用】${drugName}: ${item.text.slice(0, 100)}`,
+            details: { drug_code: line.drug_code, section: 'adverse_effect' },
+          });
+        }
+      }
+    }
+
+    // Check elderly precautions (only for patients >= 65)
+    if (patientAge !== null && patientAge >= 65 && pi.precautions_elderly && Array.isArray(pi.precautions_elderly)) {
+      const items = pi.precautions_elderly as Array<{ text?: string }>;
+      for (const item of items.slice(0, 2)) {
+        if (item.text) {
+          alerts.push({
+            type: 'package_insert_elderly',
+            severity: 'warning',
+            message: `【高齢者注意】${drugName}（${patientAge}歳）: ${item.text.slice(0, 100)}`,
+            details: { drug_code: line.drug_code, section: 'elderly', patient_age: patientAge },
+          });
+        }
+      }
+    }
+  }
+
+  return alerts;
+}
+
+// ---------------------------------------------------------------------------
+// 3c. Transitional expiry date check (NEW)
+// ---------------------------------------------------------------------------
+
+async function checkTransitionalExpiry(
+  prescriptionLines: PrescriptionLine[],
+): Promise<CdsAlert[]> {
+  const alerts: CdsAlert[] = [];
+
+  const drugCodes = prescriptionLines
+    .map((l) => l.drug_code)
+    .filter((c): c is string => c !== null);
+
+  if (drugCodes.length === 0) return alerts;
+
+  const now = new Date();
+
+  const drugs = await prisma.drugMaster.findMany({
+    where: {
+      yj_code: { in: drugCodes },
+      transitional_expiry_date: { not: null },
+    },
+    select: { yj_code: true, drug_name: true, transitional_expiry_date: true },
+  });
+
+  for (const drug of drugs) {
+    if (!drug.transitional_expiry_date) continue;
+
+    const daysUntilExpiry = Math.floor(
+      (drug.transitional_expiry_date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+    );
+
+    if (daysUntilExpiry < 0) {
+      alerts.push({
+        type: 'transitional_expiry',
+        severity: 'critical',
+        message: `経過措置期限切れ: ${drug.drug_name}（${drug.transitional_expiry_date.toISOString().slice(0, 10)}に失効済み）`,
+        details: { drug_code: drug.yj_code, expiry_date: drug.transitional_expiry_date.toISOString() },
+      });
+    } else if (daysUntilExpiry <= 90) {
+      alerts.push({
+        type: 'transitional_expiry',
+        severity: 'warning',
+        message: `経過措置期限接近: ${drug.drug_name}（残${daysUntilExpiry}日、${drug.transitional_expiry_date.toISOString().slice(0, 10)}）`,
+        details: { drug_code: drug.yj_code, expiry_date: drug.transitional_expiry_date.toISOString(), days_remaining: daysUntilExpiry },
       });
     }
   }
@@ -815,7 +995,8 @@ async function checkRenalDoseAdjustment(
  *   1. Drug interactions (contraindicated)
  *   2. Duplicate medications
  *   3. Max administration days
- *   4. Allergy cross-reactions
+ *   3b. Transitional expiry date
+ *   4. Allergy cross-reactions (+ caution-level interactions)
  *   5. Narcotic / psychotropic flags
  *   6. High-risk drug counseling flag
  *   7. DO prescription long-term continuation risk
@@ -889,6 +1070,7 @@ export async function checkDispenseAlerts(
     managedAlertStates.get('max_days')
       ? checkMaxDays(prescriptionLines)
       : Promise.resolve([]),
+    checkTransitionalExpiry(prescriptionLines),
     managedAlertStates.get('allergy_cross')
       ? checkAllergyReactions(prescriptionLines, patientId, orgId)
       : Promise.resolve([]),
@@ -905,6 +1087,8 @@ export async function checkDispenseAlerts(
     managedAlertStates.get('renal_dose')
       ? checkRenalDoseAdjustment(prescriptionLines, patientId, orgId)
       : Promise.resolve([]),
+    // Package insert audit — always enabled (regulatory information)
+    checkPackageInsertAudit(prescriptionLines, patientId, orgId),
   ]);
 
   return results.flat();

@@ -24,6 +24,8 @@ export {
   refreshMhlwDrugReferences,
   refreshPmdaPackageInsertsDelta,
   refreshSskDrugMaster,
+  refreshAllFreeDrugMasters,
+  checkDrugMasterFreshness,
 } from './drug-master';
 export { drainMedicationHistoryBulkExportJobs } from './pdf-bulk-export';
 export { runJob } from './runner';

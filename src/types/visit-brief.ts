@@ -28,6 +28,20 @@ export type VisitBriefMedicationItem = {
   start_date: string | null;
   end_date: string | null;
   source: string | null;
+  /** DrugMaster enrichment (null if drug_code unresolved) */
+  drug_price: number | null;
+  is_generic: boolean | null;
+  is_narcotic: boolean | null;
+  is_psychotropic: boolean | null;
+  therapeutic_category: string | null;
+};
+
+export type VisitBriefDrugCaution = {
+  drug_name: string;
+  drug_code: string;
+  caution_type: 'contraindication' | 'adverse_effect' | 'elderly_precaution' | 'interaction';
+  severity: 'critical' | 'warning' | 'info';
+  summary: string;
 };
 
 export type VisitBriefDispensingItem = {
@@ -147,6 +161,7 @@ export type VisitBrief = {
   ai_summary: VisitBriefAiSummary;
   conference_summary: VisitBriefConferenceSummary | null;
   facility_context: VisitBriefFacilityContext | null;
+  drug_cautions: VisitBriefDrugCaution[];
 };
 
 // ─── CareTrend ────────────────────────────────────────────────────────────────

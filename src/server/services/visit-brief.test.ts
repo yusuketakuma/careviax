@@ -273,6 +273,15 @@ describe('getPatientVisitBrief', () => {
           soap_plan: '残薬確認を継続する',
         }),
       },
+      drugMaster: {
+        findMany: vi.fn().mockResolvedValue([
+          { yj_code: '123', drug_price: { toNumber: () => 12.5 }, is_generic: false, is_narcotic: false, is_psychotropic: false, therapeutic_category: '2171' },
+          { yj_code: '456', drug_price: { toNumber: () => 5.7 }, is_generic: true, is_narcotic: false, is_psychotropic: false, therapeutic_category: '2344' },
+        ]),
+      },
+      drugPackageInsert: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
     };
 
     const result = await getPatientVisitBrief(db as never, {

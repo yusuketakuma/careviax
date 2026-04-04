@@ -16,6 +16,7 @@ import type {
   VisitBriefDeliveryItem,
   VisitBriefDispensingItem,
   VisitBriefDosageFormCandidate,
+  VisitBriefDrugCaution,
   VisitBriefFacilityContext,
   VisitBriefMedicationChange,
   VisitBriefMedicationItem,
@@ -104,6 +105,15 @@ function detectMedicationChanges(
   }));
 }
 
+type DrugMasterEnrichment = {
+  yj_code: string;
+  drug_price: { toNumber: () => number } | null;
+  is_generic: boolean;
+  is_narcotic: boolean;
+  is_psychotropic: boolean;
+  therapeutic_category: string | null;
+};
+
 function buildMedicationItems(args: {
   currentLines: PrescriptionLineLike[];
   medicationProfiles: Array<{
@@ -116,7 +126,19 @@ function buildMedicationItems(args: {
     source: string | null;
   }>;
   prescriberName: string | null;
+  drugMasterMap: Map<string, DrugMasterEnrichment>;
 }): VisitBriefMedicationItem[] {
+  const enrich = (drugCode: string | null) => {
+    const dm = drugCode ? args.drugMasterMap.get(drugCode) : undefined;
+    return {
+      drug_price: dm?.drug_price?.toNumber() ?? null,
+      is_generic: dm?.is_generic ?? null,
+      is_narcotic: dm?.is_narcotic ?? null,
+      is_psychotropic: dm?.is_psychotropic ?? null,
+      therapeutic_category: dm?.therapeutic_category ?? null,
+    };
+  };
+
   if (args.currentLines.length > 0) {
     return args.currentLines.map((line) => ({
       drug_name: line.drug_name,
@@ -128,6 +150,7 @@ function buildMedicationItems(args: {
       start_date: isoOrNull(line.start_date),
       end_date: isoOrNull(line.end_date),
       source: 'prescription',
+      ...enrich(line.drug_code),
     }));
   }
 
@@ -141,7 +164,83 @@ function buildMedicationItems(args: {
     start_date: isoOrNull(item.start_date),
     end_date: isoOrNull(item.end_date),
     source: item.source,
+    drug_price: null,
+    is_generic: null,
+    is_narcotic: null,
+    is_psychotropic: null,
+    therapeutic_category: null,
   }));
+}
+
+/**
+ * Build drug cautions from DrugPackageInsert data for visit preparation.
+ * Surfaces contraindications, adverse effects, and elderly precautions
+ * so pharmacists can review them before visiting.
+ */
+async function buildDrugCautions(
+  db: DbClient,
+  drugCodes: string[],
+): Promise<VisitBriefDrugCaution[]> {
+  if (drugCodes.length === 0) return [];
+
+  const packageInserts = await db.drugPackageInsert.findMany({
+    where: { drug_master: { yj_code: { in: drugCodes } } },
+    include: { drug_master: { select: { yj_code: true, drug_name: true } } },
+  });
+
+  const cautions: VisitBriefDrugCaution[] = [];
+
+  for (const pi of packageInserts) {
+    const code = pi.drug_master.yj_code;
+    const name = pi.drug_master.drug_name;
+
+    // Contraindications
+    if (pi.contraindications && Array.isArray(pi.contraindications)) {
+      for (const c of (pi.contraindications as Array<{ text?: string }>).slice(0, 3)) {
+        if (c.text) {
+          cautions.push({
+            drug_name: name,
+            drug_code: code,
+            caution_type: 'contraindication',
+            severity: 'critical',
+            summary: c.text.slice(0, 120),
+          });
+        }
+      }
+    }
+
+    // Adverse effects (top 3 serious ones)
+    if (pi.adverse_effects && Array.isArray(pi.adverse_effects)) {
+      for (const a of (pi.adverse_effects as Array<{ text?: string; severity?: string }>).slice(0, 3)) {
+        if (a.text) {
+          cautions.push({
+            drug_name: name,
+            drug_code: code,
+            caution_type: 'adverse_effect',
+            severity: a.severity === 'serious' ? 'critical' : 'warning',
+            summary: a.text.slice(0, 120),
+          });
+        }
+      }
+    }
+
+    // Elderly precautions
+    if (pi.precautions_elderly && Array.isArray(pi.precautions_elderly)) {
+      for (const e of (pi.precautions_elderly as Array<{ text?: string }>).slice(0, 2)) {
+        if (e.text) {
+          cautions.push({
+            drug_name: name,
+            drug_code: code,
+            caution_type: 'elderly_precaution',
+            severity: 'warning',
+            summary: e.text.slice(0, 120),
+          });
+        }
+      }
+    }
+  }
+
+  return cautions;
 }
 
 function buildDispensingItems(args: {
@@ -1050,11 +1149,39 @@ export async function getPatientVisitBrief(
         currentIntake.prescriber_name
       )
     : [];
+
+  // Enrich with DrugMaster data for price/generic/narcotic display
+  const drugCodes = currentLines
+    .map((l) => l.drug_code)
+    .filter((c): c is string => c !== null);
+
+  const drugMasters = drugCodes.length > 0
+    ? await db.drugMaster.findMany({
+        where: { yj_code: { in: drugCodes } },
+        select: {
+          yj_code: true,
+          drug_price: true,
+          is_generic: true,
+          is_narcotic: true,
+          is_psychotropic: true,
+          therapeutic_category: true,
+        },
+      })
+    : [];
+
+  const drugMasterMap = new Map(
+    drugMasters.map((dm) => [dm.yj_code, dm]),
+  );
+
   const medications = buildMedicationItems({
     currentLines,
     medicationProfiles,
     prescriberName: currentIntake?.prescriber_name ?? null,
+    drugMasterMap,
   }).slice(0, args.limit ?? 12);
+
+  // Build drug cautions from package inserts for visit preparation
+  const drugCautions = await buildDrugCautions(db, drugCodes);
   const dispensingItems = buildDispensingItems({
     currentLines,
     latestSetPlan,
@@ -1177,6 +1304,7 @@ export async function getPatientVisitBrief(
         notes: f.notes ?? null,
       };
     })(),
+    drug_cautions: drugCautions,
   };
 }
 

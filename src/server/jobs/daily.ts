@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { withOrgContext } from '@/lib/db/rls';
 import { runJob } from './runner';
+import { checkDrugMasterFreshness } from './drug-master';
 import {
   buildCarryItemReviewTaskKey,
   buildCommunityFollowupTaskKey,
@@ -1947,6 +1948,7 @@ export async function runDailyOperations() {
       checkConsentExpiry(),
       trackAllOrgPatientStatuses(),
       cleanupAbandonedQrDrafts(),
+      checkDrugMasterFreshness(),
     ]);
 
     return {

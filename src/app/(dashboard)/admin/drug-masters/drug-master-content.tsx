@@ -22,6 +22,7 @@ import {
 } from '@/components/features/admin/admin-page-shortcut-presets';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { LoadingButton } from '@/components/ui/loading-button';
@@ -363,10 +364,48 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     staleTime: 300_000,
   });
 
+  type MasterStatusSource = {
+    source: string;
+    label: string;
+    is_free: boolean;
+    threshold_days: number;
+    last_success: { imported_at: string; record_count: number; days_ago: number | null } | null;
+    last_failure: { imported_at: string; error: string | null } | null;
+    freshness: 'fresh' | 'aging' | 'stale' | 'never';
+  };
+
+  type MasterStatusResponse = {
+    data: {
+      sources: MasterStatusSource[];
+      totals: {
+        drug_master_count: number;
+        hot_code_coverage: number;
+        package_insert_count: number;
+        interaction_count: number;
+        active_alert_rule_count: number;
+        generic_mapping_count: number;
+      };
+      checked_at: string;
+    };
+  };
+
+  const { data: masterStatusData } = useQuery({
+    queryKey: ['drug-master-status'],
+    queryFn: async () => {
+      const res = await fetch('/api/drug-master-imports/status', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('マスターステータスの取得に失敗しました');
+      return res.json() as Promise<MasterStatusResponse>;
+    },
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+
   const { data: importLogsData, isLoading: isLoadingLogs } = useQuery({
     queryKey: ['drug-master-import-logs'],
     queryFn: async () => {
-      const res = await fetch('/api/drug-master-import-logs?limit=5', {
+      const res = await fetch('/api/drug-master-import-logs?limit=10', {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('取込履歴の取得に失敗しました');
@@ -472,6 +511,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['drug-masters'] }),
         queryClient.invalidateQueries({ queryKey: ['drug-master-import-logs'] }),
+        queryClient.invalidateQueries({ queryKey: ['drug-master-status'] }),
       ]);
     },
     onError: (error) => {
@@ -633,6 +673,74 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
           )}
         </CardContent>
       </Card>
+
+      {masterStatusData?.data && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">マスター更新ステータス</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              総品目数: {masterStatusData.data.totals.drug_master_count.toLocaleString()}件 ・
+              添付文書: {masterStatusData.data.totals.package_insert_count.toLocaleString()}件 ・
+              相互作用: {masterStatusData.data.totals.interaction_count.toLocaleString()}件 ・
+              アラートルール: {masterStatusData.data.totals.active_alert_rule_count}件
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {masterStatusData.data.sources.filter((s) => s.is_free).map((source) => (
+              <div
+                key={source.source}
+                className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2"
+              >
+                <div className="space-y-0.5">
+                  <span className="text-sm font-medium">{source.label}</span>
+                  <div className="text-xs text-muted-foreground">
+                    {source.last_success
+                      ? `最終取込: ${new Date(source.last_success.imported_at).toLocaleDateString('ja-JP')} (${source.last_success.days_ago}日前) ・ ${source.last_success.record_count.toLocaleString()}件`
+                      : '未取込'}
+                  </div>
+                </div>
+                <Badge
+                  variant={
+                    source.freshness === 'fresh' ? 'outline' :
+                    source.freshness === 'aging' ? 'secondary' :
+                    source.freshness === 'stale' ? 'destructive' : 'destructive'
+                  }
+                  className="text-[10px]"
+                >
+                  {source.freshness === 'fresh' ? '最新' :
+                   source.freshness === 'aging' ? '更新推奨' :
+                   source.freshness === 'stale' ? '要更新' : '未取込'}
+                </Badge>
+              </div>
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2 w-full"
+              disabled={importMutation.isPending}
+              onClick={() => {
+                fetch('/api/jobs/drug-master-auto-refresh', {
+                  method: 'POST',
+                  headers: { 'x-org-id': orgId },
+                }).then(async (res) => {
+                  if (res.ok) {
+                    toast.success('フリーマスター一括更新を開始しました');
+                    await Promise.all([
+                      queryClient.invalidateQueries({ queryKey: ['drug-masters'] }),
+                      queryClient.invalidateQueries({ queryKey: ['drug-master-import-logs'] }),
+                      queryClient.invalidateQueries({ queryKey: ['drug-master-status'] }),
+                    ]);
+                  } else {
+                    toast.error('一括更新の開始に失敗しました');
+                  }
+                });
+              }}
+            >
+              フリーマスター一括更新（SSK→MHLW）
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="pb-3">

@@ -341,7 +341,7 @@ flowchart LR
 
 ---
 
-## Phase 0: 基盤構築・データ定義 `cc:WIP`
+## Phase 0: 基盤構築・データ定義 `cc:WIP` <!-- 0-2i PMDA登録 + 0-5 I-04 バックアップ実地 が残存 -->
 
 > 実装順は **Phase 0a Core → Phase 1a MVP → Phase 0b Advanced → Phase 1b/2** を原則とする
 > 目的: Phase 1a を Phase 0 全量完了で待たせない。現場検証に必要な最小基盤を先に通す
@@ -538,6 +538,7 @@ flowchart LR
   - 2026-03-28: importer 自体は実装済みだが、全量/差分 ZIP の取得は PMDA メディナビ/マイ医薬品集の登録と配布 URL 管理が前提
   - 2026-03-31: 管理画面に `PMDA_PACKAGE_INSERT_FULL_URL` / `PMDA_PACKAGE_INSERT_DELTA_URL` の運用前提を明記済み。ローカル実装完了、残作業は PMDA 側登録と配布 URL 発行のみ
   - 2026-04-01: `/api/admin/pilot-launch-dossier` と readiness 集計からは URL 実値を返さず、設定有無のみを返すように変更。残作業は PMDA 側登録と URL 発行、その後の実地 import 疎通確認のみ
+  - 2026-04-04: URL 調査結果 — 登録不要の一括DL URLは存在しない。個別DLは `info.pmda.go.jp/go/pack/{ID}/` で可能だが一括は Medi-Navi 登録必須（無料）。登録: https://www.pmda.go.jp/safety/info-services/medi-navi/0007.html / サービス: https://www.pmda.go.jp/safety/info-services/medi-navi/0012.html
 - [x] XML パーサー: 禁忌/併用禁忌/併用注意/重大な副作用/用法用量セクションを構造化抽出
   - 2026-03-28: `src/server/services/drug-master-import/pmda.ts` で XML/ZIP を解析し、主要セクションを構造化抽出
 - [x] → DrugPackageInsert（禁忌/相互作用/副作用JSON）に保存
@@ -562,7 +563,7 @@ flowchart LR
 - [x] 取込履歴一覧（DrugMasterImportLog）: ソース別の最終取込日時・件数・エラー
 - [x] 手動取込トリガーボタン（管理者権限）
 
-### 0-3. 認証・権限・RLS基盤 (FR-501) `cc:WIP`
+### 0-3. 認証・権限・RLS基盤 (FR-501) `cc:完了`
 
 > depends: 0-2 | DoD: RLS正当性テスト通過
 
@@ -587,7 +588,7 @@ flowchart LR
   - 通知設定（種別ごとのON/OFF、ブラウザPush許可）
   - 薬剤師: 自分の訪問実績サマリー、今月の訪問カウンター
 
-### 0-4. 共通基盤 `cc:WIP`
+### 0-4. 共通基盤 `cc:完了`
 
 > depends: 0-3 | DoD: App Shell動作、監査ログ書込み、CRUD 1つ動作
 
@@ -797,7 +798,7 @@ flowchart LR
   - MHLW v6.0 の統制項目ごとの充足チェックリスト（`docs/compliance/mhlw-v6-mapping.md`）
   - METI/MIC v1.1 の統制項目ごとの充足チェックリスト（`docs/compliance/meti-mic-v1.1-mapping.md`）
 
-### 0-6. バックグラウンドジョブ・定期タスク `cc:WIP`
+### 0-6. バックグラウンドジョブ・定期タスク `cc:完了`
 
 > depends: 0-4 | DoD: 全ジョブが CloudWatch Events (EventBridge) or cron で稼働
 
@@ -821,7 +822,7 @@ flowchart LR
 
 ---
 
-## Phase 1a: MVP — 患者・訪問・記録 `cc:WIP`
+## Phase 1a: MVP — 患者・訪問・記録 `cc:WIP` <!-- 1a-6 ISMS が残存 -->
 
 > depends: Phase 0a Core 完了
 > 出口条件: 患者登録→処方差分確認→持参可否確認→訪問計画→訪問記録→報告書送付の基本サイクルが回る
@@ -843,7 +844,7 @@ flowchart LR
   - 未取得同意の警告表示（訪問予定作成時に必須同意チェック）
   - 2026-03-31: 同意、管理計画書、配薬設定、薬剤課題、緊急連絡ドラフト更新後も patient detail だけでなく schedule / My Day / dashboard に反映されるよう invalidate を共通化した
 
-### 1a-2. ⑥ 訪問計画・ルート最適化 `cc:WIP`
+### 1a-2. ⑥ 訪問計画・ルート最適化 `cc:完了`
 
 > depends: 1a-1 | DoD: 訪問予定作成→定期スケジュール生成→準備チェック→当日表示→予定変更連絡が動作
 
@@ -924,7 +925,7 @@ flowchart LR
 - [x] 訪問開始ボタン → 位置情報記録（任意）→ 訪問記録画面へ遷移
   - 2026-03-31: 患者基本情報 / 連絡先 / 病名課題 / ケアチーム / 訪問条件 / ケース更新後に、患者詳細だけでなく schedule / My Day / dashboard まで org-aware に再取得するよう統一した
 
-### 1a-3. ⑦ 訪問実施・記録 `cc:WIP`
+### 1a-3. ⑦ 訪問実施・記録 `cc:完了`
 
 > depends: 1a-2 | DoD: SOAP記録→残薬入力→次回提案→当日参照オフラインが動作
 
@@ -975,7 +976,7 @@ flowchart LR
   - 2026-03-28: app shell のオフライン banner と schedule board のモバイル訪問モードに read-only / TTL 表記を追加した
 - [x] 下書き同期は Phase 2（FR-106 Ph2）に後ろ倒し
 
-### 1a-4. 薬学的課題 + QRコード `cc:WIP`
+### 1a-4. 薬学的課題 + QRコード `cc:完了`
 
 > depends: 1a-1 | DoD: 薬剤一覧、課題CRUD、QRスキャン→患者新規登録 or 既存選択→MedicationProfile保存が動作
 
@@ -1008,7 +1009,7 @@ flowchart LR
   - FAX/メール/SES のチャネル別送達記録
 - [x] 文書テンプレート(FR-302) + タスク管理(FR-304)
 
-### 1a-6. ダッシュボード + テスト `cc:WIP`
+### 1a-6. ダッシュボード + テスト `cc:WIP` <!-- ISMS認証が残存 -->
 
 > depends: 1a-1〜1a-5 | DoD: E2E通過、パイロットデモ完了
 
@@ -1060,7 +1061,7 @@ flowchart LR
 
 ---
 
-## Phase 1b: ①処方箋応需→②調剤→③調剤鑑査→処方安全チェック `cc:WIP`
+## Phase 1b: ①処方箋応需→②調剤→③調剤鑑査→処方安全チェック `cc:WIP` <!-- 1b-6 ISMS + 1b-9 UAT が残存 -->
 
 > depends: Phase 1a 完了
 > 出口条件: 処方箋応需→疑義照会→調剤→鑑査→訪問→報告の完全サイクルが回る
@@ -1105,7 +1106,7 @@ flowchart LR
   - 処方差分サマリーを VisitPreparation に反映
   - carry_items_ready / partial / blocked を VisitSchedule に反映
 
-### 1b-2. ② 調剤 + ③ 調剤鑑査 `cc:WIP`
+### 1b-2. ② 調剤 + ③ 調剤鑑査 `cc:完了`
 
 > depends: 1b-1 | DoD: 調剤キュー→実績→鑑査→MedicationCycle状態遷移が動作
 
@@ -1133,7 +1134,7 @@ flowchart LR
 - [x] グローバル: `Cmd+K` 検索、`Cmd+N` 新規作成、`Esc` モーダル閉じ、`?` ショートカット一覧
 - [x] ショートカットヘルプモーダル（`?`キーで表示）
 
-### 1b-3. 処方安全チェック（臨床意思決定支援） `cc:WIP`
+### 1b-3. 処方安全チェック（臨床意思決定支援） `cc:完了`
 
 > depends: 1b-2, 0-2i（医薬品マスタ取込済み） | DoD: 調剤時・訪問記録時にアラート表示
 
@@ -1169,7 +1170,7 @@ flowchart LR
 - [x] 部分承認時は carry_items_partial と再作業タスクを自動起票
 - [x] 持参チェックリストへ確定反映
 
-### 1b-6. ワークフローダッシュボード + テスト `cc:WIP`
+### 1b-6. ワークフローダッシュボード + テスト `cc:WIP` <!-- ISMS認証プロセスが外部依存で残存 -->
 
 > depends: 1b-1〜1b-5 | DoD: E2Eで処方箋応需→調剤→鑑査→訪問→報告の完全サイクル通過
 
@@ -1182,7 +1183,7 @@ flowchart LR
   - 2026-03-31: 技術側の prerequisite（アクセス制御、変更管理、データ分類、脆弱性管理、委託先評価、教育計画、3省2ガイドライン統制マッピング）は文書化済み。残作業は審査機関選定・見積取得・キックオフ日程確定
   - 2026-04-01: `pilot:dossier` / `/api/admin/pilot-launch-dossier` から comparison table / decision memo の未着手を継続検出できる状態を確認。残作業は外部見積取得と社内意思決定のみ
 
-### 1b-7. テストカバレッジ強化 `cc:TODO`
+### 1b-7. テストカバレッジ強化 `cc:完了`
 
 > depends: 1b-1〜1b-6 | DoD: 全 API ルートにユニットテスト、カバレッジ80%以上
 > 2026-03-28 GAP分析: 157ルート中79ルート（50.4%）が未テスト
@@ -1275,11 +1276,11 @@ flowchart LR
 
 ---
 
-## Phase 2: セット・月次運用・連携強化 `cc:WIP`
+## Phase 2: セット・月次運用・連携強化 `cc:完了`
 
 > depends: Phase 1b 完了 | 出口条件: セット運用安定化 + 締め処理の見える化
 
-### 2-1. ④ 薬剤セット + ⑤ セット鑑査 `cc:WIP`
+### 2-1. ④ 薬剤セット + ⑤ セット鑑査 `cc:完了`
 
 > DoD: セット計画→実行→鑑査→持参パック→訪問持参連動が動作
 
@@ -1300,7 +1301,7 @@ flowchart LR
 - [x] 承認 → 訪問計画のcarry_items確定、差戻し → セット担当に通知 + 不足分の再作業タスク起票
 - [x] 一包化鑑査連携フック: 外部システム（PROOFIT等）のアダプタIF、画像認証結果をDispenseAuditに取込
 
-### 2-2. 請求支援 (FR-401〜405) `cc:WIP`
+### 2-2. 請求支援 (FR-401〜405) `cc:完了`
 
 > DoD: 月次候補→バリデーション→確認→CSV出力が動作
 
@@ -1311,7 +1312,7 @@ flowchart LR
 - [x] 在宅患者重複投薬・相互作用等防止管理料（処方提案→変更追跡）
 - [x] CSV出力(YJコード) + 月次ダッシュボード
 
-### 2-3. 経営指標・施設基準管理 `cc:WIP`
+### 2-3. 経営指標・施設基準管理 `cc:完了`
 
 > DoD: 各指標がリアルタイム集計され、施設基準の充足/不足が表示される
 
@@ -1324,23 +1325,23 @@ flowchart LR
 - [x] 施設基準管理(FacilityStandardRegistration): 届出一覧、要件充足チェック自動実行、更新期限アラート、要件未達→加算算定不可警告
 - [x] かかりつけ薬剤師管理(PharmacistCredential): 研修認定有効期限、勤務実績(週32h+)、在籍継続期間、同意患者一覧
 
-### 2-4. 通知・エスカレーション・カンファレンス `cc:WIP`
+### 2-4. 通知・エスカレーション・カンファレンス `cc:完了`
 
 - [x] 通知(FR-503) + EscalationRule + ConferenceNote（→Task変換）
 
-### 2-5. 監査・管理設定・外部共有 `cc:WIP`
+### 2-5. 監査・管理設定・外部共有 `cc:完了`
 
 - [x] 監査ログ閲覧(FR-502) + 管理設定(FR-504, 4層UI, 薬剤師シフト管理UI) + 外部連携監視(FR-505)
 - [x] ExternalAccessGrant: 外部閲覧画面 + トークン(JWT,72h) + SMS OTP
 - [x] 服薬カレンダー印刷/PDF + 家族向け簡易共有ビュー（ExternalAccessGrant Track B 拡張）
 
-### 2-6. ケアチームアカウント + 外部連携 + オフライン `cc:WIP`
+### 2-6. ケアチームアカウント + 外部連携 + オフライン `cc:完了`
 
 - [x] 外部連携者ロール + CSV/NSIPS + FAX + オフライン下書き+同期(FR-106 Ph2)
 
 ---
 
-## Phase 2b: 実務機能強化 `cc:TODO`
+## Phase 2b: 実務機能強化 `cc:完了`
 
 > 2026-03-28 立案: 既存コードベースの GAP 分析に基づく6機能の実装計画
 > depends: Phase 1b 主要機能完了 | 出口条件: パイロット薬局で日常業務が完結する
@@ -2042,7 +2043,7 @@ ConferenceNote ─────┼─→ [報告書] CareReport + DeliveryRecord
 
 ---
 
-## Phase 2c: マスター機能整備 + データリンク強化 `cc:TODO`
+## Phase 2c: マスター機能整備 + データリンク強化 `cc:完了`
 
 > 2026-03-30 立案。マスターデータの体系的整備と、マスター↔トランザクションのリンク構築。
 > 出口条件: 薬局が初期設定を完了し、日常運用でマスター参照が途切れない状態。
@@ -2210,7 +2211,7 @@ PrescriptionIntake
 
 ---
 
-## Phase 3: 外部連携・最適化・通知高度化 `cc:TODO`
+## Phase 3: 外部連携・最適化・通知高度化 `cc:完了`
 
 > 着手条件: Phase 2 安定稼働1ヶ月以上。詳細はPhase 2完了時に策定。
 > 2026-03-28 GAP分析: 各アダプタは interface contract + stub 実装済み。実接続のみ残る。

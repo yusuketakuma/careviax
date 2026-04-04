@@ -26,6 +26,8 @@ import {
   runNextDayOperations,
   runMonthlyOperations,
   refreshSskDrugMaster,
+  refreshAllFreeDrugMasters,
+  checkDrugMasterFreshness,
   drainMedicationHistoryBulkExportJobs,
 } from '@/server/jobs';
 
@@ -48,6 +50,8 @@ const JOB_HANDLERS: Record<string, () => Promise<{ processedCount: number; error
   'monthly': runMonthlyOperations,
   'drug-master-refresh': refreshSskDrugMaster,
   'drug-reference-refresh': refreshMhlwDrugReferences,
+  'drug-master-auto-refresh': refreshAllFreeDrugMasters,
+  'drug-master-freshness-check': checkDrugMasterFreshness,
   'pmda-package-insert-refresh': refreshPmdaPackageInsertsDelta,
   'medication-history-bulk-export-drain': drainMedicationHistoryBulkExportJobs,
   'daily-facility-standard-expiry': checkFacilityStandardExpiry,
