@@ -165,19 +165,19 @@ export async function checkDrugMasterFreshness() {
           select: { user_id: true, org_id: true },
         });
 
-        for (const admin of adminMemberships) {
-          await prisma.notification.create({
-            data: {
-              org_id: admin.org_id,
-              user_id: admin.user_id,
-              type: 'system',
-              title: '医薬品マスター更新遅延',
-              message,
-              link: '/admin/drug-masters',
-              dedupe_key: `drug-master-stale:${source}:${now.toISOString().slice(0, 10)}`,
-            },
-          });
-        }
+        const dedupeDate = now.toISOString().slice(0, 10);
+        await prisma.notification.createMany({
+          data: adminMemberships.map((admin) => ({
+            org_id: admin.org_id,
+            user_id: admin.user_id,
+            type: 'system' as const,
+            title: '医薬品マスター更新遅延',
+            message,
+            link: '/admin/drug-masters',
+            dedupe_key: `drug-master-stale:${source}:${dedupeDate}`,
+          })),
+          skipDuplicates: true,
+        });
         alertCount++;
       }
     }
