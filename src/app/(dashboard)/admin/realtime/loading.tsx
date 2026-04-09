@@ -1,4 +1,4 @@
-import { Skeleton, SkeletonRows } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/loading';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export default function AdminRealtimeLoading() {

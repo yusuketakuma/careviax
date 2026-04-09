@@ -151,56 +151,62 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
     visitScheduleFindManyMock.mockResolvedValue([buildImpactedSchedule()]);
     generateVisitScheduleProposalDraftsMock.mockImplementation(async ({ caseId }: { caseId: string }) => {
       if (caseId === 'case_2') {
-        return [
-          {
-            org_id: 'org_1',
-            cycle_id: 'cycle_2',
-            case_id: 'case_2',
-            site_id: 'site_1',
-            visit_type: 'regular',
-            priority: 'normal',
-            proposal_status: 'reschedule_pending',
-            patient_contact_status: 'pending',
-            proposed_date: new Date('2026-03-27T00:00:00.000Z'),
-            time_window_start: new Date('1970-01-01T15:00:00.000Z'),
-            time_window_end: new Date('1970-01-01T16:00:00.000Z'),
-            proposed_pharmacist_id: 'pharmacist_1',
-            assignment_mode: 'primary',
-            route_order: 3,
-            route_distance_score: 2.4,
-            medication_end_date: new Date('2026-03-31T00:00:00.000Z'),
-            visit_deadline_date: new Date('2026-03-30T00:00:00.000Z'),
-            proposal_reason: '同日内で後段へ再配置',
-            escalation_reason: null,
-            reschedule_source_schedule_id: 'schedule_2',
-          },
-        ];
+        return {
+          drafts: [
+            {
+              org_id: 'org_1',
+              cycle_id: 'cycle_2',
+              case_id: 'case_2',
+              site_id: 'site_1',
+              visit_type: 'regular',
+              priority: 'normal',
+              proposal_status: 'reschedule_pending',
+              patient_contact_status: 'pending',
+              proposed_date: new Date('2026-03-27T00:00:00.000Z'),
+              time_window_start: new Date('1970-01-01T15:00:00.000Z'),
+              time_window_end: new Date('1970-01-01T16:00:00.000Z'),
+              proposed_pharmacist_id: 'pharmacist_1',
+              assignment_mode: 'primary',
+              route_order: 3,
+              route_distance_score: 2.4,
+              medication_end_date: new Date('2026-03-31T00:00:00.000Z'),
+              visit_deadline_date: new Date('2026-03-30T00:00:00.000Z'),
+              proposal_reason: '同日内で後段へ再配置',
+              escalation_reason: null,
+              reschedule_source_schedule_id: 'schedule_2',
+            },
+          ],
+          diagnostics: { accepted: [], rejected: [] },
+        };
       }
 
-      return [
-        {
-          org_id: 'org_1',
-          cycle_id: 'cycle_1',
-          case_id: 'case_1',
-          site_id: 'site_1',
-          visit_type: 'regular',
-          priority: 'urgent',
-          proposal_status: 'reschedule_pending',
-          patient_contact_status: 'pending',
-          proposed_date: new Date('2026-03-28T00:00:00.000Z'),
-          time_window_start: new Date('1970-01-01T13:00:00.000Z'),
-          time_window_end: new Date('1970-01-01T14:00:00.000Z'),
-          proposed_pharmacist_id: 'pharmacist_2',
-          assignment_mode: 'fallback',
-          route_order: 2,
-          route_distance_score: 4.2,
-          medication_end_date: new Date('2026-03-31T00:00:00.000Z'),
-          visit_deadline_date: new Date('2026-03-30T00:00:00.000Z'),
-          proposal_reason: '担当者不在のため再配置',
-          escalation_reason: '代替薬剤師へ割当',
-          reschedule_source_schedule_id: 'schedule_1',
-        },
-      ];
+      return {
+        drafts: [
+          {
+            org_id: 'org_1',
+            cycle_id: 'cycle_1',
+            case_id: 'case_1',
+            site_id: 'site_1',
+            visit_type: 'regular',
+            priority: 'urgent',
+            proposal_status: 'reschedule_pending',
+            patient_contact_status: 'pending',
+            proposed_date: new Date('2026-03-28T00:00:00.000Z'),
+            time_window_start: new Date('1970-01-01T13:00:00.000Z'),
+            time_window_end: new Date('1970-01-01T14:00:00.000Z'),
+            proposed_pharmacist_id: 'pharmacist_2',
+            assignment_mode: 'fallback',
+            route_order: 2,
+            route_distance_score: 4.2,
+            medication_end_date: new Date('2026-03-31T00:00:00.000Z'),
+            visit_deadline_date: new Date('2026-03-30T00:00:00.000Z'),
+            proposal_reason: '担当者不在のため再配置',
+            escalation_reason: '代替薬剤師へ割当',
+            reschedule_source_schedule_id: 'schedule_1',
+          },
+        ],
+        diagnostics: { accepted: [], rejected: [] },
+      };
     });
     visitScheduleCountMock.mockResolvedValue(2);
     visitScheduleProposalCreateMock.mockImplementation(async ({

@@ -49,6 +49,15 @@ const patientListQuerySchema = z.object({
   payer_basis: z.enum(['medical', 'care', 'self']).optional(),
   last_visit_from: z.string().date().optional(),
   last_visit_to: z.string().date().optional(),
+  readiness_issue: z
+    .enum([
+      'missing_visit_consent',
+      'missing_management_plan',
+      'missing_emergency_contact',
+      'missing_primary_physician',
+      'missing_first_visit_doc',
+    ])
+    .optional(),
 });
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {

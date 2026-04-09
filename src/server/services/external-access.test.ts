@@ -18,6 +18,7 @@ vi.mock('@/lib/db/client', () => ({
 
 import {
   buildExternalAccessPayload,
+  hashExternalAccessOtp,
   hashExternalAccessToken,
   issueExternalAccessToken,
   MissingExternalAccessSecretError,
@@ -192,6 +193,34 @@ describe('validateExternalAccessGrant', () => {
         id: 'grant_1',
         org_id: 'org_1',
         patient_id: 'patient_1',
+      }),
+    });
+  });
+
+  it('accepts legacy SHA-256 OTP hashes for pre-migration grants', async () => {
+    const token = await issueExternalAccessToken({
+      grantId: 'grant_legacy',
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      expiresHours: 72,
+    });
+
+    prismaMock.externalAccessGrant.findUnique.mockResolvedValue({
+      id: 'grant_legacy',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      otp_hash: await hashExternalAccessOtp('654321'),
+      expires_at: new Date('2026-04-01T00:00:00.000Z'),
+      revoked_at: null,
+      scope: { medication_list: true },
+    });
+
+    const result = await validateExternalAccessGrant(token, '654321');
+
+    expect(result).toMatchObject({
+      ok: true,
+      grant: expect.objectContaining({
+        id: 'grant_legacy',
       }),
     });
   });

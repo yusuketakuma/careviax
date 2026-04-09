@@ -88,6 +88,7 @@ function getOrCreateSalt(cryptoApi: Crypto): Uint8Array {
 
 async function deriveKeyFromUserId(userId: string, salt: Uint8Array, cryptoApi: Crypto, sessionSecret?: string): Promise<CryptoKey> {
   const enc = new TextEncoder();
+  const normalizedSalt = Uint8Array.from(salt);
   // If a server-issued sessionSecret is provided, combine it with userId for
   // higher entropy key material. Falls back to userId alone for backward compat.
   const keyInput = sessionSecret ? `${userId}:${sessionSecret}` : userId;
@@ -99,7 +100,7 @@ async function deriveKeyFromUserId(userId: string, salt: Uint8Array, cryptoApi: 
     ['deriveKey']
   );
   return cryptoApi.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: normalizedSalt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
     keyMaterial,
     { name: 'AES-GCM', length: 256 },
     false, // extractable: false — raw key bytes cannot be exported via JS

@@ -416,7 +416,7 @@ describe('/api/dashboard/workflow GET', () => {
         referrals_generated: 1,
       },
     ]);
-    careCaseCountMock.mockResolvedValue(2);
+    careCaseCountMock.mockResolvedValueOnce(2).mockResolvedValueOnce(1);
     pharmacistShiftFindManyMock.mockResolvedValue([
       {
         date: new Date('2026-03-27T00:00:00Z'),
@@ -515,6 +515,7 @@ describe('/api/dashboard/workflow GET', () => {
           missing_management_plan: 1,
           missing_first_visit_doc: expect.any(Number),
           missing_emergency_contact: 1,
+          missing_primary_physician: 1,
         },
         operations_queue: {
           visit_demands: 2,
@@ -560,6 +561,10 @@ describe('/api/dashboard/workflow GET', () => {
           }),
           expect.objectContaining({
             id: 'visit_intake_linkage',
+            count: 1,
+          }),
+          expect.objectContaining({
+            id: 'missing_primary_physician',
             count: 1,
           }),
         ]),

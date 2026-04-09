@@ -36,6 +36,9 @@ export const generateVisitScheduleProposalSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
     .optional(),
   candidate_count: z.number().int().min(1).max(5).default(3),
+  travel_mode: z
+    .enum(['DRIVE', 'BICYCLE', 'WALK', 'TWO_WHEELER'])
+    .default('DRIVE'),
   preferred_time_from: z.string().optional(),
   preferred_time_to: z.string().optional(),
   preferred_pharmacist_id: z.string().optional(),

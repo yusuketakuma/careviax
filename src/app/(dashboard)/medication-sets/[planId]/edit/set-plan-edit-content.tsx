@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -463,6 +464,7 @@ export function SetPlanEditContent() {
   const [drafts, setDrafts] = useState<Map<CellKey, DraftEdit>>(new Map());
   const [planForm, setPlanForm] = useState<PlanForm | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [confirmRegenerateOpen, setConfirmRegenerateOpen] = useState(false);
 
   const { data: plan, isLoading: planLoading } = useRealtimeQuery({
     queryKey: ['set-plan', planId],
@@ -628,8 +630,7 @@ export function SetPlanEditContent() {
 
   function handleGenerate() {
     if (batches.length > 0) {
-      if (!confirm('既存のバッチを削除して再生成します。よろしいですか？')) return;
-      generateMutation.mutate(true);
+      setConfirmRegenerateOpen(true);
     } else {
       generateMutation.mutate(false);
     }
@@ -701,6 +702,14 @@ export function SetPlanEditContent() {
 
   return (
     <div className="space-y-4">
+      <ConfirmDialog
+        open={confirmRegenerateOpen}
+        onOpenChange={setConfirmRegenerateOpen}
+        title="既存バッチを再生成しますか？"
+        description="現在のバッチを削除して、最新の処方内容と患者設定から再生成します。"
+        confirmLabel="再生成する"
+        onConfirm={() => generateMutation.mutate(true)}
+      />
       <div className="flex items-center gap-2">
         <div className="flex-1">
           <PreviousStageSummary cycleId={plan.cycle_id} />

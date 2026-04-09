@@ -77,12 +77,12 @@ import {
   setupAutoSync,
 } from '@/lib/stores/sync-engine';
 import { VisitCardMobile } from '@/components/features/visits/visit-card-mobile';
-import { VisitRouteMap } from '@/components/features/visits/visit-route-map';
+import { VisitRoutePreviewPanel } from '@/components/features/visits/visit-route-preview-panel';
 import { ScheduleMetricCard } from './schedule-metric-card';
+import { applyVisitScheduleRouteUpdates } from './visit-route-client';
+import { useRouteOrderDraft } from './route-order-draft';
 import {
   buildOrderedFacilityScheduleIds,
-  formatDistanceLabel,
-  formatDurationLabel,
   formatEtaLabel,
   formatMinutesLabel,
   minutesFromTimestamp,
@@ -193,12 +193,6 @@ const FACILITY_VISIT_DAY_WEEKDAY_OPTIONS = [
 const GANTT_SLOT_MINUTES = 30;
 const GANTT_DEFAULT_START_MINUTES = 8 * 60;
 const GANTT_DEFAULT_END_MINUTES = 18 * 60;
-const ROUTE_TRAVEL_MODE_LABELS: Record<RouteTravelMode, string> = {
-  DRIVE: '車',
-  BICYCLE: '自転車',
-  WALK: '徒歩',
-  TWO_WHEELER: 'バイク',
-};
 export function ScheduleDayView() {
   const router = useRouter();
   const orgId = useOrgId();
@@ -857,12 +851,14 @@ export function ScheduleDayView() {
       ),
     [routePlanData],
   );
+  const routeOrderDraft = useRouteOrderDraft({
+    sourceKey: `${selectedDate}:${resolvedRoutePharmacistId}:${routeTravelMode}:${routePlanData?.orderedScheduleIds.join(',') ?? ''}:${currentOrderedRouteScheduleIds.join(',')}`,
+    optimizedIds: routePlanData?.orderedScheduleIds ?? currentOrderedRouteScheduleIds,
+    currentIds: currentOrderedRouteScheduleIds,
+  });
   const routeMapPoints = useMemo(() => {
     const schedulesById = new Map(routeMapSchedules.map((schedule) => [schedule.id, schedule]));
-    const orderedIds =
-      routePlanData?.orderedScheduleIds.length && routePlanData.status === 'ok'
-        ? routePlanData.orderedScheduleIds
-        : currentOrderedRouteScheduleIds;
+    const orderedIds = routeOrderDraft.draftIds;
 
     return orderedIds
       .map((scheduleId, index) => {
@@ -878,12 +874,16 @@ export function ScheduleDayView() {
           orderLabel: String(index + 1),
           status: schedule.schedule_status,
           priority: schedule.priority,
-          etaLabel: formatEtaLabel(
-            selectedDate,
-            routeDepartureTime,
-            routePlanByScheduleId.get(scheduleId)?.arrivalOffsetSeconds ?? null,
-            schedule.time_window_start,
-          ),
+          pointKind: 'schedule' as const,
+          timeLabel: timeLabel(schedule.time_window_start, schedule.time_window_end),
+          etaLabel: routeOrderDraft.manualDirty
+            ? null
+            : formatEtaLabel(
+                selectedDate,
+                routeDepartureTime,
+                routePlanByScheduleId.get(scheduleId)?.arrivalOffsetSeconds ?? null,
+                schedule.time_window_start,
+              ),
         };
       })
       .filter(
@@ -892,11 +892,11 @@ export function ScheduleDayView() {
         ): point is NonNullable<typeof point> => point !== null,
       );
   }, [
-    currentOrderedRouteScheduleIds,
     routeMapSchedules,
+    routeOrderDraft.draftIds,
+    routeOrderDraft.manualDirty,
     routeDepartureTime,
     routePlanByScheduleId,
-    routePlanData,
     selectedDate,
   ]);
   const routeMapSite = useMemo(() => {
@@ -908,9 +908,12 @@ export function ScheduleDayView() {
       lng: site.lng,
     };
   }, [routeMapSchedules]);
+  const routeSelectionLabel =
+    routePharmacistOptions.find((option) => option.id === resolvedRoutePharmacistId)
+      ? `${routePharmacistOptions.find((option) => option.id === resolvedRoutePharmacistId)?.name ?? resolvedRoutePharmacistId} / ${selectedDate}`
+      : null;
   const routeOptimizationDirty =
-    routePlanData?.status === 'ok' &&
-    routePlanData.orderedScheduleIds.join(',') !== currentOrderedRouteScheduleIds.join(',');
+    routeOrderDraft.differsFromCurrent;
   const ganttWindow = useMemo(() => {
     if (visibleSchedules.length === 0) {
       return {
@@ -1344,6 +1347,7 @@ export function ScheduleDayView() {
           case_id: resolvedPlannerCaseId,
           visit_type: plannerForm.visit_type,
           priority: plannerForm.priority,
+          travel_mode: routeTravelMode,
           start_date: plannerForm.start_date,
           preferred_time_from: plannerForm.preferred_time_from || undefined,
           preferred_time_to: plannerForm.preferred_time_to || undefined,
@@ -1728,30 +1732,17 @@ export function ScheduleDayView() {
 
   const applyOptimizedRouteMutation = useMutation({
     mutationFn: async () => {
-      if (!routePlanData || routePlanData.status !== 'ok') {
+      if (!routePlanData || routeOrderDraft.draftIds.length === 0) {
         throw new Error('反映できる最適ルートがありません');
       }
 
-      await Promise.all(
-        routePlanData.orderedScheduleIds.map(async (scheduleId, index) => {
-          const res = await fetch(`/api/visit-schedules/${scheduleId}`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-org-id': orgId,
-            },
-            body: JSON.stringify({
-              route_order: index + 1,
-            }),
-          });
-          if (!res.ok) {
-            const error = await res.json().catch(() => ({}));
-            throw new Error(
-              error.message ?? `訪問順の更新に失敗しました (${scheduleId})`,
-            );
-          }
-        }),
-      );
+      await applyVisitScheduleRouteUpdates({
+        orgId,
+        updates: routeOrderDraft.draftIds.map((scheduleId, index) => ({
+          scheduleId,
+          route_order: index + 1,
+        })),
+      });
     },
     onSuccess: async () => {
       toast.success('Google Routes API の順序を route_order に反映しました');
@@ -2045,31 +2036,30 @@ export function ScheduleDayView() {
             </CardContent>
           </Card>
         ) : mobileVisitSurface === 'map' ? (
-          <Card>
-            <CardHeader className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline">
-                  {ROUTE_TRAVEL_MODE_LABELS[routeTravelMode]}
-                </Badge>
-                {routePlanData?.totalDistanceMeters != null ? (
-                  <Badge variant="outline">
-                    {formatDistanceLabel(routePlanData.totalDistanceMeters)}
-                  </Badge>
-                ) : null}
-                {routePlanData?.totalDurationSeconds != null ? (
-                  <Badge variant="outline">
-                    {formatDurationLabel(routePlanData.totalDurationSeconds)}
-                  </Badge>
-                ) : null}
-              </div>
-              <div className="grid gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="mobile-route-pharmacist">地図対象の薬剤師</Label>
+          <VisitRoutePreviewPanel
+            controlId="day-mobile-route"
+            title="日次ルートマップ"
+            description="薬局から訪問先までの経路を確認し、そのまま route_order へ反映できます。"
+            selectionLabel={routeSelectionLabel}
+            travelMode={routeTravelMode}
+            onTravelModeChange={(value) => setRouteTravelMode(value as RouteTravelMode)}
+            plan={routePlanData}
+            points={routeMapPoints}
+            site={routeMapSite}
+            orderedIds={routeOrderDraft.draftIds}
+            currentOrderedIds={routeOrderDraft.currentIds}
+            onMoveItem={(scheduleId, direction) => routeOrderDraft.moveItem(scheduleId, direction)}
+            headerControls={
+              <>
+                <div className="space-y-1">
+                  <Label htmlFor="mobile-route-pharmacist" className="text-xs">
+                    対象薬剤師
+                  </Label>
                   <Select
                     value={resolvedRoutePharmacistId}
                     onValueChange={(value) => setSelectedRoutePharmacistId(value ?? '')}
                   >
-                    <SelectTrigger id="mobile-route-pharmacist" className="w-full">
+                    <SelectTrigger id="mobile-route-pharmacist" className="w-[12rem]">
                       <SelectValue placeholder="薬剤師を選択" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2082,51 +2072,28 @@ export function ScheduleDayView() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="mobile-route-travel-mode">移動手段</Label>
-                  <Select
-                    value={routeTravelMode}
-                    onValueChange={(value) => setRouteTravelMode(value as RouteTravelMode)}
-                  >
-                    <SelectTrigger id="mobile-route-travel-mode" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(ROUTE_TRAVEL_MODE_LABELS).map(([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <VisitRouteMap
-                points={routeMapPoints}
-                encodedPath={routePlanData?.encodedPath ?? null}
-                site={routeMapSite}
-                note={routePlanData?.note ?? null}
-              />
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={
-                    routePlanLoading ||
-                    applyOptimizedRouteMutation.isPending ||
-                    !routeOptimizationDirty
-                  }
-                  onClick={() => applyOptimizedRouteMutation.mutate()}
-                >
-                  {applyOptimizedRouteMutation.isPending
-                    ? '反映中...'
-                    : '最適順を route_order に反映'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+                {routeOrderDraft.manualDirty ? (
+                  <Button type="button" size="sm" variant="outline" onClick={routeOrderDraft.resetToOptimized}>
+                    最適順へ戻す
+                  </Button>
+                ) : null}
+              </>
+            }
+            loading={routePlanLoading}
+            actionLabel="最適順を route_order に反映"
+            actionDisabled={
+              routePlanLoading ||
+              applyOptimizedRouteMutation.isPending ||
+              !routeOptimizationDirty
+            }
+            actionPending={applyOptimizedRouteMutation.isPending}
+            onAction={() => applyOptimizedRouteMutation.mutate()}
+            extraSummary={
+              routeOrderDraft.diffCount > 0 ? (
+                <Badge variant="outline">差分 {routeOrderDraft.diffCount} 件</Badge>
+              ) : null
+            }
+          />
         ) : (
           mobileVisitSchedules.map((schedule) => {
             const brief = cachedVisitBriefByScheduleId.get(schedule.id);
@@ -3400,22 +3367,31 @@ export function ScheduleDayView() {
               </Card>
             )}
             {visibleSchedules.length > 0 && ganttColumns.length > 0 && (
-              <Card className="hidden md:block">
-                <CardHeader>
-                  <CardTitle className="text-base">日次ルートマップ</CardTitle>
-                  <CardDescription>
-                    薬局から訪問先までの経路を可視化し、Google Routes API の順序を route_order へ反映できます
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="desktop-route-pharmacist">対象の薬剤師</Label>
+              <VisitRoutePreviewPanel
+                controlId="day-desktop-route"
+                className="hidden md:block"
+                title="日次ルートマップ"
+                description="薬局から訪問先までの経路を確認し、そのまま route_order へ反映できます。"
+                selectionLabel={routeSelectionLabel}
+                travelMode={routeTravelMode}
+                onTravelModeChange={(value) => setRouteTravelMode(value as RouteTravelMode)}
+                plan={routePlanData}
+                points={routeMapPoints}
+                site={routeMapSite}
+                orderedIds={routeOrderDraft.draftIds}
+                currentOrderedIds={routeOrderDraft.currentIds}
+                onMoveItem={(scheduleId, direction) => routeOrderDraft.moveItem(scheduleId, direction)}
+                headerControls={
+                  <>
+                    <div className="space-y-1">
+                      <Label htmlFor="desktop-route-pharmacist" className="text-xs">
+                        対象薬剤師
+                      </Label>
                       <Select
                         value={resolvedRoutePharmacistId}
                         onValueChange={(value) => setSelectedRoutePharmacistId(value ?? '')}
                       >
-                        <SelectTrigger id="desktop-route-pharmacist" className="w-full">
+                        <SelectTrigger id="desktop-route-pharmacist" className="w-[12rem]">
                           <SelectValue placeholder="薬剤師を選択" />
                         </SelectTrigger>
                         <SelectContent>
@@ -3428,69 +3404,31 @@ export function ScheduleDayView() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="desktop-route-travel-mode">移動手段</Label>
-                      <Select
-                        value={routeTravelMode}
-                        onValueChange={(value) => setRouteTravelMode(value as RouteTravelMode)}
-                      >
-                        <SelectTrigger id="desktop-route-travel-mode" className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(ROUTE_TRAVEL_MODE_LABELS).map(([value, label]) => (
-                            <SelectItem key={value} value={value}>
-                              {label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex items-end">
-                      <Button
-                        variant="outline"
-                        disabled={
-                          routePlanLoading ||
-                          applyOptimizedRouteMutation.isPending ||
-                          !routeOptimizationDirty
-                        }
-                        onClick={() => applyOptimizedRouteMutation.mutate()}
-                      >
-                        {applyOptimizedRouteMutation.isPending
-                          ? '反映中...'
-                          : '最適順を反映'}
+                    {routeOrderDraft.manualDirty ? (
+                      <Button type="button" size="sm" variant="outline" onClick={routeOrderDraft.resetToOptimized}>
+                        最適順へ戻す
                       </Button>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2 text-xs">
-                    <Badge variant="outline">
-                      {ROUTE_TRAVEL_MODE_LABELS[routeTravelMode]}
-                    </Badge>
-                    <Badge variant="outline">
-                      対象 {routeMapSchedules.length} 件
-                    </Badge>
-                    {routePlanData?.totalDistanceMeters != null ? (
-                      <Badge variant="outline">
-                        距離 {formatDistanceLabel(routePlanData.totalDistanceMeters)}
-                      </Badge>
                     ) : null}
-                    {routePlanData?.totalDurationSeconds != null ? (
-                      <Badge variant="outline">
-                        移動 {formatDurationLabel(routePlanData.totalDurationSeconds)}
-                      </Badge>
+                  </>
+                }
+                loading={routePlanLoading}
+                actionLabel="最適順を反映"
+                actionDisabled={
+                  routePlanLoading ||
+                  applyOptimizedRouteMutation.isPending ||
+                  !routeOptimizationDirty
+                }
+                actionPending={applyOptimizedRouteMutation.isPending}
+                onAction={() => applyOptimizedRouteMutation.mutate()}
+                extraSummary={
+                  <>
+                    <Badge variant="outline">対象 {routeMapSchedules.length} 件</Badge>
+                    {routeOrderDraft.diffCount > 0 ? (
+                      <Badge variant="outline">差分 {routeOrderDraft.diffCount} 件</Badge>
                     ) : null}
-                    {routeMapSite ? (
-                      <Badge variant="outline">起点 {routeMapSite.name}</Badge>
-                    ) : null}
-                  </div>
-                  <VisitRouteMap
-                    points={routeMapPoints}
-                    encodedPath={routePlanData?.encodedPath ?? null}
-                    site={routeMapSite}
-                    note={routePlanData?.note ?? null}
-                  />
-                </CardContent>
-              </Card>
+                  </>
+                }
+              />
             )}
             {visibleSchedules.length > 0 && ganttColumns.length > 0 && (
               <Card className="hidden md:block">

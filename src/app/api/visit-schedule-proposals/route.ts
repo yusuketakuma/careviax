@@ -16,6 +16,7 @@ import { generateVisitScheduleProposalDrafts } from '@/server/services/visit-sch
 import { formatVisitWorkflowGateIssues, type VisitWorkflowGateIssue } from '@/server/services/management-plans';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { validateBillingRequirements, type BillingRequirementAlert } from '@/server/services/billing-requirement-validator';
+import type { ProposalCandidateDiagnostic } from '@/server/services/visit-schedule-planner';
 
 function startOfMonth(value: Date) {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
@@ -319,13 +320,36 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   }
 
   let drafts;
+  let plannerDiagnostics:
+    | {
+        accepted: Array<{
+          pharmacist_id: string;
+          pharmacist_name: string;
+          site_id: string | null;
+          site_name: string | null;
+          proposed_date: string;
+          travel_mode: string;
+          route_order: number;
+          route_distance_score: number;
+          travel_summary: string;
+          assignment_mode: string;
+          care_relationship: string;
+          score: number;
+          score_breakdown: Record<string, number>;
+          time_window_start: Date;
+          time_window_end: Date;
+        }>;
+        rejected: ProposalCandidateDiagnostic[];
+      }
+    | undefined;
   try {
-    drafts = await generateVisitScheduleProposalDrafts({
+    const plannerResult = await generateVisitScheduleProposalDrafts({
       orgId: req.orgId,
       caseId: parsed.data.case_id,
       visitType: resolvedVisitType,
       priority: resolvedPriority,
       candidateCount: parsed.data.candidate_count,
+      travelMode: parsed.data.travel_mode,
       startDate: parsed.data.start_date ? new Date(parsed.data.start_date) : undefined,
       lockedDate: parsed.data.locked_date ? new Date(parsed.data.locked_date) : undefined,
       preferredTimeFrom: parsed.data.preferred_time_from,
@@ -333,6 +357,8 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       preferredPharmacistId: parsed.data.preferred_pharmacist_id,
       rescheduleSourceScheduleId: parsed.data.reschedule_source_schedule_id,
     });
+    drafts = plannerResult.drafts;
+    plannerDiagnostics = plannerResult.diagnostics;
   } catch (error) {
     if (error instanceof Error && error.message.startsWith('VISIT_WORKFLOW_GATE:')) {
       const issues = error.message
@@ -345,7 +371,9 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   }
 
   if (drafts.length === 0) {
-    return validationError('シフト・休日・期限条件に合う候補を生成できませんでした');
+    return validationError('シフト・休日・期限条件に合う候補を生成できませんでした', {
+      rejections: plannerDiagnostics?.rejected ?? [],
+    });
   }
 
   const perDraftValidationKeys = new Set<string>();
@@ -384,6 +412,27 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     );
     return (validation?.blockingMessages.length ?? 0) === 0;
   });
+  const rejectedByBilling = drafts
+    .filter((draft) => !validDrafts.includes(draft))
+    .map((draft) => ({
+      pharmacist_id: draft.proposed_pharmacist_id,
+      pharmacist_name:
+        plannerDiagnostics?.accepted.find(
+          (item) =>
+            item.pharmacist_id === draft.proposed_pharmacist_id &&
+            item.proposed_date === draft.proposed_date.toISOString().slice(0, 10)
+        )?.pharmacist_name ?? draft.proposed_pharmacist_id,
+      site_id: draft.site_id ?? null,
+      site_name: null,
+      proposed_date: draft.proposed_date.toISOString().slice(0, 10),
+      travel_mode: parsed.data.travel_mode,
+      reason_code: 'billing_constraint' as const,
+      reason_label: '算定制約',
+      detail:
+        validationByKey
+          .get(`${draft.proposed_pharmacist_id}:${draft.proposed_date.toISOString()}`)
+          ?.blockingMessages.join(' / ') ?? '算定要件を満たしません',
+    }));
   const allBlockingMessages = Array.from(
     new Set([
       ...blockingMessages,
@@ -393,12 +442,23 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   if (validDrafts.length === 0) {
     return validationError(
       allBlockingMessages.join(' / ') || '算定要件を満たす訪問候補を生成できませんでした',
+      {
+        rejections: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
+      },
     );
   }
   const allAlerts = dedupeBillingAlerts([
     ...billingAlerts,
     ...Array.from(validationByKey.values()).flatMap((validation) => validation.alerts),
   ]);
+  const acceptedDiagnostics =
+    plannerDiagnostics?.accepted.filter((item) =>
+      validDrafts.some(
+        (draft) =>
+          draft.proposed_pharmacist_id === item.pharmacist_id &&
+          draft.proposed_date.toISOString().slice(0, 10) === item.proposed_date
+      )
+    ) ?? [];
 
   const proposals = await withOrgContext(req.orgId, async (tx) => {
     if (!parsed.data.reschedule_source_schedule_id) {
@@ -416,13 +476,42 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       });
     }
 
-    return Promise.all(
+    const created = await Promise.all(
       validDrafts.map((draft) =>
         tx.visitScheduleProposal.create({
           data: draft,
         })
       )
     );
+
+    await Promise.all(
+      created.map((proposal) => {
+        const acceptedDiagnostic =
+          acceptedDiagnostics.find(
+            (item) =>
+              item.pharmacist_id === proposal.proposed_pharmacist_id &&
+              item.proposed_date === proposal.proposed_date.toISOString().slice(0, 10)
+          ) ?? null;
+
+        return tx.auditLog.create({
+          data: {
+            org_id: req.orgId,
+            actor_id: req.userId,
+            action: 'visit_schedule_proposals_created',
+            target_type: 'VisitScheduleProposal',
+            target_id: proposal.id,
+            changes: {
+              diagnostics: {
+                accepted: acceptedDiagnostic ? [acceptedDiagnostic] : [],
+                rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
+              },
+            },
+          },
+        });
+      })
+    );
+
+    return created;
   });
 
   await notifyWorkflowMutation({
@@ -430,7 +519,17 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     payload: { source: 'visit_schedule_proposals_create', case_id: parsed.data.case_id },
   });
 
-  return success({ data: proposals, alerts: allAlerts }, 201);
+  return success(
+    {
+      data: proposals,
+      alerts: allAlerts,
+      diagnostics: {
+        accepted: acceptedDiagnostics,
+        rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
+      },
+    },
+    201
+  );
 }, {
   permission: 'canVisit',
   message: '訪問候補の生成権限がありません',

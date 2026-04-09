@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
-import { success, validationError, conflict, error } from '@/lib/api/response';
+import { success, validationError, conflict, error, forbidden } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
 import { inviteCognitoUser } from '@/server/services/cognito-admin';
@@ -11,7 +11,7 @@ const createOrganizationSchema = z.object({
   corporate_number: z.string().optional(),
   address: z.string().optional(),
   phone: z.string().optional(),
-  email: z.string().email('有効なメールアドレスを入力してください').optional(),
+  email: z.string().trim().email('有効なメールアドレスを入力してください').optional(),
 
   // Initial PharmacySite
   site_name: z.string().min(1, '薬局名は必須です'),
@@ -19,7 +19,7 @@ const createOrganizationSchema = z.object({
   site_phone: z.string().optional(),
 
   // Admin user invite
-  admin_email: z.string().email('管理者メールアドレスが不正です'),
+  admin_email: z.string().trim().email('管理者メールアドレスが不正です'),
   admin_name: z.string().min(1, '管理者氏名は必須です'),
 });
 
@@ -28,7 +28,7 @@ const createOrganizationSchema = z.object({
  *
  * 新規組織（薬局法人）のプロビジョニング。
  * 組織 → 薬局サイト → Cognito ユーザー → User → Membership を一括作成する。
- * スーパーアドミン（org なし）または既存 org の owner のみ実行可。
+ * 既存 org の owner のみ実行可。
  */
 export async function POST(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
@@ -37,6 +37,9 @@ export async function POST(req: NextRequest) {
   });
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
+  if (ctx.role !== 'owner') {
+    return forbidden('組織プロビジョニングは owner のみ実行できます');
+  }
 
   const body = await req.json().catch(() => null);
   if (!body) return validationError('リクエストボディが不正です');
@@ -48,7 +51,7 @@ export async function POST(req: NextRequest) {
 
   const data = parsed.data;
 
-  // Check duplicate corporate number
+  // Check duplicate corporate number / admin email before creating any tenant state.
   if (data.corporate_number) {
     const existing = await prisma.organization.findUnique({
       where: { corporate_number: data.corporate_number },
@@ -58,10 +61,18 @@ export async function POST(req: NextRequest) {
       return conflict('同じ法人番号の組織が既に存在します');
     }
   }
+  const adminEmail = data.admin_email.trim().toLowerCase();
+  const existingAdmin = await prisma.user.findUnique({
+    where: { email: adminEmail },
+    select: { id: true },
+  });
+  if (existingAdmin) {
+    return conflict('指定した管理者メールアドレスは既に登録されています');
+  }
 
-  // Step 1: Run DB transaction first to create org, site, user (pending_cognito), membership.
-  // Cognito user creation happens AFTER the DB transaction succeeds to avoid
-  // Cognito state existing without a corresponding DB record.
+  // Step 1: Create tenant records in a transaction.
+  // If the Cognito invite fails, run a compensating transaction to avoid
+  // returning an error while leaving a partial tenant behind.
   const result = await prisma.$transaction(async (tx) => {
     const org = await tx.organization.create({
       data: {
@@ -89,7 +100,7 @@ export async function POST(req: NextRequest) {
         org_id: org.id,
         // Temporary placeholder; will be updated after Cognito user is created
         cognito_sub: `pending_${org.id}`,
-        email: data.admin_email,
+        email: adminEmail,
         name: data.admin_name,
         account_status: 'pending_cognito' as const,
         invited_at: new Date(),
@@ -116,24 +127,48 @@ export async function POST(req: NextRequest) {
   });
 
   // Step 2: Create Cognito user after DB transaction succeeded.
-  // If Cognito fails, mark the user as cognito_failed (don't rollback org).
   let cognitoSub: string;
   let cognitoUsername: string;
   try {
     const cognitoUser = await inviteCognitoUser({
-      email: data.admin_email,
+      email: adminEmail,
       name: data.admin_name,
     });
     cognitoSub = cognitoUser.sub;
     cognitoUsername = cognitoUser.username;
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
-    // Mark user as cognito_failed so admins can retry without org rollback
-    await prisma.user.update({
-      where: { id: result.user.id },
-      data: { account_status: 'cognito_failed' as const },
-    });
+    let cleanupFailed = false;
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.membership.deleteMany({
+          where: { user_id: result.user.id, org_id: result.org.id },
+        });
+        await tx.user.delete({
+          where: { id: result.user.id },
+        });
+        await tx.pharmacySite.delete({
+          where: { id: result.site.id },
+        });
+        await tx.organization.delete({
+          where: { id: result.org.id },
+        });
+      });
+    } catch (cleanupError) {
+      cleanupFailed = true;
+      console.error(
+        `[organizations] Cleanup failed after Cognito error for org ${result.org.id}:`,
+        cleanupError
+      );
+    }
     console.error(`[organizations] Cognito user creation failed for user ${result.user.id}:`, cause);
+    if (cleanupFailed) {
+      return error(
+        'ORGANIZATION_PROVISIONING_PARTIAL_FAILURE',
+        '組織作成中に外部連携が失敗し、ロールバックにも失敗しました。手動確認が必要です。',
+        500
+      );
+    }
     if (message.includes('UsernameExistsException')) {
       return conflict('指定した管理者メールアドレスは既に登録されています');
     }

@@ -19,6 +19,7 @@ import {
   COGNITO_CHALLENGE_STORAGE_KEY,
   decodeCognitoChallenge,
 } from '@/lib/auth/cognito-challenge';
+import { clearOfflineEncryptionKey } from '@/lib/offline/crypto';
 
 /** Session duration in ms (30 minutes) */
 const SESSION_DURATION_MS = 30 * 60 * 1000;
@@ -71,6 +72,7 @@ export function SessionTimeoutModal() {
 
       if (remaining <= 0) {
         // Session expired, force logout
+        void clearOfflineEncryptionKey();
         signOut({ callbackUrl: '/login?error=SessionExpired' });
         return;
       }
@@ -131,6 +133,7 @@ export function SessionTimeoutModal() {
   }
 
   async function handleLogout() {
+    await clearOfflineEncryptionKey();
     await signOut({ callbackUrl: '/login' });
   }
 

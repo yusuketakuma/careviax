@@ -218,6 +218,49 @@ export function VisitBriefCard({
           />
         )}
 
+        {brief.conference_summary ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                  Conference Context
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-950">
+                  {brief.conference_summary.last_conference_type ?? '最近の会議'}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <Badge variant="outline">
+                  会議 {brief.conference_summary.recent_conferences} 件
+                </Badge>
+                <Badge
+                  variant={
+                    brief.conference_summary.pending_action_items > 0
+                      ? 'secondary'
+                      : 'outline'
+                  }
+                >
+                  未転記アクション {brief.conference_summary.pending_action_items}
+                </Badge>
+              </div>
+            </div>
+            {brief.conference_summary.summary ? (
+              <p className="mt-3 text-sm leading-6 text-slate-900">
+                {brief.conference_summary.summary}
+              </p>
+            ) : null}
+            {brief.conference_summary.highlighted_risks.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {brief.conference_summary.highlighted_risks.map((risk) => (
+                  <Badge key={risk} variant="secondary">
+                    {risk}
+                  </Badge>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className={cn('grid gap-3', compact ? 'lg:grid-cols-2' : 'xl:grid-cols-2')}>
           <Section title="本日確認" icon={AlertTriangle}>
             {brief.must_check_today.length === 0 ? (

@@ -69,6 +69,7 @@ export type WorkflowDashboardResponse = {
       missing_management_plan: number;
       missing_first_visit_doc: number;
       missing_emergency_contact: number;
+      missing_primary_physician: number;
     };
     operations_queue: {
       visit_demands: number;

@@ -522,7 +522,7 @@ export async function generateVisitDemands() {
       }
 
       try {
-        const drafts = await generateVisitScheduleProposalDrafts({
+        const result = await generateVisitScheduleProposalDrafts({
           orgId: cycle.org_id,
           caseId: cycle.case_id,
           visitType: 'regular',
@@ -530,6 +530,7 @@ export async function generateVisitDemands() {
           candidateCount: 3,
           startDate: addDays(startOfToday, 1),
         });
+        const drafts = result.drafts;
 
         if (drafts.length === 0) continue;
 
@@ -1953,7 +1954,9 @@ export async function runDailyOperations() {
 
     return {
       processedCount: results.reduce((total, result) => total + result.processedCount, 0),
-      errors: results.flatMap((result) => result.errors ?? []),
+      errors: results.flatMap((result) =>
+        'errors' in result ? result.errors ?? [] : []
+      ),
     };
   });
 }

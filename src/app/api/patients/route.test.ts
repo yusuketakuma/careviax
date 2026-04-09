@@ -7,6 +7,7 @@ const {
   patientCreateMock,
   facilityFindManyMock,
   userFindManyMock,
+  firstVisitDocumentFindManyMock,
   queryRawMock,
   listPatientRiskSummariesMock,
   withOrgContextMock,
@@ -26,6 +27,7 @@ const {
     patientCreateMock: vi.fn(),
     facilityFindManyMock: vi.fn(),
     userFindManyMock: vi.fn(),
+    firstVisitDocumentFindManyMock: vi.fn(),
     queryRawMock: vi.fn(),
     listPatientRiskSummariesMock: vi.fn(),
     withOrgContextMock: vi.fn(),
@@ -62,6 +64,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     user: {
       findMany: userFindManyMock,
+    },
+    firstVisitDocument: {
+      findMany: firstVisitDocumentFindManyMock,
     },
     $queryRaw: queryRawMock,
   },
@@ -132,6 +137,7 @@ describe('/api/patients GET', () => {
         },
       }),
     );
+    firstVisitDocumentFindManyMock.mockResolvedValue([{ case_id: 'case_1' }]);
     patientFindManyMock.mockResolvedValue([
       {
         id: 'patient_1',
@@ -151,6 +157,7 @@ describe('/api/patients GET', () => {
           },
         ],
         _count: { contacts: 1 },
+        contacts: [{ id: 'contact_1' }],
         conditions: [
           {
             id: 'condition_1',
@@ -165,6 +172,7 @@ describe('/api/patients GET', () => {
             status: 'active',
             updated_at: new Date('2026-03-27T09:00:00.000Z'),
             primary_pharmacist_id: 'user_1',
+            care_team_links: [{ id: 'link_1' }],
           },
         ],
         consents: [{ id: 'consent_1' }],
@@ -187,6 +195,7 @@ describe('/api/patients GET', () => {
           },
         ],
         _count: { contacts: 0 },
+        contacts: [],
         conditions: [],
         cases: [
           {
@@ -194,6 +203,7 @@ describe('/api/patients GET', () => {
             status: 'assessment',
             updated_at: new Date('2026-03-20T09:00:00.000Z'),
             primary_pharmacist_id: null,
+            care_team_links: [],
           },
         ],
         consents: [],
@@ -411,6 +421,38 @@ describe('/api/patients GET', () => {
     expect(payload.summary.total).toBe(1);
   });
 
+  it('supports readiness_issue filters for onboarding gaps', async () => {
+    firstVisitDocumentFindManyMock.mockResolvedValue([]);
+
+    const response = (await GET({
+      orgId: 'org_1',
+      userId: 'user_1',
+      role: 'pharmacist',
+      url: 'http://localhost/api/patients?readiness_issue=missing_primary_physician',
+      headers: { get: () => null },
+    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+
+    const payload = (await response.json()) as {
+      data: Array<{
+        id: string;
+        readiness: { has_primary_physician: boolean };
+      }>;
+      summary: { total: number };
+    };
+
+    expect(payload.data).toHaveLength(1);
+    expect(payload.data[0]).toMatchObject({
+      id: 'patient_2',
+      readiness: {
+        has_primary_physician: false,
+      },
+    });
+    expect(payload.summary.total).toBe(1);
+  });
+
   it('uses the database cursor when paginating filtered results', async () => {
     patientFindManyMock
       .mockResolvedValueOnce([
@@ -432,6 +474,7 @@ describe('/api/patients GET', () => {
             },
           ],
           _count: { contacts: 0 },
+          contacts: [],
           conditions: [],
           cases: [
             {
@@ -439,6 +482,7 @@ describe('/api/patients GET', () => {
               status: 'assessment',
               updated_at: new Date('2026-03-20T09:00:00.000Z'),
               primary_pharmacist_id: null,
+              care_team_links: [],
             },
           ],
           consents: [],

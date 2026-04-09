@@ -554,6 +554,7 @@ describe('/api/conference-notes', () => {
             label: '退院時薬剤変更',
             body: '退院後は夕食後へ変更\n頓服の使用方法を再説明',
           },
+          { key: 'risk_assessment', label: 'リスク評価', body: '転倒リスクあり\n服薬アドヒアランス低下' },
           { key: 'next_visit_plan', label: '次回訪問計画', body: '退院翌週に初回訪問予定' },
           { key: 'team_roles', label: '役割分担', body: '薬局担当: 服薬確認' },
         ],
@@ -584,6 +585,7 @@ describe('/api/conference-notes', () => {
               label: '退院時薬剤変更',
               body: '退院後は夕食後へ変更\n頓服の使用方法を再説明',
             },
+            { key: 'risk_assessment', label: 'リスク評価', body: '転倒リスクあり\n服薬アドヒアランス低下' },
             { key: 'next_visit_plan', label: '次回訪問計画', body: '退院翌週に初回訪問予定' },
           ],
         },
@@ -747,6 +749,9 @@ describe('/api/conference-notes', () => {
               content: expect.objectContaining({
                 conference_note_id: 'note_pre1',
                 note_type: 'pre_discharge',
+                medication_summary: '退院後は夕食後へ変更\n頓服の使用方法を再説明',
+                risks: '転倒リスクあり\n服薬アドヒアランス低下',
+                next_visit_plan: '退院翌週に初回訪問予定',
               }),
             }),
           ]),
@@ -858,6 +863,11 @@ describe('/api/conference-notes', () => {
               label: '合意アクション',
               body: '訪問回数変更を反映\n家族へ説明する',
             },
+            {
+              key: 'coordination_items',
+              label: '連携事項',
+              body: 'ケアマネへ共有\n訪看へ服薬状況を連絡',
+            },
             { key: 'next_meeting_date', label: '次回会議日', body: '2026-04-15' },
           ],
         },
@@ -892,6 +902,11 @@ describe('/api/conference-notes', () => {
                   label: '合意アクション',
                   body: '訪問回数変更を反映\n家族へ説明する',
                 },
+                {
+                  key: 'coordination_items',
+                  label: '連携事項',
+                  body: 'ケアマネへ共有\n訪看へ服薬状況を連絡',
+                },
                 { key: 'next_meeting_date', label: '次回会議日', body: '2026-04-15' },
               ],
             },
@@ -917,6 +932,10 @@ describe('/api/conference-notes', () => {
           data: expect.arrayContaining([
             expect.objectContaining({
               report_type: 'care_manager_report',
+              content: expect.objectContaining({
+                coordination: 'ケアマネへ共有\n訪看へ服薬状況を連絡',
+                service_adjustments: '訪問薬剤管理 月2回→月4回',
+              }),
             }),
           ]),
         })
@@ -1048,6 +1067,11 @@ describe('/api/conference-notes', () => {
               label: '品質指標',
               body: '看取り後カンファ実施',
             },
+            {
+              key: 'terminal_process',
+              label: 'ターミナル経過',
+              body: '看取りまでの服薬支援を記録',
+            },
           ],
         },
         metadata: null,
@@ -1069,6 +1093,11 @@ describe('/api/conference-notes', () => {
                   key: 'billing_confirmation',
                   label: '請求根拠確認',
                   body: 'ターミナルケア管理料算定要件を確認。',
+                },
+                {
+                  key: 'terminal_process',
+                  label: 'ターミナル経過',
+                  body: '看取りまでの服薬支援を記録',
                 },
               ],
             },
@@ -1141,6 +1170,7 @@ describe('/api/conference-notes', () => {
               content: expect.objectContaining({
                 conference_note_id: 'note_death1',
                 note_type: 'death_conference',
+                terminal_summary: '看取りまでの服薬支援を記録',
               }),
             }),
           ]),
@@ -1403,6 +1433,7 @@ describe('/api/conference-notes', () => {
               content: expect.objectContaining({
                 conference_note_id: 'note_care1',
                 note_type: 'care_team',
+                medication_issues: ['アドヒアランス低下を確認', 'ポリファーマシー対応が必要'],
               }),
             }),
           ]),
@@ -1629,6 +1660,11 @@ describe('/api/conference-notes', () => {
               label: 'インシデント概要',
               body: '内服忘れにより症状悪化',
             },
+            {
+              key: 'root_cause',
+              label: '根本原因',
+              body: '服薬カレンダーの運用が崩れていた',
+            },
           ],
         },
         metadata: null,
@@ -1703,6 +1739,69 @@ describe('/api/conference-notes', () => {
           tasks_created: 4,
         }),
       });
+    });
+
+    it('creates emergency report drafts with structured incident content', async () => {
+      const response = await POST(
+        createRequest({
+          method: 'POST',
+          body: {
+            note_type: 'emergency',
+            case_id: 'case_1',
+            title: '緊急カンファレンス',
+            structured_content: {
+              sections: [
+                {
+                  key: 'immediate_actions',
+                  label: '即時対応内容',
+                  body: '主治医へ即時連絡\n当日夕方に再訪',
+                },
+                {
+                  key: 'risk_mitigation',
+                  label: '再発防止',
+                  body: '服薬セット方法を再評価',
+                },
+                {
+                  key: 'incident_summary',
+                  label: 'インシデント概要',
+                  body: '内服忘れにより症状悪化',
+                },
+                {
+                  key: 'root_cause',
+                  label: '根本原因',
+                  body: '服薬カレンダーの運用が崩れていた',
+                },
+              ],
+            },
+            action_items: [{ title: '家族へ連絡', assignee: '薬剤師' }],
+            participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
+            conference_date: '2026-03-30T01:00:00.000Z',
+          },
+        })
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(201);
+      expect(careReportCreateManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.arrayContaining([
+            expect.objectContaining({
+              report_type: 'physician_report',
+              content: expect.objectContaining({
+                incident_report: expect.objectContaining({
+                  summary: '内服忘れにより症状悪化',
+                  root_cause: '服薬カレンダーの運用が崩れていた',
+                  immediate_actions: ['主治医へ即時連絡', '当日夕方に再訪'],
+                  risk_mitigation: ['服薬セット方法を再評価'],
+                }),
+              }),
+            }),
+            expect.objectContaining({
+              report_type: 'internal_record',
+            }),
+          ]),
+        })
+      );
     });
   });
 

@@ -136,7 +136,7 @@ export async function runNextDayOperations() {
 
     return {
       processedCount: results.reduce((total, r) => total + r.processedCount, 0),
-      errors: results.flatMap((r) => r.errors ?? []),
+      errors: results.flatMap((r) => ('errors' in r ? r.errors ?? [] : [])),
     };
   });
 }

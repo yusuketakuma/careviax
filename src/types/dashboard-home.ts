@@ -61,6 +61,11 @@ export type PatientCard = {
   next_visit_type: string | null;
   case_id: string | null;
   status_icon: PatientStatusIcon;
+  readiness_flags: {
+    missing_emergency_contact: boolean;
+    missing_primary_physician: boolean;
+    missing_first_visit_doc: boolean;
+  };
 };
 
 export type DashboardPatientsResponse = {

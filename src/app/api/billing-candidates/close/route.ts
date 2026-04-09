@@ -3,6 +3,7 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { error, success, validationError } from '@/lib/api/response';
 import { closeBillingCandidatesForMonth } from '@/server/services/billing-evidence';
+import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
 
 export async function POST(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
@@ -42,6 +43,11 @@ export async function POST(req: NextRequest) {
       }
     );
   }
+
+  await notifyWebhookEventForOrg(ctx.orgId, 'billing.exported', {
+    billingMonth: billingMonthDate.toISOString(),
+    exportedCount: result.exported_count,
+  });
 
   return success({
     message: `${billingMonth} を月次締めしました`,

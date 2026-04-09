@@ -56,6 +56,7 @@ describe('workflow-dashboard-sections', () => {
         1,
         5,
         6,
+        2,
         {
           management_plan_review: 3,
           visit_intake_linkage: 1,
@@ -68,6 +69,7 @@ describe('workflow-dashboard-sections', () => {
       expect.objectContaining({ id: 'management_plan_review_overdue', count: 3 }),
       expect.objectContaining({ id: 'missing_first_visit_doc', count: 5 }),
       expect.objectContaining({ id: 'missing_emergency_contact', count: 6 }),
+      expect.objectContaining({ id: 'missing_primary_physician', count: 2 }),
       expect.objectContaining({ id: 'visit_intake_linkage', count: 1 }),
       expect.objectContaining({ id: 'self_report_triage', count: 4 }),
     ]);

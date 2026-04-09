@@ -1077,6 +1077,7 @@ export async function getPatientVisitBrief(
             title: true,
             conference_date: true,
             action_items: true,
+            metadata: true,
           },
         }),
     typeof db.residence?.findFirst === 'function'
@@ -1117,11 +1118,32 @@ export async function getPatientVisitBrief(
       }
     }
     const latest = recentConferenceNotes[0];
+    const visitBriefMetadata =
+      latest?.metadata &&
+      typeof latest.metadata === 'object' &&
+      !Array.isArray(latest.metadata) &&
+      'visit_brief' in latest.metadata &&
+      latest.metadata.visit_brief &&
+      typeof latest.metadata.visit_brief === 'object' &&
+      !Array.isArray(latest.metadata.visit_brief)
+        ? (latest.metadata.visit_brief as Record<string, unknown>)
+        : null;
+    const highlightedRisks = Array.isArray(visitBriefMetadata?.highlighted_risks)
+      ? visitBriefMetadata.highlighted_risks.filter(
+          (item): item is string => typeof item === 'string' && item.length > 0
+        )
+      : [];
+
     return {
       recent_conferences: recentConferenceNotes.length,
       pending_action_items: pendingActionItems,
       last_conference_date: latest ? latest.conference_date.toISOString() : null,
       last_conference_type: latest ? latest.title : null,
+      summary:
+        visitBriefMetadata && typeof visitBriefMetadata.summary === 'string'
+          ? visitBriefMetadata.summary
+          : null,
+      highlighted_risks: highlightedRisks,
     };
   })();
 

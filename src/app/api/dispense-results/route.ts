@@ -2,6 +2,7 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
+import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { transitionCycleStatus, InvalidTransitionError, VersionConflictError } from '@/lib/db/cycle-transition';
@@ -521,6 +522,13 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     eventType: 'cycle_transition',
     payload: { source: 'dispense_results', task_id },
   });
+
+  if (!result.partial) {
+    await notifyWebhookEventForOrg(req.orgId, 'prescription.dispensed', {
+      taskId: result.task_id,
+      resultCount: result.results.length,
+    });
+  }
 
   return success(result, 201);
 }, {

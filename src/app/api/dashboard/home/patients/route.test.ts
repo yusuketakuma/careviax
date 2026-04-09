@@ -8,6 +8,7 @@ const {
   patientConditionFindManyMock,
   visitScheduleFindManyMock,
   careCaseFindManyMock,
+  firstVisitDocumentFindManyMock,
   medicationCycleFindManyMock,
   listPatientRiskSummariesMock,
   derivePatientStatusIconMock,
@@ -18,6 +19,7 @@ const {
   patientConditionFindManyMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
+  firstVisitDocumentFindManyMock: vi.fn(),
   medicationCycleFindManyMock: vi.fn(),
   listPatientRiskSummariesMock: vi.fn(),
   derivePatientStatusIconMock: vi.fn(),
@@ -43,6 +45,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     careCase: {
       findMany: careCaseFindManyMock,
+    },
+    firstVisitDocument: {
+      findMany: firstVisitDocumentFindManyMock,
     },
     medicationCycle: {
       findMany: medicationCycleFindManyMock,
@@ -76,6 +81,7 @@ describe('/api/dashboard/home/patients GET', () => {
     patientConditionFindManyMock.mockResolvedValue([]);
     visitScheduleFindManyMock.mockResolvedValue([]);
     careCaseFindManyMock.mockResolvedValue([]);
+    firstVisitDocumentFindManyMock.mockResolvedValue([]);
     medicationCycleFindManyMock.mockResolvedValue([]);
   });
 
@@ -102,6 +108,7 @@ describe('/api/dashboard/home/patients GET', () => {
           id: 'patient_90',
           birth_date: new Date('1940-01-01T00:00:00Z'),
           phone: '03-1234-5678',
+          contacts: [],
           residences: [{ address: '東京都港区1-1-1', unit_name: '101' }],
         },
       ]);
@@ -147,6 +154,11 @@ describe('/api/dashboard/home/patients GET', () => {
             patient_id: 'patient_90',
             patient_name: '佐藤 花子',
             address: '東京都港区1-1-1 101',
+            readiness_flags: {
+              missing_emergency_contact: true,
+              missing_primary_physician: false,
+              missing_first_visit_doc: false,
+            },
           }),
         ],
       },

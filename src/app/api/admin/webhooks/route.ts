@@ -1,4 +1,3 @@
-import { NextRequest } from 'next/server';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { NextResponse } from 'next/server';
 import { withOrgContext } from '@/lib/db/rls';
@@ -65,7 +64,7 @@ export const POST = withAuth(
 
     const { url, events } = parsed.data;
 
-    if (!isAllowedWebhookUrl(url)) {
+    if (!(await isAllowedWebhookUrl(url))) {
       return NextResponse.json(
         { error: 'WebhookのURLはHTTPS公開エンドポイントである必要があります' },
         { status: 400 }

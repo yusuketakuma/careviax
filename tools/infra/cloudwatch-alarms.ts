@@ -20,11 +20,18 @@ import {
   PutMetricAlarmCommand,
   type PutMetricAlarmCommandInput,
 } from '@aws-sdk/client-cloudwatch';
-import {
-  SNSClient,
-  CreateTopicCommand,
-  SubscribeCommand,
-} from '@aws-sdk/client-sns';
+
+type SnsModule = {
+  SNSClient: new (args: { region: string }) => {
+    send(command: unknown): Promise<{ TopicArn?: string }>;
+  };
+  CreateTopicCommand: new (args: { Name: string }) => unknown;
+  SubscribeCommand: new (args: {
+    TopicArn: string;
+    Protocol: string;
+    Endpoint: string;
+  }) => unknown;
+};
 
 const REGION = process.env.AWS_REGION ?? 'ap-northeast-1';
 const ALERT_EMAIL = process.env.ALERT_EMAIL;
@@ -32,22 +39,61 @@ const DB_INSTANCE_ID = process.env.DB_INSTANCE_ID ?? 'careviax-prod';
 const COGNITO_USER_POOL_ID = process.env.COGNITO_USER_POOL_ID ?? '';
 
 const cloudwatch = new CloudWatchClient({ region: REGION });
-const sns = new SNSClient({ region: REGION });
+let cachedSnsModule: Promise<SnsModule | null> | null = null;
+
+async function loadSnsModule(): Promise<SnsModule> {
+  if (!cachedSnsModule) {
+    cachedSnsModule = (async () => {
+      try {
+        const dynamicImport = new Function(
+          'specifier',
+          'return import(specifier)'
+        ) as (specifier: string) => Promise<unknown>;
+        const loaded = await dynamicImport('@aws-sdk/client-sns');
+        if (
+          loaded &&
+          typeof loaded === 'object' &&
+          'SNSClient' in loaded &&
+          'CreateTopicCommand' in loaded &&
+          'SubscribeCommand' in loaded
+        ) {
+          return loaded as SnsModule;
+        }
+      } catch {
+        return null;
+      }
+
+      return null;
+    })();
+  }
+
+  const snsModule = await cachedSnsModule;
+  if (!snsModule) {
+    throw new Error(
+      'SNS SDK is not installed. Add @aws-sdk/client-sns before running this script.'
+    );
+  }
+
+  return snsModule;
+}
 
 // ---------------------------------------------------------------------------
 // 1. SNS topic
 // ---------------------------------------------------------------------------
 
 async function ensureSnsTopic(): Promise<string> {
+  const snsModule = await loadSnsModule();
+  const sns = new snsModule.SNSClient({ region: REGION });
+
   const res = await sns.send(
-    new CreateTopicCommand({ Name: 'careviax-prod-alerts' }),
+    new snsModule.CreateTopicCommand({ Name: 'careviax-prod-alerts' }),
   );
   const topicArn = res.TopicArn;
   if (!topicArn) throw new Error('Failed to create SNS topic');
 
   if (ALERT_EMAIL) {
     await sns.send(
-      new SubscribeCommand({
+      new snsModule.SubscribeCommand({
         TopicArn: topicArn,
         Protocol: 'email',
         Endpoint: ALERT_EMAIL,

@@ -17,6 +17,7 @@ function createWorkflowPayload(
       missing_management_plan: 0,
       missing_first_visit_doc: 0,
       missing_emergency_contact: 0,
+      missing_primary_physician: 0,
     },
     operations_queue: {
       visit_demands: 0,

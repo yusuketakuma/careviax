@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
+import { clearOfflineEncryptionKey } from '@/lib/offline/crypto';
 import { toast } from 'sonner';
 import {
   Card,
@@ -786,6 +788,7 @@ function LocationTab() {
 }
 
 function SessionTab() {
+  const router = useRouter();
   const { data: session, status } = useSession();
   const [mfaEnabled, setMfaEnabled] = useState<boolean | null>(null);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -824,6 +827,7 @@ function SessionTab() {
 
   async function handleSignOut() {
     setIsSigningOut(true);
+    await clearOfflineEncryptionKey();
     await signOut({ callbackUrl: '/login' });
   }
 
@@ -840,6 +844,7 @@ function SessionTab() {
       }
 
       toast.success('全端末ログアウトを実行しました。再ログインしてください。');
+      await clearOfflineEncryptionKey();
       await signOut({ callbackUrl: '/login' });
     } catch (error) {
       toast.error(
@@ -899,7 +904,7 @@ function SessionTab() {
         <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
-            onClick={() => window.location.reload()}
+            onClick={() => router.refresh()}
             disabled={isSigningOut || isSigningOutAll}
           >
             状態を再読込

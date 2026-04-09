@@ -20,6 +20,7 @@ import {
 import type { Prisma, PrescriptionSourceType } from '@prisma/client';
 import { InvalidTransitionError, VersionConflictError } from '@/lib/db/cycle-transition';
 import { createDispenseDraft } from '@/server/services/dispense-draft-service';
+import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 
 export interface CreateIntakeLineInput {
@@ -677,6 +678,14 @@ export async function createPrescriptionIntake(
     lines,
     prescriberName: input.prescriber_name ?? null,
     sourceType: input.source_type,
+  });
+
+  await notifyWebhookEventForOrg(orgId, 'prescription.created', {
+    intakeId: intake.id,
+    cycleId: cycle.id,
+    patientId: cycle.patient_id,
+    sourceType: input.source_type,
+    lineCount: intake.lines.length,
   });
 
   return {

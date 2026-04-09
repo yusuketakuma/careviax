@@ -172,8 +172,8 @@
 | 確認項目 | 判定条件 | 現在の確認場所 | 現在のステータス |
 |---|---|---|---|
 | **同意取得済み** | `ConsentRecord.consent_type = visit_medication_management AND is_active = true AND revoked_date IS NULL AND (expiry_date IS NULL OR expiry_date >= TODAY)` | `GET /api/dashboard/workflow` の missing_visit_consent | 実装済み（ワークフローダッシュボードのみ） |
-| **緊急連絡先登録済み** | `ContactParty.is_emergency_contact = true` が 1 件以上存在 | なし | **未実装** |
-| **ケアチーム登録済み（主治医）** | `CareTeamLink.role = 'physician'` が 1 件以上存在 | なし | **未実装** |
+| **緊急連絡先登録済み** | `ContactParty.is_emergency_contact = true` が 1 件以上存在 | 患者詳細の readiness / Workflow Dashboard の欠落検知 | 実装済み |
+| **ケアチーム登録済み（主治医）** | `CareTeamLink.role = 'physician'` が 1 件以上存在 | 患者詳細の readiness / Workflow Dashboard の欠落検知 | 実装済み |
 | **管理計画書承認済み** | `ManagementPlan.status = approved AND (next_review_date IS NULL OR next_review_date >= TODAY)` | `GET /api/dashboard/workflow` の missing_management_plan | 実装済み（ワークフローダッシュボードのみ） |
 | **処方インテーク受付済み** | `MedicationCycle` に紐付く `PrescriptionIntake` が 1 件以上 | 訪問準備画面の prescription_changes | 部分実装（null チェックのみ） |
 | **初回訪問文書交付済み** | `FirstVisitDocument.delivered_at IS NOT NULL` | 患者詳細画面の first_visit_documents | 表示のみ実装。ワークフロー未統合 |
@@ -195,7 +195,7 @@
 | ギャップ | 現状 | 期待動作 |
 |---|---|---|
 | FirstVisitDocument 交付漏れの検出なし | ワークフローに first_visit_document に関するカウントなし | 今後14日間の訪問予定のうち FirstVisitDocument 未交付の件数を表示する |
-| 緊急連絡先未登録患者の検出なし | ContactParty のクエリは workflow/route.ts に存在しない | `emergency_contact_review` タスクタイプ経由で間接表示されているが、患者ごとの抜け検出は未実装 |
+| 緊急連絡先未登録患者の検出なし | 以前は ContactParty の直接検出がなかった | Workflow Dashboard / 患者詳細 readiness で検出済み |
 | 同意確認の粒度 | `visit_medication_management` のみ。`personal_info_handling` の確認なし | 個人情報同意の有効確認も onboarding 条件に含めるべき |
 
 ### 4.3 リスケジュール / 緊急連絡フローのギャップ

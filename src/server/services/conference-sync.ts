@@ -123,6 +123,84 @@ function findSection(sections: StructuredSection[], key: string): StructuredSect
   return sections.find((section) => section.key === key);
 }
 
+function findSectionBody(sections: StructuredSection[], keys: string[]) {
+  for (const key of keys) {
+    const body = findSection(sections, key)?.body?.trim();
+    if (body) return body;
+  }
+  return null;
+}
+
+function parseSectionLines(body?: string | null) {
+  if (!body?.trim()) return [];
+  return body
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+function buildReportContentExtras(
+  noteType: string,
+  reportType:
+    | 'physician_report'
+    | 'care_manager_report'
+    | 'facility_handoff'
+    | 'nurse_share'
+    | 'family_share'
+    | 'internal_record',
+  sections: StructuredSection[]
+) {
+  switch (noteType) {
+    case 'pre_discharge':
+      if (reportType !== 'physician_report') return {};
+      return {
+        discharge_background: findSectionBody(sections, ['discharge_background']),
+        medication_summary: findSectionBody(sections, [
+          'medication_changes_on_discharge',
+          'medication_summary',
+        ]),
+        risks: findSectionBody(sections, ['risk_assessment']),
+        next_visit_plan: findSectionBody(sections, ['next_visit_plan']),
+        consent_status: findSectionBody(sections, ['consent_status']),
+      };
+    case 'service_manager':
+      if (reportType !== 'care_manager_report') return {};
+      return {
+        care_plan_update: findSectionBody(sections, ['care_plan_update', 'care_plan_changes']),
+        coordination: findSectionBody(sections, ['coordination_items', 'agreed_actions']),
+        service_adjustments: findSectionBody(sections, [
+          'service_adjustments',
+          'visit_schedule_adjustment',
+        ]),
+      };
+    case 'death_conference':
+      if (reportType !== 'internal_record') return {};
+      return {
+        terminal_summary: findSectionBody(sections, ['terminal_process', 'timeline_summary']),
+      };
+    case 'care_team':
+      if (reportType !== 'internal_record') return {};
+      return {
+        discussion_summary: findSectionBody(sections, ['discussion_summary', 'case_review']),
+        medication_issues: parseSectionLines(findSectionBody(sections, ['medication_issues'])),
+      };
+    case 'emergency':
+      if (!['physician_report', 'internal_record'].includes(reportType)) return {};
+      return {
+        incident_report: {
+          summary: findSectionBody(sections, ['incident_summary', 'emergency_context']),
+          root_cause: findSectionBody(sections, ['root_cause']),
+          immediate_actions: parseSectionLines(
+            findSectionBody(sections, ['immediate_actions', 'urgent_actions'])
+          ),
+          risk_mitigation: parseSectionLines(findSectionBody(sections, ['risk_mitigation'])),
+        },
+      };
+    default:
+      return {};
+  }
+}
+
 function parseDateFromSectionBody(body?: string) {
   if (!body?.trim()) return null;
 
@@ -874,7 +952,10 @@ export class ConferenceSyncService {
             case_id: note.case_id ?? null,
             report_type: reportType as ReportType,
             status: 'draft' as const,
-            content: contentBase as Prisma.InputJsonValue,
+            content: {
+              ...contentBase,
+              ...buildReportContentExtras(note.note_type, reportType as ReportType, sections),
+            } as Prisma.InputJsonValue,
             created_by: userId,
           })),
         });
@@ -936,7 +1017,10 @@ export class ConferenceSyncService {
           case_id: note.case_id ?? null,
           report_type: reportType as ReportType,
           status: 'draft' as const,
-          content: contentBase as Prisma.InputJsonValue,
+          content: {
+            ...contentBase,
+            ...buildReportContentExtras(note.note_type, reportType as ReportType, sections),
+          } as Prisma.InputJsonValue,
           created_by: userId,
         },
       });

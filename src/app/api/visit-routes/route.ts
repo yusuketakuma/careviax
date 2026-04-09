@@ -5,14 +5,38 @@ import { success, validationError } from '@/lib/api/response';
 import {
   computeOptimizedVisitRoute,
   type VisitRouteTravelMode,
-} from '@/server/services/google-routes';
+} from '@/server/services/visit-route-engine';
 
-const computeVisitRouteSchema = z.object({
-  schedule_ids: z.array(z.string().trim().min(1)).min(1).max(50),
-  travel_mode: z
-    .enum(['DRIVE', 'BICYCLE', 'WALK', 'TWO_WHEELER'] satisfies [VisitRouteTravelMode, ...VisitRouteTravelMode[]])
-    .default('DRIVE'),
-});
+const computeVisitRouteSchema = z
+  .object({
+    schedule_ids: z.array(z.string().trim().min(1)).max(50).default([]),
+    proposal_ids: z.array(z.string().trim().min(1)).max(50).default([]),
+    travel_mode: z
+      .enum(
+        ['DRIVE', 'BICYCLE', 'WALK', 'TWO_WHEELER'] satisfies [
+          VisitRouteTravelMode,
+          ...VisitRouteTravelMode[],
+        ]
+      )
+      .default('DRIVE'),
+  })
+  .superRefine((value, ctx) => {
+    const totalCount = value.schedule_ids.length + value.proposal_ids.length;
+    if (totalCount === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['schedule_ids'],
+        message: 'schedule_ids または proposal_ids のいずれかが必要です',
+      });
+    }
+    if (totalCount > 50) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['schedule_ids'],
+        message: 'ルート計算の対象は最大 50 件です',
+      });
+    }
+  });
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
@@ -29,48 +53,107 @@ export const POST = withAuth(
     const routePlan = await withOrgContext(
       req.orgId,
       async (tx) => {
-        const schedules = await tx.visitSchedule.findMany({
-          where: {
-            org_id: req.orgId,
-            id: { in: parsed.data.schedule_ids },
-          },
-          select: {
-            id: true,
-            scheduled_date: true,
-            site: {
-              select: {
-                id: true,
-                name: true,
-                lat: true,
-                lng: true,
-              },
-            },
-            case_: {
-              select: {
-                patient: {
-                  select: {
-                    name: true,
-                    residences: {
-                      where: { is_primary: true },
-                      select: {
-                        address: true,
-                        lat: true,
-                        lng: true,
+        const [schedules, proposals] = await Promise.all([
+          parsed.data.schedule_ids.length > 0
+            ? tx.visitSchedule.findMany({
+                where: {
+                  org_id: req.orgId,
+                  id: { in: parsed.data.schedule_ids },
+                },
+                select: {
+                  id: true,
+                  site: {
+                    select: {
+                      id: true,
+                      name: true,
+                      lat: true,
+                      lng: true,
+                    },
+                  },
+                  case_: {
+                    select: {
+                      patient: {
+                        select: {
+                          name: true,
+                          residences: {
+                            where: { is_primary: true },
+                            select: {
+                              address: true,
+                              lat: true,
+                              lng: true,
+                            },
+                            take: 1,
+                          },
+                        },
                       },
-                      take: 1,
                     },
                   },
                 },
-              },
-            },
-          },
-        });
+              })
+            : Promise.resolve([]),
+          parsed.data.proposal_ids.length > 0
+            ? tx.visitScheduleProposal.findMany({
+                where: {
+                  org_id: req.orgId,
+                  id: { in: parsed.data.proposal_ids },
+                },
+                select: {
+                  id: true,
+                  site: {
+                    select: {
+                      id: true,
+                      name: true,
+                      lat: true,
+                      lng: true,
+                    },
+                  },
+                  case_: {
+                    select: {
+                      patient: {
+                        select: {
+                          name: true,
+                          residences: {
+                            where: { is_primary: true },
+                            select: {
+                              address: true,
+                              lat: true,
+                              lng: true,
+                            },
+                            take: 1,
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              })
+            : Promise.resolve([]),
+        ]);
 
-        const orderedSchedules = parsed.data.schedule_ids
-          .map((scheduleId) => schedules.find((schedule) => schedule.id === scheduleId))
-          .filter((schedule): schedule is (typeof schedules)[number] => Boolean(schedule));
+        const orderedItems = [
+          ...parsed.data.schedule_ids
+            .map((scheduleId) => schedules.find((schedule) => schedule.id === scheduleId))
+            .filter((schedule): schedule is (typeof schedules)[number] => Boolean(schedule))
+            .map((schedule) => ({
+              id: schedule.id,
+              route_id: schedule.id,
+              patient_name: schedule.case_.patient.name,
+              residence: schedule.case_.patient.residences[0] ?? null,
+              site: schedule.site,
+            })),
+          ...parsed.data.proposal_ids
+            .map((proposalId) => proposals.find((proposal) => proposal.id === proposalId))
+            .filter((proposal): proposal is (typeof proposals)[number] => Boolean(proposal))
+            .map((proposal) => ({
+              id: proposal.id,
+              route_id: `proposal:${proposal.id}`,
+              patient_name: proposal.case_.patient.name,
+              residence: proposal.case_.patient.residences[0] ?? null,
+              site: proposal.site,
+            })),
+        ];
 
-        if (orderedSchedules.length === 0) {
+        if (orderedItems.length === 0) {
           return computeOptimizedVisitRoute({
             origin: null,
             travelMode: parsed.data.travel_mode,
@@ -78,9 +161,9 @@ export const POST = withAuth(
           });
         }
 
-        const originSite = orderedSchedules[0]?.site ?? null;
-        const sameSite = orderedSchedules.every(
-          (schedule) => schedule.site?.id === originSite?.id,
+        const originSite = orderedItems[0]?.site ?? null;
+        const sameSite = orderedItems.every(
+          (item) => item.site?.id === originSite?.id,
         );
 
         const origin =
@@ -92,19 +175,18 @@ export const POST = withAuth(
               }
             : null;
 
-        const routableSchedules = orderedSchedules.filter((schedule) => {
-          const residence = schedule.case_.patient.residences[0];
-          return residence?.lat != null && residence.lng != null;
+        const routableItems = orderedItems.filter((item) => {
+          return item.residence?.lat != null && item.residence.lng != null;
         });
 
         const plan = await computeOptimizedVisitRoute({
           origin,
           travelMode: parsed.data.travel_mode,
-          waypoints: routableSchedules.map((schedule) => {
-            const residence = schedule.case_.patient.residences[0]!;
+          waypoints: routableItems.map((item) => {
+            const residence = item.residence!;
             return {
-              scheduleId: schedule.id,
-              patientName: schedule.case_.patient.name,
+              scheduleId: item.route_id,
+              patientName: item.patient_name,
               address: residence.address,
               lat: residence.lat!,
               lng: residence.lng!,
@@ -112,7 +194,7 @@ export const POST = withAuth(
           }),
         });
 
-        if (!sameSite && orderedSchedules.length > 0) {
+        if (!sameSite && orderedItems.length > 0) {
           return {
             ...plan,
             note: plan.note
@@ -121,10 +203,10 @@ export const POST = withAuth(
           };
         }
 
-        if (routableSchedules.length !== orderedSchedules.length) {
-          const missing = orderedSchedules
-            .filter((schedule) => !routableSchedules.some((item) => item.id === schedule.id))
-            .map((schedule) => schedule.case_.patient.name);
+        if (routableItems.length !== orderedItems.length) {
+          const missing = orderedItems
+            .filter((item) => !routableItems.some((candidate) => candidate.id === item.id))
+            .map((item) => item.patient_name);
 
           return {
             ...plan,

@@ -19,6 +19,10 @@ const {
   taskFindManyMock,
   medicationIssueFindManyMock,
   inquiryRecordFindManyMock,
+  prescriptionIntakeFindManyMock,
+  dispenseResultFindManyMock,
+  managementPlanFindManyMock,
+  userFindManyMock,
   firstVisitDocumentFindManyMock,
   billingEvidenceFindManyMock,
   billingCandidateFindManyMock,
@@ -49,6 +53,10 @@ const {
   taskFindManyMock: vi.fn(),
   medicationIssueFindManyMock: vi.fn(),
   inquiryRecordFindManyMock: vi.fn(),
+  prescriptionIntakeFindManyMock: vi.fn(),
+  dispenseResultFindManyMock: vi.fn(),
+  managementPlanFindManyMock: vi.fn(),
+  userFindManyMock: vi.fn(),
   firstVisitDocumentFindManyMock: vi.fn(),
   billingEvidenceFindManyMock: vi.fn(),
   billingCandidateFindManyMock: vi.fn(),
@@ -103,6 +111,15 @@ vi.mock('@/lib/db/client', () => ({
     inquiryRecord: {
       findMany: inquiryRecordFindManyMock,
     },
+    prescriptionIntake: {
+      findMany: prescriptionIntakeFindManyMock,
+    },
+    dispenseResult: {
+      findMany: dispenseResultFindManyMock,
+    },
+    managementPlan: {
+      findMany: managementPlanFindManyMock,
+    },
     firstVisitDocument: {
       findMany: firstVisitDocumentFindManyMock,
     },
@@ -114,6 +131,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     patientLabObservation: {
       findMany: vi.fn().mockResolvedValue([]),
+    },
+    user: {
+      findMany: userFindManyMock,
     },
   },
 }));
@@ -192,6 +212,10 @@ describe('/api/patients/[id]', () => {
     taskFindManyMock.mockResolvedValue([]);
     medicationIssueFindManyMock.mockResolvedValue([]);
     inquiryRecordFindManyMock.mockResolvedValue([]);
+    prescriptionIntakeFindManyMock.mockResolvedValue([]);
+    dispenseResultFindManyMock.mockResolvedValue([]);
+    managementPlanFindManyMock.mockResolvedValue([]);
+    userFindManyMock.mockResolvedValue([]);
     firstVisitDocumentFindManyMock.mockResolvedValue([]);
     billingEvidenceFindManyMock.mockResolvedValue([]);
     billingCandidateFindManyMock.mockResolvedValue([]);
@@ -649,6 +673,101 @@ describe('/api/patients/[id]', () => {
           event_type: 'inquiry',
           title: '疑義照会 変更あり',
           summary: expect.stringContaining('5mgへ減量'),
+        }),
+      ]),
+    });
+  });
+
+  it('includes prescription, dispensing, and management plan activity in patient timeline events', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '患者A',
+      cases: [{ id: 'case_1' }],
+    });
+    prescriptionIntakeFindManyMock.mockResolvedValue([
+      {
+        id: 'intake_1',
+        source_type: 'paper',
+        prescribed_date: new Date('2026-03-29T00:00:00.000Z'),
+        prescriber_name: '在宅主治医',
+        prescriber_institution: null,
+        original_collected_by: '受付A',
+        created_at: new Date('2026-03-29T09:00:00.000Z'),
+        cycle: {
+          overall_status: 'ready_to_dispense',
+        },
+        lines: [{ id: 'line_1' }],
+      },
+    ]);
+    dispenseResultFindManyMock.mockResolvedValue([
+      {
+        id: 'dispense_1',
+        actual_drug_name: 'アムロジピン',
+        actual_quantity: 30,
+        actual_unit: '錠',
+        carry_type: 'carry',
+        dispensed_by: 'user_2',
+        dispensed_at: new Date('2026-03-29T11:00:00.000Z'),
+        task: {
+          cycle: {
+            overall_status: 'dispensed',
+          },
+        },
+        line: {
+          intake: {
+            id: 'intake_1',
+          },
+        },
+      },
+    ]);
+    managementPlanFindManyMock.mockResolvedValue([
+      {
+        id: 'plan_1',
+        status: 'approved',
+        title: '訪問薬剤管理指導計画書',
+        effective_from: new Date('2026-04-01T00:00:00.000Z'),
+        next_review_date: new Date('2026-05-01T00:00:00.000Z'),
+        created_by: 'user_1',
+        approved_by: 'user_2',
+        approved_at: new Date('2026-03-30T09:00:00.000Z'),
+        reviewed_by: 'user_2',
+        reviewed_at: new Date('2026-03-30T09:00:00.000Z'),
+        created_at: new Date('2026-03-29T08:00:00.000Z'),
+      },
+    ]);
+    userFindManyMock.mockResolvedValue([
+      { id: 'user_2', name: '薬剤師B' },
+    ]);
+
+    const response = await GET(
+      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      }
+    );
+
+    if (!response) throw new Error('response is required');
+
+    await expect(response.json()).resolves.toMatchObject({
+      timeline_events: expect.arrayContaining([
+        expect.objectContaining({
+          event_type: 'prescription_intake',
+          category: 'prescription',
+          href: '/prescriptions/intake_1',
+          status_label: '調剤待ち',
+          actor_name: '受付A',
+        }),
+        expect.objectContaining({
+          event_type: 'dispense_result',
+          title: '調剤を記録',
+          actor_name: '薬剤師B',
+          href: '/prescriptions/intake_1',
+        }),
+        expect.objectContaining({
+          event_type: 'management_plan',
+          category: 'document',
+          title: '管理計画書を承認',
+          href: '/patients/patient_1/management-plan',
         }),
       ]),
     });

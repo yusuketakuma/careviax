@@ -82,6 +82,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     nextVisits,
     lastVisits,
     cases,
+    firstVisitDocuments,
     lastPrescriptions,
     overdueVisits,
   ] = await Promise.all([
@@ -96,6 +97,11 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
           select: { address: true, unit_name: true },
           take: 1,
           orderBy: { created_at: 'desc' },
+        },
+        contacts: {
+          where: { is_emergency_contact: true },
+          select: { id: true },
+          take: 1,
         },
       },
     }),
@@ -152,8 +158,29 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         patient_id: { in: paginatedPatientIds },
         status: { in: [...ACTIVE_CASE_STATUSES] },
       },
-      select: { id: true, patient_id: true, status: true },
+      select: {
+        id: true,
+        patient_id: true,
+        status: true,
+        care_team_links: {
+          where: { role: 'physician' },
+          select: { id: true },
+          take: 1,
+        },
+      },
       orderBy: { created_at: 'desc' },
+    }),
+
+    prisma.firstVisitDocument.findMany({
+      where: {
+        org_id: req.orgId,
+        patient_id: { in: paginatedPatientIds },
+        delivered_at: { not: null },
+      },
+      select: {
+        patient_id: true,
+        case_id: true,
+      },
     }),
 
     // Last prescription (most recent MedicationCycle) + exception_status
@@ -216,12 +243,21 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     }
   }
 
-  const caseMap = new Map<string, { id: string; status: string }>();
+  const caseMap = new Map<
+    string,
+    { id: string; status: string; hasPrimaryPhysician: boolean }
+  >();
   for (const c of cases) {
     if (!caseMap.has(c.patient_id)) {
-      caseMap.set(c.patient_id, { id: c.id, status: c.status });
+      caseMap.set(c.patient_id, {
+        id: c.id,
+        status: c.status,
+        hasPrimaryPhysician: c.care_team_links.length > 0,
+      });
     }
   }
+
+  const deliveredDocCaseIds = new Set(firstVisitDocuments.map((doc) => doc.case_id));
 
   const lastRxMap = new Map<string, string>();
   const nextRxMap = new Map<string, string>();
@@ -289,6 +325,11 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
         caseStatus: caseInfo?.status ?? null,
         exceptionStatus: exceptionMap.get(p.patient_id) ?? null,
       }),
+      readiness_flags: {
+        missing_emergency_contact: (detail?.contacts.length ?? 0) === 0,
+        missing_primary_physician: caseInfo ? !caseInfo.hasPrimaryPhysician : false,
+        missing_first_visit_doc: caseInfo ? !deliveredDocCaseIds.has(caseInfo.id) : false,
+      },
     };
   });
 

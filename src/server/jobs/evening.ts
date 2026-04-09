@@ -58,7 +58,7 @@ export async function runEveningOperations() {
     const result = await checkUnrecordedVisits();
     return {
       processedCount: result.processedCount,
-      errors: result.errors,
+      errors: 'errors' in result ? result.errors : undefined,
     };
   });
 }

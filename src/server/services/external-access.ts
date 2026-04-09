@@ -1,4 +1,4 @@
-import { createHash } from 'crypto';
+import { createHash, timingSafeEqual } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { startOfDay } from 'date-fns';
 import { decode, encode } from 'next-auth/jwt';
@@ -29,9 +29,31 @@ export function hashExternalAccessToken(token: string) {
   return createHash('sha256').update(token).digest('hex');
 }
 
-/** @deprecated Use bcrypt.hash directly for new OTP hashes; kept for migration compatibility. */
+/** @deprecated Legacy SHA-256 helper kept for migration/test compatibility. */
 export async function hashExternalAccessOtp(otp: string) {
-  return bcrypt.hash(otp, 12);
+  return createHash('sha256').update(otp).digest('hex');
+}
+
+function isBcryptHash(value: string) {
+  return /^\$2[aby]\$\d{2}\$/.test(value);
+}
+
+function isLegacySha256Hex(value: string) {
+  return /^[a-f0-9]{64}$/i.test(value);
+}
+
+async function verifyExternalAccessOtp(otp: string, storedHash: string) {
+  if (isBcryptHash(storedHash)) {
+    return bcrypt.compare(otp, storedHash);
+  }
+
+  if (!isLegacySha256Hex(storedHash)) {
+    return false;
+  }
+
+  const actual = Buffer.from(createHash('sha256').update(otp).digest('hex'), 'hex');
+  const expected = Buffer.from(storedHash, 'hex');
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
 const EXTERNAL_ACCESS_TOKEN_SALT = 'careviax-external-access';
@@ -168,7 +190,7 @@ export async function validateExternalAccessGrant(
       };
     }
 
-    const isValid = await bcrypt.compare(otp, grant.otp_hash);
+    const isValid = await verifyExternalAccessOtp(otp, grant.otp_hash);
     if (!isValid) {
       return {
         ok: false,

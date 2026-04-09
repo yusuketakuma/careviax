@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuth } from '@/lib/auth/middleware';
 import { flushPerformanceMetricsToCloudWatch } from '@/lib/utils/performance';
 
 /**
@@ -10,7 +10,7 @@ import { flushPerformanceMetricsToCloudWatch } from '@/lib/utils/performance';
  * Requires admin/owner role.
  */
 export const POST = withAuth(
-  async (_req: AuthenticatedRequest) => {
+  async () => {
     await flushPerformanceMetricsToCloudWatch();
     return NextResponse.json({ ok: true, flushed_at: new Date().toISOString() });
   },

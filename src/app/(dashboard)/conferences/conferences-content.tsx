@@ -113,6 +113,7 @@ type ConferenceNote = {
   conference_date: string;
   action_items: ActionItem[] | null;
   case_id: string | null;
+  patient_id?: string | null;
   sync_summary?: {
     report_draft_ids?: string[];
     billing_candidate_id?: string | null;
@@ -295,10 +296,17 @@ function NoteCard({
                   ) : null}
                   {note.sync_summary?.visit_proposal_id ? (
                     <Link
-                      href="/schedules/proposals"
+                      href={`/schedules/proposals?case_id=${note.case_id ?? ''}&patient_id=${note.patient_id ?? ''}&focus=patient`}
                       className="inline-flex rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted"
                     >
                       訪問候補を確認
+                    </Link>
+                  ) : note.case_id || note.patient_id ? (
+                    <Link
+                      href={`/schedules/proposals?case_id=${note.case_id ?? ''}&patient_id=${note.patient_id ?? ''}&focus=patient`}
+                      className="inline-flex rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                    >
+                      訪問候補を作成
                     </Link>
                   ) : null}
                 </div>
@@ -406,6 +414,8 @@ export function ConferencesContent() {
   >('all');
   const [lastSyncSummary, setLastSyncSummary] = useState<{
     title: string;
+    caseId?: string | null;
+    patientId?: string | null;
     reportDraftIds?: string[];
     billingCandidateId?: string;
     visitProposalId?: string;
@@ -577,6 +587,8 @@ export function ConferencesContent() {
       toast.success('カンファレンスノートを作成しました');
       setLastSyncSummary({
         title: payload.data.title,
+        caseId: payload.data.case_id ?? null,
+        patientId: payload.data.patient_id ?? null,
         reportDraftIds: payload.sync?.report_draft_ids,
         billingCandidateId: payload.sync?.billing_candidate_id,
         visitProposalId: payload.sync?.visit_proposal_id,
@@ -1276,10 +1288,17 @@ export function ConferencesContent() {
                 ) : null}
                 {lastSyncSummary.visitProposalId ? (
                   <Link
-                    href="/schedules/proposals"
+                    href={`/schedules/proposals?case_id=${lastSyncSummary.caseId ?? ''}&patient_id=${lastSyncSummary.patientId ?? ''}&focus=patient`}
                     className="inline-flex rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
                   >
                     訪問候補を確認
+                  </Link>
+                ) : lastSyncSummary.caseId || lastSyncSummary.patientId ? (
+                  <Link
+                    href={`/schedules/proposals?case_id=${lastSyncSummary.caseId ?? ''}&patient_id=${lastSyncSummary.patientId ?? ''}&focus=patient`}
+                    className="inline-flex rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
+                  >
+                    訪問候補を作成
                   </Link>
                 ) : null}
               </div>

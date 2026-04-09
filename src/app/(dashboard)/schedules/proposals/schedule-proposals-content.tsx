@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { startTransition, useDeferredValue, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -9,7 +10,6 @@ import {
   CalendarClock,
   CheckCircle2,
   ChevronRight,
-  MapPinned,
   PhoneCall,
   RefreshCw,
   Route,
@@ -17,7 +17,8 @@ import {
   XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { VisitRouteMap } from '@/components/features/visits/visit-route-map';
+import { VisitProposalDiagnosticsCard, type ProposalGenerationDiagnosticsCardData } from '@/components/features/visits/visit-proposal-diagnostics-card';
+import { VisitRoutePreviewPanel } from '@/components/features/visits/visit-route-preview-panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -42,8 +43,13 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import { applyVisitScheduleProposalRouteUpdates } from '@/app/(dashboard)/schedules/visit-route-client';
+import { useRouteOrderDraft } from '@/app/(dashboard)/schedules/route-order-draft';
+import { mergeScheduleProposalSearchParams } from './proposal-query-state';
+import { buildDashboardDiagnosticActions } from './schedule-proposal-diagnostic-actions';
 import {
   addressOfPatient,
+  type CaseOption,
   type BillingCadencePreview,
   type BillingRequirementAlert,
   CONTACT_STATUS_LABELS,
@@ -58,6 +64,8 @@ import {
 } from '../day-view.shared';
 
 type DashboardTab = 'unapproved' | 'patient_contact_pending' | 'confirmed' | 'rejected';
+type TravelMode = 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
+type FilterPreset = 'all' | 'today' | 'contact' | 'reschedule' | 'stale';
 
 type ProposalDetail = Proposal & {
   approved_at?: string | null;
@@ -106,6 +114,11 @@ type ProposalDetail = Proposal & {
       status: 'ok' | 'unavailable';
       note: string | null;
       travelMode: 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
+      origin: {
+        lat: number;
+        lng: number;
+        label: string;
+      } | null;
       encodedPath: string | null;
       orderedScheduleIds: string[];
       totalDistanceMeters: number | null;
@@ -114,6 +127,8 @@ type ProposalDetail = Proposal & {
         scheduleId: string;
         optimizedOrder: number;
         arrivalOffsetSeconds: number | null;
+        distanceFromPreviousMeters: number | null;
+        durationFromPreviousSeconds: number | null;
       }>;
     };
     points: Array<{
@@ -144,10 +159,18 @@ type ProposalDetail = Proposal & {
       lng: number;
     } | null;
   };
+  creation_diagnostics: ProposalGenerationDiagnostics | null;
 };
+
+type ProposalGenerationDiagnostics = ProposalGenerationDiagnosticsCardData;
 
 type ScheduleProposalsResponse = { data: Proposal[] };
 type ScheduleProposalDetailResponse = { data: ProposalDetail };
+type CreateProposalResponse = {
+  data: Proposal[];
+  diagnostics?: ProposalGenerationDiagnostics;
+};
+type CaseSearchResponse = { data: CaseOption[] };
 type ContactOutcome =
   | 'attempted'
   | 'declined'
@@ -182,8 +205,12 @@ type ContentProps = {
   initialStatus?: string | null;
   initialCaseId?: string | null;
   initialPatientId?: string | null;
-  initialDate?: string | null;
+  initialDateFrom?: string | null;
+  initialDateTo?: string | null;
   initialFocus?: string | null;
+  initialPreset?: string | null;
+  initialDetailId?: string | null;
+  initialTravelMode?: string | null;
 };
 
 const TAB_LABELS: Record<DashboardTab, string> = {
@@ -216,14 +243,6 @@ function formatDistanceLabel(value: number | null | undefined) {
   return value.toFixed(1);
 }
 
-function formatDurationLabel(value: number | null | undefined) {
-  if (value == null) return '未計算';
-  const hours = Math.floor(value / 3600);
-  const minutes = Math.round((value % 3600) / 60);
-  if (hours > 0) return `${hours}時間${minutes}分`;
-  return `${minutes}分`;
-}
-
 function formatEtaLabel(baseDate: string, timeWindowStart: string | null, offsetSeconds: number | null) {
   if (offsetSeconds == null) {
     return timeLabel(timeWindowStart, null);
@@ -239,6 +258,10 @@ function toDashboardTab(status?: string | null): DashboardTab {
   if (status === 'confirmed') return 'confirmed';
   if (status === 'rejected') return 'rejected';
   return 'unapproved';
+}
+
+function todayKey() {
+  return format(new Date(), 'yyyy-MM-dd');
 }
 
 function matchesTab(proposal: Proposal, tab: DashboardTab) {
@@ -260,30 +283,72 @@ export function ScheduleProposalsContent({
   initialStatus,
   initialCaseId,
   initialPatientId,
-  initialDate,
+  initialDateFrom,
+  initialDateTo,
   initialFocus,
+  initialPreset,
+  initialDetailId,
+  initialTravelMode,
 }: ContentProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<DashboardTab>(toDashboardTab(initialStatus));
   const [caseId, setCaseId] = useState(initialCaseId ?? '');
   const [patientId, setPatientId] = useState(initialPatientId ?? '');
-  const [dateFrom, setDateFrom] = useState(initialDate ?? '');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(initialDateFrom ?? '');
+  const [dateTo, setDateTo] = useState(initialDateTo ?? '');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [detailId, setDetailId] = useState<string | null>(
-    initialFocus === 'patient' || Boolean(initialCaseId) || Boolean(initialPatientId)
-      ? AUTO_DETAIL_ID
-      : null
+    initialDetailId ??
+      (initialFocus === 'patient' || Boolean(initialCaseId) || Boolean(initialPatientId)
+        ? AUTO_DETAIL_ID
+        : null)
   );
   const [contactFormDraft, setContactFormDraft] = useState<ContactFormState | null>(null);
   const [reproposalFormDraft, setReproposalFormDraft] = useState<{
     start_date: string;
+    priority: Proposal['priority'];
     preferred_time_from: string;
     preferred_time_to: string;
     note: string;
     candidate_count: string;
   } | null>(null);
+  const [routeTravelMode, setRouteTravelMode] = useState<TravelMode>(
+    initialTravelMode === 'BICYCLE' ||
+      initialTravelMode === 'WALK' ||
+      initialTravelMode === 'TWO_WHEELER'
+      ? initialTravelMode
+      : 'DRIVE'
+  );
+  const [caseSearchInput, setCaseSearchInput] = useState('');
+  const [selectedCaseSummary, setSelectedCaseSummary] = useState<CaseOption | null>(null);
+  const [filterPreset, setFilterPreset] = useState<FilterPreset>(
+    initialPreset === 'today' ||
+      initialPreset === 'contact' ||
+      initialPreset === 'reschedule' ||
+      initialPreset === 'stale'
+      ? initialPreset
+      : 'all'
+  );
+  const [lastGenerationDiagnostics, setLastGenerationDiagnostics] =
+    useState<ProposalGenerationDiagnostics | null>(null);
+  const deferredCaseSearchInput = useDeferredValue(caseSearchInput.trim());
+
+  const replaceDashboardUrl = (patch: Record<string, string | null | undefined>) => {
+    const next = mergeScheduleProposalSearchParams({
+      params: new URLSearchParams(searchParams.toString()),
+      patch: {
+        workspace: 'dashboard',
+        ...patch,
+      },
+    });
+    startTransition(() => {
+      router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+    });
+  };
 
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
@@ -308,6 +373,22 @@ export function ScheduleProposalsContent({
   });
 
   const proposals = useMemo(() => proposalsQuery.data?.data ?? [], [proposalsQuery.data]);
+  const casesQuery = useQuery({
+    queryKey: ['schedule-proposals-case-search', orgId, deferredCaseSearchInput],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        status: 'active',
+        limit: '8',
+        q: deferredCaseSearchInput,
+      });
+      const response = await fetch(`/api/cases?${params}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!response.ok) throw new Error('ケース候補の取得に失敗しました');
+      return response.json() as Promise<CaseSearchResponse>;
+    },
+    enabled: !!orgId && deferredCaseSearchInput.length >= 2,
+  });
 
   const tabCounts = useMemo(
     () => ({
@@ -324,9 +405,32 @@ export function ScheduleProposalsContent({
     [proposals]
   );
 
+  const todayFilterCount = useMemo(
+    () =>
+      proposals.filter(
+        (proposal) =>
+          matchesTab(proposal, 'unapproved') && proposal.proposed_date.slice(0, 10) === todayKey()
+      ).length,
+    [proposals]
+  );
+  const rescheduleCount = useMemo(
+    () => proposals.filter((proposal) => proposal.reschedule_source_schedule_id != null).length,
+    [proposals]
+  );
+
   const visibleProposals = useMemo(
-    () => proposals.filter((proposal) => matchesTab(proposal, activeTab)),
-    [activeTab, proposals]
+    () =>
+      proposals.filter((proposal) => {
+        if (!matchesTab(proposal, activeTab)) return false;
+        if (filterPreset === 'reschedule' && proposal.reschedule_source_schedule_id == null) {
+          return false;
+        }
+        if (filterPreset === 'today' && proposal.proposed_date.slice(0, 10) !== todayKey()) {
+          return false;
+        }
+        return true;
+      }),
+    [activeTab, filterPreset, proposals]
   );
   const proposalPreviewRequests = useMemo(
     () =>
@@ -373,6 +477,30 @@ export function ScheduleProposalsContent({
     [selectedIds, visibleProposals]
   );
 
+  const effectiveSelectedCaseSummary = useMemo(() => {
+    if (selectedCaseSummary) return selectedCaseSummary;
+    if (!caseId && !patientId) return null;
+    const matchedProposal = proposals.find((proposal) =>
+      caseId ? proposal.case_id === caseId : proposal.case_.patient.id === patientId
+    );
+    if (!matchedProposal) return null;
+    return {
+      id: matchedProposal.case_id,
+      status: 'active',
+      primary_pharmacist_id: matchedProposal.proposed_pharmacist_id,
+      primary_pharmacist_name: matchedProposal.proposed_pharmacist?.name ?? null,
+      patient: {
+        id: matchedProposal.case_.patient.id,
+        name: matchedProposal.case_.patient.name,
+        residences: matchedProposal.case_.patient.residences.map((residence) => ({
+          address: residence.address,
+          lat: residence.lat ?? null,
+          lng: residence.lng ?? null,
+        })),
+      },
+    } satisfies CaseOption;
+  }, [caseId, patientId, proposals, selectedCaseSummary]);
+
   const autoDetailId =
     initialFocus === 'patient' || initialCaseId || initialPatientId
       ? (proposals.find((proposal) => matchesTab(proposal, activeTab)) ?? proposals[0])?.id ?? null
@@ -386,11 +514,14 @@ export function ScheduleProposalsContent({
         : null;
 
   const detailQuery = useRealtimeQuery({
-    queryKey: ['schedule-proposal-detail', orgId, activeDetailId],
+    queryKey: ['schedule-proposal-detail', orgId, activeDetailId, routeTravelMode],
     queryFn: async () => {
-      const response = await fetch(`/api/visit-schedule-proposals/${activeDetailId}`, {
-        headers: { 'x-org-id': orgId },
-      });
+      const response = await fetch(
+        `/api/visit-schedule-proposals/${activeDetailId}?travel_mode=${routeTravelMode}`,
+        {
+          headers: { 'x-org-id': orgId },
+        }
+      );
       if (!response.ok) throw new Error('訪問候補詳細の取得に失敗しました');
       return response.json() as Promise<ScheduleProposalDetailResponse>;
     },
@@ -399,6 +530,7 @@ export function ScheduleProposalsContent({
   });
 
   const detail = detailQuery.data?.data ?? null;
+  const visibleDiagnostics = lastGenerationDiagnostics ?? detail?.creation_diagnostics ?? null;
 
   const contactForm = useMemo<ContactFormState>(() => {
     if (contactFormDraft) return contactFormDraft;
@@ -440,18 +572,112 @@ export function ScheduleProposalsContent({
   const reproposalForm = useMemo(() => {
     if (reproposalFormDraft) return reproposalFormDraft;
     return {
-      start_date: detail?.proposed_date.slice(0, 10) ?? initialDate ?? '',
+      start_date: detail?.proposed_date.slice(0, 10) ?? initialDateFrom ?? '',
+      priority: detail?.priority ?? 'normal',
       preferred_time_from: '09:00',
       preferred_time_to: '12:00',
       note: '',
       candidate_count: '3',
     };
-  }, [detail, initialDate, reproposalFormDraft]);
+  }, [detail, initialDateFrom, reproposalFormDraft]);
+
+  const applyCaseFilter = (careCase: CaseOption) => {
+    setSelectedCaseSummary(careCase);
+    setCaseId(careCase.id);
+    setPatientId(careCase.patient.id);
+    setCaseSearchInput('');
+    setDetailId(AUTO_DETAIL_ID);
+    replaceDashboardUrl({
+      case_id: careCase.id,
+      patient_id: careCase.patient.id,
+      focus: 'patient',
+      detail: null,
+    });
+  };
+
+  const clearCaseFilter = () => {
+    setSelectedCaseSummary(null);
+    setCaseId('');
+    setPatientId('');
+    replaceDashboardUrl({
+      case_id: null,
+      patient_id: null,
+      focus: null,
+    });
+  };
+
+  const activatePreset = (preset: FilterPreset) => {
+    const today = todayKey();
+    setFilterPreset(preset);
+    if (preset === 'today') {
+      setActiveTab('unapproved');
+      setDateFrom(today);
+      setDateTo(today);
+      replaceDashboardUrl({
+        preset,
+        status: 'proposed',
+        date_from: today,
+        date_to: today,
+      });
+      return;
+    }
+    if (preset === 'contact') {
+      setActiveTab('patient_contact_pending');
+      replaceDashboardUrl({
+        preset,
+        status: 'patient_contact_pending',
+      });
+      return;
+    }
+    if (preset === 'stale') {
+      setActiveTab('rejected');
+      replaceDashboardUrl({
+        preset,
+        status: 'rejected',
+      });
+      return;
+    }
+    if (preset === 'all') {
+      setDateFrom(initialDateFrom ?? '');
+      setDateTo('');
+    }
+    replaceDashboardUrl({
+      preset: preset === 'all' ? null : preset,
+      status: preset === 'all' ? activeTab : null,
+      date_from: preset === 'all' ? initialDateFrom : dateFrom,
+      date_to: preset === 'all' ? initialDateTo : dateTo,
+    });
+  };
+
+  const resetFilters = () => {
+    setFilterPreset('all');
+    setCaseSearchInput('');
+    setSelectedCaseSummary(null);
+    setCaseId('');
+    setPatientId('');
+    setDateFrom(initialDateFrom ?? '');
+    setDateTo('');
+    setActiveTab(toDashboardTab(initialStatus));
+    replaceDashboardUrl({
+      status: initialStatus,
+      case_id: null,
+      patient_id: null,
+      focus: null,
+      preset: null,
+      date_from: initialDateFrom,
+      date_to: initialDateTo,
+      detail: null,
+    });
+  };
 
   const openDetail = (proposalId: string) => {
     setDetailId(proposalId);
     setContactFormDraft(null);
     setReproposalFormDraft(null);
+    replaceDashboardUrl({
+      detail: proposalId,
+      focus: 'detail',
+    });
   };
 
   const invalidateProposalQueries = async () => {
@@ -549,6 +775,26 @@ export function ScheduleProposalsContent({
     },
   });
 
+  const reorderProposalMutation = useMutation({
+    mutationFn: async (
+      routeOrderUpdates: Array<{
+        proposal_id: string;
+        route_order: number;
+      }>
+    ) =>
+      applyVisitScheduleProposalRouteUpdates({
+        orgId,
+        routeOrderUpdates,
+      }),
+    onSuccess: async () => {
+      toast.success('候補群の route_order を最適順に更新しました');
+      await invalidateProposalQueries();
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '候補順の更新に失敗しました');
+    },
+  });
+
   const reProposalMutation = useMutation({
     mutationFn: async () => {
       if (!detail) {
@@ -581,7 +827,8 @@ export function ScheduleProposalsContent({
         body: JSON.stringify({
           case_id: detail.case_id,
           visit_type: detail.visit_type,
-          priority: detail.priority,
+          priority: reproposalForm.priority,
+          travel_mode: routeTravelMode,
           start_date: reproposalForm.start_date || detail.proposed_date.slice(0, 10),
           preferred_time_from: reproposalForm.preferred_time_from || undefined,
           preferred_time_to: reproposalForm.preferred_time_to || undefined,
@@ -596,11 +843,16 @@ export function ScheduleProposalsContent({
         const error = await response.json().catch(() => ({}));
         throw new Error(error.message ?? '再提案の生成に失敗しました');
       }
-      return response.json() as Promise<{ data: Proposal[] }>;
+      return response.json() as Promise<CreateProposalResponse>;
     },
     onSuccess: async (payload) => {
+      setLastGenerationDiagnostics(payload.diagnostics ?? null);
       toast.success(`${payload.data.length}件の再提案候補を生成しました`);
+      if ((payload.diagnostics?.rejected.length ?? 0) > 0) {
+        toast.info(`採用外 ${payload.diagnostics?.rejected.length ?? 0} 件の理由を表示しています`);
+      }
       setActiveTab('unapproved');
+      replaceDashboardUrl({ status: 'proposed' });
       setSelectedIds([]);
       const nextId = payload.data[0]?.id ?? null;
       await invalidateProposalQueries();
@@ -623,11 +875,41 @@ export function ScheduleProposalsContent({
     });
   }, [detail]);
   const detailPreview = detail ? proposalPreviewMap?.get(detail.id) ?? null : null;
+  const currentDetailRouteIds = useMemo(() => {
+    if (!detail) return [];
+    const proposalRouteOrderById = new Map(
+      [detail, ...detail.related_proposals].map((proposal) => [`proposal:${proposal.id}`, proposal.route_order ?? Number.MAX_SAFE_INTEGER])
+    );
+    return [...detail.route_preview.points]
+      .sort((left, right) => {
+        const leftOrder =
+          left.point_kind === 'proposal'
+            ? (proposalRouteOrderById.get(left.schedule_id) ?? Number.MAX_SAFE_INTEGER)
+            : detail.pharmacist_day_schedules.find((schedule) => schedule.id === left.schedule_id)?.route_order ??
+              Number.MAX_SAFE_INTEGER;
+        const rightOrder =
+          right.point_kind === 'proposal'
+            ? (proposalRouteOrderById.get(right.schedule_id) ?? Number.MAX_SAFE_INTEGER)
+            : detail.pharmacist_day_schedules.find((schedule) => schedule.id === right.schedule_id)?.route_order ??
+              Number.MAX_SAFE_INTEGER;
+        if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+        return (left.time_window_start ?? '').localeCompare(right.time_window_start ?? '');
+      })
+      .map((point) => point.schedule_id);
+  }, [detail]);
+  const detailRouteDraft = useRouteOrderDraft({
+    sourceKey: `${activeDetailId ?? 'none'}:${routeTravelMode}:${detail?.route_preview.plan.orderedScheduleIds.join(',') ?? ''}:${currentDetailRouteIds.join(',')}`,
+    optimizedIds: detail?.route_preview.plan.orderedScheduleIds ?? currentDetailRouteIds,
+    currentIds: currentDetailRouteIds,
+  });
 
   const routeMapPoints = useMemo(() => {
     if (!detail) return [];
     const planById = new Map(
       detail.route_preview.plan.stopSummaries.map((summary) => [summary.scheduleId, summary])
+    );
+    const draftIndexById = new Map(
+      detailRouteDraft.draftIds.map((scheduleId, index) => [scheduleId, index + 1])
     );
     return detail.route_preview.points.map((point) => ({
       scheduleId: point.schedule_id,
@@ -635,19 +917,30 @@ export function ScheduleProposalsContent({
       address: point.address,
       lat: point.lat,
       lng: point.lng,
-      orderLabel: String(planById.get(point.schedule_id)?.optimizedOrder ?? '•'),
+      orderLabel: String(draftIndexById.get(point.schedule_id) ?? '•'),
       status: point.schedule_status,
       priority: point.priority,
-      etaLabel: formatEtaLabel(
-        detail.proposed_date.slice(0, 10),
-        point.time_window_start,
-        planById.get(point.schedule_id)?.arrivalOffsetSeconds ?? null
-      ),
+      pointKind: point.point_kind,
+      timeLabel: timeLabel(point.time_window_start, point.time_window_end),
+      etaLabel: detailRouteDraft.manualDirty
+        ? null
+        : formatEtaLabel(
+            detail.proposed_date.slice(0, 10),
+            point.time_window_start,
+            planById.get(point.schedule_id)?.arrivalOffsetSeconds ?? null
+          ),
     }));
-  }, [detail]);
+  }, [detail, detailRouteDraft.draftIds, detailRouteDraft.manualDirty]);
+  const detailRouteSelectionLabel = detail
+    ? `${formatDateLabel(detail.proposed_date)} / ${detail.proposed_pharmacist?.name ?? '担当未解決'}`
+    : null;
 
   const allVisibleSelected =
     visibleProposals.length > 0 && visibleProposals.every((proposal) => selectedIds.includes(proposal.id));
+  const caseSearchResults = casesQuery.data?.data ?? [];
+  const rescheduleFilterActive = filterPreset === 'reschedule';
+  const todayFilterActive =
+    filterPreset === 'today' || (activeTab === 'unapproved' && dateFrom === todayKey() && dateTo === todayKey());
 
   return (
     <div className="space-y-6">
@@ -655,44 +948,147 @@ export function ScheduleProposalsContent({
         <Card className="border-border/70 bg-card/95">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">提案フィルタ</CardTitle>
-            <CardDescription>ケース単位・患者単位・日付帯で候補を絞り込みます。</CardDescription>
+            <CardDescription>
+              ケース検索、即時対応 preset、日付帯で候補を絞り込みます。
+            </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="proposal-case-id">ケース ID</Label>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1.3fr)_repeat(2,minmax(0,0.7fr))]">
+              <div className="space-y-1.5">
+                <Label htmlFor="proposal-case-search">ケース/患者検索</Label>
+                <Input
+                  id="proposal-case-search"
+                  value={caseSearchInput}
+                  onChange={(event) => setCaseSearchInput(event.target.value)}
+                  placeholder="患者名・かなで検索"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="proposal-date-from">候補日 From</Label>
               <Input
-                id="proposal-case-id"
-                value={caseId}
-                onChange={(event) => setCaseId(event.target.value)}
-                placeholder="case_xxx"
-              />
+                  id="proposal-date-from"
+                  type="date"
+                  value={dateFrom}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setDateFrom(value);
+                    replaceDashboardUrl({ date_from: value });
+                  }}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="proposal-date-to">候補日 To</Label>
+                <Input
+                  id="proposal-date-to"
+                  type="date"
+                  value={dateTo}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setDateTo(value);
+                    replaceDashboardUrl({ date_to: value });
+                  }}
+                />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="proposal-patient-id">患者 ID</Label>
-              <Input
-                id="proposal-patient-id"
-                value={patientId}
-                onChange={(event) => setPatientId(event.target.value)}
-                placeholder="patient_xxx"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="proposal-date-from">候補日 From</Label>
-              <Input
-                id="proposal-date-from"
-                type="date"
-                value={dateFrom}
-                onChange={(event) => setDateFrom(event.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="proposal-date-to">候補日 To</Label>
-              <Input
-                id="proposal-date-to"
-                type="date"
-                value={dateTo}
-                onChange={(event) => setDateTo(event.target.value)}
-              />
+
+            {effectiveSelectedCaseSummary ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-muted/20 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    {effectiveSelectedCaseSummary.patient.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    ケース固定中
+                    {effectiveSelectedCaseSummary.primary_pharmacist_name
+                      ? ` / 主担当 ${effectiveSelectedCaseSummary.primary_pharmacist_name}`
+                      : ''}
+                  </p>
+                </div>
+                <Button type="button" size="sm" variant="outline" onClick={clearCaseFilter}>
+                  ケース固定を解除
+                </Button>
+              </div>
+            ) : null}
+
+            {caseSearchInput.trim().length >= 2 ? (
+              <div className="space-y-2 rounded-2xl border border-border/70 bg-muted/10 p-3">
+                <p className="text-xs font-medium text-muted-foreground">検索結果</p>
+                {casesQuery.isLoading ? (
+                  <p className="text-sm text-muted-foreground">ケース候補を読み込み中...</p>
+                ) : caseSearchResults.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">一致するケースはありません。</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {caseSearchResults.map((careCase) => (
+                      <Button
+                        key={careCase.id}
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => applyCaseFilter(careCase)}
+                      >
+                        {careCase.patient.name}
+                        {careCase.primary_pharmacist_name
+                          ? ` / ${careCase.primary_pharmacist_name}`
+                          : ''}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">即時対応 preset</p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={todayFilterActive ? 'default' : 'outline'}
+                  onClick={() => activatePreset('today')}
+                >
+                  本日候補
+                  <Badge variant="outline" className="ml-2 bg-white/80">
+                    {todayFilterCount}
+                  </Badge>
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={activeTab === 'patient_contact_pending' ? 'default' : 'outline'}
+                  onClick={() => activatePreset('contact')}
+                >
+                  要患者連絡
+                  <Badge variant="outline" className="ml-2 bg-white/80">
+                    {tabCounts.patient_contact_pending}
+                  </Badge>
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={rescheduleFilterActive ? 'default' : 'outline'}
+                  onClick={() => activatePreset(rescheduleFilterActive ? 'all' : 'reschedule')}
+                >
+                  リスケ由来
+                  <Badge variant="outline" className="ml-2 bg-white/80">
+                    {rescheduleCount}
+                  </Badge>
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={activeTab === 'rejected' ? 'default' : 'outline'}
+                  onClick={() => activatePreset('stale')}
+                >
+                  差替/期限切れ
+                  <Badge variant="outline" className="ml-2 bg-white/80">
+                    {tabCounts.stale}
+                  </Badge>
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={resetFilters}>
+                  条件をクリア
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -725,7 +1121,20 @@ export function ScheduleProposalsContent({
 
       <Tabs
         value={activeTab}
-        onValueChange={(value) => setActiveTab(value as DashboardTab)}
+        onValueChange={(value) => {
+          const nextTab = value as DashboardTab;
+          setActiveTab(nextTab);
+          replaceDashboardUrl({
+            status:
+              nextTab === 'patient_contact_pending'
+                ? 'patient_contact_pending'
+                : nextTab === 'confirmed'
+                  ? 'confirmed'
+                  : nextTab === 'rejected'
+                    ? 'rejected'
+                    : 'proposed',
+          });
+        }}
         className="space-y-4"
       >
         <TabsList variant="line" className="flex w-full flex-wrap justify-start gap-2">
@@ -774,6 +1183,53 @@ export function ScheduleProposalsContent({
       </div>
 
       <div className="grid gap-4">
+        {visibleDiagnostics ? (
+          <VisitProposalDiagnosticsCard
+            diagnostics={visibleDiagnostics}
+            actions={buildDashboardDiagnosticActions({
+              diagnostics: visibleDiagnostics,
+              travelMode: routeTravelMode,
+              nextBillableDate: detailPreview?.cadence.next_billable_date ?? null,
+              currentStartDate: reproposalForm.start_date,
+              onSetTravelMode: (value) => {
+                setRouteTravelMode(value);
+                replaceDashboardUrl({ travel_mode: value });
+              },
+              onSetCandidateCount: (value) =>
+                setReproposalFormDraft((current) => ({
+                  ...(current ?? reproposalForm),
+                  candidate_count: value,
+                })),
+              onSetStartDate: (value) =>
+                setReproposalFormDraft((current) => ({
+                  ...(current ?? reproposalForm),
+                  start_date: value,
+                })),
+              onExpandTimeWindow: () =>
+                setReproposalFormDraft((current) => ({
+                  ...(current ?? reproposalForm),
+                  preferred_time_from: '09:00',
+                  preferred_time_to: '18:00',
+                })),
+              onSetPriorityEmergency: () =>
+                setReproposalFormDraft((current) => ({
+                  ...(current ?? reproposalForm),
+                  priority: 'emergency',
+                })),
+              onOpenOptimizer: () =>
+                replaceDashboardUrl({
+                  workspace: 'optimizer',
+                  optimizer_case_id: detail?.case_id ?? null,
+                  optimizer_travel_mode: routeTravelMode,
+                }),
+              onScrollToReproposal: () =>
+                document
+                  .getElementById('schedule-proposal-reproposal')
+                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+            })}
+          />
+        ) : null}
+
         {proposalsQuery.isLoading ? (
           <Card>
             <CardContent className="py-10 text-sm text-muted-foreground">
@@ -964,7 +1420,17 @@ export function ScheduleProposalsContent({
         )}
       </div>
 
-      <Sheet open={activeDetailId !== null} onOpenChange={(open) => !open && setDetailId(null)}>
+      <Sheet
+        open={activeDetailId !== null}
+        onOpenChange={(open) => {
+          if (open) return;
+          setDetailId(null);
+          replaceDashboardUrl({
+            detail: null,
+            focus: caseId || patientId ? 'patient' : null,
+          });
+        }}
+      >
         <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-3xl">
           <SheetHeader>
             <SheetTitle>訪問候補の詳細</SheetTitle>
@@ -1118,34 +1584,73 @@ export function ScheduleProposalsContent({
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <MapPinned className="size-4 text-sky-600" />
-                    ルートプレビュー
-                  </CardTitle>
-                  <CardDescription>
-                    候補を含めた当日ルートの並びを確認します。
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex flex-wrap gap-2 text-sm">
-                    <Badge variant="outline">
-                      距離 {detail.route_preview.plan.totalDistanceMeters != null ? `${(detail.route_preview.plan.totalDistanceMeters / 1000).toFixed(1)}km` : '未取得'}
-                    </Badge>
-                    <Badge variant="outline">
-                      移動 {formatDurationLabel(detail.route_preview.plan.totalDurationSeconds)}
-                    </Badge>
-                  </div>
-                  <VisitRouteMap
-                    className="w-full"
-                    points={routeMapPoints}
-                    encodedPath={detail.route_preview.plan.encodedPath}
-                    note={detail.route_preview.plan.note}
-                    site={detail.route_preview.site}
-                  />
-                </CardContent>
-              </Card>
+              <VisitRoutePreviewPanel
+                controlId="proposal-detail-route"
+                title="ルートプレビュー"
+                description="候補を含めた当日ルートの並びを確認します。"
+                selectionLabel={detailRouteSelectionLabel}
+                travelMode={routeTravelMode}
+                onTravelModeChange={(value) => {
+                  setRouteTravelMode(value as TravelMode);
+                  replaceDashboardUrl({ travel_mode: value });
+                }}
+                plan={detail.route_preview.plan}
+                points={routeMapPoints}
+                site={detail.route_preview.site}
+                orderedIds={detailRouteDraft.draftIds}
+                currentOrderedIds={detailRouteDraft.currentIds}
+                movableIds={detailRouteDraft.draftIds.filter((item) => item.startsWith('proposal:'))}
+                onMoveItem={(scheduleId, direction) =>
+                  detailRouteDraft.moveItem(scheduleId, direction)
+                }
+                headerControls={
+                  detailRouteDraft.manualDirty ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={detailRouteDraft.resetToOptimized}
+                    >
+                      最適順へ戻す
+                    </Button>
+                  ) : null
+                }
+                actionLabel="候補群へ最適順を反映"
+                actionDisabled={
+                  reorderProposalMutation.isPending ||
+                  detailRouteDraft.draftIds.filter((item) =>
+                    item.startsWith('proposal:')
+                  ).length === 0 ||
+                  !detailRouteDraft.differsFromCurrent
+                }
+                actionPending={reorderProposalMutation.isPending}
+                onAction={() =>
+                  reorderProposalMutation.mutate(
+                    detailRouteDraft.draftIds
+                      .map((item, index) =>
+                        item.startsWith('proposal:')
+                          ? {
+                              proposal_id: item.replace('proposal:', ''),
+                              route_order: index + 1,
+                            }
+                          : null
+                      )
+                      .filter(
+                        (
+                          item,
+                        ): item is {
+                          proposal_id: string;
+                          route_order: number;
+                        } => item != null
+                      )
+                  )
+                }
+                extraSummary={
+                  detailRouteDraft.diffCount > 0 ? (
+                    <Badge variant="outline">差分 {detailRouteDraft.diffCount} 件</Badge>
+                  ) : null
+                }
+              />
 
               <Card>
                 <CardHeader className="pb-3">
@@ -1328,7 +1833,7 @@ export function ScheduleProposalsContent({
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card id="schedule-proposal-reproposal">
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <RefreshCw className="size-4 text-indigo-600" />
@@ -1339,7 +1844,7 @@ export function ScheduleProposalsContent({
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-3">
+                  <div className="grid gap-4 md:grid-cols-5">
                     <div className="space-y-1.5">
                       <Label htmlFor="reproposal-start-date">再提案開始日</Label>
                       <Input
@@ -1353,6 +1858,29 @@ export function ScheduleProposalsContent({
                           }))
                         }
                       />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="reproposal-priority">優先度</Label>
+                      <Select
+                        value={reproposalForm.priority}
+                        onValueChange={(value) =>
+                          setReproposalFormDraft((current) => ({
+                            ...(current ?? reproposalForm),
+                            priority: value as Proposal['priority'],
+                          }))
+                        }
+                      >
+                        <SelectTrigger id="reproposal-priority">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(Object.keys(PRIORITY_LABELS) as Proposal['priority'][]).map((priority) => (
+                            <SelectItem key={priority} value={priority}>
+                              {PRIORITY_LABELS[priority]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="reproposal-time-from">希望時間 From</Label>
@@ -1378,6 +1906,22 @@ export function ScheduleProposalsContent({
                           setReproposalFormDraft((current) => ({
                             ...(current ?? reproposalForm),
                             preferred_time_to: event.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="reproposal-candidate-count">候補数</Label>
+                      <Input
+                        id="reproposal-candidate-count"
+                        type="number"
+                        min={1}
+                        max={5}
+                        value={reproposalForm.candidate_count}
+                        onChange={(event) =>
+                          setReproposalFormDraft((current) => ({
+                            ...(current ?? reproposalForm),
+                            candidate_count: event.target.value,
                           }))
                         }
                       />

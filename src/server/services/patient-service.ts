@@ -19,6 +19,7 @@ import {
 } from '@/lib/patient/facility-reference';
 import { withOrgContext } from '@/lib/db/rls';
 import { createPatientSchema } from '@/lib/validations/patient';
+import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
 import type { z } from 'zod';
 
 export type PatientListFilters = {
@@ -38,6 +39,12 @@ export type PatientListFilters = {
   payer_basis?: 'medical' | 'care' | 'self';
   last_visit_from?: string;
   last_visit_to?: string;
+  readiness_issue?:
+    | 'missing_visit_consent'
+    | 'missing_management_plan'
+    | 'missing_emergency_contact'
+    | 'missing_primary_physician'
+    | 'missing_first_visit_doc';
 };
 
 function buildPatientSelect(referenceDate: Date) {
@@ -65,6 +72,13 @@ function buildPatientSelect(referenceDate: Date) {
         contacts: true,
       },
     },
+    contacts: {
+      where: { is_emergency_contact: true },
+      take: 1,
+      select: {
+        id: true,
+      },
+    },
     conditions: {
       where: { is_active: true },
       orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
@@ -82,6 +96,13 @@ function buildPatientSelect(referenceDate: Date) {
         status: true,
         updated_at: true,
         primary_pharmacist_id: true,
+        care_team_links: {
+          where: { role: 'physician' },
+          take: 1,
+          select: {
+            id: true,
+          },
+        },
       },
       orderBy: { updated_at: 'desc' },
       take: 1,
@@ -290,6 +311,28 @@ function matchesPatientPostFilters(
     return false;
   }
 
+  if (filters.readiness_issue) {
+    switch (filters.readiness_issue) {
+      case 'missing_visit_consent':
+        if (patient.consent.has_visit_medication_management) return false;
+        break;
+      case 'missing_management_plan':
+        if (!patient.risk_summary.missing_management_plan) return false;
+        break;
+      case 'missing_emergency_contact':
+        if (patient.readiness.has_emergency_contact) return false;
+        break;
+      case 'missing_primary_physician':
+        if (patient.readiness.has_primary_physician) return false;
+        break;
+      case 'missing_first_visit_doc':
+        if (patient.readiness.has_first_visit_document) return false;
+        break;
+      default:
+        break;
+    }
+  }
+
   return true;
 }
 
@@ -320,7 +363,7 @@ async function enrichPatientBatch(args: {
     )
   );
 
-  const [riskSummaries, pharmacistNameById, visitRecords, visitSchedules] =
+  const [riskSummaries, pharmacistNameById, visitRecords, visitSchedules, firstVisitDocuments] =
     await Promise.all([
       listPatientRiskSummaries(prisma, {
         orgId,
@@ -348,6 +391,18 @@ async function enrichPatientBatch(args: {
             ) ranked
             WHERE rn <= 3
           `,
+      latestCaseIds.length === 0
+        ? Promise.resolve([])
+        : prisma.firstVisitDocument.findMany({
+            where: {
+              org_id: orgId,
+              case_id: { in: latestCaseIds },
+              delivered_at: { not: null },
+            },
+            select: {
+              case_id: true,
+            },
+          }),
     ]);
 
   const riskByPatientId = new Map(riskSummaries.map((summary) => [summary.patient_id, summary]));
@@ -360,6 +415,9 @@ async function enrichPatientBatch(args: {
     entries.push(visitSchedule);
     visitSchedulesByCaseId.set(visitSchedule.case_id, entries);
   }
+  const deliveredFirstVisitCaseIds = new Set(
+    firstVisitDocuments.map((document) => document.case_id)
+  );
 
   const privacy = getPatientPrivacyFlags(role);
   const recentVisitThreshold = subDays(new Date(), 30);
@@ -375,6 +433,7 @@ async function enrichPatientBatch(args: {
       pharmacistNameById,
       latestVisit,
       schedules,
+      deliveredFirstVisitCaseIds,
       privacy,
       recentVisitThreshold
     );
@@ -849,6 +908,14 @@ export async function createPatientWithIntake(
     }
 
     return newPatient;
+  });
+
+  await notifyWebhookEventForOrg(orgId, 'patient.created', {
+    patientId: patient.id,
+    name: patient.name,
+    ...(patient.created_at instanceof Date
+      ? { createdAt: patient.created_at.toISOString() }
+      : {}),
   });
 
   return patient;

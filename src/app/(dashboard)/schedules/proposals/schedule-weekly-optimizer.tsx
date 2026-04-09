@@ -1,6 +1,7 @@
 'use client';
 
-import { Fragment, useMemo, useState } from 'react';
+import { startTransition, Fragment, useDeferredValue, useMemo, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   addWeeks,
@@ -14,6 +15,7 @@ import {
 import { ja } from 'date-fns/locale';
 import { CalendarClock, GripVertical, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import type { ProposalGenerationDiagnosticsCardData } from '@/components/features/visits/visit-proposal-diagnostics-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,6 +32,13 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { fetchVisitSchedulesWindow } from '../visit-schedule-fetch.helpers';
+import type { VisitRoutePlan } from '@/server/services/visit-route-engine';
+import {
+  applyVisitScheduleProposalRouteUpdates,
+  applyVisitScheduleRouteUpdates,
+} from '../visit-route-client';
+import { useRouteOrderDraft } from '../route-order-draft';
+import { mergeScheduleProposalSearchParams } from './proposal-query-state';
 import {
   PRIORITY_LABELS,
   PROPOSAL_STATUS_LABELS,
@@ -42,6 +51,7 @@ import {
   type VisitType,
   VISIT_TYPE_LABELS,
 } from '../day-view.shared';
+import { WeeklyCellInspector } from './weekly-cell-inspector';
 
 type PharmacistShift = {
   id: string;
@@ -64,12 +74,23 @@ type PharmacistShift = {
 
 type WeeklyOptimizerProps = {
   initialDate?: string | null;
+  initialCaseId?: string | null;
+  initialVisitType?: string | null;
+  initialPriority?: string | null;
+  initialTravelMode?: string | null;
+  initialPreferredTimeFrom?: string | null;
+  initialPreferredTimeTo?: string | null;
+  initialRoutePharmacistId?: string | null;
+  initialRouteDate?: string | null;
 };
+
+type TravelMode = 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
 
 type ProposalPayload = {
   case_id: string;
   visit_type: VisitType;
   priority: VisitPriority;
+  travel_mode: TravelMode;
   start_date: string;
   locked_date: string;
   preferred_time_from?: string;
@@ -88,6 +109,13 @@ type DragSchedule = {
   timeWindowEnd: string | null;
 };
 
+type RouteCellSelection = {
+  pharmacistId: string;
+  dateKey: string;
+};
+
+type ProposalGenerationDiagnostics = ProposalGenerationDiagnosticsCardData;
+
 const EMPTY_CASES: CaseOption[] = [];
 const EMPTY_SCHEDULES: VisitSchedule[] = [];
 const EMPTY_PROPOSALS: Proposal[] = [];
@@ -100,6 +128,14 @@ function dateKey(value: string) {
 function timeLabel(value: string | null | undefined) {
   if (!value) return null;
   return format(parseISO(value), 'HH:mm');
+}
+
+function timeRangeLabel(start: string | null | undefined, end: string | null | undefined) {
+  const normalizedStart = timeLabel(start);
+  const normalizedEnd = timeLabel(end);
+  if (!normalizedStart && !normalizedEnd) return null;
+  if (normalizedStart && normalizedEnd) return `${normalizedStart} - ${normalizedEnd}`;
+  return normalizedStart ?? normalizedEnd;
 }
 
 function shiftFitsSchedule(shift: PharmacistShift | null, schedule: DragSchedule) {
@@ -188,21 +224,123 @@ function computeFacilitySuggestions(proposals: Proposal[]): FacilitySuggestion[]
     .filter((item): item is FacilitySuggestion => item !== null);
 }
 
-export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
+function buildRouteReorderPayloads(args: {
+  draggedSchedule: DragSchedule;
+  sourceSchedules: VisitSchedule[];
+  targetSchedules: VisitSchedule[];
+  targetPharmacistId: string;
+  targetDate: string;
+}) {
+  const payloads: Array<{
+    scheduleId: string;
+    scheduled_date: string;
+    pharmacist_id: string;
+    route_order: number;
+  }> = [];
+
+  const sourceRemaining = args.sourceSchedules.filter(
+    (schedule) => schedule.id !== args.draggedSchedule.id
+  );
+  sourceRemaining.forEach((schedule, index) => {
+    payloads.push({
+      scheduleId: schedule.id,
+      scheduled_date: schedule.scheduled_date.slice(0, 10),
+      pharmacist_id: schedule.pharmacist_id,
+      route_order: index + 1,
+    });
+  });
+
+  const destinationPayloads = args.targetSchedules
+    .filter((schedule) => schedule.id !== args.draggedSchedule.id)
+    .map((schedule) => ({
+      scheduleId: schedule.id,
+      scheduled_date: schedule.scheduled_date.slice(0, 10),
+      pharmacist_id: schedule.pharmacist_id,
+      route_order: 0,
+    }));
+  destinationPayloads.push({
+    scheduleId: args.draggedSchedule.id,
+    scheduled_date: args.targetDate,
+    pharmacist_id: args.targetPharmacistId,
+    route_order: 0,
+  });
+
+  destinationPayloads.forEach((schedule, index) => {
+    payloads.push({
+      scheduleId: schedule.scheduleId,
+      scheduled_date: schedule.scheduled_date,
+      pharmacist_id: schedule.pharmacist_id,
+      route_order: index + 1,
+    });
+  });
+
+  const uniquePayloads = new Map<string, (typeof payloads)[number]>();
+  for (const payload of payloads) {
+    uniquePayloads.set(payload.scheduleId, payload);
+  }
+
+  return Array.from(uniquePayloads.values());
+}
+
+export function ScheduleWeeklyOptimizer({
+  initialDate,
+  initialCaseId,
+  initialVisitType,
+  initialPriority,
+  initialTravelMode,
+  initialPreferredTimeFrom,
+  initialPreferredTimeTo,
+  initialRoutePharmacistId,
+  initialRouteDate,
+}: WeeklyOptimizerProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [weekAnchor, setWeekAnchor] = useState(() =>
     initialDate ? startOfWeek(parseISO(initialDate), { weekStartsOn: 1 }) : startOfWeek(new Date(), { weekStartsOn: 1 })
   );
-  const [selectedCaseId, setSelectedCaseId] = useState('');
+  const [selectedCaseId, setSelectedCaseId] = useState(initialCaseId ?? '');
+  const [caseSearchInput, setCaseSearchInput] = useState('');
   const [plannerSettings, setPlannerSettings] = useState({
-    visit_type: 'regular' as VisitType,
-    priority: 'normal' as VisitPriority,
-    preferred_time_from: '09:00',
-    preferred_time_to: '12:00',
+    visit_type:
+      initialVisitType &&
+      (Object.keys(VISIT_TYPE_LABELS) as VisitType[]).includes(initialVisitType as VisitType)
+        ? (initialVisitType as VisitType)
+        : ('regular' as VisitType),
+    priority:
+      initialPriority &&
+      (Object.keys(PRIORITY_LABELS) as VisitPriority[]).includes(initialPriority as VisitPriority)
+        ? (initialPriority as VisitPriority)
+        : ('normal' as VisitPriority),
+    travel_mode:
+      initialTravelMode === 'BICYCLE' ||
+      initialTravelMode === 'WALK' ||
+      initialTravelMode === 'TWO_WHEELER'
+        ? initialTravelMode
+        : ('DRIVE' as TravelMode),
+    preferred_time_from: initialPreferredTimeFrom ?? '09:00',
+    preferred_time_to: initialPreferredTimeTo ?? '12:00',
   });
   const [draggingSchedule, setDraggingSchedule] = useState<DragSchedule | null>(null);
   const [hoveredCell, setHoveredCell] = useState<string | null>(null);
+  const [selectedRouteCell, setSelectedRouteCell] = useState<RouteCellSelection | null>(null);
+  const [lastPlannerDiagnostics, setLastPlannerDiagnostics] =
+    useState<ProposalGenerationDiagnostics | null>(null);
+  const deferredCaseSearchInput = useDeferredValue(caseSearchInput.trim());
+  const replaceOptimizerUrl = (patch: Record<string, string | null | undefined>) => {
+    const next = mergeScheduleProposalSearchParams({
+      params: new URLSearchParams(searchParams.toString()),
+      patch: {
+        workspace: 'optimizer',
+        ...patch,
+      },
+    });
+    startTransition(() => {
+      router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+    });
+  };
 
   const weekStart = weekAnchor;
   const weekEnd = endOfWeek(weekAnchor, { weekStartsOn: 1 });
@@ -224,6 +362,22 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
       return response.json() as Promise<{ data: CaseOption[] }>;
     },
     enabled: !!orgId,
+  });
+  const caseSearchQuery = useQuery({
+    queryKey: ['cases', 'weekly-optimizer-search', orgId, deferredCaseSearchInput],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        status: 'active',
+        limit: '8',
+        q: deferredCaseSearchInput,
+      });
+      const response = await fetch(`/api/cases?${params}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!response.ok) throw new Error('ケース候補の取得に失敗しました');
+      return response.json() as Promise<{ data: CaseOption[] }>;
+    },
+    enabled: !!orgId && deferredCaseSearchInput.length >= 2,
   });
 
   const schedulesQuery = useRealtimeQuery({
@@ -274,6 +428,10 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
   });
 
   const cases = useMemo(() => casesQuery.data?.data ?? EMPTY_CASES, [casesQuery.data]);
+  const caseSearchResults = useMemo(
+    () => caseSearchQuery.data?.data ?? EMPTY_CASES,
+    [caseSearchQuery.data]
+  );
   const schedules = useMemo(
     () => schedulesQuery.data?.data ?? EMPTY_SCHEDULES,
     [schedulesQuery.data]
@@ -285,7 +443,15 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
   const shifts = useMemo(() => shiftsQuery.data?.data ?? EMPTY_SHIFTS, [shiftsQuery.data]);
 
   const activeCase =
-    cases.find((careCase) => careCase.id === selectedCaseId) ?? null;
+    cases.find((careCase) => careCase.id === selectedCaseId) ??
+    caseSearchResults.find((careCase) => careCase.id === selectedCaseId) ??
+    null;
+  const applySelectedCase = (careCase: CaseOption | null) => {
+    const nextCaseId = careCase?.id ?? '';
+    setSelectedCaseId(nextCaseId);
+    setCaseSearchInput('');
+    replaceOptimizerUrl({ optimizer_case_id: nextCaseId || null });
+  };
   const { data: cadencePreview } = useQuery({
     queryKey: ['weekly-optimizer-billing-preview', orgId, selectedCaseId, dateFrom],
     queryFn: async () => {
@@ -332,6 +498,20 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
       left.name.localeCompare(right.name, 'ja')
     );
   }, [shifts]);
+  const defaultSelectedRouteCell =
+    pharmacists.length > 0 && days.length > 0
+      ? {
+          pharmacistId:
+            pharmacists.some((pharmacist) => pharmacist.id === initialRoutePharmacistId)
+              ? (initialRoutePharmacistId as string)
+              : pharmacists[0].id,
+          dateKey:
+            initialRouteDate && days.some((day) => format(day, 'yyyy-MM-dd') === initialRouteDate)
+              ? initialRouteDate
+              : format(days[0], 'yyyy-MM-dd'),
+        }
+      : null;
+  const effectiveSelectedRouteCell = selectedRouteCell ?? defaultSelectedRouteCell;
 
   const shiftsByCell = useMemo(() => {
     const map = new Map<string, PharmacistShift>();
@@ -379,8 +559,77 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
         map.set(key, [proposal]);
       }
     }
+    for (const list of map.values()) {
+      list.sort((left, right) => {
+        const leftOrder = left.route_order ?? Number.MAX_SAFE_INTEGER;
+        const rightOrder = right.route_order ?? Number.MAX_SAFE_INTEGER;
+        if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+        return (left.time_window_start ?? '').localeCompare(right.time_window_start ?? '');
+      });
+    }
     return map;
   }, [proposals]);
+
+  const selectedCellSchedules = useMemo(() => {
+    if (!effectiveSelectedRouteCell) return [];
+    return schedulesByCell.get(
+      `${effectiveSelectedRouteCell.pharmacistId}:${effectiveSelectedRouteCell.dateKey}`
+    ) ?? [];
+  }, [effectiveSelectedRouteCell, schedulesByCell]);
+  const selectedCellProposals = useMemo(() => {
+    if (!effectiveSelectedRouteCell) return [];
+    return proposalsByCell.get(
+      `${effectiveSelectedRouteCell.pharmacistId}:${effectiveSelectedRouteCell.dateKey}`
+    ) ?? [];
+  }, [effectiveSelectedRouteCell, proposalsByCell]);
+  const currentSelectedCellOrderedIds = useMemo(
+    () => [
+      ...selectedCellSchedules.map((schedule) => schedule.id),
+      ...selectedCellProposals.map((proposal) => `proposal:${proposal.id}`),
+    ],
+    [selectedCellProposals, selectedCellSchedules]
+  );
+
+  const routePreviewQuery = useQuery<VisitRoutePlan>({
+    queryKey: [
+      'weekly-optimizer-route-preview',
+      orgId,
+      effectiveSelectedRouteCell?.pharmacistId ?? '',
+      effectiveSelectedRouteCell?.dateKey ?? '',
+      plannerSettings.travel_mode,
+      selectedCellSchedules.map((schedule) => schedule.id).join(','),
+      selectedCellProposals.map((proposal) => proposal.id).join(','),
+    ],
+    queryFn: async () => {
+      const response = await fetch('/api/visit-routes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          schedule_ids: selectedCellSchedules.map((schedule) => schedule.id),
+          proposal_ids: selectedCellProposals.map((proposal) => proposal.id),
+          travel_mode: plannerSettings.travel_mode,
+        }),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.message ?? 'ルートプレビューの取得に失敗しました');
+      }
+      return response.json();
+    },
+    enabled: Boolean(
+      orgId &&
+        effectiveSelectedRouteCell &&
+        (selectedCellSchedules.length > 0 || selectedCellProposals.length > 0)
+    ),
+  });
+  const selectedCellRouteDraft = useRouteOrderDraft({
+    sourceKey: `${effectiveSelectedRouteCell?.pharmacistId ?? 'none'}:${effectiveSelectedRouteCell?.dateKey ?? 'none'}:${plannerSettings.travel_mode}:${routePreviewQuery.data?.orderedScheduleIds.join(',') ?? ''}:${currentSelectedCellOrderedIds.join(',')}`,
+    optimizedIds: routePreviewQuery.data?.orderedScheduleIds ?? currentSelectedCellOrderedIds,
+    currentIds: currentSelectedCellOrderedIds,
+  });
 
   const createProposalMutation = useMutation({
     mutationFn: async (payload: ProposalPayload) => {
@@ -396,10 +645,17 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
         const error = await response.json().catch(() => ({}));
         throw new Error(error.message ?? '候補生成に失敗しました');
       }
-      return response.json() as Promise<{ data: Proposal[] }>;
+      return response.json() as Promise<{
+        data: Proposal[];
+        diagnostics?: ProposalGenerationDiagnostics;
+      }>;
     },
     onSuccess: async (payload) => {
+      setLastPlannerDiagnostics(payload.diagnostics ?? null);
       toast.success(`${payload.data.length}件の候補を生成しました`);
+      if ((payload.diagnostics?.rejected.length ?? 0) > 0) {
+        toast.info(`採用外 ${payload.diagnostics?.rejected.length ?? 0} 件の理由を表示しています`);
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['visit-schedule-proposals', orgId] }),
         queryClient.invalidateQueries({ queryKey: ['visit-schedule-proposals', 'weekly-optimizer', orgId] }),
@@ -410,33 +666,17 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
     },
   });
 
-  const moveScheduleMutation = useMutation({
-    mutationFn: async (payload: {
-      scheduleId: string;
-      scheduled_date: string;
-      pharmacist_id: string;
-      route_order: number;
-    }) => {
-      const response = await fetch(`/api/visit-schedules/${payload.scheduleId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
-        body: JSON.stringify({
-          scheduled_date: payload.scheduled_date,
-          pharmacist_id: payload.pharmacist_id,
-          route_order: payload.route_order,
-        }),
-      });
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.message ?? '訪問予定の移動に失敗しました');
-      }
-      return response.json();
-    },
+  const reorderSchedulesMutation = useMutation({
+    mutationFn: async (
+      payloads: Array<{
+        scheduleId: string;
+        scheduled_date: string;
+        pharmacist_id: string;
+        route_order: number;
+      }>
+    ) => applyVisitScheduleRouteUpdates({ orgId, updates: payloads }),
     onSuccess: async () => {
-      toast.success('週次ボード上で訪問予定を再配置しました');
+      toast.success('route_order を再採番して訪問予定を再配置しました');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'weekly-optimizer', orgId] }),
         queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] }),
@@ -455,6 +695,158 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
     proposalsQuery.isLoading ||
     shiftsQuery.isLoading;
 
+  const selectedCellRoutePoints = useMemo(() => {
+    const plan = routePreviewQuery.data;
+    const planById = new Map(
+      (plan?.stopSummaries ?? []).map((summary) => [summary.scheduleId, summary])
+    );
+    const draftIndexById = new Map(
+      selectedCellRouteDraft.draftIds.map((scheduleId, index) => [scheduleId, index + 1])
+    );
+    return [
+      ...selectedCellSchedules.map((schedule) => {
+        const residence = schedule.case_.patient.residences[0];
+        if (residence?.lat == null || residence.lng == null) return null;
+        const summary = planById.get(schedule.id);
+        return {
+          scheduleId: schedule.id,
+          patientName: schedule.case_.patient.name,
+          address: residence.address,
+          lat: residence.lat,
+          lng: residence.lng,
+          orderLabel: String(draftIndexById.get(schedule.id) ?? '•'),
+          status: schedule.schedule_status,
+          priority: schedule.priority,
+          pointKind: 'schedule' as const,
+          timeLabel: timeRangeLabel(schedule.time_window_start, schedule.time_window_end),
+          etaLabel:
+            !selectedCellRouteDraft.manualDirty && summary?.arrivalOffsetSeconds != null
+              ? `${Math.round(summary.arrivalOffsetSeconds / 60)}分`
+              : null,
+        };
+      }),
+      ...selectedCellProposals.map((proposal) => {
+        const residence = proposal.case_.patient.residences[0];
+        if (residence?.lat == null || residence.lng == null) return null;
+        const routeId = `proposal:${proposal.id}`;
+        const summary = planById.get(routeId);
+        return {
+          scheduleId: routeId,
+          patientName: proposal.case_.patient.name,
+          address: residence.address,
+          lat: residence.lat,
+          lng: residence.lng,
+          orderLabel: String(draftIndexById.get(routeId) ?? '•'),
+          status: 'planned' as const,
+          priority: proposal.priority,
+          pointKind: 'proposal' as const,
+          timeLabel: timeRangeLabel(proposal.time_window_start, proposal.time_window_end),
+          etaLabel:
+            !selectedCellRouteDraft.manualDirty && summary?.arrivalOffsetSeconds != null
+              ? `${Math.round(summary.arrivalOffsetSeconds / 60)}分`
+              : null,
+        };
+      }),
+    ]
+      .filter((value): value is NonNullable<typeof value> => value != null);
+  }, [
+    routePreviewQuery.data,
+    selectedCellProposals,
+    selectedCellSchedules,
+    selectedCellRouteDraft.draftIds,
+    selectedCellRouteDraft.manualDirty,
+  ]);
+
+  const selectedCellSite =
+    selectedCellSchedules[0]?.site?.lat != null && selectedCellSchedules[0]?.site?.lng != null
+      ? {
+          name: selectedCellSchedules[0].site.name,
+          lat: selectedCellSchedules[0].site.lat as number,
+          lng: selectedCellSchedules[0].site.lng as number,
+        }
+      : selectedCellProposals[0]?.site?.lat != null && selectedCellProposals[0]?.site?.lng != null
+        ? {
+            name: selectedCellProposals[0].site.name,
+            lat: selectedCellProposals[0].site.lat as number,
+            lng: selectedCellProposals[0].site.lng as number,
+          }
+        : null;
+  const selectedRouteCellPharmacist =
+    pharmacists.find((item) => item.id === effectiveSelectedRouteCell?.pharmacistId) ?? null;
+  const selectedRouteCellSummary = effectiveSelectedRouteCell
+    ? `${selectedRouteCellPharmacist?.name ?? effectiveSelectedRouteCell.pharmacistId} / ${effectiveSelectedRouteCell.dateKey}`
+    : null;
+  const applySelectedRouteMutation = useMutation({
+    mutationFn: async () => {
+      if (!routePreviewQuery.data || selectedCellRouteDraft.draftIds.length === 0) {
+        throw new Error('反映できるルート順がありません');
+      }
+      const scheduleUpdates = selectedCellRouteDraft.draftIds
+        .map((scheduleId, index) => {
+          if (scheduleId.startsWith('proposal:')) return null;
+          const schedule = selectedCellSchedules.find((item) => item.id === scheduleId);
+          if (!schedule) return null;
+          return {
+            scheduleId,
+            scheduled_date: schedule.scheduled_date.slice(0, 10),
+            pharmacist_id: schedule.pharmacist_id,
+            route_order: index + 1,
+          };
+        })
+        .filter(
+          (
+            item,
+          ): item is {
+            scheduleId: string;
+            scheduled_date: string;
+            pharmacist_id: string;
+            route_order: number;
+          } => item != null
+        );
+      const proposalUpdates = selectedCellRouteDraft.draftIds
+        .map((scheduleId, index) =>
+          scheduleId.startsWith('proposal:')
+            ? {
+                proposal_id: scheduleId.replace('proposal:', ''),
+                route_order: index + 1,
+              }
+            : null
+        )
+        .filter(
+          (
+            item,
+          ): item is {
+            proposal_id: string;
+            route_order: number;
+          } => item != null
+        );
+
+      if (scheduleUpdates.length > 0) {
+        await applyVisitScheduleRouteUpdates({ orgId, updates: scheduleUpdates });
+      }
+      if (proposalUpdates.length > 0) {
+        await applyVisitScheduleProposalRouteUpdates({
+          orgId,
+          routeOrderUpdates: proposalUpdates,
+        });
+      }
+    },
+    onSuccess: async () => {
+      toast.success('セル内の route_order を更新しました');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'weekly-optimizer', orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['visit-schedule-proposals', orgId] }),
+        queryClient.invalidateQueries({
+          queryKey: ['visit-schedule-proposals', 'weekly-optimizer', orgId],
+        }),
+      ]);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'route_order の反映に失敗しました');
+    },
+  });
+
   const handleGenerateForCell = (pharmacistId: string, scheduledDate: string) => {
     if (!selectedCaseId) {
       toast.error('ケースを選択してから空き枠提案を実行してください');
@@ -465,12 +857,48 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
       case_id: selectedCaseId,
       visit_type: plannerSettings.visit_type,
       priority: plannerSettings.priority,
+      travel_mode: plannerSettings.travel_mode,
       start_date: scheduledDate,
       locked_date: scheduledDate,
       preferred_time_from: plannerSettings.preferred_time_from || undefined,
       preferred_time_to: plannerSettings.preferred_time_to || undefined,
       preferred_pharmacist_id: pharmacistId,
       candidate_count: 1,
+    });
+  };
+
+  const updateSelectedRouteCell = (value: RouteCellSelection) => {
+    setSelectedRouteCell(value);
+    replaceOptimizerUrl({
+      optimizer_pharmacist_id: value.pharmacistId,
+      optimizer_date: value.dateKey,
+    });
+  };
+  const moveSelectionToNextDay = () => {
+    if (!effectiveSelectedRouteCell) return;
+    const currentIndex = days.findIndex(
+      (day) => format(day, 'yyyy-MM-dd') === effectiveSelectedRouteCell.dateKey
+    );
+    const nextDay = days[currentIndex + 1] ?? null;
+    if (!nextDay) return;
+    updateSelectedRouteCell({
+      pharmacistId: effectiveSelectedRouteCell.pharmacistId,
+      dateKey: format(nextDay, 'yyyy-MM-dd'),
+    });
+  };
+  const selectAlternatePharmacist = () => {
+    if (!effectiveSelectedRouteCell) return;
+    const currentIndex = pharmacists.findIndex(
+      (pharmacist) => pharmacist.id === effectiveSelectedRouteCell.pharmacistId
+    );
+    const alternate =
+      pharmacists.find((pharmacist) => pharmacist.id !== effectiveSelectedRouteCell.pharmacistId) ??
+      pharmacists[(currentIndex + 1) % Math.max(pharmacists.length, 1)] ??
+      null;
+    if (!alternate) return;
+    updateSelectedRouteCell({
+      pharmacistId: alternate.id,
+      dateKey: effectiveSelectedRouteCell.dateKey,
     });
   };
 
@@ -501,12 +929,18 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
       return;
     }
 
-    moveScheduleMutation.mutate({
-      scheduleId: draggingSchedule.id,
-      scheduled_date: scheduledDate,
-      pharmacist_id: pharmacistId,
-      route_order: targetSchedules.length + 1,
-    });
+    reorderSchedulesMutation.mutate(
+      buildRouteReorderPayloads({
+        draggedSchedule: draggingSchedule,
+        sourceSchedules:
+          schedulesByCell.get(
+            `${draggingSchedule.sourcePharmacistId}:${draggingSchedule.sourceDateKey}`
+          ) ?? [],
+        targetSchedules,
+        targetPharmacistId: pharmacistId,
+        targetDate: scheduledDate,
+      })
+    );
     setDraggingSchedule(null);
     setHoveredCell(null);
   };
@@ -525,43 +959,61 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
             <div className="space-y-1.5">
               <Label>対象週</Label>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setWeekAnchor((current) => subWeeks(current, 1))}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const next = subWeeks(weekAnchor, 1);
+                    setWeekAnchor(next);
+                    replaceOptimizerUrl({ week: format(next, 'yyyy-MM-dd') });
+                  }}
+                >
                   前週
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => setWeekAnchor(startOfWeek(new Date(), { weekStartsOn: 1 }))}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const next = startOfWeek(new Date(), { weekStartsOn: 1 });
+                    setWeekAnchor(next);
+                    replaceOptimizerUrl({ week: format(next, 'yyyy-MM-dd') });
+                  }}
+                >
                   今週
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => setWeekAnchor((current) => addWeeks(current, 1))}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const next = addWeeks(weekAnchor, 1);
+                    setWeekAnchor(next);
+                    replaceOptimizerUrl({ week: format(next, 'yyyy-MM-dd') });
+                  }}
+                >
                   翌週
                 </Button>
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="weekly-case">提案対象ケース</Label>
-              <Select value={selectedCaseId} onValueChange={(value) => setSelectedCaseId(value ?? '')}>
-                <SelectTrigger id="weekly-case" className="w-[22rem]">
-                  <SelectValue placeholder="ケースを選択" />
-                </SelectTrigger>
-                <SelectContent>
-                  {cases.map((careCase) => (
-                    <SelectItem key={careCase.id} value={careCase.id}>
-                      {careCase.patient.name}
-                      {careCase.primary_pharmacist_name ? ` / 主担当 ${careCase.primary_pharmacist_name}` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="min-w-[18rem] space-y-1.5">
+              <Label htmlFor="weekly-case-search">提案対象ケース</Label>
+              <Input
+                id="weekly-case-search"
+                value={caseSearchInput}
+                onChange={(event) => setCaseSearchInput(event.target.value)}
+                placeholder="患者名・かなで検索"
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="weekly-visit-type">訪問種別</Label>
               <Select
                 value={plannerSettings.visit_type}
-                onValueChange={(value) =>
+                onValueChange={(value) => {
                   setPlannerSettings((current) => ({
                     ...current,
                     visit_type: value as VisitType,
-                  }))
-                }
+                  }));
+                  replaceOptimizerUrl({ optimizer_visit_type: value });
+                }}
               >
                 <SelectTrigger id="weekly-visit-type" className="w-[10rem]">
                   <SelectValue />
@@ -579,12 +1031,13 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
               <Label htmlFor="weekly-priority">優先度</Label>
               <Select
                 value={plannerSettings.priority}
-                onValueChange={(value) =>
+                onValueChange={(value) => {
                   setPlannerSettings((current) => ({
                     ...current,
                     priority: value as VisitPriority,
-                  }))
-                }
+                  }));
+                  replaceOptimizerUrl({ optimizer_priority: value });
+                }}
               >
                 <SelectTrigger id="weekly-priority" className="w-[9rem]">
                   <SelectValue />
@@ -599,35 +1052,109 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
               </Select>
             </div>
             <div className="space-y-1.5">
+              <Label htmlFor="weekly-travel-mode">移動手段</Label>
+              <Select
+                value={plannerSettings.travel_mode}
+                onValueChange={(value) => {
+                  setPlannerSettings((current) => ({
+                    ...current,
+                    travel_mode: value as TravelMode,
+                  }));
+                  replaceOptimizerUrl({ optimizer_travel_mode: value });
+                }}
+              >
+                <SelectTrigger id="weekly-travel-mode" className="w-[10rem]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DRIVE">車</SelectItem>
+                  <SelectItem value="BICYCLE">自転車</SelectItem>
+                  <SelectItem value="WALK">徒歩</SelectItem>
+                  <SelectItem value="TWO_WHEELER">二輪</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="weekly-time-from">希望枠</Label>
               <div className="flex items-center gap-2">
                 <Input
                   id="weekly-time-from"
                   type="time"
                   value={plannerSettings.preferred_time_from}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const value = event.target.value;
                     setPlannerSettings((current) => ({
                       ...current,
-                      preferred_time_from: event.target.value,
-                    }))
-                  }
+                      preferred_time_from: value,
+                    }));
+                    replaceOptimizerUrl({ optimizer_time_from: value });
+                  }}
                   className="w-[8rem]"
                 />
                 <span className="text-sm text-muted-foreground">-</span>
                 <Input
                   type="time"
                   value={plannerSettings.preferred_time_to}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const value = event.target.value;
                     setPlannerSettings((current) => ({
                       ...current,
-                      preferred_time_to: event.target.value,
-                    }))
-                  }
+                      preferred_time_to: value,
+                    }));
+                    replaceOptimizerUrl({ optimizer_time_to: value });
+                  }}
                   className="w-[8rem]"
                 />
               </div>
             </div>
           </div>
+
+          {selectedCaseId && activeCase ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-muted/15 px-4 py-3 text-sm">
+              <div>
+                <p className="font-medium text-foreground">{activeCase.patient.name}</p>
+                <p className="text-muted-foreground">
+                  主担当 {activeCase.primary_pharmacist_name ?? '未設定'}
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => applySelectedCase(null)}
+              >
+                ケース固定を解除
+              </Button>
+            </div>
+          ) : null}
+
+          {caseSearchInput.trim().length >= 2 ? (
+            <div className="space-y-2 rounded-2xl border border-border/70 bg-muted/10 p-3">
+              <p className="text-xs font-medium text-muted-foreground">検索結果</p>
+              {caseSearchQuery.isLoading ? (
+                <p className="text-sm text-muted-foreground">ケース候補を読み込み中...</p>
+              ) : caseSearchResults.length === 0 ? (
+                <p className="text-sm text-muted-foreground">一致するケースはありません。</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {caseSearchResults.map((careCase) => (
+                    <Button
+                      key={careCase.id}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => applySelectedCase(careCase)}
+                    >
+                      {careCase.patient.name}
+                      {careCase.primary_pharmacist_name
+                        ? ` / ${careCase.primary_pharmacist_name}`
+                        : ''}
+                    </Button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
 
           {activeCase ? (
             <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3 text-sm">
@@ -695,6 +1222,12 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
                               ? 'border-primary bg-primary/5'
                               : 'border-border/70 bg-background',
                           ].join(' ')}
+                          onClick={() =>
+                            updateSelectedRouteCell({
+                              pharmacistId: pharmacist.id,
+                              dateKey: dayKey,
+                            })
+                          }
                           onDragOver={(event) => {
                             if (!draggingSchedule) return;
                             event.preventDefault();
@@ -849,6 +1382,7 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
                           case_id: proposal.case_id,
                           visit_type: proposal.visit_type,
                           priority: proposal.priority,
+                          travel_mode: plannerSettings.travel_mode,
                           start_date: suggestion.targetDate,
                           locked_date: suggestion.targetDate,
                           preferred_time_from:
@@ -876,6 +1410,96 @@ export function ScheduleWeeklyOptimizer({ initialDate }: WeeklyOptimizerProps) {
             ))}
           </CardContent>
         </Card>
+      ) : null}
+
+      {effectiveSelectedRouteCell ? (
+        <WeeklyCellInspector
+          title="セルインスペクタ"
+          description="選択セルの予定、候補、route、提案生成をここでまとめて操作します。"
+          selectionLabel={selectedRouteCellSummary}
+          pharmacistOptions={pharmacists}
+          selectedPharmacistId={effectiveSelectedRouteCell.pharmacistId}
+          onSelectPharmacist={(value) =>
+            updateSelectedRouteCell({
+              pharmacistId: value,
+              dateKey: effectiveSelectedRouteCell.dateKey,
+            })
+          }
+          dayOptions={days.map((day) => ({
+            value: format(day, 'yyyy-MM-dd'),
+            label: format(day, 'M/d(E)', { locale: ja }),
+          }))}
+          selectedDateKey={effectiveSelectedRouteCell.dateKey}
+          onSelectDate={(value) =>
+            updateSelectedRouteCell({
+              pharmacistId: effectiveSelectedRouteCell.pharmacistId,
+              dateKey: value,
+            })
+          }
+          travelMode={plannerSettings.travel_mode}
+          onTravelModeChange={(value) => {
+            setPlannerSettings((current) => ({
+              ...current,
+              travel_mode: value as TravelMode,
+            }));
+            replaceOptimizerUrl({ optimizer_travel_mode: value });
+          }}
+          plan={routePreviewQuery.data}
+          points={selectedCellRoutePoints}
+          site={selectedCellSite}
+          currentOrderedIds={selectedCellRouteDraft.currentIds}
+          draftOrderedIds={selectedCellRouteDraft.draftIds}
+          onMoveRouteItem={(scheduleId, direction) =>
+            selectedCellRouteDraft.moveItem(scheduleId, direction)
+          }
+          onResetRouteDraft={selectedCellRouteDraft.resetToOptimized}
+          routeDiffCount={selectedCellRouteDraft.diffCount}
+          routeLoading={routePreviewQuery.isLoading}
+          routeError={routePreviewQuery.error instanceof Error ? routePreviewQuery.error.message : null}
+          onApplyRoute={() => applySelectedRouteMutation.mutate()}
+          applyRouteDisabled={
+            !routePreviewQuery.data ||
+            selectedCellRouteDraft.draftIds.length === 0 ||
+            applySelectedRouteMutation.isPending ||
+            !selectedCellRouteDraft.differsFromCurrent
+          }
+          applyRoutePending={applySelectedRouteMutation.isPending}
+          schedules={selectedCellSchedules}
+          proposals={selectedCellProposals}
+          selectedCaseId={selectedCaseId}
+          onGenerateForCell={() =>
+            handleGenerateForCell(
+              effectiveSelectedRouteCell.pharmacistId,
+              effectiveSelectedRouteCell.dateKey
+            )
+          }
+          generateDisabled={!selectedCaseId || createProposalMutation.isPending}
+          diagnostics={lastPlannerDiagnostics}
+          onApplyTimeExpansion={() =>
+            {
+              setPlannerSettings((current) => ({
+                ...current,
+                preferred_time_from: '09:00',
+                preferred_time_to: '18:00',
+              }));
+              replaceOptimizerUrl({
+                optimizer_time_from: '09:00',
+                optimizer_time_to: '18:00',
+              });
+            }
+          }
+          onSwitchToDrive={() =>
+            {
+              setPlannerSettings((current) => ({
+                ...current,
+                travel_mode: 'DRIVE',
+              }));
+              replaceOptimizerUrl({ optimizer_travel_mode: 'DRIVE' });
+            }
+          }
+          onMoveSelectionToNextDay={moveSelectionToNextDay}
+          onSelectAlternatePharmacist={selectAlternatePharmacist}
+        />
       ) : null}
     </div>
   );

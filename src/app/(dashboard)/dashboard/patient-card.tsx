@@ -181,16 +181,50 @@ export function PatientCardItem({ patient }: { patient: PatientCardType }) {
           </div>
         </div>
 
+        {(patient.readiness_flags.missing_emergency_contact ||
+          patient.readiness_flags.missing_primary_physician ||
+          patient.readiness_flags.missing_first_visit_doc) && (
+          <div className="flex flex-wrap gap-1">
+            {patient.readiness_flags.missing_emergency_contact ? (
+              <Badge variant="outline" className="text-[10px] text-amber-700">
+                緊急連絡先不足
+              </Badge>
+            ) : null}
+            {patient.readiness_flags.missing_primary_physician ? (
+              <Badge variant="outline" className="text-[10px] text-amber-700">
+                主治医未登録
+              </Badge>
+            ) : null}
+            {patient.readiness_flags.missing_first_visit_doc ? (
+              <Badge variant="outline" className="text-[10px] text-amber-700">
+                初回文書未交付
+              </Badge>
+            ) : null}
+          </div>
+        )}
+
         {/* Row 5: Action button */}
-        {patient.case_id && (
-          <div className="mt-auto pt-1">
+        {(patient.case_id || patient.readiness_flags.missing_emergency_contact || patient.readiness_flags.missing_primary_physician || patient.readiness_flags.missing_first_visit_doc) && (
+          <div className="mt-auto flex gap-2 pt-1">
+            {(patient.readiness_flags.missing_emergency_contact ||
+              patient.readiness_flags.missing_primary_physician ||
+              patient.readiness_flags.missing_first_visit_doc) && (
+              <Link
+                href={`/patients/${patient.patient_id}`}
+                className={buttonVariants({ variant: 'ghost', size: 'sm', className: 'flex-1' })}
+              >
+                前提確認
+              </Link>
+            )}
+            {patient.case_id && (
             <Link
               href={`/prescriptions/new?patient_id=${patient.patient_id}&case_id=${patient.case_id}`}
-              className={buttonVariants({ variant: 'outline', size: 'sm', className: 'w-full' })}
+              className={buttonVariants({ variant: 'outline', size: 'sm', className: 'flex-1' })}
             >
               <ClipboardPlus className="size-3.5" aria-hidden="true" />
               処方受付
             </Link>
+            )}
           </div>
         )}
       </CardContent>

@@ -5,6 +5,12 @@ import { ScheduleProposalsContent } from './schedule-proposals-content';
 import { ScheduleWeeklyOptimizer } from './schedule-weekly-optimizer';
 import { WorkflowPhasePanel } from '@/components/features/workflow/workflow-phase-panel';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import {
+  readScheduleProposalDashboardState,
+  readScheduleProposalOptimizerState,
+  readScheduleProposalWorkspace,
+} from './proposal-query-state';
+import { ScheduleProposalWorkspaceTabs } from './schedule-proposal-workspace-tabs';
 
 export const metadata: Metadata = {
   title: '訪問候補ダッシュボード — CareViaX',
@@ -14,12 +20,11 @@ type ScheduleProposalsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-function readString(value: string | string[] | undefined) {
-  return typeof value === 'string' ? value : null;
-}
-
 export default async function ScheduleProposalsPage({ searchParams }: ScheduleProposalsPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const workspace = readScheduleProposalWorkspace(resolvedSearchParams);
+  const dashboardState = readScheduleProposalDashboardState(resolvedSearchParams);
+  const optimizerState = readScheduleProposalOptimizerState(resolvedSearchParams);
 
   return (
     <PageScaffold>
@@ -48,15 +53,36 @@ export default async function ScheduleProposalsPage({ searchParams }: SchedulePr
         description="承認待ち、患者連絡、確定済みを横断して中断再開できます。"
       />
 
-      <ScheduleProposalsContent
-        initialStatus={readString(resolvedSearchParams?.status)}
-        initialCaseId={readString(resolvedSearchParams?.case_id)}
-        initialPatientId={readString(resolvedSearchParams?.patient_id)}
-        initialDate={readString(resolvedSearchParams?.date)}
-        initialFocus={readString(resolvedSearchParams?.focus)}
+      <ScheduleProposalWorkspaceTabs
+        activeWorkspace={workspace}
+        searchParams={resolvedSearchParams}
       />
 
-      <ScheduleWeeklyOptimizer initialDate={readString(resolvedSearchParams?.date)} />
+      {workspace === 'dashboard' ? (
+        <ScheduleProposalsContent
+          initialStatus={dashboardState.initialStatus}
+          initialCaseId={dashboardState.initialCaseId}
+          initialPatientId={dashboardState.initialPatientId}
+          initialDateFrom={dashboardState.initialDateFrom}
+          initialDateTo={dashboardState.initialDateTo}
+          initialFocus={dashboardState.initialFocus}
+          initialPreset={dashboardState.initialPreset}
+          initialDetailId={dashboardState.initialDetailId}
+          initialTravelMode={dashboardState.initialTravelMode}
+        />
+      ) : (
+        <ScheduleWeeklyOptimizer
+          initialDate={optimizerState.initialDate}
+          initialCaseId={optimizerState.initialCaseId}
+          initialVisitType={optimizerState.initialVisitType}
+          initialPriority={optimizerState.initialPriority}
+          initialTravelMode={optimizerState.initialTravelMode}
+          initialPreferredTimeFrom={optimizerState.initialPreferredTimeFrom}
+          initialPreferredTimeTo={optimizerState.initialPreferredTimeTo}
+          initialRoutePharmacistId={optimizerState.initialRoutePharmacistId}
+          initialRouteDate={optimizerState.initialRouteDate}
+        />
+      )}
     </PageScaffold>
   );
 }

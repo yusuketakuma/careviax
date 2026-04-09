@@ -880,6 +880,7 @@ export type WorkflowDependentData = {
   activeManagementPlans: Array<{ case_id: string }>;
   missingFirstVisitDocCount: number;
   missingEmergencyContactCount: number;
+  missingPrimaryPhysicianCount: number;
   patientsForReports: Array<{ id: string; name: string }>;
   users: Array<{ id: string; name: string }>;
 };
@@ -932,6 +933,7 @@ export async function fetchWorkflowDependentData(
     activeManagementPlans,
     missingFirstVisitDocCount,
     missingEmergencyContactCount,
+    missingPrimaryPhysicianCount,
   ] = await Promise.all([
     inquiryIds.length === 0
       ? []
@@ -1025,6 +1027,17 @@ export async function fetchWorkflowDependentData(
             },
           },
         }),
+    upcomingCaseIds.length === 0
+      ? 0
+      : prisma.careCase.count({
+          where: {
+            org_id: orgId,
+            id: { in: upcomingCaseIds },
+            care_team_links: {
+              none: { role: 'physician' },
+            },
+          },
+        }),
   ]);
 
   const selfReportPatientIds = Array.from(
@@ -1081,6 +1094,7 @@ export async function fetchWorkflowDependentData(
     activeManagementPlans,
     missingFirstVisitDocCount,
     missingEmergencyContactCount,
+    missingPrimaryPhysicianCount,
     patientsForReports,
     users,
   };

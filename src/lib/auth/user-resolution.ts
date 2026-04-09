@@ -9,7 +9,13 @@ type LocalUserIdentity = {
   phone: string | null;
   default_site_id: string | null;
   is_active: boolean;
-  account_status: 'invited' | 'active' | 'suspended' | 'retired';
+  account_status:
+    | 'pending_cognito'
+    | 'invited'
+    | 'active'
+    | 'suspended'
+    | 'retired'
+    | 'cognito_failed';
   activated_at: Date | null;
   session_version: number;
 };
@@ -62,6 +68,8 @@ export async function resolveLocalUserByIdentity(args: {
 
 export async function markLocalUserActive(user: LocalUserIdentity) {
   if (
+    user.account_status === 'pending_cognito' ||
+    user.account_status === 'cognito_failed' ||
     user.account_status === 'suspended' ||
     user.account_status === 'retired'
   ) {

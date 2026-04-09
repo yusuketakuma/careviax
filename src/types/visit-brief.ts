@@ -132,6 +132,8 @@ export type VisitBriefConferenceSummary = {
   pending_action_items: number;
   last_conference_date: string | null;
   last_conference_type: string | null;
+  summary: string | null;
+  highlighted_risks: string[];
 };
 
 export type VisitBriefFacilityContext = {

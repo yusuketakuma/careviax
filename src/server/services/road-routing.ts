@@ -3,13 +3,19 @@ type RoutePoint = {
   lng: number | null;
 };
 
+export type RouteTravelMode = 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
+
 type TravelEstimate = {
   durationMinutes: number;
   distanceKm: number;
 };
 
 export interface RoutingProvider {
-  estimate(from: RoutePoint, to: RoutePoint): Promise<TravelEstimate | null>;
+  estimate(
+    from: RoutePoint,
+    to: RoutePoint,
+    travelMode: RouteTravelMode
+  ): Promise<TravelEstimate | null>;
 }
 
 // ─── OSRM Provider ────────────────────────────────────────────────────────────
@@ -27,13 +33,23 @@ class OsrmProvider implements RoutingProvider {
     this.timeoutMs = timeoutMs;
   }
 
-  async estimate(from: RoutePoint, to: RoutePoint): Promise<TravelEstimate | null> {
+  async estimate(
+    from: RoutePoint,
+    to: RoutePoint,
+    travelMode: RouteTravelMode
+  ): Promise<TravelEstimate | null> {
     if (from.lat == null || from.lng == null || to.lat == null || to.lng == null) {
       return null;
     }
 
+    const profile =
+      travelMode === 'BICYCLE'
+        ? 'cycling'
+        : travelMode === 'WALK'
+          ? 'foot'
+          : this.profile;
     const url = new URL(
-      `/table/v1/${this.profile}/${from.lng},${from.lat};${to.lng},${to.lat}`,
+      `/table/v1/${profile}/${from.lng},${from.lat};${to.lng},${to.lat}`,
       this.baseUrl
     );
     url.searchParams.set('annotations', 'distance,duration');
@@ -88,7 +104,11 @@ class GoogleRoutesProvider implements RoutingProvider {
     this.timeoutMs = timeoutMs;
   }
 
-  async estimate(from: RoutePoint, to: RoutePoint): Promise<TravelEstimate | null> {
+  async estimate(
+    from: RoutePoint,
+    to: RoutePoint,
+    travelMode: RouteTravelMode
+  ): Promise<TravelEstimate | null> {
     if (from.lat == null || from.lng == null || to.lat == null || to.lng == null) {
       return null;
     }
@@ -108,7 +128,7 @@ class GoogleRoutesProvider implements RoutingProvider {
         body: JSON.stringify({
           origin: { location: { latLng: { latitude: from.lat, longitude: from.lng } } },
           destination: { location: { latLng: { latitude: to.lat, longitude: to.lng } } },
-          travelMode: 'DRIVE',
+          travelMode,
           routingPreference: 'TRAFFIC_UNAWARE',
         }),
         cache: 'no-store',
@@ -168,18 +188,18 @@ function createProvider(): RoutingProvider | null {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export function createRoadTravelEstimator() {
+export function createRoadTravelEstimator(travelMode: RouteTravelMode = 'DRIVE') {
   const cache = new Map<string, Promise<TravelEstimate | null>>();
   const provider = createProvider();
 
   return async (from: RoutePoint, to: RoutePoint): Promise<TravelEstimate | null> => {
     if (!provider) return null;
 
-    const key = `${from.lat ?? 'na'}:${from.lng ?? 'na'}=>${to.lat ?? 'na'}:${to.lng ?? 'na'}`;
+    const key = `${travelMode}:${from.lat ?? 'na'}:${from.lng ?? 'na'}=>${to.lat ?? 'na'}:${to.lng ?? 'na'}`;
     const cached = cache.get(key);
     if (cached) return cached;
 
-    const estimatePromise = provider.estimate(from, to);
+    const estimatePromise = provider.estimate(from, to, travelMode);
     cache.set(key, estimatePromise);
     return estimatePromise;
   };

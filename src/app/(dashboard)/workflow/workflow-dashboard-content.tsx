@@ -49,6 +49,9 @@ type WorkflowData = {
     awaiting_reports: number;
     missing_visit_consent: number;
     missing_management_plan: number;
+    missing_first_visit_doc: number;
+    missing_emergency_contact: number;
+    missing_primary_physician: number;
   };
   operations_queue: {
     visit_demands: number;
@@ -676,6 +679,9 @@ export function WorkflowDashboardContent() {
                 (workflow?.visit_operations.awaiting_reports ?? 0) > 0 ||
                 (workflow?.visit_operations.missing_visit_consent ?? 0) > 0 ||
                 (workflow?.visit_operations.missing_management_plan ?? 0) > 0 ||
+                (workflow?.visit_operations.missing_first_visit_doc ?? 0) > 0 ||
+                (workflow?.visit_operations.missing_emergency_contact ?? 0) > 0 ||
+                (workflow?.visit_operations.missing_primary_physician ?? 0) > 0 ||
                 (workflow?.operations_queue.self_reports_triage ?? 0) > 0 ||
                 (workflow?.route_control.pending_override_requests ?? 0) > 0 ||
                 (workflow?.route_control.locked_schedules ?? 0) > 0 ||
@@ -706,6 +712,24 @@ export function WorkflowDashboardContent() {
                     <AlertPill
                       label="報告待ち"
                       value={workflow?.visit_operations.awaiting_reports ?? 0}
+                    />
+                  )}
+                  {(workflow?.visit_operations.missing_first_visit_doc ?? 0) > 0 && (
+                    <AlertPill
+                      label="初回文書未交付"
+                      value={workflow?.visit_operations.missing_first_visit_doc ?? 0}
+                    />
+                  )}
+                  {(workflow?.visit_operations.missing_emergency_contact ?? 0) > 0 && (
+                    <AlertPill
+                      label="緊急連絡先不足"
+                      value={workflow?.visit_operations.missing_emergency_contact ?? 0}
+                    />
+                  )}
+                  {(workflow?.visit_operations.missing_primary_physician ?? 0) > 0 && (
+                    <AlertPill
+                      label="主治医未登録"
+                      value={workflow?.visit_operations.missing_primary_physician ?? 0}
                     />
                   )}
                   {(workflow?.operations_queue.self_reports_triage ?? 0) > 0 && (

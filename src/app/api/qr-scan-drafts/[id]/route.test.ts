@@ -4,8 +4,6 @@ import type { NextRequest } from 'next/server';
 const {
   withAuthMock,
   withOrgContextMock,
-  qrScanDraftFindFirstMock,
-  qrScanDraftUpdateMock,
 } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
     (
@@ -26,8 +24,6 @@ const {
     }
   ),
   withOrgContextMock: vi.fn(),
-  qrScanDraftFindFirstMock: vi.fn(),
-  qrScanDraftUpdateMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({

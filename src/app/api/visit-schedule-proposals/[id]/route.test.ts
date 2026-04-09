@@ -15,6 +15,7 @@ const {
   contactLogCreateMock,
   contactLogUpdateManyMock,
   auditLogCreateMock,
+  auditLogFindFirstMock,
   overrideUpdateMock,
   evaluateVisitWorkflowGateMock,
   userFindManyMock,
@@ -35,6 +36,7 @@ const {
   contactLogCreateMock: vi.fn(),
   contactLogUpdateManyMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
+  auditLogFindFirstMock: vi.fn(),
   overrideUpdateMock: vi.fn(),
   evaluateVisitWorkflowGateMock: vi.fn(),
   userFindManyMock: vi.fn(),
@@ -56,6 +58,9 @@ vi.mock('@/lib/db/client', () => ({
     visitSchedule: {
       findMany: scheduleFindManyMock,
     },
+    auditLog: {
+      findFirst: auditLogFindFirstMock,
+    },
     user: {
       findMany: userFindManyMock,
     },
@@ -76,7 +81,7 @@ vi.mock('@/server/services/operational-tasks', () => ({
   resolveOperationalTasks: resolveOperationalTasksMock,
 }));
 
-vi.mock('@/server/services/google-routes', () => ({
+vi.mock('@/server/services/visit-route-engine', () => ({
   computeOptimizedVisitRoute: computeOptimizedVisitRouteMock,
 }));
 
@@ -84,6 +89,7 @@ import { GET, PATCH } from './route';
 
 function createRequest(body?: unknown, headers?: Record<string, string>) {
   return {
+    url: 'http://localhost/api/visit-schedule-proposals/proposal_1',
     headers: {
       get: (key: string) => headers?.[key] ?? null,
     },
@@ -108,6 +114,7 @@ function buildProposal(overrides?: Record<string, unknown>) {
     proposed_pharmacist_id: 'pharmacist_1',
     assignment_mode: 'primary',
     route_order: 1,
+    created_at: new Date('2026-03-26T09:00:00.000Z'),
     medication_end_date: new Date('2026-03-31T00:00:00.000Z'),
     visit_deadline_date: new Date('2026-03-30T00:00:00.000Z'),
     escalation_reason: null,
@@ -116,6 +123,16 @@ function buildProposal(overrides?: Record<string, unknown>) {
     reschedule_source_schedule_id: null,
     case_: {
       patient_id: 'patient_1',
+      patient: {
+        name: '患者A',
+        residences: [
+          {
+            address: '東京都千代田区1-1-1',
+            lat: 35.2,
+            lng: 139.2,
+          },
+        ],
+      },
     },
     ...overrides,
   };
@@ -158,6 +175,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     contactLogCreateMock.mockResolvedValue({ id: 'contact_log_1' });
     contactLogUpdateManyMock.mockResolvedValue({ count: 1 });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
+    auditLogFindFirstMock.mockResolvedValue(null);
     overrideUpdateMock.mockResolvedValue({ id: 'override_1' });
     evaluateVisitWorkflowGateMock.mockResolvedValue({
       ok: true,
@@ -332,13 +350,64 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       data: expect.objectContaining({
         id: 'proposal_1',
         related_proposals: [expect.objectContaining({ id: 'proposal_2' })],
+        creation_diagnostics: null,
         route_preview: expect.objectContaining({
           plan: expect.objectContaining({
-            orderedScheduleIds: ['schedule_1', 'proposal:proposal_1'],
+            orderedScheduleIds: expect.arrayContaining(['schedule_1', 'proposal:proposal_1']),
           }),
           points: expect.arrayContaining([
             expect.objectContaining({ point_kind: 'proposal', schedule_id: 'proposal:proposal_1' }),
+            expect.objectContaining({ point_kind: 'proposal', schedule_id: 'proposal:proposal_2' }),
           ]),
+        }),
+      }),
+    });
+  });
+
+  it('returns persisted creation diagnostics when available', async () => {
+    auditLogFindFirstMock.mockResolvedValueOnce({
+      changes: {
+        diagnostics: {
+          accepted: [
+            {
+              pharmacist_id: 'pharmacist_1',
+              pharmacist_name: '薬剤師A',
+              site_id: 'site_1',
+              site_name: '拠点A',
+              proposed_date: '2026-03-27',
+              travel_mode: 'DRIVE',
+              route_order: 1,
+              route_distance_score: 4.2,
+              travel_summary: '実道路移動 約12分',
+              assignment_mode: 'primary',
+              care_relationship: 'primary',
+              score: 8.5,
+              score_breakdown: {
+                geocodePenalty: 0,
+                facilityBonus: 0,
+                workloadPenalty: 2,
+                slackPenalty: 0,
+                lockPenalty: 0,
+                cadencePenalty: 0,
+              },
+              time_window_start: '1970-01-01T09:00:00.000Z',
+              time_window_end: '1970-01-01T10:00:00.000Z',
+            },
+          ],
+          rejected: [],
+        },
+      },
+    });
+
+    const response = await GET(createRequest(undefined, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    await expect(response.json()).resolves.toMatchObject({
+      data: expect.objectContaining({
+        creation_diagnostics: expect.objectContaining({
+          accepted: [expect.objectContaining({ pharmacist_name: '薬剤師A' })],
         }),
       }),
     });

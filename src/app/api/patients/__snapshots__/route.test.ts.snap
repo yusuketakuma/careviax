@@ -12,6 +12,11 @@ exports[`/api/patients GET > supports advanced patient filters and enriches risk
       "care_insurance_number": null,
       "cases": [
         {
+          "care_team_links": [
+            {
+              "id": "link_1",
+            },
+          ],
           "id": "case_1",
           "primary_pharmacist_id": "user_1",
           "status": "active",
@@ -34,11 +39,21 @@ exports[`/api/patients GET > supports advanced patient filters and enriches risk
           "id": "consent_1",
         },
       ],
+      "contacts": [
+        {
+          "id": "contact_1",
+        },
+      ],
       "facility_mode": "facility",
       "gender": "female",
       "id": "patient_1",
       "last_visit_bucket": "within_30_days",
       "latest_case": {
+        "care_team_links": [
+          {
+            "id": "link_1",
+          },
+        ],
         "id": "case_1",
         "primary_pharmacist_id": "user_1",
         "primary_pharmacist_name": "佐藤 薬剤師",
@@ -56,6 +71,11 @@ exports[`/api/patients GET > supports advanced patient filters and enriches risk
       "name": "青葉 花子",
       "name_kana": "アオバ ハナコ",
       "phone": "090-0000-0001",
+      "readiness": {
+        "has_emergency_contact": true,
+        "has_first_visit_document": true,
+        "has_primary_physician": true,
+      },
       "residences": [
         {
           "address": "東京都千代田区1-1-1",

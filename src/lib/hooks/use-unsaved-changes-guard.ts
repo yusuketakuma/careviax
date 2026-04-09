@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
+import { requestNavigationConfirmation } from '@/components/providers/navigation-confirm-provider';
 
 type UnsavedChangesGuardOptions = {
   enabled: boolean;
@@ -58,25 +59,27 @@ export function useUnsavedChangesGuard({
       }
       if (nextUrl.href === currentUrl.href) return;
 
-      if (!window.confirm(message)) {
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
-
-      bypassRef.current = true;
+      event.preventDefault();
+      event.stopPropagation();
+      void requestNavigationConfirmation(message).then((confirmed) => {
+        if (!confirmed) return;
+        bypassRef.current = true;
+        currentUrlRef.current = nextUrl.href;
+        window.location.assign(nextUrl.href);
+      });
     };
 
     const handlePopState = () => {
       if (bypassRef.current) return;
 
-      const confirmed = window.confirm(message);
-      if (!confirmed) {
-        window.history.pushState(window.history.state, '', currentUrlRef.current);
-        return;
-      }
-
-      bypassRef.current = true;
+      const targetUrl = window.location.href;
+      window.history.pushState(window.history.state, '', currentUrlRef.current);
+      void requestNavigationConfirmation(message).then((confirmed) => {
+        if (!confirmed) return;
+        bypassRef.current = true;
+        currentUrlRef.current = targetUrl;
+        window.location.assign(targetUrl);
+      });
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);

@@ -66,6 +66,7 @@ export async function GET(req: NextRequest) {
         take: 1,
       },
       cases: {
+        ...(caseStatus ? { where: { status: caseStatus } } : {}),
         orderBy: { created_at: 'desc' },
         select: { status: true },
         take: 1,

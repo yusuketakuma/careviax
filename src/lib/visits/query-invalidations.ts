@@ -14,6 +14,13 @@ type VisitExecutionQueryArgs = PatientQueryArgs & {
 export function getPatientCareQueryKeys(args: PatientQueryArgs): QueryKey[] {
   return [
     ['patient', args.patientId, args.orgId],
+    ['patient-overview', args.patientId, args.orgId],
+    ['patient-visits-panel', args.patientId, args.orgId],
+    ['patient-communications', args.patientId, args.orgId],
+    ['patient-documents', args.patientId, args.orgId],
+    ['patient-timeline', args.patientId, args.orgId],
+    ['patient-readiness', args.patientId, args.orgId],
+    ['patient-contacts', args.patientId, args.orgId],
     ['patients', args.orgId],
     ['patient-visit-records', args.patientId, args.orgId],
     ['visit-constraints', args.orgId, args.patientId],

@@ -5,10 +5,12 @@ const {
   requireAuthContextMock,
   withOrgContextMock,
   closeBillingCandidatesForMonthMock,
+  notifyWebhookEventForOrgMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   closeBillingCandidatesForMonthMock: vi.fn(),
+  notifyWebhookEventForOrgMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -21,6 +23,10 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/server/services/billing-evidence', () => ({
   closeBillingCandidatesForMonth: closeBillingCandidatesForMonthMock,
+}));
+
+vi.mock('@/server/services/outbound-webhook', () => ({
+  notifyWebhookEventForOrg: notifyWebhookEventForOrgMock,
 }));
 
 import { POST } from './route';
@@ -70,6 +76,10 @@ describe('/api/billing-candidates/close POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(notifyWebhookEventForOrgMock).toHaveBeenCalledWith('org_1', 'billing.exported', {
+      billingMonth: '2026-03-01T00:00:00.000Z',
+      exportedCount: 12,
+    });
     await expect(response.json()).resolves.toMatchObject({
       exported_count: 12,
       summary: {
@@ -99,5 +109,6 @@ describe('/api/billing-candidates/close POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 });

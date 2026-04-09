@@ -1,0 +1,50 @@
+{
+  "active": false,
+  "iteration": 5,
+  "max_iterations": 10,
+  "current_phase": "complete",
+  "started_at": "2026-04-04T11:49:47Z",
+  "task_description": "Repository-wide iterative audit, repair, and verification for CareViaX",
+  "context_snapshot_path": ".omx/context/repo-audit-20260404T114947Z.md",
+  "current_focus": "Remove Cognito token exposure from client session while preserving server-side access via JWT helper",
+  "last_completed_iteration": {
+    "task": "MFA recovery code race hardening",
+    "verification": [
+      "vitest route/service tests",
+      "tsc --noEmit",
+      "eslint"
+    ],
+    "result": "pass"
+  },
+  "last_turn_at": "2026-04-04T12:12:50.927Z",
+  "recent_iterations": [
+    {
+      "iteration": 1,
+      "task": "MFA recovery code race hardening",
+      "status": "done"
+    },
+    {
+      "iteration": 2,
+      "task": "MFA recovery input trimming",
+      "status": "done"
+    },
+    {
+      "iteration": 3,
+      "task": "Proposal billing validation bypass and billing regeneration date drift",
+      "status": "done"
+    },
+    {
+      "iteration": 4,
+      "task": "Auth failure-mode classification and MFA config error surfacing",
+      "status": "done"
+    }
+  ],
+  "completed_at": "2026-04-04T21:18:30Z",
+  "final_verification": {
+    "lint": "pass",
+    "test": "pass",
+    "build": "pass",
+    "tsc": "pass",
+    "audit": "pass"
+  }
+}

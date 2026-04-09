@@ -6,6 +6,8 @@
  * 実装は in-process HTTP dispatch（スタブ）。将来的には SQS/EventBridge に移行。
  */
 import { createHmac } from 'node:crypto';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 
 export type WebhookEventType =
   | 'prescription.created'
@@ -41,21 +43,116 @@ export type WebhookDeliveryResult = {
   error?: string;
 };
 
+function normalizeHostname(hostname: string) {
+  return hostname.startsWith('[') && hostname.endsWith(']')
+    ? hostname.slice(1, -1)
+    : hostname;
+}
+
+function isUnsafeIpv4(ip: string) {
+  const octets = ip.split('.').map((part) => Number(part));
+  if (octets.length !== 4 || octets.some((value) => Number.isNaN(value) || value < 0 || value > 255)) {
+    return true;
+  }
+
+  const [first, second] = octets;
+  return (
+    first === 0 ||
+    first === 10 ||
+    first === 127 ||
+    (first === 100 && second >= 64 && second <= 127) ||
+    (first === 169 && second === 254) ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168) ||
+    (first === 198 && (second === 18 || second === 19))
+  );
+}
+
+function isUnsafeIpv6(ip: string) {
+  const normalized = ip.toLowerCase();
+  if (normalized === '::' || normalized === '::1') return true;
+
+  const mappedIpv4 = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (mappedIpv4) return isUnsafeIpv4(mappedIpv4[1]);
+
+  const firstSegment = normalized.split(':').find((segment) => segment.length > 0);
+  if (!firstSegment) return true;
+
+  const firstHextet = Number.parseInt(firstSegment, 16);
+  if (Number.isNaN(firstHextet)) return true;
+  if ((firstHextet & 0xfe00) === 0xfc00) return true; // fc00::/7 unique local
+  if (firstHextet >= 0xfe80 && firstHextet <= 0xfebf) return true; // fe80::/10 link-local
+  return false;
+}
+
+function isUnsafeIpAddress(ip: string) {
+  const family = isIP(ip);
+  if (family === 4) return isUnsafeIpv4(ip);
+  if (family === 6) return isUnsafeIpv6(ip);
+  return true;
+}
+
 /**
  * Validate that a webhook URL is safe to send outbound requests to.
  * Rejects non-HTTPS URLs and private/loopback/link-local address ranges
  * to prevent SSRF attacks.
  */
-export function isAllowedWebhookUrl(rawUrl: string): boolean {
+export async function isAllowedWebhookUrl(rawUrl: string): Promise<boolean> {
   try {
     const url = new URL(rawUrl);
     if (url.protocol !== 'https:') return false;
-    const hostname = url.hostname;
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return false;
-    if (hostname.startsWith('169.254.') || hostname.startsWith('10.') || hostname.startsWith('192.168.')) return false;
-    if (/^172\.(1[6-9]|2\d|3[01])\./.test(hostname)) return false;
-    return true;
-  } catch { return false; }
+    const hostname = normalizeHostname(url.hostname);
+    if (hostname === 'localhost') return false;
+
+    if (isIP(hostname)) {
+      return !isUnsafeIpAddress(hostname);
+    }
+
+    const addresses = await lookup(hostname, { all: true, verbatim: true });
+    if (addresses.length === 0) return false;
+
+    return addresses.every((address) => !isUnsafeIpAddress(address.address));
+  } catch {
+    return false;
+  }
+}
+
+function toWebhookRegistration(record: {
+  id: string;
+  org_id: string;
+  url: string;
+  secret: string;
+  events: string[];
+  is_active: boolean;
+  created_at: Date;
+}): WebhookRegistration {
+  return {
+    id: record.id,
+    orgId: record.org_id,
+    url: record.url,
+    secret: record.secret,
+    events: record.events as WebhookEventType[],
+    isActive: record.is_active,
+    createdAt: record.created_at,
+  };
+}
+
+async function loadWebhookRegistrationsForOrg(orgId: string) {
+  const { prisma } = await import('@/lib/db/client');
+  const records = await prisma.webhookRegistration.findMany({
+    where: { org_id: orgId, is_active: true },
+    select: {
+      id: true,
+      org_id: true,
+      url: true,
+      secret: true,
+      events: true,
+      is_active: true,
+      created_at: true,
+    },
+  });
+
+  return records.map(toWebhookRegistration);
 }
 
 /**
@@ -83,6 +180,13 @@ async function dispatchToEndpoint(
   };
 
   try {
+    if (!(await isAllowedWebhookUrl(registration.url))) {
+      return {
+        ...base,
+        error: 'Blocked unsafe webhook destination',
+      };
+    }
+
     const response = await fetch(registration.url, {
       method: 'POST',
       headers: {
@@ -133,4 +237,26 @@ export async function dispatchWebhookEvent(
   };
 
   return Promise.all(active.map((reg) => dispatchToEndpoint(reg, payload)));
+}
+
+export async function dispatchWebhookEventForOrg(
+  orgId: string,
+  event: WebhookEventType,
+  data: Record<string, unknown>
+) {
+  const registrations = await loadWebhookRegistrationsForOrg(orgId);
+  return dispatchWebhookEvent(registrations, event, orgId, data);
+}
+
+export async function notifyWebhookEventForOrg(
+  orgId: string,
+  event: WebhookEventType,
+  data: Record<string, unknown>
+) {
+  try {
+    return await dispatchWebhookEventForOrg(orgId, event, data);
+  } catch (error) {
+    console.error(`[webhook] Failed to dispatch ${event} for org ${orgId}:`, error);
+    return [];
+  }
 }

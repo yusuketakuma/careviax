@@ -80,7 +80,8 @@ export function buildVisitOperationsSection(
   missingVisitConsentCount: number,
   missingManagementPlanCount: number,
   missingFirstVisitDocCount: number,
-  missingEmergencyContactCount: number
+  missingEmergencyContactCount: number,
+  missingPrimaryPhysicianCount: number
 ) {
   return {
     overdue: overdueVisits,
@@ -89,6 +90,7 @@ export function buildVisitOperationsSection(
     missing_management_plan: missingManagementPlanCount,
     missing_first_visit_doc: missingFirstVisitDocCount,
     missing_emergency_contact: missingEmergencyContactCount,
+    missing_primary_physician: missingPrimaryPhysicianCount,
   };
 }
 
@@ -97,6 +99,7 @@ export function buildRemediationGuidance(
   missingManagementPlanCount: number,
   missingFirstVisitDocCount: number,
   missingEmergencyContactCount: number,
+  missingPrimaryPhysicianCount: number,
   taskCountByType: Record<string, number>,
   triageSelfReportsCount: number
 ): RemediationGuidanceItem[] {
@@ -117,8 +120,8 @@ export function buildRemediationGuidance(
           description: guidance.description,
           severity: guidance.severity,
           count,
-          action_href: guidance.actionHref,
-          action_label: guidance.actionLabel,
+          action_href: `/patients?readiness_issue=${issue}`,
+          action_label: '患者一覧で確認',
         } satisfies RemediationGuidanceItem;
       }),
     ...(missingFirstVisitDocCount > 0
@@ -130,8 +133,8 @@ export function buildRemediationGuidance(
               '初回訪問文書が未交付のケースがあります。交付日時と文書控えを確認してください。',
             severity: 'high' as const,
             count: missingFirstVisitDocCount,
-            action_href: '/workflow',
-            action_label: '未交付ケースを確認',
+            action_href: '/patients?readiness_issue=missing_first_visit_doc',
+            action_label: '患者一覧で確認',
           } satisfies RemediationGuidanceItem,
         ]
       : []),
@@ -144,8 +147,22 @@ export function buildRemediationGuidance(
               '緊急連絡先が不足しているため、初回訪問文書や緊急連携の運用が不完全です。',
             severity: 'high' as const,
             count: missingEmergencyContactCount,
-            action_href: '/workflow',
-            action_label: '不足患者を確認',
+            action_href: '/patients?readiness_issue=missing_emergency_contact',
+            action_label: '患者一覧で確認',
+          } satisfies RemediationGuidanceItem,
+        ]
+      : []),
+    ...(missingPrimaryPhysicianCount > 0
+      ? [
+          {
+            id: 'missing_primary_physician',
+            title: '主治医連携の登録が必要です',
+            description:
+              '主治医が未登録のケースがあります。初回訪問判断、疑義照会、報告導線が不完全です。',
+            severity: 'high' as const,
+            count: missingPrimaryPhysicianCount,
+            action_href: '/patients',
+            action_label: '患者一覧で確認',
           } satisfies RemediationGuidanceItem,
         ]
       : []),
@@ -1001,6 +1018,8 @@ export function buildWorkflowDashboardData(args: {
       missingManagementPlanSchedules.length,
       dependent.missingFirstVisitDocCount,
       dependent.missingEmergencyContactCount
+      ,
+      dependent.missingPrimaryPhysicianCount
     ),
     operations_queue: {
       visit_demands: taskCountByType.visit_demand ?? 0,
@@ -1039,6 +1058,7 @@ export function buildWorkflowDashboardData(args: {
       missingManagementPlanSchedules.length,
       dependent.missingFirstVisitDocCount,
       dependent.missingEmergencyContactCount,
+      dependent.missingPrimaryPhysicianCount,
       taskCountByType,
       core.triageSelfReports.length
     ),

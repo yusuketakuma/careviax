@@ -6,6 +6,7 @@ import { type ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { DataTable } from '@/components/ui/data-table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -61,6 +62,7 @@ export function InstitutionsContent() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [deleteTarget, setDeleteTarget] = useState<Institution | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['prescriber-institutions', orgId, query],
@@ -196,10 +198,7 @@ export function InstitutionsContent() {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => {
-              if (!window.confirm(`${row.original.name} を削除しますか？`)) return;
-              deleteMutation.mutate(row.original.id);
-            }}
+            onClick={() => setDeleteTarget(row.original)}
             disabled={deleteMutation.isPending}
           >
             削除
@@ -211,6 +210,23 @@ export function InstitutionsContent() {
 
   return (
     <>
+      <ConfirmDialog
+        open={deleteTarget != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="医療機関を削除しますか？"
+        description={
+          deleteTarget ? `${deleteTarget.name} を削除します。この操作は取り消せません。` : ''
+        }
+        variant="destructive"
+        confirmLabel="削除する"
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          deleteMutation.mutate(deleteTarget.id);
+          setDeleteTarget(null);
+        }}
+      />
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>医療機関一覧</CardTitle>

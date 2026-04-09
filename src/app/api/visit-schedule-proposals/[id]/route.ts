@@ -7,8 +7,9 @@ import { updateVisitScheduleProposalSchema } from '@/lib/validations/visit-sched
 import {
   computeOptimizedVisitRoute,
   type VisitRoutePlan,
+  type VisitRouteTravelMode,
   type VisitRouteWaypoint,
-} from '@/server/services/google-routes';
+} from '@/server/services/visit-route-engine';
 import {
   buildVisitScheduleSnapshot,
   createVisitScheduleContactLog,
@@ -73,8 +74,41 @@ type ProposalRoutePreviewRecord = {
   } | null;
 };
 
+type CreationDiagnostics = {
+  accepted: Array<{
+    pharmacist_id: string;
+    pharmacist_name: string;
+    site_id: string | null;
+    site_name: string | null;
+    proposed_date: string;
+    travel_mode: VisitRouteTravelMode;
+    route_order: number;
+    route_distance_score: number;
+    travel_summary: string;
+    assignment_mode: string;
+    care_relationship: string;
+    score: number;
+    score_breakdown: Record<string, number>;
+    time_window_start: string;
+    time_window_end: string;
+  }>;
+  rejected: Array<{
+    pharmacist_id: string;
+    pharmacist_name: string;
+    site_id: string | null;
+    site_name: string | null;
+    proposed_date: string;
+    travel_mode: VisitRouteTravelMode;
+    reason_code: string;
+    reason_label: string;
+    detail: string;
+  }>;
+};
+
 async function buildRoutePreview(args: {
   proposal: ProposalRoutePreviewRecord | null;
+  relatedProposals: ProposalRoutePreviewRecord[];
+  travelMode: VisitRouteTravelMode;
   pharmacistDaySchedules: Array<{
     id: string;
     priority: 'normal' | 'urgent' | 'emergency';
@@ -109,7 +143,7 @@ async function buildRoutePreview(args: {
       plan: {
         status: 'unavailable',
         note: '候補が見つかりません',
-        travelMode: 'DRIVE',
+        travelMode: args.travelMode,
         origin: null,
         encodedPath: null,
         orderedScheduleIds: [],
@@ -152,13 +186,17 @@ async function buildRoutePreview(args: {
     });
   }
 
-  if (!proposal.finalized_schedule_id) {
-    const residence = proposal.case_?.patient.residences[0];
+  const previewProposals = [proposal, ...args.relatedProposals].filter(
+    (item) => !item.finalized_schedule_id
+  );
+
+  for (const previewProposal of previewProposals) {
+    const residence = previewProposal.case_?.patient.residences[0];
     if (residence?.address && residence.lat != null && residence.lng != null) {
-      const scheduleId = `proposal:${proposal.id}`;
+      const scheduleId = `proposal:${previewProposal.id}`;
       waypoints.push({
         scheduleId,
-        patientName: proposal.case_.patient.name,
+        patientName: previewProposal.case_.patient.name,
         address: residence.address,
         lat: residence.lat,
         lng: residence.lng,
@@ -166,14 +204,14 @@ async function buildRoutePreview(args: {
       points.push({
         schedule_id: scheduleId,
         point_kind: 'proposal',
-        patient_name: proposal.case_.patient.name,
+        patient_name: previewProposal.case_.patient.name,
         address: residence.address,
         lat: residence.lat,
         lng: residence.lng,
-        priority: proposal.priority,
+        priority: previewProposal.priority,
         schedule_status: 'planned',
-        time_window_start: proposal.time_window_start?.toISOString() ?? null,
-        time_window_end: proposal.time_window_end?.toISOString() ?? null,
+        time_window_start: previewProposal.time_window_start?.toISOString() ?? null,
+        time_window_end: previewProposal.time_window_end?.toISOString() ?? null,
       });
     }
   }
@@ -197,7 +235,7 @@ async function buildRoutePreview(args: {
             label: site.name,
           }
         : null,
-      travelMode: 'DRIVE',
+      travelMode: args.travelMode,
       waypoints,
     });
   } catch (routeError) {
@@ -205,7 +243,7 @@ async function buildRoutePreview(args: {
     plan = {
       status: 'unavailable',
       note: 'ルートプレビューの計算に失敗しました',
-      travelMode: 'DRIVE',
+      travelMode: args.travelMode,
       origin: site
         ? {
             lat: site.lat,
@@ -241,6 +279,14 @@ export async function GET(
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
   const { id } = await params;
+  const url = new URL(req.url);
+  const requestedTravelMode = url.searchParams.get('travel_mode');
+  const travelMode: VisitRouteTravelMode =
+    requestedTravelMode === 'BICYCLE' ||
+    requestedTravelMode === 'WALK' ||
+    requestedTravelMode === 'TWO_WHEELER'
+      ? requestedTravelMode
+      : 'DRIVE';
 
   const proposal = await prisma.visitScheduleProposal.findFirst({
     where: {
@@ -364,7 +410,7 @@ export async function GET(
   const generationWindowStart = new Date(proposal.created_at.getTime() - 5 * 60 * 1000);
   const generationWindowEnd = new Date(proposal.created_at.getTime() + 5 * 60 * 1000);
 
-  const [relatedProposals, pharmacistDaySchedules] = await Promise.all([
+  const [relatedProposals, pharmacistDaySchedules, creationAuditLog] = await Promise.all([
     prisma.visitScheduleProposal.findMany({
       where: {
         org_id: ctx.orgId,
@@ -452,6 +498,18 @@ export async function GET(
       },
       orderBy: [{ route_order: 'asc' }, { time_window_start: 'asc' }],
     }),
+    prisma.auditLog.findFirst({
+      where: {
+        org_id: ctx.orgId,
+        target_type: 'VisitScheduleProposal',
+        target_id: id,
+        action: 'visit_schedule_proposals_created',
+      },
+      orderBy: { created_at: 'desc' },
+      select: {
+        changes: true,
+      },
+    }),
   ]);
 
   const pharmacists = await prisma.user
@@ -478,8 +536,20 @@ export async function GET(
   const pharmacistById = new Map(pharmacists.map((user) => [user.id, user]));
   const routePreview = await buildRoutePreview({
     proposal,
+    relatedProposals,
+    travelMode,
     pharmacistDaySchedules,
   });
+  const creationDiagnostics =
+    creationAuditLog?.changes &&
+    typeof creationAuditLog.changes === 'object' &&
+    !Array.isArray(creationAuditLog.changes) &&
+    'diagnostics' in creationAuditLog.changes &&
+    creationAuditLog.changes.diagnostics &&
+    typeof creationAuditLog.changes.diagnostics === 'object' &&
+    !Array.isArray(creationAuditLog.changes.diagnostics)
+      ? (creationAuditLog.changes.diagnostics as CreationDiagnostics)
+      : null;
 
   return success({
     data: {
@@ -491,6 +561,7 @@ export async function GET(
       })),
       pharmacist_day_schedules: pharmacistDaySchedules,
       route_preview: routePreview,
+      creation_diagnostics: creationDiagnostics,
     },
   });
 }

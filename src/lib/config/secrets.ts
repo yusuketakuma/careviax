@@ -22,11 +22,14 @@
  *        careviax/staging/app-secrets
  */
 
-import {
-  SecretsManagerClient,
-  GetSecretValueCommand,
-} from '@aws-sdk/client-secrets-manager';
 import { APP_ENV } from './app-env';
+
+type SecretsManagerModule = {
+  SecretsManagerClient: new (args: { region: string }) => {
+    send(command: unknown): Promise<{ SecretString?: string }>;
+  };
+  GetSecretValueCommand: new (args: { SecretId: string }) => unknown;
+};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,6 +49,7 @@ export interface AppSecrets {
 
 let cachedSecrets: AppSecrets | null = null;
 let cachePopulatedAt: number | null = null;
+let cachedSecretsManagerModule: Promise<SecretsManagerModule | null> | null = null;
 
 /** Re-fetch secrets after this many milliseconds (12 hours). */
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
@@ -63,12 +67,17 @@ function secretName(): string {
 // ---------------------------------------------------------------------------
 
 async function fetchFromSecretsManager(): Promise<AppSecrets> {
-  const client = new SecretsManagerClient({
+  const secretsManagerModule = await loadSecretsManagerModule();
+  if (!secretsManagerModule) {
+    throw new Error('SECRETS_MANAGER_SDK_UNAVAILABLE');
+  }
+
+  const client = new secretsManagerModule.SecretsManagerClient({
     region: process.env.AWS_REGION ?? 'ap-northeast-1',
   });
 
   const response = await client.send(
-    new GetSecretValueCommand({ SecretId: secretName() }),
+    new secretsManagerModule.GetSecretValueCommand({ SecretId: secretName() }),
   );
 
   const raw = response.SecretString;
@@ -110,6 +119,35 @@ function fromEnv(): AppSecrets {
   };
 }
 
+async function loadSecretsManagerModule(): Promise<SecretsManagerModule | null> {
+  if (!cachedSecretsManagerModule) {
+    cachedSecretsManagerModule = (async () => {
+      try {
+        const dynamicImport = new Function(
+          'specifier',
+          'return import(specifier)'
+        ) as (specifier: string) => Promise<unknown>;
+        const loaded = await dynamicImport('@aws-sdk/client-secrets-manager');
+
+        if (
+          loaded &&
+          typeof loaded === 'object' &&
+          'SecretsManagerClient' in loaded &&
+          'GetSecretValueCommand' in loaded
+        ) {
+          return loaded as SecretsManagerModule;
+        }
+      } catch {
+        return null;
+      }
+
+      return null;
+    })();
+  }
+
+  return cachedSecretsManagerModule;
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -135,7 +173,15 @@ export async function getSecrets(): Promise<AppSecrets> {
     return cachedSecrets;
   }
 
-  cachedSecrets = await fetchFromSecretsManager();
+  try {
+    cachedSecrets = await fetchFromSecretsManager();
+  } catch (error) {
+    console.warn(
+      `[secrets] Falling back to environment variables for ${secretName()}:`,
+      error instanceof Error ? error.message : String(error)
+    );
+    cachedSecrets = fromEnv();
+  }
   cachePopulatedAt = now;
   return cachedSecrets;
 }

@@ -274,6 +274,15 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
         "title": "緊急連絡先の整備が必要です",
       },
       {
+        "action_href": "/patients",
+        "action_label": "患者一覧で確認",
+        "count": 1,
+        "description": "主治医が未登録のケースがあります。初回訪問判断、疑義照会、報告導線が不完全です。",
+        "id": "missing_primary_physician",
+        "severity": "high",
+        "title": "主治医連携の登録が必要です",
+      },
+      {
         "action_href": "/workflow",
         "action_label": "未接続の処方を確認",
         "count": 1,
@@ -471,6 +480,7 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
       "missing_emergency_contact": 1,
       "missing_first_visit_doc": 1,
       "missing_management_plan": 1,
+      "missing_primary_physician": 1,
       "missing_visit_consent": 1,
       "overdue": 2,
     },

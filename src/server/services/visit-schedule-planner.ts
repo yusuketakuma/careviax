@@ -8,6 +8,7 @@ import type {
 import { prisma } from '@/lib/db/client';
 import { createRoadTravelEstimator } from './road-routing';
 import { evaluateVisitWorkflowGate } from './management-plans';
+import type { VisitRouteTravelMode } from './visit-route-engine';
 
 const DEFAULT_VISIT_DURATION_MINUTES = 60;
 const DEFAULT_SHIFT_START = '09:00';
@@ -20,6 +21,7 @@ type GenerateProposalParams = {
   visitType: VisitType;
   priority: VisitPriority;
   candidateCount: number;
+  travelMode?: VisitRouteTravelMode;
   startDate?: Date;
   lockedDate?: Date;
   preferredTimeFrom?: string;
@@ -73,9 +75,74 @@ type CandidateScoreBreakdown = {
   cadencePenalty: number;
 };
 
+export type ProposalCandidateRejectionCode =
+  | 'locked_date_mismatch'
+  | 'beyond_deadline'
+  | 'weekday_mismatch'
+  | 'emergency_capability'
+  | 'business_holiday'
+  | 'daily_capacity'
+  | 'weekly_capacity'
+  | 'no_slot'
+  | 'travel_limit'
+  | 'billing_constraint'
+  | 'not_selected';
+
+export type ProposalCandidateDiagnostic = {
+  pharmacist_id: string;
+  pharmacist_name: string;
+  site_id: string | null;
+  site_name: string | null;
+  proposed_date: string;
+  travel_mode: VisitRouteTravelMode;
+  reason_code: ProposalCandidateRejectionCode;
+  reason_label: string;
+  detail: string;
+};
+
+export type AcceptedProposalDiagnostic = {
+  pharmacist_id: string;
+  pharmacist_name: string;
+  site_id: string | null;
+  site_name: string | null;
+  proposed_date: string;
+  travel_mode: VisitRouteTravelMode;
+  route_order: number;
+  route_distance_score: number;
+  travel_summary: string;
+  assignment_mode: VisitAssignmentMode;
+  care_relationship: 'primary' | 'backup' | 'fallback';
+  score: number;
+  score_breakdown: CandidateScoreBreakdown;
+  time_window_start: Date;
+  time_window_end: Date;
+};
+
+export type GenerateVisitScheduleProposalResult = {
+  drafts: ProposalDraft[];
+  diagnostics: {
+    accepted: AcceptedProposalDiagnostic[];
+    rejected: ProposalCandidateDiagnostic[];
+  };
+};
+
 type PreferenceWindow = {
   from?: string;
   to?: string;
+};
+
+const REJECTION_REASON_LABELS: Record<ProposalCandidateRejectionCode, string> = {
+  locked_date_mismatch: '固定日と不一致',
+  beyond_deadline: '提案期限超過',
+  weekday_mismatch: '希望曜日不一致',
+  emergency_capability: '緊急対応不可',
+  business_holiday: '休業日',
+  daily_capacity: '日次上限超過',
+  weekly_capacity: '週次上限超過',
+  no_slot: '空き枠なし',
+  travel_limit: '移動上限超過',
+  billing_constraint: '算定制約',
+  not_selected: '候補上限外',
 };
 
 function toDateKey(value: Date) {
@@ -433,8 +500,9 @@ function calculateRemainingSlackMinutes(args: {
 
 export async function generateVisitScheduleProposalDrafts(
   params: GenerateProposalParams
-): Promise<ProposalDraft[]> {
-  const estimateRoadTravel = createRoadTravelEstimator();
+): Promise<GenerateVisitScheduleProposalResult> {
+  const travelMode = params.travelMode ?? 'DRIVE';
+  const estimateRoadTravel = createRoadTravelEstimator(travelMode);
   const planningStart = params.startDate ?? addDays(new Date(), 1);
   planningStart.setHours(0, 0, 0, 0);
   const lockedDate = params.lockedDate ? new Date(params.lockedDate) : null;
@@ -700,31 +768,86 @@ export async function generateVisitScheduleProposalDrafts(
     startsAt: null,
   };
 
-  const candidateShifts = shifts.filter((shift) => {
-    if (lockedDate && toDateKey(shift.date) !== toDateKey(lockedDate)) {
-      return false;
-    }
-    if (shift.date > visitDeadlineDate) return false;
-    if (
-      effectiveWeekdays.length > 0 &&
-      !effectiveWeekdays.includes(getDay(shift.date))
-    ) {
-      return false;
-    }
-    if (params.priority === 'emergency' && !shift.user.can_accept_emergency) {
-      return false;
-    }
-    const dayHolidays = holidayByDate.get(toDateKey(shift.date)) ?? [];
-    return !dayHolidays.some(
-      (holiday) =>
-        holiday.site_id == null ||
-        holiday.site_id === shift.site_id
-    );
-  });
+  function buildRejectedDiagnostic(args: {
+    shift: (typeof shifts)[number];
+    reasonCode: ProposalCandidateRejectionCode;
+    detail: string;
+  }): ProposalCandidateDiagnostic {
+    return {
+      pharmacist_id: args.shift.user_id,
+      pharmacist_name: args.shift.user.name,
+      site_id: args.shift.site_id ?? null,
+      site_name: args.shift.site?.name ?? null,
+      proposed_date: toDateKey(args.shift.date),
+      travel_mode: travelMode,
+      reason_code: args.reasonCode,
+      reason_label: REJECTION_REASON_LABELS[args.reasonCode],
+      detail: args.detail,
+    };
+  }
 
-  const rankedCandidates = (
-    await Promise.all(
-      candidateShifts.map(async (shift) => {
+  const evaluatedCandidates = await Promise.all(
+    shifts.map(async (shift) => {
+      if (lockedDate && toDateKey(shift.date) !== toDateKey(lockedDate)) {
+        return {
+          kind: 'rejected' as const,
+          diagnostic: buildRejectedDiagnostic({
+            shift,
+            reasonCode: 'locked_date_mismatch',
+            detail: `固定日 ${toDateKey(lockedDate)} と勤務日 ${toDateKey(shift.date)} が一致しません`,
+          }),
+        };
+      }
+      if (shift.date > visitDeadlineDate) {
+        return {
+          kind: 'rejected' as const,
+          diagnostic: buildRejectedDiagnostic({
+            shift,
+            reasonCode: 'beyond_deadline',
+            detail: `訪問期限 ${toDateKey(visitDeadlineDate)} を超えるため候補外です`,
+          }),
+        };
+      }
+      if (
+        effectiveWeekdays.length > 0 &&
+        !effectiveWeekdays.includes(getDay(shift.date))
+      ) {
+        return {
+          kind: 'rejected' as const,
+          diagnostic: buildRejectedDiagnostic({
+            shift,
+            reasonCode: 'weekday_mismatch',
+            detail: `希望曜日 ${effectiveWeekdays.join('/')} に一致しません`,
+          }),
+        };
+      }
+      if (params.priority === 'emergency' && !shift.user.can_accept_emergency) {
+        return {
+          kind: 'rejected' as const,
+          diagnostic: buildRejectedDiagnostic({
+            shift,
+            reasonCode: 'emergency_capability',
+            detail: 'この薬剤師は緊急訪問受入設定がありません',
+          }),
+        };
+      }
+      const dayHolidays = holidayByDate.get(toDateKey(shift.date)) ?? [];
+      if (
+        dayHolidays.some(
+          (holiday) => holiday.site_id == null || holiday.site_id === shift.site_id
+        )
+      ) {
+        return {
+          kind: 'rejected' as const,
+          diagnostic: buildRejectedDiagnostic({
+            shift,
+            reasonCode: 'business_holiday',
+            detail: '拠点休業日のため候補外です',
+          }),
+        };
+      }
+
+      try {
         const schedulesForShift =
           confirmedSchedulesByDayAndPharmacist.get(
             `${shift.user_id}:${toDateKey(shift.date)}`
@@ -737,13 +860,27 @@ export async function generateVisitScheduleProposalDrafts(
           shift.user.max_daily_visits != null &&
           schedulesForShift.length >= shift.user.max_daily_visits
         ) {
-          return null;
+          return {
+            kind: 'rejected' as const,
+            diagnostic: buildRejectedDiagnostic({
+              shift,
+              reasonCode: 'daily_capacity',
+              detail: `日次上限 ${shift.user.max_daily_visits} 件に到達しています`,
+            }),
+          };
         }
         if (
           shift.user.max_weekly_visits != null &&
           schedulesForWeek.length >= shift.user.max_weekly_visits
         ) {
-          return null;
+          return {
+            kind: 'rejected' as const,
+            diagnostic: buildRejectedDiagnostic({
+              shift,
+              reasonCode: 'weekly_capacity',
+              detail: `週次上限 ${shift.user.max_weekly_visits} 件に到達しています`,
+            }),
+          };
         }
         const shiftStart = setTime(shift.date, shift.available_from, DEFAULT_SHIFT_START);
         const shiftEnd = setTime(shift.date, shift.available_to, DEFAULT_SHIFT_END);
@@ -755,7 +892,16 @@ export async function generateVisitScheduleProposalDrafts(
           preferredTimeTo: mergedVisitWindow?.to,
           existingSchedules: schedulesForShift,
         });
-        if (!slot) return null;
+        if (!slot) {
+          return {
+            kind: 'rejected' as const,
+            diagnostic: buildRejectedDiagnostic({
+              shift,
+              reasonCode: 'no_slot',
+              detail: '希望時間帯内に 60 分の空き枠を確保できません',
+            }),
+          };
+        }
 
         const routeInsertion = await computeRouteInsertion(
           shift.site
@@ -783,7 +929,14 @@ export async function generateVisitScheduleProposalDrafts(
           shift.user.max_travel_minutes != null &&
           routeInsertion.travelScore > shift.user.max_travel_minutes
         ) {
-          return null;
+          return {
+            kind: 'rejected' as const,
+            diagnostic: buildRejectedDiagnostic({
+              shift,
+              reasonCode: 'travel_limit',
+              detail: `移動負荷 ${routeInsertion.travelScore.toFixed(1)} が上限 ${shift.user.max_travel_minutes} を超えます`,
+            }),
+          };
         }
 
         const sameFacilityVisits = schedulesForShift.filter((schedule) => {
@@ -892,6 +1045,7 @@ export async function generateVisitScheduleProposalDrafts(
           priorityBonus;
 
         return {
+          kind: 'accepted' as const,
           score,
           shift,
           slot,
@@ -904,31 +1058,47 @@ export async function generateVisitScheduleProposalDrafts(
           lockedSchedules,
           remainingSlackMinutes,
         };
-      })
-    )
-  )
-    .filter((candidate): candidate is NonNullable<typeof candidate> => candidate != null)
-    .sort((left, right) => left.score - right.score)
-    .slice(0, params.candidateCount);
+      } catch (error) {
+        return {
+          kind: 'rejected' as const,
+          diagnostic: buildRejectedDiagnostic({
+            shift,
+            reasonCode: 'travel_limit',
+            detail: error instanceof Error ? error.message : '移動評価に失敗しました',
+          }),
+        };
+      }
+    })
+  );
 
-  return rankedCandidates.map((candidate, index) => ({
-    org_id: params.orgId,
-    cycle_id: cycle?.id ?? null,
-    case_id: params.caseId,
-    site_id: candidate.shift.site_id,
-    visit_type: params.visitType,
-    priority: params.priority,
-    proposal_status: params.rescheduleSourceScheduleId
-      ? 'reschedule_pending'
-      : 'proposed',
-    patient_contact_status: 'pending',
-    proposed_date: candidate.shift.date,
-    time_window_start: candidate.slot.start,
-    time_window_end: candidate.slot.end,
-    proposed_pharmacist_id: candidate.shift.user_id,
-    assignment_mode: candidate.assignmentMode,
-    route_order: candidate.routeInsertion.routeOrder + index,
-    route_distance_score: candidate.routeInsertion.travelScore,
+  const acceptedCandidates = evaluatedCandidates
+    .filter(
+      (candidate): candidate is Extract<(typeof evaluatedCandidates)[number], { kind: 'accepted' }> =>
+        candidate.kind === 'accepted'
+    )
+    .sort((left, right) => left.score - right.score);
+
+  const selectedCandidates = acceptedCandidates.slice(0, params.candidateCount);
+  const overflowCandidates = acceptedCandidates.slice(params.candidateCount);
+
+  const drafts = selectedCandidates.map((candidate, index) => ({
+      org_id: params.orgId,
+      cycle_id: cycle?.id ?? null,
+      case_id: params.caseId,
+      site_id: candidate.shift.site_id,
+      visit_type: params.visitType,
+      priority: params.priority,
+      proposal_status: (params.rescheduleSourceScheduleId
+        ? 'reschedule_pending'
+        : 'proposed') as ProposalDraft['proposal_status'],
+      patient_contact_status: 'pending' as ProposalDraft['patient_contact_status'],
+      proposed_date: candidate.shift.date,
+      time_window_start: candidate.slot.start,
+      time_window_end: candidate.slot.end,
+      proposed_pharmacist_id: candidate.shift.user_id,
+      assignment_mode: candidate.assignmentMode,
+      route_order: candidate.routeInsertion.routeOrder + index,
+      route_distance_score: candidate.routeInsertion.travelScore,
       medication_end_date: medicationEndDate,
       visit_deadline_date: visitDeadlineDate,
       proposal_reason: buildReason({
@@ -968,6 +1138,50 @@ export async function generateVisitScheduleProposalDrafts(
       candidate.assignmentMode === 'fallback'
         ? '担当薬剤師の勤務枠が見つからなかったため代替薬剤師を割り当て'
         : null,
-    reschedule_source_schedule_id: params.rescheduleSourceScheduleId ?? null,
-  }));
+      reschedule_source_schedule_id: params.rescheduleSourceScheduleId ?? null,
+    }));
+
+  const acceptedDiagnostics: AcceptedProposalDiagnostic[] = selectedCandidates.map(
+    (candidate, index) => ({
+      pharmacist_id: candidate.shift.user_id,
+      pharmacist_name: candidate.shift.user.name,
+      site_id: candidate.shift.site_id ?? null,
+      site_name: candidate.shift.site?.name ?? null,
+      proposed_date: toDateKey(candidate.shift.date),
+      travel_mode: travelMode,
+      route_order: candidate.routeInsertion.routeOrder + index,
+      route_distance_score: candidate.routeInsertion.travelScore,
+      travel_summary: candidate.routeInsertion.travelSummary,
+      assignment_mode: candidate.assignmentMode,
+      care_relationship: candidate.careRelationship,
+      score: candidate.score,
+      score_breakdown: candidate.scoreBreakdown,
+      time_window_start: candidate.slot.start,
+      time_window_end: candidate.slot.end,
+    })
+  );
+
+  const rejectedDiagnostics = [
+    ...evaluatedCandidates
+      .filter(
+        (candidate): candidate is Extract<(typeof evaluatedCandidates)[number], { kind: 'rejected' }> =>
+          candidate.kind === 'rejected'
+      )
+      .map((candidate) => candidate.diagnostic),
+    ...overflowCandidates.map((candidate) =>
+      buildRejectedDiagnostic({
+        shift: candidate.shift,
+        reasonCode: 'not_selected',
+        detail: `候補上限 ${params.candidateCount} 件のため採用外です（スコア ${candidate.score.toFixed(1)}）`,
+      })
+    ),
+  ];
+
+  return {
+    drafts,
+    diagnostics: {
+      accepted: acceptedDiagnostics,
+      rejected: rejectedDiagnostics,
+    },
+  };
 }

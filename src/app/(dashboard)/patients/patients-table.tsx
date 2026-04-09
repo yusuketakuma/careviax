@@ -90,6 +90,11 @@ type PatientRow = {
   consent: {
     has_visit_medication_management: boolean;
   };
+  readiness: {
+    has_emergency_contact: boolean;
+    has_primary_physician: boolean;
+    has_first_visit_document: boolean;
+  };
   risk_summary: {
     level: 'stable' | 'watch' | 'high';
     open_issues: number;
@@ -152,6 +157,10 @@ function deriveRowStatus(row: PatientRow): PatientStatusIcon {
   if (!hasCompletedVisit) return 'new';
   if (risk.level === 'watch' || risk.open_tasks > 0) return 'attention';
   return 'stable';
+}
+
+function normalizeFilterValue(value: string | undefined) {
+  return value && value.length > 0 ? value : ALL_VALUE;
 }
 
 const STATUS_FILTER_OPTIONS: Array<{ value: PatientStatusIcon; label: string }> = [
@@ -426,7 +435,25 @@ function buildPatientColumns(args: {
   ];
 }
 
-export function PatientsTable() {
+export type InitialPatientFilters = {
+  searchQuery?: string;
+  caseStatusFilters?: string[];
+  riskFilter?: string;
+  facilityFilter?: string;
+  pharmacistFilter?: string;
+  consentFilter?: string;
+  billingSupportFilter?: string;
+  payerFilter?: string;
+  lastVisitFrom?: string;
+  lastVisitTo?: string;
+  readinessIssueFilter?: string;
+};
+
+export function PatientsTable({
+  initialFilters,
+}: {
+  initialFilters?: InitialPatientFilters;
+}) {
   const orgId = useOrgId();
   const favoritePatientIds = usePatientListStore((state) => state.favoritePatientIds);
   const recentPatientIds = usePatientListStore((state) => state.recentPatientIds);
@@ -441,18 +468,35 @@ export function PatientsTable() {
       }),
     [favoritePatientIds, markRecentPatient, toggleFavoritePatient],
   );
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialFilters?.searchQuery ?? '');
   const [selectedPatients, setSelectedPatients] = useState<PatientRow[]>([]);
-  const [caseStatusFilters, setCaseStatusFilters] = useState<string[]>([]);
-  const [riskFilter, setRiskFilter] = useState<string>(ALL_VALUE);
+  const [caseStatusFilters, setCaseStatusFilters] = useState<string[]>(
+    initialFilters?.caseStatusFilters ?? []
+  );
+  const [riskFilter, setRiskFilter] = useState<string>(
+    normalizeFilterValue(initialFilters?.riskFilter)
+  );
   const [statusFilter, setStatusFilter] = useState<string>(ALL_VALUE);
-  const [facilityFilter, setFacilityFilter] = useState<string>(ALL_VALUE);
-  const [pharmacistFilter, setPharmacistFilter] = useState<string>(ALL_VALUE);
-  const [consentFilter, setConsentFilter] = useState<string>(ALL_VALUE);
-  const [billingSupportFilter, setBillingSupportFilter] = useState<string>(ALL_VALUE);
-  const [payerFilter, setPayerFilter] = useState<string>(ALL_VALUE);
-  const [lastVisitFrom, setLastVisitFrom] = useState('');
-  const [lastVisitTo, setLastVisitTo] = useState('');
+  const [facilityFilter, setFacilityFilter] = useState<string>(
+    normalizeFilterValue(initialFilters?.facilityFilter)
+  );
+  const [pharmacistFilter, setPharmacistFilter] = useState<string>(
+    normalizeFilterValue(initialFilters?.pharmacistFilter)
+  );
+  const [consentFilter, setConsentFilter] = useState<string>(
+    normalizeFilterValue(initialFilters?.consentFilter)
+  );
+  const [billingSupportFilter, setBillingSupportFilter] = useState<string>(
+    normalizeFilterValue(initialFilters?.billingSupportFilter)
+  );
+  const [payerFilter, setPayerFilter] = useState<string>(
+    normalizeFilterValue(initialFilters?.payerFilter)
+  );
+  const [lastVisitFrom, setLastVisitFrom] = useState(initialFilters?.lastVisitFrom ?? '');
+  const [lastVisitTo, setLastVisitTo] = useState(initialFilters?.lastVisitTo ?? '');
+  const [readinessIssueFilter, setReadinessIssueFilter] = useState<string>(
+    normalizeFilterValue(initialFilters?.readinessIssueFilter)
+  );
   const [exportFeedback, setExportFeedback] = useState<{
     type: 'success' | 'error';
     message: string;
@@ -477,6 +521,9 @@ export function PatientsTable() {
     if (payerFilter !== ALL_VALUE) params.set('payer_basis', payerFilter);
     if (lastVisitFrom) params.set('last_visit_from', lastVisitFrom);
     if (lastVisitTo) params.set('last_visit_to', lastVisitTo);
+    if (readinessIssueFilter !== ALL_VALUE) {
+      params.set('readiness_issue', readinessIssueFilter);
+    }
     return params.toString();
   }, [
     billingSupportFilter,
@@ -487,6 +534,7 @@ export function PatientsTable() {
     lastVisitTo,
     payerFilter,
     pharmacistFilter,
+    readinessIssueFilter,
     riskFilter,
     searchQuery,
   ]);
@@ -556,6 +604,7 @@ export function PatientsTable() {
     payerFilter !== ALL_VALUE ? payerFilter : '',
     lastVisitFrom,
     lastVisitTo,
+    readinessIssueFilter !== ALL_VALUE ? readinessIssueFilter : '',
   ].filter(Boolean).length;
 
   const buildingOptions = useMemo(() => {
@@ -608,6 +657,7 @@ export function PatientsTable() {
     setPayerFilter(ALL_VALUE);
     setLastVisitFrom('');
     setLastVisitTo('');
+    setReadinessIssueFilter(ALL_VALUE);
     setExportFeedback(null);
   }
 
@@ -840,6 +890,26 @@ export function PatientsTable() {
                   <SelectItem value="medical">医療</SelectItem>
                   <SelectItem value="care">介護</SelectItem>
                   <SelectItem value="self">自費</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <LabelText>readiness</LabelText>
+              <Select
+                value={readinessIssueFilter}
+                onValueChange={(value) => setReadinessIssueFilter(value ?? ALL_VALUE)}
+              >
+                <SelectTrigger aria-label="readiness フィルタ" className="h-10 sm:h-9">
+                  <SelectValue placeholder="すべて" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VALUE}>すべて</SelectItem>
+                  <SelectItem value="missing_visit_consent">訪問同意不足</SelectItem>
+                  <SelectItem value="missing_management_plan">管理計画書不足</SelectItem>
+                  <SelectItem value="missing_emergency_contact">緊急連絡先不足</SelectItem>
+                  <SelectItem value="missing_primary_physician">主治医未登録</SelectItem>
+                  <SelectItem value="missing_first_visit_doc">初回文書未交付</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -7,6 +7,7 @@ import {
   QualificationCheckAdapterError,
 } from '@/server/adapters/qualification-check';
 import { format } from 'date-fns';
+import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
 
 export async function POST(
   req: NextRequest,
@@ -43,6 +44,12 @@ export async function POST(
     const result = await adapter.checkInsurance({
       insuranceNumber: patient.medical_insurance_number ?? undefined,
       asOfDate: format(new Date(), 'yyyy-MM-dd'),
+    });
+
+    await notifyWebhookEventForOrg(ctx.orgId, 'qualification.checked', {
+      patientId: patient.id,
+      checkedAt: new Date().toISOString(),
+      insuranceNumberPresent: Boolean(patient.medical_insurance_number),
     });
 
     return success({ data: result, capabilities: adapter.getCapabilities() });

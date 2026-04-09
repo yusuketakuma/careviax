@@ -15,6 +15,7 @@ const {
   generateVisitScheduleProposalDraftsMock,
   visitScheduleProposalUpdateManyMock,
   visitScheduleProposalCreateMock,
+  auditLogCreateMock,
   withOrgContextMock,
   findActiveVisitConsentMock,
   findCurrentManagementPlanMock,
@@ -32,6 +33,7 @@ const {
   generateVisitScheduleProposalDraftsMock: vi.fn(),
   visitScheduleProposalUpdateManyMock: vi.fn(),
   visitScheduleProposalCreateMock: vi.fn(),
+  auditLogCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   findActiveVisitConsentMock: vi.fn(),
   findCurrentManagementPlanMock: vi.fn(),
@@ -137,20 +139,30 @@ describe('/api/visit-schedule-proposals', () => {
     findActiveVisitConsentMock.mockResolvedValue({ id: 'consent_1', expiry_date: new Date('2027-12-31') });
     findCurrentManagementPlanMock.mockResolvedValue({ current: { id: 'plan_1', status: 'approved' }, reviewOverdue: false });
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
-    generateVisitScheduleProposalDraftsMock.mockResolvedValue([
-      {
-        org_id: 'org_1',
-        case_id: 'case_1',
-        proposed_pharmacist_id: 'user_2',
-        proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+    generateVisitScheduleProposalDraftsMock.mockResolvedValue({
+      drafts: [
+        {
+          org_id: 'org_1',
+          case_id: 'case_1',
+          proposed_pharmacist_id: 'user_2',
+          proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+        },
+      ],
+      diagnostics: {
+        accepted: [],
+        rejected: [],
       },
-    ]);
+    });
     visitScheduleProposalCreateMock.mockResolvedValue({ id: 'proposal_2' });
+    auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitScheduleProposal: {
           updateMany: visitScheduleProposalUpdateManyMock,
           create: visitScheduleProposalCreateMock,
+        },
+        auditLog: {
+          create: auditLogCreateMock,
         },
       }),
     );
@@ -209,6 +221,79 @@ describe('/api/visit-schedule-proposals', () => {
     expect(generateVisitScheduleProposalDraftsMock).toHaveBeenCalled();
     expect(visitScheduleProposalUpdateManyMock).toHaveBeenCalled();
     expect(visitScheduleProposalCreateMock).toHaveBeenCalled();
+  });
+
+  it('returns planner diagnostics for rejected candidates', async () => {
+    generateVisitScheduleProposalDraftsMock.mockResolvedValueOnce({
+      drafts: [
+        {
+          org_id: 'org_1',
+          case_id: 'case_1',
+          proposed_pharmacist_id: 'user_2',
+          proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+        },
+      ],
+      diagnostics: {
+        accepted: [
+          {
+            pharmacist_id: 'user_2',
+            pharmacist_name: '薬剤師A',
+            site_id: 'site_1',
+            site_name: '本店',
+            proposed_date: '2026-04-03',
+            travel_mode: 'DRIVE',
+            route_order: 1,
+            route_distance_score: 12,
+            travel_summary: '実道路移動 約12分',
+            assignment_mode: 'primary',
+            care_relationship: 'primary',
+            score: 8,
+            score_breakdown: {
+              geocodePenalty: 0,
+              facilityBonus: 0,
+              workloadPenalty: 2,
+              slackPenalty: 0,
+              lockPenalty: 0,
+              cadencePenalty: 0,
+            },
+            time_window_start: new Date('1970-01-01T09:00:00.000Z'),
+            time_window_end: new Date('1970-01-01T10:00:00.000Z'),
+          },
+        ],
+        rejected: [
+          {
+            pharmacist_id: 'user_3',
+            pharmacist_name: '薬剤師B',
+            site_id: 'site_1',
+            site_name: '本店',
+            proposed_date: '2026-04-03',
+            travel_mode: 'DRIVE',
+            reason_code: 'daily_capacity',
+            reason_label: '日次上限超過',
+            detail: '日次上限に到達しています',
+          },
+        ],
+      },
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+      })
+    ))!;
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      diagnostics: {
+        rejected: [
+          expect.objectContaining({
+            reason_code: 'daily_capacity',
+          }),
+        ],
+      },
+    });
   });
 
   it('passes locked slot constraints to the planner when provided', async () => {

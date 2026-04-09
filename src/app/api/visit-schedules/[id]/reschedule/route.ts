@@ -213,7 +213,8 @@ export async function POST(
 
   let drafts;
   try {
-    drafts = await generateVisitScheduleProposalDrafts({
+    drafts = (
+      await generateVisitScheduleProposalDrafts({
       orgId: ctx.orgId,
       caseId: schedule.case_id,
       visitType: schedule.visit_type,
@@ -225,7 +226,8 @@ export async function POST(
       preferredTimeFrom: toTimeString(schedule.time_window_start),
       preferredTimeTo: toTimeString(schedule.time_window_end),
       rescheduleSourceScheduleId: id,
-    });
+      })
+    ).drafts;
   } catch (error) {
     if (error instanceof Error && error.message.startsWith('VISIT_WORKFLOW_GATE:')) {
       const issues = error.message
@@ -346,7 +348,8 @@ export async function POST(
 
         let impactedDrafts;
         try {
-          impactedDrafts = await generateVisitScheduleProposalDrafts({
+          impactedDrafts = (
+            await generateVisitScheduleProposalDrafts({
             orgId: ctx.orgId,
             caseId: impactedSchedule.case_id,
             visitType: impactedSchedule.visit_type,
@@ -356,7 +359,8 @@ export async function POST(
             preferredTimeFrom: toTimeString(impactedSchedule.time_window_start),
             preferredTimeTo: toTimeString(impactedSchedule.time_window_end),
             rescheduleSourceScheduleId: impactedSchedule.id,
-          });
+            })
+          ).drafts;
         } catch (error) {
           if (error instanceof Error && error.message.startsWith('VISIT_WORKFLOW_GATE:')) {
             autoRescheduleSummary.push({

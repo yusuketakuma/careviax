@@ -34,10 +34,13 @@ export type VisitRouteMapPoint = {
   status: VisitMapStatus;
   priority: VisitMapPriority;
   etaLabel: string | null;
+  timeLabel?: string | null;
+  pointKind?: 'proposal' | 'schedule';
 };
 
-function markerColor(point: Pick<VisitRouteMapPoint, 'status' | 'priority'>) {
+function markerColor(point: Pick<VisitRouteMapPoint, 'status' | 'priority' | 'pointKind'>) {
   if (point.priority === 'emergency') return '#dc2626';
+  if (point.pointKind === 'proposal') return '#d97706';
   if (point.status === 'in_progress') return '#16a34a';
   if (point.status === 'completed') return '#6b7280';
   return '#2563eb';
@@ -167,8 +170,16 @@ export function VisitRouteMap(props: {
                 <div className="max-w-[220px] space-y-1 text-sm">
                   <div className="font-medium text-slate-900">{activePoint.patientName}</div>
                   <div className="text-xs leading-5 text-slate-600">{activePoint.address}</div>
+                  {activePoint.timeLabel ? (
+                    <div className="text-xs text-slate-600">時間 {activePoint.timeLabel}</div>
+                  ) : null}
                   <div className="flex flex-wrap gap-1 pt-1">
                     <Badge variant="outline">順路 {activePoint.orderLabel}</Badge>
+                    {activePoint.pointKind ? (
+                      <Badge variant="outline">
+                        {activePoint.pointKind === 'proposal' ? '候補' : '確定予定'}
+                      </Badge>
+                    ) : null}
                     {activePoint.etaLabel ? (
                       <Badge variant="outline">ETA {activePoint.etaLabel}</Badge>
                     ) : null}

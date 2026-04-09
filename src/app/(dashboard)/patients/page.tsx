@@ -5,8 +5,44 @@ import { Loading } from '@/components/ui/loading';
 import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import type { InitialPatientFilters } from './patients-table';
 
-export default function PatientsPage() {
+type PatientsPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+function readString(value: string | string[] | undefined) {
+  return typeof value === 'string' ? value : null;
+}
+
+function parseCaseStatus(value: string | null) {
+  return value
+    ? value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
+}
+
+export default async function PatientsPage({ searchParams }: PatientsPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const initialFilters: InitialPatientFilters = {
+    searchQuery: readString(resolvedSearchParams?.q) ?? '',
+    caseStatusFilters: parseCaseStatus(readString(resolvedSearchParams?.case_status)),
+    riskFilter: readString(resolvedSearchParams?.risk_level) ?? '_all',
+    facilityFilter:
+      readString(resolvedSearchParams?.facility_mode) ??
+      readString(resolvedSearchParams?.building_id) ??
+      '_all',
+    consentFilter: readString(resolvedSearchParams?.consent_status) ?? '_all',
+    pharmacistFilter: readString(resolvedSearchParams?.primary_pharmacist_id) ?? '_all',
+    billingSupportFilter: readString(resolvedSearchParams?.billing_support) ?? '_all',
+    payerFilter: readString(resolvedSearchParams?.payer_basis) ?? '_all',
+    lastVisitFrom: readString(resolvedSearchParams?.last_visit_from) ?? '',
+    lastVisitTo: readString(resolvedSearchParams?.last_visit_to) ?? '',
+    readinessIssueFilter: readString(resolvedSearchParams?.readiness_issue) ?? '_all',
+  };
+
   return (
     <PageScaffold>
       <WorkflowPageHeader
@@ -37,7 +73,7 @@ export default function PatientsPage() {
       </WorkflowPageHeader>
 
       <Suspense fallback={<Loading />}>
-        <PatientsTable />
+        <PatientsTable initialFilters={initialFilters} />
       </Suspense>
     </PageScaffold>
   );

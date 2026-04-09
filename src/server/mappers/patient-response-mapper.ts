@@ -60,11 +60,17 @@ type PatientRow = {
     name: string;
     is_primary: boolean;
   }>;
+  contacts: Array<{
+    id: string;
+  }>;
   cases: Array<{
     id: string;
     status: string;
     updated_at: Date;
     primary_pharmacist_id: string | null;
+    care_team_links: Array<{
+      id: string;
+    }>;
   }>;
   consents: Array<{ id: string }>;
 };
@@ -88,12 +94,18 @@ export function mapPatientListItem(
   pharmacistNameById: Map<string, string>,
   latestVisit: VisitRecord | null,
   schedules: VisitSchedule[],
+  deliveredFirstVisitCaseIds: Set<string>,
   privacy: PatientPrivacyFlags,
   recentVisitThreshold: Date,
 ) {
   const latestCase = patient.cases[0] ?? null;
   const primaryResidence = patient.residences[0] ?? null;
   const hasVisitConsent = patient.consents.length > 0;
+  const hasEmergencyContact = patient.contacts.length > 0;
+  const hasPrimaryPhysician = (latestCase?.care_team_links.length ?? 0) > 0;
+  const hasFirstVisitDocument = latestCase
+    ? deliveredFirstVisitCaseIds.has(latestCase.id)
+    : false;
   const facilityMode = primaryResidence?.building_id ? 'facility' : 'home';
 
   const risk: PatientRiskSummary = riskSummary ?? {
@@ -130,6 +142,11 @@ export function mapPatientListItem(
     visit_schedules: latestCase ? schedules : [],
     consent: {
       has_visit_medication_management: hasVisitConsent,
+    },
+    readiness: {
+      has_emergency_contact: hasEmergencyContact,
+      has_primary_physician: hasPrimaryPhysician,
+      has_first_visit_document: hasFirstVisitDocument,
     },
     risk_summary: risk,
     last_visit_bucket:

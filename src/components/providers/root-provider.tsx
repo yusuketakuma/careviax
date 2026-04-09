@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { ThemeProvider } from 'next-themes';
+import { NavigationConfirmProvider } from '@/components/providers/navigation-confirm-provider';
 import { Toaster } from '@/components/ui/sonner';
 import { OFFLINE_CACHE_TTL_MS } from '@/lib/offline/cache-policy';
 import { offlineDb } from '@/lib/stores/offline-db';
@@ -33,6 +34,7 @@ export function RootProvider({ children, nonce }: RootProviderProps) {
       nonce={nonce}
     >
       <OfflineCacheBootstrap />
+      <NavigationConfirmProvider />
       {children}
       <Toaster position="top-right" />
     </ThemeProvider>
