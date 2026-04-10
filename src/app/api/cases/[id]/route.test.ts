@@ -68,15 +68,18 @@ describe('/api/cases/[id]', () => {
   });
 
   it('updates a case and normalizes empty pharmacist ids to null', async () => {
-    const response = (await PATCH({
-      json: async () => ({
-        primary_pharmacist_id: '',
-        backup_pharmacist_id: 'pharmacist_2',
-        required_visit_support: { escort: true },
-      }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'case_1' }),
-    }))!;
+    const response = (await PATCH(
+      {
+        json: async () => ({
+          primary_pharmacist_id: '',
+          backup_pharmacist_id: 'pharmacist_2',
+          required_visit_support: { escort: true },
+        }),
+      } as NextRequest,
+      {
+        params: Promise.resolve({ id: 'case_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(200);
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
@@ -88,6 +91,35 @@ describe('/api/cases/[id]', () => {
         primary_pharmacist_id: null,
         backup_pharmacist_id: 'pharmacist_2',
         required_visit_support: { escort: true },
+      }),
+    });
+  });
+
+  it('clears optional dates and text fields when empty strings are provided', async () => {
+    const response = (await PATCH(
+      {
+        json: async () => ({
+          referral_source: '',
+          start_date: '',
+          end_date: '',
+          end_reason: '',
+          notes: '',
+        }),
+      } as NextRequest,
+      {
+        params: Promise.resolve({ id: 'case_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(careCaseUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'case_1' },
+      data: expect.objectContaining({
+        referral_source: null,
+        start_date: null,
+        end_date: null,
+        end_reason: null,
+        notes: null,
       }),
     });
   });

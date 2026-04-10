@@ -7,11 +7,14 @@ import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { ExternalLink, HeartHandshake, MessageSquareWarning, Users } from 'lucide-react';
 import { toast } from 'sonner';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { SectionIntro } from '@/components/ui/section-intro';
+import { cn } from '@/lib/utils';
+import type { ExternalFocus } from '@/lib/dashboard/home-link-builders';
 
 type ExternalGrant = {
   id: string;
@@ -58,7 +61,13 @@ function scopeLabels(scope: Record<string, boolean>) {
     .map(([key]) => key);
 }
 
-export function ExternalViewerContent() {
+export function ExternalViewerContent({
+  initialFocus,
+  initialContext,
+}: {
+  initialFocus?: ExternalFocus;
+  initialContext?: string | null;
+} = {}) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
 
@@ -104,6 +113,14 @@ export function ExternalViewerContent() {
     (item) => item.status !== 'resolved' && item.status !== 'dismissed',
   );
   const followUps = (activitiesQuery.data?.data ?? []).filter((item) => item.follow_up_required);
+  const contextSummary =
+    initialContext === 'dashboard_home'
+      ? initialFocus === 'self_reports'
+        ? 'ホームから自己申告キューにフォーカスして開いています。'
+        : initialFocus === 'activities'
+          ? 'ホームから地域活動フォローにフォーカスして開いています。'
+          : 'ホームから外部共有管理にフォーカスして開いています。'
+      : null;
 
   const updateSelfReportMutation = useMutation({
     mutationFn: async ({
@@ -174,6 +191,12 @@ export function ExternalViewerContent() {
 
   return (
     <div className="space-y-6">
+      {contextSummary ? (
+        <Alert className="border-sky-200 bg-sky-50 text-sky-900" data-testid="external-context-banner">
+          <HeartHandshake className="size-4 text-sky-700" aria-hidden="true" />
+          <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
+        </Alert>
+      ) : null}
       <SectionIntro
         title="外部連携サマリー"
         description="有効な共有、未解消の自己申告、地域フォローを先に把握する導入グループです。"
@@ -204,7 +227,7 @@ export function ExternalViewerContent() {
         description="共有 grant、自己申告キュー、地域活動フォローを役割ごとに分けて確認します。"
       />
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <Card>
+        <Card className={cn(initialFocus === 'shares' ? 'ring-2 ring-primary/25' : null)}>
           <CardHeader>
             <CardTitle className="text-base">外部共有管理</CardTitle>
             <CardDescription>患者ごとの共有 grant と閲覧状況を管理します</CardDescription>
@@ -268,7 +291,7 @@ export function ExternalViewerContent() {
         </Card>
 
         <div className="space-y-6">
-          <Card>
+          <Card className={cn(initialFocus === 'self_reports' ? 'ring-2 ring-primary/25' : null)}>
             <CardHeader>
               <CardTitle className="text-base">自己申告キュー</CardTitle>
               <CardDescription>折返しや triage が必要な申告を確認します</CardDescription>
@@ -335,7 +358,7 @@ export function ExternalViewerContent() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className={cn(initialFocus === 'activities' ? 'ring-2 ring-primary/25' : null)}>
             <CardHeader>
               <CardTitle className="text-base">地域活動フォロー</CardTitle>
               <CardDescription>紹介導線と地域活動の後続対応です</CardDescription>

@@ -25,6 +25,7 @@ import {
   REPORT_STATUS_CONFIG,
   REPORT_TYPE_LABELS,
 } from '@/lib/constants/status-labels';
+import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 
 type DeliveryRecord = {
   id: string;
@@ -251,14 +252,23 @@ function renderExpandedRow(row: Row<CareReport>) {
   );
 }
 
-export function ReportsTable() {
+type ReportsTableProps = {
+  initialDeliveryStatus?: string | null;
+  initialContext?: string | null;
+};
+
+export function ReportsTable({
+  initialDeliveryStatus,
+  initialContext,
+}: ReportsTableProps = {}) {
+  const replaceReportsUrl = useSyncedSearchParams();
   const orgId = useOrgId();
   const isBootstrappingOrg = !orgId;
   const columns = useMemo(() => buildColumns(), []);
   const [filters, setFilters] = useState({
     status: ALL_VALUE,
     reportType: ALL_VALUE,
-    deliveryStatus: ALL_VALUE,
+    deliveryStatus: initialDeliveryStatus ?? ALL_VALUE,
     patient: '',
     recipient: '',
     keyword: '',
@@ -269,6 +279,23 @@ export function ReportsTable() {
   });
   const updateFilter = (key: keyof typeof filters, value: string) =>
     setFilters((prev) => ({ ...prev, [key]: value }));
+  const updateFilterAndUrl = (key: keyof typeof filters, value: string) => {
+    updateFilter(key, value);
+    const paramKeyMap: Record<keyof typeof filters, string> = {
+      status: 'status',
+      reportType: 'report_type',
+      deliveryStatus: 'delivery_status',
+      patient: 'q',
+      recipient: 'recipient',
+      keyword: 'keyword',
+      createdFrom: 'date_from',
+      createdTo: 'date_to',
+      sentFrom: 'sent_from',
+      sentTo: 'sent_to',
+    };
+    const paramKey = paramKeyMap[key];
+    replaceReportsUrl({ [paramKey]: value === ALL_VALUE || value === '' ? null : value });
+  };
 
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
@@ -317,7 +344,7 @@ export function ReportsTable() {
     setFilters({
       status: ALL_VALUE,
       reportType: ALL_VALUE,
-      deliveryStatus: ALL_VALUE,
+      deliveryStatus: initialDeliveryStatus ?? ALL_VALUE,
       patient: '',
       recipient: '',
       keyword: '',
@@ -326,6 +353,18 @@ export function ReportsTable() {
       sentFrom: '',
       sentTo: '',
     });
+    replaceReportsUrl({
+      status: null,
+      report_type: null,
+      delivery_status: initialDeliveryStatus ?? null,
+      q: null,
+      recipient: null,
+      keyword: null,
+      date_from: null,
+      date_to: null,
+      sent_from: null,
+      sent_to: null,
+    });
   }
 
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
@@ -333,6 +372,14 @@ export function ReportsTable() {
 
   return (
     <div className="space-y-6">
+      {initialContext === 'dashboard_home' ? (
+        <div
+          className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900"
+          data-testid="reports-table-context-banner"
+        >
+          ホーム起点の報告書フィルタを適用しています。
+        </div>
+      ) : null}
       <section className="space-y-4 rounded-xl border border-border/70 bg-card/80 p-4">
         <SectionIntro
           title="優先確認"
@@ -371,7 +418,7 @@ export function ReportsTable() {
               <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={filters.patient}
-                onChange={(event) => updateFilter('patient', event.target.value)}
+                onChange={(event) => updateFilterAndUrl('patient', event.target.value)}
                 placeholder="患者名 / フリガナ"
                 className="h-10 pl-8 sm:h-9"
               />
@@ -382,7 +429,7 @@ export function ReportsTable() {
             <LabelText>送付先</LabelText>
             <Input
               value={filters.recipient}
-              onChange={(event) => updateFilter('recipient', event.target.value)}
+              onChange={(event) => updateFilterAndUrl('recipient', event.target.value)}
               placeholder="主治医 / ケアマネ"
               className="h-10 sm:h-9"
             />
@@ -392,7 +439,7 @@ export function ReportsTable() {
             <LabelText>報告状態</LabelText>
             <Select
               value={filters.status}
-              onValueChange={(value) => updateFilter('status', value ?? ALL_VALUE)}
+              onValueChange={(value) => updateFilterAndUrl('status', value ?? ALL_VALUE)}
             >
               <SelectTrigger className="h-10 sm:h-9">
                 <SelectValue placeholder="すべて" />
@@ -412,7 +459,7 @@ export function ReportsTable() {
             <LabelText>送達状態</LabelText>
             <Select
               value={filters.deliveryStatus}
-              onValueChange={(value) => updateFilter('deliveryStatus', value ?? ALL_VALUE)}
+              onValueChange={(value) => updateFilterAndUrl('deliveryStatus', value ?? ALL_VALUE)}
             >
               <SelectTrigger className="h-10 sm:h-9">
                 <SelectValue placeholder="すべて" />
@@ -451,7 +498,7 @@ export function ReportsTable() {
               <LabelText>キーワード</LabelText>
               <Input
                 value={filters.keyword}
-                onChange={(event) => updateFilter('keyword', event.target.value)}
+                onChange={(event) => updateFilterAndUrl('keyword', event.target.value)}
                 placeholder="SOAP / 要点"
                 className="h-10 sm:h-9"
               />
@@ -461,7 +508,7 @@ export function ReportsTable() {
               <LabelText>報告書種別</LabelText>
               <Select
                 value={filters.reportType}
-                onValueChange={(value) => updateFilter('reportType', value ?? ALL_VALUE)}
+                onValueChange={(value) => updateFilterAndUrl('reportType', value ?? ALL_VALUE)}
               >
                 <SelectTrigger className="h-10 sm:h-9">
                   <SelectValue placeholder="すべて" />
@@ -482,7 +529,7 @@ export function ReportsTable() {
               <Input
                 type="date"
                 value={filters.createdFrom}
-                onChange={(event) => updateFilter('createdFrom', event.target.value)}
+                onChange={(event) => updateFilterAndUrl('createdFrom', event.target.value)}
                 className="h-10 sm:h-9"
               />
             </div>
@@ -492,7 +539,7 @@ export function ReportsTable() {
               <Input
                 type="date"
                 value={filters.createdTo}
-                onChange={(event) => updateFilter('createdTo', event.target.value)}
+                onChange={(event) => updateFilterAndUrl('createdTo', event.target.value)}
                 className="h-10 sm:h-9"
               />
             </div>
@@ -502,7 +549,7 @@ export function ReportsTable() {
               <Input
                 type="date"
                 value={filters.sentFrom}
-                onChange={(event) => updateFilter('sentFrom', event.target.value)}
+                onChange={(event) => updateFilterAndUrl('sentFrom', event.target.value)}
                 className="h-10 sm:h-9"
               />
             </div>
@@ -512,7 +559,7 @@ export function ReportsTable() {
               <Input
                 type="date"
                 value={filters.sentTo}
-                onChange={(event) => updateFilter('sentTo', event.target.value)}
+                onChange={(event) => updateFilterAndUrl('sentTo', event.target.value)}
                 className="h-10 sm:h-9"
               />
             </div>

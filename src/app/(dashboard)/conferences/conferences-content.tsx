@@ -29,6 +29,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -55,6 +56,9 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import { sectionTemplatesFor, type StructuredSectionDraft } from './conference-note-templates';
 import { SectionIntro } from '@/components/ui/section-intro';
+import { cn } from '@/lib/utils';
+import type { ConferencesFocus } from '@/lib/dashboard/home-link-builders';
+import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 
 type Participant = {
   name: string;
@@ -393,7 +397,18 @@ function ActivityCard({ activity }: { activity: CommunityActivity }) {
   );
 }
 
-export function ConferencesContent() {
+export function ConferencesContent({
+  initialFocus,
+  initialContext,
+  initialViewMode = 'list',
+  initialNoteType = 'all',
+}: {
+  initialFocus?: ConferencesFocus;
+  initialContext?: string | null;
+  initialViewMode?: 'list' | 'calendar';
+  initialNoteType?: 'all' | 'pre_discharge' | 'service_manager' | 'death_conference' | 'care_team';
+} = {}) {
+  const replaceConferencesUrl = useSyncedSearchParams();
   const orgId = useOrgId();
   const isBootstrappingOrg = !orgId;
   const searchParams = useSearchParams();
@@ -406,12 +421,12 @@ export function ConferencesContent() {
   const [reportTypeDraft, setReportTypeDraft] = useState('internal_record');
   const [autoSendReport, setAutoSendReport] = useState(false);
   const [includeStructuredInReport, setIncludeStructuredInReport] = useState(true);
-  const [noteViewMode, setNoteViewMode] = useState<'list' | 'calendar'>('list');
+  const [noteViewMode, setNoteViewMode] = useState<'list' | 'calendar'>(initialViewMode);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | null>(null);
   const [selectedNoteType, setSelectedNoteType] = useState<
     'all' | 'pre_discharge' | 'service_manager' | 'death_conference' | 'care_team'
-  >('all');
+  >(initialNoteType);
   const [lastSyncSummary, setLastSyncSummary] = useState<{
     title: string;
     caseId?: string | null;
@@ -875,6 +890,12 @@ export function ConferencesContent() {
   const notes = notesQuery.data?.data ?? [];
   const calendarNotes = conferenceCalendarQuery.data?.data ?? [];
   const activities = activitiesQuery.data?.data ?? [];
+  const contextSummary =
+    initialContext === 'dashboard_home'
+      ? initialFocus === 'activities'
+        ? 'ホームから地域活動と紹介導線にフォーカスして開いています。'
+        : 'ホームからカンファレンス記録にフォーカスして開いています。'
+      : null;
   const externalProfessionals = externalProfessionalsQuery.data?.data ?? [];
   const prescriberInstitutionSuggestion = prescriberInstitutionSuggestionQuery.data?.data ?? null;
   const calendarMonthStart = startOfMonth(calendarMonth);
@@ -963,6 +984,12 @@ export function ConferencesContent() {
 
   return (
     <div className="space-y-6">
+      {contextSummary ? (
+        <Alert className="border-sky-200 bg-sky-50 text-sky-900" data-testid="conferences-context-banner">
+          <Users className="size-4 text-sky-700" aria-hidden="true" />
+          <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
+        </Alert>
+      ) : null}
       <SectionIntro
         title="会議と活動の入口"
         description="カンファレンス記録と地域活動の件数を先に確認し、どちらに着手するかを最初に判断します。"
@@ -1020,7 +1047,7 @@ export function ConferencesContent() {
         title="カンファレンス記録"
         description="会議記録は一覧またはカレンダーで確認し、タスク化や報告書生成へつなげます。"
       />
-      <section className="space-y-4">
+      <section className={cn('space-y-4', initialFocus === 'notes' ? 'rounded-2xl ring-2 ring-primary/25' : null)}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-sm font-semibold text-foreground">カンファレンス記録</h2>
@@ -1037,7 +1064,10 @@ export function ConferencesContent() {
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground'
                 }`}
-                onClick={() => setNoteViewMode('list')}
+                onClick={() => {
+                  setNoteViewMode('list');
+                  replaceConferencesUrl({ view: null });
+                }}
               >
                 一覧
               </button>
@@ -1048,14 +1078,21 @@ export function ConferencesContent() {
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground'
                 }`}
-                onClick={() => setNoteViewMode('calendar')}
+                onClick={() => {
+                  setNoteViewMode('calendar');
+                  replaceConferencesUrl({ view: 'calendar' });
+                }}
               >
                 カレンダー
               </button>
             </div>
             <Tabs
               value={selectedNoteType}
-              onValueChange={(value) => setSelectedNoteType(value as typeof selectedNoteType)}
+              onValueChange={(value) => {
+                const nextValue = value as typeof selectedNoteType;
+                setSelectedNoteType(nextValue);
+                replaceConferencesUrl({ note_type: nextValue === 'all' ? null : nextValue });
+              }}
             >
               <TabsList variant="line">
                 <TabsTrigger value="all">全て</TabsTrigger>
@@ -1232,7 +1269,7 @@ export function ConferencesContent() {
         title="地域活動と紹介導線"
         description="地域活動の実績と、後続フォローが必要な案件を同じまとまりで追います。"
       />
-      <section className="space-y-4">
+      <section className={cn('space-y-4', initialFocus === 'activities' ? 'rounded-2xl ring-2 ring-primary/25' : null)}>
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-foreground">地域活動と紹介導線</h2>
           <p className="text-sm text-muted-foreground">{activities.length}件</p>

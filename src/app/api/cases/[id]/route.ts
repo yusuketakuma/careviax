@@ -7,10 +7,18 @@ import { updateCaseSchema } from '@/lib/validations/case';
 import { prisma } from '@/lib/db/client';
 import type { Prisma } from '@prisma/client';
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+function normalizeOptionalText(value: string | undefined) {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+function normalizeOptionalDate(value: string | undefined) {
+  if (value === undefined) return undefined;
+  return value ? new Date(value) : null;
+}
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: 'ケース参照の権限がありません',
@@ -60,10 +68,7 @@ export async function GET(
   });
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: 'ケース更新の権限がありません',
@@ -92,44 +97,55 @@ export async function PATCH(
     required_visit_support,
     primary_pharmacist_id,
     backup_pharmacist_id,
+    referral_source,
+    notes,
+    end_reason,
     ...rest
   } = parsed.data;
-  const normalizedPrimaryPharmacistId =
-    primary_pharmacist_id === '' ? null : primary_pharmacist_id;
-  const normalizedBackupPharmacistId =
-    backup_pharmacist_id === '' ? null : backup_pharmacist_id;
+  const normalizedPrimaryPharmacistId = primary_pharmacist_id === '' ? null : primary_pharmacist_id;
+  const normalizedBackupPharmacistId = backup_pharmacist_id === '' ? null : backup_pharmacist_id;
+  const normalizedStartDate = normalizeOptionalDate(start_date);
+  const normalizedEndDate = normalizeOptionalDate(end_date);
+  const normalizedReferralSource = normalizeOptionalText(referral_source);
+  const normalizedNotes = normalizeOptionalText(notes);
+  const normalizedEndReason = normalizeOptionalText(end_reason);
 
   const refResult = await validateOrgReferences(ctx.orgId, {
-    ...(normalizedPrimaryPharmacistId
-      ? { pharmacist_id: normalizedPrimaryPharmacistId }
-      : {}),
-    ...(normalizedBackupPharmacistId
-      ? { pharmacist_id: normalizedBackupPharmacistId }
-      : {}),
+    ...(normalizedPrimaryPharmacistId ? { pharmacist_id: normalizedPrimaryPharmacistId } : {}),
+    ...(normalizedBackupPharmacistId ? { pharmacist_id: normalizedBackupPharmacistId } : {}),
   });
   if (!refResult.ok) return refResult.response;
 
-  const careCase = await withOrgContext(ctx.orgId, async (tx) => {
-    return tx.careCase.update({
-      where: { id },
-      data: {
-        ...(start_date ? { start_date: new Date(start_date) } : {}),
-        ...(end_date ? { end_date: new Date(end_date) } : {}),
-        ...(normalizedPrimaryPharmacistId !== undefined
-          ? { primary_pharmacist_id: normalizedPrimaryPharmacistId }
-          : {}),
-        ...(normalizedBackupPharmacistId !== undefined
-          ? { backup_pharmacist_id: normalizedBackupPharmacistId }
-          : {}),
-        ...(required_visit_support !== undefined
-          ? {
-              required_visit_support: required_visit_support as Prisma.InputJsonValue,
-            }
-          : {}),
-        ...rest,
-      },
-    });
-  }, { requestContext: ctx });
+  const careCase = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      return tx.careCase.update({
+        where: { id },
+        data: {
+          ...(normalizedStartDate !== undefined ? { start_date: normalizedStartDate } : {}),
+          ...(normalizedEndDate !== undefined ? { end_date: normalizedEndDate } : {}),
+          ...(normalizedPrimaryPharmacistId !== undefined
+            ? { primary_pharmacist_id: normalizedPrimaryPharmacistId }
+            : {}),
+          ...(normalizedBackupPharmacistId !== undefined
+            ? { backup_pharmacist_id: normalizedBackupPharmacistId }
+            : {}),
+          ...(normalizedReferralSource !== undefined
+            ? { referral_source: normalizedReferralSource }
+            : {}),
+          ...(normalizedNotes !== undefined ? { notes: normalizedNotes } : {}),
+          ...(normalizedEndReason !== undefined ? { end_reason: normalizedEndReason } : {}),
+          ...(required_visit_support !== undefined
+            ? {
+                required_visit_support: required_visit_support as Prisma.InputJsonValue,
+              }
+            : {}),
+          ...rest,
+        },
+      });
+    },
+    { requestContext: ctx },
+  );
 
   return success(careCase);
 }

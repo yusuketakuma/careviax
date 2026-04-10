@@ -5,12 +5,20 @@ import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page
 import { Loading } from '@/components/ui/loading';
 import { ExternalViewerContent } from './external-viewer-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { readExternalState } from './external-query-state';
 
 export const metadata: Metadata = {
   title: '外部連携ビュー — CareViaX',
 };
 
-export default function ExternalViewerPage() {
+type ExternalViewerPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function ExternalViewerPage({ searchParams }: ExternalViewerPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const initialState = readExternalState(resolvedSearchParams);
+
   return (
     <PageScaffold>
       <WorkflowPageHeader
@@ -38,7 +46,10 @@ export default function ExternalViewerPage() {
       </WorkflowPageHeader>
 
       <Suspense fallback={<Loading />}>
-        <ExternalViewerContent />
+        <ExternalViewerContent
+          initialFocus={initialState.initialFocus}
+          initialContext={initialState.initialContext}
+        />
       </Suspense>
     </PageScaffold>
   );

@@ -1,3 +1,5 @@
+import type { HomeLinkContext } from '@/lib/dashboard/home-link-builders';
+
 export type CommunicationEntityLink = {
   href: string;
   label: string;
@@ -8,6 +10,7 @@ type CommunicationFilterInput = {
   patientId?: string | null;
   relatedEntityType?: string | null;
   relatedEntityId?: string | null;
+  context?: HomeLinkContext | null;
 };
 
 export function buildCommunicationRequestsHref(input: CommunicationFilterInput) {
@@ -16,6 +19,7 @@ export function buildCommunicationRequestsHref(input: CommunicationFilterInput) 
   if (input.patientId) params.set('patient_id', input.patientId);
   if (input.relatedEntityType) params.set('related_entity_type', input.relatedEntityType);
   if (input.relatedEntityId) params.set('related_entity_id', input.relatedEntityId);
+  if (input.context) params.set('context', input.context);
 
   const query = params.toString();
   return query ? `/communications/requests?${query}` : '/communications/requests';

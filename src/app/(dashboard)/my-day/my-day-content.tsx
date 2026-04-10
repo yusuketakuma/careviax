@@ -23,6 +23,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/loading';
@@ -40,6 +41,8 @@ import {
 } from '@/app/(dashboard)/schedules/day-view.shared';
 import type { PatientStatusIcon } from '@/types/dashboard-home';
 import { SectionIntro } from '@/components/ui/section-intro';
+import type { MyDayFocus, MyDayTaskFilter, MyDayVisitFilter } from '@/lib/dashboard/home-link-builders';
+import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 
 type Task = {
   id: string;
@@ -78,7 +81,41 @@ function SectionSkeleton() {
   );
 }
 
-export function MyDayContent() {
+type MyDayContentProps = {
+  initialFocus?: MyDayFocus;
+  initialVisitFilter?: MyDayVisitFilter;
+  initialTaskFilter?: MyDayTaskFilter;
+  initialContext?: string | null;
+};
+
+function InlineFilterButton({
+  active,
+  label,
+}: {
+  active: boolean;
+  label: string;
+}) {
+  return (
+    <span
+      className={[
+        'inline-flex min-h-[32px] items-center rounded-full border px-3 py-1 text-xs font-medium',
+        active
+          ? 'border-primary bg-primary/10 text-primary'
+          : 'border-border/70 bg-background text-muted-foreground',
+      ].join(' ')}
+    >
+      {label}
+    </span>
+  );
+}
+
+export function MyDayContent({
+  initialFocus,
+  initialVisitFilter = 'all',
+  initialTaskFilter = 'all',
+  initialContext,
+}: MyDayContentProps = {}) {
+  const replaceMyDayUrl = useSyncedSearchParams();
   const orgId = useOrgId();
   const userId = useAuthStore((s) => s.currentUser.id);
   const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
@@ -158,12 +195,44 @@ export function MyDayContent() {
     (a) => a.priority === 'urgent' || a.priority === 'high',
   );
   const unpreparedVisits = todayVisits.filter((v) => !v.preparation?.prepared_at);
+  const filteredVisits = todayVisits.filter((visit) => {
+    if (initialVisitFilter === 'unprepared') return !visit.preparation?.prepared_at;
+    if (initialVisitFilter === 'in_progress') {
+      return visit.schedule_status === 'departed' || visit.schedule_status === 'in_progress';
+    }
+    return true;
+  });
+  const filteredPendingTasks = pendingTasks.filter((task) => {
+    if (initialTaskFilter === 'urgent') {
+      return task.priority === 'urgent' || task.priority === 'high';
+    }
+    if (initialTaskFilter === 'pending') {
+      return task.status === 'pending';
+    }
+    return true;
+  });
   const statusChanges = statusChangesQuery.data ?? [];
 
   const totalPipeline = pipeline.reduce((s, p) => s + p.count, 0);
+  const contextSummary =
+    initialContext === 'dashboard_home'
+      ? initialFocus === 'visits'
+        ? 'ホームから担当訪問にフォーカスして開いています。'
+        : initialFocus === 'tasks'
+          ? 'ホームから未完了タスクにフォーカスして開いています。'
+          : initialFocus === 'urgent'
+            ? 'ホームから優先対応にフォーカスして開いています。'
+            : 'ホームから今日の業務にフォーカスして開いています。'
+      : null;
 
   return (
     <div className="space-y-4 p-4 max-w-lg mx-auto">
+      {contextSummary ? (
+        <Alert className="border-sky-200 bg-sky-50 text-sky-900" data-testid="my-day-context-banner">
+          <AlertCircle className="size-4 text-sky-700" aria-hidden="true" />
+          <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
+        </Alert>
+      ) : null}
       <SectionIntro
         title="今日の概要"
         description="今日の訪問、タスク、パイプライン、緊急件数を最初に把握する導入グループです。"
@@ -215,23 +284,52 @@ export function MyDayContent() {
         </Card>
       )}
 
-      <Card>
+      <Card className={initialFocus === 'visits' ? 'ring-2 ring-primary/25' : undefined}>
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-sm">
             <Car className="size-4 text-primary" aria-hidden="true" />
             今日の訪問
             <Badge variant="secondary" className="ml-auto text-xs">
-              {visitsQuery.isLoading ? '…' : `${todayVisits.length}件`}
+              {visitsQuery.isLoading ? '…' : `${filteredVisits.length}件`}
             </Badge>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-1.5">
+          <div className="mb-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                replaceMyDayUrl({ focus: 'visits', visit_filter: null, context: initialContext ?? null })
+              }
+              className="border-0 bg-transparent p-0"
+            >
+              <InlineFilterButton active={initialVisitFilter === 'all'} label="全て" />
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                replaceMyDayUrl({ focus: 'visits', visit_filter: 'unprepared', context: initialContext ?? null })
+              }
+              className="border-0 bg-transparent p-0"
+            >
+              <InlineFilterButton active={initialVisitFilter === 'unprepared'} label="準備未完了のみ" />
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                replaceMyDayUrl({ focus: 'visits', visit_filter: 'in_progress', context: initialContext ?? null })
+              }
+              className="border-0 bg-transparent p-0"
+            >
+              <InlineFilterButton active={initialVisitFilter === 'in_progress'} label="訪問進行中のみ" />
+            </button>
+          </div>
           {visitsQuery.isLoading ? (
             <SectionSkeleton />
-          ) : todayVisits.length === 0 ? (
+          ) : filteredVisits.length === 0 ? (
             <p className="py-3 text-center text-sm text-muted-foreground">本日の訪問はありません</p>
           ) : (
-            todayVisits.map((visit) => {
+            filteredVisits.map((visit) => {
               const windowLabel = timeLabel(visit.time_window_start, visit.time_window_end);
               return (
                 <Link
@@ -303,25 +401,54 @@ export function MyDayContent() {
         </Card>
       )}
 
-      <Card>
+      <Card className={initialFocus === 'tasks' ? 'ring-2 ring-primary/25' : undefined}>
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-sm">
             <CheckSquare className="size-4 text-primary" aria-hidden="true" />
             未完了タスク
             <Badge variant="secondary" className="ml-auto text-xs">
-              {tasksQuery.isLoading ? '…' : `${pendingTasks.length}件`}
+              {tasksQuery.isLoading ? '…' : `${filteredPendingTasks.length}件`}
             </Badge>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-1.5">
+          <div className="mb-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                replaceMyDayUrl({ focus: 'tasks', task_filter: null, context: initialContext ?? null })
+              }
+              className="border-0 bg-transparent p-0"
+            >
+              <InlineFilterButton active={initialTaskFilter === 'all'} label="全て" />
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                replaceMyDayUrl({ focus: 'tasks', task_filter: 'urgent', context: initialContext ?? null })
+              }
+              className="border-0 bg-transparent p-0"
+            >
+              <InlineFilterButton active={initialTaskFilter === 'urgent'} label="高優先のみ" />
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                replaceMyDayUrl({ focus: 'tasks', task_filter: 'pending', context: initialContext ?? null })
+              }
+              className="border-0 bg-transparent p-0"
+            >
+              <InlineFilterButton active={initialTaskFilter === 'pending'} label="未着手のみ" />
+            </button>
+          </div>
           {tasksQuery.isLoading ? (
             <SectionSkeleton />
-          ) : pendingTasks.length === 0 ? (
+          ) : filteredPendingTasks.length === 0 ? (
             <p className="py-3 text-center text-sm text-muted-foreground">
               未完了のタスクはありません
             </p>
           ) : (
-            pendingTasks.slice(0, 8).map((task) => {
+            filteredPendingTasks.slice(0, 8).map((task) => {
               const presentation = describeOperationalTask(task);
               return (
                 <Link

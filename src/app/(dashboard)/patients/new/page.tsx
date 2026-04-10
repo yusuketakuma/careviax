@@ -29,7 +29,7 @@ export default function NewPatientPage() {
         className="mb-6"
       />
 
-      <div className="mx-auto max-w-3xl">
+      <div className="mx-auto max-w-5xl">
         <PatientForm redirectTo="/patients" />
       </div>
     </PageScaffold>

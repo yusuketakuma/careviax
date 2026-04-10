@@ -29,6 +29,8 @@ type PackagingResponse = {
       default_packaging_method: PackagingMethodValue | null;
       medication_box_color: string | null;
       notes: string | null;
+      special_instructions: string | null;
+      cognitive_note: string | null;
       updated_at: string;
     } | null;
     effective_summary: string | null;
@@ -39,12 +41,16 @@ type PackagingFormState = {
   default_packaging_method: PackagingMethodValue | '';
   medication_box_color: string;
   notes: string;
+  special_instructions: string;
+  cognitive_note: string;
 };
 
 const EMPTY_FORM: PackagingFormState = {
   default_packaging_method: '',
   medication_box_color: '',
   notes: '',
+  special_instructions: '',
+  cognitive_note: '',
 };
 
 function toFormState(response?: PackagingResponse): PackagingFormState {
@@ -53,6 +59,8 @@ function toFormState(response?: PackagingResponse): PackagingFormState {
     default_packaging_method: profile?.default_packaging_method ?? '',
     medication_box_color: profile?.medication_box_color ?? '',
     notes: profile?.notes ?? '',
+    special_instructions: profile?.special_instructions ?? '',
+    cognitive_note: profile?.cognitive_note ?? '',
   };
 }
 
@@ -97,6 +105,8 @@ export function PatientPackagingCard({
           default_packaging_method: form.default_packaging_method || null,
           medication_box_color: form.medication_box_color || undefined,
           notes: form.notes || undefined,
+          special_instructions: form.special_instructions || undefined,
+          cognitive_note: form.cognitive_note || undefined,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -195,6 +205,38 @@ export function PatientPackagingCard({
                   }))
                 }
                 placeholder="朝だけ別包、食前薬はクリップ留めなど"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="patient-special-instructions">個別特記指示</Label>
+              <Textarea
+                id="patient-special-instructions"
+                rows={3}
+                value={form.special_instructions}
+                onChange={(event) =>
+                  setDraftForm((current) => ({
+                    ...(current ?? form),
+                    special_instructions: event.target.value,
+                  }))
+                }
+                placeholder="配薬時の注意、手渡し順、施設連携の留意点など"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="patient-cognitive-note">認知・自己管理メモ</Label>
+              <Textarea
+                id="patient-cognitive-note"
+                rows={3}
+                value={form.cognitive_note}
+                onChange={(event) =>
+                  setDraftForm((current) => ({
+                    ...(current ?? form),
+                    cognitive_note: event.target.value,
+                  }))
+                }
+                placeholder="飲み忘れ傾向、理解度、声かけの工夫など"
               />
             </div>
 

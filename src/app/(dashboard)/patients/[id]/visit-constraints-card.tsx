@@ -34,6 +34,7 @@ type VisitConstraintsResponse = {
       geocode_status: string | null;
       geocode_source: string | null;
       geocode_accuracy: string | null;
+      geocoded_at: string | null;
     } | null;
   };
 };
@@ -93,6 +94,21 @@ function toTimeValue(value: string | null | undefined) {
   return value.slice(11, 16);
 }
 
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return '未記録';
+  try {
+    return new Intl.DateTimeFormat('ja-JP', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
+}
+
 function toFormState(response?: VisitConstraintsResponse): VisitConstraintsFormState {
   const pref = response?.data.scheduling_preference;
   const residence = response?.data.residence;
@@ -106,7 +122,8 @@ function toFormState(response?: VisitConstraintsResponse): VisitConstraintsFormS
     facility_time_from: toTimeValue(pref?.facility_time_from),
     facility_time_to: toTimeValue(pref?.facility_time_to),
     family_presence_required: pref?.family_presence_required ?? false,
-    visit_buffer_minutes: pref?.visit_buffer_minutes != null ? String(pref.visit_buffer_minutes) : '',
+    visit_buffer_minutes:
+      pref?.visit_buffer_minutes != null ? String(pref.visit_buffer_minutes) : '',
     preferred_contact_name: pref?.preferred_contact_name ?? '',
     preferred_contact_phone: pref?.preferred_contact_phone ?? '',
     notes: pref?.notes ?? '',
@@ -129,13 +146,7 @@ function updateDraftForm(
   };
 }
 
-export function VisitConstraintsCard({
-  patientId,
-  orgId,
-}: {
-  patientId: string;
-  orgId: string;
-}) {
+export function VisitConstraintsCard({ patientId, orgId }: { patientId: string; orgId: string }) {
   const queryClient = useQueryClient();
   const [draftForm, setDraftForm] = useState<VisitConstraintsFormState | null>(null);
 
@@ -193,10 +204,7 @@ export function VisitConstraintsCard({
     onSuccess: async () => {
       toast.success('訪問条件を保存しました');
       setDraftForm(null);
-      await invalidateQueryKeys(
-        queryClient,
-        getPatientCareQueryKeys({ orgId, patientId })
-      );
+      await invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId }));
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '訪問条件の保存に失敗しました');
@@ -220,7 +228,11 @@ export function VisitConstraintsCard({
         <div className="flex flex-wrap items-center gap-2">
           {selectedWeekdayLabels.length > 0 ? (
             selectedWeekdayLabels.map((label) => (
-              <Badge key={label} variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">
+              <Badge
+                key={label}
+                variant="outline"
+                className="border-sky-200 bg-sky-50 text-sky-700"
+              >
                 {label}
               </Badge>
             ))
@@ -251,7 +263,9 @@ export function VisitConstraintsCard({
                               updateDraftForm(current, form, {
                                 preferred_weekdays: next
                                   ? [...form.preferred_weekdays, weekday.value]
-                                  : form.preferred_weekdays.filter((value) => value !== weekday.value),
+                                  : form.preferred_weekdays.filter(
+                                      (value) => value !== weekday.value,
+                                    ),
                               }),
                             )
                           }
@@ -431,6 +445,13 @@ export function VisitConstraintsCard({
               </div>
             </div>
 
+            <div className="rounded-lg border border-border/70 bg-muted/10 px-3 py-2 text-sm">
+              <span className="text-muted-foreground">最終ジオコード更新</span>
+              <span className="ml-2 text-foreground">
+                {formatDateTime(data?.data.residence?.geocoded_at)}
+              </span>
+            </div>
+
             <div className="space-y-1.5">
               <Label htmlFor="visit-constraint-notes">備考</Label>
               <Textarea
@@ -478,7 +499,11 @@ function TimeRange({
     <div className="grid gap-4 md:grid-cols-2">
       <div className="space-y-1.5">
         <Label>{label} 開始</Label>
-        <Input type="time" value={from} onChange={(event) => onChange(fromField, event.target.value)} />
+        <Input
+          type="time"
+          value={from}
+          onChange={(event) => onChange(fromField, event.target.value)}
+        />
       </div>
       <div className="space-y-1.5">
         <Label>{label} 終了</Label>

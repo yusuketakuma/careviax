@@ -11,6 +11,7 @@ describe('route labels', () => {
     expect(labelForPath('/admin/settings')).toBe('管理設定');
     expect(labelForPath('/admin/performance')).toBe('パフォーマンス');
     expect(labelForPath('/admin/realtime')).toBe('リアルタイム監視');
+    expect(labelForPath('/patients/p1/edit')).toBe('患者情報編集');
     expect(labelForPath('/patients/p1/mcs')).toBe('MCS連携');
   });
 

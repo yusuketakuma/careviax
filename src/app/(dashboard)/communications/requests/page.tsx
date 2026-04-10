@@ -5,6 +5,7 @@ import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page
 import { Loading } from '@/components/ui/loading';
 import { CommunicationRequestsContent } from './requests-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { readCommunicationRequestsState } from './requests-query-state';
 
 export const metadata: Metadata = {
   title: '依頼・照会一覧 — CareViaX',
@@ -14,14 +15,11 @@ type CommunicationRequestsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-function readString(value: string | string[] | undefined) {
-  return typeof value === 'string' ? value : null;
-}
-
 export default async function CommunicationRequestsPage({
   searchParams,
 }: CommunicationRequestsPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const initialState = readCommunicationRequestsState(resolvedSearchParams);
 
   return (
     <PageScaffold>
@@ -51,10 +49,11 @@ export default async function CommunicationRequestsPage({
 
       <Suspense fallback={<Loading />}>
         <CommunicationRequestsContent
-          initialStatus={readString(resolvedSearchParams?.status)}
-          initialPatientId={readString(resolvedSearchParams?.patient_id)}
-          initialRelatedEntityType={readString(resolvedSearchParams?.related_entity_type)}
-          initialRelatedEntityId={readString(resolvedSearchParams?.related_entity_id)}
+          initialStatus={initialState.initialStatus}
+          initialPatientId={initialState.initialPatientId}
+          initialRelatedEntityType={initialState.initialRelatedEntityType}
+          initialRelatedEntityId={initialState.initialRelatedEntityId}
+          initialContext={initialState.initialContext}
         />
       </Suspense>
     </PageScaffold>

@@ -11,17 +11,35 @@ export type PatientOverview = {
   phone: string | null;
   medical_insurance_number: string | null;
   care_insurance_number: string | null;
+  billing_support_flag: boolean;
   allergy_info: AllergyEntry[] | null;
   notes: string | null;
   archived_at: string | null;
+  archived_by: string | null;
+  archived_by_name: string | null;
   residences: Array<{
     id: string;
     address: string;
     building_id: string | null;
     facility_id: string | null;
+    facility_unit_id: string | null;
     unit_name: string | null;
     is_primary: boolean;
   }>;
+  scheduling_preference: {
+    visit_before_contact_required: boolean | null;
+    first_visit_preferred_date: string | null;
+    first_visit_time_slot: string | null;
+    first_visit_time_note: string | null;
+    parking_available: boolean | null;
+    primary_contact_preference: string | null;
+    mcs_linked: boolean | null;
+    adl_level: string | null;
+    dementia_level: string | null;
+    swallowing_route: string | null;
+    care_level: string | null;
+    infection_isolation: boolean;
+  } | null;
   conditions: Array<{
     id: string;
     condition_type: 'disease' | 'problem';
@@ -35,10 +53,12 @@ export type PatientOverview = {
     id: string;
     status: string;
     primary_pharmacist_id: string | null;
+    backup_pharmacist_id: string | null;
     referral_source: string | null;
     referral_date: string | null;
     start_date: string | null;
     end_date: string | null;
+    end_reason: string | null;
     notes: string | null;
     created_at: string;
     updated_at: string;
@@ -308,4 +328,81 @@ export type PatientReadinessSnapshot = {
     action_label: string;
     severity: 'normal' | 'high';
   }>;
+};
+
+export type PatientWorkflowPreviewSnapshot = {
+  visit_preparation: {
+    onboarding_readiness: {
+      consent_obtained: boolean;
+      emergency_contact_set: boolean;
+      primary_physician_set: boolean;
+      management_plan_approved: boolean;
+    };
+    scheduling_preview: {
+      preferred_weekdays: number[];
+      preferred_time_from: string | null;
+      preferred_time_to: string | null;
+      phone_contact_from: string | null;
+      phone_contact_to: string | null;
+      facility_time_from: string | null;
+      facility_time_to: string | null;
+      family_presence_required: boolean;
+      visit_buffer_minutes: number | null;
+      preferred_contact_name: string | null;
+      preferred_contact_phone: string | null;
+      visit_before_contact_required: boolean;
+      first_visit_preferred_date: string | null;
+      first_visit_time_slot: string | null;
+      first_visit_time_note: string | null;
+      parking_available: boolean | null;
+      primary_contact_preference: string | null;
+      mcs_linked: boolean;
+    };
+    baseline_context: {
+      primary_disease: string | null;
+      care_level: string | null;
+      adl_level: string | null;
+      dementia_level: string | null;
+      money_management: string | null;
+      family_key_person: string | null;
+      medication_support_methods: string[];
+      special_medical_procedures: string[];
+      infection_isolation: string | null;
+      narcotics_base: boolean | null;
+      narcotics_rescue: boolean | null;
+      residual_medication_status: string | null;
+    };
+    latest_labs: Array<{
+      analyte_code: string;
+      measured_at: string;
+      value_numeric: number | null;
+      unit: string | null;
+      abnormal_flag: string | null;
+    }>;
+    blockers: string[];
+  };
+  report_targets: Array<{
+    key: 'physician_report' | 'care_manager_report' | 'nurse_share' | 'mcs';
+    label: string;
+    available: boolean;
+    source: 'care_team' | 'requester' | 'intake' | 'patient_setting' | 'missing';
+    recipient_name: string | null;
+    recipient_organization: string | null;
+    contact: string | null;
+    status?: string | null;
+  }>;
+  communication_priority: {
+    preferred_contact_method: string | null;
+    effective_channel: string;
+    visit_before_contact_required: boolean;
+    pharmacy_decision_due_date: string | null;
+    targets: Array<{
+      key: 'family' | 'facility' | 'nurse' | 'care_manager' | 'mcs';
+      recipientRole: string;
+      recipientName: string;
+      contact: string | null;
+      priority_order: number;
+    }>;
+    warnings: string[];
+  };
 };

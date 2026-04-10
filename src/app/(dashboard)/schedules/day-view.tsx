@@ -76,6 +76,7 @@ import {
   processSyncQueue,
   setupAutoSync,
 } from '@/lib/stores/sync-engine';
+import { cn } from '@/lib/utils';
 import { VisitCardMobile } from '@/components/features/visits/visit-card-mobile';
 import { VisitRoutePreviewPanel } from '@/components/features/visits/visit-route-preview-panel';
 import { ScheduleMetricCard } from './schedule-metric-card';
@@ -193,14 +194,24 @@ const FACILITY_VISIT_DAY_WEEKDAY_OPTIONS = [
 const GANTT_SLOT_MINUTES = 30;
 const GANTT_DEFAULT_START_MINUTES = 8 * 60;
 const GANTT_DEFAULT_END_MINUTES = 18 * 60;
-export function ScheduleDayView() {
+type ScheduleDayViewProps = {
+  initialSelectedDate?: string;
+  initialTab?: 'proposals' | 'confirmed';
+  highlightedScheduleId?: string;
+};
+
+export function ScheduleDayView({
+  initialSelectedDate,
+  initialTab = 'proposals',
+  highlightedScheduleId,
+}: ScheduleDayViewProps = {}) {
   const router = useRouter();
   const orgId = useOrgId();
   const isBootstrappingOrg = !orgId;
   const queryClient = useQueryClient();
   const [plannerCandidateCountManual, setPlannerCandidateCountManual] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() =>
-    format(new Date(), 'yyyy-MM-dd')
+    initialSelectedDate ?? format(new Date(), 'yyyy-MM-dd')
   );
   const [plannerForm, setPlannerForm] = useState({
     case_id: '',
@@ -2857,7 +2868,7 @@ export function ScheduleDayView() {
           </Card>
         </div>
 
-        <Tabs defaultValue="proposals">
+        <Tabs defaultValue={initialTab}>
           <TabsList variant="line" className="mb-4">
             <TabsTrigger value="proposals">
               候補一覧
@@ -3574,7 +3585,14 @@ export function ScheduleDayView() {
                     .map((alert) => alert.message) ?? [];
 
                 return (
-                <Card key={schedule.id} className="overflow-hidden">
+                <Card
+                  key={schedule.id}
+                  id={`schedule-${schedule.id}`}
+                  className={cn(
+                    'overflow-hidden scroll-mt-28',
+                    highlightedScheduleId === schedule.id ? 'ring-2 ring-primary/30' : null,
+                  )}
+                >
                   <CardContent className="space-y-4 py-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>

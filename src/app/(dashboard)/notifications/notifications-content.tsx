@@ -7,6 +7,7 @@ import { ja } from 'date-fns/locale';
 import { Bell, BellOff, CheckCheck, ExternalLink, AlertTriangle, Clock, Cpu } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -14,6 +15,8 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { badgeToneClass } from '@/lib/ui/badge-semantics';
 import { SectionIntro } from '@/components/ui/section-intro';
+import type { HomeLinkContext, NotificationTab, NotificationTypeFilter } from '@/lib/dashboard/home-link-builders';
+import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 
 // --- Types ---
 
@@ -131,11 +134,22 @@ function NotificationCard({
 
 // --- Main ---
 
-export function NotificationsContent() {
+type NotificationsContentProps = {
+  initialTab?: NotificationTab;
+  initialTypeFilter?: NotificationTypeFilter;
+  initialContext?: HomeLinkContext | null;
+};
+
+export function NotificationsContent({
+  initialTab = 'unread',
+  initialTypeFilter = 'all',
+  initialContext,
+}: NotificationsContentProps = {}) {
+  const replaceNotificationsUrl = useSyncedSearchParams();
   const orgId = useOrgId();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<'unread' | 'all'>('unread');
-  const [typeFilter, setTypeFilter] = useState<'all' | NotificationType>('all');
+  const [tab, setTab] = useState<'unread' | 'all'>(initialTab);
+  const [typeFilter, setTypeFilter] = useState<'all' | NotificationType>(initialTypeFilter);
 
   const { data: unreadData, isLoading: unreadLoading } = useQuery({
     queryKey: ['notifications', orgId, 'unread'],
@@ -253,15 +267,36 @@ export function NotificationsContent() {
       ? currentList
       : currentList.filter((notification) => notification.type === typeFilter);
   const isLoading = tab === 'unread' ? unreadLoading : allLoading;
+  const contextSummary =
+    initialContext === 'dashboard_home'
+      ? tab === 'unread' && typeFilter === 'urgent'
+        ? 'ホームから未読の緊急通知にフォーカスして開いています。'
+        : tab === 'unread'
+          ? 'ホームから未読通知にフォーカスして開いています。'
+          : 'ホームから通知一覧にフォーカスして開いています。'
+      : null;
 
   return (
     <div className="space-y-6">
+      {contextSummary ? (
+        <Alert className="border-sky-200 bg-sky-50 text-sky-900" data-testid="notifications-context-banner">
+          <Bell className="size-4 text-sky-700" aria-hidden="true" />
+          <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
+        </Alert>
+      ) : null}
       <SectionIntro
         title="絞り込み"
         description="未読・全件・通知種別で先に絞り込み、処理すべき通知だけを残します。"
       />
       <div className="flex items-center justify-between">
-        <Tabs value={tab} onValueChange={(v) => setTab(v as 'unread' | 'all')}>
+        <Tabs
+          value={tab}
+          onValueChange={(v) => {
+            const nextTab = v as 'unread' | 'all';
+            setTab(nextTab);
+            replaceNotificationsUrl({ tab: nextTab === 'unread' ? null : nextTab });
+          }}
+        >
           <TabsList>
             <TabsTrigger value="unread">
               未読
@@ -293,7 +328,10 @@ export function NotificationsContent() {
           type="button"
           size="sm"
           variant={typeFilter === 'all' ? 'default' : 'outline'}
-          onClick={() => setTypeFilter('all')}
+          onClick={() => {
+            setTypeFilter('all');
+            replaceNotificationsUrl({ type: null });
+          }}
         >
           すべて
           <Badge variant="secondary" className="ml-1.5">
@@ -308,7 +346,10 @@ export function NotificationsContent() {
               type="button"
               size="sm"
               variant={typeFilter === type ? 'default' : 'outline'}
-              onClick={() => setTypeFilter(type)}
+              onClick={() => {
+                setTypeFilter(type);
+                replaceNotificationsUrl({ type });
+              }}
             >
               {TYPE_CONFIG[type].label}
               <Badge variant="secondary" className="ml-1.5">

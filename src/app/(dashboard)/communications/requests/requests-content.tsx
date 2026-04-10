@@ -7,6 +7,7 @@ import { type ColumnDef } from '@tanstack/react-table';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { Clock, AlertTriangle } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
@@ -30,6 +31,7 @@ import {
 } from '@/lib/communications/navigation';
 import { toast } from 'sonner';
 import { SectionIntro } from '@/components/ui/section-intro';
+import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 
 type CommunicationRequestRow = {
   id: string;
@@ -151,6 +153,7 @@ type CommunicationRequestsContentProps = {
   initialPatientId?: string | null;
   initialRelatedEntityType?: string | null;
   initialRelatedEntityId?: string | null;
+  initialContext?: string | null;
 };
 
 export function CommunicationRequestsContent({
@@ -158,7 +161,9 @@ export function CommunicationRequestsContent({
   initialPatientId,
   initialRelatedEntityType,
   initialRelatedEntityId,
+  initialContext,
 }: CommunicationRequestsContentProps) {
+  const replaceRequestsUrl = useSyncedSearchParams();
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState(initialStatus ?? '');
@@ -172,6 +177,12 @@ export function CommunicationRequestsContent({
     entityType: relatedEntityTypeFilter || null,
     entityId: relatedEntityIdFilter || null,
   });
+  const contextSummary =
+    initialContext === 'dashboard_home'
+      ? statusFilter === 'sent'
+        ? 'ホームから返信待ちの依頼・照会にフォーカスして開いています。'
+        : 'ホームから依頼・照会の対応キューにフォーカスして開いています。'
+      : null;
 
   const statusMutation = useMutation({
     mutationFn: async ({
@@ -558,6 +569,12 @@ export function CommunicationRequestsContent({
 
   return (
     <div className="space-y-6">
+      {contextSummary ? (
+        <Alert className="border-sky-200 bg-sky-50 text-sky-900" data-testid="communications-context-banner">
+          <AlertTriangle className="size-4 text-sky-700" aria-hidden="true" />
+          <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
+        </Alert>
+      ) : null}
       <SectionIntro
         title="絞り込みと文脈"
         description="返信待ち、対応中、患者文脈を先に絞り込み、確認すべき依頼だけに集中できるようにします。"
@@ -569,7 +586,10 @@ export function CommunicationRequestsContent({
               key={tab.value}
               variant={statusFilter === tab.value ? 'default' : 'ghost'}
               size="sm"
-              onClick={() => setStatusFilter(tab.value)}
+              onClick={() => {
+                setStatusFilter(tab.value);
+                replaceRequestsUrl({ status: tab.value || null });
+              }}
             >
               {tab.label}
             </Button>

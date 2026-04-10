@@ -1,8 +1,8 @@
 'use client';
 
-import { startTransition, useDeferredValue, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -19,6 +19,7 @@ import {
 import { toast } from 'sonner';
 import { VisitProposalDiagnosticsCard, type ProposalGenerationDiagnosticsCardData } from '@/components/features/visits/visit-proposal-diagnostics-card';
 import { VisitRoutePreviewPanel } from '@/components/features/visits/visit-route-preview-panel';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,6 +44,8 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import { cn } from '@/lib/utils';
+import { useReplaceSearchParams } from '@/lib/navigation/use-synced-search-params';
 import { applyVisitScheduleProposalRouteUpdates } from '@/app/(dashboard)/schedules/visit-route-client';
 import { useRouteOrderDraft } from '@/app/(dashboard)/schedules/route-order-draft';
 import { mergeScheduleProposalSearchParams } from './proposal-query-state';
@@ -290,9 +293,8 @@ export function ScheduleProposalsContent({
   initialDetailId,
   initialTravelMode,
 }: ContentProps) {
-  const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
+  const replaceSearchParams = useReplaceSearchParams();
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<DashboardTab>(toDashboardTab(initialStatus));
@@ -345,9 +347,7 @@ export function ScheduleProposalsContent({
         ...patch,
       },
     });
-    startTransition(() => {
-      router.replace(`${pathname}?${next.toString()}`, { scroll: false });
-    });
+    replaceSearchParams(next);
   };
 
   const queryParams = useMemo(() => {
@@ -512,6 +512,18 @@ export function ScheduleProposalsContent({
       : detailId && proposals.some((proposal) => proposal.id === detailId)
         ? detailId
         : null;
+
+  useEffect(() => {
+    if (!activeDetailId) return;
+
+    const timeoutId = window.setTimeout(() => {
+      document
+        .getElementById(`proposal-${activeDetailId}`)
+        ?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [activeDetailId]);
 
   const detailQuery = useRealtimeQuery({
     queryKey: ['schedule-proposal-detail', orgId, activeDetailId, routeTravelMode],
@@ -941,6 +953,37 @@ export function ScheduleProposalsContent({
   const rescheduleFilterActive = filterPreset === 'reschedule';
   const todayFilterActive =
     filterPreset === 'today' || (activeTab === 'unapproved' && dateFrom === todayKey() && dateTo === todayKey());
+  const presetBanner =
+    filterPreset === 'contact'
+      ? {
+          title: '未架電・連絡対応の候補を表示中です。',
+          description: '患者連絡中タブに固定し、架電や折返し確認が必要な候補を優先表示しています。',
+          icon: PhoneCall,
+          className: 'border-sky-200 bg-sky-50 text-sky-900',
+        }
+      : filterPreset === 'reschedule'
+        ? {
+            title: '再調整が必要な候補を表示中です。',
+            description: 'リスケ由来の候補に絞り、差替や再提案が必要な案件を追いやすくしています。',
+            icon: RefreshCw,
+            className: 'border-orange-200 bg-orange-50 text-orange-900',
+          }
+        : filterPreset === 'today'
+          ? {
+              title: '本日候補を表示中です。',
+              description: '当日中に処理したい未承認候補へすぐ着手できるよう、今日の日付帯で絞り込んでいます。',
+              icon: CalendarClock,
+              className: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+            }
+          : filterPreset === 'stale'
+            ? {
+                title: '差替済み・期限切れ候補を表示中です。',
+                description: '却下タブに切り替え、追跡が必要な stale 候補を確認しやすくしています。',
+                icon: XCircle,
+                className: 'border-amber-200 bg-amber-50 text-amber-900',
+              }
+            : null;
+  const PresetBannerIcon = presetBanner?.icon;
 
   return (
     <div className="space-y-6">
@@ -1119,6 +1162,16 @@ export function ScheduleProposalsContent({
         </Card>
       </div>
 
+      {presetBanner ? (
+        <Alert className={presetBanner.className} data-testid="proposal-preset-banner">
+          {PresetBannerIcon ? <PresetBannerIcon className="size-4" aria-hidden="true" /> : null}
+          <AlertDescription className="space-y-1 text-current">
+            <p className="font-medium">{presetBanner.title}</p>
+            <p>{presetBanner.description}</p>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       <Tabs
         value={activeTab}
         onValueChange={(value) => {
@@ -1264,7 +1317,12 @@ export function ScheduleProposalsContent({
             return (
               <Card
                 key={proposal.id}
-                className="border-border/70 bg-card/95"
+                id={`proposal-${proposal.id}`}
+                data-testid={activeDetailId === proposal.id ? 'schedule-proposal-active-row' : undefined}
+                className={cn(
+                  'border-border/70 bg-card/95 scroll-mt-28',
+                  activeDetailId === proposal.id ? 'ring-2 ring-primary/30' : null,
+                )}
               >
                 <CardContent className="space-y-4 p-5">
                   <div className="flex flex-wrap items-start justify-between gap-4">

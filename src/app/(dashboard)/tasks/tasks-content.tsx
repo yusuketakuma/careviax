@@ -9,6 +9,7 @@ import { ja } from 'date-fns/locale';
 import { CheckSquare, Filter } from 'lucide-react';
 import { toast } from 'sonner';
 import { DataTable } from '@/components/ui/data-table';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -27,6 +28,12 @@ import { useAuthStore } from '@/lib/stores/auth-store';
 import { describeOperationalTask } from '@/lib/tasks/operational-task-presentation';
 import { badgeToneClass } from '@/lib/ui/badge-semantics';
 import { SectionIntro } from '@/components/ui/section-intro';
+import type {
+  TasksAssignedFilter,
+  TasksPriorityFilter,
+  TasksStatusFilter,
+} from '@/lib/dashboard/home-link-builders';
+import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 
 // --- Types ---
 
@@ -98,15 +105,30 @@ function formatDate(value: string | null) {
 
 // --- Main ---
 
-export function TasksContent() {
+type TasksContentProps = {
+  initialAssigned?: TasksAssignedFilter;
+  initialStatus?: TasksStatusFilter;
+  initialTaskType?: string | null;
+  initialPriority?: TasksPriorityFilter;
+  initialContext?: string | null;
+};
+
+export function TasksContent({
+  initialAssigned,
+  initialStatus,
+  initialTaskType,
+  initialPriority,
+  initialContext,
+}: TasksContentProps = {}) {
+  const replaceTaskUrl = useSyncedSearchParams();
   const orgId = useOrgId();
   const currentUserId = useAuthStore((s) => s.currentUser.id);
   const queryClient = useQueryClient();
 
-  const [assignedToMe, setAssignedToMe] = useState(false);
-  const [statusFilter, setStatusFilter] = useState('pending');
-  const [taskTypeFilter, setTaskTypeFilter] = useState('');
-  const [priorityFilter, setPriorityFilter] = useState('');
+  const [assignedToMe, setAssignedToMe] = useState(initialAssigned === 'me');
+  const [statusFilter, setStatusFilter] = useState(initialStatus ?? 'pending');
+  const [taskTypeFilter, setTaskTypeFilter] = useState(initialTaskType ?? '');
+  const [priorityFilter, setPriorityFilter] = useState(initialPriority ?? '');
   const [selectedTasks, setSelectedTasks] = useState<Task[]>([]);
 
   const queryParams = useMemo(() => {
@@ -163,6 +185,12 @@ export function TasksContent() {
   const completableTasks = selectedTasks.filter(
     (t) => t.status !== 'completed' && t.status !== 'cancelled',
   );
+  const contextSummary =
+    initialContext === 'dashboard_home'
+      ? assignedToMe
+        ? 'ホームから自分担当の未完了タスクにフォーカスして開いています。'
+        : 'ホームから優先タスクにフォーカスして開いています。'
+      : null;
 
   const columns = useMemo<ColumnDef<Task>[]>(
     () => [
@@ -249,6 +277,12 @@ export function TasksContent() {
 
   return (
     <div className="space-y-6">
+      {contextSummary ? (
+        <Alert className="border-sky-200 bg-sky-50 text-sky-900" data-testid="tasks-context-banner">
+          <Filter className="size-4 text-sky-700" aria-hidden="true" />
+          <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
+        </Alert>
+      ) : null}
       <SectionIntro
         title="絞り込み"
         description="状態、種別、優先度、自分担当を先に絞り込み、処理対象のタスクだけに集中できるようにします。"
@@ -264,7 +298,14 @@ export function TasksContent() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-1.5">
               <Label htmlFor="status-filter">状態</Label>
-              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? '')}>
+              <Select
+                value={statusFilter}
+                onValueChange={(v) => {
+                  const nextValue = v ?? '';
+                  setStatusFilter(nextValue);
+                  replaceTaskUrl({ status: nextValue || null });
+                }}
+              >
                 <SelectTrigger id="status-filter">
                   <SelectValue placeholder="すべて" />
                 </SelectTrigger>
@@ -279,7 +320,14 @@ export function TasksContent() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="type-filter">種別</Label>
-              <Select value={taskTypeFilter} onValueChange={(v) => setTaskTypeFilter(v ?? '')}>
+              <Select
+                value={taskTypeFilter}
+                onValueChange={(v) => {
+                  const nextValue = v ?? '';
+                  setTaskTypeFilter(nextValue);
+                  replaceTaskUrl({ task_type: nextValue || null });
+                }}
+              >
                 <SelectTrigger id="type-filter">
                   <SelectValue placeholder="すべて" />
                 </SelectTrigger>
@@ -294,7 +342,14 @@ export function TasksContent() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="priority-filter">優先度</Label>
-              <Select value={priorityFilter} onValueChange={(v) => setPriorityFilter(v ?? '')}>
+              <Select
+                value={priorityFilter}
+                onValueChange={(v) => {
+                  const nextValue = v ?? '';
+                  setPriorityFilter(nextValue);
+                  replaceTaskUrl({ priority: nextValue || null });
+                }}
+              >
                 <SelectTrigger id="priority-filter">
                   <SelectValue placeholder="すべて" />
                 </SelectTrigger>
@@ -309,7 +364,14 @@ export function TasksContent() {
             </div>
             <div className="flex items-end pb-0.5">
               <label className="flex cursor-pointer items-center gap-2 text-sm">
-                <Checkbox checked={assignedToMe} onCheckedChange={(v) => setAssignedToMe(!!v)} />
+                <Checkbox
+                  checked={assignedToMe}
+                  onCheckedChange={(v) => {
+                    const nextValue = !!v;
+                    setAssignedToMe(nextValue);
+                    replaceTaskUrl({ assigned: nextValue ? 'me' : null });
+                  }}
+                />
                 自分に割り当て
               </label>
             </div>

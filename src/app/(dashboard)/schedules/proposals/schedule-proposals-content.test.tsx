@@ -94,6 +94,7 @@ function buildProposal(overrides?: Record<string, unknown>) {
 describe('ScheduleProposalsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Element.prototype.scrollIntoView = vi.fn();
     useOrgIdMock.mockReturnValue('org_1');
     useRouterMock.mockReturnValue({ replace: vi.fn() });
     usePathnameMock.mockReturnValue('/schedules/proposals');
@@ -143,5 +144,18 @@ describe('ScheduleProposalsContent', () => {
       expect.stringContaining('preset=today'),
       { scroll: false }
     );
+  });
+
+  it('highlights the active detail proposal row from the URL state', () => {
+    render(<ScheduleProposalsContent initialDetailId="proposal_1" />);
+
+    expect(screen.getByTestId('schedule-proposal-active-row')).toBeTruthy();
+  });
+
+  it('shows a preset context banner when opened from a focused dashboard link', () => {
+    render(<ScheduleProposalsContent initialPreset="contact" initialStatus="patient_contact_pending" />);
+
+    expect(screen.getByTestId('proposal-preset-banner')).toBeTruthy();
+    expect(screen.getByText('未架電・連絡対応の候補を表示中です。')).toBeTruthy();
   });
 });

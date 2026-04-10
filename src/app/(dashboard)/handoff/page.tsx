@@ -5,12 +5,20 @@ import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page
 import { Loading } from '@/components/ui/loading';
 import { HandoffBoard } from '@/components/features/handoff/handoff-board';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { readHandoffState } from './handoff-query-state';
 
 export const metadata: Metadata = {
   title: '申し送り — CareViaX',
 };
 
-export default function HandoffPage() {
+type HandoffPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function HandoffPage({ searchParams }: HandoffPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const initialState = readHandoffState(resolvedSearchParams);
+
   return (
     <PageScaffold>
       <WorkflowPageHeader
@@ -36,7 +44,11 @@ export default function HandoffPage() {
       </WorkflowPageHeader>
 
       <Suspense fallback={<Loading />}>
-        <HandoffBoard />
+        <HandoffBoard
+          initialDate={initialState.initialDate}
+          initialFilter={initialState.initialFilter}
+          initialContext={initialState.initialContext}
+        />
       </Suspense>
     </PageScaffold>
   );

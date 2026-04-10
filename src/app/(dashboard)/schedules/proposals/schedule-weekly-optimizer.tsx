@@ -1,7 +1,7 @@
 'use client';
 
-import { startTransition, Fragment, useDeferredValue, useMemo, useState } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Fragment, useDeferredValue, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   addWeeks,
@@ -31,6 +31,7 @@ import {
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
+import { useReplaceSearchParams } from '@/lib/navigation/use-synced-search-params';
 import { fetchVisitSchedulesWindow } from '../visit-schedule-fetch.helpers';
 import type { VisitRoutePlan } from '@/server/services/visit-route-engine';
 import {
@@ -293,9 +294,8 @@ export function ScheduleWeeklyOptimizer({
   initialRoutePharmacistId,
   initialRouteDate,
 }: WeeklyOptimizerProps) {
-  const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
+  const replaceSearchParams = useReplaceSearchParams();
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [weekAnchor, setWeekAnchor] = useState(() =>
@@ -337,9 +337,7 @@ export function ScheduleWeeklyOptimizer({
         ...patch,
       },
     });
-    startTransition(() => {
-      router.replace(`${pathname}?${next.toString()}`, { scroll: false });
-    });
+    replaceSearchParams(next);
   };
 
   const weekStart = weekAnchor;

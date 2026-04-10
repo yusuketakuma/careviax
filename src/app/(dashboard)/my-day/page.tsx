@@ -3,12 +3,20 @@ import { getMyDayShortcutLinks } from '@/components/features/workflow/page-short
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { MyDayContent } from './my-day-content';
+import { readMyDayState } from './my-day-query-state';
 
 export const metadata: Metadata = {
   title: 'My Day — CareViaX',
 };
 
-export default function MyDayPage() {
+type MyDayPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function MyDayPage({ searchParams }: MyDayPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const initialState = readMyDayState(resolvedSearchParams);
+
   return (
     <PageScaffold stackClassName="[&>*]:rounded-none [&>*]:border-0 [&>*]:bg-transparent [&>*]:p-0 [&>*]:shadow-none">
       <div className="border-b border-border px-6 py-4">
@@ -30,7 +38,12 @@ export default function MyDayPage() {
           className="mb-0"
         />
       </div>
-      <MyDayContent />
+      <MyDayContent
+        initialFocus={initialState.initialFocus}
+        initialVisitFilter={initialState.initialVisitFilter}
+        initialTaskFilter={initialState.initialTaskFilter}
+        initialContext={initialState.initialContext}
+      />
     </PageScaffold>
   );
 }

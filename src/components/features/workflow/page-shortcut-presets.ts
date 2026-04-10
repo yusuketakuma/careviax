@@ -17,9 +17,7 @@ export function getVisitDetailShortcutLinks(visitRecordId: string): PageShortcut
   ];
 }
 
-export function getVisitHandoffShortcutLinks(
-  visitRecordId: string
-): PageShortcutLink[] {
+export function getVisitHandoffShortcutLinks(visitRecordId: string): PageShortcutLink[] {
   return [
     { href: `/visits/${visitRecordId}`, label: '訪問記録詳細' },
     { href: '/handoff', label: '申し送り一覧' },
@@ -29,12 +27,26 @@ export function getVisitHandoffShortcutLinks(
 
 export function getPatientHubShortcutLinks(patientId: string): PageShortcutLink[] {
   return [
+    { href: `/patients/${patientId}/edit`, label: '患者情報編集', group: '基本情報' },
     { href: `/patients/${patientId}/prescriptions`, label: '処方履歴', group: '服薬・経過' },
     { href: `/patients/${patientId}/medications`, label: '服薬管理', group: '服薬・経過' },
-    { href: `/patients/${patientId}/medication-calendar`, label: '服薬カレンダー', group: '服薬・経過' },
+    {
+      href: `/patients/${patientId}/medication-calendar`,
+      label: '服薬カレンダー',
+      group: '服薬・経過',
+    },
     { href: `/patients/${patientId}/consent`, label: '同意記録', group: '連携・共有' },
     { href: `/patients/${patientId}/mcs`, label: 'MCS連携', group: '連携・共有' },
     { href: `/patients/${patientId}/share`, label: '外部共有', group: '連携・共有' },
+  ];
+}
+
+export function getPatientEditShortcutLinks(patientId: string): PageShortcutLink[] {
+  return [
+    { href: `/patients/${patientId}`, label: '患者詳細' },
+    { href: `/patients/${patientId}/prescriptions`, label: '処方履歴' },
+    { href: `/patients/${patientId}/medications`, label: '服薬管理' },
+    { href: `/patients/${patientId}/consent`, label: '同意記録' },
   ];
 }
 
@@ -101,9 +113,7 @@ export function getSetPlanEditShortcutLinks(planId: string): PageShortcutLink[] 
   ];
 }
 
-export function getMedicationSetFullShortcutLinks(
-  planId: string | null
-): PageShortcutLink[] {
+export function getMedicationSetFullShortcutLinks(planId: string | null): PageShortcutLink[] {
   return [
     ...(planId
       ? [
@@ -176,12 +186,12 @@ export function getReportsOverviewShortcutLinks(): PageShortcutLink[] {
 
 export function getReportDetailShortcutLinks(
   patientId: string | null,
-  reportId?: string | null
+  reportId?: string | null,
 ): PageShortcutLink[] {
   return [
     { href: '/reports', label: '報告書一覧' },
     ...(patientId ? [{ href: `/patients/${patientId}`, label: '患者詳細' }] : []),
-        ...(reportId
+    ...(reportId
       ? [
           {
             href: buildCommunicationRequestsHref({

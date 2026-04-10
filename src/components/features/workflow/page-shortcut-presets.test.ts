@@ -5,6 +5,7 @@ import {
   getMedicationSetFullShortcutLinks,
   getMyDayShortcutLinks,
   getPatientConsentShortcutLinks,
+  getPatientEditShortcutLinks,
   getPatientHubShortcutLinks,
   getPatientMcsShortcutLinks,
   getPatientMedicationCalendarShortcutLinks,
@@ -29,6 +30,7 @@ import {
 describe('page shortcut presets', () => {
   it('builds patient context shortcuts around the current patient id', () => {
     expect(getPatientHubShortcutLinks('p1')).toEqual([
+      { href: '/patients/p1/edit', label: '患者情報編集', group: '基本情報' },
       { href: '/patients/p1/prescriptions', label: '処方履歴', group: '服薬・経過' },
       { href: '/patients/p1/medications', label: '服薬管理', group: '服薬・経過' },
       { href: '/patients/p1/medication-calendar', label: '服薬カレンダー', group: '服薬・経過' },
@@ -75,6 +77,13 @@ describe('page shortcut presets', () => {
       { href: '/patients/p1', label: '患者詳細' },
       { href: '/patients/p1/medications', label: '服薬管理' },
       { href: '/patients/p1/prescriptions', label: '処方履歴' },
+    ]);
+
+    expect(getPatientEditShortcutLinks('p1')).toEqual([
+      { href: '/patients/p1', label: '患者詳細' },
+      { href: '/patients/p1/prescriptions', label: '処方履歴' },
+      { href: '/patients/p1/medications', label: '服薬管理' },
+      { href: '/patients/p1/consent', label: '同意記録' },
     ]);
   });
 

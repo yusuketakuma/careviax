@@ -8,10 +8,25 @@ import { TracingReportsTable } from './tracing-reports-table';
 import { Loading } from '@/components/ui/loading';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { readReportsState } from './reports-query-state';
 
 export const metadata: Metadata = { title: '報告書一覧 — CareViaX' };
 
-export default function ReportsPage() {
+type ReportsPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function ReportsPage({ searchParams }: ReportsPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const initialState = readReportsState(resolvedSearchParams);
+  const contextSummary =
+    initialState.initialContext === 'dashboard_home'
+      ? initialState.initialFocus === 'delivery'
+        ? 'ホームから返信待ち・送達フォローにフォーカスして開いています。'
+        : 'ホームから報告書一覧にフォーカスして開いています。'
+      : null;
+
   return (
     <PageScaffold>
       <WorkflowPageHeader
@@ -30,14 +45,22 @@ export default function ReportsPage() {
       >
         <PageShortcutLinks links={getReportsOverviewShortcutLinks()} />
       </WorkflowPageHeader>
+      {contextSummary ? (
+        <Alert className="border-sky-200 bg-sky-50 text-sky-900" data-testid="reports-context-banner">
+          <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
+        </Alert>
+      ) : null}
       <Suspense fallback={<Loading />}>
-        <ReportsTable />
+        <ReportsTable
+          initialDeliveryStatus={initialState.initialDeliveryStatus}
+          initialContext={initialState.initialContext}
+        />
       </Suspense>
       <Suspense fallback={<Loading />}>
         <TracingReportsTable />
       </Suspense>
       <Suspense fallback={<Loading />}>
-        <ReportDeliveryDashboard />
+        <ReportDeliveryDashboard highlighted={initialState.initialFocus === 'delivery'} />
       </Suspense>
     </PageScaffold>
   );

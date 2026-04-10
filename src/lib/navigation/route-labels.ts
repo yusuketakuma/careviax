@@ -7,6 +7,7 @@ export const PATH_LABELS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /^\/billing\/candidates(\/.*)?$/, label: '請求候補' },
   { pattern: /^\/billing(\/.*)?$/, label: '請求' },
   { pattern: /^\/patients\/new$/, label: '患者新規登録' },
+  { pattern: /^\/patients\/[^/]+\/edit$/, label: '患者情報編集' },
   { pattern: /^\/patients\/[^/]+\/mcs(\/.*)?$/, label: 'MCS連携' },
   { pattern: /^\/patients(\/.*)?$/, label: '患者' },
   { pattern: /^\/prescriptions\/qr-drafts(\/.*)?$/, label: 'QR下書き' },

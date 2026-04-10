@@ -5,12 +5,20 @@ import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page
 import { Loading } from '@/components/ui/loading';
 import { WorkflowDashboardContent } from './workflow-dashboard-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { readWorkflowState } from './workflow-query-state';
 
 export const metadata: Metadata = {
   title: 'ワークフローダッシュボード — CareViaX',
 };
 
-export default function WorkflowDashboardPage() {
+type WorkflowDashboardPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function WorkflowDashboardPage({ searchParams }: WorkflowDashboardPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const initialState = readWorkflowState(resolvedSearchParams);
+
   return (
     <PageScaffold>
       <WorkflowPageHeader
@@ -37,7 +45,10 @@ export default function WorkflowDashboardPage() {
       </WorkflowPageHeader>
 
       <Suspense fallback={<Loading />}>
-        <WorkflowDashboardContent />
+        <WorkflowDashboardContent
+          initialFocus={initialState.initialFocus}
+          initialContext={initialState.initialContext}
+        />
       </Suspense>
     </PageScaffold>
   );

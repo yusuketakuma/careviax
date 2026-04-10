@@ -28,7 +28,7 @@ const updateInsuranceSchema = z.object({
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string; insuranceId: string }> }
+  { params }: { params: Promise<{ id: string; insuranceId: string }> },
 ) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
@@ -60,11 +60,43 @@ export async function PUT(
       where: { id: insuranceId },
       data: {
         ...rest,
-        ...(valid_from !== undefined ? { valid_from: valid_from ? new Date(valid_from) : null } : {}),
-        ...(valid_until !== undefined ? { valid_until: valid_until ? new Date(valid_until) : null } : {}),
+        ...(valid_from !== undefined
+          ? { valid_from: valid_from ? new Date(valid_from) : null }
+          : {}),
+        ...(valid_until !== undefined
+          ? { valid_until: valid_until ? new Date(valid_until) : null }
+          : {}),
       },
-    })
+    }),
   );
 
   return success({ data: updated });
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string; insuranceId: string }> },
+) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canVisit',
+    message: '患者保険情報の削除権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const ctx = authResult.ctx;
+
+  const { id, insuranceId } = await params;
+
+  const existing = await prisma.patientInsurance.findFirst({
+    where: { id: insuranceId, patient_id: id, org_id: ctx.orgId },
+    select: { id: true },
+  });
+  if (!existing) return notFound('保険情報が見つかりません');
+
+  await withOrgContext(ctx.orgId, (tx) =>
+    tx.patientInsurance.delete({
+      where: { id: insuranceId },
+    }),
+  );
+
+  return success({ id: insuranceId, deleted: true });
 }

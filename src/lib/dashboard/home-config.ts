@@ -1,3 +1,15 @@
+import {
+  buildConferencesHref,
+  buildExternalHref,
+  buildMyDayHref,
+  buildNotificationsHref,
+  buildReportsHref,
+  buildHandoffHref,
+  buildTasksHref,
+  buildWorkflowHref,
+} from '@/lib/dashboard/home-link-builders';
+import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+
 export const DASHBOARD_PIPELINE_STEPS = [
   {
     key: 'intake',
@@ -209,13 +221,20 @@ export const DASHBOARD_WORKFLOW_LINKS: readonly DashboardNavigationLink[] = [
     key: 'reports',
     title: '報告書作成',
     description: '下書き作成と送付待ちの報告書を管理します。',
-    href: '/reports',
+    href: buildReportsHref({
+      focus: 'delivery',
+      deliveryStatus: 'response_waiting',
+      context: 'dashboard_home',
+    }),
   },
   {
     key: 'conferences',
     title: '他職種連携',
     description: 'カンファレンス記録と連携アクションを追跡します。',
-    href: '/conferences',
+    href: buildConferencesHref({
+      focus: 'notes',
+      context: 'dashboard_home',
+    }),
   },
 ] as const;
 
@@ -224,19 +243,30 @@ export const DASHBOARD_WORKBENCH_LINKS: readonly DashboardNavigationLink[] = [
     key: 'my_day',
     title: 'My Day',
     description: '担当訪問、未完了タスク、緊急アクションを個人単位で見ます。',
-    href: '/my-day',
+    href: buildMyDayHref({
+      focus: 'visits',
+      visitFilter: 'unprepared',
+      context: 'dashboard_home',
+    }),
   },
   {
     key: 'workflow',
     title: '工程ダッシュボード',
     description: '工程別集計、例外、連携滞留を横断で確認します。',
-    href: '/workflow',
+    href: buildWorkflowHref({
+      focus: 'control_center',
+      context: 'dashboard_home',
+    }),
   },
   {
     key: 'tasks',
     title: 'タスク一覧',
     description: '運用タスクをまとめて棚卸しし、一括完了や再割当へ進みます。',
-    href: '/tasks',
+    href: buildTasksHref({
+      assigned: 'me',
+      status: 'pending',
+      context: 'dashboard_home',
+    }),
   },
   {
     key: 'billing',
@@ -263,25 +293,38 @@ export const DASHBOARD_COORDINATION_LINKS: readonly DashboardNavigationLink[] = 
     key: 'notifications',
     title: '通知',
     description: '未読通知、緊急アラート、システム連絡をまとめて確認します。',
-    href: '/notifications',
+    href: buildNotificationsHref({
+      tab: 'unread',
+      type: 'urgent',
+      context: 'dashboard_home',
+    }),
   },
   {
     key: 'external',
     title: '外部連携',
     description: '自己申告、共有リンク、地域フォローの対応状況を見ます。',
-    href: '/external',
+    href: buildExternalHref({
+      focus: 'self_reports',
+      context: 'dashboard_home',
+    }),
   },
   {
     key: 'communications',
     title: '依頼・照会',
     description: '返信待ち、照会対応、外部との連携依頼を追跡します。',
-    href: '/communications/requests',
+    href: buildCommunicationRequestsHref({
+      status: 'sent',
+      context: 'dashboard_home',
+    }),
   },
   {
     key: 'handoff',
     title: '申し送り',
     description: 'シフト交代の引き継ぎ事項と確認漏れを整理します。',
-    href: '/handoff',
+    href: buildHandoffHref({
+      filter: 'unread',
+      context: 'dashboard_home',
+    }),
   },
 ] as const;
 

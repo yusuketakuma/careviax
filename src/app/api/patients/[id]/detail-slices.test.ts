@@ -8,6 +8,7 @@ const {
   getPatientDocumentsDataMock,
   getPatientTimelineDataMock,
   getPatientReadinessDataMock,
+  getPatientWorkflowPreviewDataMock,
 } = vi.hoisted(() => ({
   getPatientOverviewMock: vi.fn(),
   getPatientVisitsDataMock: vi.fn(),
@@ -15,6 +16,7 @@ const {
   getPatientDocumentsDataMock: vi.fn(),
   getPatientTimelineDataMock: vi.fn(),
   getPatientReadinessDataMock: vi.fn(),
+  getPatientWorkflowPreviewDataMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -28,7 +30,7 @@ vi.mock('@/lib/auth/context', () => ({
           role: 'pharmacist',
           userId: 'user_1',
         },
-        routeContext
+        routeContext,
       ),
 }));
 
@@ -43,6 +45,7 @@ vi.mock('@/server/services/patient-detail', () => ({
   getPatientDocumentsData: getPatientDocumentsDataMock,
   getPatientTimelineData: getPatientTimelineDataMock,
   getPatientReadinessData: getPatientReadinessDataMock,
+  getPatientWorkflowPreviewData: getPatientWorkflowPreviewDataMock,
 }));
 
 import { GET as overviewGet } from './overview/route';
@@ -51,6 +54,7 @@ import { GET as communicationsGet } from './communications/route';
 import { GET as documentsGet } from './documents/route';
 import { GET as timelineGet } from './timeline/route';
 import { GET as readinessGet } from './readiness/route';
+import { GET as workflowPreviewGet } from './workflow-preview/route';
 
 function createRequest(url: string) {
   return { url } as unknown as NextRequest;
@@ -64,16 +68,22 @@ describe('patient detail slice routes', () => {
   it('returns patient overview data', async () => {
     getPatientOverviewMock.mockResolvedValue({ id: 'patient_1', name: '患者A' });
 
-    const response = await overviewGet(createRequest('http://localhost/api/patients/patient_1/overview'), {
-      params: Promise.resolve({ id: 'patient_1' }),
-    });
+    const response = await overviewGet(
+      createRequest('http://localhost/api/patients/patient_1/overview'),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
 
     if (!response) throw new Error('response is required');
-    expect(getPatientOverviewMock).toHaveBeenCalledWith({}, {
-      orgId: 'org_1',
-      patientId: 'patient_1',
-      role: 'pharmacist',
-    });
+    expect(getPatientOverviewMock).toHaveBeenCalledWith(
+      {},
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+      },
+    );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ id: 'patient_1' });
   });
@@ -81,9 +91,12 @@ describe('patient detail slice routes', () => {
   it('returns patient visits data', async () => {
     getPatientVisitsDataMock.mockResolvedValue({ monthly_visit_count: 2 });
 
-    const response = await visitsGet(createRequest('http://localhost/api/patients/patient_1/visits'), {
-      params: Promise.resolve({ id: 'patient_1' }),
-    });
+    const response = await visitsGet(
+      createRequest('http://localhost/api/patients/patient_1/visits'),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -97,7 +110,7 @@ describe('patient detail slice routes', () => {
 
     const response = await communicationsGet(
       createRequest('http://localhost/api/patients/patient_1/communications'),
-      { params: Promise.resolve({ id: 'patient_1' }) }
+      { params: Promise.resolve({ id: 'patient_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -114,7 +127,7 @@ describe('patient detail slice routes', () => {
 
     const response = await documentsGet(
       createRequest('http://localhost/api/patients/patient_1/documents'),
-      { params: Promise.resolve({ id: 'patient_1' }) }
+      { params: Promise.resolve({ id: 'patient_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -130,7 +143,7 @@ describe('patient detail slice routes', () => {
 
     const response = await timelineGet(
       createRequest('http://localhost/api/patients/patient_1/timeline'),
-      { params: Promise.resolve({ id: 'patient_1' }) }
+      { params: Promise.resolve({ id: 'patient_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -153,7 +166,7 @@ describe('patient detail slice routes', () => {
 
     const response = await readinessGet(
       createRequest('http://localhost/api/patients/patient_1/readiness'),
-      { params: Promise.resolve({ id: 'patient_1' }) }
+      { params: Promise.resolve({ id: 'patient_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -161,6 +174,25 @@ describe('patient detail slice routes', () => {
     await expect(response.json()).resolves.toMatchObject({
       overall_status: 'ready',
       completed_count: 6,
+    });
+  });
+
+  it('returns patient workflow preview data', async () => {
+    getPatientWorkflowPreviewDataMock.mockResolvedValue({
+      visit_preparation: { blockers: [] },
+      report_targets: [],
+      communication_priority: { targets: [], warnings: [] },
+    });
+
+    const response = await workflowPreviewGet(
+      createRequest('http://localhost/api/patients/patient_1/workflow-preview'),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      visit_preparation: { blockers: [] },
     });
   });
 });

@@ -16,12 +16,24 @@ export const metadata: Metadata = {
 type SchedulesPageProps = {
   searchParams?: Promise<{
     view?: string;
+    date?: string;
+    tab?: string;
+    schedule?: string;
   }>;
 };
 
 export default async function SchedulesPage({ searchParams }: SchedulesPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const activeView = resolvedSearchParams?.view === 'calendar' ? 'calendar' : 'list';
+  const initialSelectedDate =
+    resolvedSearchParams?.date && /^\d{4}-\d{2}-\d{2}$/.test(resolvedSearchParams.date)
+      ? resolvedSearchParams.date
+      : undefined;
+  const initialTab =
+    resolvedSearchParams?.tab === 'confirmed' || resolvedSearchParams?.tab === 'proposals'
+      ? resolvedSearchParams.tab
+      : undefined;
+  const highlightedScheduleId = resolvedSearchParams?.schedule ?? undefined;
 
   return (
     <PageScaffold>
@@ -57,7 +69,15 @@ export default async function SchedulesPage({ searchParams }: SchedulesPageProps
       </WorkflowPageHeader>
 
       <Suspense fallback={<Loading />}>
-        {activeView === 'calendar' ? <CalendarView /> : <ScheduleDayView />}
+        {activeView === 'calendar' ? (
+          <CalendarView />
+        ) : (
+          <ScheduleDayView
+            initialSelectedDate={initialSelectedDate}
+            initialTab={initialTab}
+            highlightedScheduleId={highlightedScheduleId}
+          />
+        )}
       </Suspense>
     </PageScaffold>
   );

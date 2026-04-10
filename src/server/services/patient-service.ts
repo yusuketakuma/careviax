@@ -147,7 +147,8 @@ function buildDbWhere(orgId: string, filters: PatientListFilters) {
     where.cases = {
       ...((where.cases as Prisma.CareCaseListRelationFilter) ?? {}),
       some: {
-        ...((where.cases as Prisma.CareCaseListRelationFilter)?.some as Prisma.CareCaseWhereInput ?? {}),
+        ...(((where.cases as Prisma.CareCaseListRelationFilter)
+          ?.some as Prisma.CareCaseWhereInput) ?? {}),
         primary_pharmacist_id: filters.primary_pharmacist_id,
       },
     };
@@ -170,7 +171,8 @@ function buildDbWhere(orgId: string, filters: PatientListFilters) {
     where.residences = {
       ...((where.residences as Prisma.ResidenceListRelationFilter) ?? {}),
       some: {
-        ...((where.residences as Prisma.ResidenceListRelationFilter)?.some as Prisma.ResidenceWhereInput ?? {}),
+        ...(((where.residences as Prisma.ResidenceListRelationFilter)
+          ?.some as Prisma.ResidenceWhereInput) ?? {}),
         building_id: { not: null },
       },
     };
@@ -211,7 +213,7 @@ function buildDbWhere(orgId: string, filters: PatientListFilters) {
 }
 
 function buildPatientOrderBy(
-  filters: Pick<PatientListFilters, 'sort' | 'order'>
+  filters: Pick<PatientListFilters, 'sort' | 'order'>,
 ): Prisma.PatientOrderByWithRelationInput[] {
   const direction = filters.order ?? 'asc';
 
@@ -225,10 +227,7 @@ function buildPatientOrderBy(
   }
 }
 
-function matchesPatientPostFilters(
-  patient: MappedPatientListItem,
-  filters: PatientListFilters
-) {
+function matchesPatientPostFilters(patient: MappedPatientListItem, filters: PatientListFilters) {
   const latestCase = patient.latest_case;
   const latestVisitDate = patient.latest_visit?.visit_date ?? null;
 
@@ -249,10 +248,7 @@ function matchesPatientPostFilters(
     return false;
   }
 
-  if (
-    filters.building_id &&
-    (patient.residences[0]?.building_id ?? null) !== filters.building_id
-  ) {
+  if (filters.building_id && (patient.residences[0]?.building_id ?? null) !== filters.building_id) {
     return false;
   }
 
@@ -278,16 +274,10 @@ function matchesPatientPostFilters(
     return false;
   }
 
-  if (
-    filters.consent_status === 'complete' &&
-    !patient.consent.has_visit_medication_management
-  ) {
+  if (filters.consent_status === 'complete' && !patient.consent.has_visit_medication_management) {
     return false;
   }
-  if (
-    filters.consent_status === 'missing' &&
-    patient.consent.has_visit_medication_management
-  ) {
+  if (filters.consent_status === 'missing' && patient.consent.has_visit_medication_management) {
     return false;
   }
 
@@ -352,15 +342,15 @@ async function enrichPatientBatch(args: {
     new Set(
       patients
         .map((patient) => patient.cases[0]?.id)
-        .filter((value): value is string => Boolean(value))
-    )
+        .filter((value): value is string => Boolean(value)),
+    ),
   );
   const primaryPharmacistIds = Array.from(
     new Set(
       patients
         .map((patient) => patient.cases[0]?.primary_pharmacist_id)
-        .filter((value): value is string => Boolean(value))
-    )
+        .filter((value): value is string => Boolean(value)),
+    ),
   );
 
   const [riskSummaries, pharmacistNameById, visitRecords, visitSchedules, firstVisitDocuments] =
@@ -407,7 +397,7 @@ async function enrichPatientBatch(args: {
 
   const riskByPatientId = new Map(riskSummaries.map((summary) => [summary.patient_id, summary]));
   const latestVisitByPatientId = new Map(
-    visitRecords.map((visitRecord) => [visitRecord.patient_id, visitRecord])
+    visitRecords.map((visitRecord) => [visitRecord.patient_id, visitRecord]),
   );
   const visitSchedulesByCaseId = new Map<string, VisitSchedule[]>();
   for (const visitSchedule of visitSchedules) {
@@ -416,7 +406,7 @@ async function enrichPatientBatch(args: {
     visitSchedulesByCaseId.set(visitSchedule.case_id, entries);
   }
   const deliveredFirstVisitCaseIds = new Set(
-    firstVisitDocuments.map((document) => document.case_id)
+    firstVisitDocuments.map((document) => document.case_id),
   );
 
   const privacy = getPatientPrivacyFlags(role);
@@ -435,7 +425,7 @@ async function enrichPatientBatch(args: {
       schedules,
       deliveredFirstVisitCaseIds,
       privacy,
-      recentVisitThreshold
+      recentVisitThreshold,
     );
   });
 }
@@ -478,7 +468,9 @@ async function collectFilteredPatients(args: {
       patients: pageRows,
     });
 
-    filtered.push(...enriched.filter((patient) => matchesPatientPostFilters(patient, args.filters)));
+    filtered.push(
+      ...enriched.filter((patient) => matchesPatientPostFilters(patient, args.filters)),
+    );
   }
 
   return filtered;
@@ -488,7 +480,7 @@ export async function listPatients(
   prisma: PrismaClient,
   orgId: string,
   role: MemberRole | string,
-  filters: PatientListFilters
+  filters: PatientListFilters,
 ) {
   const limit = filters.limit ?? 50;
   const referenceDate = new Date();
@@ -539,28 +531,19 @@ export async function listPatients(
 }
 
 function compactObject<T extends Record<string, unknown>>(value: T) {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, entry]) => entry !== undefined),
-  ) as T;
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as T;
 }
 
-function deriveBirthDate(
-  rawBirthDate: string | undefined,
-  reportedAge?: number,
-) {
+function deriveBirthDate(rawBirthDate: string | undefined, reportedAge?: number) {
   if (rawBirthDate) return rawBirthDate;
   if (typeof reportedAge === 'number' && Number.isFinite(reportedAge)) {
     const today = new Date();
-    return new Date(today.getFullYear() - reportedAge, 0, 1)
-      .toISOString()
-      .slice(0, 10);
+    return new Date(today.getFullYear() - reportedAge, 0, 1).toISOString().slice(0, 10);
   }
   return undefined;
 }
 
-function derivePackagingMethod(intake?: {
-  medication_support_methods?: string[];
-}) {
+function derivePackagingMethod(intake?: { medication_support_methods?: string[] }) {
   const methods = intake?.medication_support_methods ?? [];
   if (methods.includes('unit_dose')) return 'unit_dose';
   if (methods.includes('calendar')) return 'calendar_pack';
@@ -571,10 +554,7 @@ function derivePackagingMethod(intake?: {
 
 export type CreatePatientData = z.infer<typeof createPatientSchema>;
 
-export async function createPatientWithIntake(
-  orgId: string,
-  data: CreatePatientData,
-) {
+export async function createPatientWithIntake(orgId: string, data: CreatePatientData) {
   const { address, birth_date, intake, requester, ...rest } = data;
 
   const normalizedContacts =
@@ -675,6 +655,8 @@ export async function createPatientWithIntake(
     medication_support_methods: intake?.medication_support_methods,
     medication_support_other: intake?.medication_support_other,
     ent_prescription: intake?.ent_prescription,
+    ent_period_from: intake?.ent_period_from,
+    ent_period_to: intake?.ent_period_to,
     narcotics_base: intake?.narcotics_base,
     narcotics_rescue: intake?.narcotics_rescue,
     allergy_history: intake?.allergy_history,
@@ -703,8 +685,7 @@ export async function createPatientWithIntake(
           fax: intake.visiting_nurse.fax,
         })
       : undefined,
-    initial_transition_management_expected:
-      intake?.initial_transition_management_expected,
+    initial_transition_management_expected: intake?.initial_transition_management_expected,
   });
 
   const patient = await withOrgContext(orgId, async (tx) => {
@@ -714,11 +695,7 @@ export async function createPatientWithIntake(
     await assertFacilityReference(tx, orgId, facilityId);
     await assertFacilityUnitReference(tx, orgId, facilityId, facilityUnitId);
 
-    const facilityVisitDefaults = await getFacilityVisitDefaults(
-      tx,
-      orgId,
-      facilityId,
-    );
+    const facilityVisitDefaults = await getFacilityVisitDefaults(tx, orgId, facilityId);
 
     const newPatient = await tx.patient.create({
       data: {
@@ -730,7 +707,10 @@ export async function createPatientWithIntake(
         phone: preferredContactPhone,
         medical_insurance_number: rest.medical_insurance_number || null,
         care_insurance_number: rest.care_insurance_number || null,
-        allergy_info: rest.allergy_info ? (rest.allergy_info as unknown as Prisma.InputJsonValue) : undefined,
+        billing_support_flag: rest.billing_support_flag ?? false,
+        allergy_info: rest.allergy_info
+          ? (rest.allergy_info as unknown as Prisma.InputJsonValue)
+          : undefined,
         notes: rest.notes || null,
       },
     });
@@ -770,13 +750,7 @@ export async function createPatientWithIntake(
           )?.address || ''
         : '');
 
-    if (
-      residenceAddress ||
-      rest.building_id ||
-      facilityId ||
-      facilityUnitId ||
-      rest.unit_name
-    ) {
+    if (residenceAddress || rest.building_id || facilityId || facilityUnitId || rest.unit_name) {
       await tx.residence.create({
         data: {
           org_id: orgId,
@@ -836,10 +810,8 @@ export async function createPatientWithIntake(
           preferred_contact_phone: preferredContactPhone,
           preferred_contact_name:
             requester?.contact_name || intake?.emergency_contact?.name || null,
-          primary_contact_preference:
-            intake?.primary_contact_preference || null,
-          visit_before_contact_required:
-            intake?.visit_before_contact_required ?? null,
+          primary_contact_preference: intake?.primary_contact_preference || null,
+          visit_before_contact_required: intake?.visit_before_contact_required ?? null,
           first_visit_preferred_date: intake?.first_visit_preferred_date
             ? new Date(intake.first_visit_preferred_date)
             : null,
@@ -872,8 +844,7 @@ export async function createPatientWithIntake(
           ? {
               role: 'care_manager',
               name: intake.care_manager.name,
-              organization_name:
-                intake.care_manager.organization_name || null,
+              organization_name: intake.care_manager.organization_name || null,
               phone: intake.care_manager.phone || null,
               fax: intake.care_manager.fax || null,
             }
@@ -882,15 +853,12 @@ export async function createPatientWithIntake(
           ? {
               role: 'nurse',
               name: intake.visiting_nurse.name,
-              organization_name:
-                intake.visiting_nurse.organization_name || null,
+              organization_name: intake.visiting_nurse.organization_name || null,
               phone: intake.visiting_nurse.phone || null,
               fax: intake.visiting_nurse.fax || null,
             }
           : null,
-      ].filter(
-        (item): item is NonNullable<typeof item> => item != null,
-      );
+      ].filter((item): item is NonNullable<typeof item> => item != null);
 
       if (careTeamLinks.length > 0) {
         await tx.careTeamLink.createMany({
@@ -913,9 +881,7 @@ export async function createPatientWithIntake(
   await notifyWebhookEventForOrg(orgId, 'patient.created', {
     patientId: patient.id,
     name: patient.name,
-    ...(patient.created_at instanceof Date
-      ? { createdAt: patient.created_at.toISOString() }
-      : {}),
+    ...(patient.created_at instanceof Date ? { createdAt: patient.created_at.toISOString() } : {}),
   });
 
   return patient;

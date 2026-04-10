@@ -5,12 +5,20 @@ import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page
 import { Loading } from '@/components/ui/loading';
 import { NotificationsContent } from './notifications-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { readNotificationsState } from './notifications-query-state';
 
 export const metadata: Metadata = {
   title: '通知 — CareViaX',
 };
 
-export default function NotificationsPage() {
+type NotificationsPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function NotificationsPage({ searchParams }: NotificationsPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const initialState = readNotificationsState(resolvedSearchParams);
+
   return (
     <PageScaffold>
       <WorkflowPageHeader
@@ -37,7 +45,11 @@ export default function NotificationsPage() {
       </WorkflowPageHeader>
 
       <Suspense fallback={<Loading />}>
-        <NotificationsContent />
+        <NotificationsContent
+          initialTab={initialState.initialTab}
+          initialTypeFilter={initialState.initialTypeFilter}
+          initialContext={initialState.initialContext}
+        />
       </Suspense>
     </PageScaffold>
   );

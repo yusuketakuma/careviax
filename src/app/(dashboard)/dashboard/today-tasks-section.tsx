@@ -38,6 +38,7 @@ import {
   VISIT_TYPE_LABELS,
 } from '@/app/(dashboard)/schedules/day-view.shared';
 import { fetchVisitSchedulesWindow } from '@/app/(dashboard)/schedules/visit-schedule-fetch.helpers';
+import { type DashboardFocusRole } from './dashboard-role-focus';
 
 // ---------------------------------------------------------------------------
 // Tab categories — maps to PIPELINE_STEPS keys in the actions API
@@ -180,6 +181,11 @@ function sortByPriority(items: ActionItem[]): ActionItem[] {
 function TodayTasksSkeleton() {
   return (
     <div className="space-y-3" role="status" aria-label="タスク読み込み中">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-24 w-full rounded-xl" />
+        ))}
+      </div>
       <div className="flex gap-1 overflow-hidden">
         {Array.from({ length: 5 }).map((_, i) => (
           <Skeleton key={i} className="h-10 w-20 shrink-0 rounded-md" />
@@ -192,11 +198,83 @@ function TodayTasksSkeleton() {
   );
 }
 
+function FocusSnapshotCard({
+  title,
+  description,
+  value,
+  icon: Icon,
+  tone = 'default',
+}: {
+  title: string;
+  description: string;
+  value: number;
+  icon: typeof AlertTriangle;
+  tone?: 'default' | 'urgent' | 'highlight';
+}) {
+  return (
+    <div
+      className={[
+        'rounded-xl border p-3',
+        tone === 'urgent'
+          ? 'border-red-200 bg-red-50/80'
+          : tone === 'highlight'
+            ? 'border-primary/30 bg-primary/5'
+          : 'border-border/70 bg-muted/20',
+      ].join(' ')}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {title}
+        </p>
+        <Icon
+          className={[
+            'size-4',
+            tone === 'urgent'
+              ? 'text-red-600'
+              : tone === 'highlight'
+                ? 'text-primary'
+                : 'text-muted-foreground',
+          ].join(' ')}
+          aria-hidden="true"
+        />
+      </div>
+      <p
+        className={[
+          'mt-2 text-2xl font-semibold',
+          tone === 'urgent'
+            ? 'text-red-700'
+            : tone === 'highlight'
+              ? 'text-primary'
+              : 'text-foreground',
+        ].join(' ')}
+      >
+        {value}
+      </p>
+      <p
+        className={[
+          'mt-1 text-xs leading-5',
+          tone === 'urgent'
+            ? 'text-red-700/80'
+            : tone === 'highlight'
+              ? 'text-primary/80'
+              : 'text-muted-foreground',
+        ].join(' ')}
+      >
+        {description}
+      </p>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
-export function TodayTasksSection() {
+export function TodayTasksSection({
+  focusRole = 'common',
+}: {
+  focusRole?: DashboardFocusRole;
+}) {
   const orgId = useOrgId();
   const [today, setToday] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [activeTab, setActiveTab] = useState<DashboardTaskTabKey>('all');
@@ -322,6 +400,32 @@ export function TodayTasksSection() {
   const actionItems = actionsQuery.data?.actions ?? [];
   const todayVisits = (schedulesQuery.data ?? []).map(visitToActionItem);
   const allItems = [...actionItems, ...todayVisits];
+  const urgentCount = allItems.filter(
+    (item) => item.priority === 'urgent' || item.priority === 'high'
+  ).length;
+  const clerkStartCount =
+    getTabCount(
+      DASHBOARD_TASK_TABS.find((tab) => tab.key === 'intake') ?? DASHBOARD_TASK_TABS[0],
+      pipeline,
+      todayVisits.length
+    ) +
+    getTabCount(
+      DASHBOARD_TASK_TABS.find((tab) => tab.key === 'visit_planning') ?? DASHBOARD_TASK_TABS[0],
+      pipeline,
+      todayVisits.length
+    );
+  const pharmacistStartCount = [
+    'dispensing',
+    'dispense_audit',
+    'medication_set',
+    'set_audit',
+    'visit',
+    'reporting',
+  ].reduce((sum, key) => {
+    const tab = DASHBOARD_TASK_TABS.find((entry) => entry.key === key);
+    if (!tab) return sum;
+    return sum + getTabCount(tab, pipeline, todayVisits.length);
+  }, 0);
   const filteredItems = sortByPriority(filterByTab(allItems, activeTab));
   const activeTabConfig =
     DASHBOARD_TASK_TABS.find((tab) => tab.key === activeTab) ?? DASHBOARD_TASK_TABS[0];
@@ -340,6 +444,49 @@ export function TodayTasksSection() {
             </AlertDescription>
           </Alert>
         )}
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" data-testid="dashboard-task-overview">
+          <FocusSnapshotCard
+            title="最優先"
+            description="緊急と高優先の案件です。最初に着手してください。"
+            value={urgentCount}
+            icon={AlertTriangle}
+            tone={urgentCount > 0 ? 'urgent' : 'default'}
+          />
+          <FocusSnapshotCard
+            title="事務開始"
+            description={
+              focusRole === 'clerk'
+                ? 'あなたの開始位置です。受付と日程調整から先に確認します。'
+                : '受付と日程調整から先に見る件数です。'
+            }
+            value={clerkStartCount}
+            icon={ListChecks}
+            tone={focusRole === 'clerk' ? 'highlight' : 'default'}
+          />
+          <FocusSnapshotCard
+            title="薬剤師開始"
+            description={
+              focusRole === 'pharmacist'
+                ? 'あなたの開始位置です。調剤、監査、訪問、報告を優先します。'
+                : '調剤、監査、訪問、報告までの主作業件数です。'
+            }
+            value={pharmacistStartCount}
+            icon={Pill}
+            tone={focusRole === 'pharmacist' ? 'highlight' : 'default'}
+          />
+          <FocusSnapshotCard
+            title="今日の訪問"
+            description={
+              focusRole === 'common'
+                ? '全員共通で確認する本日の訪問予定です。'
+                : '本日中に実行または確認が必要な訪問予定です。'
+            }
+            value={todayVisits.length}
+            icon={MapPin}
+            tone={focusRole === 'common' ? 'highlight' : 'default'}
+          />
+        </div>
 
         {/* Tab bar */}
         <div

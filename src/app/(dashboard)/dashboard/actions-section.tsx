@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { format } from 'date-fns';
 import { ArrowRight, Layers } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,6 +27,20 @@ export const PRIORITY_STYLES: Record<string, string> = {
   normal: 'bg-blue-100 text-blue-800',
   low: 'bg-gray-100 text-gray-600',
 };
+
+function formatDueLabel(value: string | null) {
+  if (!value) return null;
+
+  const dateOnlyMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnlyMatch) {
+    return `期限 ${Number(dateOnlyMatch[2])}/${Number(dateOnlyMatch[3])}`;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  return `期限 ${format(parsed, 'M/d HH:mm')}`;
+}
 
 function PipelineBar({
   pipeline,
@@ -80,6 +95,11 @@ function PipelineBar({
 }
 
 export function ActionItemRow({ item }: { item: ActionItem }) {
+  const dueLabel = formatDueLabel(item.due_at);
+  const detailParts = [item.patient_name, item.owner_name ? `担当 ${item.owner_name}` : null, dueLabel]
+    .filter(Boolean)
+    .join(' / ');
+
   return (
     <li className="flex items-center justify-between gap-3 px-4 py-2.5">
       <div className="min-w-0 flex-1">
@@ -90,15 +110,13 @@ export function ActionItemRow({ item }: { item: ActionItem }) {
           >
             {item.queue_label}
           </Badge>
-          {item.patient_name && (
-            <span className="truncate text-xs text-muted-foreground">
-              {item.patient_name}
-            </span>
-          )}
         </div>
         <p className="mt-0.5 truncate text-sm font-medium text-foreground">
           {item.title}
         </p>
+        {detailParts ? (
+          <p className="mt-1 truncate text-xs text-muted-foreground">{detailParts}</p>
+        ) : null}
       </div>
       <Link
         href={item.action_href}

@@ -5,10 +5,18 @@ import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page
 import { Loading } from '@/components/ui/loading';
 import { TasksContent } from './tasks-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { readTasksState } from './tasks-query-state';
 
 export const metadata: Metadata = { title: 'タスク — CareViaX' };
 
-export default function TasksPage() {
+type TasksPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function TasksPage({ searchParams }: TasksPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const initialState = readTasksState(resolvedSearchParams);
+
   return (
     <PageScaffold>
       <WorkflowPageHeader
@@ -33,7 +41,13 @@ export default function TasksPage() {
         />
       </WorkflowPageHeader>
       <Suspense fallback={<Loading />}>
-        <TasksContent />
+        <TasksContent
+          initialAssigned={initialState.initialAssigned}
+          initialStatus={initialState.initialStatus}
+          initialTaskType={initialState.initialTaskType}
+          initialPriority={initialState.initialPriority}
+          initialContext={initialState.initialContext}
+        />
       </Suspense>
     </PageScaffold>
   );

@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Loading } from '@/components/ui/loading';
 import { EmptyState } from '@/components/ui/empty-state';
 import { VisitBriefCard } from '@/components/visit-brief/visit-brief-card';
@@ -16,8 +17,11 @@ import { CasesTab } from './cases-tab';
 import { MedicationsContent } from './medications/medications-content';
 import { PatientConditionsCard } from './patient-conditions-card';
 import { PatientIntakeSummaryCard } from './patient-intake-summary-card';
+import { PatientInsuranceCard } from './patient-insurance-card';
 import { PatientMasterCard } from './patient-master-card';
 import { PatientPackagingCard } from './patient-packaging-card';
+import { PatientLabsCard } from './patient-labs-card';
+import { PatientWorkflowPreviewCard } from './patient-workflow-preview-card';
 import { PatientRiskCard } from './patient-risk-card';
 import { PatientReadinessCard } from './patient-readiness-card';
 import { PatientVisitsPanel } from './patient-visits-panel';
@@ -85,6 +89,7 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<PatientDetailTabValue>('basic');
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
 
   const {
     data: patient,
@@ -123,7 +128,36 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
     },
     onError: (restoreError) => {
       toast.error(
-        restoreError instanceof Error ? restoreError.message : '患者の復元に失敗しました'
+        restoreError instanceof Error ? restoreError.message : '患者の復元に失敗しました',
+      );
+    },
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/patients/${patientId}/archive`, {
+        method: 'PATCH',
+        headers: { 'x-org-id': orgId },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          (payload as { message?: string }).message ?? '患者のアーカイブに失敗しました',
+        );
+      }
+      return payload;
+    },
+    onSuccess: async () => {
+      toast.success('患者をアーカイブしました');
+      setArchiveDialogOpen(false);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['patient-overview', patientId, orgId] }),
+        invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId })),
+      ]);
+    },
+    onError: (archiveError) => {
+      toast.error(
+        archiveError instanceof Error ? archiveError.message : '患者のアーカイブに失敗しました',
       );
     },
   });
@@ -159,12 +193,14 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
       {patient.archived_at && (
         <div className="flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <span>
-            <strong>アーカイブ中</strong> — この患者はアーカイブされています。閲覧のみ可能です。
+            <strong>アーカイブ中</strong> — この患者はアーカイブされています。閲覧のみ可能です。{' '}
+            {format(new Date(patient.archived_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
+            {patient.archived_by_name ? ` / 実行者 ${patient.archived_by_name}` : null}
           </span>
           <Button
             variant="outline"
             size="sm"
-                  className="shrink-0 border-amber-400 bg-white text-amber-900 hover:bg-amber-100"
+            className="shrink-0 border-amber-400 bg-white text-amber-900 hover:bg-amber-100"
             onClick={() => restoreMutation.mutate()}
             disabled={restoreMutation.isPending}
           >
@@ -184,46 +220,74 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
             </span>
           )}
         </div>
-        <Link href={prescriptionIntakeHref} className={buttonVariants({ size: 'sm' })}>
-          <ClipboardPlus className="mr-1.5 size-4" aria-hidden="true" />
-          処方受付
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          {!patient.archived_at ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setArchiveDialogOpen(true)}
+              disabled={archiveMutation.isPending}
+            >
+              {archiveMutation.isPending ? 'アーカイブ中...' : 'アーカイブ'}
+            </Button>
+          ) : null}
+          <Link
+            href={`/patients/${patient.id}/edit`}
+            className={buttonVariants({ size: 'sm', variant: 'outline' })}
+          >
+            患者編集
+          </Link>
+          <Link href={prescriptionIntakeHref} className={buttonVariants({ size: 'sm' })}>
+            <ClipboardPlus className="mr-1.5 size-4" aria-hidden="true" />
+            処方受付
+          </Link>
+        </div>
       </div>
 
       {/* Summary band: key lab values */}
-      {patient.lab_summary && patient.lab_summary.length > 0 && (() => {
-        const KEY_ANALYTES = [
-          { code: 'egfr', label: 'eGFR', unit: '' },
-          { code: 'k', label: 'K', unit: 'mEq/L' },
-          { code: 'crp', label: 'CRP', unit: '' },
-          { code: 'hba1c', label: 'HbA1c', unit: '%' },
-          { code: 'pt_inr', label: 'PT-INR', unit: '' },
-          { code: 'alb', label: 'Alb', unit: 'g/dL' },
-        ];
-        const labByCode = new Map(patient.lab_summary.map((l) => [l.analyte_code, l]));
-        const present = KEY_ANALYTES.map((a) => ({ ...a, obs: labByCode.get(a.code) })).filter((a) => a.obs);
-        if (present.length === 0) return null;
-        return (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs">
-            <span className="font-medium text-muted-foreground shrink-0">最新検査値</span>
-            {present.map(({ code, label, unit, obs }) => {
-              const staleDays = obs ? differenceInDays(new Date(), new Date(obs.measured_at)) : 0;
-              const isStale = staleDays > 90;
-              return (
-                <span key={code} className="flex items-center gap-1">
-                  <span className="text-muted-foreground">{label}</span>
-                  <span className={`font-semibold ${obs?.abnormal_flag ? 'text-destructive' : 'text-foreground'}`}>
-                    {obs?.value_numeric}{unit}
+      {patient.lab_summary &&
+        patient.lab_summary.length > 0 &&
+        (() => {
+          const KEY_ANALYTES = [
+            { code: 'egfr', label: 'eGFR', unit: '' },
+            { code: 'k', label: 'K', unit: 'mEq/L' },
+            { code: 'crp', label: 'CRP', unit: '' },
+            { code: 'hba1c', label: 'HbA1c', unit: '%' },
+            { code: 'pt_inr', label: 'PT-INR', unit: '' },
+            { code: 'alb', label: 'Alb', unit: 'g/dL' },
+          ];
+          const labByCode = new Map(patient.lab_summary.map((l) => [l.analyte_code, l]));
+          const present = KEY_ANALYTES.map((a) => ({ ...a, obs: labByCode.get(a.code) })).filter(
+            (a) => a.obs,
+          );
+          if (present.length === 0) return null;
+          return (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs">
+              <span className="font-medium text-muted-foreground shrink-0">最新検査値</span>
+              {present.map(({ code, label, unit, obs }) => {
+                const staleDays = obs ? differenceInDays(new Date(), new Date(obs.measured_at)) : 0;
+                const isStale = staleDays > 90;
+                return (
+                  <span key={code} className="flex items-center gap-1">
+                    <span className="text-muted-foreground">{label}</span>
+                    <span
+                      className={`font-semibold ${obs?.abnormal_flag ? 'text-destructive' : 'text-foreground'}`}
+                    >
+                      {obs?.value_numeric}
+                      {unit}
+                    </span>
+                    {isStale && (
+                      <span className="rounded bg-amber-100 px-1 text-[10px] text-amber-700">
+                        {staleDays}日前
+                      </span>
+                    )}
                   </span>
-                  {isStale && (
-                    <span className="rounded bg-amber-100 px-1 text-[10px] text-amber-700">{staleDays}日前</span>
-                  )}
-                </span>
-              );
-            })}
-          </div>
-        );
-      })()}
+                );
+              })}
+            </div>
+          );
+        })()}
 
       <Tabs
         value={activeTab}
@@ -335,8 +399,13 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
                     <Badge variant="outline">医療保険</Badge>
                   ) : null}
                   {patient.care_insurance_number ? <Badge variant="outline">介護保険</Badge> : null}
+                  {patient.billing_support_flag ? (
+                    <Badge variant="secondary">請求支援</Badge>
+                  ) : null}
                   {(patient.risk_summary?.pending_reports ?? 0) > 0 ? (
-                    <Badge variant="destructive">報告待ち {patient.risk_summary?.pending_reports}</Badge>
+                    <Badge variant="destructive">
+                      報告待ち {patient.risk_summary?.pending_reports}
+                    </Badge>
                   ) : null}
                 </div>
               </CardContent>
@@ -390,29 +459,14 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
             {/* 基本情報タブ */}
             <TabsContent value="basic">
               <div className="grid gap-4 lg:grid-cols-2">
+                <PatientWorkflowPreviewCard patientId={patient.id} />
                 <PatientIntakeSummaryCard patient={patient} />
                 <PatientMasterCard patient={patient} orgId={orgId} />
                 <PatientRiskCard riskSummary={patient.risk_summary} />
                 <PatientReadinessCard patientId={patient.id} />
+                <PatientInsuranceCard patientId={patient.id} orgId={orgId} />
+                <PatientLabsCard patientId={patient.id} orgId={orgId} />
                 <PatientPackagingCard patientId={patient.id} orgId={orgId} />
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">保険情報</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <dl className="space-y-3 text-sm">
-                      <DetailRow
-                        label="医療保険番号"
-                        value={patient.medical_insurance_number ?? '—'}
-                      />
-                      <DetailRow
-                        label="介護保険番号"
-                        value={patient.care_insurance_number ?? '—'}
-                      />
-                    </dl>
-                  </CardContent>
-                </Card>
 
                 <PatientConditionsCard
                   patientId={patient.id}
@@ -476,15 +530,15 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
           </div>
         </div>
       </Tabs>
-    </div>
-  );
-}
 
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="text-right text-foreground">{value}</dd>
+      <ConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        title="患者をアーカイブしますか"
+        description="アーカイブ後は患者詳細を閲覧のみで保持し、通常運用の対象から外します。必要なら後で復元できます。"
+        confirmLabel="アーカイブする"
+        onConfirm={() => archiveMutation.mutate()}
+      />
     </div>
   );
 }

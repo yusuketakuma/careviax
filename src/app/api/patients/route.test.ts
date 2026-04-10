@@ -20,33 +20,32 @@ const {
   patientSchedulePreferenceCreateMock,
   careCaseCreateMock,
   careTeamLinkCreateManyMock,
-} =
-  vi.hoisted(() => ({
-    withAuthMock: vi.fn(),
-    patientFindManyMock: vi.fn(),
-    patientCreateMock: vi.fn(),
-    facilityFindManyMock: vi.fn(),
-    userFindManyMock: vi.fn(),
-    firstVisitDocumentFindManyMock: vi.fn(),
-    queryRawMock: vi.fn(),
-    listPatientRiskSummariesMock: vi.fn(),
-    withOrgContextMock: vi.fn(),
-    assertFacilityReferenceMock: vi.fn(),
-    getFacilityVisitDefaultsMock: vi.fn(),
-    residenceCreateMock: vi.fn(),
-    contactPartyCreateManyMock: vi.fn(),
-    patientConditionCreateManyMock: vi.fn(),
-    patientPackagingProfileCreateMock: vi.fn(),
-    patientSchedulePreferenceCreateMock: vi.fn(),
-    careCaseCreateMock: vi.fn(),
-    careTeamLinkCreateManyMock: vi.fn(),
-  }));
+} = vi.hoisted(() => ({
+  withAuthMock: vi.fn(),
+  patientFindManyMock: vi.fn(),
+  patientCreateMock: vi.fn(),
+  facilityFindManyMock: vi.fn(),
+  userFindManyMock: vi.fn(),
+  firstVisitDocumentFindManyMock: vi.fn(),
+  queryRawMock: vi.fn(),
+  listPatientRiskSummariesMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+  assertFacilityReferenceMock: vi.fn(),
+  getFacilityVisitDefaultsMock: vi.fn(),
+  residenceCreateMock: vi.fn(),
+  contactPartyCreateManyMock: vi.fn(),
+  patientConditionCreateManyMock: vi.fn(),
+  patientPackagingProfileCreateMock: vi.fn(),
+  patientSchedulePreferenceCreateMock: vi.fn(),
+  careCaseCreateMock: vi.fn(),
+  careTeamLinkCreateManyMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/middleware', () => ({
   withAuth: (
     handler: (
-      req: NextRequest & { orgId: string; userId: string; role: string }
-    ) => Promise<Response>
+      req: NextRequest & { orgId: string; userId: string; role: string },
+    ) => Promise<Response>,
   ) => {
     withAuthMock.mockImplementation(handler);
     return handler;
@@ -454,40 +453,39 @@ describe('/api/patients GET', () => {
   });
 
   it('uses the database cursor when paginating filtered results', async () => {
-    patientFindManyMock
-      .mockResolvedValueOnce([
-        {
-          id: 'patient_2',
-          name: '鈴木 次郎',
-          name_kana: 'スズキ ジロウ',
-          birth_date: new Date('1952-10-01'),
-          gender: 'male',
-          phone: null,
-          medical_insurance_number: null,
-          care_insurance_number: null,
-          billing_support_flag: false,
-          residences: [
-            {
-              address: '東京都墨田区2-2-2',
-              building_id: null,
-              unit_name: null,
-            },
-          ],
-          _count: { contacts: 0 },
-          contacts: [],
-          conditions: [],
-          cases: [
-            {
-              id: 'case_2',
-              status: 'assessment',
-              updated_at: new Date('2026-03-20T09:00:00.000Z'),
-              primary_pharmacist_id: null,
-              care_team_links: [],
-            },
-          ],
-          consents: [],
-        },
-      ]);
+    patientFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'patient_2',
+        name: '鈴木 次郎',
+        name_kana: 'スズキ ジロウ',
+        birth_date: new Date('1952-10-01'),
+        gender: 'male',
+        phone: null,
+        medical_insurance_number: null,
+        care_insurance_number: null,
+        billing_support_flag: false,
+        residences: [
+          {
+            address: '東京都墨田区2-2-2',
+            building_id: null,
+            unit_name: null,
+          },
+        ],
+        _count: { contacts: 0 },
+        contacts: [],
+        conditions: [],
+        cases: [
+          {
+            id: 'case_2',
+            status: 'assessment',
+            updated_at: new Date('2026-03-20T09:00:00.000Z'),
+            primary_pharmacist_id: null,
+            care_team_links: [],
+          },
+        ],
+        consents: [],
+      },
+    ]);
     queryRawMock.mockResolvedValue([]);
     listPatientRiskSummariesMock.mockResolvedValue([]);
 
@@ -504,7 +502,7 @@ describe('/api/patients GET', () => {
       expect.objectContaining({
         cursor: { id: 'patient_1' },
         skip: 1,
-      })
+      }),
     );
   });
 
@@ -591,6 +589,7 @@ describe('/api/patients GET', () => {
       ...createRequest({
         name: '訪問 花子',
         gender: 'female',
+        billing_support_flag: true,
         address: '東京都千代田区1-2-3',
         requester: {
           organization_name: '千代田クリニック',
@@ -609,6 +608,9 @@ describe('/api/patients GET', () => {
           medication_support_methods: ['unit_dose', 'calendar'],
           parking_available: false,
           mcs_linked: true,
+          ent_prescription: true,
+          ent_period_from: '2026-04-01',
+          ent_period_to: '2026-04-30',
           care_manager: {
             name: 'ケア 山田',
             organization_name: '地域ケア',
@@ -627,6 +629,7 @@ describe('/api/patients GET', () => {
           name: '訪問 花子',
           phone: '03-3333-4444',
           birth_date: expect.any(Date),
+          billing_support_flag: true,
         }),
       }),
     );
@@ -667,6 +670,9 @@ describe('/api/patients GET', () => {
               }),
               reported_age: 82,
               care_level: 'care_3',
+              ent_prescription: true,
+              ent_period_from: '2026-04-01',
+              ent_period_to: '2026-04-30',
               special_medical_procedures: ['narcotics', 'home_oxygen'],
             }),
           }),
@@ -714,7 +720,7 @@ describe('/api/patients GET', () => {
         residence: expect.any(Object),
       }),
       'org_1',
-      'facility_1'
+      'facility_1',
     );
     expect(patientSchedulePreferenceCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -722,7 +728,7 @@ describe('/api/patients GET', () => {
           facility_time_from: new Date('1970-01-01T09:00:00.000Z'),
           facility_time_to: new Date('1970-01-01T17:00:00.000Z'),
         }),
-      })
+      }),
     );
   });
 });

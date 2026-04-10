@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, CheckCircle2, Clock } from 'lucide-react';
 import { toast } from 'sonner';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +21,8 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { badgeToneClass } from '@/lib/ui/badge-semantics';
 import { resolveHandoffEntityAction } from './handoff-board.helpers';
+import type { HandoffFilter } from '@/lib/dashboard/home-link-builders';
+import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 
 type HandoffItem = {
   id: string;
@@ -56,14 +59,53 @@ const PRIORITY_CONFIG: Record<string, { label: string; className: string }> = {
 
 const PRIORITY_ORDER = ['urgent', 'high', 'normal'];
 
-export function HandoffBoard() {
+type HandoffBoardProps = {
+  initialDate?: string;
+  initialFilter?: HandoffFilter;
+  initialContext?: string | null;
+};
+
+function InlineFilterButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={[
+        'inline-flex min-h-[36px] items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+        active
+          ? 'border-primary bg-primary/10 text-primary'
+          : 'border-border/70 bg-background text-muted-foreground',
+      ].join(' ')}
+    >
+      {label}
+    </button>
+  );
+}
+
+export function HandoffBoard({
+  initialDate,
+  initialFilter = 'all',
+  initialContext,
+}: HandoffBoardProps = {}) {
+  const replaceHandoffUrl = useSyncedSearchParams();
   const orgId = useOrgId();
   const userId = useAuthStore((s) => s.currentUser.id);
   const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState(() => {
+    if (initialDate) return initialDate;
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   });
+  const [filter, setFilter] = useState<HandoffFilter>(initialFilter);
   const [newContent, setNewContent] = useState('');
   const [newPriority, setNewPriority] = useState('normal');
 
@@ -137,6 +179,12 @@ export function HandoffBoard() {
 
   const board = data?.data;
   const items = board?.items ?? [];
+  const contextSummary =
+    initialContext === 'dashboard_home'
+      ? filter === 'unread'
+        ? 'ホームから未読の申し送りにフォーカスして開いています。'
+        : 'ホームから申し送り一覧にフォーカスして開いています。'
+      : null;
 
   const sortedItems = [...items].sort((a, b) => {
     const aPriority = PRIORITY_ORDER.indexOf(a.priority);
@@ -144,6 +192,10 @@ export function HandoffBoard() {
     if (aPriority !== bPriority) return aPriority - bPriority;
     return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
   });
+  const visibleItems =
+    filter === 'unread' && userId
+      ? sortedItems.filter((item) => !item.read_by.includes(userId))
+      : sortedItems;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -153,25 +205,54 @@ export function HandoffBoard() {
 
   return (
     <div className="space-y-6">
+      {contextSummary ? (
+        <Alert className="border-sky-200 bg-sky-50 text-sky-900" data-testid="handoff-context-banner">
+          <Clock className="size-4 text-sky-700" aria-hidden="true" />
+          <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
+        </Alert>
+      ) : null}
       <SectionIntro
         title="対象日の選択"
         description="まず対象日を選び、その日の申し送りだけに集中できるようにします。"
       />
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-4">
         <input
           type="date"
           value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
+          onChange={(e) => {
+            setSelectedDate(e.target.value);
+            replaceHandoffUrl({ date: e.target.value });
+          }}
           className="h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
         />
+        <div className="flex flex-wrap gap-2">
+          <InlineFilterButton
+            active={filter === 'all'}
+            label="全て"
+            onClick={() => {
+              setFilter('all');
+              replaceHandoffUrl({ filter: null });
+            }}
+          />
+          <InlineFilterButton
+            active={filter === 'unread'}
+            label="未読のみ"
+            onClick={() => {
+              setFilter('unread');
+              replaceHandoffUrl({ filter: 'unread' });
+            }}
+          />
+        </div>
       </div>
 
       {isLoading && <p className="text-sm text-muted-foreground">読み込み中...</p>}
 
-      {!isLoading && sortedItems.length === 0 && (
+      {!isLoading && visibleItems.length === 0 && (
         <Card className="border-slate-200 shadow-sm">
           <CardContent className="py-8 text-center">
-            <p className="text-sm text-muted-foreground">この日の申し送り項目はありません。</p>
+            <p className="text-sm text-muted-foreground">
+              {filter === 'unread' ? 'この日の未読申し送りはありません。' : 'この日の申し送り項目はありません。'}
+            </p>
           </CardContent>
         </Card>
       )}
@@ -181,7 +262,7 @@ export function HandoffBoard() {
         description="優先度順に並んだ申し送りを確認し、関連業務へそのまま移動できます。"
       />
       <div className="space-y-3">
-        {sortedItems.map((item) => {
+        {visibleItems.map((item) => {
           const isRead = userId ? item.read_by.includes(userId) : false;
           const config = PRIORITY_CONFIG[item.priority] ?? PRIORITY_CONFIG.normal;
           const entityAction = resolveHandoffEntityAction(item);

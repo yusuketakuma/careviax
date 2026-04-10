@@ -1,11 +1,19 @@
 'use client';
 
-import { cloneElement, isValidElement, useId, useState, type ReactNode, type ReactElement } from 'react';
+import {
+  cloneElement,
+  isValidElement,
+  useId,
+  useState,
+  type ReactNode,
+  type ReactElement,
+} from 'react';
 import type { AllergyEntry } from '@/lib/validations/patient-allergy';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { ShieldCheck } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -28,6 +36,13 @@ type FacilityOption = {
   address: string | null;
 };
 
+type FacilityUnitOption = {
+  id: string;
+  name: string;
+  floor: string | null;
+  unit_type: string | null;
+};
+
 type PatientMasterCardProps = {
   orgId: string;
   patient: {
@@ -39,6 +54,7 @@ type PatientMasterCardProps = {
     phone: string | null;
     medical_insurance_number: string | null;
     care_insurance_number: string | null;
+    billing_support_flag: boolean;
     allergy_info: AllergyEntry[] | null;
     notes: string | null;
     residences: Array<{
@@ -46,6 +62,7 @@ type PatientMasterCardProps = {
       address: string;
       building_id: string | null;
       facility_id?: string | null;
+      facility_unit_id?: string | null;
       unit_name: string | null;
       is_primary: boolean;
     }>;
@@ -60,7 +77,8 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
   const primaryResidence = patient.residences.find((residence) => residence.is_primary) ?? null;
 
   // Resolve the first case that has intake data and derive compact badges
-  const intakeCase = patient.cases?.find((c) => getHomeVisitIntake(c.required_visit_support)) ?? null;
+  const intakeCase =
+    patient.cases?.find((c) => getHomeVisitIntake(c.required_visit_support)) ?? null;
   const intake = intakeCase ? getHomeVisitIntake(intakeCase.required_visit_support) : null;
   const intakeBadges = buildIntakeBadges(intake);
   const facilitiesQuery = useQuery({
@@ -83,12 +101,26 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
     phone: patient.phone ?? '',
     medical_insurance_number: patient.medical_insurance_number ?? '',
     care_insurance_number: patient.care_insurance_number ?? '',
+    billing_support_flag: patient.billing_support_flag,
     address: primaryResidence?.address ?? '',
     facility_id: primaryResidence?.facility_id ?? '',
+    facility_unit_id: primaryResidence?.facility_unit_id ?? '',
     building_id: primaryResidence?.building_id ?? '',
     unit_name: primaryResidence?.unit_name ?? '',
     allergy_info: (patient.allergy_info ?? []) as AllergyEntry[],
     notes: patient.notes ?? '',
+  });
+  const selectedFacilityId = form.facility_id;
+  const facilityUnitsQuery = useQuery({
+    queryKey: ['patient-master-facility-units', orgId, selectedFacilityId],
+    queryFn: async () => {
+      const response = await fetch(`/api/admin/facilities/${selectedFacilityId}/units`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!response.ok) throw new Error('ユニット一覧の取得に失敗しました');
+      return response.json() as Promise<{ data: FacilityUnitOption[] }>;
+    },
+    enabled: !!orgId && !!selectedFacilityId,
   });
 
   const qualificationCheckMutation = useMutation({
@@ -104,7 +136,9 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
         }
         throw new Error((payload as { message?: string }).message ?? '資格確認に失敗しました');
       }
-      return payload as { data: { valid: boolean; payerName: string | null; copayRatio: number | null } | null };
+      return payload as {
+        data: { valid: boolean; payerName: string | null; copayRatio: number | null } | null;
+      };
     },
     onSuccess: (result) => {
       if (!result.data) {
@@ -114,7 +148,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
       const { valid, payerName, copayRatio } = result.data;
       if (valid) {
         toast.success(
-          `資格確認OK: ${payerName ?? '保険者不明'}${copayRatio != null ? ` / 負担割合 ${copayRatio * 100}%` : ''}`
+          `資格確認OK: ${payerName ?? '保険者不明'}${copayRatio != null ? ` / 負担割合 ${copayRatio * 100}%` : ''}`,
         );
       } else {
         toast.warning('資格確認: 保険資格が無効または期限切れです');
@@ -141,8 +175,10 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
           phone: form.phone || undefined,
           medical_insurance_number: form.medical_insurance_number || undefined,
           care_insurance_number: form.care_insurance_number || undefined,
+          billing_support_flag: form.billing_support_flag,
           address: form.address || undefined,
           facility_id: form.facility_id || undefined,
+          facility_unit_id: form.facility_unit_id || undefined,
           building_id: form.building_id || undefined,
           unit_name: form.unit_name || undefined,
           allergy_info: form.allergy_info,
@@ -151,7 +187,9 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error((payload as { message?: string }).message ?? '患者基本情報の保存に失敗しました');
+        throw new Error(
+          (payload as { message?: string }).message ?? '患者基本情報の保存に失敗しました',
+        );
       }
       return payload;
     },
@@ -159,7 +197,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
       toast.success('患者基本情報を更新しました');
       await invalidateQueryKeys(
         queryClient,
-        getPatientCareQueryKeys({ orgId, patientId: patient.id })
+        getPatientCareQueryKeys({ orgId, patientId: patient.id }),
       );
     },
     onError: (error) => {
@@ -189,12 +227,16 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
       <CardContent className="space-y-6">
         {/* A. 基本属性 */}
         <fieldset className="space-y-3">
-          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">A. 基本属性</legend>
+          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            A. 基本属性
+          </legend>
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="氏名">
               <Input
                 value={form.name}
-                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, name: event.target.value }))
+                }
               />
             </Field>
             <Field label="フリガナ">
@@ -217,7 +259,9 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
             <Field label="性別">
               <Select
                 value={form.gender}
-                onValueChange={(value) => setForm((current) => ({ ...current, gender: value ?? current.gender }))}
+                onValueChange={(value) =>
+                  setForm((current) => ({ ...current, gender: value ?? current.gender }))
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="性別を選択">
@@ -238,12 +282,16 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
 
         {/* B. 連絡・住所 */}
         <fieldset className="space-y-3">
-          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">B. 連絡・住所</legend>
+          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            B. 連絡・住所
+          </legend>
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="電話番号">
               <Input
                 value={form.phone}
-                onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, phone: event.target.value }))
+                }
               />
             </Field>
             <Field label="住所">
@@ -262,13 +310,17 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
                     setForm((current) => ({
                       ...current,
                       facility_id: '',
+                      facility_unit_id: '',
                     }));
                     return;
                   }
-                  const selectedFacility = facilitiesQuery.data?.data.find((item) => item.id === value);
+                  const selectedFacility = facilitiesQuery.data?.data.find(
+                    (item) => item.id === value,
+                  );
                   setForm((current) => ({
                     ...current,
                     facility_id: value,
+                    facility_unit_id: current.facility_id === value ? current.facility_unit_id : '',
                     address: selectedFacility?.address ?? current.address,
                   }));
                 }}
@@ -281,6 +333,38 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
                   {(facilitiesQuery.data?.data ?? []).map((facility) => (
                     <SelectItem key={facility.id} value={facility.id}>
                       {facility.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="ユニット">
+              <Select
+                value={form.facility_unit_id || 'none'}
+                onValueChange={(value) =>
+                  setForm((current) => ({
+                    ...current,
+                    facility_unit_id: !value || value === 'none' ? '' : value,
+                  }))
+                }
+                disabled={!selectedFacilityId || facilityUnitsQuery.isLoading}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      !selectedFacilityId
+                        ? '施設を選択してください'
+                        : facilityUnitsQuery.isLoading
+                          ? 'ユニットを読み込み中...'
+                          : 'ユニットを選択してください'
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">未設定</SelectItem>
+                  {(facilityUnitsQuery.data?.data ?? []).map((unit) => (
+                    <SelectItem key={unit.id} value={unit.id}>
+                      {[unit.floor, unit.name].filter(Boolean).join(' / ')}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -309,7 +393,9 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
 
         {/* C. 保険 */}
         <fieldset className="space-y-3">
-          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">C. 保険</legend>
+          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            C. 保険
+          </legend>
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="医療保険番号">
               <div className="flex gap-2">
@@ -348,6 +434,20 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
                 }
               />
             </Field>
+            <Field label="請求支援フラグ">
+              <label className="flex min-h-10 items-center gap-3 rounded-lg border border-border/70 px-3 py-2 text-sm">
+                <Checkbox
+                  checked={form.billing_support_flag}
+                  onCheckedChange={(checked) =>
+                    setForm((current) => ({
+                      ...current,
+                      billing_support_flag: checked === true,
+                    }))
+                  }
+                />
+                <span>請求支援が必要な患者として扱う</span>
+              </label>
+            </Field>
           </div>
         </fieldset>
 
@@ -355,7 +455,9 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
 
         {/* D. アレルギー */}
         <fieldset className="space-y-3">
-          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">D. アレルギー</legend>
+          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            D. アレルギー
+          </legend>
           <div className="space-y-2">
             <Label className="block mb-1.5">アレルギー情報</Label>
             {form.allergy_info.map((entry, index) => (
@@ -377,7 +479,10 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
                   onValueChange={(value) =>
                     setForm((current) => {
                       const updated = [...current.allergy_info];
-                      updated[index] = { ...updated[index], category: value as AllergyEntry['category'] };
+                      updated[index] = {
+                        ...updated[index],
+                        category: value as AllergyEntry['category'],
+                      };
                       return { ...current, allergy_info: updated };
                     })
                   }
@@ -396,7 +501,10 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
                   onValueChange={(value) =>
                     setForm((current) => {
                       const updated = [...current.allergy_info];
-                      updated[index] = { ...updated[index], severity: value as AllergyEntry['severity'] };
+                      updated[index] = {
+                        ...updated[index],
+                        severity: value as AllergyEntry['severity'],
+                      };
                       return { ...current, allergy_info: updated };
                     })
                   }
@@ -449,12 +557,16 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
 
         {/* E. 補助メモ */}
         <fieldset className="space-y-3">
-          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">E. 補助メモ</legend>
+          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            E. 補助メモ
+          </legend>
           <Field label="患者メモ">
             <Textarea
               rows={4}
               value={form.notes}
-              onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, notes: event.target.value }))
+              }
             />
           </Field>
         </fieldset>
@@ -483,13 +595,13 @@ function Field({
 
   // Check if the child is a native input-like element that supports htmlFor/id binding.
   // Select (Radix) doesn't forward id to its trigger, so we skip cloneElement for it.
-  const isNativeInput =
-    isValidElement(children) &&
-    typeof children.type === 'string';
+  const isNativeInput = isValidElement(children) && typeof children.type === 'string';
 
   return (
     <div className={className}>
-      <Label htmlFor={isNativeInput ? fieldId : undefined} className="mb-1.5 block">{label}</Label>
+      <Label htmlFor={isNativeInput ? fieldId : undefined} className="mb-1.5 block">
+        {label}
+      </Label>
       {isNativeInput
         ? cloneElement(children as ReactElement<{ id?: string }>, { id: fieldId })
         : children}

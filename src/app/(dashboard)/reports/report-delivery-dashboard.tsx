@@ -73,7 +73,11 @@ function formatDate(value: string) {
   return format(parseISO(value), 'yyyy/MM/dd', { locale: ja });
 }
 
-export function ReportDeliveryDashboard() {
+export function ReportDeliveryDashboard({
+  highlighted = false,
+}: {
+  highlighted?: boolean;
+}) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [overdueDays, setOverdueDays] = useState('7');
@@ -136,7 +140,10 @@ export function ReportDeliveryDashboard() {
   const analytics = data?.data;
 
   return (
-    <div className="space-y-4" data-testid="reports-delivery-dashboard">
+    <div
+      className={cn('space-y-4', highlighted ? 'rounded-2xl ring-2 ring-primary/25' : null)}
+      data-testid="reports-delivery-dashboard"
+    >
       <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-4">
         <h2 className="text-base font-semibold text-foreground">送達分析・未確認フォロー</h2>
         <p className="mt-1 text-sm text-muted-foreground">

@@ -8,6 +8,8 @@ import { BillingKpiSection } from './billing-kpi-section';
 import { DashboardSectionGroup } from './dashboard-section-group';
 import { PatientGridSection } from './patient-grid-section';
 import { CoordinationNavigation } from './coordination-navigation';
+import { DashboardRoleGuide } from './dashboard-role-guide';
+import { type DashboardFocusRole } from './dashboard-role-focus';
 import { ScheduleSection } from './schedule-section';
 import { TodayTasksSection } from './today-tasks-section';
 import { WorkbenchNavigation } from './workbench-navigation';
@@ -61,14 +63,18 @@ function NavigationCluster({
   );
 }
 
-export function DashboardContent() {
+export function DashboardContent({
+  focusRole = 'common',
+}: {
+  focusRole?: DashboardFocusRole;
+}) {
   return (
     <div className="space-y-8">
       <DashboardSectionGroup
         id="dashboard-daily-operations"
         eyebrow="Daily Operations"
         title="今日の運用"
-        description="日中の判断に直結するタスクと予定をひとまとまりにし、最初に見るべき情報を上段へ固定しています。"
+        description="緊急度、今日の予定、優先作業をひとまとまりにし、出勤直後にその日の動きを決めやすい配置へ整理しています。"
       >
         <div
           className="grid gap-8 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]"
@@ -78,10 +84,10 @@ export function DashboardContent() {
             <SectionHeader
               icon={ListChecks}
               title="今日のタスク"
-              description="優先度順の要対応を工程別に見ながら、そのまま処理画面へ進みます。"
+              description="緊急度、担当の起点、工程別の滞留を見ながら、上から順にそのまま処理画面へ進みます。"
             />
             <div id="dashboard-tasks-section">
-              <TodayTasksSection />
+              <TodayTasksSection focusRole={focusRole} />
             </div>
           </section>
 
@@ -89,29 +95,29 @@ export function DashboardContent() {
             <SectionHeader
               icon={CalendarDays}
               title="スケジュール"
-              description="日次リストと月間カレンダーを切り替えながら、訪問予定と処方未着をまとめて確認します。"
+              description="今日の訪問実行と日程調整を見分けやすくするため、日次リストと全体カレンダーを同じ場所にまとめています。"
             />
             <div id="dashboard-schedule-section">
-              <ScheduleSection />
+              <ScheduleSection focusRole={focusRole} />
             </div>
           </section>
         </div>
       </DashboardSectionGroup>
 
       <DashboardSectionGroup
-        id="dashboard-billing-kpi"
-        eyebrow="Billing KPI"
-        title="請求状況"
-        description="当月の請求候補・未確定・締めブロッカーをひと目で確認し、月次締め前に対処が必要な項目を把握します。"
+        id="dashboard-role-guide-group"
+        eyebrow="Who Handles What"
+        title="担当別の開始導線"
+        description="薬剤師、事務スタッフ、全員共通の入口を分け、誰が最初に何を確認するかを揃えて判断できるようにしています。"
       >
-        <section className="space-y-4" aria-labelledby="dashboard-billing-kpi-section">
+        <section className="space-y-4" aria-labelledby="dashboard-role-guide-section">
           <SectionHeader
-            icon={Receipt}
-            title="当月請求 KPI"
-            description="候補数・未確定・ブロッカーを確認し、月次締めの準備状況を把握します。"
+            icon={Users}
+            title="職種ごとの初動"
+            description="職種別の優先順とすぐ開く画面を一つのまとまりで示し、朝の迷いを減らします。"
           />
-          <div id="dashboard-billing-kpi-section">
-            <BillingKpiSection />
+          <div id="dashboard-role-guide-section">
+            <DashboardRoleGuide focusRole={focusRole} />
           </div>
         </section>
       </DashboardSectionGroup>
@@ -120,17 +126,17 @@ export function DashboardContent() {
         id="dashboard-navigation-group"
         eyebrow="Workflow Navigation"
         title="業務導線"
-        description="開始導線と補助メニューを一つの業務メニューとしてまとめ、入口と支援機能の関係が追いやすい構造にしています。"
+        description="日次の優先判断を終えたあとに、工程入口と補助メニューを役割ごとに辿りやすくまとめています。"
       >
         <div className="space-y-6">
           <section className="space-y-4" aria-labelledby="dashboard-workflows-section">
             <SectionHeader
               icon={FolderKanban}
               title="主要フロー入口"
-              description="最初に始める入口を上段に固定し、その後の処理フローを続けてたどれるようにしています。"
+              description="現在の担当に合わせて先頭の入口を並べ替え、最初に押す画面がカード順だけで分かるようにしています。"
             />
             <div id="dashboard-workflows-section">
-              <WorkflowNavigation />
+              <WorkflowNavigation focusRole={focusRole} />
             </div>
           </section>
 
@@ -140,20 +146,20 @@ export function DashboardContent() {
             <SectionHeader
               icon={Settings2}
               title="補助導線"
-              description="二次タスクと支援機能は意味ごとに束ね、まとまりごとに線で区切って探しやすくしています。"
+              description="個人ワークベンチ、連携系、運営系の支援画面を意味ごとに束ねています。"
             />
             <div id="dashboard-secondary-navigation-section" className="grid gap-4 xl:grid-cols-3">
               <NavigationCluster
                 title="共通ワークベンチ"
                 description="個人タスク、請求、提案確認などの横断作業。"
               >
-                <WorkbenchNavigation />
+                <WorkbenchNavigation focusRole={focusRole} />
               </NavigationCluster>
               <NavigationCluster
                 title="連携・モニタ"
                 description="通知、外部連携、依頼・照会、申し送り。"
               >
-                <CoordinationNavigation />
+                <CoordinationNavigation focusRole={focusRole} />
               </NavigationCluster>
               <NavigationCluster
                 title="運営・管理"
@@ -170,7 +176,7 @@ export function DashboardContent() {
         id="dashboard-patients-group"
         eyebrow="Patient Monitoring"
         title="患者確認"
-        description="患者検索とリスク確認は独立したまとまりに分離し、日次業務の後段で横断確認しやすくしています。"
+        description="患者検索とリスク確認は独立したまとまりに分離し、日次業務を回し始めた後に横断確認しやすくしています。"
       >
         <section className="space-y-4" aria-labelledby="dashboard-patients-section">
           <SectionHeader
@@ -180,6 +186,24 @@ export function DashboardContent() {
           />
           <div id="dashboard-patients-section">
             <PatientGridSection />
+          </div>
+        </section>
+      </DashboardSectionGroup>
+
+      <DashboardSectionGroup
+        id="dashboard-billing-kpi"
+        eyebrow="Billing KPI"
+        title="請求状況"
+        description="当月の請求候補、未確定、締めブロッカーを補助監視として分離し、日次オペレーションの後段で確認できるようにしています。"
+      >
+        <section className="space-y-4" aria-labelledby="dashboard-billing-kpi-section">
+          <SectionHeader
+            icon={Receipt}
+            title="当月請求 KPI"
+            description="候補数、未確定、ブロッカーを見て、月次締め前に対処が必要な項目を把握します。"
+          />
+          <div id="dashboard-billing-kpi-section">
+            <BillingKpiSection />
           </div>
         </section>
       </DashboardSectionGroup>

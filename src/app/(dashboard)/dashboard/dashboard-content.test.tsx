@@ -31,6 +31,10 @@ vi.mock('./schedule-section', () => ({
   ScheduleSection: () => <div>schedule-section</div>,
 }));
 
+vi.mock('./dashboard-role-guide', () => ({
+  DashboardRoleGuide: () => <div>dashboard-role-guide</div>,
+}));
+
 vi.mock('./patient-grid-section', () => ({
   PatientGridSection: () => <div>patient-grid-section</div>,
 }));
@@ -40,16 +44,18 @@ vi.mock('./billing-kpi-section', () => ({
 }));
 
 describe('DashboardContent', () => {
-  it('groups the dashboard into daily operations, workflow navigation, and patient monitoring', () => {
+  it('groups the dashboard into daily operations, role guidance, workflow navigation, and patient monitoring', () => {
     render(<DashboardContent />);
 
     expect(screen.getByText('今日の運用')).toBeTruthy();
+    expect(screen.getByText('担当別の開始導線')).toBeTruthy();
     expect(screen.getByText('業務導線')).toBeTruthy();
     expect(screen.getByText('患者確認')).toBeTruthy();
+    expect(screen.getByText('職種ごとの初動')).toBeTruthy();
     expect(screen.getByText('主要フロー入口')).toBeTruthy();
     expect(
       screen.getByText(
-        '開始導線と補助メニューを一つの業務メニューとしてまとめ、入口と支援機能の関係が追いやすい構造にしています。',
+        '薬剤師、事務スタッフ、全員共通の入口を分け、誰が最初に何を確認するかを揃えて判断できるようにしています。',
       ),
     ).toBeTruthy();
     expect(screen.getByTestId('dashboard-priority-actions')).toBeTruthy();

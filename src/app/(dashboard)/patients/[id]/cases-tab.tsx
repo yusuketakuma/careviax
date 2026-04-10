@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -17,11 +18,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { caseStatusTransitions, type CaseStatus } from '@/lib/validations/case';
-import {
-  buildIntakeFieldRows,
-  getHomeVisitIntake,
-} from '@/lib/patient/intake-display';
+import { buildIntakeFieldRows, getHomeVisitIntake } from '@/lib/patient/intake-display';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { ClipboardList, Plus } from 'lucide-react';
 
@@ -47,10 +46,12 @@ type CaseRow = {
   id: string;
   status: string;
   primary_pharmacist_id: string | null;
+  backup_pharmacist_id: string | null;
   referral_source: string | null;
   referral_date: string | null;
   start_date: string | null;
   end_date: string | null;
+  end_reason: string | null;
   notes: string | null;
   required_visit_support: Record<string, unknown> | null;
   created_at: string;
@@ -73,6 +74,34 @@ interface CasesTabProps {
   orgId: string;
 }
 
+type CaseEditDraft = {
+  primary_pharmacist_id: string;
+  backup_pharmacist_id: string;
+  referral_source: string;
+  referral_date: string;
+  start_date: string;
+  end_date: string;
+  end_reason: string;
+  notes: string;
+};
+
+function toDateInputValue(value: string | null) {
+  return value ? value.slice(0, 10) : '';
+}
+
+function buildCaseDraft(careCase: CaseRow): CaseEditDraft {
+  return {
+    primary_pharmacist_id: careCase.primary_pharmacist_id ?? '__unassigned__',
+    backup_pharmacist_id: careCase.backup_pharmacist_id ?? '__unassigned__',
+    referral_source: careCase.referral_source ?? '',
+    referral_date: toDateInputValue(careCase.referral_date),
+    start_date: toDateInputValue(careCase.start_date),
+    end_date: toDateInputValue(careCase.end_date),
+    end_reason: careCase.end_reason ?? '',
+    notes: careCase.notes ?? '',
+  };
+}
+
 export function CasesTab({ patient, orgId }: CasesTabProps) {
   const queryClient = useQueryClient();
   const [transition, setTransition] = useState<{
@@ -81,7 +110,7 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
     to: CaseStatus;
   } | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const [assignmentDrafts, setAssignmentDrafts] = useState<Record<string, string>>({});
+  const [caseDrafts, setCaseDrafts] = useState<Record<string, CaseEditDraft>>({});
   const [savingCaseId, setSavingCaseId] = useState<string | null>(null);
 
   const { data: pharmacistsData } = useQuery({
@@ -124,7 +153,7 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
     toast.success(`ステータスを「${caseStatusLabel[transition.to]}」に変更しました`);
     await invalidateQueryKeys(
       queryClient,
-      getPatientCareQueryKeys({ orgId, patientId: patient.id })
+      getPatientCareQueryKeys({ orgId, patientId: patient.id }),
     );
   }
 
@@ -149,15 +178,12 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
     toast.success('新しいケースを作成しました');
     await invalidateQueryKeys(
       queryClient,
-      getPatientCareQueryKeys({ orgId, patientId: patient.id })
+      getPatientCareQueryKeys({ orgId, patientId: patient.id }),
     );
     setIsCreating(false);
   }
 
-  async function handleAssignPrimaryPharmacist(caseId: string) {
-    const value = assignmentDrafts[caseId];
-    const primaryPharmacistId = value === '__unassigned__' ? '' : value;
-
+  async function handleSaveCase(caseId: string, draft: CaseEditDraft) {
     setSavingCaseId(caseId);
     const res = await fetch(`/api/cases/${caseId}`, {
       method: 'PATCH',
@@ -165,20 +191,31 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
         'Content-Type': 'application/json',
         'x-org-id': orgId,
       },
-      body: JSON.stringify({ primary_pharmacist_id: primaryPharmacistId }),
+      body: JSON.stringify({
+        primary_pharmacist_id:
+          draft.primary_pharmacist_id === '__unassigned__' ? '' : draft.primary_pharmacist_id,
+        backup_pharmacist_id:
+          draft.backup_pharmacist_id === '__unassigned__' ? '' : draft.backup_pharmacist_id,
+        referral_source: draft.referral_source,
+        referral_date: draft.referral_date,
+        start_date: draft.start_date,
+        end_date: draft.end_date,
+        end_reason: draft.end_reason,
+        notes: draft.notes,
+      }),
     });
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      toast.error(err.message ?? '担当薬剤師の更新に失敗しました');
+      toast.error(err.message ?? 'ケース情報の更新に失敗しました');
       setSavingCaseId(null);
       return;
     }
 
-    toast.success('担当薬剤師を更新しました');
+    toast.success('ケース情報を更新しました');
     await invalidateQueryKeys(
       queryClient,
-      getPatientCareQueryKeys({ orgId, patientId: patient.id })
+      getPatientCareQueryKeys({ orgId, patientId: patient.id }),
     );
     setSavingCaseId(null);
   }
@@ -202,6 +239,7 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
         patient.cases.map((c) => {
           const status = c.status as CaseStatus;
           const nextStatuses = caseStatusTransitions[status] ?? [];
+          const draft = caseDrafts[c.id] ?? buildCaseDraft(c);
 
           const caseIntake = getHomeVisitIntake(c.required_visit_support);
           const intakeRows = buildIntakeFieldRows(caseIntake, [
@@ -250,6 +288,14 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
                         : '—'}
                     </dd>
                   </div>
+                  <div>
+                    <dt className="text-muted-foreground">終了日</dt>
+                    <dd>
+                      {c.end_date
+                        ? format(parseISO(c.end_date), 'yyyy/MM/dd', { locale: ja })
+                        : '—'}
+                    </dd>
+                  </div>
                 </dl>
 
                 {intakeRows.length > 0 && (
@@ -268,58 +314,180 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
                   </div>
                 )}
 
-                {c.notes && (
-                  <p className="rounded-md bg-muted/40 p-3 text-sm text-foreground">
-                    {c.notes}
-                  </p>
-                )}
+                <div className="rounded-md border border-border/70 bg-muted/20 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium text-foreground">ケース情報</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleSaveCase(c.id, draft)}
+                      disabled={savingCaseId === c.id}
+                    >
+                      {savingCaseId === c.id ? '保存中...' : 'ケース情報を保存'}
+                    </Button>
+                  </div>
 
-                <div className="rounded-md border bg-muted/20 p-3">
-                  <p className="text-xs font-medium text-muted-foreground">担当薬剤師</p>
-                  {pharmacists.length === 0 ? (
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      薬剤師が未登録のため割当できません
-                    </p>
-                  ) : (
-                    <>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <Select
-                          value={assignmentDrafts[c.id] ?? c.primary_pharmacist_id ?? '__unassigned__'}
-                          onValueChange={(value) =>
-                            value
-                              ? setAssignmentDrafts((current) => ({
-                                  ...current,
-                                  [c.id]: value,
-                                }))
-                              : undefined
-                          }
-                        >
-                          <SelectTrigger className="min-w-[220px]">
-                            <SelectValue placeholder="担当薬剤師を選択" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__unassigned__">未設定</SelectItem>
-                            {pharmacists.map((pharmacist) => (
-                              <SelectItem key={pharmacist.id} value={pharmacist.id}>
-                                {pharmacist.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleAssignPrimaryPharmacist(c.id)}
-                          disabled={savingCaseId === c.id}
-                        >
-                          {savingCaseId === c.id ? '保存中...' : '保存'}
-                        </Button>
-                      </div>
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        訪問候補生成ではこの薬剤師を優先し、不在時のみ代替薬剤師へエスカレーションします。
-                      </p>
-                    </>
-                  )}
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">紹介元</label>
+                      <Input
+                        value={draft.referral_source}
+                        onChange={(event) =>
+                          setCaseDrafts((current) => ({
+                            ...current,
+                            [c.id]: {
+                              ...draft,
+                              referral_source: event.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">紹介日</label>
+                      <Input
+                        type="date"
+                        value={draft.referral_date}
+                        onChange={(event) =>
+                          setCaseDrafts((current) => ({
+                            ...current,
+                            [c.id]: {
+                              ...draft,
+                              referral_date: event.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">開始日</label>
+                      <Input
+                        type="date"
+                        value={draft.start_date}
+                        onChange={(event) =>
+                          setCaseDrafts((current) => ({
+                            ...current,
+                            [c.id]: {
+                              ...draft,
+                              start_date: event.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">終了日</label>
+                      <Input
+                        type="date"
+                        value={draft.end_date}
+                        onChange={(event) =>
+                          setCaseDrafts((current) => ({
+                            ...current,
+                            [c.id]: {
+                              ...draft,
+                              end_date: event.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">
+                        主担当薬剤師
+                      </label>
+                      <Select
+                        value={draft.primary_pharmacist_id}
+                        onValueChange={(value) =>
+                          setCaseDrafts((current) => ({
+                            ...current,
+                            [c.id]: {
+                              ...draft,
+                              primary_pharmacist_id: value ?? '__unassigned__',
+                            },
+                          }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="主担当薬剤師を選択" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__unassigned__">未設定</SelectItem>
+                          {pharmacists.map((pharmacist) => (
+                            <SelectItem key={pharmacist.id} value={pharmacist.id}>
+                              {pharmacist.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">
+                        代替薬剤師
+                      </label>
+                      <Select
+                        value={draft.backup_pharmacist_id}
+                        onValueChange={(value) =>
+                          setCaseDrafts((current) => ({
+                            ...current,
+                            [c.id]: {
+                              ...draft,
+                              backup_pharmacist_id: value ?? '__unassigned__',
+                            },
+                          }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="代替薬剤師を選択" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__unassigned__">未設定</SelectItem>
+                          {pharmacists.map((pharmacist) => (
+                            <SelectItem key={pharmacist.id} value={pharmacist.id}>
+                              {pharmacist.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5 md:col-span-2">
+                      <label className="text-xs font-medium text-muted-foreground">終了理由</label>
+                      <Input
+                        value={draft.end_reason}
+                        onChange={(event) =>
+                          setCaseDrafts((current) => ({
+                            ...current,
+                            [c.id]: {
+                              ...draft,
+                              end_reason: event.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="終了・解約理由があれば入力"
+                      />
+                    </div>
+                    <div className="space-y-1.5 md:col-span-2">
+                      <label className="text-xs font-medium text-muted-foreground">
+                        ケースメモ
+                      </label>
+                      <Textarea
+                        rows={3}
+                        value={draft.notes}
+                        onChange={(event) =>
+                          setCaseDrafts((current) => ({
+                            ...current,
+                            [c.id]: {
+                              ...draft,
+                              notes: event.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    訪問候補生成では主担当を優先し、不在時は代替薬剤師へエスカレーションします。
+                  </p>
                 </div>
 
                 {/* ケアチームリンク */}
@@ -335,7 +503,9 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
                           <span className="text-muted-foreground">{link.role}</span>
                           <span>{link.name}</span>
                           {link.organization_name && (
-                            <span className="text-muted-foreground">/ {link.organization_name}</span>
+                            <span className="text-muted-foreground">
+                              / {link.organization_name}
+                            </span>
                           )}
                         </span>
                       ))}

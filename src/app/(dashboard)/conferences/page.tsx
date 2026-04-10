@@ -5,12 +5,20 @@ import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-
 import { ConferencesContent } from './conferences-content';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { readConferencesState } from './conferences-query-state';
 
 export const metadata: Metadata = {
   title: 'カンファレンス — CareViaX',
 };
 
-export default function ConferencesPage() {
+type ConferencesPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function ConferencesPage({ searchParams }: ConferencesPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const initialState = readConferencesState(resolvedSearchParams);
+
   return (
     <PageScaffold>
       <WorkflowPageHeader
@@ -38,7 +46,12 @@ export default function ConferencesPage() {
       </WorkflowPageHeader>
 
       <Suspense fallback={<Loading />}>
-        <ConferencesContent />
+        <ConferencesContent
+          initialFocus={initialState.initialFocus}
+          initialContext={initialState.initialContext}
+          initialViewMode={initialState.initialViewMode}
+          initialNoteType={initialState.initialNoteType}
+        />
       </Suspense>
     </PageScaffold>
   );
