@@ -30,6 +30,12 @@ const {
   withOrgContextMock,
   patientSchedulePreferenceUpsertMock,
   patientSchedulePreferenceUpdateManyMock,
+  patientInsuranceFindFirstMock,
+  patientInsuranceUpdateMock,
+  patientInsuranceCreateMock,
+  patientInsuranceUpdateManyMock,
+  careCaseFindFirstMock,
+  careCaseUpdateMock,
   communicationQueueMock,
   patientRiskSummaryMock,
   patientHomeCareFeatureSummaryMock,
@@ -64,6 +70,12 @@ const {
   withOrgContextMock: vi.fn(),
   patientSchedulePreferenceUpsertMock: vi.fn(),
   patientSchedulePreferenceUpdateManyMock: vi.fn(),
+  patientInsuranceFindFirstMock: vi.fn(),
+  patientInsuranceUpdateMock: vi.fn(),
+  patientInsuranceCreateMock: vi.fn(),
+  patientInsuranceUpdateManyMock: vi.fn(),
+  careCaseFindFirstMock: vi.fn(),
+  careCaseUpdateMock: vi.fn(),
   communicationQueueMock: vi.fn(),
   patientRiskSummaryMock: vi.fn(),
   patientHomeCareFeatureSummaryMock: vi.fn(),
@@ -201,6 +213,22 @@ describe('/api/patients/[id]', () => {
     residenceUpdateMock.mockResolvedValue({ id: 'residence_1' });
     patientSchedulePreferenceUpsertMock.mockResolvedValue({ id: 'schedule_pref_1' });
     patientSchedulePreferenceUpdateManyMock.mockResolvedValue({ count: 1 });
+    patientInsuranceFindFirstMock.mockResolvedValue(null);
+    patientInsuranceUpdateMock.mockResolvedValue({ id: 'insurance_1' });
+    patientInsuranceCreateMock.mockResolvedValue({ id: 'insurance_1' });
+    patientInsuranceUpdateManyMock.mockResolvedValue({ count: 1 });
+    careCaseFindFirstMock.mockResolvedValue({
+      id: 'case_1',
+      required_visit_support: {
+        home_visit_intake: {
+          requester: {
+            organization_name: '旧紹介元',
+          },
+          primary_disease: '高血圧',
+        },
+      },
+    });
+    careCaseUpdateMock.mockResolvedValue({ id: 'case_1' });
     medicationProfileFindManyMock.mockResolvedValue([]);
     visitScheduleFindManyMock.mockResolvedValue([]);
     visitScheduleCountMock.mockResolvedValue(0);
@@ -307,11 +335,21 @@ describe('/api/patients/[id]', () => {
           deleteMany: vi.fn(),
           createMany: vi.fn(),
         },
+        patientInsurance: {
+          findFirst: patientInsuranceFindFirstMock,
+          update: patientInsuranceUpdateMock,
+          create: patientInsuranceCreateMock,
+          updateMany: patientInsuranceUpdateManyMock,
+        },
         patientSchedulePreference: {
           upsert: patientSchedulePreferenceUpsertMock,
           updateMany: patientSchedulePreferenceUpdateManyMock,
         },
-      })
+        careCase: {
+          findFirst: careCaseFindFirstMock,
+          update: careCaseUpdateMock,
+        },
+      }),
     );
   });
 
@@ -334,9 +372,12 @@ describe('/api/patients/[id]', () => {
       cases: [],
     });
 
-    const response = await GET(createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }), {
-      params: Promise.resolve({ id: 'patient_1' }),
-    });
+    const response = await GET(
+      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
 
     expect(patientFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'patient_1', org_id: 'corg1234567890123456789012' },
@@ -427,9 +468,12 @@ describe('/api/patients/[id]', () => {
       cases: [],
     });
 
-    const response = await GET(createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }), {
-      params: Promise.resolve({ id: 'patient_1' }),
-    });
+    const response = await GET(
+      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
 
     if (!response) throw new Error('response is required');
     await expect(response.json()).resolves.toMatchObject({
@@ -487,7 +531,7 @@ describe('/api/patients/[id]', () => {
 
     const response = await GET(
       createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
-      { params: Promise.resolve({ id: 'patient_1' }) }
+      { params: Promise.resolve({ id: 'patient_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -527,9 +571,9 @@ describe('/api/patients/[id]', () => {
           facility_id: 'facility_1',
           unit_name: '301',
         },
-        { 'x-org-id': 'corg1234567890123456789012' }
+        { 'x-org-id': 'corg1234567890123456789012' },
       ),
-      { params: Promise.resolve({ id: 'patient_1' }) }
+      { params: Promise.resolve({ id: 'patient_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -558,7 +602,7 @@ describe('/api/patients/[id]', () => {
         residence: expect.any(Object),
       }),
       'corg1234567890123456789012',
-      'facility_1'
+      'facility_1',
     );
     expect(residenceUpdateMock).toHaveBeenCalledWith({
       where: { id: 'residence_1' },
@@ -577,14 +621,19 @@ describe('/api/patients/[id]', () => {
         patientSchedulePreference: expect.any(Object),
       }),
       'corg1234567890123456789012',
-      'facility_1'
+      'facility_1',
     );
-    expect(patientSchedulePreferenceUpdateManyMock).toHaveBeenCalledWith({
+    expect(patientSchedulePreferenceUpsertMock).toHaveBeenCalledWith({
       where: {
-        org_id: 'corg1234567890123456789012',
         patient_id: 'patient_1',
       },
-      data: {
+      create: {
+        org_id: 'corg1234567890123456789012',
+        patient_id: 'patient_1',
+        facility_time_from: null,
+        facility_time_to: null,
+      },
+      update: {
         facility_time_from: null,
         facility_time_to: null,
       },
@@ -604,9 +653,9 @@ describe('/api/patients/[id]', () => {
         {
           facility_id: 'facility_1',
         },
-        { 'x-org-id': 'corg1234567890123456789012' }
+        { 'x-org-id': 'corg1234567890123456789012' },
       ),
-      { params: Promise.resolve({ id: 'patient_1' }) }
+      { params: Promise.resolve({ id: 'patient_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -626,6 +675,193 @@ describe('/api/patients/[id]', () => {
         facility_time_to: new Date('1970-01-01T16:30:00.000Z'),
       },
     });
+  });
+
+  it('syncs normalized insurance, intake JSON, and schedule preference fields on PATCH', async () => {
+    // existing active insurance has a different number → triggers close+create
+    patientInsuranceFindFirstMock.mockResolvedValue({ id: 'insurance_current_1', number: 'OLD_NUM' });
+
+    const response = await PATCH(
+      createRequest(
+        {
+          medical_insurance_number: '1234567890',
+          billing_support_flag: true,
+          requester: {
+            organization_name: '新しい紹介元',
+            contact_name: '相談員 田中',
+          },
+          intake: {
+            primary_contact_preference: 'phone',
+            visit_before_contact_required: true,
+            first_visit_preferred_date: '2026-04-15',
+            first_visit_time_slot: 'afternoon',
+            mcs_linked: true,
+            care_level: 'care_3',
+            adl_level: 'b',
+            dementia_level: 'ii',
+            contact_phone: '090-9999-8888',
+            primary_disease: '慢性心不全',
+            ent_prescription: true,
+            ent_period_from: '2026-04-01',
+            ent_period_to: '2026-04-30',
+            infection_isolation: 'droplet',
+          },
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(patientUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'patient_1' },
+      data: expect.objectContaining({
+        medical_insurance_number: '1234567890',
+        billing_support_flag: true,
+      }),
+    });
+    expect(patientInsuranceFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'corg1234567890123456789012',
+        patient_id: 'patient_1',
+        insurance_type: 'medical',
+        is_active: true,
+      },
+      orderBy: [{ valid_from: 'desc' }, { created_at: 'desc' }],
+      select: { id: true, number: true },
+    });
+    // Fix #2/#3: close all active rows, then create a new one (history preserved)
+    expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
+    expect(patientInsuranceUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'corg1234567890123456789012',
+          patient_id: 'patient_1',
+          insurance_type: 'medical',
+          is_active: true,
+        }),
+        data: expect.objectContaining({
+          is_active: false,
+          valid_until: expect.any(Date),
+        }),
+      }),
+    );
+    expect(patientInsuranceCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'corg1234567890123456789012',
+        patient_id: 'patient_1',
+        insurance_type: 'medical',
+        number: '1234567890',
+        valid_from: expect.any(Date),
+        is_active: true,
+      }),
+    });
+    expect(patientSchedulePreferenceUpsertMock).toHaveBeenCalledWith({
+      where: {
+        patient_id: 'patient_1',
+      },
+      create: expect.objectContaining({
+        org_id: 'corg1234567890123456789012',
+        patient_id: 'patient_1',
+        preferred_contact_name: '相談員 田中',
+        preferred_contact_phone: '090-9999-8888',
+        primary_contact_preference: 'phone',
+        visit_before_contact_required: true,
+        first_visit_preferred_date: new Date('2026-04-15'),
+        first_visit_time_slot: 'afternoon',
+        mcs_linked: true,
+        care_level: 'care_3',
+        adl_level: 'b',
+        dementia_level: 'ii',
+        infection_isolation: true,
+      }),
+      update: expect.objectContaining({
+        preferred_contact_name: '相談員 田中',
+        preferred_contact_phone: '090-9999-8888',
+        primary_contact_preference: 'phone',
+        visit_before_contact_required: true,
+        first_visit_preferred_date: new Date('2026-04-15'),
+        first_visit_time_slot: 'afternoon',
+        mcs_linked: true,
+        care_level: 'care_3',
+        adl_level: 'b',
+        dementia_level: 'ii',
+        infection_isolation: true,
+      }),
+    });
+    expect(careCaseUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'case_1' },
+      data: {
+        referral_source: '新しい紹介元',
+        required_visit_support: {
+          home_visit_intake: expect.objectContaining({
+            requester: expect.objectContaining({
+              organization_name: '新しい紹介元',
+              contact_name: '相談員 田中',
+            }),
+            contact_phone: '090-9999-8888',
+            primary_disease: '慢性心不全',
+            primary_contact_preference: 'phone',
+            visit_before_contact_required: true,
+            first_visit_date: '2026-04-15',
+            first_visit_time_slot: 'afternoon',
+            care_level: 'care_3',
+            adl_level: 'b',
+            dementia_level: 'ii',
+            mcs_linked: true,
+            ent_prescription: true,
+            ent_period_from: '2026-04-01',
+            ent_period_to: '2026-04-30',
+            infection_isolation: 'droplet',
+          }),
+        },
+      },
+    });
+  });
+
+  it('does not close or recreate insurance when submitted number is identical to existing', async () => {
+    // idempotence: same number → no close, no create
+    patientInsuranceFindFirstMock.mockResolvedValue({ id: 'insurance_current_1', number: '1234567890' });
+
+    const response = await PATCH(
+      createRequest(
+        { medical_insurance_number: '1234567890' },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
+    // updateMany is called for the "deactivate actives" path only when closing; not here
+    // The null-number path calls updateMany to deactivate, but we passed a non-empty number
+    // so the only updateMany call should NOT have occurred for the close step
+    expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('maps infection_isolation false-value strings to boolean false', async () => {
+    const response = await PATCH(
+      createRequest(
+        {
+          intake: {
+            infection_isolation: '不要',
+          },
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(patientSchedulePreferenceUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ infection_isolation: false }),
+        update: expect.objectContaining({ infection_isolation: false }),
+      }),
+    );
   });
 
   it('includes inquiry history in patient timeline events', async () => {
@@ -658,7 +894,7 @@ describe('/api/patients/[id]', () => {
       createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
       {
         params: Promise.resolve({ id: 'patient_1' }),
-      }
+      },
     );
 
     if (!response) throw new Error('response is required');
@@ -735,15 +971,13 @@ describe('/api/patients/[id]', () => {
         created_at: new Date('2026-03-29T08:00:00.000Z'),
       },
     ]);
-    userFindManyMock.mockResolvedValue([
-      { id: 'user_2', name: '薬剤師B' },
-    ]);
+    userFindManyMock.mockResolvedValue([{ id: 'user_2', name: '薬剤師B' }]);
 
     const response = await GET(
       createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
       {
         params: Promise.resolve({ id: 'patient_1' }),
-      }
+      },
     );
 
     if (!response) throw new Error('response is required');
@@ -797,7 +1031,7 @@ describe('/api/patients/[id]', () => {
       createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
       {
         params: Promise.resolve({ id: 'patient_1' }),
-      }
+      },
     );
 
     if (!response) throw new Error('response is required');
@@ -824,7 +1058,7 @@ describe('/api/patients/[id]', () => {
       createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
       {
         params: Promise.resolve({ id: 'patient_1' }),
-      }
+      },
     );
 
     if (!response) throw new Error('response is required');

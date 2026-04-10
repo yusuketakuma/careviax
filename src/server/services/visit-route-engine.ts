@@ -103,44 +103,66 @@ async function computeGoogleWaypointRoute(args: {
   waypoints: VisitRouteWaypoint[];
   apiKey: string;
 }): Promise<VisitRoutePlan> {
-  const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': args.apiKey,
-      'X-Goog-FieldMask':
-        'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.optimizedIntermediateWaypointIndex,routes.legs.duration,routes.legs.distanceMeters',
-    },
-    body: JSON.stringify({
-      origin: {
-        location: {
-          latLng: {
-            latitude: args.origin.lat,
-            longitude: args.origin.lng,
-          },
-        },
+  let response: Response;
+  try {
+    response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+      method: 'POST',
+      signal: AbortSignal.timeout(Number(process.env.ROUTING_API_TIMEOUT_MS ?? 5000)),
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': args.apiKey,
+        'X-Goog-FieldMask':
+          'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.optimizedIntermediateWaypointIndex,routes.legs.duration,routes.legs.distanceMeters',
       },
-      destination: {
-        location: {
-          latLng: {
-            latitude: args.origin.lat,
-            longitude: args.origin.lng,
+      body: JSON.stringify({
+        origin: {
+          location: {
+            latLng: {
+              latitude: args.origin.lat,
+              longitude: args.origin.lng,
+            },
           },
         },
-      },
-      intermediates: args.waypoints.map((waypoint) => ({
-        location: {
-          latLng: {
-            latitude: waypoint.lat,
-            longitude: waypoint.lng,
+        destination: {
+          location: {
+            latLng: {
+              latitude: args.origin.lat,
+              longitude: args.origin.lng,
+            },
           },
         },
-      })),
-      travelMode: args.travelMode,
-      optimizeWaypointOrder: args.waypoints.length > 1,
-    }),
-    cache: 'no-store',
-  });
+        intermediates: args.waypoints.map((waypoint) => ({
+          location: {
+            latLng: {
+              latitude: waypoint.lat,
+              longitude: waypoint.lng,
+            },
+          },
+        })),
+        travelMode: args.travelMode,
+        optimizeWaypointOrder: args.waypoints.length > 1,
+      }),
+      cache: 'no-store',
+    });
+  } catch (error) {
+    const isTimeout =
+      (error as { name?: string })?.name === 'TimeoutError' ||
+      (error as { name?: string })?.name === 'AbortError';
+    if (isTimeout) {
+      return {
+        status: 'unavailable',
+        note: 'timeout',
+        travelMode: args.travelMode,
+        origin: args.origin,
+        encodedPath: null,
+        orderedScheduleIds: args.waypoints.map((waypoint) => waypoint.scheduleId),
+        totalDistanceMeters: null,
+        totalDurationSeconds: null,
+        stopSummaries: [],
+      };
+    }
+    throw error;
+  }
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
@@ -169,9 +191,23 @@ async function computeGoogleWaypointRoute(args: {
     };
   }
 
+  const rawIndices = route.optimizedIntermediateWaypointIndex;
+  if (rawIndices !== undefined && rawIndices.length !== args.waypoints.length) {
+    return {
+      status: 'unavailable',
+      note: 'waypoint_order_length_mismatch',
+      travelMode: args.travelMode,
+      origin: args.origin,
+      encodedPath: null,
+      orderedScheduleIds: args.waypoints.map((waypoint) => waypoint.scheduleId),
+      totalDistanceMeters: route.distanceMeters ?? null,
+      totalDurationSeconds: parseDurationSeconds(route.duration),
+      stopSummaries: [],
+    };
+  }
   const optimizedIndices =
-    route.optimizedIntermediateWaypointIndex?.length === args.waypoints.length
-      ? route.optimizedIntermediateWaypointIndex
+    rawIndices?.length === args.waypoints.length
+      ? rawIndices
       : args.waypoints.map((_, index) => index);
   const optimizedWaypoints = optimizedIndices.map((index) => args.waypoints[index]);
 
@@ -210,44 +246,126 @@ async function computeHeuristicRoute(args: {
   travelMode: VisitRouteTravelMode;
   waypoints: VisitRouteWaypoint[];
 }): Promise<VisitRoutePlan> {
+  // Fix #1: validate geocodes before doing any computation
+  const missingGeocodeWaypointIds = args.waypoints
+    .filter(
+      (waypoint) =>
+        !Number.isFinite(waypoint.lat) || !Number.isFinite(waypoint.lng)
+    )
+    .map((waypoint) => waypoint.scheduleId);
+
+  if (missingGeocodeWaypointIds.length > 0) {
+    return {
+      status: 'unavailable',
+      note: 'missing_geocode',
+      travelMode: args.travelMode,
+      origin: args.origin,
+      encodedPath: null,
+      orderedScheduleIds: args.waypoints.map((waypoint) => waypoint.scheduleId),
+      totalDistanceMeters: null,
+      totalDurationSeconds: null,
+      stopSummaries: [],
+      missingGeocodeWaypointIds,
+    } as VisitRoutePlan & { missingGeocodeWaypointIds: string[] };
+  }
+
+  if (args.waypoints.length === 0) {
+    return {
+      status: 'ok',
+      note: 'ヒューリスティック順序を表示しています',
+      travelMode: args.travelMode,
+      origin: args.origin,
+      encodedPath: null,
+      orderedScheduleIds: [],
+      totalDistanceMeters: 0,
+      totalDurationSeconds: 0,
+      stopSummaries: [],
+    };
+  }
+
   const estimateRoadTravel = createRoadTravelEstimator(args.travelMode);
-  const remaining = [...args.waypoints];
-  const ordered: VisitRouteWaypoint[] = [];
+
+  // Fix #8: all nodes in order: [origin, waypoint_0, waypoint_1, ...]
+  // Build all unique (from, to) pairs and fetch in parallel
+  type NodePoint = { lat: number; lng: number };
+  const nodes: NodePoint[] = [
+    { lat: args.origin.lat, lng: args.origin.lng },
+    ...args.waypoints.map((w) => ({ lat: w.lat, lng: w.lng })),
+  ];
+  const n = nodes.length;
+
+  // matrix[i][j] = { meters, seconds } | null, i !== j
+  const matrix: Array<Array<{ meters: number; seconds: number } | null>> = Array.from(
+    { length: n },
+    () => new Array<{ meters: number; seconds: number } | null>(n).fill(null)
+  );
+
+  const pairs: Array<{ i: number; j: number }> = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      if (i !== j) pairs.push({ i, j });
+    }
+  }
+
+  await Promise.all(
+    pairs.map(async ({ i, j }) => {
+      const estimate = await estimateRoadTravel(nodes[i], nodes[j]);
+      if (estimate) {
+        matrix[i][j] = {
+          meters: estimate.distanceKm * 1000,
+          seconds: Math.round(estimate.durationMinutes * 60),
+        };
+      } else {
+        const distKm = haversineDistanceKm(nodes[i], nodes[j]);
+        if (Number.isFinite(distKm)) {
+          const meters = distKm * 1000;
+          const seconds = Math.round((meters / 1000 / localSpeedKph(args.travelMode)) * 3600);
+          matrix[i][j] = { meters, seconds };
+        }
+        // else: matrix[i][j] stays null (unreachable pair)
+      }
+    })
+  );
+
+  // waypoint node index in `nodes` array = waypointIndex + 1 (0 is origin)
+  const remaining = args.waypoints.map((_, idx) => idx); // indices into args.waypoints
+  const ordered: number[] = [];
   const stopSummaries: VisitRoutePlan['stopSummaries'] = [];
-  let currentPoint = { lat: args.origin.lat, lng: args.origin.lng };
+  let currentNodeIndex = 0; // origin
   let totalDistanceMeters = 0;
   let totalDurationSeconds = 0;
 
   while (remaining.length > 0) {
-    let bestIndex = 0;
+    let bestRemIdx = 0;
     let bestDistanceMeters = Number.POSITIVE_INFINITY;
     let bestDurationSeconds = Number.POSITIVE_INFINITY;
 
-    for (let index = 0; index < remaining.length; index++) {
-      const waypoint = remaining[index];
-      const estimate = await estimateRoadTravel(currentPoint, {
-        lat: waypoint.lat,
-        lng: waypoint.lng,
-      });
-      const distanceMeters = estimate
-        ? estimate.distanceKm * 1000
-        : haversineDistanceKm(currentPoint, { lat: waypoint.lat, lng: waypoint.lng }) * 1000;
-      const durationSeconds = estimate
-        ? Math.round(estimate.durationMinutes * 60)
-        : Math.round((distanceMeters / 1000 / localSpeedKph(args.travelMode)) * 3600);
+    for (let remIdx = 0; remIdx < remaining.length; remIdx++) {
+      const waypointIdx = remaining[remIdx];
+      const targetNodeIndex = waypointIdx + 1;
+      const cell = matrix[currentNodeIndex][targetNodeIndex];
+
+      const distanceMeters = cell ? cell.meters : Number.POSITIVE_INFINITY;
+      const durationSeconds = cell ? cell.seconds : Number.POSITIVE_INFINITY;
+
+      // Guard: never let NaN participate in comparisons (Fix #1 defence-in-depth)
+      if (!Number.isFinite(durationSeconds) && !Number.isFinite(distanceMeters)) {
+        continue;
+      }
 
       if (
         durationSeconds < bestDurationSeconds ||
         (durationSeconds === bestDurationSeconds && distanceMeters < bestDistanceMeters)
       ) {
-        bestIndex = index;
+        bestRemIdx = remIdx;
         bestDistanceMeters = distanceMeters;
         bestDurationSeconds = durationSeconds;
       }
     }
 
-    const [nextWaypoint] = remaining.splice(bestIndex, 1);
-    ordered.push(nextWaypoint);
+    const [nextWaypointIdx] = remaining.splice(bestRemIdx, 1);
+    ordered.push(nextWaypointIdx);
+    const nextWaypoint = args.waypoints[nextWaypointIdx];
     totalDistanceMeters += Number.isFinite(bestDistanceMeters) ? Math.round(bestDistanceMeters) : 0;
     totalDurationSeconds += Number.isFinite(bestDurationSeconds) ? bestDurationSeconds : 0;
     stopSummaries.push({
@@ -261,7 +379,7 @@ async function computeHeuristicRoute(args: {
         ? bestDurationSeconds
         : null,
     });
-    currentPoint = { lat: nextWaypoint.lat, lng: nextWaypoint.lng };
+    currentNodeIndex = nextWaypointIdx + 1;
   }
 
   return {
@@ -270,7 +388,7 @@ async function computeHeuristicRoute(args: {
     travelMode: args.travelMode,
     origin: args.origin,
     encodedPath: null,
-    orderedScheduleIds: ordered.map((waypoint) => waypoint.scheduleId),
+    orderedScheduleIds: ordered.map((idx) => args.waypoints[idx].scheduleId),
     totalDistanceMeters,
     totalDurationSeconds,
     stopSummaries,

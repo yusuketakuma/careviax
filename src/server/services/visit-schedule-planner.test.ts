@@ -40,8 +40,12 @@ vi.mock('./management-plans', () => ({
   evaluateVisitWorkflowGate: evaluateVisitWorkflowGateMock,
 }));
 
+const { createRoadTravelEstimatorMock } = vi.hoisted(() => ({
+  createRoadTravelEstimatorMock: vi.fn(() => async () => null),
+}));
+
 vi.mock('./road-routing', () => ({
-  createRoadTravelEstimator: () => async () => null,
+  createRoadTravelEstimator: createRoadTravelEstimatorMock,
 }));
 
 import { generateVisitScheduleProposalDrafts } from './visit-schedule-planner';
@@ -49,6 +53,7 @@ import { generateVisitScheduleProposalDrafts } from './visit-schedule-planner';
 describe('generateVisitScheduleProposalDrafts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    createRoadTravelEstimatorMock.mockReturnValue(async () => null);
 
     careCaseFindFirstMock.mockResolvedValue({
       id: 'case_1',
@@ -146,6 +151,34 @@ describe('generateVisitScheduleProposalDrafts', () => {
     });
     expect(result.drafts[0].proposal_reason).toContain('主担当薬剤師を優先');
     expect(result.diagnostics.accepted[0]?.pharmacist_id).toBe('pharmacist_primary');
+  });
+
+  it('emits reason_code=evaluation_error when candidate evaluation throws unexpectedly', async () => {
+    createRoadTravelEstimatorMock.mockReturnValue(() => {
+      throw new Error('simulated upstream failure');
+    });
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 3,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    // All shifts should be rejected with evaluation_error, not travel_limit
+    expect(result.diagnostics.rejected.length).toBeGreaterThan(0);
+    for (const rejected of result.diagnostics.rejected) {
+      expect(rejected.reason_code).toBe('evaluation_error');
+      expect(rejected.reason_label).toBe('評価エラー');
+      expect(rejected.detail).toContain('評価中にエラーが発生しました');
+    }
+    // travel_limit must NOT appear in any rejection
+    const travelLimitRejections = result.diagnostics.rejected.filter(
+      (r) => r.reason_code === 'travel_limit'
+    );
+    expect(travelLimitRejections).toHaveLength(0);
   });
 
   it('returns rejected diagnostics when the primary pharmacist is at daily capacity', async () => {

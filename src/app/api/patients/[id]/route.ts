@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
-import { updatePatientSchema } from '@/lib/validations/patient';
+import { updatePatientSchema, type UpdatePatientInput } from '@/lib/validations/patient';
 import { prisma } from '@/lib/db/client';
 import { Prisma } from '@prisma/client';
 import {
@@ -34,6 +34,7 @@ import {
   SCHEDULE_STATUS_LABELS,
   VISIT_OUTCOME_LABELS,
 } from '@/lib/constants/status-labels';
+import { getHomeVisitIntake, type HomeVisitIntake } from '@/lib/patient/home-visit-intake';
 
 type FirstVisitDocumentContact = {
   id?: string;
@@ -49,7 +50,7 @@ type FirstVisitDocumentContact = {
 };
 
 function normalizeFirstVisitDocumentContacts(
-  value: Prisma.JsonValue | null | undefined
+  value: Prisma.JsonValue | null | undefined,
 ): FirstVisitDocumentContact[] {
   if (!Array.isArray(value)) return [];
 
@@ -135,10 +136,410 @@ function compactTimelineValues(values: Array<string | null | undefined | false>)
   return values.filter((value): value is string => Boolean(value && value.trim()));
 }
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+const OPEN_CASE_STATUSES = ['referral_received', 'assessment', 'active', 'on_hold'] as const;
+
+type PatientRequesterPatch = NonNullable<UpdatePatientInput['requester']>;
+type PatientIntakePatch = NonNullable<UpdatePatientInput['intake']>;
+
+function hasOwnKey<T extends object>(value: T, key: PropertyKey): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function normalizeNullableText(value: string | null | undefined) {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function assignTextField<T extends Record<string, unknown>>(
+  target: T,
+  key: keyof T,
+  value: string | null | undefined,
+  provided: boolean,
 ) {
+  if (!provided) return;
+  const normalized = normalizeNullableText(value);
+  if (normalized === undefined) {
+    delete target[key];
+    return;
+  }
+  target[key] = normalized as T[keyof T];
+}
+
+function assignBooleanField<T extends Record<string, unknown>>(
+  target: T,
+  key: keyof T,
+  value: boolean | undefined,
+  provided: boolean,
+) {
+  if (!provided) return;
+  if (value === undefined) {
+    delete target[key];
+    return;
+  }
+  target[key] = value as T[keyof T];
+}
+
+function assignNumberField<T extends Record<string, unknown>>(
+  target: T,
+  key: keyof T,
+  value: number | undefined,
+  provided: boolean,
+) {
+  if (!provided) return;
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    delete target[key];
+    return;
+  }
+  target[key] = value as T[keyof T];
+}
+
+function assignArrayField<T extends Record<string, unknown>>(
+  target: T,
+  key: keyof T,
+  value: string[] | undefined,
+  provided: boolean,
+) {
+  if (!provided) return;
+  if (!Array.isArray(value)) {
+    delete target[key];
+    return;
+  }
+  target[key] = value as T[keyof T];
+}
+
+function compactNestedObject<T extends Record<string, unknown>>(value: T) {
+  const entries = Object.entries(value).filter(([, entry]) => entry !== undefined);
+  return entries.length > 0 ? (Object.fromEntries(entries) as T) : undefined;
+}
+
+function mergeHomeVisitIntake(args: {
+  current: HomeVisitIntake | null;
+  requester?: PatientRequesterPatch;
+  intake?: PatientIntakePatch;
+}) {
+  const next: HomeVisitIntake = { ...(args.current ?? {}) };
+
+  if (args.requester) {
+    const requester = { ...(next.requester ?? {}) };
+    assignTextField(
+      requester,
+      'organization_name',
+      args.requester.organization_name,
+      hasOwnKey(args.requester, 'organization_name'),
+    );
+    assignTextField(
+      requester,
+      'profession',
+      args.requester.profession,
+      hasOwnKey(args.requester, 'profession'),
+    );
+    assignTextField(
+      requester,
+      'contact_name',
+      args.requester.contact_name,
+      hasOwnKey(args.requester, 'contact_name'),
+    );
+    assignTextField(
+      requester,
+      'contact_name_kana',
+      args.requester.contact_name_kana,
+      hasOwnKey(args.requester, 'contact_name_kana'),
+    );
+    assignTextField(requester, 'phone', args.requester.phone, hasOwnKey(args.requester, 'phone'));
+    assignTextField(requester, 'fax', args.requester.fax, hasOwnKey(args.requester, 'fax'));
+    assignTextField(
+      requester,
+      'pharmacy_decision_due_date',
+      args.requester.pharmacy_decision_due_date,
+      hasOwnKey(args.requester, 'pharmacy_decision_due_date'),
+    );
+    assignTextField(
+      requester,
+      'preferred_contact_method',
+      args.requester.preferred_contact_method,
+      hasOwnKey(args.requester, 'preferred_contact_method'),
+    );
+    assignTextField(
+      requester,
+      'preferred_contact_method_other',
+      args.requester.preferred_contact_method_other,
+      hasOwnKey(args.requester, 'preferred_contact_method_other'),
+    );
+    next.requester = compactNestedObject(requester);
+  }
+
+  if (args.intake) {
+    assignNumberField(
+      next as Record<string, unknown>,
+      'reported_age',
+      args.intake.age,
+      hasOwnKey(args.intake, 'age'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'primary_disease',
+      args.intake.primary_disease,
+      hasOwnKey(args.intake, 'primary_disease'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'postal_code',
+      args.intake.postal_code,
+      hasOwnKey(args.intake, 'postal_code'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'housing_type',
+      args.intake.housing_type,
+      hasOwnKey(args.intake, 'housing_type'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'facility_name',
+      args.intake.facility_name,
+      hasOwnKey(args.intake, 'facility_name'),
+    );
+    assignBooleanField(
+      next as Record<string, unknown>,
+      'mcs_linked',
+      args.intake.mcs_linked,
+      hasOwnKey(args.intake, 'mcs_linked'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'primary_contact_preference',
+      args.intake.primary_contact_preference,
+      hasOwnKey(args.intake, 'primary_contact_preference'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'contact_phone',
+      args.intake.contact_phone,
+      hasOwnKey(args.intake, 'contact_phone'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'contact_mobile',
+      args.intake.contact_mobile,
+      hasOwnKey(args.intake, 'contact_mobile'),
+    );
+    assignBooleanField(
+      next as Record<string, unknown>,
+      'visit_before_contact_required',
+      args.intake.visit_before_contact_required,
+      hasOwnKey(args.intake, 'visit_before_contact_required'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'first_visit_date',
+      args.intake.first_visit_preferred_date,
+      hasOwnKey(args.intake, 'first_visit_preferred_date'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'first_visit_time_slot',
+      args.intake.first_visit_time_slot,
+      hasOwnKey(args.intake, 'first_visit_time_slot'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'first_visit_time_note',
+      args.intake.first_visit_time_note,
+      hasOwnKey(args.intake, 'first_visit_time_note'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'money_management',
+      args.intake.money_management,
+      hasOwnKey(args.intake, 'money_management'),
+    );
+    assignBooleanField(
+      next as Record<string, unknown>,
+      'parking_available',
+      args.intake.parking_available,
+      hasOwnKey(args.intake, 'parking_available'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'family_key_person',
+      args.intake.family_key_person,
+      hasOwnKey(args.intake, 'family_key_person'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'care_level',
+      args.intake.care_level,
+      hasOwnKey(args.intake, 'care_level'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'adl_level',
+      args.intake.adl_level,
+      hasOwnKey(args.intake, 'adl_level'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'dementia_level',
+      args.intake.dementia_level,
+      hasOwnKey(args.intake, 'dementia_level'),
+    );
+    assignArrayField(
+      next as Record<string, unknown>,
+      'medication_support_methods',
+      args.intake.medication_support_methods,
+      hasOwnKey(args.intake, 'medication_support_methods'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'medication_support_other',
+      args.intake.medication_support_other,
+      hasOwnKey(args.intake, 'medication_support_other'),
+    );
+    assignBooleanField(
+      next as Record<string, unknown>,
+      'ent_prescription',
+      args.intake.ent_prescription,
+      hasOwnKey(args.intake, 'ent_prescription'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'ent_period_from',
+      args.intake.ent_period_from,
+      hasOwnKey(args.intake, 'ent_period_from'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'ent_period_to',
+      args.intake.ent_period_to,
+      hasOwnKey(args.intake, 'ent_period_to'),
+    );
+    assignBooleanField(
+      next as Record<string, unknown>,
+      'narcotics_base',
+      args.intake.narcotics_base,
+      hasOwnKey(args.intake, 'narcotics_base'),
+    );
+    assignBooleanField(
+      next as Record<string, unknown>,
+      'narcotics_rescue',
+      args.intake.narcotics_rescue,
+      hasOwnKey(args.intake, 'narcotics_rescue'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'allergy_history',
+      args.intake.allergy_history,
+      hasOwnKey(args.intake, 'allergy_history'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'infection_isolation',
+      args.intake.infection_isolation,
+      hasOwnKey(args.intake, 'infection_isolation'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'swallowing_route',
+      args.intake.swallowing_route,
+      hasOwnKey(args.intake, 'swallowing_route'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'residual_medication_status',
+      args.intake.residual_medication_status,
+      hasOwnKey(args.intake, 'residual_medication_status'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'other_clinical_notes',
+      args.intake.other_clinical_notes,
+      hasOwnKey(args.intake, 'other_clinical_notes'),
+    );
+    assignArrayField(
+      next as Record<string, unknown>,
+      'special_medical_procedures',
+      args.intake.special_medical_procedures,
+      hasOwnKey(args.intake, 'special_medical_procedures'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'special_medical_notes',
+      args.intake.special_medical_notes,
+      hasOwnKey(args.intake, 'special_medical_notes'),
+    );
+    assignTextField(
+      next as Record<string, unknown>,
+      'intake_note',
+      args.intake.intake_note,
+      hasOwnKey(args.intake, 'intake_note'),
+    );
+    assignBooleanField(
+      next as Record<string, unknown>,
+      'initial_transition_management_expected',
+      args.intake.initial_transition_management_expected,
+      hasOwnKey(args.intake, 'initial_transition_management_expected'),
+    );
+
+    if (hasOwnKey(args.intake, 'emergency_contact')) {
+      const emergencyContact = { ...(next.emergency_contact ?? {}) };
+      const value = args.intake.emergency_contact;
+      if (value) {
+        assignTextField(emergencyContact, 'name', value.name, hasOwnKey(value, 'name'));
+        assignTextField(emergencyContact, 'relation', value.relation, hasOwnKey(value, 'relation'));
+        assignTextField(emergencyContact, 'phone', value.phone, hasOwnKey(value, 'phone'));
+      } else {
+        delete next.emergency_contact;
+      }
+      if (value) next.emergency_contact = compactNestedObject(emergencyContact);
+    }
+
+    if (hasOwnKey(args.intake, 'care_manager')) {
+      const careManager = { ...(next.care_manager ?? {}) };
+      const value = args.intake.care_manager;
+      if (value) {
+        assignTextField(careManager, 'name', value.name, hasOwnKey(value, 'name'));
+        assignTextField(careManager, 'name_kana', value.name_kana, hasOwnKey(value, 'name_kana'));
+        assignTextField(
+          careManager,
+          'organization_name',
+          value.organization_name,
+          hasOwnKey(value, 'organization_name'),
+        );
+        assignTextField(careManager, 'phone', value.phone, hasOwnKey(value, 'phone'));
+        assignTextField(careManager, 'fax', value.fax, hasOwnKey(value, 'fax'));
+      } else {
+        delete next.care_manager;
+      }
+      if (value) next.care_manager = compactNestedObject(careManager);
+    }
+
+    if (hasOwnKey(args.intake, 'visiting_nurse')) {
+      const visitingNurse = { ...(next.visiting_nurse ?? {}) };
+      const value = args.intake.visiting_nurse;
+      if (value) {
+        assignTextField(visitingNurse, 'name', value.name, hasOwnKey(value, 'name'));
+        assignTextField(visitingNurse, 'name_kana', value.name_kana, hasOwnKey(value, 'name_kana'));
+        assignTextField(
+          visitingNurse,
+          'organization_name',
+          value.organization_name,
+          hasOwnKey(value, 'organization_name'),
+        );
+        assignTextField(visitingNurse, 'phone', value.phone, hasOwnKey(value, 'phone'));
+        assignTextField(visitingNurse, 'fax', value.fax, hasOwnKey(value, 'fax'));
+      } else {
+        delete next.visiting_nurse;
+      }
+      if (value) next.visiting_nurse = compactNestedObject(visitingNurse);
+    }
+  }
+
+  const entries = Object.entries(next).filter(([, value]) => value !== undefined);
+  return entries.length > 0 ? (Object.fromEntries(entries) as HomeVisitIntake) : null;
+}
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者情報の閲覧権限がありません',
@@ -646,9 +1047,9 @@ export async function GET(
             item.approved_by,
             item.reviewed_by,
           ]),
-        ])
-      )
-    )
+        ]),
+      ),
+    ),
   );
 
   // Lab summary: most recent value per analyte for key analytes
@@ -788,11 +1189,8 @@ export async function GET(
         occurred_at: item.resolved_at ?? item.inquired_at ?? item.created_at,
         title: `疑義照会 ${inquiryStatus}`,
         summary:
-          compactTimelineValues([
-            item.reason,
-            item.inquiry_to_physician,
-            detail,
-          ]).join(' / ') || null,
+          compactTimelineValues([item.reason, item.inquiry_to_physician, detail]).join(' / ') ||
+          null,
         href: item.line?.intake?.id ? `/prescriptions/${item.line.intake.id}` : '/workflow',
         action_label: item.line?.intake?.id ? '処方受付を開く' : 'ワークフローを開く',
         status: item.result ?? 'pending',
@@ -827,8 +1225,7 @@ export async function GET(
         event_type: 'delivery_record' as const,
         category: 'document' as const,
         occurred_at: delivery.confirmed_at ?? delivery.sent_at ?? delivery.created_at,
-        title:
-          delivery.status === 'confirmed' ? '報告書の受領を確認' : '報告書を送付',
+        title: delivery.status === 'confirmed' ? '報告書の受領を確認' : '報告書を送付',
         summary:
           compactTimelineValues([
             delivery.recipient_name,
@@ -856,9 +1253,7 @@ export async function GET(
         summary:
           compactTimelineValues([
             item.title,
-            item.effective_from
-              ? `適用開始 ${formatTimelineDate(item.effective_from)}`
-              : null,
+            item.effective_from ? `適用開始 ${formatTimelineDate(item.effective_from)}` : null,
             item.next_review_date
               ? `次回見直し ${formatTimelineDate(item.next_review_date)}`
               : null,
@@ -929,9 +1324,7 @@ export async function GET(
       status: item.accessed_at ? 'accessed' : 'issued',
       status_label: item.accessed_at ? '閲覧済み' : '共有中',
       actor_name: null,
-      metadata: compactTimelineValues([
-        `期限 ${formatTimelineDate(item.expires_at)}`,
-      ]),
+      metadata: compactTimelineValues([`期限 ${formatTimelineDate(item.expires_at)}`]),
     })),
   ]
     .sort((left, right) => right.occurred_at.getTime() - left.occurred_at.getTime())
@@ -984,17 +1377,14 @@ export async function GET(
           ...contact,
           phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.phone) : contact.phone,
           fax: privacy.sensitiveFieldsMasked ? maskPhoneNumber(contact.fax) : contact.fax,
-          email: privacy.sensitiveFieldsMasked
-            ? maskContactValue(contact.email)
-            : contact.email,
-        })
+          email: privacy.sensitiveFieldsMasked ? maskContactValue(contact.email) : contact.email,
+        }),
       ),
     })),
     billing_summary: {
       evidence: billingEvidence.map((item) => ({
         ...item,
-        blockers:
-          billingEvidenceBlockers.find((blocker) => blocker.id === item.id)?.blockers ?? [],
+        blockers: billingEvidenceBlockers.find((blocker) => blocker.id === item.id)?.blockers ?? [],
       })),
       candidates: billingCandidates,
       claimable_count: billingEvidence.filter((item) => item.claimable).length,
@@ -1010,10 +1400,7 @@ export async function GET(
   });
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者情報の更新権限がありません',
@@ -1045,177 +1432,407 @@ export async function PATCH(
     unit_name,
     contacts,
     conditions,
-    requester: _requester,
-    intake: _intake,
+    requester,
+    intake,
+    medical_insurance_number,
+    care_insurance_number,
     ...rest
   } = parsed.data;
-  void _requester;
-  void _intake;
 
   try {
-    const patient = await withOrgContext(ctx.orgId, async (tx) => {
-      const primaryResidence = await tx.residence.findFirst({
-        where: { patient_id: id, is_primary: true },
-        select: {
-          id: true,
-          facility_id: true,
-          facility_unit_id: true,
-        },
-      });
+    const patient = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const primaryResidence = await tx.residence.findFirst({
+          where: { patient_id: id, is_primary: true },
+          select: {
+            id: true,
+            facility_id: true,
+            facility_unit_id: true,
+          },
+        });
 
-      const currentFacilityId = primaryResidence?.facility_id ?? null;
-      const nextFacilityId =
-        facility_id !== undefined ? facility_id || null : currentFacilityId;
-      const nextFacilityUnitId =
-        facility_unit_id !== undefined
-          ? facility_unit_id || null
-          : facility_id !== undefined && nextFacilityId !== currentFacilityId
-            ? null
-            : primaryResidence?.facility_unit_id ?? null;
+        const currentFacilityId = primaryResidence?.facility_id ?? null;
+        const nextFacilityId = facility_id !== undefined ? facility_id || null : currentFacilityId;
+        const nextFacilityUnitId =
+          facility_unit_id !== undefined
+            ? facility_unit_id || null
+            : facility_id !== undefined && nextFacilityId !== currentFacilityId
+              ? null
+              : (primaryResidence?.facility_unit_id ?? null);
 
-      const facilityVisitDefaults =
-        facility_id !== undefined
-          ? await getFacilityVisitDefaults(tx, ctx.orgId, nextFacilityId)
-          : null;
+        const facilityVisitDefaults =
+          facility_id !== undefined
+            ? await getFacilityVisitDefaults(tx, ctx.orgId, nextFacilityId)
+            : null;
 
-      if (facility_id !== undefined) {
-        await assertFacilityReference(tx, ctx.orgId, nextFacilityId);
-      }
-      if (facility_id !== undefined || facility_unit_id !== undefined) {
-        await assertFacilityUnitReference(
-          tx,
-          ctx.orgId,
-          nextFacilityId,
-          nextFacilityUnitId
-        );
-      }
+        if (facility_id !== undefined) {
+          await assertFacilityReference(tx, ctx.orgId, nextFacilityId);
+        }
+        if (facility_id !== undefined || facility_unit_id !== undefined) {
+          await assertFacilityUnitReference(tx, ctx.orgId, nextFacilityId, nextFacilityUnitId);
+        }
 
-    const updated = await tx.patient.update({
-      where: { id },
-      data: {
-        ...(birth_date ? { birth_date: new Date(birth_date) } : {}),
-        ...rest,
-      } as Prisma.PatientUpdateInput,
-    });
+        const normalizedMedicalInsuranceNumber =
+          medical_insurance_number !== undefined
+            ? (normalizeNullableText(medical_insurance_number) ?? null)
+            : undefined;
+        const normalizedCareInsuranceNumber =
+          care_insurance_number !== undefined
+            ? (normalizeNullableText(care_insurance_number) ?? null)
+            : undefined;
 
-    if (
-      address !== undefined ||
-      building_id !== undefined ||
-      facility_id !== undefined ||
-      facility_unit_id !== undefined ||
-      unit_name !== undefined
-    ) {
-      if (primaryResidence) {
-        await tx.residence.update({
-          where: { id: primaryResidence.id },
+        const updated = await tx.patient.update({
+          where: { id },
           data: {
-            ...(address !== undefined ? { address } : {}),
-            ...(building_id !== undefined ? { building_id: building_id || null } : {}),
-            ...(facility_id !== undefined ? { facility_id: nextFacilityId } : {}),
-            ...(facility_unit_id !== undefined ||
-            (facility_id !== undefined && nextFacilityId !== currentFacilityId)
-              ? { facility_unit_id: nextFacilityUnitId }
+            ...(birth_date ? { birth_date: new Date(birth_date) } : {}),
+            ...(normalizedMedicalInsuranceNumber !== undefined
+              ? { medical_insurance_number: normalizedMedicalInsuranceNumber }
               : {}),
-            ...(unit_name !== undefined ? { unit_name: unit_name || null } : {}),
-          },
+            ...(normalizedCareInsuranceNumber !== undefined
+              ? { care_insurance_number: normalizedCareInsuranceNumber }
+              : {}),
+            ...rest,
+          } as Prisma.PatientUpdateInput,
         });
-      } else {
-        await tx.residence.create({
-          data: {
-            org_id: ctx.orgId,
-            patient_id: id,
-            address: address ?? '',
-            building_id: building_id || null,
-            facility_id: nextFacilityId,
-            facility_unit_id: nextFacilityUnitId,
-            unit_name: unit_name || null,
-            is_primary: true,
-          },
-        });
-      }
-    }
 
-    if (contacts) {
-      await tx.contactParty.deleteMany({
-        where: { org_id: ctx.orgId, patient_id: id },
-      });
-      if (contacts.length > 0) {
-        await tx.contactParty.createMany({
-          data: contacts.map((contact) => ({
-            org_id: ctx.orgId,
-            patient_id: id,
-            name: contact.name,
-            relation: contact.relation,
-            phone: contact.phone || null,
-            email: contact.email || null,
-            fax: contact.fax || null,
-            organization_name: contact.organization_name || null,
-            department: contact.department || null,
-            address: contact.address || null,
-            is_primary: contact.is_primary,
-            is_emergency_contact: contact.is_emergency_contact,
-            notes: contact.notes || null,
-          })),
-        });
-      }
-    }
+        if (
+          address !== undefined ||
+          building_id !== undefined ||
+          facility_id !== undefined ||
+          facility_unit_id !== undefined ||
+          unit_name !== undefined
+        ) {
+          if (primaryResidence) {
+            await tx.residence.update({
+              where: { id: primaryResidence.id },
+              data: {
+                ...(address !== undefined ? { address } : {}),
+                ...(building_id !== undefined ? { building_id: building_id || null } : {}),
+                ...(facility_id !== undefined ? { facility_id: nextFacilityId } : {}),
+                ...(facility_unit_id !== undefined ||
+                (facility_id !== undefined && nextFacilityId !== currentFacilityId)
+                  ? { facility_unit_id: nextFacilityUnitId }
+                  : {}),
+                ...(unit_name !== undefined ? { unit_name: unit_name || null } : {}),
+              },
+            });
+          } else {
+            await tx.residence.create({
+              data: {
+                org_id: ctx.orgId,
+                patient_id: id,
+                address: address ?? '',
+                building_id: building_id || null,
+                facility_id: nextFacilityId,
+                facility_unit_id: nextFacilityUnitId,
+                unit_name: unit_name || null,
+                is_primary: true,
+              },
+            });
+          }
+        }
 
-    if (conditions) {
-      await tx.patientCondition.deleteMany({
-        where: { org_id: ctx.orgId, patient_id: id },
-      });
-      if (conditions.length > 0) {
-        await tx.patientCondition.createMany({
-          data: conditions.map((condition) => ({
-            org_id: ctx.orgId,
-            patient_id: id,
-            condition_type: condition.condition_type,
-            name: condition.name,
-            is_primary: condition.is_primary,
-            is_active: condition.is_active,
-            noted_at: condition.noted_at ? new Date(condition.noted_at) : null,
-            notes: condition.notes || null,
-          })),
-        });
-      }
-    }
+        if (contacts) {
+          await tx.contactParty.deleteMany({
+            where: { org_id: ctx.orgId, patient_id: id },
+          });
+          if (contacts.length > 0) {
+            await tx.contactParty.createMany({
+              data: contacts.map((contact) => ({
+                org_id: ctx.orgId,
+                patient_id: id,
+                name: contact.name,
+                relation: contact.relation,
+                phone: contact.phone || null,
+                email: contact.email || null,
+                fax: contact.fax || null,
+                organization_name: contact.organization_name || null,
+                department: contact.department || null,
+                address: contact.address || null,
+                is_primary: contact.is_primary,
+                is_emergency_contact: contact.is_emergency_contact,
+                notes: contact.notes || null,
+              })),
+            });
+          }
+        }
 
-    if (facility_id !== undefined) {
-      if (
-        facilityVisitDefaults?.acceptance_time_from ||
-        facilityVisitDefaults?.acceptance_time_to
-      ) {
-        await tx.patientSchedulePreference.upsert({
-          where: {
-            patient_id: id,
-          },
-          create: {
-            org_id: ctx.orgId,
-            patient_id: id,
-            facility_time_from: facilityVisitDefaults.acceptance_time_from,
-            facility_time_to: facilityVisitDefaults.acceptance_time_to,
-          },
-          update: {
-            facility_time_from: facilityVisitDefaults.acceptance_time_from,
-            facility_time_to: facilityVisitDefaults.acceptance_time_to,
-          },
-        });
-      } else {
-        await tx.patientSchedulePreference.updateMany({
-          where: {
-            org_id: ctx.orgId,
-            patient_id: id,
-          },
-          data: {
-            facility_time_from: null,
-            facility_time_to: null,
-          },
-        });
-      }
-    }
+        if (conditions) {
+          await tx.patientCondition.deleteMany({
+            where: { org_id: ctx.orgId, patient_id: id },
+          });
+          if (conditions.length > 0) {
+            await tx.patientCondition.createMany({
+              data: conditions.map((condition) => ({
+                org_id: ctx.orgId,
+                patient_id: id,
+                condition_type: condition.condition_type,
+                name: condition.name,
+                is_primary: condition.is_primary,
+                is_active: condition.is_active,
+                noted_at: condition.noted_at ? new Date(condition.noted_at) : null,
+                notes: condition.notes || null,
+              })),
+            });
+          }
+        }
 
-      return updated;
-    }, { requestContext: ctx });
+        const schedulePreferenceCreateData: Prisma.PatientSchedulePreferenceUncheckedCreateInput = {
+          org_id: ctx.orgId,
+          patient_id: id,
+        };
+        const schedulePreferencePatchData: Prisma.PatientSchedulePreferenceUncheckedUpdateInput =
+          {};
+
+        if (facility_id !== undefined) {
+          const facilityTimeFrom = facilityVisitDefaults?.acceptance_time_from ?? null;
+          const facilityTimeTo = facilityVisitDefaults?.acceptance_time_to ?? null;
+          schedulePreferenceCreateData.facility_time_from = facilityTimeFrom;
+          schedulePreferenceCreateData.facility_time_to = facilityTimeTo;
+          schedulePreferencePatchData.facility_time_from = facilityTimeFrom;
+          schedulePreferencePatchData.facility_time_to = facilityTimeTo;
+        }
+
+        const preferredContactPhoneCandidate =
+          (intake && hasOwnKey(intake, 'contact_phone') ? intake.contact_phone : undefined) ??
+          updated.phone ??
+          (intake && hasOwnKey(intake, 'contact_mobile') ? intake.contact_mobile : undefined) ??
+          existing.phone;
+        const nextPreferredContactPhone =
+          normalizeNullableText(preferredContactPhoneCandidate) ?? null;
+
+        if (requester || intake) {
+          if (requester && hasOwnKey(requester, 'contact_name')) {
+            const preferredContactName = normalizeNullableText(requester.contact_name) ?? null;
+            schedulePreferenceCreateData.preferred_contact_name = preferredContactName;
+            schedulePreferencePatchData.preferred_contact_name = preferredContactName;
+          } else if (intake && hasOwnKey(intake, 'emergency_contact')) {
+            const preferredContactName =
+              normalizeNullableText(intake.emergency_contact?.name) ?? null;
+            schedulePreferenceCreateData.preferred_contact_name = preferredContactName;
+            schedulePreferencePatchData.preferred_contact_name = preferredContactName;
+          }
+
+          schedulePreferenceCreateData.preferred_contact_phone = nextPreferredContactPhone;
+          schedulePreferencePatchData.preferred_contact_phone = nextPreferredContactPhone;
+
+          if (intake) {
+            if (hasOwnKey(intake, 'primary_contact_preference')) {
+              const value = normalizeNullableText(intake.primary_contact_preference) ?? null;
+              schedulePreferenceCreateData.primary_contact_preference = value;
+              schedulePreferencePatchData.primary_contact_preference = value;
+            }
+            if (hasOwnKey(intake, 'visit_before_contact_required')) {
+              const value = intake.visit_before_contact_required ?? null;
+              schedulePreferenceCreateData.visit_before_contact_required = value;
+              schedulePreferencePatchData.visit_before_contact_required = value;
+            }
+            if (hasOwnKey(intake, 'first_visit_preferred_date')) {
+              const value = intake.first_visit_preferred_date
+                ? new Date(intake.first_visit_preferred_date)
+                : null;
+              schedulePreferenceCreateData.first_visit_preferred_date = value;
+              schedulePreferencePatchData.first_visit_preferred_date = value;
+            }
+            if (hasOwnKey(intake, 'first_visit_time_slot')) {
+              const value = normalizeNullableText(intake.first_visit_time_slot) ?? null;
+              schedulePreferenceCreateData.first_visit_time_slot = value;
+              schedulePreferencePatchData.first_visit_time_slot = value;
+            }
+            if (hasOwnKey(intake, 'first_visit_time_note')) {
+              const value = normalizeNullableText(intake.first_visit_time_note) ?? null;
+              schedulePreferenceCreateData.first_visit_time_note = value;
+              schedulePreferencePatchData.first_visit_time_note = value;
+            }
+            if (hasOwnKey(intake, 'parking_available')) {
+              const value = intake.parking_available ?? null;
+              schedulePreferenceCreateData.parking_available = value;
+              schedulePreferencePatchData.parking_available = value;
+            }
+            if (hasOwnKey(intake, 'mcs_linked')) {
+              const value = intake.mcs_linked ?? null;
+              schedulePreferenceCreateData.mcs_linked = value;
+              schedulePreferencePatchData.mcs_linked = value;
+            }
+            if (hasOwnKey(intake, 'adl_level')) {
+              const value = normalizeNullableText(intake.adl_level) ?? null;
+              schedulePreferenceCreateData.adl_level = value;
+              schedulePreferencePatchData.adl_level = value;
+            }
+            if (hasOwnKey(intake, 'dementia_level')) {
+              const value = normalizeNullableText(intake.dementia_level) ?? null;
+              schedulePreferenceCreateData.dementia_level = value;
+              schedulePreferencePatchData.dementia_level = value;
+            }
+            if (hasOwnKey(intake, 'swallowing_route')) {
+              const value = normalizeNullableText(intake.swallowing_route) ?? null;
+              schedulePreferenceCreateData.swallowing_route = value;
+              schedulePreferencePatchData.swallowing_route = value;
+            }
+            if (hasOwnKey(intake, 'care_level')) {
+              const value = normalizeNullableText(intake.care_level) ?? null;
+              schedulePreferenceCreateData.care_level = value;
+              schedulePreferencePatchData.care_level = value;
+            }
+            if (hasOwnKey(intake, 'infection_isolation')) {
+              const rawIsolation = normalizeNullableText(intake.infection_isolation);
+              if (rawIsolation !== undefined) {
+                const trueValues = ['要', 'あり', 'true', '1', 'yes', 'droplet', 'contact', 'airborne'];
+                const falseValues = ['不要', 'なし', 'false', '0', 'no', 'none'];
+                const lower = rawIsolation.toLowerCase();
+                const isolationValue = trueValues.some((v) => v === rawIsolation || v === lower)
+                  ? true
+                  : falseValues.some((v) => v === rawIsolation || v === lower)
+                    ? false
+                    : rawIsolation.length > 0; // non-empty unknown strings default to true
+                schedulePreferenceCreateData.infection_isolation = isolationValue;
+                schedulePreferencePatchData.infection_isolation = isolationValue;
+              }
+            }
+          }
+        }
+
+        if (Object.keys(schedulePreferencePatchData).length > 0) {
+          await tx.patientSchedulePreference.upsert({
+            where: {
+              patient_id: id,
+            },
+            create: schedulePreferenceCreateData,
+            update: schedulePreferencePatchData,
+          });
+        }
+
+        if (requester || intake) {
+          const activeCase =
+            (await tx.careCase.findFirst({
+              where: {
+                org_id: ctx.orgId,
+                patient_id: id,
+                status: { in: [...OPEN_CASE_STATUSES] },
+              },
+              orderBy: [{ updated_at: 'desc' }],
+              select: {
+                id: true,
+                required_visit_support: true,
+              },
+            })) ??
+            (await tx.careCase.findFirst({
+              where: {
+                org_id: ctx.orgId,
+                patient_id: id,
+              },
+              orderBy: [{ updated_at: 'desc' }],
+              select: {
+                id: true,
+                required_visit_support: true,
+              },
+            }));
+
+          if (activeCase) {
+            const nextHomeVisitIntake = mergeHomeVisitIntake({
+              current: getHomeVisitIntake(activeCase.required_visit_support),
+              requester,
+              intake,
+            });
+            const nextRequiredVisitSupport =
+              activeCase.required_visit_support &&
+              typeof activeCase.required_visit_support === 'object' &&
+              !Array.isArray(activeCase.required_visit_support)
+                ? { ...(activeCase.required_visit_support as Record<string, unknown>) }
+                : {};
+
+            if (nextHomeVisitIntake) {
+              nextRequiredVisitSupport.home_visit_intake = nextHomeVisitIntake;
+            } else {
+              delete nextRequiredVisitSupport.home_visit_intake;
+            }
+
+            await tx.careCase.update({
+              where: { id: activeCase.id },
+              data: {
+                ...(requester && hasOwnKey(requester, 'organization_name')
+                  ? {
+                      referral_source: normalizeNullableText(requester.organization_name) ?? null,
+                    }
+                  : {}),
+                required_visit_support: nextRequiredVisitSupport as Prisma.InputJsonValue,
+              },
+            });
+          }
+        }
+
+        for (const [insuranceType, nextNumber] of [
+          ['medical', normalizedMedicalInsuranceNumber],
+          ['care', normalizedCareInsuranceNumber],
+        ] as const) {
+          if (nextNumber === undefined) continue;
+
+          if (nextNumber) {
+            const currentInsurance = await tx.patientInsurance.findFirst({
+              where: {
+                org_id: ctx.orgId,
+                patient_id: id,
+                insurance_type: insuranceType,
+                is_active: true,
+              },
+              orderBy: [{ valid_from: 'desc' }, { created_at: 'desc' }],
+              select: { id: true, number: true },
+            });
+
+            const numberChanged = currentInsurance
+              ? currentInsurance.number !== nextNumber
+              : true;
+
+            if (numberChanged) {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+
+              // Close ALL active rows for this insurance type (Fix #3: multi-active guard)
+              await tx.patientInsurance.updateMany({
+                where: {
+                  org_id: ctx.orgId,
+                  patient_id: id,
+                  insurance_type: insuranceType,
+                  is_active: true,
+                },
+                data: {
+                  is_active: false,
+                  valid_until: today,
+                },
+              });
+
+              // Create new active row
+              await tx.patientInsurance.create({
+                data: {
+                  org_id: ctx.orgId,
+                  patient_id: id,
+                  insurance_type: insuranceType,
+                  number: nextNumber,
+                  valid_from: today,
+                  is_active: true,
+                },
+              });
+            }
+          } else {
+            await tx.patientInsurance.updateMany({
+              where: {
+                org_id: ctx.orgId,
+                patient_id: id,
+                insurance_type: insuranceType,
+                is_active: true,
+              },
+              data: {
+                is_active: false,
+              },
+            });
+          }
+        }
+
+        return updated;
+      },
+      { requestContext: ctx },
+    );
 
     return success(patient);
   } catch (error) {

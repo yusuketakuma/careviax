@@ -86,7 +86,8 @@ export type ProposalCandidateRejectionCode =
   | 'no_slot'
   | 'travel_limit'
   | 'billing_constraint'
-  | 'not_selected';
+  | 'not_selected'
+  | 'evaluation_error';
 
 export type ProposalCandidateDiagnostic = {
   pharmacist_id: string;
@@ -143,6 +144,7 @@ const REJECTION_REASON_LABELS: Record<ProposalCandidateRejectionCode, string> = 
   travel_limit: '移動上限超過',
   billing_constraint: '算定制約',
   not_selected: '候補上限外',
+  evaluation_error: '評価エラー',
 };
 
 function toDateKey(value: Date) {
@@ -1063,8 +1065,10 @@ export async function generateVisitScheduleProposalDrafts(
           kind: 'rejected' as const,
           diagnostic: buildRejectedDiagnostic({
             shift,
-            reasonCode: 'travel_limit',
-            detail: error instanceof Error ? error.message : '移動評価に失敗しました',
+            reasonCode: 'evaluation_error',
+            detail: error instanceof Error
+              ? `評価中にエラーが発生しました: ${error.message}`
+              : '評価中にエラーが発生しました',
           }),
         };
       }
