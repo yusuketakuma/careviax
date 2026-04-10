@@ -9,10 +9,16 @@ describe('google-routes', () => {
     vi.restoreAllMocks();
   });
 
-  it('returns unavailable when the API key is not configured', async () => {
+  // Behavior changed: when no Google API key is configured, the engine now falls
+  // back to the heuristic route computation instead of returning status:'unavailable'.
+  // The 'unavailable' response for missing key was intentionally removed in the
+  // visit-route-engine refactor. Callers (api/visit-routes/route.ts) pass through
+  // the result without special-casing a missing key.
+  it('falls back to heuristic route when the API key is not configured', async () => {
     delete process.env.GOOGLE_MAPS_SERVER_API_KEY;
     delete process.env.GOOGLE_MAPS_API_KEY;
     delete process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    delete process.env.ROUTING_API_PROVIDER;
 
     await expect(
       computeOptimizedVisitRoute({
@@ -29,13 +35,17 @@ describe('google-routes', () => {
         ],
       }),
     ).resolves.toMatchObject({
-      status: 'unavailable',
-      note: 'Google Maps API key が未設定のためルート最適化を計算できません',
+      status: 'ok',
+      note: 'ヒューリスティック順序を表示しています',
       orderedScheduleIds: ['schedule_1'],
     });
   });
 
   it('maps optimized waypoint order and leg durations from Google Routes API', async () => {
+    // Both the provider flag AND the key must be set to activate the Google branch.
+    // ROUTING_API_PROVIDER defaults to 'osrm', so without this flag the engine
+    // falls through to the heuristic path regardless of key presence.
+    process.env.ROUTING_API_PROVIDER = 'google';
     process.env.GOOGLE_MAPS_SERVER_API_KEY = 'test-key';
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(

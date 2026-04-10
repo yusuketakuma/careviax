@@ -289,7 +289,7 @@ describe('Workflow: prescription intake to care report', () => {
       createPostRequest({
         cycle_id: IDS.cycle,
         source_type: 'paper',
-        prescribed_date: '2026-04-01',
+        prescribed_date: '2026-04-10',
         lines: [
           {
             line_number: 1,

@@ -36,31 +36,25 @@ describe('DASHBOARD_WORKFLOW_LINKS', () => {
 
 describe('dashboard home config', () => {
   it('includes direct dashboard coordination links for communication surfaces', () => {
-    expect(
-      DASHBOARD_COORDINATION_LINKS.map((item) => item.href),
-    ).toEqual(
-      expect.arrayContaining([
-        '/notifications',
-        '/external',
-        '/communications/requests',
-        '/handoff',
-      ]),
-    );
+    const hrefs = DASHBOARD_COORDINATION_LINKS.map((item) => item.href);
+    // Each href is built via a link-builder and includes context params.
+    // We assert on the base path so the test stays robust against filter-default changes.
+    expect(hrefs.some((h) => h.startsWith('/notifications'))).toBe(true);
+    expect(hrefs.some((h) => h.startsWith('/external'))).toBe(true);
+    expect(hrefs.some((h) => h.startsWith('/communications/requests'))).toBe(true);
+    expect(hrefs.some((h) => h.startsWith('/handoff'))).toBe(true);
   });
 
   it('includes direct dashboard workbench links for previously hidden major pages', () => {
-    expect(
-      DASHBOARD_WORKBENCH_LINKS.map((item) => item.href),
-    ).toEqual(
-      expect.arrayContaining([
-        '/my-day',
-        '/workflow',
-        '/tasks',
-        '/billing',
-        '/billing/candidates',
-        '/schedules/proposals',
-      ]),
-    );
+    const hrefs = DASHBOARD_WORKBENCH_LINKS.map((item) => item.href);
+    // Each href may carry context/filter params from link-builders.
+    // We assert on the base path so the test stays robust against filter-default changes.
+    expect(hrefs.some((h) => h.startsWith('/my-day'))).toBe(true);
+    expect(hrefs.some((h) => h.startsWith('/workflow'))).toBe(true);
+    expect(hrefs.some((h) => h.startsWith('/tasks'))).toBe(true);
+    expect(hrefs.some((h) => h.startsWith('/billing/candidates'))).toBe(true);
+    expect(hrefs.some((h) => h === '/billing' || h.startsWith('/billing?'))).toBe(true);
+    expect(hrefs.some((h) => h.startsWith('/schedules/proposals'))).toBe(true);
   });
 
   it('includes direct admin dashboard links for management surfaces', () => {

@@ -238,8 +238,8 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
     },
     "remediation_guidance": [
       {
-        "action_href": "/workflow",
-        "action_label": "患者ワークフローで同意を整備",
+        "action_href": "/patients?readiness_issue=missing_visit_consent",
+        "action_label": "患者一覧で確認",
         "count": 1,
         "description": "訪問薬剤管理指導の有効同意がないため、候補生成と確定を進められません。",
         "id": "missing_visit_consent",
@@ -247,8 +247,8 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
         "title": "訪問同意の取得が必要です",
       },
       {
-        "action_href": "/workflow",
-        "action_label": "ワークフローで計画書を確認",
+        "action_href": "/patients?readiness_issue=missing_management_plan",
+        "action_label": "患者一覧で確認",
         "count": 1,
         "description": "承認済み管理計画書がないため、訪問業務フローを開始できません。",
         "id": "missing_management_plan",
@@ -256,8 +256,8 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
         "title": "管理計画書の承認が必要です",
       },
       {
-        "action_href": "/workflow",
-        "action_label": "未交付ケースを確認",
+        "action_href": "/patients?readiness_issue=missing_first_visit_doc",
+        "action_label": "患者一覧で確認",
         "count": 1,
         "description": "初回訪問文書が未交付のケースがあります。交付日時と文書控えを確認してください。",
         "id": "missing_first_visit_doc",
@@ -265,8 +265,8 @@ exports[`/api/dashboard/workflow GET > returns unified workflow/workbench data 1
         "title": "初回訪問文書の交付確認が必要です",
       },
       {
-        "action_href": "/workflow",
-        "action_label": "不足患者を確認",
+        "action_href": "/patients?readiness_issue=missing_emergency_contact",
+        "action_label": "患者一覧で確認",
         "count": 1,
         "description": "緊急連絡先が不足しているため、初回訪問文書や緊急連携の運用が不完全です。",
         "id": "missing_emergency_contact",
