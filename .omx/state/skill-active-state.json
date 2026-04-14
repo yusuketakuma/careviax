@@ -1,13 +1,12 @@
 {
   "version": 1,
-  "active": true,
+  "active": false,
   "skill": "security-review",
   "keyword": "Security review",
-  "phase": "planning",
+  "phase": "complete",
   "activated_at": "2026-04-04T22:39:50.868Z",
-  "updated_at": "2026-04-04T22:39:50.868Z",
+  "updated_at": "2026-04-14T06:12:25.630Z",
   "source": "keyword-detector",
-  "session_id": "",
   "thread_id": "019d5aa4-ad9f-73b3-b975-6f3e55b24e74",
   "turn_id": "019d5aa4-b02f-7242-9cf0-d4bb71f41e37",
   "input_lock": {
@@ -29,5 +28,6 @@
     "exit_reason": "handoff"
   },
   "iteration": 7,
-  "last_turn_at": "2026-04-04T23:45:02.813Z"
+  "last_turn_at": "2026-04-04T23:45:02.813Z",
+  "active_skills": []
 }

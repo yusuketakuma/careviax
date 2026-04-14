@@ -51,26 +51,26 @@ enum PackagingInstructionTag {
 }
 
 model MedicationCycle {
-  id                  String                @id @default(cuid())
-  org_id              String
-  case_id             String
-  case_               CareCase              @relation(fields: [case_id], references: [id])
-  patient_id          String
-  overall_status      MedicationCycleStatus
-  visit_sub_status    String? // 派生状態
+  id                   String                @id @default(cuid())
+  org_id               String
+  case_id              String
+  case_                CareCase              @relation(fields: [case_id], references: [id])
+  patient_id           String
+  overall_status       MedicationCycleStatus
+  visit_sub_status     String? // 派生状態
   readiness_sub_status String?
   reporting_sub_status String?
-  exception_status    String? // no_show/hospitalized/refused_receipt/awaiting_reply/report_failed/carry_items_partial
-  version             Int                   @default(1) // 楽観的ロック
-  created_at          DateTime              @default(now())
-  updated_at          DateTime              @updatedAt
+  exception_status     String? // no_show/hospitalized/refused_receipt/awaiting_reply/report_failed/carry_items_partial
+  version              Int                   @default(1) // 楽観的ロック
+  created_at           DateTime              @default(now())
+  updated_at           DateTime              @updatedAt
 
-  prescription_intakes PrescriptionIntake[]
-  inquiries            InquiryRecord[]
-  dispense_tasks       DispenseTask[]
-  set_plans            SetPlan[]
-  workflow_exceptions  WorkflowException[]
-  visit_schedules      VisitSchedule[]
+  prescription_intakes     PrescriptionIntake[]
+  inquiries                InquiryRecord[]
+  dispense_tasks           DispenseTask[]
+  set_plans                SetPlan[]
+  workflow_exceptions      WorkflowException[]
+  visit_schedules          VisitSchedule[]
   visit_schedule_proposals VisitScheduleProposal[]
   transition_logs          CycleTransitionLog[]
 
@@ -95,29 +95,29 @@ model CycleTransitionLog {
 }
 
 model PrescriptionIntake {
-  id                        String                  @id @default(cuid())
-  org_id                    String
-  cycle_id                  String
-  cycle                     MedicationCycle         @relation(fields: [cycle_id], references: [id])
-  source_type               PrescriptionSourceType
-  prescribed_date           DateTime
-  prescriber_name           String?
-  prescriber_institution_id String?
+  id                         String                 @id @default(cuid())
+  org_id                     String
+  cycle_id                   String
+  cycle                      MedicationCycle        @relation(fields: [cycle_id], references: [id])
+  source_type                PrescriptionSourceType
+  prescribed_date            DateTime
+  prescriber_name            String?
+  prescriber_institution_id  String?
   prescriber_institution_ref PrescriberInstitution? @relation(fields: [prescriber_institution_id], references: [id])
-  prescriber_institution    String?
-  original_document_url     String? // S3
-  prescription_category     String                  @default("regular") // regular | emergency
-  emergency_category        String? // planned_disease_exacerbation | other_exacerbation | online (only when emergency)
-  original_collected_at     DateTime?
-  original_collected_by     String?
-  refill_remaining_count    Int?
-  refill_next_dispense_date DateTime?
-  split_dispense_total      Int?
-  split_dispense_current    Int?
-  split_next_dispense_date  DateTime?
-  prescription_expiry_date  DateTime?
-  created_at                DateTime                @default(now())
-  updated_at                DateTime                @updatedAt
+  prescriber_institution     String?
+  original_document_url      String? // S3
+  prescription_category      String                 @default("regular") // regular | emergency
+  emergency_category         String? // planned_disease_exacerbation | other_exacerbation | online (only when emergency)
+  original_collected_at      DateTime?
+  original_collected_by      String?
+  refill_remaining_count     Int?
+  refill_next_dispense_date  DateTime?
+  split_dispense_total       Int?
+  split_dispense_current     Int?
+  split_next_dispense_date   DateTime?
+  prescription_expiry_date   DateTime?
+  created_at                 DateTime               @default(now())
+  updated_at                 DateTime               @updatedAt
 
   lines PrescriptionLine[]
 
@@ -127,10 +127,10 @@ model PrescriptionIntake {
 }
 
 model PrescriptionLine {
-  id                           String             @id @default(cuid())
+  id                           String                    @id @default(cuid())
   org_id                       String
   intake_id                    String
-  intake                       PrescriptionIntake @relation(fields: [intake_id], references: [id])
+  intake                       PrescriptionIntake        @relation(fields: [intake_id], references: [id])
   line_number                  Int
   drug_name                    String
   drug_code                    String? // YJコード
@@ -140,24 +140,24 @@ model PrescriptionLine {
   days                         Int // 投与日数
   quantity                     Float?
   unit                         String?
-  is_generic                   Boolean            @default(false)
-  is_generic_name_prescription Boolean            @default(false)
+  is_generic                   Boolean                   @default(false)
+  is_generic_name_prescription Boolean                   @default(false)
   packaging_method             PackagingMethod?
   packaging_instructions       String?
   packaging_instruction_tags   PackagingInstructionTag[] @default([])
   notes                        String?
   // 剤形分類・調剤方法
-  route                        String?  // internal(内服)/external(外用)/injection(注射)/other
-  dispensing_method             String?  // standard(通常)/unit_dose(一包化)/crushed(粉砕)/other
-  start_date                   DateTime? @db.Date // 服用開始日
-  end_date                     DateTime? @db.Date // 服用終了日（start_date + days で自動計算可能）
+  route                        String? // internal(内服)/external(外用)/injection(注射)/other
+  dispensing_method            String? // standard(通常)/unit_dose(一包化)/crushed(粉砕)/other
+  start_date                   DateTime?                 @db.Date // 服用開始日
+  end_date                     DateTime?                 @db.Date // 服用終了日（start_date + days で自動計算可能）
   packaging_group_id           String?
-  created_at                   DateTime           @default(now())
-  updated_at                   DateTime           @updatedAt
+  created_at                   DateTime                  @default(now())
+  updated_at                   DateTime                  @updatedAt
 
   inquiry_records      InquiryRecord[]
   dispense_results     DispenseResult[]
-  dispensing_decisions  DispensingDecision[]
+  dispensing_decisions DispensingDecision[]
   set_batches          SetBatch[]
 
   @@index([org_id])
@@ -165,23 +165,25 @@ model PrescriptionLine {
 }
 
 model InquiryRecord {
-  id              String          @id @default(cuid())
-  org_id          String
-  cycle_id        String
-  cycle           MedicationCycle @relation(fields: [cycle_id], references: [id])
-  issue_id        String?
-  issue           MedicationIssue? @relation(fields: [issue_id], references: [id])
-  line_id         String?
-  line            PrescriptionLine? @relation(fields: [line_id], references: [id])
-  reason          String // 用量疑義/相互作用/禁忌/重複/その他
+  id                   String            @id @default(cuid())
+  org_id               String
+  cycle_id             String
+  cycle                MedicationCycle   @relation(fields: [cycle_id], references: [id])
+  issue_id             String?
+  issue                MedicationIssue?  @relation(fields: [issue_id], references: [id])
+  line_id              String?
+  line                 PrescriptionLine? @relation(fields: [line_id], references: [id])
+  reason               String // 用量疑義/相互作用/禁忌/重複/その他
   inquiry_to_physician String
-  inquiry_content String
-  result          String? // changed/unchanged/pending
-  change_detail   String?
-  inquired_at     DateTime
-  resolved_at     DateTime?
-  created_at      DateTime        @default(now())
-  updated_at      DateTime        @updatedAt
+  inquiry_content      String
+  result               String? // changed/unchanged/pending
+  proposal_origin      String? // post_inquiry/pre_issuance
+  residual_adjustment  Boolean?          @default(false)
+  change_detail        String?
+  inquired_at          DateTime
+  resolved_at          DateTime?
+  created_at           DateTime          @default(now())
+  updated_at           DateTime          @updatedAt
 
   @@index([org_id])
   @@index([cycle_id])
@@ -202,49 +204,49 @@ model DispenseTask {
 
   results              DispenseResult[]
   audits               DispenseAudit[]
-  dispensing_decisions  DispensingDecision[]
+  dispensing_decisions DispensingDecision[]
 
   @@index([org_id])
   @@index([status])
 }
 
 model DispenseResult {
-  id                String       @id @default(cuid())
-  org_id            String
-  task_id           String
-  task              DispenseTask @relation(fields: [task_id], references: [id])
-  line_id           String
-  line              PrescriptionLine @relation(fields: [line_id], references: [id])
-  actual_drug_name  String
-  actual_drug_code  String?
-  actual_quantity   Float
-  actual_unit       String?
+  id                 String           @id @default(cuid())
+  org_id             String
+  task_id            String
+  task               DispenseTask     @relation(fields: [task_id], references: [id])
+  line_id            String
+  line               PrescriptionLine @relation(fields: [line_id], references: [id])
+  actual_drug_name   String
+  actual_drug_code   String?
+  actual_quantity    Float
+  actual_unit        String?
   discrepancy_reason String?
-  carry_type        String // carry/facility_deposit/deferred
-  special_notes     String? // 冷所/麻薬/半割等
-  dispensed_by      String // User ID
-  dispensed_at      DateTime
-  version           Int          @default(1)
-  created_at        DateTime     @default(now())
-  updated_at        DateTime     @updatedAt
+  carry_type         String // carry/facility_deposit/deferred
+  special_notes      String? // 冷所/麻薬/半割等
+  dispensed_by       String // User ID
+  dispensed_at       DateTime
+  version            Int              @default(1)
+  created_at         DateTime         @default(now())
+  updated_at         DateTime         @updatedAt
 
   @@index([org_id])
   @@index([task_id])
 }
 
 model DispenseAudit {
-  id                 String             @id @default(cuid())
+  id                 String              @id @default(cuid())
   org_id             String
   task_id            String
-  task               DispenseTask       @relation(fields: [task_id], references: [id])
+  task               DispenseTask        @relation(fields: [task_id], references: [id])
   result             DispenseAuditResult
   reject_reason      String?
-  reject_reason_code String?            // drug_name_mismatch | quantity_error | packaging_error | carry_type_error | labeling_error | other
+  reject_reason_code String? // drug_name_mismatch | quantity_error | packaging_error | carry_type_error | labeling_error | other
   reject_detail      String?
   audited_by         String // User ID
   audited_at         DateTime
-  created_at         DateTime           @default(now())
-  updated_at         DateTime           @updatedAt
+  created_at         DateTime            @default(now())
+  updated_at         DateTime            @updatedAt
 
   @@index([org_id])
   @@index([task_id])
@@ -261,24 +263,24 @@ model DispenseAudit {
 /// DispensingDecision answers "HOW to dispense" (method, packaging, temperature).
 /// DispenseResult answers "WHAT was actually dispensed" (drug, quantity, outcome).
 model DispensingDecision {
-  id                         String                   @id @default(cuid())
+  id                         String                    @id @default(cuid())
   org_id                     String
   task_id                    String
-  task                       DispenseTask             @relation(fields: [task_id], references: [id])
+  task                       DispenseTask              @relation(fields: [task_id], references: [id])
   line_id                    String
-  line                       PrescriptionLine         @relation(fields: [line_id], references: [id])
-  dispensing_method           String? // standard/unit_dose/crushed/other
-  packaging_method            PackagingMethod?
-  packaging_instructions      String?
-  packaging_instruction_tags  PackagingInstructionTag[] @default([])
-  packaging_group_id          String?
-  carry_type_override         String? // carry/facility_deposit/deferred
-  special_handling_notes       String?
-  temperature_category         String? // ambient/cold/frozen
-  decided_by                  String // User ID
-  decided_at                  DateTime
-  created_at                  DateTime                 @default(now())
-  updated_at                  DateTime                 @updatedAt
+  line                       PrescriptionLine          @relation(fields: [line_id], references: [id])
+  dispensing_method          String? // standard/unit_dose/crushed/other
+  packaging_method           PackagingMethod?
+  packaging_instructions     String?
+  packaging_instruction_tags PackagingInstructionTag[] @default([])
+  packaging_group_id         String?
+  carry_type_override        String? // carry/facility_deposit/deferred
+  special_handling_notes     String?
+  temperature_category       String? // ambient/cold/frozen
+  decided_by                 String // User ID
+  decided_at                 DateTime
+  created_at                 DateTime                  @default(now())
+  updated_at                 DateTime                  @updatedAt
 
   @@unique([task_id, line_id])
   @@index([org_id])
@@ -287,19 +289,19 @@ model DispensingDecision {
 }
 
 model SetPlan {
-  id                   String          @id @default(cuid())
-  org_id               String
-  cycle_id             String
-  cycle                MedicationCycle @relation(fields: [cycle_id], references: [id])
-  target_period_start  DateTime
-  target_period_end    DateTime
-  set_method           String // facility_calendar/four_times_daily/bedtime_only/custom
-  packaging_method_id  String?
-  packaging_method_ref PackagingMethodMaster? @relation(fields: [packaging_method_id], references: [id], onDelete: SetNull)
+  id                         String                 @id @default(cuid())
+  org_id                     String
+  cycle_id                   String
+  cycle                      MedicationCycle        @relation(fields: [cycle_id], references: [id])
+  target_period_start        DateTime
+  target_period_end          DateTime
+  set_method                 String // facility_calendar/four_times_daily/bedtime_only/custom
+  packaging_method_id        String?
+  packaging_method_ref       PackagingMethodMaster? @relation(fields: [packaging_method_id], references: [id], onDelete: SetNull)
   packaging_summary_snapshot Json?
-  notes                String?
-  created_at           DateTime        @default(now())
-  updated_at           DateTime        @updatedAt
+  notes                      String?
+  created_at                 DateTime               @default(now())
+  updated_at                 DateTime               @updatedAt
 
   batches     SetBatch[]
   audits      SetAudit[]
@@ -311,23 +313,23 @@ model SetPlan {
 }
 
 model SetBatch {
-  id                                String                   @id @default(cuid())
-  org_id                            String
-  plan_id                           String
-  plan                              SetPlan                  @relation(fields: [plan_id], references: [id])
-  line_id                           String
-  line                              PrescriptionLine         @relation(fields: [line_id], references: [id])
-  slot                              String // morning/noon/evening/bedtime/prn
-  day_number                        Int
-  quantity                          Float
-  carry_type                        String // carry/facility_deposit/deferred
-  packaging_method_snapshot         PackagingMethod?
-  packaging_instructions_snapshot   String?
+  id                                  String                    @id @default(cuid())
+  org_id                              String
+  plan_id                             String
+  plan                                SetPlan                   @relation(fields: [plan_id], references: [id])
+  line_id                             String
+  line                                PrescriptionLine          @relation(fields: [line_id], references: [id])
+  slot                                String // morning/noon/evening/bedtime/prn
+  day_number                          Int
+  quantity                            Float
+  carry_type                          String // carry/facility_deposit/deferred
+  packaging_method_snapshot           PackagingMethod?
+  packaging_instructions_snapshot     String?
   packaging_instruction_tags_snapshot PackagingInstructionTag[] @default([])
-  packaging_group_id                String?
-  version                           Int                      @default(1) // 楽観的ロック
-  created_at                        DateTime                 @default(now())
-  updated_at                        DateTime                 @updatedAt
+  packaging_group_id                  String?
+  version                             Int                       @default(1) // 楽観的ロック
+  created_at                          DateTime                  @default(now())
+  updated_at                          DateTime                  @updatedAt
 
   change_logs SetBatchChangeLog[]
 
@@ -336,37 +338,37 @@ model SetBatch {
 }
 
 model SetAudit {
-  id             String       @id @default(cuid())
+  id             String         @id @default(cuid())
   org_id         String
   plan_id        String
-  plan           SetPlan      @relation(fields: [plan_id], references: [id])
+  plan           SetPlan        @relation(fields: [plan_id], references: [id])
   result         SetAuditResult
   approved_scope Json? // 部分承認の範囲
   reject_reason  String?
   audited_by     String // User ID
   audited_at     DateTime
-  created_at     DateTime     @default(now())
-  updated_at     DateTime     @updatedAt
+  created_at     DateTime       @default(now())
+  updated_at     DateTime       @updatedAt
 
   @@index([org_id])
   @@index([plan_id])
 }
 
 model SetBatchChangeLog {
-  id            String    @id @default(cuid())
-  org_id        String
-  plan_id       String
-  plan          SetPlan   @relation(fields: [plan_id], references: [id])
-  batch_id      String?
-  batch         SetBatch? @relation(fields: [batch_id], references: [id], onDelete: SetNull)
-  action        String
-  trigger_source String?
-  reason        String?
-  line_ids      Json?
+  id              String    @id @default(cuid())
+  org_id          String
+  plan_id         String
+  plan            SetPlan   @relation(fields: [plan_id], references: [id])
+  batch_id        String?
+  batch           SetBatch? @relation(fields: [batch_id], references: [id], onDelete: SetNull)
+  action          String
+  trigger_source  String?
+  reason          String?
+  line_ids        Json?
   before_snapshot Json
-  after_snapshot Json?
-  changed_by    String?
-  created_at    DateTime  @default(now())
+  after_snapshot  Json?
+  changed_by      String?
+  created_at      DateTime  @default(now())
 
   @@index([org_id])
   @@index([plan_id, created_at])
@@ -374,18 +376,18 @@ model SetBatchChangeLog {
 }
 
 model WorkflowException {
-  id             String          @id @default(cuid())
+  id             String           @id @default(cuid())
   org_id         String
   cycle_id       String?
   cycle          MedicationCycle? @relation(fields: [cycle_id], references: [id])
   exception_type String
   description    String
   severity       String // critical/warning/info
-  status         String          @default("open") // open/resolved/dismissed
+  status         String           @default("open") // open/resolved/dismissed
   resolved_by    String?
   resolved_at    DateTime?
-  created_at     DateTime        @default(now())
-  updated_at     DateTime        @updatedAt
+  created_at     DateTime         @default(now())
+  updated_at     DateTime         @updatedAt
 
   @@index([org_id])
   @@index([status])
@@ -406,10 +408,10 @@ model QrScanDraft {
   session_id          String
   status              QrDraftStatus @default(pending)
   schema_version      Int           @default(1)
-  raw_qr_texts        Json          // String[]
-  parsed_data         Json          // JahisQRData
-  parse_errors        Json?         // JahisParseError[]
-  auto_completed      Json?         // AutoCompletedField[]
+  raw_qr_texts        Json // String[]
+  parsed_data         Json // JahisQRData
+  parse_errors        Json? // JahisParseError[]
+  auto_completed      Json? // AutoCompletedField[]
   expected_qr_count   Int?
   confirmed_intake_id String?
   created_at          DateTime      @default(now())

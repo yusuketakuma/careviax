@@ -10,6 +10,8 @@ import {
   ensureHomeCareBillingSsot,
   HOME_CARE_BILLING_RULESET_VERSION,
 } from '../home-care-billing-ssot';
+import { resolveBillingRuntimeContext } from '../billing-runtime-context';
+import { normalizeHomeComprehensiveLevel2026 } from '../billing-rules/revisions/medical/site-config-2026';
 
 export type Tx = Prisma.TransactionClient | typeof prisma;
 
@@ -72,7 +74,8 @@ function isUnderAge(birthDate: Date, referenceDate: Date, threshold: number): bo
   const ageYears = referenceDate.getFullYear() - birthDate.getFullYear();
   const hadBirthday =
     referenceDate.getMonth() > birthDate.getMonth() ||
-    (referenceDate.getMonth() === birthDate.getMonth() && referenceDate.getDate() >= birthDate.getDate());
+    (referenceDate.getMonth() === birthDate.getMonth() &&
+      referenceDate.getDate() >= birthDate.getDate());
   return hadBirthday ? ageYears < threshold : ageYears - 1 < threshold;
 }
 
@@ -156,7 +159,9 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 
 function csvFromUnique(values: Array<string | null | undefined>) {
   const unique = Array.from(
-    new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))
+    new Set(
+      values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)),
+    ),
   );
   return unique.length > 0 ? unique.join(',') : null;
 }
@@ -198,7 +203,9 @@ function hasInitialHomeVisitAssessmentEvidence(record: {
   const hasFunctionalAssessment =
     functionalAssessment != null &&
     Object.values(functionalAssessment).some(
-      (value) => Array.isArray(value) && value.some((entry) => typeof entry === 'string' && entry.trim().length > 0)
+      (value) =>
+        Array.isArray(value) &&
+        value.some((entry) => typeof entry === 'string' && entry.trim().length > 0),
     );
 
   return freeText.length > 0 || hasFunctionalAssessment;
@@ -206,7 +213,7 @@ function hasInitialHomeVisitAssessmentEvidence(record: {
 
 export async function evaluateInitialHomeVisitAssessmentRequirement(
   tx: Tx,
-  args: { orgId: string; patientId: string; targetDate: Date }
+  args: { orgId: string; patientId: string; targetDate: Date },
 ) {
   const cutoff = new Date(args.targetDate);
   cutoff.setHours(0, 0, 0, 0);
@@ -253,8 +260,7 @@ export async function evaluateInitialHomeVisitAssessmentRequirement(
   });
 
   const satisfied =
-    initialVisitRecord != null &&
-    hasInitialHomeVisitAssessmentEvidence(initialVisitRecord);
+    initialVisitRecord != null && hasInitialHomeVisitAssessmentEvidence(initialVisitRecord);
 
   return {
     required: true,
@@ -267,15 +273,15 @@ export async function evaluateInitialHomeVisitAssessmentRequirement(
 }
 
 export function readBillingCandidateWorkflowState(
-  sourceSnapshot: Prisma.JsonValue | null | undefined
+  sourceSnapshot: Prisma.JsonValue | null | undefined,
 ): BillingCandidateWorkflowState {
-  const workflow = isRecord(sourceSnapshot) && isRecord(sourceSnapshot.billing_close)
-    ? sourceSnapshot.billing_close
-    : {};
+  const workflow =
+    isRecord(sourceSnapshot) && isRecord(sourceSnapshot.billing_close)
+      ? sourceSnapshot.billing_close
+      : {};
 
   return {
-    review_state:
-      workflow.review_state === 'reviewed' ? 'reviewed' : 'pending',
+    review_state: workflow.review_state === 'reviewed' ? 'reviewed' : 'pending',
     resolution_state:
       workflow.resolution_state === 'confirmed' || workflow.resolution_state === 'excluded'
         ? workflow.resolution_state
@@ -290,7 +296,7 @@ export function readBillingCandidateWorkflowState(
 
 export function writeBillingCandidateWorkflowState(
   sourceSnapshot: Prisma.JsonValue | null | undefined,
-  workflow: Partial<BillingCandidateWorkflowState>
+  workflow: Partial<BillingCandidateWorkflowState>,
 ): Prisma.InputJsonValue {
   const current = isRecord(sourceSnapshot) ? sourceSnapshot : {};
   const nextWorkflow = {
@@ -314,11 +320,9 @@ export function buildValidationLayers(args: {
   const reviewState =
     args.candidateStatus === 'exported' || args.workflow.closed_at
       ? 'passed'
-      : args.workflow.review_state === 'reviewed' &&
-          args.workflow.resolution_state === 'confirmed'
+      : args.workflow.review_state === 'reviewed' && args.workflow.resolution_state === 'confirmed'
         ? 'passed'
-        : args.workflow.review_state === 'reviewed' &&
-            args.workflow.resolution_state === 'excluded'
+        : args.workflow.review_state === 'reviewed' && args.workflow.resolution_state === 'excluded'
           ? 'blocked'
           : 'manual_review';
 
@@ -407,10 +411,7 @@ export function mergeCandidateSourceSnapshot(args: {
  */
 type PrimaryResidenceForBilling = Awaited<ReturnType<typeof fetchPrimaryResidenceForBilling>>;
 
-async function fetchPrimaryResidenceForBilling(
-  tx: Tx,
-  args: { orgId: string; patientId: string }
-) {
+async function fetchPrimaryResidenceForBilling(tx: Tx, args: { orgId: string; patientId: string }) {
   return tx.residence.findFirst({
     where: {
       org_id: args.orgId,
@@ -437,7 +438,7 @@ async function fetchPrimaryResidenceForBilling(
 async function resolveBuildingPatientCount(
   tx: Tx,
   args: { orgId: string; patientId: string },
-  primaryResidence?: PrimaryResidenceForBilling
+  primaryResidence?: PrimaryResidenceForBilling,
 ) {
   if (primaryResidence === undefined) {
     primaryResidence = await fetchPrimaryResidenceForBilling(tx, args);
@@ -492,7 +493,7 @@ async function resolveBuildingPatientCount(
 async function resolveBillingAssignment(
   tx: Tx,
   args: { orgId: string; patientId: string },
-  primaryResidence?: PrimaryResidenceForBilling
+  primaryResidence?: PrimaryResidenceForBilling,
 ) {
   if (primaryResidence === undefined) {
     primaryResidence = await fetchPrimaryResidenceForBilling(tx, args);
@@ -529,11 +530,7 @@ async function resolveBillingAssignment(
   ]);
 
   const assignmentScope =
-    buildingPatientCount > 1
-      ? 'building'
-      : unitPatientCount > 1
-        ? 'unit'
-        : 'patient';
+    buildingPatientCount > 1 ? 'building' : unitPatientCount > 1 ? 'unit' : 'patient';
 
   return {
     building_id: primaryResidence.building_id,
@@ -550,7 +547,7 @@ export function monthLabel(value: Date) {
 
 function blockerDefinition(
   key: BillingEvidenceBlocker['key'],
-  fallbackReason?: string | null
+  fallbackReason?: string | null,
 ): BillingEvidenceBlocker {
   switch (key) {
     case 'missing_visit_consent':
@@ -580,7 +577,8 @@ function blockerDefinition(
     case 'initial_home_visit_assessment_missing':
       return {
         key,
-        reason: fallbackReason ?? '初回算定月のため、初回訪問前日までの患家訪問・環境聴取記録が必要です',
+        reason:
+          fallbackReason ?? '初回算定月のため、初回訪問前日までの患家訪問・環境聴取記録が必要です',
         action_href: '/patients',
         action_label: '患者記録を確認',
         severity: 'urgent',
@@ -606,7 +604,7 @@ function blockerDefinition(
 }
 
 function listBlockerKeys(
-  flags: Prisma.JsonValue | null | undefined
+  flags: Prisma.JsonValue | null | undefined,
 ): BillingEvidenceBlocker['key'][] {
   if (!isRecord(flags)) return [];
 
@@ -643,7 +641,7 @@ export function describeBillingEvidenceBlockers(args: {
   }
 
   return keys.map((key, index) =>
-    blockerDefinition(key, index === 0 ? args.exclusionReason : null)
+    blockerDefinition(key, index === 0 ? args.exclusionReason : null),
   );
 }
 
@@ -654,7 +652,7 @@ export async function listBillingEvidenceBlockers(
     patientId?: string;
     visitRecordId?: string;
     limit?: number;
-  }
+  },
 ) {
   const evidenceList = await tx.billingEvidence.findMany({
     where: {
@@ -693,7 +691,7 @@ export function asRecord(value: Prisma.JsonValue | null | undefined) {
 
 export async function upsertBillingEvidenceForVisit(
   tx: Tx,
-  args: { orgId: string; visitRecordId: string }
+  args: { orgId: string; visitRecordId: string },
 ) {
   const visitRecord = await tx.visitRecord.findFirst({
     where: {
@@ -777,8 +775,7 @@ export async function upsertBillingEvidenceForVisit(
     conferenceCandidates,
     latestPrescriptionIntake,
     businessHoliday,
-  ] =
-    await Promise.all([
+  ] = await Promise.all([
     findActiveVisitConsent(tx, {
       orgId: args.orgId,
       patientId: visitRecord.patient_id,
@@ -817,14 +814,22 @@ export async function upsertBillingEvidenceForVisit(
         },
       },
     }),
-    resolveBuildingPatientCount(tx, {
-      orgId: args.orgId,
-      patientId: visitRecord.patient_id,
-    }, primaryResidence),
-    resolveBillingAssignment(tx, {
-      orgId: args.orgId,
-      patientId: visitRecord.patient_id,
-    }, primaryResidence),
+    resolveBuildingPatientCount(
+      tx,
+      {
+        orgId: args.orgId,
+        patientId: visitRecord.patient_id,
+      },
+      primaryResidence,
+    ),
+    resolveBillingAssignment(
+      tx,
+      {
+        orgId: args.orgId,
+        patientId: visitRecord.patient_id,
+      },
+      primaryResidence,
+    ),
     tx.careReport.findMany({
       where: {
         org_id: args.orgId,
@@ -885,9 +890,12 @@ export async function upsertBillingEvidenceForVisit(
       ...candidate,
       linkage: readConferenceCandidateLinkage(candidate.source_snapshot),
     }))
-    .filter((candidate): candidate is typeof candidate & { linkage: { conferenceNoteId: string } } => Boolean(candidate.linkage));
+    .filter(
+      (candidate): candidate is typeof candidate & { linkage: { conferenceNoteId: string } } =>
+        Boolean(candidate.linkage),
+    );
   const conferenceNoteIds = Array.from(
-    new Set(conferenceLinkages.map((candidate) => candidate.linkage.conferenceNoteId))
+    new Set(conferenceLinkages.map((candidate) => candidate.linkage.conferenceNoteId)),
   );
   const conferenceNotes =
     conferenceNoteIds.length > 0
@@ -908,14 +916,15 @@ export async function upsertBillingEvidenceForVisit(
   const conferenceGeneratedReportIds = Array.from(
     new Set(
       conferenceNotes
-        .map((note) =>
-          note.generated_report_id ??
-          (isRecord(note.metadata) && typeof note.metadata.generated_report_id === 'string'
-            ? note.metadata.generated_report_id
-            : null)
+        .map(
+          (note) =>
+            note.generated_report_id ??
+            (isRecord(note.metadata) && typeof note.metadata.generated_report_id === 'string'
+              ? note.metadata.generated_report_id
+              : null),
         )
-        .filter((value): value is string => Boolean(value))
-    )
+        .filter((value): value is string => Boolean(value)),
+    ),
   );
   const [conferenceReports, conferenceDeliveryRecords] =
     conferenceGeneratedReportIds.length > 0
@@ -952,8 +961,8 @@ export async function upsertBillingEvidenceForVisit(
       conferenceLinkages
         .filter((candidate) => candidate.status !== 'excluded')
         .map((candidate) => CONFERENCE_BILLING_RULE_KEYS[candidate.billing_code])
-        .filter((value): value is string => Boolean(value))
-    )
+        .filter((value): value is string => Boolean(value)),
+    ),
   );
 
   const payerBasis = resolveBillingPayerBasis({
@@ -998,11 +1007,11 @@ export async function upsertBillingEvidenceForVisit(
         ? '管理計画書の見直し期限を超過しています'
         : exclusionFlags.initial_home_visit_assessment_missing
           ? '初回算定月のため、初回訪問前日までの患家訪問・環境聴取記録が必要です'
-        : exclusionFlags.report_delivery_incomplete
-          ? '報告書送付が未完了です'
-          : exclusionFlags.outcome_not_claimable
-            ? '訪問結果が算定対象外です'
-            : null;
+          : exclusionFlags.report_delivery_incomplete
+            ? '報告書送付が未完了です'
+            : exclusionFlags.outcome_not_claimable
+              ? '訪問結果が算定対象外です'
+              : null;
 
   const claimable = exclusionReason == null;
 
@@ -1023,9 +1032,11 @@ export async function upsertBillingEvidenceForVisit(
     ?.home_visit_intake as Record<string, unknown> | null;
   const careLevel = (intakeJson?.care_level as string) ?? null;
   const careLevelCategory = careLevel
-    ? careLevel.startsWith('support_') ? 'support_required' as const
-      : careLevel.startsWith('care_') ? 'care_required' as const
-      : null
+    ? careLevel.startsWith('support_')
+      ? ('support_required' as const)
+      : careLevel.startsWith('care_')
+        ? ('care_required' as const)
+        : null
     : null;
 
   // 麻薬関連フラグ (intake から)
@@ -1037,20 +1048,22 @@ export async function upsertBillingEvidenceForVisit(
   const specialProcedures = Array.isArray(intakeJson?.special_medical_procedures)
     ? (intakeJson.special_medical_procedures as string[])
     : [];
-  const centralVenousRequired = specialProcedures.some(p =>
-    p === 'tpn' || p === 'cv_port' || p === 'central_venous'
+  const centralVenousRequired = specialProcedures.some(
+    (p) => p === 'tpn' || p === 'cv_port' || p === 'central_venous',
   );
   const narcoticInjectionRequired =
     specialProcedures.includes('narcotics') || specialProcedures.includes('narcotics_injection');
-  const enteralRequired = specialProcedures.includes('enteral_nutrition') ||
+  const enteralRequired =
+    specialProcedures.includes('enteral_nutrition') ||
     specialProcedures.includes('enteral_route') ||
     specialProcedures.includes('tube_feeding') ||
     (Array.isArray(intakeJson?.medication_support_methods) &&
-     (intakeJson.medication_support_methods as string[]).includes('tube'));
+      (intakeJson.medication_support_methods as string[]).includes('tube'));
 
   // 特別上限対象 (末期悪性腫瘍 OR 麻薬注射 OR 中心静脈栄養)
   const terminalPainRequired = specialProcedures.includes('terminal_pain');
-  const specialCapEligible = narcoticInjectionRequired || centralVenousRequired || terminalPainRequired;
+  const specialCapEligible =
+    narcoticInjectionRequired || centralVenousRequired || terminalPainRequired;
   const emergencyCategory =
     latestPrescriptionIntake?.prescription_category === 'emergency'
       ? ((latestPrescriptionIntake.emergency_category as
@@ -1066,23 +1079,24 @@ export async function upsertBillingEvidenceForVisit(
 
   await ensureHomeCareBillingSsot(tx, args.orgId, { asOfDate: visitDate });
 
-  const billingServiceType =
-    payerBasis === 'care' ? 'care_home_management' : 'medical_home_visit';
+  const billingServiceType = payerBasis === 'care' ? 'care_home_management' : 'medical_home_visit';
   const providerScope = 'pharmacy';
   const siteId = visitRecord.schedule.site_id;
-  const siteConfigRow = siteId
-    ? await tx.pharmacySiteInsuranceConfig.findFirst({
-        where: {
-          org_id: args.orgId,
-          site_id: siteId,
-          insurance_type: payerBasis === 'care' ? 'care' : 'medical',
-          effective_from: { lte: visitDateOnly },
-          OR: [{ effective_to: null }, { effective_to: { gte: visitDateOnly } }],
-        },
-        orderBy: { effective_from: 'desc' },
-      })
-    : null;
-  const config = (siteConfigRow?.config ?? {}) as Record<string, unknown>;
+  const runtimeContext = await resolveBillingRuntimeContext(tx, {
+    orgId: args.orgId,
+    payerBasis: payerBasis === 'care' ? 'care' : 'medical',
+    asOfDate: visitDateOnly,
+    siteId,
+    buildingPatientCount,
+  });
+  const siteConfigRow =
+    runtimeContext.siteConfigId == null
+      ? null
+      : {
+          id: runtimeContext.siteConfigId,
+          revision_code: runtimeContext.siteConfigRevisionCode,
+        };
+  const config = runtimeContext.siteConfig;
   const regionAddOnEligible: Array<'special_15' | 'small_office_10' | 'resident_5'> = [];
   if (payerBasis === 'care') {
     if (config.region_special_15) regionAddOnEligible.push('special_15');
@@ -1118,33 +1132,112 @@ export async function upsertBillingEvidenceForVisit(
 
   // ── 薬局情報から体制加算を判定 ──
   if (siteId && siteConfigRow) {
-    if (siteConfigRow && payerBasis === 'medical') {
-      // 在宅薬学総合体制加算 (level_2: 50点 > level_1: 15点、排他)
+    if (payerBasis === 'medical' && runtimeContext.homeComprehensive) {
+      candidateSpecs.push({
+        ssotKey: runtimeContext.homeComprehensive.ssotKey ?? 'site.medical.home_comprehensive_1',
+        code: runtimeContext.homeComprehensive.code ?? 'MED_ADD_HOME_COMPREHENSIVE_1',
+        name: runtimeContext.homeComprehensive.name ?? '在宅薬学総合体制加算1',
+        status: claimable ? 'confirmed' : 'excluded',
+        points: runtimeContext.homeComprehensive.points,
+        exclusionReason: claimable ? null : (exclusionReason ?? null),
+        calculationBreakdown: {
+          source: 'pharmacy_site_insurance_config',
+          site_id: siteId,
+          building_tier: runtimeContext.homeComprehensive.buildingTier,
+          site_config_status: runtimeContext.siteConfigStatus,
+        },
+        sourceSnapshot: {
+          revision_code: runtimeContext.effectiveRevisionCode,
+          site_config_revision_code: runtimeContext.siteConfigRevisionCode,
+          level: runtimeContext.homeComprehensive.level,
+          building_tier: runtimeContext.homeComprehensive.buildingTier,
+        },
+      });
+    }
+    /* Legacy branch retained for reference during runtime-context refactor.
+    if (siteConfigRow && payerBasis === 'medical' && false) {
+      // 在宅薬学総合体制加算 (改定により点数が異なる)
       const homeLevel = config.home_comprehensive_level as string | undefined;
-      if (homeLevel === 'level_2') {
-        candidateSpecs.push({
-          ssotKey: 'site.medical.home_comprehensive_2',
-          code: 'MED_ADD_HOME_COMPREHENSIVE_2',
-          name: '在宅薬学総合体制加算2',
-          status: claimable ? 'confirmed' : 'excluded',
-          points: 50,
-          exclusionReason: claimable ? null : (exclusionReason ?? null),
-          calculationBreakdown: { source: 'pharmacy_site_insurance_config', site_id: siteId },
-          sourceSnapshot: { revision_code: siteConfigRow.revision_code, level: homeLevel },
-        });
-      } else if (homeLevel === 'level_1') {
-        candidateSpecs.push({
-          ssotKey: 'site.medical.home_comprehensive_1',
-          code: 'MED_ADD_HOME_COMPREHENSIVE_1',
-          name: '在宅薬学総合体制加算1',
-          status: claimable ? 'confirmed' : 'excluded',
-          points: 15,
-          exclusionReason: claimable ? null : (exclusionReason ?? null),
-          calculationBreakdown: { source: 'pharmacy_site_insurance_config', site_id: siteId },
-          sourceSnapshot: { revision_code: siteConfigRow.revision_code, level: homeLevel },
-        });
+      const revisionCode = siteConfigRow.revision_code;
+
+      if (revisionCode === '2026') {
+        const normalizedHomeLevel = normalizeHomeComprehensiveLevel2026(homeLevel);
+        const singleBuilding = buildingPatientCount <= 1;
+
+        // 2026改定: 加算1=30点, 加算2は訪問時の建物区分で点数が分かれる
+        if (normalizedHomeLevel === 'level_2') {
+          candidateSpecs.push({
+            ssotKey: singleBuilding
+              ? 'site.medical.home_comprehensive_2_i'
+              : 'site.medical.home_comprehensive_2_ro',
+            code: singleBuilding
+              ? 'MED_ADD_HOME_COMPREHENSIVE_2_I'
+              : 'MED_ADD_HOME_COMPREHENSIVE_2_RO',
+            name: singleBuilding
+              ? '在宅薬学総合体制加算2 イ（単一建物1人）'
+              : '在宅薬学総合体制加算2 ロ（その他）',
+            status: claimable ? 'confirmed' : 'excluded',
+            points: singleBuilding ? 100 : 50,
+            exclusionReason: claimable ? null : (exclusionReason ?? null),
+            calculationBreakdown: {
+              source: 'pharmacy_site_insurance_config',
+              site_id: siteId,
+              building_tier: buildingPatientCount <= 1 ? 'single' : 'other',
+            },
+            sourceSnapshot: {
+              revision_code: revisionCode,
+              level: normalizedHomeLevel,
+              building_tier: buildingPatientCount <= 1 ? 'single' : 'other',
+            },
+          });
+        } else if (normalizedHomeLevel === 'level_1') {
+          candidateSpecs.push({
+            ssotKey: 'site.medical.home_comprehensive_1',
+            code: 'MED_ADD_HOME_COMPREHENSIVE_1',
+            name: '在宅薬学総合体制加算1',
+            status: claimable ? 'confirmed' : 'excluded',
+            points: 30,
+            exclusionReason: claimable ? null : (exclusionReason ?? null),
+            calculationBreakdown: {
+              source: 'pharmacy_site_insurance_config',
+              site_id: siteId,
+              building_tier: buildingPatientCount <= 1 ? 'single' : 'other',
+            },
+            sourceSnapshot: {
+              revision_code: revisionCode,
+              level: normalizedHomeLevel,
+              building_tier: buildingPatientCount <= 1 ? 'single' : 'other',
+            },
+          });
+        }
+      } else {
+        // 2024改定: 加算1=15点, 加算2=50点
+        if (homeLevel === 'level_2') {
+          candidateSpecs.push({
+            ssotKey: 'site.medical.home_comprehensive_2',
+            code: 'MED_ADD_HOME_COMPREHENSIVE_2',
+            name: '在宅薬学総合体制加算2',
+            status: claimable ? 'confirmed' : 'excluded',
+            points: 50,
+            exclusionReason: claimable ? null : (exclusionReason ?? null),
+            calculationBreakdown: { source: 'pharmacy_site_insurance_config', site_id: siteId },
+            sourceSnapshot: { revision_code: siteConfigRow.revision_code, level: homeLevel },
+          });
+        } else if (homeLevel === 'level_1') {
+          candidateSpecs.push({
+            ssotKey: 'site.medical.home_comprehensive_1',
+            code: 'MED_ADD_HOME_COMPREHENSIVE_1',
+            name: '在宅薬学総合体制加算1',
+            status: claimable ? 'confirmed' : 'excluded',
+            points: 15,
+            exclusionReason: claimable ? null : (exclusionReason ?? null),
+            calculationBreakdown: { source: 'pharmacy_site_insurance_config', site_id: siteId },
+            sourceSnapshot: { revision_code: siteConfigRow.revision_code, level: homeLevel },
+          });
+        }
       }
     }
+    */
 
     // 介護保険の地域加算を薬局情報から自動判定
     if (siteConfigRow && payerBasis === 'care') {
@@ -1152,7 +1245,12 @@ export async function upsertBillingEvidenceForVisit(
         for (const spec of candidateSpecs) {
           const cond = spec.calculationBreakdown as Record<string, unknown>;
           const regionKey = (cond.conditions as Record<string, unknown>)?.region_add_on;
-          if (typeof regionKey === 'string' && regionAddOnEligible.includes(regionKey as 'special_15' | 'small_office_10' | 'resident_5')) {
+          if (
+            typeof regionKey === 'string' &&
+            regionAddOnEligible.includes(
+              regionKey as 'special_15' | 'small_office_10' | 'resident_5',
+            )
+          ) {
             if (spec.status === 'excluded' && claimable) {
               spec.status = 'candidate';
               spec.exclusionReason = 'SSOT上の追加算定候補です。要件確認後に採否を確定してください';
@@ -1166,6 +1264,10 @@ export async function upsertBillingEvidenceForVisit(
   const calculationContext: Prisma.InputJsonValue = {
     billing_service_type: billingServiceType,
     provider_scope: providerScope,
+    effective_revision_code: runtimeContext.effectiveRevisionCode,
+    effective_revision_label: runtimeContext.effectiveRevisionLabel,
+    site_config_status: runtimeContext.siteConfigStatus,
+    site_config_revision_code: runtimeContext.siteConfigRevisionCode,
     building_patient_count: buildingPatientCount,
     unit_patient_count: billingAssignment.unit_patient_count,
     building_id: billingAssignment.building_id,
@@ -1186,6 +1288,7 @@ export async function upsertBillingEvidenceForVisit(
     central_venous_required: centralVenousRequired,
     enteral_required: enteralRequired,
     care_level_category: careLevelCategory,
+    runtime_warnings: runtimeContext.warnings,
   };
 
   const sharedReportDeliveryRef = csvFromUnique([
@@ -1199,11 +1302,9 @@ export async function upsertBillingEvidenceForVisit(
 
   const sharedRecommendedRuleKeys = Array.from(
     new Set([
-      ...candidateSpecs
-        .filter((spec) => spec.status === 'candidate')
-        .map((spec) => spec.ssotKey),
+      ...candidateSpecs.filter((spec) => spec.status === 'candidate').map((spec) => spec.ssotKey),
       ...conferenceRecommendedRuleKeys,
-    ])
+    ]),
   ) as Prisma.InputJsonValue;
 
   const sharedValidationNotes = claimable
@@ -1299,7 +1400,7 @@ export async function upsertBillingEvidenceForVisit(
 
 export async function getBillingCandidateWorkbenchSummary(
   tx: Tx,
-  args: { orgId: string; billingMonth: Date }
+  args: { orgId: string; billingMonth: Date },
 ) {
   const billingMonth = startOfMonth(args.billingMonth);
   const [candidates, blockedEvidences] = await Promise.all([
@@ -1365,7 +1466,7 @@ export async function getBillingCandidateWorkbenchSummary(
         if (candidate.exclusion_reason) {
           blockerReasons.set(
             candidate.exclusion_reason,
-            (blockerReasons.get(candidate.exclusion_reason) ?? 0) + 1
+            (blockerReasons.get(candidate.exclusion_reason) ?? 0) + 1,
           );
         }
         break;
@@ -1377,14 +1478,16 @@ export async function getBillingCandidateWorkbenchSummary(
     if (evidence.exclusion_reason) {
       blockerReasons.set(
         evidence.exclusion_reason,
-        (blockerReasons.get(evidence.exclusion_reason) ?? 0) + 1
+        (blockerReasons.get(evidence.exclusion_reason) ?? 0) + 1,
       );
     }
   }
 
   summary.blocker_reasons = Array.from(blockerReasons.entries())
     .map(([reason, count]) => ({ reason, count }))
-    .sort((left, right) => right.count - left.count || left.reason.localeCompare(right.reason, 'ja'))
+    .sort(
+      (left, right) => right.count - left.count || left.reason.localeCompare(right.reason, 'ja'),
+    )
     .slice(0, 5);
 
   return summary;
@@ -1398,7 +1501,7 @@ export async function reviewBillingCandidate(
     action: 'confirm' | 'exclude' | 'reopen';
     note?: string | null;
     actorId: string;
-  }
+  },
 ) {
   const candidate = await tx.billingCandidate.findFirst({
     where: {
@@ -1431,14 +1534,13 @@ export async function reviewBillingCandidate(
       : {
           review_state: 'reviewed' as const,
           resolution_state:
-            args.action === 'confirm'
-              ? ('confirmed' as const)
-              : ('excluded' as const),
+            args.action === 'confirm' ? ('confirmed' as const) : ('excluded' as const),
           reviewed_at: reviewedAt.toISOString(),
           reviewed_by: args.actorId,
           closed_at: null,
           closed_by: null,
-          note: args.note ?? (args.action === 'exclude' ? candidate.exclusion_reason ?? null : null),
+          note:
+            args.note ?? (args.action === 'exclude' ? (candidate.exclusion_reason ?? null) : null),
         };
 
   return tx.billingCandidate.update({
@@ -1456,7 +1558,7 @@ export async function closeBillingCandidatesForMonth(
     orgId: string;
     billingMonth: Date;
     actorId: string;
-  }
+  },
 ) {
   const billingMonth = startOfMonth(args.billingMonth);
   const candidates = await tx.billingCandidate.findMany({
@@ -1508,8 +1610,8 @@ export async function closeBillingCandidatesForMonth(
               reviewed_by: readBillingCandidateWorkflowState(candidate.source_snapshot).reviewed_by,
             }),
           },
-        })
-      )
+        }),
+      ),
   );
 
   await tx.auditLog.create({

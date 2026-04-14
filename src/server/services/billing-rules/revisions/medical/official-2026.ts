@@ -1,0 +1,75 @@
+export const MEDICAL_2026_OFFICIAL_SOURCES = {
+  summaryPage: 'https://www.mhlw.go.jp/stf/newpage_67729.html',
+  feeTablePdf: 'https://www.mhlw.go.jp/content/12400000/001665294.pdf',
+} as const;
+
+export const MEDICAL_2026_OFFICIAL_SITE_CONFIG_POINTS = {
+  dispensingFee: {
+    basic_1: 47,
+    basic_2: 30,
+    basic_3_i: 25,
+    basic_3_ro: 20,
+    basic_3_ha: 37,
+    special_a: 5,
+    special_b: 3,
+  },
+  regionalSupport: {
+    level_1: 27,
+    level_2: 59,
+    level_3: 67,
+    level_4: 37,
+  },
+  genericDispensing: {
+    level_1: 21,
+    level_2: 28,
+    level_3: 30,
+  },
+  homeComprehensive: {
+    level_1: {
+      single: 30,
+      other: 30,
+    },
+    level_2: {
+      single: 100,
+      other: 50,
+    },
+  },
+  cooperationEnhancement: 5,
+  medicalDxPromotion: 8,
+} as const;
+
+export const MEDICAL_2026_OFFICIAL_RULE_POINTS = {
+  MED_HOME_VISIT_SINGLE: 650,
+  MED_HOME_VISIT_MULTI_2_9: 320,
+  MED_HOME_VISIT_MULTI_10_PLUS: 290,
+  MED_HOME_VISIT_ONLINE: 59,
+  MED_ADD_NARCOTIC: 100,
+  MED_ADD_NARCOTIC_ONLINE: 22,
+  MED_ADD_CONTINUOUS_NARCOTIC: 250,
+  MED_ADD_INFANT: 100,
+  MED_ADD_INFANT_ONLINE: 12,
+  MED_ADD_PEDIATRIC_SPECIAL: 450,
+  MED_ADD_PEDIATRIC_SPECIAL_ONLINE: 350,
+  MED_ADD_CENTRAL_VENOUS: 150,
+  MED_INFO_PROVISION_1: 30,
+  MED_INFO_PROVISION_2_I: 20,
+  MED_INFO_PROVISION_2_RO: 20,
+  MED_INFO_PROVISION_2_HA: 20,
+  MED_INFO_PROVISION_3: 50,
+  MED_ADVERSE_EVENT_HOME_PROPOSAL: 50,
+  MED_ADVERSE_EVENT_HOME_CHANGE: 50,
+  MED_RESIDUAL_ADJUSTMENT_HOME: 50,
+  MED_HOME_TRANSITION_INITIAL: 230,
+  MED_DISCHARGE_JOINT_GUIDANCE: 600,
+  MED_EMERGENCY_JOINT_GUIDANCE: 700,
+  C013: 2500,
+  MED_ENTERAL_MEDICATION_SUPPORT: 100,
+  MED_EMERGENCY_VISIT_1: 500,
+  MED_EMERGENCY_VISIT_2: 200,
+  MED_EMERGENCY_VISIT_ONLINE: 59,
+  MED_EMERGENCY_VISIT_NIGHT: 400,
+  MED_EMERGENCY_VISIT_HOLIDAY: 600,
+  MED_EMERGENCY_VISIT_MIDNIGHT: 1000,
+  MED_MULTI_STAFF_VISIT: 300,
+  MED_PHYSICIAN_SIMULTANEOUS: 150,
+} as const;

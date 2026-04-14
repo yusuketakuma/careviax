@@ -32,6 +32,10 @@ import {
   resolveVisitScheduleCommunicationChannel,
   type VisitScheduleSchedulingPreferenceContext,
 } from '@/server/services/visit-schedule-communication';
+import {
+  getInquiryPresentationBadges,
+  getInquiryPrimaryDetail,
+} from '@/lib/inquiries/presentation';
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
 
@@ -109,6 +113,12 @@ function formatTimelineDate(value: Date | null | undefined) {
 
 function compactTimelineValues(values: Array<string | null | undefined | false>) {
   return values.filter((value): value is string => Boolean(value && value.trim()));
+}
+
+function readObjectString(input: unknown, key: string) {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) return null;
+  const value = (input as Record<string, unknown>)[key];
+  return typeof value === 'string' ? value : null;
 }
 
 function normalizeFirstVisitDocumentContacts(
@@ -536,6 +546,7 @@ export async function getPatientCommunicationsData(db: DbClient, args: DetailArg
         claimable: true,
         exclusion_reason: true,
         validation_notes: true,
+        calculation_context: true,
       },
     }),
     listBillingEvidenceBlockers(db as typeof prisma, {
@@ -558,6 +569,7 @@ export async function getPatientCommunicationsData(db: DbClient, args: DetailArg
         points: true,
         status: true,
         exclusion_reason: true,
+        source_snapshot: true,
       },
     }),
     listCommunicationQueue(db as typeof prisma, {
@@ -574,9 +586,18 @@ export async function getPatientCommunicationsData(db: DbClient, args: DetailArg
     billing_summary: {
       evidence: billingEvidence.map((item) => ({
         ...item,
+        effective_revision_code: readObjectString(
+          item.calculation_context,
+          'effective_revision_code',
+        ),
+        site_config_status: readObjectString(item.calculation_context, 'site_config_status'),
         blockers: billingEvidenceBlockers.find((blocker) => blocker.id === item.id)?.blockers ?? [],
       })),
-      candidates: billingCandidates,
+      candidates: billingCandidates.map((item) => ({
+        ...item,
+        effective_revision_code: readObjectString(item.source_snapshot, 'revision_code'),
+        site_config_status: readObjectString(item.source_snapshot, 'site_config_status'),
+      })),
       claimable_count: billingEvidence.filter((item) => item.claimable).length,
       blocked_count: billingEvidence.filter((item) => !item.claimable).length,
     },
@@ -802,6 +823,8 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
         inquiry_to_physician: true,
         inquiry_content: true,
         result: true,
+        proposal_origin: true,
+        residual_adjustment: true,
         change_detail: true,
         inquired_at: true,
         resolved_at: true,
@@ -1060,7 +1083,10 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
           compactTimelineValues([
             item.reason,
             item.inquiry_to_physician,
-            item.change_detail ?? item.inquiry_content,
+            getInquiryPrimaryDetail({
+              inquiryContent: item.inquiry_content,
+              changeDetail: item.change_detail,
+            }),
           ]).join(' / ') || null,
         href: item.line?.intake?.id ? `/prescriptions/${item.line.intake.id}` : '/workflow',
         action_label: item.line?.intake?.id ? '処方受付を開く' : 'ワークフローを開く',
@@ -1069,6 +1095,11 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
         actor_name: null,
         metadata: compactTimelineValues([
           item.inquired_at ? `照会 ${formatTimelineDate(item.inquired_at)}` : null,
+          ...getInquiryPresentationBadges({
+            proposalOrigin:
+              item.proposal_origin === 'pre_issuance' ? 'pre_issuance' : 'post_inquiry',
+            residualAdjustment: item.residual_adjustment,
+          }),
         ]),
       };
     }),

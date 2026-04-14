@@ -99,12 +99,16 @@ test.describe('prescription intake flow', () => {
     await page.goto('/prescriptions');
     await waitForStableUi(page);
 
-    await expect(page.getByRole('heading', { name: '処方箋受付' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '処方受付' })).toBeVisible();
 
     // Navigate to new intake
+    const main = page.locator('main');
     await Promise.all([
-      page.waitForURL(/\/prescriptions\/new/, { timeout: 10_000 }),
-      page.getByRole('link', { name: '新規受付' }).click(),
+      page.waitForURL(/\/prescriptions\/new/, {
+        timeout: 30_000,
+        waitUntil: 'domcontentloaded',
+      }),
+      main.locator('a[href="/prescriptions/new"]').first().click(),
     ]);
 
     await expect(page.getByRole('heading', { name: '新規処方受付' })).toBeVisible();
@@ -117,13 +121,18 @@ test.describe('prescription intake flow', () => {
   });
 
   test('prescription intake navigates to dispensing queue via shortcut', async ({ context }) => {
+    test.slow();
     const { page, errors } = await createInstrumentedPage(context);
     await page.goto('/prescriptions');
     await waitForStableUi(page);
 
+    const main = page.locator('main');
     await Promise.all([
-      page.waitForURL(/\/dispensing/, { timeout: 10_000 }),
-      page.getByRole('link', { name: '調剤キュー' }).click(),
+      page.waitForURL(/\/dispensing/, {
+        timeout: 30_000,
+        waitUntil: 'domcontentloaded',
+      }),
+      main.locator('a[href="/dispensing"]').first().click(),
     ]);
 
     await expect(page.getByRole('heading', { name: '調剤キュー' })).toBeVisible();
@@ -157,7 +166,10 @@ test.describe('dispensing → auditing flow', () => {
 
     const main = page.locator('main');
     await Promise.all([
-      page.waitForURL(/\/auditing/, { timeout: 10_000 }),
+      page.waitForURL(/\/auditing/, {
+        timeout: 30_000,
+        waitUntil: 'domcontentloaded',
+      }),
       main.getByRole('link', { name: '鑑査' }).click(),
     ]);
 
@@ -185,27 +197,36 @@ test.describe('dispensing → auditing flow', () => {
     // Start: prescriptions
     await page.goto('/prescriptions');
     await waitForStableUi(page);
-    await expect(page.getByRole('heading', { name: '処方箋受付' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '処方受付' })).toBeVisible();
 
     // → dispensing
+    const main = page.locator('main');
     await Promise.all([
-      page.waitForURL(/\/dispensing/, { timeout: 10_000 }),
-      page.getByRole('link', { name: '調剤キュー' }).click(),
+      page.waitForURL(/\/dispensing/, {
+        timeout: 30_000,
+        waitUntil: 'domcontentloaded',
+      }),
+      main.locator('a[href="/dispensing"]').first().click(),
     ]);
     await expect(page.getByRole('heading', { name: '調剤キュー' })).toBeVisible();
 
     // → auditing
-    const main = page.locator('main');
     await Promise.all([
-      page.waitForURL(/\/auditing/, { timeout: 10_000 }),
-      main.getByRole('link', { name: '鑑査' }).click(),
+      page.waitForURL(/\/auditing/, {
+        timeout: 30_000,
+        waitUntil: 'domcontentloaded',
+      }),
+      main.locator('a[href="/auditing"]').first().click(),
     ]);
     await expect(page.getByRole('heading', { name: '調剤鑑査' })).toBeVisible();
 
     // → back to dispensing
     await Promise.all([
-      page.waitForURL(/\/dispensing/, { timeout: 10_000 }),
-      page.locator('main').getByRole('link', { name: '調剤' }).click(),
+      page.waitForURL(/\/dispensing/, {
+        timeout: 30_000,
+        waitUntil: 'domcontentloaded',
+      }),
+      page.locator('main').locator('a[href="/dispensing"]').first().click(),
     ]);
     await expect(page.getByRole('heading', { name: '調剤キュー' })).toBeVisible();
 

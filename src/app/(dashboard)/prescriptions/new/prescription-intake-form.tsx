@@ -5,7 +5,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { Plus, Trash2, AlertTriangle, Shield, Camera, Upload, CheckCircle2, ArrowRight, Minus, QrCode, ClipboardCopy } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  AlertTriangle,
+  Shield,
+  Camera,
+  Upload,
+  CheckCircle2,
+  ArrowRight,
+  Minus,
+  QrCode,
+  ClipboardCopy,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { usePrescriptionDraft } from '@/lib/hooks/use-prescription-draft';
@@ -179,7 +191,7 @@ function GenericCandidatePanel({
             : null;
         return { ...candidate, _lowestPrice: lowestPrice, _priceDiff: priceDiff };
       }),
-    [data?.data]
+    [data?.data],
   );
 
   if (!enabled) return null;
@@ -202,12 +214,8 @@ function GenericCandidatePanel({
   return (
     <div className="space-y-2 rounded-md border border-blue-200 bg-blue-50/50 px-3 py-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
-          後発候補
-        </p>
-        <span className="text-[11px] text-blue-700">
-          候補を選ぶと YJ コードを記録します
-        </span>
+        <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">後発候補</p>
+        <span className="text-[11px] text-blue-700">候補を選ぶと YJ コードを記録します</span>
       </div>
       <div className="space-y-2">
         {candidatesWithPriceDiff.map((candidate) => (
@@ -262,11 +270,12 @@ export function PrescriptionIntakeForm() {
     selectedPatientName: '',
     selectedCaseId: '',
   });
-  const { patientSearch, selectedPatientId, selectedPatientName, selectedCaseId } = patientSelection;
+  const { patientSearch, selectedPatientId, selectedPatientName, selectedCaseId } =
+    patientSelection;
   const updatePatientSelection = useCallback(
     (patch: Partial<typeof patientSelection>) =>
       setPatientSelection((prev) => ({ ...prev, ...patch })),
-    []
+    [],
   );
 
   // Prescription metadata state
@@ -285,16 +294,23 @@ export function PrescriptionIntakeForm() {
     emergencyCategory: '' as string,
   });
   const {
-    sourceType, prescribedDate, prescriberName,
-    selectedPrescriberInstitutionId, prescriberInstitution,
-    refillRemainingCount, refillNextDispenseDate,
-    splitDispenseTotal, splitDispenseCurrent, splitNextDispenseDate,
-    prescriptionCategory, emergencyCategory,
+    sourceType,
+    prescribedDate,
+    prescriberName,
+    selectedPrescriberInstitutionId,
+    prescriberInstitution,
+    refillRemainingCount,
+    refillNextDispenseDate,
+    splitDispenseTotal,
+    splitDispenseCurrent,
+    splitNextDispenseDate,
+    prescriptionCategory,
+    emergencyCategory,
   } = prescriptionMeta;
   const updatePrescriptionMeta = useCallback(
     (patch: Partial<typeof prescriptionMeta>) =>
       setPrescriptionMeta((prev) => ({ ...prev, ...patch })),
-    []
+    [],
   );
 
   // Document state
@@ -305,20 +321,36 @@ export function PrescriptionIntakeForm() {
   const { originalDocumentUrl, originalDocumentName } = document;
   const updateDocument = useCallback(
     (patch: Partial<typeof document>) => setDocument((prev) => ({ ...prev, ...patch })),
-    []
+    [],
   );
 
   // Inquiry state
-  const [inquiry, setInquiry] = useState({
+  const [inquiry, setInquiry] = useState<{
+    inquiryReason: string;
+    inquiryToPhysician: string;
+    inquiryContent: string;
+    inquiryDueDate: string;
+    proposalOrigin: 'post_inquiry' | 'pre_issuance';
+    residualAdjustment: boolean;
+  }>({
     inquiryReason: '',
     inquiryToPhysician: '',
     inquiryContent: '',
     inquiryDueDate: '',
+    proposalOrigin: 'post_inquiry',
+    residualAdjustment: false,
   });
-  const { inquiryReason, inquiryToPhysician, inquiryContent, inquiryDueDate } = inquiry;
+  const {
+    inquiryReason,
+    inquiryToPhysician,
+    inquiryContent,
+    inquiryDueDate,
+    proposalOrigin,
+    residualAdjustment,
+  } = inquiry;
   const updateInquiry = useCallback(
     (patch: Partial<typeof inquiry>) => setInquiry((prev) => ({ ...prev, ...patch })),
-    []
+    [],
   );
 
   // Independent UI state
@@ -346,22 +378,26 @@ export function PrescriptionIntakeForm() {
   useEffect(() => {
     if (draftHydrated || !orgId) return;
     let active = true;
-    void loadDraft().then((draft) => {
-      if (!active || !draft) return;
-      updatePatientSelection({
-        patientSearch: draft.patientSelection.patientSearch,
-        selectedPatientId: draft.patientSelection.selectedPatientId,
-        selectedPatientName: draft.patientSelection.selectedPatientName,
-        selectedCaseId: draft.patientSelection.selectedCaseId,
+    void loadDraft()
+      .then((draft) => {
+        if (!active || !draft) return;
+        updatePatientSelection({
+          patientSearch: draft.patientSelection.patientSearch,
+          selectedPatientId: draft.patientSelection.selectedPatientId,
+          selectedPatientName: draft.patientSelection.selectedPatientName,
+          selectedCaseId: draft.patientSelection.selectedCaseId,
+        });
+        setPrescriptionMeta(draft.prescriptionMeta);
+        setLines(draft.lines);
+        updateInquiry(draft.inquiry);
+        toast.info('処方受付の下書きを復元しました');
+      })
+      .finally(() => {
+        if (active) setDraftHydrated(true);
       });
-      setPrescriptionMeta(draft.prescriptionMeta);
-      setLines(draft.lines);
-      updateInquiry(draft.inquiry);
-      toast.info('処方受付の下書きを復元しました');
-    }).finally(() => {
-      if (active) setDraftHydrated(true);
-    });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [draftHydrated, loadDraft, orgId, updatePatientSelection, updateInquiry]);
 
   // Auto-save every 30s
@@ -373,17 +409,33 @@ export function PrescriptionIntakeForm() {
         patientSelection: { patientSearch, selectedPatientId, selectedPatientName, selectedCaseId },
         prescriptionMeta,
         lines,
-        inquiry: { inquiryReason, inquiryToPhysician, inquiryContent, inquiryDueDate },
+        inquiry: {
+          inquiryReason,
+          inquiryToPhysician,
+          inquiryContent,
+          inquiryDueDate,
+          proposalOrigin,
+          residualAdjustment,
+        },
       });
     }, 30_000);
     return () => {
       if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     };
   }, [
-    draftHydrated, orgId, saveDraft,
-    patientSearch, selectedPatientId, selectedPatientName, selectedCaseId,
-    prescriptionMeta, lines,
-    inquiryReason, inquiryToPhysician, inquiryContent, inquiryDueDate,
+    draftHydrated,
+    orgId,
+    saveDraft,
+    patientSearch,
+    selectedPatientId,
+    selectedPatientName,
+    selectedCaseId,
+    prescriptionMeta,
+    lines,
+    inquiryReason,
+    inquiryToPhysician,
+    inquiryContent,
+    inquiryDueDate,
   ]);
 
   // Fetch patients for search
@@ -481,7 +533,9 @@ export function PrescriptionIntakeForm() {
     if (!selectedPatientData) return;
     updatePatientSelection({
       selectedPatientName: selectedPatientData.name,
-      ...(!patientSearch.trim() ? { patientSearch: `${selectedPatientData.name} (${selectedPatientData.name_kana})` } : {}),
+      ...(!patientSearch.trim()
+        ? { patientSearch: `${selectedPatientData.name} (${selectedPatientData.name_kana})` }
+        : {}),
     });
   }, [patientSearch, selectedPatientData, updatePatientSelection]);
 
@@ -502,7 +556,7 @@ export function PrescriptionIntakeForm() {
       patientSearch:
         qrDraftData.parsed_data.patientName && qrDraftData.parsed_data.patientNameKana
           ? `${qrDraftData.parsed_data.patientName} (${qrDraftData.parsed_data.patientNameKana})`
-          : qrDraftData.parsed_data.patientName ?? '',
+          : (qrDraftData.parsed_data.patientName ?? ''),
     });
     updatePrescriptionMeta({
       sourceType: 'qr_scan',
@@ -514,18 +568,20 @@ export function PrescriptionIntakeForm() {
     setLines(
       qrLines.length > 0
         ? qrLines.map((line, index) => ({ ...line, line_number: index + 1 }))
-        : [emptyLine()]
+        : [emptyLine()],
     );
     updateInquiry({
       inquiryReason: '',
       inquiryToPhysician: '',
       inquiryContent: '',
       inquiryDueDate: '',
+      proposalOrigin: 'post_inquiry',
+      residualAdjustment: false,
     });
     setError(
       qrDraftData.patient_id
         ? null
-        : 'QR下書きに患者紐付けがありません。患者・ケースを選択して内容を確認してください'
+        : 'QR下書きに患者紐付けがありません。患者・ケースを選択して内容を確認してください',
     );
     setAppliedQrDraftId(qrDraftData.id);
   }, [
@@ -562,11 +618,16 @@ export function PrescriptionIntakeForm() {
             sourceType === 'refill' ? Number.parseInt(refillRemainingCount, 10) || 0 : undefined,
           refill_next_dispense_date:
             sourceType === 'refill' && refillNextDispenseDate ? refillNextDispenseDate : undefined,
-          split_dispense_total: splitDispenseTotal ? Number.parseInt(splitDispenseTotal, 10) : undefined,
-          split_dispense_current: splitDispenseCurrent ? Number.parseInt(splitDispenseCurrent, 10) : undefined,
+          split_dispense_total: splitDispenseTotal
+            ? Number.parseInt(splitDispenseTotal, 10)
+            : undefined,
+          split_dispense_current: splitDispenseCurrent
+            ? Number.parseInt(splitDispenseCurrent, 10)
+            : undefined,
           split_next_dispense_date: splitNextDispenseDate || undefined,
           prescription_category: prescriptionCategory,
-          emergency_category: prescriptionCategory === 'emergency' ? emergencyCategory || undefined : undefined,
+          emergency_category:
+            prescriptionCategory === 'emergency' ? emergencyCategory || undefined : undefined,
           lines: numberedLines,
           inquiry: hasInquiryDraft
             ? {
@@ -574,6 +635,8 @@ export function PrescriptionIntakeForm() {
                 inquiry_to_physician: inquiryToPhysician,
                 inquiry_content: inquiryContent,
                 request_due_date: inquiryDueDate || undefined,
+                proposal_origin: proposalOrigin,
+                residual_adjustment: residualAdjustment,
               }
             : undefined,
         }),
@@ -612,7 +675,9 @@ export function PrescriptionIntakeForm() {
         }),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: '施設まとめ処方の登録に失敗しました' }));
+        const err = await res
+          .json()
+          .catch(() => ({ message: '施設まとめ処方の登録に失敗しました' }));
         throw new Error(err.message);
       }
       return res.json();
@@ -629,9 +694,7 @@ export function PrescriptionIntakeForm() {
   };
 
   const updateLine = (index: number, field: keyof PrescriptionLineInput, value: unknown) => {
-    setLines((prev) =>
-      prev.map((line, i) => (i === index ? { ...line, [field]: value } : line))
-    );
+    setLines((prev) => prev.map((line, i) => (i === index ? { ...line, [field]: value } : line)));
   };
 
   const uploadPrescriptionDocument = async (file: File) => {
@@ -682,199 +745,210 @@ export function PrescriptionIntakeForm() {
     return {
       fileId: completeJson.data.id as string,
       fileName: completeJson.data.originalName as string,
+    };
   };
-};
 
-type QrDraftImportLine = {
-  drugName?: string;
-  drugCode?: string | null;
-  dosageForm?: string | null;
-  dose?: string;
-  frequency?: string;
-  days?: number | null;
-  quantity?: number | null;
-  unit?: string | null;
-  isGeneric?: boolean;
-  packagingInstructions?: string | null;
-  packagingInstructionTags?: string[];
-  route?: string | null;
-  dispensingMethod?: string | null;
-  startDate?: string | null;
-  endDate?: string | null;
-  notes?: string | null;
-};
-
-type QrDraftImportData = {
-  id: string;
-  patient_id: string | null;
-  parse_errors: Array<{ field?: string; message: string }> | null;
-  parsed_data: {
-    patientName?: string;
-    patientNameKana?: string;
-    prescriptionDate?: string;
-    prescriberName?: string;
-    prescriberInstitution?: string;
-    prescriberInstitutionCode?: string;
-    prescriberInstitutionId?: string | null;
-    isNewInstitution?: boolean;
-    lines?: QrDraftImportLine[];
-    unmatchedDrugs?: Array<{ lineIndex: number; drugName: string; drugCode: string | null; reason: string }>;
-    formularyStatus?: Array<{
-      lineIndex: number;
-      drugName: string;
-      drugCode: string | null;
-      inFormulary: boolean;
-      preferredGenericName: string | null;
-      stockQty: number | null;
-    }>;
+  type QrDraftImportLine = {
+    drugName?: string;
+    drugCode?: string | null;
+    dosageForm?: string | null;
+    dose?: string;
+    frequency?: string;
+    days?: number | null;
+    quantity?: number | null;
+    unit?: string | null;
+    isGeneric?: boolean;
+    packagingInstructions?: string | null;
+    packagingInstructionTags?: string[];
+    route?: string | null;
+    dispensingMethod?: string | null;
+    startDate?: string | null;
+    endDate?: string | null;
+    notes?: string | null;
   };
-};
 
-type LineBadgeTone = 'neutral' | 'info' | 'success' | 'warning';
-
-function medicationKey(line: { drug_name: string; drug_code?: string | null }) {
-  return line.drug_code?.trim() || line.drug_name.trim();
-}
-
-function buildLineBadges(line: {
-  frequency?: string | null;
-  route?: string | null;
-  dispensing_method?: string | null;
-  packaging_instructions?: string | null;
-  notes?: string | null;
-}) {
-  const badges: Array<{ label: string; tone: LineBadgeTone }> = [];
-
-  if (line.route === 'external') badges.push({ label: '外用', tone: 'info' });
-  if (line.route === 'injection') badges.push({ label: '注射', tone: 'warning' });
-  if (/頓服|必要時|疼痛時|不眠時|発熱時|屯用/i.test(line.frequency ?? '')) {
-    badges.push({ label: '頓服', tone: 'warning' });
-  }
-
-  if (line.dispensing_method === 'unit_dose') {
-    badges.push({ label: '一包化', tone: 'success' });
-  }
-  if (line.dispensing_method === 'crushed') {
-    badges.push({ label: '粉砕', tone: 'warning' });
-  }
-
-  const parsedPackaging = parsePackagingMethod(line.packaging_instructions);
-  if (parsedPackaging.method && parsedPackaging.method !== 'other') {
-    badges.push({
-      label: PACKAGING_METHOD_LABELS[parsedPackaging.method],
-      tone: parsedPackaging.method === 'crush_and_pack' ? 'warning' : 'success',
-    });
-  }
-
-  const tags = extractPackagingInstructionTags({
-    packagingInstructions: line.packaging_instructions,
-    notes: line.notes,
-    packagingMethod:
-      parsedPackaging.method && parsedPackaging.method !== 'other' ? parsedPackaging.method : null,
-  });
-
-  for (const tag of tags) {
-    if (tag === 'unit_dose') continue;
-    badges.push({
-      label: PACKAGING_INSTRUCTION_TAG_LABELS[tag],
-      tone: tag === 'crush_prohibited' || tag === 'narcotic' ? 'warning' : 'neutral',
-    });
-  }
-
-  if (/分包しない|一包化しない|PTPのまま|ヒートのまま/i.test(`${line.packaging_instructions ?? ''} ${line.notes ?? ''}`)) {
-    badges.push({ label: '分包しない', tone: 'neutral' });
-  }
-
-  const seen = new Set<string>();
-  return badges.filter((badge) => {
-    if (seen.has(badge.label)) return false;
-    seen.add(badge.label);
-    return true;
-  });
-}
-
-function badgeClassName(tone: LineBadgeTone) {
-  if (tone === 'success') return 'border-emerald-200 bg-emerald-50 text-emerald-800';
-  if (tone === 'warning') return 'border-amber-200 bg-amber-50 text-amber-900';
-  if (tone === 'info') return 'border-sky-200 bg-sky-50 text-sky-900';
-  return 'border-border/70 bg-background text-muted-foreground';
-}
-
-function toFormLineFromPrevious(line: PreviousPrescriptionLine): PrescriptionLineInput {
-  return {
-    line_number: 1,
-    drug_name: line.drug_name,
-    drug_code: line.drug_code ?? undefined,
-    dosage_form: line.dosage_form ?? undefined,
-    dose: line.dose,
-    frequency: line.frequency,
-    days: line.days,
-    quantity: line.quantity ?? undefined,
-    unit: line.unit ?? undefined,
-    is_generic: Boolean(line.is_generic),
-    route: line.route ?? undefined,
-    dispensing_method: line.dispensing_method ?? undefined,
-    start_date: line.start_date ?? undefined,
-    end_date: line.end_date ?? undefined,
-    packaging_instructions: line.packaging_instructions ?? undefined,
-    notes: line.notes ?? undefined,
+  type QrDraftImportData = {
+    id: string;
+    patient_id: string | null;
+    parse_errors: Array<{ field?: string; message: string }> | null;
+    parsed_data: {
+      patientName?: string;
+      patientNameKana?: string;
+      prescriptionDate?: string;
+      prescriberName?: string;
+      prescriberInstitution?: string;
+      prescriberInstitutionCode?: string;
+      prescriberInstitutionId?: string | null;
+      isNewInstitution?: boolean;
+      lines?: QrDraftImportLine[];
+      unmatchedDrugs?: Array<{
+        lineIndex: number;
+        drugName: string;
+        drugCode: string | null;
+        reason: string;
+      }>;
+      formularyStatus?: Array<{
+        lineIndex: number;
+        drugName: string;
+        drugCode: string | null;
+        inFormulary: boolean;
+        preferredGenericName: string | null;
+        stockQty: number | null;
+      }>;
+    };
   };
-}
 
-function toFormLineFromQr(line: QrDraftImportLine): PrescriptionLineInput {
-  return {
-    line_number: 1,
-    drug_name: line.drugName ?? '',
-    drug_code: line.drugCode ?? undefined,
-    dosage_form: line.dosageForm ?? undefined,
-    dose: line.dose ?? '',
-    frequency: line.frequency ?? '',
-    days: line.days ?? 1,
-    quantity: line.quantity ?? undefined,
-    unit: line.unit ?? undefined,
-    is_generic: Boolean(line.isGeneric),
-    route: line.route ?? undefined,
-    dispensing_method: line.dispensingMethod ?? undefined,
-    start_date: line.startDate ?? undefined,
-    end_date: line.endDate ?? undefined,
-    packaging_instructions: line.packagingInstructions ?? undefined,
-    notes: line.notes ?? undefined,
-  };
-}
+  type LineBadgeTone = 'neutral' | 'info' | 'success' | 'warning';
 
-function hydrateLinesFromPrevious(
-  targetLines: PrescriptionLineInput[],
-  previousIntake: PreviousPrescriptionIntake | null,
-) {
-  if (!previousIntake) return targetLines;
-
-  const previousByKey = new Map<string, PreviousPrescriptionLine>();
-  for (const line of previousIntake.lines) {
-    previousByKey.set(medicationKey(line), line);
+  function medicationKey(line: { drug_name: string; drug_code?: string | null }) {
+    return line.drug_code?.trim() || line.drug_name.trim();
   }
 
-  return targetLines.map((line, index) => {
-    const previous = previousByKey.get(medicationKey(line));
-    if (!previous) {
-      return { ...line, line_number: index + 1 };
+  function buildLineBadges(line: {
+    frequency?: string | null;
+    route?: string | null;
+    dispensing_method?: string | null;
+    packaging_instructions?: string | null;
+    notes?: string | null;
+  }) {
+    const badges: Array<{ label: string; tone: LineBadgeTone }> = [];
+
+    if (line.route === 'external') badges.push({ label: '外用', tone: 'info' });
+    if (line.route === 'injection') badges.push({ label: '注射', tone: 'warning' });
+    if (/頓服|必要時|疼痛時|不眠時|発熱時|屯用/i.test(line.frequency ?? '')) {
+      badges.push({ label: '頓服', tone: 'warning' });
     }
 
+    if (line.dispensing_method === 'unit_dose') {
+      badges.push({ label: '一包化', tone: 'success' });
+    }
+    if (line.dispensing_method === 'crushed') {
+      badges.push({ label: '粉砕', tone: 'warning' });
+    }
+
+    const parsedPackaging = parsePackagingMethod(line.packaging_instructions);
+    if (parsedPackaging.method && parsedPackaging.method !== 'other') {
+      badges.push({
+        label: PACKAGING_METHOD_LABELS[parsedPackaging.method],
+        tone: parsedPackaging.method === 'crush_and_pack' ? 'warning' : 'success',
+      });
+    }
+
+    const tags = extractPackagingInstructionTags({
+      packagingInstructions: line.packaging_instructions,
+      notes: line.notes,
+      packagingMethod:
+        parsedPackaging.method && parsedPackaging.method !== 'other'
+          ? parsedPackaging.method
+          : null,
+    });
+
+    for (const tag of tags) {
+      if (tag === 'unit_dose') continue;
+      badges.push({
+        label: PACKAGING_INSTRUCTION_TAG_LABELS[tag],
+        tone: tag === 'crush_prohibited' || tag === 'narcotic' ? 'warning' : 'neutral',
+      });
+    }
+
+    if (
+      /分包しない|一包化しない|PTPのまま|ヒートのまま/i.test(
+        `${line.packaging_instructions ?? ''} ${line.notes ?? ''}`,
+      )
+    ) {
+      badges.push({ label: '分包しない', tone: 'neutral' });
+    }
+
+    const seen = new Set<string>();
+    return badges.filter((badge) => {
+      if (seen.has(badge.label)) return false;
+      seen.add(badge.label);
+      return true;
+    });
+  }
+
+  function badgeClassName(tone: LineBadgeTone) {
+    if (tone === 'success') return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+    if (tone === 'warning') return 'border-amber-200 bg-amber-50 text-amber-900';
+    if (tone === 'info') return 'border-sky-200 bg-sky-50 text-sky-900';
+    return 'border-border/70 bg-background text-muted-foreground';
+  }
+
+  function toFormLineFromPrevious(line: PreviousPrescriptionLine): PrescriptionLineInput {
     return {
-      ...line,
-      line_number: index + 1,
-      start_date: line.start_date || previous.start_date || undefined,
-      end_date: line.end_date || previous.end_date || undefined,
-      route: line.route || previous.route || undefined,
-      dispensing_method: line.dispensing_method || previous.dispensing_method || undefined,
-      packaging_instructions:
-        line.packaging_instructions || previous.packaging_instructions || undefined,
-      notes: line.notes || previous.notes || undefined,
-      dosage_form: line.dosage_form || previous.dosage_form || undefined,
-      quantity: line.quantity ?? previous.quantity ?? undefined,
-      unit: line.unit || previous.unit || undefined,
+      line_number: 1,
+      drug_name: line.drug_name,
+      drug_code: line.drug_code ?? undefined,
+      dosage_form: line.dosage_form ?? undefined,
+      dose: line.dose,
+      frequency: line.frequency,
+      days: line.days,
+      quantity: line.quantity ?? undefined,
+      unit: line.unit ?? undefined,
+      is_generic: Boolean(line.is_generic),
+      route: line.route ?? undefined,
+      dispensing_method: line.dispensing_method ?? undefined,
+      start_date: line.start_date ?? undefined,
+      end_date: line.end_date ?? undefined,
+      packaging_instructions: line.packaging_instructions ?? undefined,
+      notes: line.notes ?? undefined,
     };
-  });
-}
+  }
+
+  function toFormLineFromQr(line: QrDraftImportLine): PrescriptionLineInput {
+    return {
+      line_number: 1,
+      drug_name: line.drugName ?? '',
+      drug_code: line.drugCode ?? undefined,
+      dosage_form: line.dosageForm ?? undefined,
+      dose: line.dose ?? '',
+      frequency: line.frequency ?? '',
+      days: line.days ?? 1,
+      quantity: line.quantity ?? undefined,
+      unit: line.unit ?? undefined,
+      is_generic: Boolean(line.isGeneric),
+      route: line.route ?? undefined,
+      dispensing_method: line.dispensingMethod ?? undefined,
+      start_date: line.startDate ?? undefined,
+      end_date: line.endDate ?? undefined,
+      packaging_instructions: line.packagingInstructions ?? undefined,
+      notes: line.notes ?? undefined,
+    };
+  }
+
+  function hydrateLinesFromPrevious(
+    targetLines: PrescriptionLineInput[],
+    previousIntake: PreviousPrescriptionIntake | null,
+  ) {
+    if (!previousIntake) return targetLines;
+
+    const previousByKey = new Map<string, PreviousPrescriptionLine>();
+    for (const line of previousIntake.lines) {
+      previousByKey.set(medicationKey(line), line);
+    }
+
+    return targetLines.map((line, index) => {
+      const previous = previousByKey.get(medicationKey(line));
+      if (!previous) {
+        return { ...line, line_number: index + 1 };
+      }
+
+      return {
+        ...line,
+        line_number: index + 1,
+        start_date: line.start_date || previous.start_date || undefined,
+        end_date: line.end_date || previous.end_date || undefined,
+        route: line.route || previous.route || undefined,
+        dispensing_method: line.dispensing_method || previous.dispensing_method || undefined,
+        packaging_instructions:
+          line.packaging_instructions || previous.packaging_instructions || undefined,
+        notes: line.notes || previous.notes || undefined,
+        dosage_form: line.dosage_form || previous.dosage_form || undefined,
+        quantity: line.quantity ?? previous.quantity ?? undefined,
+        unit: line.unit || previous.unit || undefined,
+      };
+    });
+  }
 
   const handlePrescriptionDocument = async (file: File | null) => {
     if (!file) return;
@@ -885,7 +959,10 @@ function hydrateLinesFromPrevious(
     try {
       const uploaded = await uploadPrescriptionDocument(file);
       updateDocument({
-        originalDocumentUrl: new URL(`/api/files/${uploaded.fileId}/download`, window.location.origin).toString(),
+        originalDocumentUrl: new URL(
+          `/api/files/${uploaded.fileId}/download`,
+          window.location.origin,
+        ).toString(),
         originalDocumentName: uploaded.fileName,
       });
     } catch (err) {
@@ -908,6 +985,8 @@ function hydrateLinesFromPrevious(
       inquiryToPhysician: '',
       inquiryContent: '',
       inquiryDueDate: '',
+      proposalOrigin: 'post_inquiry',
+      residualAdjustment: false,
     });
     if (!options?.keepDocument) {
       updateDocument({ originalDocumentUrl: '', originalDocumentName: '' });
@@ -939,7 +1018,8 @@ function hydrateLinesFromPrevious(
       return;
     }
 
-    const selectedCase = casesData?.data.find((candidate) => candidate.id === selectedCaseId) ?? null;
+    const selectedCase =
+      casesData?.data.find((candidate) => candidate.id === selectedCaseId) ?? null;
     setFacilityBatchEntries((prev) => [
       ...prev,
       {
@@ -1029,9 +1109,7 @@ function hydrateLinesFromPrevious(
     }
   };
 
-  const isSubmitting =
-    submitMutation.isPending ||
-    submitFacilityBatchMutation.isPending;
+  const isSubmitting = submitMutation.isPending || submitFacilityBatchMutation.isPending;
   const isPdfDocument = /\.pdf$/i.test(originalDocumentName);
   const prescriberInstitutions = prescriberInstitutionsData?.data ?? [];
   const hasInquiryDraft =
@@ -1072,7 +1150,8 @@ function hydrateLinesFromPrevious(
 
       const reasons: string[] = [];
       if (previous.dose !== line.dose) reasons.push(`用量 ${previous.dose} → ${line.dose}`);
-      if (previous.frequency !== line.frequency) reasons.push(`用法 ${previous.frequency} → ${line.frequency}`);
+      if (previous.frequency !== line.frequency)
+        reasons.push(`用法 ${previous.frequency} → ${line.frequency}`);
       if (previous.days !== line.days) reasons.push(`日数 ${previous.days}日 → ${line.days}日`);
       if ((previous.start_date ?? '') !== (line.start_date ?? '')) {
         reasons.push(`開始日 ${previous.start_date ?? '未設定'} → ${line.start_date ?? '未設定'}`);
@@ -1082,12 +1161,12 @@ function hydrateLinesFromPrevious(
       }
       if ((previous.dispensing_method ?? '') !== (line.dispensing_method ?? '')) {
         reasons.push(
-          `調剤方法 ${previous.dispensing_method ?? '未設定'} → ${line.dispensing_method ?? '未設定'}`
+          `調剤方法 ${previous.dispensing_method ?? '未設定'} → ${line.dispensing_method ?? '未設定'}`,
         );
       }
       if ((previous.packaging_instructions ?? '') !== (line.packaging_instructions ?? '')) {
         reasons.push(
-          `包装指示 ${previous.packaging_instructions ?? '未設定'} → ${line.packaging_instructions ?? '未設定'}`
+          `包装指示 ${previous.packaging_instructions ?? '未設定'} → ${line.packaging_instructions ?? '未設定'}`,
         );
       }
 
@@ -1098,14 +1177,16 @@ function hydrateLinesFromPrevious(
 
     const removed = latestPreviousIntake.lines.filter((line) => {
       const key = line.drug_code?.trim() || line.drug_name.trim();
-      return key ? !seenKeys.has(key) && !currentFilledLines.some((current) => {
-        const currentKey = current.drug_code?.trim() || current.drug_name.trim();
-        return currentKey === key;
-      }) : false;
+      return key
+        ? !seenKeys.has(key) &&
+            !currentFilledLines.some((current) => {
+              const currentKey = current.drug_code?.trim() || current.drug_name.trim();
+              return currentKey === key;
+            })
+        : false;
     });
 
-    const unchangedCount =
-      currentFilledLines.length - added.length - changed.length;
+    const unchangedCount = currentFilledLines.length - added.length - changed.length;
 
     return {
       previous: latestPreviousIntake,
@@ -1168,7 +1249,8 @@ function hydrateLinesFromPrevious(
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold text-foreground">入力の進め方</h2>
             <p className="text-sm text-muted-foreground">
-              1. 患者とケースを選ぶ 2. 処方箋情報と原本を確認する 3. 明細を入力する 4. 最後に下部の登録ボタンで受付を確定します。
+              1. 患者とケースを選ぶ 2. 処方箋情報と原本を確認する 3. 明細を入力する 4.
+              最後に下部の登録ボタンで受付を確定します。
             </p>
           </div>
           <div className="grid min-w-[220px] gap-2 text-xs text-muted-foreground sm:grid-cols-3">
@@ -1182,7 +1264,9 @@ function hydrateLinesFromPrevious(
             </div>
             <div className="rounded-lg border bg-background px-3 py-2">
               <p className="font-medium text-foreground">明細入力</p>
-              <p>{filledLineCount}/{lines.length} 行入力済み</p>
+              <p>
+                {filledLineCount}/{lines.length} 行入力済み
+              </p>
             </div>
           </div>
         </div>
@@ -1193,7 +1277,8 @@ function hydrateLinesFromPrevious(
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold text-foreground">QR取込と事前共有</h2>
             <p className="text-sm text-muted-foreground">
-              電子お薬手帳 QR の取り込み状況、他職種からの共有要点、前回処方の引用をここで確認します。
+              電子お薬手帳 QR
+              の取り込み状況、他職種からの共有要点、前回処方の引用をここで確認します。
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1268,7 +1353,10 @@ function hydrateLinesFromPrevious(
                 <p className="font-medium text-amber-900">薬剤マスター未一致</p>
                 <div className="mt-1 flex flex-wrap gap-2">
                   {qrDraftData.parsed_data.unmatchedDrugs.map((item) => (
-                    <span key={`${item.lineIndex}-${item.drugName}`} className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-amber-900">
+                    <span
+                      key={`${item.lineIndex}-${item.drugName}`}
+                      className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-amber-900"
+                    >
                       {item.drugName}
                     </span>
                   ))}
@@ -1276,16 +1364,23 @@ function hydrateLinesFromPrevious(
               </div>
             ) : null}
 
-            {qrDraftData?.parsed_data.formularyStatus?.some((item) => !item.inFormulary || item.preferredGenericName) ? (
+            {qrDraftData?.parsed_data.formularyStatus?.some(
+              (item) => !item.inFormulary || item.preferredGenericName,
+            ) ? (
               <div className="mt-3 grid gap-2 md:grid-cols-2">
                 {qrDraftData.parsed_data.formularyStatus
                   .filter((item) => !item.inFormulary || item.preferredGenericName)
                   .map((item) => (
-                    <div key={`${item.lineIndex}-${item.drugName}`} className="rounded-md border border-border/70 bg-background px-3 py-2 text-xs">
+                    <div
+                      key={`${item.lineIndex}-${item.drugName}`}
+                      className="rounded-md border border-border/70 bg-background px-3 py-2 text-xs"
+                    >
                       <p className="font-medium text-foreground">{item.drugName}</p>
                       <p className="mt-1 text-muted-foreground">
                         {item.inFormulary ? '採用薬' : '採用外'}
-                        {item.preferredGenericName ? ` / 推奨後発: ${item.preferredGenericName}` : ''}
+                        {item.preferredGenericName
+                          ? ` / 推奨後発: ${item.preferredGenericName}`
+                          : ''}
                         {item.stockQty != null ? ` / 在庫 ${item.stockQty}` : ''}
                       </p>
                     </div>
@@ -1337,31 +1432,41 @@ function hydrateLinesFromPrevious(
           <input
             id="patient-search"
             type="text"
-              value={patientSearch}
-              onChange={(e) => {
-                const keepDocument = sourceType === 'facility_batch';
-                updatePatientSelection({
-                  patientSearch: e.target.value,
-                  selectedPatientId: '',
-                  selectedPatientName: '',
-                  selectedCaseId: '',
-                });
-                setLines([emptyLine()]);
-                setAppliedQrDraftId('');
-                updateInquiry({
-                  inquiryReason: '',
-                  inquiryToPhysician: '',
-                  inquiryContent: '',
-                  inquiryDueDate: '',
-                });
-                setError(null);
-                if (!keepDocument) {
-                  updateDocument({ originalDocumentUrl: '', originalDocumentName: '' });
-                }
-              }}
+            value={patientSearch}
+            onChange={(e) => {
+              const keepDocument = sourceType === 'facility_batch';
+              updatePatientSelection({
+                patientSearch: e.target.value,
+                selectedPatientId: '',
+                selectedPatientName: '',
+                selectedCaseId: '',
+              });
+              setLines([emptyLine()]);
+              setAppliedQrDraftId('');
+              updateInquiry({
+                inquiryReason: '',
+                inquiryToPhysician: '',
+                inquiryContent: '',
+                inquiryDueDate: '',
+                proposalOrigin: 'post_inquiry',
+                residualAdjustment: false,
+              });
+              setError(null);
+              if (!keepDocument) {
+                updateDocument({ originalDocumentUrl: '', originalDocumentName: '' });
+              }
+            }}
             placeholder="氏名またはフリガナで検索"
-            aria-invalid={submitAttempted && !selectedPatientId && sourceType !== 'facility_batch' ? true : undefined}
-            aria-describedby={submitAttempted && !selectedPatientId && sourceType !== 'facility_batch' ? 'patient-search-error' : undefined}
+            aria-invalid={
+              submitAttempted && !selectedPatientId && sourceType !== 'facility_batch'
+                ? true
+                : undefined
+            }
+            aria-describedby={
+              submitAttempted && !selectedPatientId && sourceType !== 'facility_batch'
+                ? 'patient-search-error'
+                : undefined
+            }
             className={`h-9 w-full rounded-md border bg-background px-3 text-sm ${submitAttempted && !selectedPatientId && sourceType !== 'facility_batch' ? 'border-destructive' : 'border-input'}`}
           />
           {submitAttempted && !selectedPatientId && sourceType !== 'facility_batch' && (
@@ -1390,6 +1495,8 @@ function hydrateLinesFromPrevious(
                         inquiryToPhysician: '',
                         inquiryContent: '',
                         inquiryDueDate: '',
+                        proposalOrigin: 'post_inquiry',
+                        residualAdjustment: false,
                       });
                       setError(null);
                       if (!keepDocument) {
@@ -1416,8 +1523,16 @@ function hydrateLinesFromPrevious(
               id="case-select"
               value={selectedCaseId}
               onChange={(e) => updatePatientSelection({ selectedCaseId: e.target.value })}
-              aria-invalid={submitAttempted && !selectedCaseId && sourceType !== 'facility_batch' ? true : undefined}
-              aria-describedby={submitAttempted && !selectedCaseId && sourceType !== 'facility_batch' ? 'case-select-error' : undefined}
+              aria-invalid={
+                submitAttempted && !selectedCaseId && sourceType !== 'facility_batch'
+                  ? true
+                  : undefined
+              }
+              aria-describedby={
+                submitAttempted && !selectedCaseId && sourceType !== 'facility_batch'
+                  ? 'case-select-error'
+                  : undefined
+              }
               className={`h-9 w-full rounded-md border bg-background px-3 text-sm ${submitAttempted && !selectedCaseId && sourceType !== 'facility_batch' ? 'border-destructive' : 'border-input'}`}
             >
               <option value="">ケースを選択</option>
@@ -1509,12 +1624,22 @@ function hydrateLinesFromPrevious(
                 data-testid="emergency-category"
                 value={emergencyCategory}
                 onChange={(e) => updatePrescriptionMeta({ emergencyCategory: e.target.value })}
-                aria-invalid={submitAttempted && prescriptionCategory === 'emergency' && !emergencyCategory ? true : undefined}
-                aria-describedby={submitAttempted && prescriptionCategory === 'emergency' && !emergencyCategory ? 'emergency-category-error' : undefined}
+                aria-invalid={
+                  submitAttempted && prescriptionCategory === 'emergency' && !emergencyCategory
+                    ? true
+                    : undefined
+                }
+                aria-describedby={
+                  submitAttempted && prescriptionCategory === 'emergency' && !emergencyCategory
+                    ? 'emergency-category-error'
+                    : undefined
+                }
                 className={`h-9 w-full rounded-md border bg-background px-3 text-sm ${submitAttempted && prescriptionCategory === 'emergency' && !emergencyCategory ? 'border-destructive' : 'border-input'}`}
               >
                 <option value="">選択してください</option>
-                <option value="planned_disease_exacerbation">計画的訪問の対象疾患の急変 (500点)</option>
+                <option value="planned_disease_exacerbation">
+                  計画的訪問の対象疾患の急変 (500点)
+                </option>
                 <option value="other_exacerbation">それ以外の急変 (200点)</option>
                 <option value="online">オンライン (59点)</option>
               </select>
@@ -1541,7 +1666,10 @@ function hydrateLinesFromPrevious(
             />
           </div>
           <div>
-            <label htmlFor="prescriber-institution-master" className="mb-1 block text-sm font-medium">
+            <label
+              htmlFor="prescriber-institution-master"
+              className="mb-1 block text-sm font-medium"
+            >
               医療機関マスター
             </label>
             <select
@@ -1775,14 +1903,9 @@ function hydrateLinesFromPrevious(
 
         <div className="space-y-3">
           {lines.map((line, index) => (
-            <div
-              key={index}
-              className="rounded-lg border bg-card p-3 space-y-2"
-            >
+            <div key={index} className="rounded-lg border bg-card p-3 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground">
-                  #{index + 1}
-                </span>
+                <span className="text-xs font-medium text-muted-foreground">#{index + 1}</span>
                 {lines.length > 1 && (
                   <button
                     type="button"
@@ -1801,12 +1924,13 @@ function hydrateLinesFromPrevious(
                   麻薬 — 特別管理が必要です
                 </div>
               )}
-              {'_psychotropic' in line && (line as Record<string, unknown>)._psychotropic === true && (
-                <div className="flex items-center gap-1 rounded bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700">
-                  <Shield className="size-3" aria-hidden="true" />
-                  向精神薬
-                </div>
-              )}
+              {'_psychotropic' in line &&
+                (line as Record<string, unknown>)._psychotropic === true && (
+                  <div className="flex items-center gap-1 rounded bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700">
+                    <Shield className="size-3" aria-hidden="true" />
+                    向精神薬
+                  </div>
+                )}
               {buildLineBadges(line).length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {buildLineBadges(line).map((badge) => (
@@ -1827,7 +1951,7 @@ function hydrateLinesFromPrevious(
                     setLines((prev) =>
                       prev.map((l, i) =>
                         i === index
-                          ? {
+                          ? ({
                               ...l,
                               drug_name: drug.drug_name,
                               drug_code: drug.drug_code,
@@ -1835,17 +1959,21 @@ function hydrateLinesFromPrevious(
                               is_generic: drug.is_generic,
                               is_generic_name_prescription: false,
                               route: drug.dosage_form
-                                ? /注射|注入/.test(drug.dosage_form) ? 'injection'
-                                  : /軟膏|クリーム|貼付|テープ|坐|点眼|点鼻|吸入|ローション|ゲル/.test(drug.dosage_form) ? 'external'
-                                  : 'internal'
+                                ? /注射|注入/.test(drug.dosage_form)
+                                  ? 'injection'
+                                  : /軟膏|クリーム|貼付|テープ|坐|点眼|点鼻|吸入|ローション|ゲル/.test(
+                                        drug.dosage_form,
+                                      )
+                                    ? 'external'
+                                    : 'internal'
                                 : l.route,
                               _narcotic: drug.is_narcotic,
                               _psychotropic: drug.is_psychotropic,
                               _maxDays: drug.max_administration_days,
                               _price: drug.drug_price,
-                            } as PrescriptionLineInput
-                          : l
-                      )
+                            } as PrescriptionLineInput)
+                          : l,
+                      ),
                     );
                   }}
                   required
@@ -1886,18 +2014,24 @@ function hydrateLinesFromPrevious(
                 >
                   <option value="">投与経路</option>
                   {ROUTE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
                   ))}
                 </select>
                 <select
                   value={line.dispensing_method ?? ''}
-                  onChange={(e) => updateLine(index, 'dispensing_method', e.target.value || undefined)}
+                  onChange={(e) =>
+                    updateLine(index, 'dispensing_method', e.target.value || undefined)
+                  }
                   className="h-8 rounded-md border border-input bg-background px-2 text-sm"
                   aria-label="調剤方法"
                 >
                   <option value="">調剤方法</option>
                   {METHOD_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
                   ))}
                 </select>
                 <input
@@ -1919,7 +2053,9 @@ function hydrateLinesFromPrevious(
               <input
                 type="text"
                 value={line.packaging_instructions ?? ''}
-                onChange={(e) => updateLine(index, 'packaging_instructions', e.target.value || undefined)}
+                onChange={(e) =>
+                  updateLine(index, 'packaging_instructions', e.target.value || undefined)
+                }
                 placeholder="包装指示（一包化指示、粉砕指示等）"
                 className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm"
               />
@@ -1964,8 +2100,8 @@ function hydrateLinesFromPrevious(
                             dosage_form: candidate.dosage_form ?? currentLine.dosage_form,
                             is_generic: true,
                           }
-                        : currentLine
-                    )
+                        : currentLine,
+                    ),
                   );
                 }}
               />
@@ -1984,7 +2120,8 @@ function hydrateLinesFromPrevious(
                 施設看護師から受領した処方箋を患者単位へ分離して登録します
               </p>
               <p className="text-xs leading-5 text-sky-900/80">
-                処方日・処方医・原本は共通で入力し、患者ごとの明細を一旦リストへ積んでからまとめて MedicationCycle を起票します。
+                処方日・処方医・原本は共通で入力し、患者ごとの明細を一旦リストへ積んでからまとめて
+                MedicationCycle を起票します。
               </p>
             </div>
 
@@ -1994,7 +2131,8 @@ function hydrateLinesFromPrevious(
                   現在の患者: {selectedPatientName || '未選択'}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  ケース {selectedCaseId ? `${selectedCaseId.slice(-8)}` : '未選択'} / 明細 {lines.filter((line) => line.drug_name.trim().length > 0).length} 行
+                  ケース {selectedCaseId ? `${selectedCaseId.slice(-8)}` : '未選択'} / 明細{' '}
+                  {lines.filter((line) => line.drug_name.trim().length > 0).length} 行
                 </p>
               </div>
               <button
@@ -2014,9 +2152,7 @@ function hydrateLinesFromPrevious(
                   <p className="text-sm font-medium text-foreground">
                     登録対象 {facilityBatchEntries.length} 名
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    2 名以上でまとめて登録できます
-                  </p>
+                  <p className="text-xs text-muted-foreground">2 名以上でまとめて登録できます</p>
                 </div>
                 <div className="space-y-2">
                   {facilityBatchEntries.map((entry, index) => (
@@ -2029,13 +2165,17 @@ function hydrateLinesFromPrevious(
                           {index + 1}. {entry.patient_name}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          ケース {entry.case_id.slice(-8)} / {entry.case_status} / {entry.lines.length} 行
+                          ケース {entry.case_id.slice(-8)} / {entry.case_status} /{' '}
+                          {entry.lines.length} 行
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {entry.residence_label ?? '住所未設定'}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {entry.lines.slice(0, 3).map((line) => line.drug_name).join('、')}
+                          {entry.lines
+                            .slice(0, 3)
+                            .map((line) => line.drug_name)
+                            .join('、')}
                           {entry.lines.length > 3 ? ` 他${entry.lines.length - 3}剤` : ''}
                         </p>
                       </div>
@@ -2067,7 +2207,8 @@ function hydrateLinesFromPrevious(
           <div className="rounded-lg border border-amber-200 bg-amber-50/40 p-4">
             <p className="text-sm font-medium text-foreground">必要時のみ起票</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              入力すると、処方受付の登録直後に疑義照会を起票し、サイクルを `疑義照会中` に遷移させます。
+              入力すると、処方受付の登録直後に疑義照会を起票し、サイクルを `疑義照会中`
+              に遷移させます。
             </p>
 
             <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -2129,12 +2270,41 @@ function hydrateLinesFromPrevious(
                   className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 />
               </div>
+
+              <div>
+                <label htmlFor="inquiry-proposal-origin" className="mb-1 block text-sm font-medium">
+                  反映タイミング
+                </label>
+                <select
+                  id="inquiry-proposal-origin"
+                  value={proposalOrigin}
+                  onChange={(e) =>
+                    updateInquiry({
+                      proposalOrigin: e.target.value as 'post_inquiry' | 'pre_issuance',
+                    })
+                  }
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="post_inquiry">照会後変更</option>
+                  <option value="pre_issuance">事前提案反映</option>
+                </select>
+              </div>
+
+              <label className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm md:mt-7">
+                <input
+                  type="checkbox"
+                  checked={residualAdjustment}
+                  onChange={(e) => updateInquiry({ residualAdjustment: e.target.checked })}
+                />
+                残薬調整あり
+              </label>
             </div>
           </div>
         </fieldset>
       ) : (
         <div className="rounded-lg border border-dashed border-border/70 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-          施設まとめ処方では疑義照会を一括起票しません。患者別 MedicationCycle 作成後に、必要な患者だけ個別に起票してください。
+          施設まとめ処方では疑義照会を一括起票しません。患者別 MedicationCycle
+          作成後に、必要な患者だけ個別に起票してください。
         </div>
       )}
 
@@ -2146,10 +2316,12 @@ function hydrateLinesFromPrevious(
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
               <div>
                 <p className="text-sm font-medium text-foreground">
-                  直近処方: {format(new Date(prescriptionDiff.previous.prescribed_date), 'yyyy/MM/dd')}
+                  直近処方:{' '}
+                  {format(new Date(prescriptionDiff.previous.prescribed_date), 'yyyy/MM/dd')}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {SOURCE_LABELS[prescriptionDiff.previous.source_type] ?? prescriptionDiff.previous.source_type}
+                  {SOURCE_LABELS[prescriptionDiff.previous.source_type] ??
+                    prescriptionDiff.previous.source_type}
                   {prescriptionDiff.previous.prescriber_name
                     ? ` / ${prescriptionDiff.previous.prescriber_name}`
                     : ''}
@@ -2192,7 +2364,9 @@ function hydrateLinesFromPrevious(
                             {line.dose} / {line.frequency} / {line.days}日分
                           </p>
                           {line.start_date ? (
-                            <p className="mt-1 text-[11px] text-green-900/80">開始日 {line.start_date}</p>
+                            <p className="mt-1 text-[11px] text-green-900/80">
+                              開始日 {line.start_date}
+                            </p>
                           ) : null}
                           {buildLineBadges(line).length > 0 ? (
                             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -2275,7 +2449,9 @@ function hydrateLinesFromPrevious(
                             {line.dose} / {line.frequency} / {line.days}日分
                           </p>
                           {line.start_date ? (
-                            <p className="mt-1 text-[11px] text-red-900/80">開始日 {line.start_date}</p>
+                            <p className="mt-1 text-[11px] text-red-900/80">
+                              開始日 {line.start_date}
+                            </p>
                           ) : null}
                           {buildLineBadges(line).length > 0 ? (
                             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -2303,7 +2479,8 @@ function hydrateLinesFromPrevious(
                   </h3>
                   <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-3 text-sm">
                     <p className="font-medium text-foreground">
-                      {prescriptionDiff.previous.lines.length}剤 / {prescriptionDiff.previous.cycle.overall_status}
+                      {prescriptionDiff.previous.lines.length}剤 /{' '}
+                      {prescriptionDiff.previous.cycle.overall_status}
                     </p>
                     <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
                       {prescriptionDiff.previous.lines.slice(0, 6).map((line) => (
@@ -2331,7 +2508,9 @@ function hydrateLinesFromPrevious(
       >
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="space-y-1">
-            <p className="text-sm font-semibold text-foreground">最後にこのボタンで受付を確定します</p>
+            <p className="text-sm font-semibold text-foreground">
+              最後にこのボタンで受付を確定します
+            </p>
             <p className="text-sm text-muted-foreground">
               患者・ケースを選択し、必要な明細入力を終えたら登録します。登録後は処方受付一覧へ戻ります。
             </p>

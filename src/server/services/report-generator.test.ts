@@ -76,9 +76,9 @@ describe('generateReportsFromVisit', () => {
   it('throws when visit record not found', async () => {
     visitRecordFindFirstMock.mockResolvedValue(null);
 
-    await expect(
-      generateReportsFromVisit('org-1', 'user-1', 'vr-missing')
-    ).rejects.toThrow('VisitRecord not found');
+    await expect(generateReportsFromVisit('org-1', 'user-1', 'vr-missing')).rejects.toThrow(
+      'VisitRecord not found',
+    );
   });
 
   it('throws when visit schedule not found', async () => {
@@ -93,9 +93,9 @@ describe('generateReportsFromVisit', () => {
     });
     visitScheduleFindUniqueMock.mockResolvedValue(null);
 
-    await expect(
-      generateReportsFromVisit('org-1', 'user-1', 'vr-1')
-    ).rejects.toThrow('VisitSchedule not found');
+    await expect(generateReportsFromVisit('org-1', 'user-1', 'vr-1')).rejects.toThrow(
+      'VisitSchedule not found',
+    );
   });
 
   it('throws when schedule org_id does not match', async () => {
@@ -113,9 +113,9 @@ describe('generateReportsFromVisit', () => {
       org_id: 'org-WRONG',
     });
 
-    await expect(
-      generateReportsFromVisit('org-1', 'user-1', 'vr-1')
-    ).rejects.toThrow('VisitSchedule not found');
+    await expect(generateReportsFromVisit('org-1', 'user-1', 'vr-1')).rejects.toThrow(
+      'VisitSchedule not found',
+    );
   });
 
   it('returns existing reports without creating new ones', async () => {
@@ -189,23 +189,36 @@ describe('generateReportsFromVisit', () => {
     buildPhysicianReportMock.mockReturnValue({ title: 'physician report' });
     careReportFindManyMock.mockResolvedValue([]);
 
-    withOrgContextMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
-      const tx = {
-        careReport: {
-          create: careReportCreateMock.mockResolvedValue({
-            id: 'report-new',
-            report_type: 'physician_report',
-          }),
-        },
-      };
-      return fn(tx);
-    });
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          careReport: {
+            create: careReportCreateMock.mockResolvedValue({
+              id: 'report-new',
+              report_type: 'physician_report',
+            }),
+          },
+        };
+        return fn(tx);
+      },
+    );
 
     const result = await generateReportsFromVisit('org-1', 'user-1', 'vr-1');
 
     expect(result.reports).toHaveLength(1);
     expect(result.reports[0].report_type).toBe('physician_report');
     expect(withOrgContextMock).toHaveBeenCalledOnce();
+    expect(careReportCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          content: expect.objectContaining({
+            billing_context: expect.objectContaining({
+              payer_basis: 'medical',
+            }),
+          }),
+        }),
+      }),
+    );
   });
 
   it('throws when patient not found', async () => {
@@ -230,8 +243,8 @@ describe('generateReportsFromVisit', () => {
     billingEvidenceFindFirstMock.mockResolvedValue(null);
     careCaseFindFirstMock.mockResolvedValue(null);
 
-    await expect(
-      generateReportsFromVisit('org-1', 'user-1', 'vr-1')
-    ).rejects.toThrow('Patient not found');
+    await expect(generateReportsFromVisit('org-1', 'user-1', 'vr-1')).rejects.toThrow(
+      'Patient not found',
+    );
   });
 });

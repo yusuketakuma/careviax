@@ -141,7 +141,9 @@ function CommunicationQueueCard({
 }) {
   const queryClient = useQueryClient();
   const createDraftMutation = useMutation({
-    mutationFn: async (draft: PatientCommunicationsSnapshot['communication_queue']['emergency_drafts'][number]) => {
+    mutationFn: async (
+      draft: PatientCommunicationsSnapshot['communication_queue']['emergency_drafts'][number],
+    ) => {
       const res = await fetch('/api/communication-requests', {
         method: 'POST',
         headers: {
@@ -289,6 +291,10 @@ function TaskAndIssueCard({
                 className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm"
               >
                 <p className="font-medium text-rose-900">算定ブロッカー</p>
+                <p className="mt-1 text-xs text-rose-800">
+                  改定 {evidence.effective_revision_code ?? '—'} / 設定{' '}
+                  {evidence.site_config_status ?? '—'}
+                </p>
                 <p className="mt-1 text-xs text-rose-800">
                   {evidence.blockers[0]?.reason ??
                     evidence.exclusion_reason ??

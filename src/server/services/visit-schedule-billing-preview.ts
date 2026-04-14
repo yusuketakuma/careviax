@@ -8,13 +8,24 @@ import {
 import { resolveBillingPayerBasis } from './billing-payer-basis';
 import { resolvePatientInsurance } from './patient-insurance';
 import { findLatestPrescriptionIntakeClassification } from './prescription-intake-classification';
+import type {
+  BillingRuntimeHomeComprehensive,
+  BillingRuntimeSiteConfigStatus,
+} from './billing-runtime-context';
+import { resolveBillingRuntimeContext } from './billing-runtime-context';
 
 export type VisitScheduleBillingPreview = {
   alerts: BillingRequirementAlert[];
   cadence: BillingCadencePreview;
   recommended_visit_type: string;
   recommended_priority: 'normal' | 'urgent' | 'emergency';
-  recommended_candidate_count: number;
+  suggested_schedule_slot_count: number;
+  effective_revision_code: string;
+  effective_revision_label: string;
+  site_config_status: BillingRuntimeSiteConfigStatus;
+  site_config_revision_code: string | null;
+  warnings: string[];
+  home_comprehensive_preview: BillingRuntimeHomeComprehensive | null;
 };
 
 export async function buildVisitScheduleBillingPreview(args: {
@@ -22,6 +33,7 @@ export async function buildVisitScheduleBillingPreview(args: {
   caseId: string;
   proposedDate: string;
   pharmacistId?: string | null;
+  siteId?: string | null;
   visitType?: string | null;
 }): Promise<VisitScheduleBillingPreview | null> {
   if (
@@ -29,7 +41,8 @@ export async function buildVisitScheduleBillingPreview(args: {
     typeof prisma.prescriptionIntake?.findFirst !== 'function' ||
     typeof prisma.visitSchedule?.findMany !== 'function' ||
     typeof prisma.visitSchedule?.count !== 'function' ||
-    typeof prisma.user?.findFirst !== 'function'
+    typeof prisma.user?.findFirst !== 'function' ||
+    typeof prisma.pharmacySiteInsuranceConfig?.findFirst !== 'function'
   ) {
     return null;
   }
@@ -105,6 +118,14 @@ export async function buildVisitScheduleBillingPreview(args: {
     specialCapEligible,
   } as const;
 
+  const runtimeContext = await resolveBillingRuntimeContext(prisma, {
+    orgId: args.orgId,
+    payerBasis: payerBasis === 'care' ? 'care' : 'medical',
+    asOfDate: new Date(args.proposedDate),
+    siteId: args.siteId ?? null,
+    buildingPatientCount: 1,
+  });
+
   const [alerts, cadence] = await Promise.all([
     args.pharmacistId || careCase.primary_pharmacist_id
       ? validateBillingRequirements(previewArgs)
@@ -112,12 +133,20 @@ export async function buildVisitScheduleBillingPreview(args: {
     getBillingCadencePreview(previewArgs),
   ]);
 
+  const suggestedScheduleSlotCount = Math.min(Math.max(cadence.suggested_dates.length, 1), 5);
+
   return {
     alerts,
     cadence,
     recommended_visit_type: visitType,
     recommended_priority: visitType === 'emergency' ? 'emergency' : 'normal',
-    recommended_candidate_count: Math.min(Math.max(cadence.suggested_dates.length, 1), 5),
+    suggested_schedule_slot_count: suggestedScheduleSlotCount,
+    effective_revision_code: runtimeContext.effectiveRevisionCode,
+    effective_revision_label: runtimeContext.effectiveRevisionLabel,
+    site_config_status: runtimeContext.siteConfigStatus,
+    site_config_revision_code: runtimeContext.siteConfigRevisionCode,
+    warnings: runtimeContext.warnings,
+    home_comprehensive_preview: runtimeContext.homeComprehensive,
   };
 }
 
@@ -127,21 +156,26 @@ export async function buildVisitScheduleBillingPreviewBatch(
     caseId: string;
     proposedDate: string;
     pharmacistId?: string | null;
+    siteId?: string | null;
     visitType?: string | null;
   }[],
   orgId: string,
 ) {
   const entries = await Promise.all(
-    args.map(async (item) => [
-      item.key,
-      await buildVisitScheduleBillingPreview({
-        orgId,
-        caseId: item.caseId,
-        proposedDate: item.proposedDate,
-        pharmacistId: item.pharmacistId,
-        visitType: item.visitType,
-      }),
-    ] as const),
+    args.map(
+      async (item) =>
+        [
+          item.key,
+          await buildVisitScheduleBillingPreview({
+            orgId,
+            caseId: item.caseId,
+            proposedDate: item.proposedDate,
+            pharmacistId: item.pharmacistId,
+            siteId: item.siteId,
+            visitType: item.visitType,
+          }),
+        ] as const,
+    ),
   );
 
   return Object.fromEntries(entries.filter(([, value]) => value != null));

@@ -9,10 +9,13 @@ import {
   rangesOverlap,
 } from '@/lib/validations/pharmacy-site-insurance-config';
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+function dayBefore(value: Date) {
+  const result = new Date(value);
+  result.setUTCDate(result.getUTCDate() - 1);
+  return result;
+}
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
     message: '保険設定の閲覧権限がありません',
@@ -35,10 +38,7 @@ export async function GET(
   return success({ data: configs });
 }
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
     message: '保険設定の作成権限がありません',
@@ -83,20 +83,33 @@ export async function POST(
       insurance_type: parsed.data.insurance_type,
     },
   });
-  if (
-    overlappingConfigs.some((config) =>
-      rangesOverlap({
-        nextStart,
-        nextEnd,
-        currentStart: config.effective_from,
-        currentEnd: config.effective_to,
-      })
-    )
-  ) {
+  const overlapping = overlappingConfigs.filter((config) =>
+    rangesOverlap({
+      nextStart,
+      nextEnd,
+      currentStart: config.effective_from,
+      currentEnd: config.effective_to,
+    }),
+  );
+  if (overlapping.length > 0 && !parsed.data.auto_close_overlaps) {
     return validationError('同一保険種別で適用期間が重複する設定は登録できません');
+  }
+  if (overlapping.some((config) => config.effective_from.getTime() >= nextStart.getTime())) {
+    return validationError('開始日以降に重複する設定があるため自動で置き換えできません');
   }
 
   const config = await withOrgContext(ctx.orgId, async (tx) => {
+    if (overlapping.length > 0) {
+      await tx.pharmacySiteInsuranceConfig.updateMany({
+        where: {
+          id: { in: overlapping.map((config) => config.id) },
+        },
+        data: {
+          effective_to: dayBefore(nextStart),
+        },
+      });
+    }
+
     const created = await tx.pharmacySiteInsuranceConfig.create({
       data: {
         org_id: ctx.orgId,
@@ -120,6 +133,7 @@ export async function POST(
         changes: {
           insurance_type: parsed.data.insurance_type,
           revision_code: parsed.data.revision_code,
+          auto_closed_config_ids: overlapping.map((config) => config.id),
         },
         ip_address: ctx.ipAddress,
         user_agent: ctx.userAgent,

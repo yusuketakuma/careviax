@@ -5,7 +5,15 @@ import { useMutation, useInfiniteQuery, useQueryClient } from '@tanstack/react-q
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, subMonths, addMonths } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Download, CheckCircle2, AlertTriangle, XCircle, RefreshCw } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  RefreshCw,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +34,9 @@ type BillingCandidate = {
   quantity: number;
   status: string;
   exclusion_reason: string | null;
+  effective_revision_code?: string | null;
+  site_config_revision_code?: string | null;
+  site_config_status?: string | null;
   calculation_breakdown?: {
     calculation_unit?: string;
     rate_percent?: number | null;
@@ -36,6 +47,9 @@ type BillingCandidate = {
     selection_mode?: string;
     source_note?: string;
     ruleset_version?: string;
+    revision_code?: string;
+    site_config_revision_code?: string;
+    site_config_status?: string;
     source_type?: string;
     source_entity_id?: string;
     billing_fee_type?: string;
@@ -111,12 +125,29 @@ type BillingCandidatesResponse = {
 
 // --- Constants ---
 
-const STATUS_CONFIG: Record<string, { label: string; icon: React.ElementType; className: string }> = {
-  candidate: { label: '候補', icon: AlertTriangle, className: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
-  confirmed: { label: '確定', icon: CheckCircle2, className: 'bg-green-100 text-green-800 border-green-200' },
-  excluded: { label: '除外', icon: XCircle, className: 'bg-gray-100 text-gray-600 border-gray-200' },
-  exported: { label: '締め済み', icon: CheckCircle2, className: 'bg-blue-100 text-blue-800 border-blue-200' },
-};
+const STATUS_CONFIG: Record<string, { label: string; icon: React.ElementType; className: string }> =
+  {
+    candidate: {
+      label: '候補',
+      icon: AlertTriangle,
+      className: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+    },
+    confirmed: {
+      label: '確定',
+      icon: CheckCircle2,
+      className: 'bg-green-100 text-green-800 border-green-200',
+    },
+    excluded: {
+      label: '除外',
+      icon: XCircle,
+      className: 'bg-gray-100 text-gray-600 border-gray-200',
+    },
+    exported: {
+      label: '締め済み',
+      icon: CheckCircle2,
+      className: 'bg-blue-100 text-blue-800 border-blue-200',
+    },
+  };
 
 const VALIDATION_OK = ['confirmed', 'exported'];
 const VALIDATION_NG = ['excluded'];
@@ -130,7 +161,7 @@ function ValidationBadge({
 }) {
   const layerStates = layers
     ? [layers.evidence?.state, layers.rule_engine?.state, layers.close_review?.state].filter(
-        (value): value is 'passed' | 'manual_review' | 'blocked' => value != null
+        (value): value is 'passed' | 'manual_review' | 'blocked' => value != null,
       )
     : [];
 
@@ -150,7 +181,10 @@ function ValidationBadge({
   }
   if (VALIDATION_OK.includes(status)) {
     return (
-      <span className="flex items-center gap-1 text-xs text-green-700" aria-label="バリデーションOK">
+      <span
+        className="flex items-center gap-1 text-xs text-green-700"
+        aria-label="バリデーションOK"
+      >
         <CheckCircle2 className="size-3.5" aria-hidden="true" /> OK
       </span>
     );
@@ -169,11 +203,7 @@ function ValidationBadge({
   );
 }
 
-function WorkflowBadge({
-  workflow,
-}: {
-  workflow?: BillingCandidate['workflow_state'] | null;
-}) {
+function WorkflowBadge({ workflow }: { workflow?: BillingCandidate['workflow_state'] | null }) {
   const reviewState = workflow?.review_state ?? 'pending';
   const resolutionState = workflow?.resolution_state ?? 'unresolved';
 
@@ -211,13 +241,7 @@ export function BillingCandidatesContent() {
   const billingMonthStr = format(currentMonth, 'yyyy-MM-dd');
   const billingMonthLabel = format(currentMonth, 'yyyy年M月', { locale: ja });
 
-  const {
-    data,
-    isLoading,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-  } = useInfiniteQuery({
+  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ['billing-candidates', orgId, billingMonthStr],
     queryFn: async ({ pageParam }) => {
       const params = new URLSearchParams({ billing_month: billingMonthStr, limit: '50' });
@@ -265,10 +289,7 @@ export function BillingCandidatesContent() {
   });
 
   const reviewMutation = useMutation({
-    mutationFn: async (input: {
-      id: string;
-      action: 'confirm' | 'exclude' | 'reopen';
-    }) => {
+    mutationFn: async (input: { id: string; action: 'confirm' | 'exclude' | 'reopen' }) => {
       const res = await fetch(`/api/billing-candidates/${input.id}`, {
         method: 'PATCH',
         headers: {
@@ -332,9 +353,7 @@ export function BillingCandidatesContent() {
           label: '請求コード',
           mobileLabel: 'コード',
         },
-        cell: ({ row }) => (
-          <span className="font-mono text-xs">{row.original.billing_code}</span>
-        ),
+        cell: ({ row }) => <span className="font-mono text-xs">{row.original.billing_code}</span>,
       },
       {
         accessorKey: 'billing_name',
@@ -343,9 +362,7 @@ export function BillingCandidatesContent() {
           label: '算定名称',
           mobileLabel: '名称',
         },
-        cell: ({ row }) => (
-          <span className="text-sm">{row.original.billing_name}</span>
-        ),
+        cell: ({ row }) => <span className="text-sm">{row.original.billing_name}</span>,
       },
       {
         accessorKey: 'patient_name',
@@ -369,9 +386,7 @@ export function BillingCandidatesContent() {
           <span className="text-sm tabular-nums">
             {row.original.points != null
               ? `${row.original.points}${
-                  row.original.calculation_breakdown?.calculation_unit === 'unit'
-                    ? '単位'
-                    : '点'
+                  row.original.calculation_breakdown?.calculation_unit === 'unit' ? '単位' : '点'
                 }`
               : row.original.calculation_breakdown?.rate_percent != null
                 ? `${row.original.calculation_breakdown.rate_percent}%`
@@ -395,6 +410,14 @@ export function BillingCandidatesContent() {
             <p className="text-muted-foreground">
               {row.original.source_snapshot?.selection_mode === 'manual' ? '要件確認' : '自動'}
             </p>
+            <p className="text-muted-foreground">
+              改定 {row.original.effective_revision_code ?? row.original.source_snapshot?.revision_code ?? '—'}
+            </p>
+            {row.original.site_config_status ?? row.original.source_snapshot?.site_config_status ? (
+              <p className="text-muted-foreground">
+                設定 {row.original.site_config_status ?? row.original.source_snapshot?.site_config_status}
+              </p>
+            ) : null}
           </div>
         ),
       },
@@ -406,10 +429,14 @@ export function BillingCandidatesContent() {
         },
         cell: ({ row }) => {
           const cfg = STATUS_CONFIG[row.original.status];
-          if (!cfg) return <span className="text-xs text-muted-foreground">{row.original.status}</span>;
+          if (!cfg)
+            return <span className="text-xs text-muted-foreground">{row.original.status}</span>;
           const Icon = cfg.icon;
           return (
-            <Badge variant="outline" className={`flex w-fit items-center gap-1 text-xs ${cfg.className}`}>
+            <Badge
+              variant="outline"
+              className={`flex w-fit items-center gap-1 text-xs ${cfg.className}`}
+            >
               <Icon className="size-3" aria-hidden="true" />
               {cfg.label}
             </Badge>
@@ -447,9 +474,7 @@ export function BillingCandidatesContent() {
           tabletHidden: true,
           mobileHidden: true,
           exportValue: (candidate: BillingCandidate) =>
-            candidate.exclusion_reason ??
-            candidate.source_snapshot?.source_note ??
-            '',
+            candidate.exclusion_reason ?? candidate.source_snapshot?.source_note ?? '',
         },
         cell: ({ row }) => (
           <div className="space-y-1 text-xs text-muted-foreground">
@@ -478,7 +503,9 @@ export function BillingCandidatesContent() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => reviewMutation.mutate({ id: row.original.id, action: 'confirm' })}
+                    onClick={() =>
+                      reviewMutation.mutate({ id: row.original.id, action: 'confirm' })
+                    }
                     disabled={reviewMutation.isPending}
                   >
                     確定
@@ -486,7 +513,9 @@ export function BillingCandidatesContent() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => reviewMutation.mutate({ id: row.original.id, action: 'exclude' })}
+                    onClick={() =>
+                      reviewMutation.mutate({ id: row.original.id, action: 'exclude' })
+                    }
                     disabled={reviewMutation.isPending}
                   >
                     除外
@@ -521,7 +550,7 @@ export function BillingCandidatesContent() {
         },
       },
     ],
-    [reviewMutation]
+    [reviewMutation],
   );
 
   async function handleExport() {
@@ -529,9 +558,12 @@ export function BillingCandidatesContent() {
 
     setIsExporting(true);
     try {
-      const response = await fetch(`/api/billing-candidates/export?billing_month=${billingMonthStr}`, {
-        headers: { 'x-org-id': orgId },
-      });
+      const response = await fetch(
+        `/api/billing-candidates/export?billing_month=${billingMonthStr}`,
+        {
+          headers: { 'x-org-id': orgId },
+        },
+      );
 
       if (!response.ok) {
         const error = await response.json().catch(() => null);
@@ -557,7 +589,9 @@ export function BillingCandidatesContent() {
 
   const okCount = candidates.filter((c) => VALIDATION_OK.includes(c.status)).length;
   const ngCount = candidates.filter((c) => VALIDATION_NG.includes(c.status)).length;
-  const warningCount = candidates.filter((c) => !VALIDATION_OK.includes(c.status) && !VALIDATION_NG.includes(c.status)).length;
+  const warningCount = candidates.filter(
+    (c) => !VALIDATION_OK.includes(c.status) && !VALIDATION_NG.includes(c.status),
+  ).length;
   const closeBlocked = summary?.blocked_from_close ?? warningCount;
   const closeReady = summary?.ready_to_close ?? okCount;
 
@@ -575,7 +609,9 @@ export function BillingCandidatesContent() {
         </Card>
         <Card size="sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">レビュー待ち / 根拠不足</CardTitle>
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              レビュー待ち / 根拠不足
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold tabular-nums">{closeBlocked}</p>
@@ -587,13 +623,17 @@ export function BillingCandidatesContent() {
             <CardTitle className="text-xs font-medium text-muted-foreground">締め済み</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold tabular-nums">{summary?.exported ?? candidates.filter((c) => c.status === 'exported').length}</p>
+            <p className="text-2xl font-bold tabular-nums">
+              {summary?.exported ?? candidates.filter((c) => c.status === 'exported').length}
+            </p>
             <p className="text-xs text-muted-foreground">月次締め済み件数</p>
           </CardContent>
         </Card>
         <Card size="sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">レビュー済み</CardTitle>
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              レビュー済み
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold tabular-nums">{summary?.reviewed ?? 0}</p>
@@ -657,7 +697,12 @@ export function BillingCandidatesContent() {
           >
             {closeMutation.isPending ? '締め処理中...' : '月次締め'}
           </Button>
-          <Button size="sm" variant="outline" onClick={() => void handleExport()} disabled={candidates.length === 0 || isExporting}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void handleExport()}
+            disabled={candidates.length === 0 || isExporting}
+          >
             <Download className="mr-1.5 size-3.5" aria-hidden="true" />
             {isExporting ? '出力中...' : 'CSV出力'}
           </Button>
@@ -751,6 +796,21 @@ export function BillingCandidatesContent() {
                     ルールセット
                   </p>
                   <p>{candidate.source_snapshot?.ruleset_version ?? '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    改定 / 薬局設定
+                  </p>
+                  <p>
+                    {candidate.effective_revision_code ?? candidate.source_snapshot?.revision_code ?? '—'}
+                    {(candidate.site_config_revision_code ??
+                      candidate.source_snapshot?.site_config_revision_code)
+                      ? ` / 設定 ${candidate.site_config_revision_code ?? candidate.source_snapshot?.site_config_revision_code}`
+                      : ''}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {candidate.site_config_status ?? candidate.source_snapshot?.site_config_status ?? '—'}
+                  </p>
                 </div>
               </div>
               <div className="space-y-2">

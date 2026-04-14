@@ -1,9 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { HOME_CARE_BILLING_RULESET_VERSION } from '../home-care-billing-ssot';
-import type {
-  Tx,
-  AdditionalBillingRuleDefinition,
-} from './core';
+import type { Tx, AdditionalBillingRuleDefinition } from './core';
 import {
   startOfMonth,
   endOfMonth,
@@ -13,13 +10,10 @@ import {
   mergeCandidateSourceSnapshot,
 } from './core';
 
-export type HomeDuplicateInteractionFeeType =
-  | '1_i'
-  | '1_ro'
-  | '2_i'
-  | '2_ro';
+export type HomeDuplicateInteractionFeeType = '1_i' | '1_ro' | '2_i' | '2_ro';
 
-export const HOME_DUPLICATE_INTERACTION_RULES: Record<
+// ── 2024改定: 在宅患者重複投薬・相互作用等防止管理料 (区分15の6) ──
+export const HOME_DUPLICATE_INTERACTION_RULES_2024: Record<
   HomeDuplicateInteractionFeeType,
   AdditionalBillingRuleDefinition
 > = {
@@ -57,14 +51,82 @@ export const HOME_DUPLICATE_INTERACTION_RULES: Record<
   },
 };
 
+// ── 2026改定: 旧「在宅患者重複投薬・相互作用等防止管理料」廃止 ──
+// 「薬学的有害事象等防止加算」「調剤時残薬調整加算」に統合
+// マッピング:
+//   1_i (照会後変更・残薬以外) → 薬学的有害事象等防止加算 ロ(疑義照会)
+//   1_ro (照会後変更・残薬)     → 調剤時残薬調整加算 ロ(在宅)
+//   2_i (事前提案反映・残薬以外) → 薬学的有害事象等防止加算 イ(処方提案反映)
+//   2_ro (事前提案反映・残薬)    → 調剤時残薬調整加算 ロ(在宅)
+export const HOME_ADVERSE_EVENT_RULES_2026: Record<
+  HomeDuplicateInteractionFeeType,
+  AdditionalBillingRuleDefinition
+> = {
+  '1_i': {
+    ssotKey: 'medical.adverse_event_prevention.home_change',
+    code: 'MED_ADVERSE_EVENT_HOME_CHANGE',
+    name: '薬学的有害事象等防止加算 ロ（在宅・疑義照会）',
+    points: 50,
+    sourceNote: '令和8年度診療報酬改定 薬学的有害事象等防止加算 ロ（在宅・疑義照会）50点',
+    targetLabel: '疑義照会後変更',
+  },
+  '1_ro': {
+    ssotKey: 'medical.residual_adjustment.home',
+    code: 'MED_RESIDUAL_ADJUSTMENT_HOME',
+    name: '調剤時残薬調整加算 ロ（在宅患者）',
+    points: 50,
+    sourceNote: '令和8年度診療報酬改定 調剤時残薬調整加算 ロ（在宅）50点',
+    targetLabel: '残薬照会後変更',
+  },
+  '2_i': {
+    ssotKey: 'medical.adverse_event_prevention.home_proposal',
+    code: 'MED_ADVERSE_EVENT_HOME_PROPOSAL',
+    name: '薬学的有害事象等防止加算 イ（在宅・処方提案反映）',
+    points: 50,
+    sourceNote: '令和8年度診療報酬改定 薬学的有害事象等防止加算 イ（在宅・処方提案反映）50点',
+    targetLabel: '事前提案反映',
+  },
+  '2_ro': {
+    ssotKey: 'medical.residual_adjustment.home',
+    code: 'MED_RESIDUAL_ADJUSTMENT_HOME',
+    name: '調剤時残薬調整加算 ロ（在宅患者）',
+    points: 50,
+    sourceNote: '令和8年度診療報酬改定 調剤時残薬調整加算 ロ（在宅）50点',
+    targetLabel: '残薬事前提案反映',
+  },
+};
+
+/** @deprecated 後方互換のエイリアス — 新コードでは resolveHomeDuplicateRules() を使用 */
+export const HOME_DUPLICATE_INTERACTION_RULES = HOME_DUPLICATE_INTERACTION_RULES_2024;
+
+const MEDICAL_2026_EFFECTIVE = new Date('2026-06-01');
+
+export function resolveHomeDuplicateRules(
+  billingMonth: Date,
+): Record<HomeDuplicateInteractionFeeType, AdditionalBillingRuleDefinition> {
+  return billingMonth >= MEDICAL_2026_EFFECTIVE
+    ? HOME_ADVERSE_EVENT_RULES_2026
+    : HOME_DUPLICATE_INTERACTION_RULES_2024;
+}
+
 export function parseHomeDuplicateInteractionFeeType(args: {
   reason: string;
   changeDetail?: string | null;
+  proposalOrigin?: 'post_inquiry' | 'pre_issuance' | null;
+  residualAdjustment?: boolean | null;
 }): HomeDuplicateInteractionFeeType {
+  if (args.proposalOrigin != null || args.residualAdjustment != null) {
+    const isProposal = args.proposalOrigin === 'pre_issuance';
+    const isResidual = args.residualAdjustment === true;
+    if (isProposal) {
+      return isResidual ? '2_ro' : '2_i';
+    }
+    return isResidual ? '1_ro' : '1_i';
+  }
+
   const normalizedReason = args.reason.trim();
   const normalizedDetail = (args.changeDetail ?? '').trim().toLowerCase();
-  const isResidual =
-    normalizedReason.includes('残薬') || normalizedDetail.includes('residual');
+  const isResidual = normalizedReason.includes('残薬') || normalizedDetail.includes('residual');
   const isProposal =
     normalizedDetail.includes('proposal') ||
     normalizedDetail.includes('事前提案') ||
@@ -83,7 +145,7 @@ export async function generateHomeDuplicateInteractionCandidates(
     billingMonth: Date;
     ruleIdByKey: Map<string, string>;
     existingByKey: Map<string, { source_snapshot: Prisma.JsonValue | null }>;
-  }
+  },
 ) {
   const monthStart = startOfMonth(args.billingMonth);
   const monthEnd = endOfMonth(args.billingMonth);
@@ -91,13 +153,15 @@ export async function generateHomeDuplicateInteractionCandidates(
     where: {
       org_id: args.orgId,
       inquired_at: { gte: monthStart, lte: monthEnd },
-      reason: { in: ['相互作用', '重複'] },
+      OR: [{ reason: { in: ['相互作用', '重複'] } }, { residual_adjustment: true }],
     },
     select: {
       id: true,
       cycle_id: true,
       reason: true,
       result: true,
+      proposal_origin: true,
+      residual_adjustment: true,
       change_detail: true,
       cycle: {
         select: {
@@ -120,8 +184,11 @@ export async function generateHomeDuplicateInteractionCandidates(
     const feeType = parseHomeDuplicateInteractionFeeType({
       reason: inquiry.reason,
       changeDetail: inquiry.change_detail,
+      proposalOrigin: inquiry.proposal_origin as 'post_inquiry' | 'pre_issuance' | null,
+      residualAdjustment: inquiry.residual_adjustment,
     });
-    const rule = HOME_DUPLICATE_INTERACTION_RULES[feeType];
+    const rules = resolveHomeDuplicateRules(args.billingMonth);
+    const rule = rules[feeType];
     const dedupeKey = `${monthLabel(monthStart)}:home-dup:${inquiry.id}:${feeType}`;
     const existing = args.existingByKey.get(dedupeKey);
     const existingWorkflow = readBillingCandidateWorkflowState(existing?.source_snapshot);
@@ -129,8 +196,8 @@ export async function generateHomeDuplicateInteractionCandidates(
       inquiry.result === 'changed'
         ? null
         : inquiry.result === 'unchanged'
-          ? '処方変更に至っていないため在宅患者重複投薬・相互作用等防止管理料は算定できません'
-          : '疑義照会の結果が未確定のため在宅患者重複投薬・相互作用等防止管理料は保留です';
+          ? `処方変更に至っていないため${rule.name}は算定できません`
+          : `疑義照会の結果が未確定のため${rule.name}は保留です`;
     const status =
       exclusionReason != null
         ? 'excluded'
@@ -182,17 +249,12 @@ export async function generateHomeDuplicateInteractionCandidates(
             calculationContext: null,
             candidateStatus: status,
             claimable: exclusionReason == null,
-            evidenceMessage:
-              exclusionReason == null
-                ? '照会結果の変更確定を確認'
-                : exclusionReason,
+            evidenceMessage: exclusionReason == null ? '照会結果の変更確定を確認' : exclusionReason,
             ruleMessage:
-              exclusionReason == null
-                ? `${rule.targetLabel} の加算候補`
-                : exclusionReason,
+              exclusionReason == null ? `${rule.targetLabel} の加算候補` : exclusionReason,
             workflow: existingWorkflow,
           }) as Prisma.JsonValue,
-          existingWorkflow
+          existingWorkflow,
         ),
         status,
         exclusion_reason: exclusionReason,
@@ -223,17 +285,12 @@ export async function generateHomeDuplicateInteractionCandidates(
             calculationContext: null,
             candidateStatus: status,
             claimable: exclusionReason == null,
-            evidenceMessage:
-              exclusionReason == null
-                ? '照会結果の変更確定を確認'
-                : exclusionReason,
+            evidenceMessage: exclusionReason == null ? '照会結果の変更確定を確認' : exclusionReason,
             ruleMessage:
-              exclusionReason == null
-                ? `${rule.targetLabel} の加算候補`
-                : exclusionReason,
+              exclusionReason == null ? `${rule.targetLabel} の加算候補` : exclusionReason,
             workflow: existingWorkflow,
           }) as Prisma.JsonValue,
-          existingWorkflow
+          existingWorkflow,
         ),
         status,
         exclusion_reason: exclusionReason,

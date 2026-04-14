@@ -505,7 +505,7 @@ export const MEDICAL_RULES_2024: BillingRuleSeed[] = [
     provider_scope: 'pharmacy',
     selection_mode: 'manual',
     calculation_unit: 'point',
-    display_order: 155,
+    display_order: 160,
     name: '在宅中心静脈栄養法加算',
     code: 'MED_ADD_CENTRAL_VENOUS',
     amount: 150,

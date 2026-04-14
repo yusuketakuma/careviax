@@ -49,7 +49,11 @@ import { PresenceAvatars } from '@/components/features/collaboration/presence-av
 import { useCollaborativeForm } from '@/lib/hooks/use-collaborative-form';
 import { CollaborativeTextarea } from '@/components/features/collaboration/collaborative-textarea';
 import { CARRY_TYPE_OPTIONS } from '@/lib/dispensing/constants';
-import type { DispensePrefillLine, DispensePrefillResult, PackagingGroupAssignment } from '@/lib/dispensing/prefill-generator';
+import type {
+  DispensePrefillLine,
+  DispensePrefillResult,
+  PackagingGroupAssignment,
+} from '@/lib/dispensing/prefill-generator';
 import type { DateContinuityWarning } from '@/lib/dispensing/date-continuity';
 
 function toLineIdMap<T extends { line_id: string }>(items: T[]): Map<string, T> {
@@ -61,11 +65,15 @@ function InquiryBlockingAlert({
   reason,
   physicianNote,
   detail,
+  proposalOrigin,
+  residualAdjustment,
 }: {
   message: string;
   reason?: string;
   physicianNote?: string | null;
   detail?: string | null;
+  proposalOrigin?: 'post_inquiry' | 'pre_issuance' | null;
+  residualAdjustment?: boolean | null;
 }) {
   return (
     <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -77,6 +85,12 @@ function InquiryBlockingAlert({
         </p>
       )}
       {detail && <p className="mt-1 text-xs text-amber-800">{detail}</p>}
+      {(proposalOrigin === 'pre_issuance' || residualAdjustment) && (
+        <p className="mt-1 text-xs text-amber-800">
+          {proposalOrigin === 'pre_issuance' ? '事前提案反映' : '照会後変更'}
+          {residualAdjustment ? ' / 残薬調整' : ''}
+        </p>
+      )}
     </div>
   );
 }
@@ -157,6 +171,8 @@ type DispenseTaskDetail = {
       inquiry_to_physician: string | null;
       inquiry_content: string;
       result: string | null;
+      proposal_origin: 'post_inquiry' | 'pre_issuance' | null;
+      residual_adjustment: boolean | null;
       change_detail: string | null;
       line: {
         id: string;
@@ -224,7 +240,9 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [usePrefill, setUsePrefill] = useState(true);
   const [checkedLines, setCheckedLines] = useState<Set<string>>(new Set());
-  const [editedLines, setEditedLines] = useState<Map<string, Partial<DispensePrefillLine>>>(new Map());
+  const [editedLines, setEditedLines] = useState<Map<string, Partial<DispensePrefillLine>>>(
+    new Map(),
+  );
   const [unitDoseLines, setUnitDoseLines] = useState<Map<string, boolean>>(new Map());
   const [crushedLines, setCrushedLines] = useState<Map<string, boolean>>(new Map());
   const [inquiryDialog, setInquiryDialog] = useState<InquiryDialogState>({
@@ -257,8 +275,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
   const openInquiries = task?.cycle.inquiries ?? [];
   const cycleLevelInquiries = openInquiries.filter((item) => item.line_id == null);
   const blockedInquiryByLineId = toLineIdMap(
-    openInquiries
-      .filter((item): item is typeof item & { line_id: string } => item.line_id != null)
+    openInquiries.filter((item): item is typeof item & { line_id: string } => item.line_id != null),
   );
 
   const form = useForm<FormInput, unknown, FormOutput>({
@@ -269,9 +286,12 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
           lines: intake.lines.map((line) => ({
             ...(existingResultByLineId.get(line.id)
               ? {
-                  actual_drug_name: existingResultByLineId.get(line.id)?.actual_drug_name ?? line.drug_name,
-                  actual_drug_code: existingResultByLineId.get(line.id)?.actual_drug_code ?? line.drug_code ?? '',
-                  actual_quantity: existingResultByLineId.get(line.id)?.actual_quantity ?? line.quantity ?? 0,
+                  actual_drug_name:
+                    existingResultByLineId.get(line.id)?.actual_drug_name ?? line.drug_name,
+                  actual_drug_code:
+                    existingResultByLineId.get(line.id)?.actual_drug_code ?? line.drug_code ?? '',
+                  actual_quantity:
+                    existingResultByLineId.get(line.id)?.actual_quantity ?? line.quantity ?? 0,
                   actual_unit: existingResultByLineId.get(line.id)?.actual_unit ?? line.unit ?? '',
                   discrepancy_reason: existingResultByLineId.get(line.id)?.discrepancy_reason ?? '',
                   carry_type: existingResultByLineId.get(line.id)?.carry_type ?? 'carry',
@@ -280,12 +300,15 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
               : {
                   actual_drug_name:
                     stockGuidanceByLineId.get(line.id)?.stock_status === 'preferred_generic'
-                      ? (stockGuidanceByLineId.get(line.id)?.recommended_drug_name ?? line.drug_name)
+                      ? (stockGuidanceByLineId.get(line.id)?.recommended_drug_name ??
+                        line.drug_name)
                       : line.drug_name,
                   actual_drug_code:
                     stockGuidanceByLineId.get(line.id)?.stock_status === 'preferred_generic'
-                      ? (stockGuidanceByLineId.get(line.id)?.recommended_drug_code ?? line.drug_code ?? '')
-                      : line.drug_code ?? '',
+                      ? (stockGuidanceByLineId.get(line.id)?.recommended_drug_code ??
+                        line.drug_code ??
+                        '')
+                      : (line.drug_code ?? ''),
                   actual_quantity: line.quantity ?? 0,
                   actual_unit: line.unit ?? '',
                   discrepancy_reason:
@@ -352,9 +375,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(
-          (err as { message?: string }).message ?? '調剤実績の登録に失敗しました'
-        );
+        throw new Error((err as { message?: string }).message ?? '調剤実績の登録に失敗しました');
       }
       return res.json() as Promise<{ data?: { partial?: boolean } }>;
     },
@@ -376,7 +397,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
     mutationFn: async (lines: DispensePrefillLine[]) => {
       const groups = task?.prefill?.packagingGroups ?? [];
       const groupByLineId = new Map<string, PackagingGroupAssignment>(
-        groups.map((g) => [g.lineId, g])
+        groups.map((g) => [g.lineId, g]),
       );
 
       const payload = {
@@ -464,26 +485,25 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
 
   if (isBootstrappingOrg || isLoading) return <Loading />;
   if (!task || !intake) {
-    return (
-      <p className="text-sm text-muted-foreground">調剤タスクが見つかりません</p>
-    );
+    return <p className="text-sm text-muted-foreground">調剤タスクが見つかりません</p>;
   }
 
   const patient = task.cycle.case_.patient;
   const hasLineLevelBlock = blockedInquiryByLineId.size > 0;
-  const availableLineCount = intake.lines.filter((line) => !blockedInquiryByLineId.has(line.id)).length;
+  const availableLineCount = intake.lines.filter(
+    (line) => !blockedInquiryByLineId.has(line.id),
+  ).length;
   const submitBlocked = cycleLevelInquiries.length > 0 || availableLineCount === 0;
   const originalCollectionCheck = task.original_collection_check;
 
   // Prefill mode
-  const isPrefillMode = usePrefill && task.prefill?.isPrefillAvailable === true && task.results.length === 0;
+  const isPrefillMode =
+    usePrefill && task.prefill?.isPrefillAvailable === true && task.results.length === 0;
   const prefillLines: DispensePrefillLine[] = task.prefill?.lines ?? [];
   const prefillDateWarnings: DateContinuityWarning[] = task.prefill?.dateWarnings ?? [];
   const allChecked =
     prefillLines.length > 0 &&
-    prefillLines.every(
-      (line) => line.changeMarker === 'removed' || checkedLines.has(line.lineId)
-    );
+    prefillLines.every((line) => line.changeMarker === 'removed' || checkedLines.has(line.lineId));
 
   const togglePrefillLine = (lineId: string) => {
     setCheckedLines((prev) => {
@@ -511,7 +531,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
       drug_name: string;
       yj_code: string;
       source: 'exact' | 'preferred_generic' | 'alternative';
-    }
+    },
   ) => {
     form.setValue(`lines.${index}.actual_drug_name`, candidate.drug_name, {
       shouldDirty: true,
@@ -531,7 +551,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
       {
         shouldDirty: true,
         shouldValidate: true,
-      }
+      },
     );
   };
 
@@ -544,12 +564,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
           <div className="flex-1">
             <PreviousStageSummary cycleId={task.cycle.id} />
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setHistoryOpen(true)}
-          >
+          <Button type="button" variant="outline" size="sm" onClick={() => setHistoryOpen(true)}>
             <History className="mr-1.5 size-3.5" aria-hidden="true" />
             履歴
           </Button>
@@ -586,7 +601,11 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
         </Card>
 
         {originalCollectionCheck.required && (
-          <Card className={originalCollectionCheck.collected ? 'border-emerald-200' : 'border-amber-300'}>
+          <Card
+            className={
+              originalCollectionCheck.collected ? 'border-emerald-200' : 'border-amber-300'
+            }
+          >
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
                 {originalCollectionCheck.collected ? (
@@ -681,7 +700,9 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                       />
                     )}
                     <div className="flex-1">
-                      <CardTitle className={`text-sm ${isRemoved ? 'text-muted-foreground line-through' : ''}`}>
+                      <CardTitle
+                        className={`text-sm ${isRemoved ? 'text-muted-foreground line-through' : ''}`}
+                      >
                         {line.lineNumber}. {line.drugName}
                         {line.changeMarker && (
                           <Badge
@@ -711,11 +732,15 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                           前回: {line.changeDetail.previous}
                         </p>
                       )}
-                      {line.genericSuggestion?.available && line.genericSuggestion.genericDrugName && (
-                        <Badge variant="outline" className="mt-1 text-[10px] border-emerald-400 text-emerald-700">
-                          後発品: {line.genericSuggestion.genericDrugName}
-                        </Badge>
-                      )}
+                      {line.genericSuggestion?.available &&
+                        line.genericSuggestion.genericDrugName && (
+                          <Badge
+                            variant="outline"
+                            className="mt-1 text-[10px] border-emerald-400 text-emerald-700"
+                          >
+                            後発品: {line.genericSuggestion.genericDrugName}
+                          </Badge>
+                        )}
                     </div>
                     {!isRemoved && (
                       <label
@@ -735,7 +760,9 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                         <Label className="text-xs">実薬剤名</Label>
                         <Input
                           value={edited.actualDrugName ?? line.actualDrugName}
-                          onChange={(e) => updateEditedLine(line.lineId, { actualDrugName: e.target.value })}
+                          onChange={(e) =>
+                            updateEditedLine(line.lineId, { actualDrugName: e.target.value })
+                          }
                           className="h-8 text-sm"
                         />
                       </div>
@@ -746,12 +773,18 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                             type="number"
                             step="0.1"
                             value={edited.actualQuantity ?? line.actualQuantity ?? ''}
-                            onChange={(e) => updateEditedLine(line.lineId, { actualQuantity: parseFloat(e.target.value) })}
+                            onChange={(e) =>
+                              updateEditedLine(line.lineId, {
+                                actualQuantity: parseFloat(e.target.value),
+                              })
+                            }
                             className="h-8 w-24 text-sm"
                           />
                           <Input
                             value={edited.actualUnit ?? line.actualUnit ?? ''}
-                            onChange={(e) => updateEditedLine(line.lineId, { actualUnit: e.target.value })}
+                            onChange={(e) =>
+                              updateEditedLine(line.lineId, { actualUnit: e.target.value })
+                            }
                             className="h-8 w-20 text-sm"
                             placeholder="単位"
                           />
@@ -761,7 +794,11 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                         <Label className="text-xs">持参区分</Label>
                         <Select
                           value={edited.carryType ?? line.carryType}
-                          onValueChange={(v) => updateEditedLine(line.lineId, { carryType: v as DispensePrefillLine['carryType'] })}
+                          onValueChange={(v) =>
+                            updateEditedLine(line.lineId, {
+                              carryType: v as DispensePrefillLine['carryType'],
+                            })
+                          }
                         >
                           <SelectTrigger className="h-8 text-sm">
                             <SelectValue />
@@ -790,7 +827,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
 
           // Collect unique groupIds (excluding null = ungrouped)
           const groupIds = Array.from(
-            new Set(groups.map((g) => g.groupId).filter((id): id is string => id !== null))
+            new Set(groups.map((g) => g.groupId).filter((id): id is string => id !== null)),
           );
 
           // Lines in each named group
@@ -841,7 +878,9 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                         onCheckedChange={(v) => setUnitDose(g.lineId, v)}
                         aria-label="一包化"
                       />
-                      <Label htmlFor={`unit-dose-${g.lineId}`} className="text-xs">一包化</Label>
+                      <Label htmlFor={`unit-dose-${g.lineId}`} className="text-xs">
+                        一包化
+                      </Label>
                     </div>
                   )}
                   <div className="flex items-center gap-2">
@@ -851,7 +890,9 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                       onCheckedChange={(v) => setCrushed(g.lineId, v)}
                       aria-label="粉砕"
                     />
-                    <Label htmlFor={`crush-${g.lineId}`} className="text-xs">粉砕</Label>
+                    <Label htmlFor={`crush-${g.lineId}`} className="text-xs">
+                      粉砕
+                    </Label>
                   </div>
                 </div>
                 {showCrushWarning && (
@@ -902,7 +943,9 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
           <Button
             type="button"
             variant="outline"
-            onClick={() => { setUsePrefill(false); }}
+            onClick={() => {
+              setUsePrefill(false);
+            }}
             disabled={prefillMutation.isPending}
           >
             手動入力に切替
@@ -934,17 +977,18 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
         </div>
         <PresenceAvatars entityType="dispense_task" entityId={taskId} />
         {yjsConnected && (
-          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground" title="共同編集接続中">
-            <span className="inline-block size-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+          <span
+            className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"
+            title="共同編集接続中"
+          >
+            <span
+              className="inline-block size-1.5 rounded-full bg-emerald-500"
+              aria-hidden="true"
+            />
             同期中
           </span>
         )}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => setHistoryOpen(true)}
-        >
+        <Button type="button" variant="outline" size="sm" onClick={() => setHistoryOpen(true)}>
           <History className="mr-1.5 size-3.5" aria-hidden="true" />
           履歴
         </Button>
@@ -966,9 +1010,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
       <Card>
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center gap-3">
-            <CardTitle className="text-base">
-              {patient.name} 様
-            </CardTitle>
+            <CardTitle className="text-base">{patient.name} 様</CardTitle>
             <Badge variant={priorityVariant[task.priority] ?? 'outline'}>
               {priorityLabel[task.priority] ?? task.priority}
             </Badge>
@@ -987,6 +1029,11 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                 message="疑義照会中のため、この処方は調剤開始できません。"
                 reason={cycleLevelInquiries[0]?.reason}
                 physicianNote={cycleLevelInquiries[0]?.inquiry_to_physician}
+                detail={
+                  cycleLevelInquiries[0]?.change_detail ?? cycleLevelInquiries[0]?.inquiry_content
+                }
+                proposalOrigin={cycleLevelInquiries[0]?.proposal_origin}
+                residualAdjustment={cycleLevelInquiries[0]?.residual_adjustment}
               />
             ) : (
               <InquiryBlockingAlert
@@ -1003,10 +1050,10 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
         {fields.map((field, index) => {
           const originalLine = intake.lines[index];
           const stockGuidance = originalLine
-            ? stockGuidanceByLineId.get(originalLine.id) ?? null
+            ? (stockGuidanceByLineId.get(originalLine.id) ?? null)
             : null;
           const blockedInquiry = originalLine
-            ? blockedInquiryByLineId.get(originalLine.id) ?? null
+            ? (blockedInquiryByLineId.get(originalLine.id) ?? null)
             : null;
           const errors = form.formState.errors.lines?.[index];
           return (
@@ -1022,7 +1069,8 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                 </CardTitle>
                 <p className="text-xs text-muted-foreground">
                   処方: {originalLine?.dose} / {originalLine?.frequency} / {originalLine?.days}日分
-                  {originalLine?.quantity != null && ` (${originalLine.quantity}${originalLine.unit ?? ''})`}
+                  {originalLine?.quantity != null &&
+                    ` (${originalLine.quantity}${originalLine.unit ?? ''})`}
                 </p>
                 {originalLine?.packaging_instructions && (
                   <p className="text-xs text-orange-600">
@@ -1073,6 +1121,8 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                       reason={blockedInquiry.reason}
                       physicianNote={blockedInquiry.inquiry_to_physician}
                       detail={blockedInquiry.change_detail ?? blockedInquiry.inquiry_content}
+                      proposalOrigin={blockedInquiry.proposal_origin}
+                      residualAdjustment={blockedInquiry.residual_adjustment}
                     />
                   </div>
                 ) : (
@@ -1089,7 +1139,11 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                           drugName: originalLine?.drug_name ?? '',
                           cycleId: task.cycle.id,
                         });
-                        setInquiryForm({ reason: '', inquiry_to_physician: '', inquiry_content: '' });
+                        setInquiryForm({
+                          reason: '',
+                          inquiry_to_physician: '',
+                          inquiry_content: '',
+                        });
                       }}
                     >
                       <MessageSquarePlus className="size-3.5" aria-hidden="true" />
@@ -1163,10 +1217,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                   </div>
 
                   <div className="space-y-1">
-                    <Label
-                      htmlFor={`lines.${index}.carry_type`}
-                      className="text-xs"
-                    >
+                    <Label htmlFor={`lines.${index}.carry_type`} className="text-xs">
                       持参区分 <span className="text-destructive">*</span>
                     </Label>
                     <Controller
@@ -1301,9 +1352,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
               <Textarea
                 id="inq-content"
                 value={inquiryForm.inquiry_content}
-                onChange={(e) =>
-                  setInquiryForm((p) => ({ ...p, inquiry_content: e.target.value }))
-                }
+                onChange={(e) => setInquiryForm((p) => ({ ...p, inquiry_content: e.target.value }))}
                 placeholder="照会する具体的な内容を記入してください"
                 className="min-h-[80px] text-sm"
               />

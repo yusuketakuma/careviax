@@ -15,6 +15,7 @@ import type { ScheduleStatus } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { findActiveVisitConsent, findCurrentManagementPlan } from './management-plans';
+import { getBillingCadencePolicy } from './billing-runtime-context';
 
 // ── Types ──
 
@@ -62,10 +63,6 @@ export type BillingCadencePreview = {
 
 // ── Constants ──
 
-const DEFAULT_MONTHLY_CAP = 4;
-const SPECIAL_MONTHLY_CAP = 8;
-const SPECIAL_WEEKLY_CAP = 2;
-const DEFAULT_WEEKLY_PHARMACIST_CAP = 40;
 const PHARMACIST_CAP_THRESHOLD = 0.95;
 
 const ACTIVE_SCHEDULE_STATUSES: ScheduleStatus[] = [
@@ -94,8 +91,11 @@ function formatDateKey(value: Date) {
 export async function getBillingCadencePreview(
   args: ValidateBillingRequirementsArgs,
 ): Promise<BillingCadencePreview> {
-  const monthlyCap = args.specialCapEligible ? SPECIAL_MONTHLY_CAP : DEFAULT_MONTHLY_CAP;
-  const weeklyCap = args.specialCapEligible ? SPECIAL_WEEKLY_CAP : null;
+  const cadencePolicy = getBillingCadencePolicy();
+  const monthlyCap = args.specialCapEligible
+    ? cadencePolicy.monthlyCapSpecial
+    : cadencePolicy.monthlyCapDefault;
+  const weeklyCap = args.specialCapEligible ? cadencePolicy.specialWeeklyCap : null;
   const monthStart = startOfMonth(args.proposedDate);
   const monthEnd = endOfMonth(args.proposedDate);
   const searchEnd = new Date(args.proposedDate);
@@ -118,7 +118,9 @@ export async function getBillingCadencePreview(
   });
 
   const scheduledDatesCurrentMonth = schedules
-    .filter((schedule) => schedule.scheduled_date >= monthStart && schedule.scheduled_date <= monthEnd)
+    .filter(
+      (schedule) => schedule.scheduled_date >= monthStart && schedule.scheduled_date <= monthEnd,
+    )
     .map((schedule) => formatDateKey(schedule.scheduled_date));
 
   const currentMonthCount = scheduledDatesCurrentMonth.length;
@@ -126,8 +128,7 @@ export async function getBillingCadencePreview(
   const currentWeekEnd = endOfWeekMonday(args.proposedDate);
   const currentWeekCount = schedules.filter(
     (schedule) =>
-      schedule.scheduled_date >= currentWeekStart &&
-      schedule.scheduled_date <= currentWeekEnd,
+      schedule.scheduled_date >= currentWeekStart && schedule.scheduled_date <= currentWeekEnd,
   ).length;
 
   let nextBillableDate: Date | null = null;
@@ -186,6 +187,7 @@ export async function getBillingCadencePreview(
 export async function validateBillingRequirements(
   args: ValidateBillingRequirementsArgs,
 ): Promise<BillingRequirementAlert[]> {
+  const cadencePolicy = getBillingCadencePolicy();
   const asOf = new Date().toISOString();
   const alerts: BillingRequirementAlert[] = [];
   const monthStart = startOfMonth(args.proposedDate);
@@ -262,12 +264,12 @@ export async function validateBillingRequirements(
   });
 
   const pharmacistWeeklyCap =
-    pharmacist?.max_weekly_visits ?? DEFAULT_WEEKLY_PHARMACIST_CAP;
+    pharmacist?.max_weekly_visits ?? cadencePolicy.weeklyPharmacistCapDefault;
 
   // ── Alert #1: Monthly cap exceeded ──
   const monthlyCap = args.specialCapEligible
-    ? SPECIAL_MONTHLY_CAP
-    : DEFAULT_MONTHLY_CAP;
+    ? cadencePolicy.monthlyCapSpecial
+    : cadencePolicy.monthlyCapDefault;
   const projectedMonthly = monthlyScheduleCount + 1; // +1 for new proposal
 
   if (projectedMonthly > monthlyCap) {
@@ -381,15 +383,15 @@ export async function validateBillingRequirements(
   if (args.specialCapEligible) {
     const projectedWeeklyPatient = weeklyPatientCount + 1;
 
-    if (projectedWeeklyPatient > SPECIAL_WEEKLY_CAP) {
+    if (projectedWeeklyPatient > cadencePolicy.specialWeeklyCap) {
       alerts.push({
         type: 'special_patient_weekly_cap',
         severity: 'warning',
-        message: `特別対象患者です。今週既に${weeklyPatientCount}回の訪問が予定されています（週上限${SPECIAL_WEEKLY_CAP}回）`,
+        message: `特別対象患者です。今週既に${weeklyPatientCount}回の訪問が予定されています（週上限${cadencePolicy.specialWeeklyCap}回）`,
         details: {
           current_count: weeklyPatientCount,
           projected_count: projectedWeeklyPatient,
-          cap: SPECIAL_WEEKLY_CAP,
+          cap: cadencePolicy.specialWeeklyCap,
         },
         as_of: asOf,
       });

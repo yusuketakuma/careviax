@@ -94,6 +94,35 @@ export type BillingCadencePreview = {
   suggested_dates: string[];
   reason: string;
 };
+export type SiteConfigStatus =
+  | 'not_required'
+  | 'site_unassigned'
+  | 'config_missing'
+  | 'revision_mismatch'
+  | 'resolved';
+
+export type HomeComprehensivePreview = {
+  level: string | null;
+  ssotKey: string | null;
+  code: string | null;
+  name: string | null;
+  points: number | null;
+  buildingTier: 'single' | 'other' | null;
+};
+
+export type VisitScheduleBillingPreview = {
+  alerts: BillingRequirementAlert[];
+  cadence: BillingCadencePreview;
+  recommended_visit_type: VisitType;
+  recommended_priority: VisitPriority;
+  suggested_schedule_slot_count: number;
+  effective_revision_code: string;
+  effective_revision_label: string;
+  site_config_status: SiteConfigStatus;
+  site_config_revision_code: string | null;
+  warnings: string[];
+  home_comprehensive_preview: HomeComprehensivePreview | null;
+};
 
 export type Proposal = {
   id: string;
@@ -530,7 +559,7 @@ export function readImpactCount(impactSummary: Record<string, unknown> | null | 
 }
 
 export function readImpactedPatientNames(
-  impactSummary: Record<string, unknown> | null | undefined
+  impactSummary: Record<string, unknown> | null | undefined,
 ) {
   if (!impactSummary) return [];
   const value = impactSummary.impacted_patient_names;

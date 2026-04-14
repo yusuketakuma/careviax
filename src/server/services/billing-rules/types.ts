@@ -19,8 +19,8 @@ export type BillingRuleConditions = {
   special_weekly_cap?: number;
   /** 薬剤師1人あたりの週上限 (通常40回) */
   weekly_pharmacist_cap?: number;
-  /** 月1回のみ算定可 */
-  frequency_limit?: 'monthly_once';
+  /** 算定頻度制限 */
+  frequency_limit?: 'monthly_once' | 'quarterly_once' | 'biannual_once';
   /** 入院1回につき1回のみ */
   once_per_admission?: boolean;
   /** 患者につき初回のみ (在宅移行初期管理料等) */
@@ -105,6 +105,16 @@ export type BillingRuleConditions = {
   // ── 地域加算 ──
   /** 地域加算種別 */
   region_add_on?: 'special_15' | 'small_office_10' | 'resident_5';
+
+  // ── 2026年新設項目の要件 ──
+  /** 複数名訪問が必要（暴力行為等のある患者、医師が必要と認めた場合） */
+  requires_multi_staff_visit?: boolean;
+  /** 医師との同時訪問（ポリファーマシー・残薬対策） */
+  requires_physician_simultaneous?: boolean;
+  /** 薬学的有害事象等防止の対象（処方提案反映/疑義照会） */
+  adverse_event_prevention_type?: 'proposal_reflected' | 'consultation_change';
+  /** 残薬調整の対象（7日分以上の投薬変更） */
+  requires_residual_adjustment_home?: boolean;
 };
 
 // ─────────────────────────────────────────────────────────────────
@@ -213,6 +223,10 @@ export type BillingEvidenceContext = {
   enteralRequired?: boolean;
   /** 介護認定区分 — intake.care_level から自動判定 */
   careLevelCategory?: 'care_required' | 'support_required' | null;
+  /** 複数名薬剤管理指導訪問料の対象 */
+  multiStaffVisitEligible?: boolean;
+  /** 訪問薬剤管理医師同時指導料の対象 */
+  physicianSimultaneousEligible?: boolean;
 };
 
 export type BillingCandidateSpec = {
@@ -227,10 +241,10 @@ export type BillingCandidateSpec = {
 };
 
 export type BillingRevision = {
-  code: string;           // e.g., '2024'
-  label: string;          // e.g., '令和6年度(2024)改定'
-  effectiveFrom: Date;    // e.g., 2024-06-01
+  code: string; // e.g., '2024'
+  label: string; // e.g., '令和6年度(2024)改定'
+  effectiveFrom: Date; // e.g., 2024-06-01
   effectiveTo: Date | null; // null = current
-  source: string;         // URL to official gazette
+  source: string; // URL to official gazette
   status?: 'draft' | 'confirmed';
 };

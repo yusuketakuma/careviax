@@ -27,7 +27,11 @@ import {
   type CalendarVisitSchedule,
   type ScheduleStatus,
 } from './calendar-view.helpers';
-import { VISIT_TYPE_LABELS, type BillingCadencePreview, type BillingRequirementAlert } from './day-view.shared';
+import {
+  VISIT_TYPE_LABELS,
+  type BillingCadencePreview,
+  type BillingRequirementAlert,
+} from './day-view.shared';
 
 // ---- Constants ------------------------------------------------------------
 
@@ -232,8 +236,7 @@ export function CalendarView() {
     enabled: Boolean(orgId) && schedulePreviewRequests.length > 0,
   });
 
-  const schedulesForDay = (day: Date) =>
-    schedulesByDate.get(format(day, 'yyyy-MM-dd')) ?? [];
+  const schedulesForDay = (day: Date) => schedulesByDate.get(format(day, 'yyyy-MM-dd')) ?? [];
 
   const today = useMemo(() => new Date(), []);
   const selectedSchedules = selectedDate ? schedulesForDay(selectedDate) : [];
@@ -258,20 +261,29 @@ export function CalendarView() {
         </h2>
         <div className="flex gap-1">
           <button
-            onClick={() => { setCurrentMonth((m) => subMonths(m, 1)); setSelectedDate(null); }}
+            onClick={() => {
+              setCurrentMonth((m) => subMonths(m, 1));
+              setSelectedDate(null);
+            }}
             className="rounded-md p-2 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="前月"
           >
             <ChevronLeft className="size-4" aria-hidden="true" />
           </button>
           <button
-            onClick={() => { setCurrentMonth(new Date()); setSelectedDate(null); }}
+            onClick={() => {
+              setCurrentMonth(new Date());
+              setSelectedDate(null);
+            }}
             className="rounded-md px-3 py-1.5 text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             今月
           </button>
           <button
-            onClick={() => { setCurrentMonth((m) => addMonths(m, 1)); setSelectedDate(null); }}
+            onClick={() => {
+              setCurrentMonth((m) => addMonths(m, 1));
+              setSelectedDate(null);
+            }}
             className="rounded-md p-2 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="翌月"
           >
@@ -285,10 +297,7 @@ export function CalendarView() {
         {/* Weekday header */}
         <div className="grid grid-cols-7 border-b bg-muted/50">
           {WEEKDAY_LABELS.map((label) => (
-            <div
-              key={label}
-              className="py-2 text-center text-xs font-medium text-muted-foreground"
-            >
+            <div key={label} className="py-2 text-center text-xs font-medium text-muted-foreground">
               {label}
             </div>
           ))}
@@ -310,7 +319,14 @@ export function CalendarView() {
               const overflow = daySchedules.length - visible.length;
               const dayPreviewEntries = daySchedules
                 .map((schedule) => schedulePreviewMap?.get(schedule.id) ?? null)
-                .filter((value): value is { alerts: BillingRequirementAlert[]; cadence: BillingCadencePreview } => value != null);
+                .filter(
+                  (
+                    value,
+                  ): value is {
+                    alerts: BillingRequirementAlert[];
+                    cadence: BillingCadencePreview;
+                  } => value != null,
+                );
               const hasCadenceWarning = dayPreviewEntries.some((entry) =>
                 entry.alerts.some((alert) => alert.severity !== 'info'),
               );
@@ -336,8 +352,8 @@ export function CalendarView() {
                       isToday
                         ? 'bg-primary text-primary-foreground'
                         : isCurrentMonth
-                        ? 'text-foreground'
-                        : 'text-muted-foreground',
+                          ? 'text-foreground'
+                          : 'text-muted-foreground',
                     ].join(' ')}
                   >
                     {format(day, 'd')}
@@ -361,9 +377,7 @@ export function CalendarView() {
                       <ScheduleBadge key={s.id} schedule={s} />
                     ))}
                     {overflow > 0 && (
-                      <span className="text-[10px] text-muted-foreground">
-                        +{overflow}件
-                      </span>
+                      <span className="text-[10px] text-muted-foreground">+{overflow}件</span>
                     )}
                   </div>
                 </button>

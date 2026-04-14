@@ -10,10 +10,7 @@ import {
   resolvePrescriberInstitutionFields,
 } from '@/lib/prescriptions/prescriber-institutions';
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '処方受付の閲覧権限がありません',
@@ -59,6 +56,8 @@ export async function GET(
               inquiry_to_physician: true,
               inquiry_content: true,
               result: true,
+              proposal_origin: true,
+              residual_adjustment: true,
               change_detail: true,
               inquired_at: true,
               resolved_at: true,
@@ -74,10 +73,7 @@ export async function GET(
   return success(intake);
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '処方受付の更新権限がありません',
@@ -111,21 +107,20 @@ export async function PATCH(
   } = parsed.data;
 
   const effectiveSplitTotal = split_dispense_total ?? existing.split_dispense_total ?? undefined;
-  const effectiveSplitCurrent = split_dispense_current ?? existing.split_dispense_current ?? undefined;
+  const effectiveSplitCurrent =
+    split_dispense_current ?? existing.split_dispense_current ?? undefined;
   const effectiveSplitNextDate =
     split_next_dispense_date !== undefined
-      ? split_next_dispense_date ?? undefined
-      : existing.split_next_dispense_date?.toISOString().slice(0, 10) ?? undefined;
+      ? (split_next_dispense_date ?? undefined)
+      : (existing.split_next_dispense_date?.toISOString().slice(0, 10) ?? undefined);
   const effectivePrescriptionCategory =
     rest.prescription_category ?? existing.prescription_category ?? 'regular';
   const effectiveEmergencyCategory =
     rest.emergency_category !== undefined
       ? rest.emergency_category
-      : existing.emergency_category ?? undefined;
+      : (existing.emergency_category ?? undefined);
   const hasAnySplitField =
-    effectiveSplitTotal != null ||
-    effectiveSplitCurrent != null ||
-    effectiveSplitNextDate != null;
+    effectiveSplitTotal != null || effectiveSplitCurrent != null || effectiveSplitNextDate != null;
 
   if (hasAnySplitField) {
     if (effectiveSplitTotal == null || effectiveSplitCurrent == null) {
@@ -160,53 +155,53 @@ export async function PATCH(
           : null;
 
       const updated = await tx.prescriptionIntake.update({
-      where: { id },
-      data: {
-        ...rest,
-        ...(effectivePrescriptionCategory === 'regular' ? { emergency_category: null } : {}),
-        ...(resolvedInstitution
-          ? {
-              prescriber_institution_id: resolvedInstitution.prescriber_institution_id,
-              prescriber_institution: resolvedInstitution.prescriber_institution,
-            }
-          : {}),
-        ...(refill_next_dispense_date !== undefined
-          ? {
-              refill_next_dispense_date: refill_next_dispense_date
-                ? new Date(refill_next_dispense_date)
-                : null,
-            }
-          : {}),
-        ...(split_dispense_total != null ? { split_dispense_total } : {}),
-        ...(split_dispense_current != null ? { split_dispense_current } : {}),
-        ...(split_next_dispense_date !== undefined
-          ? {
-              split_next_dispense_date: split_next_dispense_date
-                ? new Date(split_next_dispense_date)
-                : null,
-            }
-          : {}),
-        ...(original_collected_at
-          ? {
-              original_collected_at: new Date(original_collected_at),
-              original_collected_by: ctx.userId,
-            }
-          : {}),
-      },
-      include: {
-        lines: { orderBy: { line_number: 'asc' } },
-      },
-    });
-
-    if (original_collected_at && updated.source_type === 'fax') {
-      await resolveOperationalTasks(tx, {
-        orgId: ctx.orgId,
-        taskType: 'fax_original_followup',
-        relatedEntityType: 'prescription_intake',
-        relatedEntityId: id,
-        status: 'completed',
+        where: { id },
+        data: {
+          ...rest,
+          ...(effectivePrescriptionCategory === 'regular' ? { emergency_category: null } : {}),
+          ...(resolvedInstitution
+            ? {
+                prescriber_institution_id: resolvedInstitution.prescriber_institution_id,
+                prescriber_institution: resolvedInstitution.prescriber_institution,
+              }
+            : {}),
+          ...(refill_next_dispense_date !== undefined
+            ? {
+                refill_next_dispense_date: refill_next_dispense_date
+                  ? new Date(refill_next_dispense_date)
+                  : null,
+              }
+            : {}),
+          ...(split_dispense_total != null ? { split_dispense_total } : {}),
+          ...(split_dispense_current != null ? { split_dispense_current } : {}),
+          ...(split_next_dispense_date !== undefined
+            ? {
+                split_next_dispense_date: split_next_dispense_date
+                  ? new Date(split_next_dispense_date)
+                  : null,
+              }
+            : {}),
+          ...(original_collected_at
+            ? {
+                original_collected_at: new Date(original_collected_at),
+                original_collected_by: ctx.userId,
+              }
+            : {}),
+        },
+        include: {
+          lines: { orderBy: { line_number: 'asc' } },
+        },
       });
-    }
+
+      if (original_collected_at && updated.source_type === 'fax') {
+        await resolveOperationalTasks(tx, {
+          orgId: ctx.orgId,
+          taskType: 'fax_original_followup',
+          relatedEntityType: 'prescription_intake',
+          relatedEntityId: id,
+          status: 'completed',
+        });
+      }
 
       return updated;
     });

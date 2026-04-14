@@ -147,6 +147,8 @@ export type WorkflowCoreData = {
     inquiry_to_physician: string | null;
     inquiry_content: string | null;
     result: string | null;
+    proposal_origin: string | null;
+    residual_adjustment: boolean | null;
     change_detail: string | null;
     inquired_at: Date;
     line: {
@@ -227,7 +229,7 @@ export async function fetchWorkflowCoreData(
   today: Date,
   upcomingWindow: Date,
   sevenDaysFromNow: Date,
-  recentOutcomeWindow: Date
+  recentOutcomeWindow: Date,
 ): Promise<WorkflowCoreData> {
   const [
     cycleCounts,
@@ -595,6 +597,8 @@ export async function fetchWorkflowCoreData(
         inquiry_to_physician: true,
         inquiry_content: true,
         result: true,
+        proposal_origin: true,
+        residual_adjustment: true,
         change_detail: true,
         inquired_at: true,
         line: {
@@ -786,20 +790,21 @@ export async function fetchWorkflowCoreData(
               action_items: true,
             },
           })
-          .then((notes) =>
-            notes.filter((note) => {
-              const items = note.action_items;
-              return (
-                Array.isArray(items) &&
-                items.some(
-                  (item) =>
-                    typeof item === 'object' &&
-                    item !== null &&
-                    !('converted_task_id' in item) &&
-                    !('convertedTaskId' in item)
-                )
-              );
-            }).length
+          .then(
+            (notes) =>
+              notes.filter((note) => {
+                const items = note.action_items;
+                return (
+                  Array.isArray(items) &&
+                  items.some(
+                    (item) =>
+                      typeof item === 'object' &&
+                      item !== null &&
+                      !('converted_task_id' in item) &&
+                      !('convertedTaskId' in item),
+                  )
+                );
+              }).length,
           ),
     getHomeCareFeatureSummary(prisma, {
       orgId,
@@ -812,6 +817,7 @@ export async function fetchWorkflowCoreData(
       caseId: schedule.case_id,
       proposedDate: schedule.scheduled_date.toISOString().slice(0, 10),
       pharmacistId: schedule.pharmacist_id,
+      siteId: schedule.site?.id ?? null,
       visitType: schedule.visit_type,
     })),
     orgId,
@@ -835,9 +841,12 @@ export async function fetchWorkflowCoreData(
           ? {
               next_billable_date: preview.cadence.next_billable_date,
               remaining_month_count: preview.cadence.remaining_month_count,
-              warning_messages: preview.alerts
-                .filter((alert) => alert.severity !== 'info')
-                .map((alert) => alert.message),
+              warning_messages: [
+                ...preview.alerts
+                  .filter((alert) => alert.severity !== 'info')
+                  .map((alert) => alert.message),
+                ...(preview.warnings ?? []),
+              ],
             }
           : null,
       };
@@ -889,7 +898,7 @@ export async function fetchWorkflowDependentData(
   prisma: PrismaClient,
   orgId: string,
   today: Date,
-  coreData: WorkflowCoreData
+  coreData: WorkflowCoreData,
 ): Promise<WorkflowDependentData> {
   const {
     unresolvedInquiryRecords,
@@ -905,25 +914,25 @@ export async function fetchWorkflowDependentData(
   const linkedIssueIds = new Set(
     unresolvedInquiryRecords
       .map((item) => item.issue_id)
-      .filter((value): value is string => Boolean(value))
+      .filter((value): value is string => Boolean(value)),
   );
   void linkedIssueIds; // used downstream in sections
   const unresolvedIssueCaseIds = Array.from(
     new Set(
       openMedicationIssues
         .map((item) => item.case_id)
-        .filter((value): value is string => Boolean(value))
-    )
+        .filter((value): value is string => Boolean(value)),
+    ),
   );
   const unresolvedIssuePatientIds = Array.from(
-    new Set(openMedicationIssues.map((item) => item.patient_id))
+    new Set(openMedicationIssues.map((item) => item.patient_id)),
   );
 
   const upcomingPatientIds = Array.from(
-    new Set(upcomingSchedules.map((schedule) => schedule.case_.patient.id))
+    new Set(upcomingSchedules.map((schedule) => schedule.case_.patient.id)),
   );
   const upcomingCaseIds = Array.from(
-    new Set(upcomingSchedules.map((schedule) => schedule.case_id))
+    new Set(upcomingSchedules.map((schedule) => schedule.case_id)),
   );
 
   const [
@@ -1045,7 +1054,7 @@ export async function fetchWorkflowDependentData(
       ...triageSelfReports.map((report) => report.patient_id),
       ...unresolvedInquiryRecords.map((item) => item.cycle.patient_id),
       ...openMedicationIssues.map((item) => item.patient_id),
-    ])
+    ]),
   );
   const userIds = Array.from(
     new Set(
@@ -1053,11 +1062,9 @@ export async function fetchWorkflowDependentData(
         ...pendingTasks.map((task) => task.assigned_to),
         ...upcomingSchedules.map((schedule) => schedule.pharmacist_id),
         ...pendingProposals.map((proposal) => proposal.proposed_pharmacist_id),
-        ...candidateIntakes.map(
-          (intake) => intake.cycle?.case_.primary_pharmacist_id ?? null
-        ),
-      ].filter((value): value is string => Boolean(value))
-    )
+        ...candidateIntakes.map((intake) => intake.cycle?.case_.primary_pharmacist_id ?? null),
+      ].filter((value): value is string => Boolean(value)),
+    ),
   );
 
   const [patientsForReports, users] = await Promise.all([

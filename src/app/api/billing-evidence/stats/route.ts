@@ -39,10 +39,7 @@ export async function GET(req: NextRequest) {
     prisma.billingEvidence.count({
       where: {
         org_id: ctx.orgId,
-        OR: [
-          { consent_ref: null },
-          { management_plan_ref: null },
-        ],
+        OR: [{ consent_ref: null }, { management_plan_ref: null }],
       },
     }),
     prisma.billingEvidence.count({
@@ -90,6 +87,7 @@ export async function GET(req: NextRequest) {
       select: {
         claimable: true,
         exclusion_reason: true,
+        calculation_context: true,
       },
     }),
     prisma.task.count({
@@ -132,7 +130,7 @@ export async function GET(req: NextRequest) {
   ]);
 
   const patientIds = Array.from(
-    new Set(previsitSchedules.map((schedule) => schedule.case_.patient_id))
+    new Set(previsitSchedules.map((schedule) => schedule.case_.patient_id)),
   );
   const caseIds = Array.from(new Set(previsitSchedules.map((schedule) => schedule.case_id)));
   const [consents, plans] = await Promise.all([
@@ -170,12 +168,38 @@ export async function GET(req: NextRequest) {
   const plannedCaseIds = new Set(plans.map((item) => item.case_id));
   const previsitBlockers = previsitSchedules.filter(
     (schedule) =>
-      !consentedPatientIds.has(schedule.case_.patient_id) ||
-      !plannedCaseIds.has(schedule.case_id)
+      !consentedPatientIds.has(schedule.case_.patient_id) || !plannedCaseIds.has(schedule.case_id),
   ).length;
 
-  const currentMonthClaimableEvidence = currentMonthEvidence.filter((item) => item.claimable).length;
-  const currentMonthUnclaimableEvidence = currentMonthEvidence.filter((item) => !item.claimable).length;
+  const currentMonthClaimableEvidence = currentMonthEvidence.filter(
+    (item) => item.claimable,
+  ).length;
+  const currentMonthUnclaimableEvidence = currentMonthEvidence.filter(
+    (item) => !item.claimable,
+  ).length;
+  const currentMonthRevisionBreakdown = currentMonthEvidence.reduce<Record<string, number>>(
+    (acc, item) => {
+      const context = item.calculation_context as Record<string, unknown> | null;
+      const revisionCode =
+        typeof context?.effective_revision_code === 'string'
+          ? context.effective_revision_code
+          : 'unknown';
+      acc[revisionCode] = (acc[revisionCode] ?? 0) + 1;
+      return acc;
+    },
+    {},
+  );
+  const currentMonthSiteConfigIssues = currentMonthEvidence.reduce(
+    (acc, item) => {
+      const context = item.calculation_context as Record<string, unknown> | null;
+      const siteConfigStatus =
+        typeof context?.site_config_status === 'string' ? context.site_config_status : null;
+      if (siteConfigStatus === 'config_missing') acc.missing += 1;
+      if (siteConfigStatus === 'revision_mismatch') acc.revision_mismatch += 1;
+      return acc;
+    },
+    { missing: 0, revision_mismatch: 0 },
+  );
   const currentMonthCloseReady = await prisma.billingCandidate.count({
     where: {
       org_id: ctx.orgId,
@@ -203,6 +227,8 @@ export async function GET(req: NextRequest) {
       current_month_candidates: currentMonthCandidates,
       current_month_claimable_evidence: currentMonthClaimableEvidence,
       current_month_unclaimable_evidence: currentMonthUnclaimableEvidence,
+      current_month_revision_breakdown: currentMonthRevisionBreakdown,
+      current_month_site_config_issues: currentMonthSiteConfigIssues,
       current_month_close_ready: currentMonthCloseReady,
       current_month_close_blocked: currentMonthCloseBlocked,
       open_billing_review_tasks: reviewTasks,

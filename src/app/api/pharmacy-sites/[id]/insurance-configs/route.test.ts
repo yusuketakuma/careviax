@@ -6,6 +6,7 @@ const {
   pharmacySiteFindFirstMock,
   insuranceConfigFindManyMock,
   insuranceConfigFindFirstMock,
+  insuranceConfigUpdateManyMock,
   insuranceConfigCreateMock,
   auditLogCreateMock,
   withOrgContextMock,
@@ -14,6 +15,7 @@ const {
   pharmacySiteFindFirstMock: vi.fn(),
   insuranceConfigFindManyMock: vi.fn(),
   insuranceConfigFindFirstMock: vi.fn(),
+  insuranceConfigUpdateManyMock: vi.fn(),
   insuranceConfigCreateMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -64,10 +66,12 @@ describe('/api/pharmacy-sites/[id]/insurance-configs', () => {
       effective_to: null,
       config: {},
     });
+    insuranceConfigUpdateManyMock.mockResolvedValue({ count: 0 });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         pharmacySiteInsuranceConfig: {
+          updateMany: insuranceConfigUpdateManyMock,
           create: insuranceConfigCreateMock,
         },
         auditLog: {
@@ -96,18 +100,21 @@ describe('/api/pharmacy-sites/[id]/insurance-configs', () => {
   });
 
   it('creates an insurance config with wrapped data', async () => {
-    const response = (await POST({
-      json: async () => ({
-        insurance_type: 'care',
-        revision_code: '2024',
-        revision_label: '令和6年度',
-        effective_from: '2024-04-01',
-        effective_to: null,
-        config: {},
-      }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'site_1' }),
-    }))!;
+    const response = (await POST(
+      {
+        json: async () => ({
+          insurance_type: 'care',
+          revision_code: '2024',
+          revision_label: '令和6年度',
+          effective_from: '2024-04-01',
+          effective_to: null,
+          config: {},
+        }),
+      } as NextRequest,
+      {
+        params: Promise.resolve({ id: 'site_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({
@@ -120,17 +127,20 @@ describe('/api/pharmacy-sites/[id]/insurance-configs', () => {
   });
 
   it('returns 400 when the effective range is invalid', async () => {
-    const response = (await POST({
-      json: async () => ({
-        insurance_type: 'care',
-        revision_code: '2024',
-        effective_from: '2024-05-01',
-        effective_to: '2024-04-01',
-        config: {},
-      }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'site_1' }),
-    }))!;
+    const response = (await POST(
+      {
+        json: async () => ({
+          insurance_type: 'care',
+          revision_code: '2024',
+          effective_from: '2024-05-01',
+          effective_to: '2024-04-01',
+          config: {},
+        }),
+      } as NextRequest,
+      {
+        params: Promise.resolve({ id: 'site_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(400);
     expect(insuranceConfigCreateMock).not.toHaveBeenCalled();
@@ -145,19 +155,80 @@ describe('/api/pharmacy-sites/[id]/insurance-configs', () => {
       },
     ]);
 
-    const response = (await POST({
-      json: async () => ({
-        insurance_type: 'care',
-        revision_code: '2025',
-        effective_from: '2024-06-01',
-        effective_to: '2024-08-01',
-        config: {},
-      }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'site_1' }),
-    }))!;
+    const response = (await POST(
+      {
+        json: async () => ({
+          insurance_type: 'medical',
+          revision_code: '2026',
+          effective_from: '2024-06-01',
+          effective_to: '2024-08-01',
+          config: {},
+        }),
+      } as NextRequest,
+      {
+        params: Promise.resolve({ id: 'site_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(400);
     expect(insuranceConfigCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported care revisions', async () => {
+    const response = (await POST(
+      {
+        json: async () => ({
+          insurance_type: 'care',
+          revision_code: '2026',
+          effective_from: '2026-06-01',
+          effective_to: null,
+          config: {},
+        }),
+      } as NextRequest,
+      {
+        params: Promise.resolve({ id: 'site_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(insuranceConfigCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('auto-closes overlapping prior revisions when explicitly requested', async () => {
+    insuranceConfigFindManyMock.mockResolvedValue([
+      {
+        id: 'config_2024',
+        effective_from: new Date('2024-06-01T00:00:00.000Z'),
+        effective_to: null,
+      },
+    ]);
+
+    const response = (await POST(
+      {
+        json: async () => ({
+          insurance_type: 'medical',
+          revision_code: '2026',
+          revision_label: '令和8年度改定',
+          effective_from: '2026-06-01',
+          effective_to: null,
+          auto_close_overlaps: true,
+          config: { home_comprehensive_level: 'level_2' },
+        }),
+      } as NextRequest,
+      {
+        params: Promise.resolve({ id: 'site_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(insuranceConfigUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['config_2024'] },
+      },
+      data: {
+        effective_to: new Date('2026-05-31T00:00:00.000Z'),
+      },
+    });
+    expect(insuranceConfigCreateMock).toHaveBeenCalled();
   });
 });

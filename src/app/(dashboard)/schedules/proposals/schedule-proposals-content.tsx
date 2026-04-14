@@ -17,7 +17,10 @@ import {
   XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { VisitProposalDiagnosticsCard, type ProposalGenerationDiagnosticsCardData } from '@/components/features/visits/visit-proposal-diagnostics-card';
+import {
+  VisitProposalDiagnosticsCard,
+  type ProposalGenerationDiagnosticsCardData,
+} from '@/components/features/visits/visit-proposal-diagnostics-card';
 import { VisitRoutePreviewPanel } from '@/components/features/visits/visit-route-preview-panel';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -53,8 +56,6 @@ import { buildDashboardDiagnosticActions } from './schedule-proposal-diagnostic-
 import {
   addressOfPatient,
   type CaseOption,
-  type BillingCadencePreview,
-  type BillingRequirementAlert,
   CONTACT_STATUS_LABELS,
   PRIORITY_LABELS,
   PROPOSAL_STATUS_LABELS,
@@ -64,6 +65,7 @@ import {
   statusBadgeClass,
   timeLabel,
   type Proposal,
+  type VisitScheduleBillingPreview,
 } from '../day-view.shared';
 
 type DashboardTab = 'unapproved' | 'patient_contact_pending' | 'confirmed' | 'rejected';
@@ -174,12 +176,7 @@ type CreateProposalResponse = {
   diagnostics?: ProposalGenerationDiagnostics;
 };
 type CaseSearchResponse = { data: CaseOption[] };
-type ContactOutcome =
-  | 'attempted'
-  | 'declined'
-  | 'change_requested'
-  | 'unreachable'
-  | 'confirmed';
+type ContactOutcome = 'attempted' | 'declined' | 'change_requested' | 'unreachable' | 'confirmed';
 type ContactMethod = 'phone' | 'fax' | 'email';
 type ContactFormState = {
   outcome: ContactOutcome;
@@ -246,7 +243,11 @@ function formatDistanceLabel(value: number | null | undefined) {
   return value.toFixed(1);
 }
 
-function formatEtaLabel(baseDate: string, timeWindowStart: string | null, offsetSeconds: number | null) {
+function formatEtaLabel(
+  baseDate: string,
+  timeWindowStart: string | null,
+  offsetSeconds: number | null,
+) {
   if (offsetSeconds == null) {
     return timeLabel(timeWindowStart, null);
   }
@@ -307,7 +308,7 @@ export function ScheduleProposalsContent({
     initialDetailId ??
       (initialFocus === 'patient' || Boolean(initialCaseId) || Boolean(initialPatientId)
         ? AUTO_DETAIL_ID
-        : null)
+        : null),
   );
   const [contactFormDraft, setContactFormDraft] = useState<ContactFormState | null>(null);
   const [reproposalFormDraft, setReproposalFormDraft] = useState<{
@@ -323,7 +324,7 @@ export function ScheduleProposalsContent({
       initialTravelMode === 'WALK' ||
       initialTravelMode === 'TWO_WHEELER'
       ? initialTravelMode
-      : 'DRIVE'
+      : 'DRIVE',
   );
   const [caseSearchInput, setCaseSearchInput] = useState('');
   const [selectedCaseSummary, setSelectedCaseSummary] = useState<CaseOption | null>(null);
@@ -333,7 +334,7 @@ export function ScheduleProposalsContent({
       initialPreset === 'reschedule' ||
       initialPreset === 'stale'
       ? initialPreset
-      : 'all'
+      : 'all',
   );
   const [lastGenerationDiagnostics, setLastGenerationDiagnostics] =
     useState<ProposalGenerationDiagnostics | null>(null);
@@ -394,28 +395,28 @@ export function ScheduleProposalsContent({
     () => ({
       unapproved: proposals.filter((proposal) => matchesTab(proposal, 'unapproved')).length,
       patient_contact_pending: proposals.filter((proposal) =>
-        matchesTab(proposal, 'patient_contact_pending')
+        matchesTab(proposal, 'patient_contact_pending'),
       ).length,
       confirmed: proposals.filter((proposal) => matchesTab(proposal, 'confirmed')).length,
       rejected: proposals.filter((proposal) => matchesTab(proposal, 'rejected')).length,
       stale: proposals.filter((proposal) =>
-        ['superseded', 'expired'].includes(proposal.proposal_status)
+        ['superseded', 'expired'].includes(proposal.proposal_status),
       ).length,
     }),
-    [proposals]
+    [proposals],
   );
 
   const todayFilterCount = useMemo(
     () =>
       proposals.filter(
         (proposal) =>
-          matchesTab(proposal, 'unapproved') && proposal.proposed_date.slice(0, 10) === todayKey()
+          matchesTab(proposal, 'unapproved') && proposal.proposed_date.slice(0, 10) === todayKey(),
       ).length,
-    [proposals]
+    [proposals],
   );
   const rescheduleCount = useMemo(
     () => proposals.filter((proposal) => proposal.reschedule_source_schedule_id != null).length,
-    [proposals]
+    [proposals],
   );
 
   const visibleProposals = useMemo(
@@ -430,7 +431,7 @@ export function ScheduleProposalsContent({
         }
         return true;
       }),
-    [activeTab, filterPreset, proposals]
+    [activeTab, filterPreset, proposals],
   );
   const proposalPreviewRequests = useMemo(
     () =>
@@ -439,9 +440,10 @@ export function ScheduleProposalsContent({
         case_id: proposal.case_id,
         proposed_date: proposal.proposed_date.slice(0, 10),
         pharmacist_id: proposal.proposed_pharmacist_id,
+        site_id: proposal.site?.id ?? undefined,
         visit_type: proposal.visit_type,
       })),
-    [visibleProposals]
+    [visibleProposals],
   );
   const { data: proposalPreviewMap } = useQuery({
     queryKey: ['schedule-proposals-dashboard-billing-preview', orgId, proposalPreviewRequests],
@@ -456,16 +458,7 @@ export function ScheduleProposalsContent({
       });
       if (!response.ok) throw new Error('候補の算定プレビュー取得に失敗しました');
       const payload = (await response.json()) as {
-        data: Record<
-          string,
-          {
-            alerts: BillingRequirementAlert[];
-            cadence: BillingCadencePreview;
-            recommended_visit_type: string;
-            recommended_priority: 'normal' | 'urgent' | 'emergency';
-            recommended_candidate_count: number;
-          }
-        >;
+        data: Record<string, VisitScheduleBillingPreview>;
       };
       return new Map(Object.entries(payload.data));
     },
@@ -474,14 +467,14 @@ export function ScheduleProposalsContent({
 
   const selectedProposals = useMemo(
     () => visibleProposals.filter((proposal) => selectedIds.includes(proposal.id)),
-    [selectedIds, visibleProposals]
+    [selectedIds, visibleProposals],
   );
 
   const effectiveSelectedCaseSummary = useMemo(() => {
     if (selectedCaseSummary) return selectedCaseSummary;
     if (!caseId && !patientId) return null;
     const matchedProposal = proposals.find((proposal) =>
-      caseId ? proposal.case_id === caseId : proposal.case_.patient.id === patientId
+      caseId ? proposal.case_id === caseId : proposal.case_.patient.id === patientId,
     );
     if (!matchedProposal) return null;
     return {
@@ -503,7 +496,8 @@ export function ScheduleProposalsContent({
 
   const autoDetailId =
     initialFocus === 'patient' || initialCaseId || initialPatientId
-      ? (proposals.find((proposal) => matchesTab(proposal, activeTab)) ?? proposals[0])?.id ?? null
+      ? ((proposals.find((proposal) => matchesTab(proposal, activeTab)) ?? proposals[0])?.id ??
+        null)
       : null;
 
   const activeDetailId =
@@ -532,7 +526,7 @@ export function ScheduleProposalsContent({
         `/api/visit-schedule-proposals/${activeDetailId}?travel_mode=${routeTravelMode}`,
         {
           headers: { 'x-org-id': orgId },
-        }
+        },
       );
       if (!response.ok) throw new Error('訪問候補詳細の取得に失敗しました');
       return response.json() as Promise<ScheduleProposalDetailResponse>;
@@ -751,11 +745,15 @@ export function ScheduleProposalsContent({
           return ['proposed', 'reschedule_pending'].includes(proposal.proposal_status);
         }
         return ['proposed', 'patient_contact_pending', 'reschedule_pending'].includes(
-          proposal.proposal_status
+          proposal.proposal_status,
         );
       });
       if (eligible.length === 0) {
-        throw new Error(action === 'approve' ? '承認できる候補が選択されていません' : '却下できる候補が選択されていません');
+        throw new Error(
+          action === 'approve'
+            ? '承認できる候補が選択されていません'
+            : '却下できる候補が選択されていません',
+        );
       }
 
       await Promise.all(
@@ -773,8 +771,8 @@ export function ScheduleProposalsContent({
               throw new Error(error.message ?? '一括更新に失敗しました');
             }
             return response.json();
-          })
-        )
+          }),
+        ),
       );
     },
     onSuccess: async (_data, action) => {
@@ -792,7 +790,7 @@ export function ScheduleProposalsContent({
       routeOrderUpdates: Array<{
         proposal_id: string;
         route_order: number;
-      }>
+      }>,
     ) =>
       applyVisitScheduleProposalRouteUpdates({
         orgId,
@@ -846,8 +844,8 @@ export function ScheduleProposalsContent({
           preferred_time_to: reproposalForm.preferred_time_to || undefined,
           candidate_count: Number(
             reproposalForm.candidate_count ||
-              proposalPreviewMap?.get(detail.id)?.recommended_candidate_count ||
-              '3'
+              proposalPreviewMap?.get(detail.id)?.suggested_schedule_slot_count ||
+              '3',
           ),
         }),
       });
@@ -886,24 +884,27 @@ export function ScheduleProposalsContent({
       return left.proposed_date.localeCompare(right.proposed_date);
     });
   }, [detail]);
-  const detailPreview = detail ? proposalPreviewMap?.get(detail.id) ?? null : null;
+  const detailPreview = detail ? (proposalPreviewMap?.get(detail.id) ?? null) : null;
   const currentDetailRouteIds = useMemo(() => {
     if (!detail) return [];
     const proposalRouteOrderById = new Map(
-      [detail, ...detail.related_proposals].map((proposal) => [`proposal:${proposal.id}`, proposal.route_order ?? Number.MAX_SAFE_INTEGER])
+      [detail, ...detail.related_proposals].map((proposal) => [
+        `proposal:${proposal.id}`,
+        proposal.route_order ?? Number.MAX_SAFE_INTEGER,
+      ]),
     );
     return [...detail.route_preview.points]
       .sort((left, right) => {
         const leftOrder =
           left.point_kind === 'proposal'
             ? (proposalRouteOrderById.get(left.schedule_id) ?? Number.MAX_SAFE_INTEGER)
-            : detail.pharmacist_day_schedules.find((schedule) => schedule.id === left.schedule_id)?.route_order ??
-              Number.MAX_SAFE_INTEGER;
+            : (detail.pharmacist_day_schedules.find((schedule) => schedule.id === left.schedule_id)
+                ?.route_order ?? Number.MAX_SAFE_INTEGER);
         const rightOrder =
           right.point_kind === 'proposal'
             ? (proposalRouteOrderById.get(right.schedule_id) ?? Number.MAX_SAFE_INTEGER)
-            : detail.pharmacist_day_schedules.find((schedule) => schedule.id === right.schedule_id)?.route_order ??
-              Number.MAX_SAFE_INTEGER;
+            : (detail.pharmacist_day_schedules.find((schedule) => schedule.id === right.schedule_id)
+                ?.route_order ?? Number.MAX_SAFE_INTEGER);
         if (leftOrder !== rightOrder) return leftOrder - rightOrder;
         return (left.time_window_start ?? '').localeCompare(right.time_window_start ?? '');
       })
@@ -918,10 +919,10 @@ export function ScheduleProposalsContent({
   const routeMapPoints = useMemo(() => {
     if (!detail) return [];
     const planById = new Map(
-      detail.route_preview.plan.stopSummaries.map((summary) => [summary.scheduleId, summary])
+      detail.route_preview.plan.stopSummaries.map((summary) => [summary.scheduleId, summary]),
     );
     const draftIndexById = new Map(
-      detailRouteDraft.draftIds.map((scheduleId, index) => [scheduleId, index + 1])
+      detailRouteDraft.draftIds.map((scheduleId, index) => [scheduleId, index + 1]),
     );
     return detail.route_preview.points.map((point) => ({
       scheduleId: point.schedule_id,
@@ -939,7 +940,7 @@ export function ScheduleProposalsContent({
         : formatEtaLabel(
             detail.proposed_date.slice(0, 10),
             point.time_window_start,
-            planById.get(point.schedule_id)?.arrivalOffsetSeconds ?? null
+            planById.get(point.schedule_id)?.arrivalOffsetSeconds ?? null,
           ),
     }));
   }, [detail, detailRouteDraft.draftIds, detailRouteDraft.manualDirty]);
@@ -948,11 +949,13 @@ export function ScheduleProposalsContent({
     : null;
 
   const allVisibleSelected =
-    visibleProposals.length > 0 && visibleProposals.every((proposal) => selectedIds.includes(proposal.id));
+    visibleProposals.length > 0 &&
+    visibleProposals.every((proposal) => selectedIds.includes(proposal.id));
   const caseSearchResults = casesQuery.data?.data ?? [];
   const rescheduleFilterActive = filterPreset === 'reschedule';
   const todayFilterActive =
-    filterPreset === 'today' || (activeTab === 'unapproved' && dateFrom === todayKey() && dateTo === todayKey());
+    filterPreset === 'today' ||
+    (activeTab === 'unapproved' && dateFrom === todayKey() && dateTo === todayKey());
   const presetBanner =
     filterPreset === 'contact'
       ? {
@@ -971,14 +974,16 @@ export function ScheduleProposalsContent({
         : filterPreset === 'today'
           ? {
               title: '本日候補を表示中です。',
-              description: '当日中に処理したい未承認候補へすぐ着手できるよう、今日の日付帯で絞り込んでいます。',
+              description:
+                '当日中に処理したい未承認候補へすぐ着手できるよう、今日の日付帯で絞り込んでいます。',
               icon: CalendarClock,
               className: 'border-emerald-200 bg-emerald-50 text-emerald-900',
             }
           : filterPreset === 'stale'
             ? {
                 title: '差替済み・期限切れ候補を表示中です。',
-                description: '却下タブに切り替え、追跡が必要な stale 候補を確認しやすくしています。',
+                description:
+                  '却下タブに切り替え、追跡が必要な stale 候補を確認しやすくしています。',
                 icon: XCircle,
                 className: 'border-amber-200 bg-amber-50 text-amber-900',
               }
@@ -1008,7 +1013,7 @@ export function ScheduleProposalsContent({
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="proposal-date-from">候補日 From</Label>
-              <Input
+                <Input
                   id="proposal-date-from"
                   type="date"
                   value={dateFrom}
@@ -1303,22 +1308,26 @@ export function ScheduleProposalsContent({
               proposalPreview?.alerts
                 ?.filter((alert) => alert.severity !== 'info')
                 .map((alert) => alert.message) ?? [];
-            const canApprove = ['proposed', 'reschedule_pending'].includes(proposal.proposal_status);
+            const canApprove = ['proposed', 'reschedule_pending'].includes(
+              proposal.proposal_status,
+            );
             const canConfirm =
               proposal.proposal_status === 'patient_contact_pending' &&
               proposal.patient_contact_status === 'confirmed';
             const impactedCount = readImpactCount(
-              proposal.reschedule_source_schedule?.override_request?.impact_summary
+              proposal.reschedule_source_schedule?.override_request?.impact_summary,
             );
             const impactedNames = readImpactedPatientNames(
-              proposal.reschedule_source_schedule?.override_request?.impact_summary
+              proposal.reschedule_source_schedule?.override_request?.impact_summary,
             );
 
             return (
               <Card
                 key={proposal.id}
                 id={`proposal-${proposal.id}`}
-                data-testid={activeDetailId === proposal.id ? 'schedule-proposal-active-row' : undefined}
+                data-testid={
+                  activeDetailId === proposal.id ? 'schedule-proposal-active-row' : undefined
+                }
                 className={cn(
                   'border-border/70 bg-card/95 scroll-mt-28',
                   activeDetailId === proposal.id ? 'ring-2 ring-primary/30' : null,
@@ -1333,7 +1342,7 @@ export function ScheduleProposalsContent({
                           setSelectedIds((current) =>
                             checked
                               ? Array.from(new Set([...current, proposal.id]))
-                              : current.filter((id) => id !== proposal.id)
+                              : current.filter((id) => id !== proposal.id),
                           )
                         }
                         aria-label={`${proposal.case_.patient.name} の候補を選択`}
@@ -1357,7 +1366,8 @@ export function ScheduleProposalsContent({
                         <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                           <span className="inline-flex items-center gap-1">
                             <CalendarClock className="size-4" />
-                            {formatDateLabel(proposal.proposed_date)} {timeLabel(proposal.time_window_start, proposal.time_window_end)}
+                            {formatDateLabel(proposal.proposed_date)}{' '}
+                            {timeLabel(proposal.time_window_start, proposal.time_window_end)}
                           </span>
                           <span className="inline-flex items-center gap-1">
                             <UserRound className="size-4" />
@@ -1417,9 +1427,7 @@ export function ScheduleProposalsContent({
                           </span>
                         ))}
                       </div>
-                      <p className="text-sm text-muted-foreground">
-                        {addressOfPatient(proposal)}
-                      </p>
+                      <p className="text-sm text-muted-foreground">{addressOfPatient(proposal)}</p>
                       {proposal.escalation_reason ? (
                         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                           {proposal.escalation_reason}
@@ -1429,8 +1437,8 @@ export function ScheduleProposalsContent({
                         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
                           <p className="font-medium">算定 cadence</p>
                           <p className="mt-1">
-                            次回算定可能日: {proposalCadence.next_billable_date ?? '提案不可'} / 残回数{' '}
-                            {proposalCadence.remaining_month_count}
+                            次回算定可能日: {proposalCadence.next_billable_date ?? '提案不可'} /
+                            残回数 {proposalCadence.remaining_month_count}
                           </p>
                           {proposalWarningMessages.length > 0 ? (
                             <p className="mt-1 text-xs text-amber-800">
@@ -1467,7 +1475,9 @@ export function ScheduleProposalsContent({
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">ルート順</span>
-                        <span className="font-medium text-foreground">{proposal.route_order ?? '未設定'}</span>
+                        <span className="font-medium text-foreground">
+                          {proposal.route_order ?? '未設定'}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -1505,7 +1515,9 @@ export function ScheduleProposalsContent({
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base">{detail.case_.patient.name}</CardTitle>
                   <CardDescription>
-                    {formatDateLabel(detail.proposed_date)} {timeLabel(detail.time_window_start, detail.time_window_end)} / {detail.proposed_pharmacist?.name ?? '担当未解決'}
+                    {formatDateLabel(detail.proposed_date)}{' '}
+                    {timeLabel(detail.time_window_start, detail.time_window_end)} /{' '}
+                    {detail.proposed_pharmacist?.name ?? '担当未解決'}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -1589,8 +1601,8 @@ export function ScheduleProposalsContent({
                     <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
                       <p className="font-medium">算定 cadence</p>
                       <p className="mt-1">
-                        次回算定可能日: {detailPreview.cadence.next_billable_date ?? '提案不可'} / 残回数{' '}
-                        {detailPreview.cadence.remaining_month_count}
+                        次回算定可能日: {detailPreview.cadence.next_billable_date ?? '提案不可'} /
+                        残回数 {detailPreview.cadence.remaining_month_count}
                       </p>
                     </div>
                   ) : null}
@@ -1611,16 +1623,21 @@ export function ScheduleProposalsContent({
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <p className="text-sm font-medium text-foreground">
-                            {index + 1}位 {formatDateLabel(candidate.proposed_date)} {timeLabel(candidate.time_window_start, candidate.time_window_end)}
+                            {index + 1}位 {formatDateLabel(candidate.proposed_date)}{' '}
+                            {timeLabel(candidate.time_window_start, candidate.time_window_end)}
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            担当 {candidate.proposed_pharmacist?.name ?? '未解決'} / {candidate.site?.name ?? '拠点未設定'}
+                            担当 {candidate.proposed_pharmacist?.name ?? '未解決'} /{' '}
+                            {candidate.site?.name ?? '拠点未設定'}
                           </p>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          <Badge variant="outline">移動 {formatDistanceLabel(candidate.route_distance_score)}</Badge>
                           <Badge variant="outline">
-                            配置 {candidate.assignment_mode === 'primary' ? '主担当優先' : '代替担当'}
+                            移動 {formatDistanceLabel(candidate.route_distance_score)}
+                          </Badge>
+                          <Badge variant="outline">
+                            配置{' '}
+                            {candidate.assignment_mode === 'primary' ? '主担当優先' : '代替担当'}
                           </Badge>
                           <Badge variant="outline">
                             期限 {formatDateLabel(candidate.visit_deadline_date)}
@@ -1657,7 +1674,9 @@ export function ScheduleProposalsContent({
                 site={detail.route_preview.site}
                 orderedIds={detailRouteDraft.draftIds}
                 currentOrderedIds={detailRouteDraft.currentIds}
-                movableIds={detailRouteDraft.draftIds.filter((item) => item.startsWith('proposal:'))}
+                movableIds={detailRouteDraft.draftIds.filter((item) =>
+                  item.startsWith('proposal:'),
+                )}
                 onMoveItem={(scheduleId, direction) =>
                   detailRouteDraft.moveItem(scheduleId, direction)
                 }
@@ -1676,9 +1695,8 @@ export function ScheduleProposalsContent({
                 actionLabel="候補群へ最適順を反映"
                 actionDisabled={
                   reorderProposalMutation.isPending ||
-                  detailRouteDraft.draftIds.filter((item) =>
-                    item.startsWith('proposal:')
-                  ).length === 0 ||
+                  detailRouteDraft.draftIds.filter((item) => item.startsWith('proposal:'))
+                    .length === 0 ||
                   !detailRouteDraft.differsFromCurrent
                 }
                 actionPending={reorderProposalMutation.isPending}
@@ -1691,7 +1709,7 @@ export function ScheduleProposalsContent({
                               proposal_id: item.replace('proposal:', ''),
                               route_order: index + 1,
                             }
-                          : null
+                          : null,
                       )
                       .filter(
                         (
@@ -1699,8 +1717,8 @@ export function ScheduleProposalsContent({
                         ): item is {
                           proposal_id: string;
                           route_order: number;
-                        } => item != null
-                      )
+                        } => item != null,
+                      ),
                   )
                 }
                 extraSummary={
@@ -1713,9 +1731,7 @@ export function ScheduleProposalsContent({
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base">同日スケジュール</CardTitle>
-                  <CardDescription>
-                    同じ薬剤師の当日予定との並びを確認します。
-                  </CardDescription>
+                  <CardDescription>同じ薬剤師の当日予定との並びを確認します。</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {detail.pharmacist_day_schedules.length === 0 ? (
@@ -1731,7 +1747,8 @@ export function ScheduleProposalsContent({
                             {schedule.case_.patient.name}
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            {timeLabel(schedule.time_window_start, schedule.time_window_end)} / 順路 {schedule.route_order ?? '未設定'}
+                            {timeLabel(schedule.time_window_start, schedule.time_window_end)} / 順路{' '}
+                            {schedule.route_order ?? '未設定'}
                           </p>
                         </div>
                         <Badge variant="outline">{schedule.site?.name ?? '拠点未設定'}</Badge>
@@ -1832,16 +1849,16 @@ export function ScheduleProposalsContent({
 
                   <div className="space-y-1.5">
                     <Label htmlFor="proposal-contact-callback">折返し予定</Label>
-                      <Input
-                        id="proposal-contact-callback"
-                        type="datetime-local"
-                        value={contactForm.callback_due_at}
-                        onChange={(event) =>
-                          setContactFormDraft((current) => ({
-                            ...(current ?? contactForm),
-                            callback_due_at: event.target.value,
-                          }))
-                        }
+                    <Input
+                      id="proposal-contact-callback"
+                      type="datetime-local"
+                      value={contactForm.callback_due_at}
+                      onChange={(event) =>
+                        setContactFormDraft((current) => ({
+                          ...(current ?? contactForm),
+                          callback_due_at: event.target.value,
+                        }))
+                      }
                     />
                   </div>
 
@@ -1865,24 +1882,35 @@ export function ScheduleProposalsContent({
                     <div className="space-y-2 rounded-2xl border border-border/70 bg-muted/20 p-4">
                       <p className="text-sm font-medium text-foreground">最近の連絡履歴</p>
                       {detail.contact_logs.map((log) => (
-                        <div key={log.id} className="rounded-xl border border-border/60 bg-background px-3 py-2">
+                        <div
+                          key={log.id}
+                          className="rounded-xl border border-border/60 bg-background px-3 py-2"
+                        >
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="flex flex-wrap items-center gap-2">
-                              <Badge variant="outline">{CONTACT_METHOD_LABELS[(log.contact_method as ContactMethod) ?? 'phone']}</Badge>
+                              <Badge variant="outline">
+                                {
+                                  CONTACT_METHOD_LABELS[
+                                    (log.contact_method as ContactMethod) ?? 'phone'
+                                  ]
+                                }
+                              </Badge>
                               <Badge variant="outline">{CONTACT_STATUS_LABELS[log.outcome]}</Badge>
                             </div>
                             <span className="text-xs text-muted-foreground">
                               {formatDateTime(log.called_at)}
                             </span>
                           </div>
-                          {(log.contact_name || log.contact_phone) ? (
+                          {log.contact_name || log.contact_phone ? (
                             <p className="mt-1 text-xs text-muted-foreground">
                               {log.contact_name ?? '対応者未入力'}
                               {log.contact_phone ? ` / ${log.contact_phone}` : ''}
                             </p>
                           ) : null}
                           {log.note ? (
-                            <p className="mt-1 text-xs leading-5 text-muted-foreground">{log.note}</p>
+                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                              {log.note}
+                            </p>
                           ) : null}
                         </div>
                       ))}
@@ -1932,11 +1960,13 @@ export function ScheduleProposalsContent({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {(Object.keys(PRIORITY_LABELS) as Proposal['priority'][]).map((priority) => (
-                            <SelectItem key={priority} value={priority}>
-                              {PRIORITY_LABELS[priority]}
-                            </SelectItem>
-                          ))}
+                          {(Object.keys(PRIORITY_LABELS) as Proposal['priority'][]).map(
+                            (priority) => (
+                              <SelectItem key={priority} value={priority}>
+                                {PRIORITY_LABELS[priority]}
+                              </SelectItem>
+                            ),
+                          )}
                         </SelectContent>
                       </Select>
                     </div>

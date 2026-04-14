@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import path from 'node:path';
 import {
   PLAYWRIGHT_OUTPUT_DIR,
   PLAYWRIGHT_REPORT_DIR,
@@ -6,6 +7,13 @@ import {
 
 const LOCAL_PLAYWRIGHT_AUTH_SECRET = 'careviax-local-auth-secret';
 const shouldReuseExistingServer = !process.env.CI && process.env.PLAYWRIGHT_REUSE_SERVER === '1';
+const NEXT_FONT_GOOGLE_MOCKED_RESPONSES = path.join(
+  process.cwd(),
+  'tools',
+  'tests',
+  'helpers',
+  'next-font-google-mocked-responses.cjs'
+);
 
 export default defineConfig({
   testDir: './tools/tests',
@@ -30,7 +38,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `PLAYWRIGHT=1 AUTH_SECRET=${LOCAL_PLAYWRIGHT_AUTH_SECRET} NEXTAUTH_SECRET=${LOCAL_PLAYWRIGHT_AUTH_SECRET} NEXTAUTH_URL=http://localhost:3000 NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM=1 pnpm build && PLAYWRIGHT=1 AUTH_SECRET=${LOCAL_PLAYWRIGHT_AUTH_SECRET} NEXTAUTH_SECRET=${LOCAL_PLAYWRIGHT_AUTH_SECRET} NEXTAUTH_URL=http://localhost:3000 NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM=1 pnpm start`,
+    command: `PLAYWRIGHT=1 AUTH_SECRET=${LOCAL_PLAYWRIGHT_AUTH_SECRET} NEXTAUTH_SECRET=${LOCAL_PLAYWRIGHT_AUTH_SECRET} NEXTAUTH_URL=http://localhost:3000 NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM=1 NEXT_FONT_GOOGLE_MOCKED_RESPONSES=${NEXT_FONT_GOOGLE_MOCKED_RESPONSES} pnpm build && PLAYWRIGHT=1 AUTH_SECRET=${LOCAL_PLAYWRIGHT_AUTH_SECRET} NEXTAUTH_SECRET=${LOCAL_PLAYWRIGHT_AUTH_SECRET} NEXTAUTH_URL=http://localhost:3000 NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM=1 NEXT_FONT_GOOGLE_MOCKED_RESPONSES=${NEXT_FONT_GOOGLE_MOCKED_RESPONSES} pnpm start`,
     url: 'http://localhost:3000',
     reuseExistingServer: shouldReuseExistingServer,
   },

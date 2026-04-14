@@ -51,6 +51,8 @@ export type PrescriptionDraftSnapshot = {
     inquiryToPhysician: string;
     inquiryContent: string;
     inquiryDueDate: string;
+    proposalOrigin: 'post_inquiry' | 'pre_issuance';
+    residualAdjustment: boolean;
   };
 };
 
@@ -61,10 +63,7 @@ export type PrescriptionDraftSnapshot = {
 export function usePrescriptionDraft(orgId: string) {
   const loadDraft = useCallback(async (): Promise<PrescriptionDraftSnapshot | null> => {
     if (!orgId) return null;
-    const draft = await offlineDb.prescriptionDrafts
-      .where('orgId')
-      .equals(orgId)
-      .first();
+    const draft = await offlineDb.prescriptionDrafts.where('orgId').equals(orgId).first();
     if (!draft) return null;
 
     const decrypted = await decryptOfflinePayload(draft.payload);
@@ -73,28 +72,28 @@ export function usePrescriptionDraft(orgId: string) {
     return JSON.parse(decrypted) as PrescriptionDraftSnapshot;
   }, [orgId]);
 
-  const saveDraft = useCallback(async (snapshot: PrescriptionDraftSnapshot): Promise<void> => {
-    if (!orgId) return;
-    const payload = await encryptOfflinePayload(JSON.stringify(snapshot));
-    const existing = await offlineDb.prescriptionDrafts
-      .where('orgId')
-      .equals(orgId)
-      .first();
+  const saveDraft = useCallback(
+    async (snapshot: PrescriptionDraftSnapshot): Promise<void> => {
+      if (!orgId) return;
+      const payload = await encryptOfflinePayload(JSON.stringify(snapshot));
+      const existing = await offlineDb.prescriptionDrafts.where('orgId').equals(orgId).first();
 
-    if (existing?.id !== undefined) {
-      await offlineDb.prescriptionDrafts.update(existing.id, {
-        payload,
-        updatedAt: new Date(),
-      });
-    } else {
-      await offlineDb.prescriptionDrafts.add({
-        orgId,
-        payload,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-    }
-  }, [orgId]);
+      if (existing?.id !== undefined) {
+        await offlineDb.prescriptionDrafts.update(existing.id, {
+          payload,
+          updatedAt: new Date(),
+        });
+      } else {
+        await offlineDb.prescriptionDrafts.add({
+          orgId,
+          payload,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
+    },
+    [orgId],
+  );
 
   const clearDraft = useCallback(async (): Promise<void> => {
     if (!orgId) return;

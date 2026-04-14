@@ -65,7 +65,7 @@ function groupRouteOrders(values: Array<number | null | undefined>) {
 }
 
 export function buildCycleStatusSection(
-  cycleCounts: WorkflowCoreData['cycleCounts']
+  cycleCounts: WorkflowCoreData['cycleCounts'],
 ): Record<string, number> {
   const cycleStatusMap: Record<string, number> = {};
   for (const row of cycleCounts) {
@@ -81,7 +81,7 @@ export function buildVisitOperationsSection(
   missingManagementPlanCount: number,
   missingFirstVisitDocCount: number,
   missingEmergencyContactCount: number,
-  missingPrimaryPhysicianCount: number
+  missingPrimaryPhysicianCount: number,
 ) {
   return {
     overdue: overdueVisits,
@@ -101,7 +101,7 @@ export function buildRemediationGuidance(
   missingEmergencyContactCount: number,
   missingPrimaryPhysicianCount: number,
   taskCountByType: Record<string, number>,
-  triageSelfReportsCount: number
+  triageSelfReportsCount: number,
 ): RemediationGuidanceItem[] {
   const guidanceCounts = new Map<VisitWorkflowGateIssue, number>([
     ['missing_visit_consent', missingVisitConsentCount],
@@ -143,8 +143,7 @@ export function buildRemediationGuidance(
           {
             id: 'missing_emergency_contact',
             title: '緊急連絡先の整備が必要です',
-            description:
-              '緊急連絡先が不足しているため、初回訪問文書や緊急連携の運用が不完全です。',
+            description: '緊急連絡先が不足しているため、初回訪問文書や緊急連携の運用が不完全です。',
             severity: 'high' as const,
             count: missingEmergencyContactCount,
             action_href: '/patients?readiness_issue=missing_emergency_contact',
@@ -197,7 +196,7 @@ export function buildRemediationGuidance(
 
 export function buildFacilityVisibility(
   upcomingSchedules: WorkflowCoreData['upcomingSchedules'],
-  userNameById: Map<string, string>
+  userNameById: Map<string, string>,
 ) {
   const facilityGroups = new Map<
     string,
@@ -260,7 +259,7 @@ export function buildWorkloadMetrics(
   upcomingSchedules: WorkflowCoreData['upcomingSchedules'],
   pendingTasks: WorkflowCoreData['pendingTasks'],
   facilityVisibility: ReturnType<typeof buildFacilityVisibility>,
-  userNameById: Map<string, string>
+  userNameById: Map<string, string>,
 ) {
   const workloadByPharmacist = new Map<
     string,
@@ -307,7 +306,7 @@ export function buildWorkloadMetrics(
   }
   for (const group of facilityVisibility.clusters) {
     const pharmacistId = Array.from(facilityVisibility.facilityGroups.values()).find(
-      (entry) => entry.id === group.id
+      (entry) => entry.id === group.id,
     )?.pharmacist_id;
     if (!pharmacistId) continue;
     ensureWorkload(pharmacistId).facility_clusters += 1;
@@ -315,17 +314,14 @@ export function buildWorkloadMetrics(
 
   return Array.from(workloadByPharmacist.values())
     .sort((left, right) => {
-      const leftScore =
-        left.urgent_items * 10 + left.pending_tasks * 3 + left.confirmed_visits;
-      const rightScore =
-        right.urgent_items * 10 + right.pending_tasks * 3 + right.confirmed_visits;
+      const leftScore = left.urgent_items * 10 + left.pending_tasks * 3 + left.confirmed_visits;
+      const rightScore = right.urgent_items * 10 + right.pending_tasks * 3 + right.confirmed_visits;
       return rightScore - leftScore;
     })
     .slice(0, 6)
     .map((workload) => ({
       pharmacist_id: workload.pharmacist_id,
-      pharmacist_name:
-        userNameById.get(workload.pharmacist_id) ?? '薬剤師未登録',
+      pharmacist_name: userNameById.get(workload.pharmacist_id) ?? '薬剤師未登録',
       confirmed_visits: workload.confirmed_visits,
       pending_tasks: workload.pending_tasks,
       urgent_items: workload.urgent_items,
@@ -343,7 +339,7 @@ export function buildRoleInboxes(
   routeControlMetrics: { pending_override_requests: number },
   upcomingHolidayGaps: unknown[],
   inventoryReadiness: { blocked: number },
-  currentRole: string
+  currentRole: string,
 ): { current_role: string; buckets: RoleInboxBucket[] } {
   const buckets: RoleInboxBucket[] = [
     {
@@ -361,10 +357,8 @@ export function buildRoleInboxes(
         (taskCountByType.visit_carry_item_review ?? 0) +
         awaitingReports,
       urgent_items:
-        pendingProposals.filter((proposal) =>
-          ['urgent', 'emergency'].includes(proposal.priority)
-        ).length +
-        communicationQueue.summary.callback_followups,
+        pendingProposals.filter((proposal) => ['urgent', 'emergency'].includes(proposal.priority))
+          .length + communicationQueue.summary.callback_followups,
       communication_items:
         communicationQueue.summary.self_reports + communicationQueue.summary.callback_followups,
       action_href: '/workflow',
@@ -377,8 +371,7 @@ export function buildRoleInboxes(
         billingReviewTasks +
         (taskCountByType.community_activity_followup ?? 0),
       urgent_items:
-        communicationQueue.summary.overdue_count +
-        communicationQueue.summary.delivery_backlog,
+        communicationQueue.summary.overdue_count + communicationQueue.summary.delivery_backlog,
       communication_items:
         communicationQueue.summary.open_requests +
         communicationQueue.summary.expiring_external_shares,
@@ -413,7 +406,7 @@ export function buildUnifiedWorkbench(
   intakeLinkage: unknown[],
   communicationQueue: WorkflowCoreData['communicationQueue'],
   userNameById: Map<string, string>,
-  patientNameById: Map<string, string>
+  patientNameById: Map<string, string>,
 ): WorkbenchItem[] {
   const taskItems: WorkbenchItem[] = pendingTasks.map((task) => {
     const presentation = describeOperationalTask(task);
@@ -422,9 +415,13 @@ export function buildUnifiedWorkbench(
         ? (task.metadata as Record<string, unknown>)
         : null;
     const actionHref =
-      typeof taskMetadata?.action_href === 'string' ? taskMetadata.action_href : presentation.actionHref;
+      typeof taskMetadata?.action_href === 'string'
+        ? taskMetadata.action_href
+        : presentation.actionHref;
     const actionLabel =
-      typeof taskMetadata?.action_label === 'string' ? taskMetadata.action_label : presentation.actionLabel;
+      typeof taskMetadata?.action_label === 'string'
+        ? taskMetadata.action_label
+        : presentation.actionLabel;
     return {
       id: `task:${task.id}`,
       item_type: 'task' as const,
@@ -435,11 +432,9 @@ export function buildUnifiedWorkbench(
       due_at: isoOrNull(task.sla_due_at ?? task.due_date),
       action_href: actionHref,
       action_label: actionLabel,
-      owner_name: task.assigned_to ? userNameById.get(task.assigned_to) ?? null : null,
+      owner_name: task.assigned_to ? (userNameById.get(task.assigned_to) ?? null) : null,
       patient_name:
-        typeof taskMetadata?.patient_name === 'string'
-          ? taskMetadata.patient_name
-          : null,
+        typeof taskMetadata?.patient_name === 'string' ? taskMetadata.patient_name : null,
       badges: [task.task_type, task.status],
     };
   });
@@ -447,8 +442,7 @@ export function buildUnifiedWorkbench(
   const proposalItems: WorkbenchItem[] = pendingProposals.map((proposal) => ({
     id: `proposal:${proposal.id}`,
     item_type: 'proposal' as const,
-    queue_label:
-      proposal.proposal_status === 'patient_contact_pending' ? '架電' : '訪問候補',
+    queue_label: proposal.proposal_status === 'patient_contact_pending' ? '架電' : '訪問候補',
     title: `${proposal.case_.patient.name} の訪問候補を進めてください`,
     summary:
       proposal.proposal_reason ??
@@ -463,7 +457,7 @@ export function buildUnifiedWorkbench(
     owner_name: userNameById.get(proposal.proposed_pharmacist_id) ?? null,
     patient_name: proposal.case_.patient.name,
     badges: [proposal.proposal_status, proposal.patient_contact_status].filter(
-      (v): v is string => v != null
+      (v): v is string => v != null,
     ),
   }));
 
@@ -527,9 +521,11 @@ export function buildUnifiedWorkbench(
     action_label: 'triage を進める',
     owner_name: null,
     patient_name: patientNameById.get(report.patient_id) ?? null,
-    badges: [report.status, report.category, ...(report.requested_callback ? ['折返し希望'] : [])].filter(
-      (v): v is string => v != null
-    ),
+    badges: [
+      report.status,
+      report.category,
+      ...(report.requested_callback ? ['折返し希望'] : []),
+    ].filter((v): v is string => v != null),
   }));
 
   const aggregateItems: WorkbenchItem[] = [
@@ -616,7 +612,7 @@ export function buildExceptionCommandCenter(
   openWorkflowExceptions: WorkflowCoreData['openWorkflowExceptions'],
   overdueVisits: number,
   awaitingReports: number,
-  triageSelfReportsCount: number
+  triageSelfReportsCount: number,
 ) {
   return [
     ...openWorkflowExceptions.map((exception) => ({
@@ -681,20 +677,20 @@ export function buildExceptionCommandCenter(
 export function buildOutcomeMetrics(
   recentSchedules: WorkflowCoreData['recentSchedules'],
   awaitingReports: number,
-  exceptionCount: number
+  exceptionCount: number,
 ) {
   const disruptedStatuses = new Set(['postponed', 'cancelled', 'rescheduled', 'no_show']);
   return {
     completed_last_7_days: recentSchedules.filter(
-      (schedule) => schedule.schedule_status === 'completed'
+      (schedule) => schedule.schedule_status === 'completed',
     ).length,
     disrupted_last_7_days: recentSchedules.filter((schedule) =>
-      disruptedStatuses.has(schedule.schedule_status)
+      disruptedStatuses.has(schedule.schedule_status),
     ).length,
     urgent_completed_last_7_days: recentSchedules.filter(
       (schedule) =>
         schedule.schedule_status === 'completed' &&
-        (schedule.priority === 'urgent' || schedule.priority === 'emergency')
+        (schedule.priority === 'urgent' || schedule.priority === 'emergency'),
     ).length,
     awaiting_reports: awaitingReports,
     open_exceptions: exceptionCount,
@@ -703,24 +699,30 @@ export function buildOutcomeMetrics(
 
 export function buildRouteOperations(
   upcomingSchedules: WorkflowCoreData['upcomingSchedules'],
-  pendingProposals: WorkflowCoreData['pendingProposals']
+  pendingProposals: WorkflowCoreData['pendingProposals'],
 ): RouteOperations {
   return {
-    locked_confirmed_visits: upcomingSchedules.filter((schedule) => schedule.confirmed_at != null).length,
-    fallback_assignments: upcomingSchedules.filter((schedule) => schedule.assignment_mode === 'fallback').length,
-    override_pending: upcomingSchedules.filter((schedule) => schedule.override_request?.status === 'pending').length,
-    emergency_candidates: pendingProposals.filter((proposal) => proposal.priority === 'emergency').length,
+    locked_confirmed_visits: upcomingSchedules.filter((schedule) => schedule.confirmed_at != null)
+      .length,
+    fallback_assignments: upcomingSchedules.filter(
+      (schedule) => schedule.assignment_mode === 'fallback',
+    ).length,
+    override_pending: upcomingSchedules.filter(
+      (schedule) => schedule.override_request?.status === 'pending',
+    ).length,
+    emergency_candidates: pendingProposals.filter((proposal) => proposal.priority === 'emergency')
+      .length,
   };
 }
 
 export function buildRouteControlMetrics(
   upcomingSchedules: WorkflowCoreData['upcomingSchedules'],
-  pendingProposals: WorkflowCoreData['pendingProposals']
+  pendingProposals: WorkflowCoreData['pendingProposals'],
 ) {
   return {
     locked_schedules: upcomingSchedules.filter((schedule) => Boolean(schedule.confirmed_at)).length,
     pending_override_requests: upcomingSchedules.filter(
-      (schedule) => schedule.override_request?.status === 'pending'
+      (schedule) => schedule.override_request?.status === 'pending',
     ).length,
     emergency_impact_items:
       upcomingSchedules.filter((schedule) => schedule.priority === 'emergency').length +
@@ -730,7 +732,7 @@ export function buildRouteControlMetrics(
 
 export function buildAfterHoursReadiness(
   upcomingEmergencyShifts: WorkflowCoreData['upcomingEmergencyShifts'],
-  upcomingHolidays: WorkflowCoreData['upcomingHolidays']
+  upcomingHolidays: WorkflowCoreData['upcomingHolidays'],
 ) {
   const emergencyCoverageByDate = new Map<string, number>();
   for (const shift of upcomingEmergencyShifts) {
@@ -738,7 +740,10 @@ export function buildAfterHoursReadiness(
     emergencyCoverageByDate.set(dateKey, (emergencyCoverageByDate.get(dateKey) ?? 0) + 1);
   }
   const holidayGaps = upcomingHolidays
-    .filter((holiday) => (emergencyCoverageByDate.get(holiday.date.toISOString().slice(0, 10)) ?? 0) === 0)
+    .filter(
+      (holiday) =>
+        (emergencyCoverageByDate.get(holiday.date.toISOString().slice(0, 10)) ?? 0) === 0,
+    )
     .slice(0, 6)
     .map((holiday) => ({
       id: holiday.id,
@@ -759,15 +764,15 @@ export function buildInquiryWorkbench(
   openMedicationIssues: WorkflowCoreData['openMedicationIssues'],
   linkedInquiryRequests: WorkflowDependentData['linkedInquiryRequests'],
   latestCyclesForIssues: WorkflowDependentData['latestCyclesForIssues'],
-  patientNameById: Map<string, string>
+  patientNameById: Map<string, string>,
 ) {
   const linkedIssueIds = new Set(
     unresolvedInquiryRecords
       .map((item) => item.issue_id)
-      .filter((value): value is string => Boolean(value))
+      .filter((value): value is string => Boolean(value)),
   );
   const latestInquiryRequestByInquiryId = new Map(
-    linkedInquiryRequests.map((request) => [request.related_entity_id ?? '', request])
+    linkedInquiryRequests.map((request) => [request.related_entity_id ?? '', request]),
   );
   const latestCycleByCaseId = new Map<string, (typeof latestCyclesForIssues)[number]>();
   const latestCycleByPatientId = new Map<string, (typeof latestCyclesForIssues)[number]>();
@@ -797,12 +802,12 @@ export function buildInquiryWorkbench(
         cycle_id: item.cycle_id,
         case_id: item.cycle.case_id,
         patient_id: item.cycle.patient_id,
-        patient_name:
-          patientNameById.get(item.cycle.patient_id) ??
-          item.cycle.case_.patient.name,
+        patient_name: patientNameById.get(item.cycle.patient_id) ?? item.cycle.case_.patient.name,
         title: item.issue?.title ?? item.reason,
         summary: item.inquiry_content,
         reason: item.reason,
+        proposal_origin: item.proposal_origin === 'pre_issuance' ? 'pre_issuance' : 'post_inquiry',
+        residual_adjustment: item.residual_adjustment,
         change_detail: item.change_detail,
         line_id: item.line_id,
         line: item.line
@@ -845,11 +850,12 @@ export function buildInquiryWorkbench(
           title: issue.title,
           summary: issue.description,
           reason: issue.category ?? 'other',
+          proposal_origin: null,
+          residual_adjustment: null,
           change_detail: null,
           line_id: null,
           line: null,
-          inquiry_to_physician:
-            cycle?.prescription_intakes[0]?.prescriber_name ?? '主治医',
+          inquiry_to_physician: cycle?.prescription_intakes[0]?.prescriber_name ?? '主治医',
           request_status: null,
           queue_state: '起票待ち',
           due_at: isoOrNull(issue.identified_at),
@@ -866,15 +872,13 @@ export function buildInquiryWorkbench(
     .slice(0, 8);
 }
 
-export function buildIntakeLinkage(
-  candidateIntakes: WorkflowCoreData['candidateIntakes']
-) {
+export function buildIntakeLinkage(candidateIntakes: WorkflowCoreData['candidateIntakes']) {
   return candidateIntakes
     .filter(
       (intake) =>
         intake.cycle?.case_ &&
         intake.cycle.visit_schedules.length === 0 &&
-        intake.cycle.visit_schedule_proposals.length === 0
+        intake.cycle.visit_schedule_proposals.length === 0,
     )
     .slice(0, 6)
     .map((intake) => {
@@ -900,7 +904,7 @@ export function buildIntakeLinkage(
 export function buildRefillUpcoming(
   candidateIntakes: WorkflowCoreData['candidateIntakes'],
   sevenDaysFromNow: Date,
-  upcomingWindow: Date
+  upcomingWindow: Date,
 ) {
   return candidateIntakes
     .filter(
@@ -913,7 +917,7 @@ export function buildRefillUpcoming(
           intake.split_dispense_current != null &&
           intake.split_dispense_current < intake.split_dispense_total &&
           intake.split_next_dispense_date != null &&
-          intake.split_next_dispense_date <= upcomingWindow)
+          intake.split_next_dispense_date <= upcomingWindow),
     )
     .slice(0, 10)
     .map((intake) => {
@@ -931,12 +935,12 @@ export function buildRefillUpcoming(
             ? (intake.refill_remaining_count ?? 0)
             : Math.max(
                 0,
-                (intake.split_dispense_total ?? 0) - (intake.split_dispense_current ?? 0)
+                (intake.split_dispense_total ?? 0) - (intake.split_dispense_current ?? 0),
               ),
         next_dispense_date: isoOrNull(
           intake.source_type === 'refill'
             ? intake.refill_next_dispense_date
-            : intake.split_next_dispense_date
+            : intake.split_next_dispense_date,
         ),
         suggested_start_date: isoOrNull(suggestedStartDate),
         has_existing_route:
@@ -956,33 +960,31 @@ export function buildWorkflowDashboardData(args: {
   const { core, dependent, currentRole, sevenDaysFromNow, upcomingWindow } = args;
 
   const patientNameById = new Map(
-    dependent.patientsForReports.map((patient) => [patient.id, patient.name])
+    dependent.patientsForReports.map((patient) => [patient.id, patient.name]),
   );
   const userNameById = new Map(dependent.users.map((user) => [user.id, user.name]));
   const consentedPatientIds = new Set(
-    dependent.activeVisitConsents.map((consent) => consent.patient_id)
+    dependent.activeVisitConsents.map((consent) => consent.patient_id),
   );
-  const activePlanCaseIds = new Set(
-    dependent.activeManagementPlans.map((plan) => plan.case_id)
-  );
+  const activePlanCaseIds = new Set(dependent.activeManagementPlans.map((plan) => plan.case_id));
   const missingVisitConsentSchedules = core.upcomingSchedules.filter(
-    (schedule) => !consentedPatientIds.has(schedule.case_.patient.id)
+    (schedule) => !consentedPatientIds.has(schedule.case_.patient.id),
   );
   const missingManagementPlanSchedules = core.upcomingSchedules.filter(
-    (schedule) => !activePlanCaseIds.has(schedule.case_id)
+    (schedule) => !activePlanCaseIds.has(schedule.case_id),
   );
   const taskCountByType = Object.fromEntries(
-    core.taskBuckets.map((bucket) => [bucket.task_type, bucket._count.id])
+    core.taskBuckets.map((bucket) => [bucket.task_type, bucket._count.id]),
   );
   const intakeLinkage = buildIntakeLinkage(core.candidateIntakes);
   const facilityVisibility = buildFacilityVisibility(core.upcomingSchedules, userNameById);
   const routeControlMetrics = buildRouteControlMetrics(
     core.upcomingSchedules,
-    core.pendingProposals
+    core.pendingProposals,
   );
   const afterHoursReadiness = buildAfterHoursReadiness(
     core.upcomingEmergencyShifts,
-    core.upcomingHolidays
+    core.upcomingHolidays,
   );
   const inventoryReadiness = {
     blocked: core.upcomingSchedules.filter((schedule) => schedule.carry_items_status === 'blocked')
@@ -1017,9 +1019,8 @@ export function buildWorkflowDashboardData(args: {
       missingVisitConsentSchedules.length,
       missingManagementPlanSchedules.length,
       dependent.missingFirstVisitDocCount,
-      dependent.missingEmergencyContactCount
-      ,
-      dependent.missingPrimaryPhysicianCount
+      dependent.missingEmergencyContactCount,
+      dependent.missingPrimaryPhysicianCount,
     ),
     operations_queue: {
       visit_demands: taskCountByType.visit_demand ?? 0,
@@ -1039,7 +1040,7 @@ export function buildWorkflowDashboardData(args: {
       routeControlMetrics,
       afterHoursReadiness.holiday_gaps,
       inventoryReadiness,
-      currentRole
+      currentRole,
     ),
     communication_queue: core.communicationQueue,
     patient_risk_queue: {
@@ -1051,7 +1052,7 @@ export function buildWorkflowDashboardData(args: {
       core.openMedicationIssues,
       dependent.linkedInquiryRequests,
       dependent.latestCyclesForIssues,
-      patientNameById
+      patientNameById,
     ),
     remediation_guidance: buildRemediationGuidance(
       missingVisitConsentSchedules.length,
@@ -1060,7 +1061,7 @@ export function buildWorkflowDashboardData(args: {
       dependent.missingEmergencyContactCount,
       dependent.missingPrimaryPhysicianCount,
       taskCountByType,
-      core.triageSelfReports.length
+      core.triageSelfReports.length,
     ),
     unified_workbench: buildUnifiedWorkbench(
       core.pendingTasks,
@@ -1071,7 +1072,7 @@ export function buildWorkflowDashboardData(args: {
       intakeLinkage,
       core.communicationQueue,
       userNameById,
-      patientNameById
+      patientNameById,
     ),
     facility_visibility: {
       clusters: facilityVisibility.clusters,
@@ -1080,21 +1081,21 @@ export function buildWorkflowDashboardData(args: {
       core.openWorkflowExceptions,
       core.overdueVisits,
       core.awaitingReports,
-      core.triageSelfReports.length
+      core.triageSelfReports.length,
     ),
     workload_metrics: {
       pharmacists: buildWorkloadMetrics(
         core.upcomingSchedules,
         core.pendingTasks,
         facilityVisibility,
-        userNameById
+        userNameById,
       ),
     },
     route_operations: buildRouteOperations(core.upcomingSchedules, core.pendingProposals),
     outcome_metrics: buildOutcomeMetrics(
       core.recentSchedules,
       core.awaitingReports,
-      core.exceptionCount
+      core.exceptionCount,
     ),
     route_control: routeControlMetrics,
     after_hours_readiness: afterHoursReadiness,

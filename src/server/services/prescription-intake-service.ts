@@ -13,10 +13,7 @@ import {
   collectDuplicatePrescriptionLines,
   collectStructuringBlockedLines,
 } from '@/app/api/prescription-intakes/shared';
-import {
-  detectMedicationChanges,
-  type MedicationChange,
-} from '@/lib/prescription/medication-diff';
+import { detectMedicationChanges, type MedicationChange } from '@/lib/prescription/medication-diff';
 import type { Prisma, PrescriptionSourceType } from '@prisma/client';
 import { InvalidTransitionError, VersionConflictError } from '@/lib/db/cycle-transition';
 import { createDispenseDraft } from '@/server/services/dispense-draft-service';
@@ -66,6 +63,8 @@ export interface CreateIntakeInput {
     inquiry_to_physician: string;
     inquiry_content: string;
     request_due_date?: string;
+    proposal_origin?: 'post_inquiry' | 'pre_issuance';
+    residual_adjustment?: boolean;
   };
 }
 
@@ -105,20 +104,48 @@ type TransactionResult =
       windowStart: Date;
       windowEnd: Date;
     }
-  | { kind: 'error'; error: 'duplicate_prescription_lines'; duplicates: Array<{ key: string; lines: Array<{ line_number: number; drug_name: string }> }> }
-  | { kind: 'error'; error: 'structuring_blocked_lines'; blockedLines: Array<{ line_number: number; drug_name: string }> }
+  | {
+      kind: 'error';
+      error: 'duplicate_prescription_lines';
+      duplicates: Array<{ key: string; lines: Array<{ line_number: number; drug_name: string }> }>;
+    }
+  | {
+      kind: 'error';
+      error: 'structuring_blocked_lines';
+      blockedLines: Array<{ line_number: number; drug_name: string }>;
+    }
   | { kind: 'error'; error: 'expiry_exceeded' }
   | { kind: 'error'; error: 'invalid_transition' }
   | { kind: 'error'; error: 'version_conflict' };
 
 export type CreateIntakeServiceResult =
-  | { ok: true; intake: CreatedIntake; cycle: UpdatedCycle; medicationChanges: MedicationChange[]; profileSyncResult: ProfileSyncResult | null }
+  | {
+      ok: true;
+      intake: CreatedIntake;
+      cycle: UpdatedCycle;
+      medicationChanges: MedicationChange[];
+      profileSyncResult: ProfileSyncResult | null;
+    }
   | { ok: false; error: 'cycle_not_found' }
   | { ok: false; error: 'invalid_refill_remaining_count' }
   | { ok: false; error: 'missing_refill_next_dispense_date' }
-  | { ok: false; error: 'refill_window_out_of_range'; targetDate: Date; windowStart: Date; windowEnd: Date }
-  | { ok: false; error: 'duplicate_prescription_lines'; duplicates: Array<{ key: string; lines: Array<{ line_number: number; drug_name: string }> }> }
-  | { ok: false; error: 'structuring_blocked_lines'; blockedLines: Array<{ line_number: number; drug_name: string }> }
+  | {
+      ok: false;
+      error: 'refill_window_out_of_range';
+      targetDate: Date;
+      windowStart: Date;
+      windowEnd: Date;
+    }
+  | {
+      ok: false;
+      error: 'duplicate_prescription_lines';
+      duplicates: Array<{ key: string; lines: Array<{ line_number: number; drug_name: string }> }>;
+    }
+  | {
+      ok: false;
+      error: 'structuring_blocked_lines';
+      blockedLines: Array<{ line_number: number; drug_name: string }>;
+    }
   | { ok: false; error: 'expiry_exceeded' }
   | { ok: false; error: 'prescriber_institution_not_found'; message: string }
   | { ok: false; error: 'invalid_transition' }
@@ -151,60 +178,62 @@ async function loadCycleContext(
     cycleId?: string;
     caseId?: string;
     patientId?: string;
-  }
+  },
 ): Promise<LoadedCycleContext | null> {
   if (args.cycleId) {
-    return tx.medicationCycle.findFirst({
-      where: { id: args.cycleId, org_id: args.orgId },
-      select: {
-        id: true,
-        patient_id: true,
-        case_id: true,
-        overall_status: true,
-        version: true,
-        case_: {
-          select: {
-            primary_pharmacist_id: true,
+    return tx.medicationCycle
+      .findFirst({
+        where: { id: args.cycleId, org_id: args.orgId },
+        select: {
+          id: true,
+          patient_id: true,
+          case_id: true,
+          overall_status: true,
+          version: true,
+          case_: {
+            select: {
+              primary_pharmacist_id: true,
+            },
           },
-        },
-        prescription_intakes: {
-          orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
-          take: 1,
-          select: {
-            id: true,
-            source_type: true,
-            prescribed_date: true,
-            refill_remaining_count: true,
-            refill_next_dispense_date: true,
-            lines: {
-              select: {
-                days: true,
+          prescription_intakes: {
+            orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
+            take: 1,
+            select: {
+              id: true,
+              source_type: true,
+              prescribed_date: true,
+              refill_remaining_count: true,
+              refill_next_dispense_date: true,
+              lines: {
+                select: {
+                  days: true,
+                },
+              },
+            },
+          },
+          dispense_tasks: {
+            orderBy: [{ updated_at: 'desc' }],
+            take: 5,
+            select: {
+              results: {
+                orderBy: [{ dispensed_at: 'desc' }],
+                take: 1,
+                select: {
+                  dispensed_at: true,
+                },
               },
             },
           },
         },
-        dispense_tasks: {
-          orderBy: [{ updated_at: 'desc' }],
-          take: 5,
-          select: {
-            results: {
-              orderBy: [{ dispensed_at: 'desc' }],
-              take: 1,
-              select: {
-                dispensed_at: true,
-              },
-            },
-          },
-        },
-      },
-    }).then((cycle) =>
-      cycle
-        ? {
-            ...cycle,
-            primary_pharmacist_id: cycle.case_?.primary_pharmacist_id ?? null,
-          }
-        : null
-    );
+      })
+      .then((cycle) =>
+        cycle
+          ? {
+              ...cycle,
+              primary_pharmacist_id: cycle.case_?.primary_pharmacist_id ?? null,
+            }
+          : null,
+      );
   }
 
   if (!args.caseId || !args.patientId) {
@@ -250,7 +279,7 @@ async function createInquiryArtifactsTx(
     userId: string;
     cycle: UpdatedCycle;
     inquiry: NonNullable<CreateIntakeInput['inquiry']>;
-  }
+  },
 ) {
   const inquiredAt = new Date();
   const dueDate = args.inquiry.request_due_date
@@ -264,6 +293,8 @@ async function createInquiryArtifactsTx(
       reason: args.inquiry.reason,
       inquiry_to_physician: args.inquiry.inquiry_to_physician,
       inquiry_content: args.inquiry.inquiry_content,
+      proposal_origin: args.inquiry.proposal_origin ?? 'post_inquiry',
+      residual_adjustment: args.inquiry.residual_adjustment ?? false,
       inquired_at: inquiredAt,
     },
   });
@@ -338,7 +369,7 @@ async function ensureFaxOriginalFollowupTaskTx(
     patientId: string;
     assignedTo: string | null;
     prescribedDate: Date;
-  }
+  },
 ) {
   const dueDate = addDays(args.prescribedDate, 3);
 
@@ -370,7 +401,7 @@ export async function createPrescriptionIntakeInTx(
   input: CreateIntakeInput,
   orgId: string,
   userId: string,
-  options: CreateIntakeOptions = {}
+  options: CreateIntakeOptions = {},
 ): Promise<TransactionResult> {
   const {
     cycle_id,
@@ -602,12 +633,9 @@ export async function createPrescriptionIntake(
   input: CreateIntakeInput,
   orgId: string,
   userId: string,
-  options: CreateIntakeOptions = {}
+  options: CreateIntakeOptions = {},
 ): Promise<CreateIntakeServiceResult> {
-  const {
-    prescribed_date,
-    lines,
-  } = input;
+  const { prescribed_date, lines } = input;
 
   const prescribedDateObj = new Date(prescribed_date);
   const expiryDate = addDays(prescribedDateObj, 4);
@@ -620,7 +648,7 @@ export async function createPrescriptionIntake(
   let txResult: TransactionResult;
   try {
     txResult = await withOrgContext(orgId, (tx) =>
-      createPrescriptionIntakeInTx(tx, input, orgId, userId, options)
+      createPrescriptionIntakeInTx(tx, input, orgId, userId, options),
     );
   } catch (error) {
     if (error instanceof PrescriberInstitutionReferenceValidationError) {
@@ -745,7 +773,12 @@ export async function runPrescriptionIntakePostCreateHooks(args: {
 async function detectIntakeChanges(
   cycleId: string,
   currentIntakeId: string,
-  currentLines: Array<{ drug_name: string; drug_code?: string | null; dose: string; frequency: string }>,
+  currentLines: Array<{
+    drug_name: string;
+    drug_code?: string | null;
+    dose: string;
+    frequency: string;
+  }>,
 ): Promise<MedicationChange[]> {
   // 同一サイクルの前回処方を取得
   const previousIntake = await prisma.prescriptionIntake.findFirst({
@@ -798,9 +831,7 @@ async function syncMedicationProfiles(
     where: { org_id: orgId, patient_id: patientId, is_current: true },
   });
 
-  const existingByKey = new Map(
-    existingProfiles.map((p) => [p.drug_master_id || p.drug_name, p]),
-  );
+  const existingByKey = new Map(existingProfiles.map((p) => [p.drug_master_id || p.drug_name, p]));
   const incomingKeys = new Set<string>();
 
   // 新規処方の各行を upsert
@@ -810,7 +841,9 @@ async function syncMedicationProfiles(
 
     const existing = existingByKey.get(key);
     const startDate = line.start_date
-      ? (typeof line.start_date === 'string' ? new Date(line.start_date) : line.start_date)
+      ? typeof line.start_date === 'string'
+        ? new Date(line.start_date)
+        : line.start_date
       : new Date();
 
     if (existing) {

@@ -3,6 +3,10 @@ import { isoOrNull } from '@/lib/utils/date';
 import { prisma } from '@/lib/db/client';
 import { detectMedicationChanges as detectChangesShared } from '@/lib/prescription/medication-diff';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
+import {
+  getInquiryPresentationBadges,
+  getInquiryPrimaryDetail,
+} from '@/lib/inquiries/presentation';
 import { listCommunicationQueue } from '@/server/services/communication-queue';
 import { generateVisitBriefAiSummary } from '@/server/services/visit-brief-ai';
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
@@ -26,6 +30,12 @@ import type {
 } from '@/types/visit-brief';
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
+
+function compactTimelineValues(values: Array<string | null | undefined | false>) {
+  return values.filter(
+    (value): value is string => typeof value === 'string' && value.trim().length > 0,
+  );
+}
 
 type PrescriptionLineLike = {
   drug_name: string;
@@ -92,7 +102,7 @@ function detectMedicationChanges(
   currentLines: PrescriptionLineLike[],
   previousLines: PrescriptionLineLike[],
   prescribedDate: string | null,
-  prescriberName: string | null
+  prescriberName: string | null,
 ): VisitBriefMedicationChange[] {
   const rawChanges = detectChangesShared(currentLines, previousLines);
   return rawChanges.map((c) => ({
@@ -211,7 +221,10 @@ async function buildDrugCautions(
 
     // Adverse effects (top 3 serious ones)
     if (pi.adverse_effects && Array.isArray(pi.adverse_effects)) {
-      for (const a of (pi.adverse_effects as Array<{ text?: string; severity?: string }>).slice(0, 3)) {
+      for (const a of (pi.adverse_effects as Array<{ text?: string; severity?: string }>).slice(
+        0,
+        3,
+      )) {
         if (a.text) {
           cautions.push({
             drug_name: name,
@@ -255,25 +268,23 @@ function buildDispensingItems(args: {
 }): VisitBriefDispensingItem[] {
   const latestAuditResult = args.latestSetPlan?.audits?.[0]?.result;
   const auditStatus = latestAuditResult
-    ? SET_AUDIT_LABELS[latestAuditResult] ?? latestAuditResult
+    ? (SET_AUDIT_LABELS[latestAuditResult] ?? latestAuditResult)
     : null;
-  const setMethod =
-    args.latestSetPlan?.set_method
-      ? SET_METHOD_LABELS[args.latestSetPlan.set_method as keyof typeof SET_METHOD_LABELS] ??
-        args.latestSetPlan.set_method
-      : null;
+  const setMethod = args.latestSetPlan?.set_method
+    ? (SET_METHOD_LABELS[args.latestSetPlan.set_method as keyof typeof SET_METHOD_LABELS] ??
+      args.latestSetPlan.set_method)
+    : null;
   const setPeriodLabel =
     args.latestSetPlan?.target_period_start && args.latestSetPlan?.target_period_end
       ? `${args.latestSetPlan.target_period_start.toISOString().slice(0, 10)} - ${args.latestSetPlan.target_period_end.toISOString().slice(0, 10)}`
-    : null;
+      : null;
 
   const items = args.currentLines
     .filter((line) => line.dispensing_method || line.packaging_instructions || setMethod)
     .map((line) => {
-      const methodLabel =
-        line.dispensing_method
-          ? DISPENSING_METHOD_LABELS[line.dispensing_method] ?? line.dispensing_method
-          : null;
+      const methodLabel = line.dispensing_method
+        ? (DISPENSING_METHOD_LABELS[line.dispensing_method] ?? line.dispensing_method)
+        : null;
       const noteParts = [
         methodLabel ? `方法: ${methodLabel}` : null,
         line.packaging_instructions ? `包装: ${line.packaging_instructions}` : null,
@@ -304,7 +315,7 @@ function buildDeliveryItems(
     status: string;
     occurred_at: string | null;
     action_href: string;
-  }>
+  }>,
 ): VisitBriefDeliveryItem[] {
   const actionableStatuses = new Set(['draft', 'failed', 'response_waiting', 'sent', 'received']);
   return timeline
@@ -312,7 +323,7 @@ function buildDeliveryItems(
       (item) =>
         item.source_type === 'delivery_record' ||
         item.source_type === 'care_report' ||
-        item.source_type === 'tracing_report'
+        item.source_type === 'tracing_report',
     )
     .filter((item) => actionableStatuses.has(item.status))
     .map((item) => {
@@ -389,10 +400,7 @@ function buildDosageFormSupport(args: {
   return candidates.slice(0, 3);
 }
 
-function sortCommunications(
-  left: VisitBriefCommunicationItem,
-  right: VisitBriefCommunicationItem
-) {
+function sortCommunications(left: VisitBriefCommunicationItem, right: VisitBriefCommunicationItem) {
   const severityRank: Record<VisitBriefSeverity, number> = {
     urgent: 0,
     high: 1,
@@ -473,9 +481,9 @@ function buildCommunicationItems(args: {
       summary: item.note ?? 'メモなし',
       occurred_at: (item.callback_due_at ?? item.called_at).toISOString(),
       counterpart: item.contact_name,
-      severity: (
-        item.outcome === 'unreachable' || item.outcome === 'attempted' ? 'high' : 'normal'
-      ) as VisitBriefSeverity,
+      severity: (item.outcome === 'unreachable' || item.outcome === 'attempted'
+        ? 'high'
+        : 'normal') as VisitBriefSeverity,
     })),
   ];
 
@@ -497,6 +505,9 @@ function buildUnresolvedItems(args: {
   inquiries: Array<{
     reason: string;
     inquiry_content: string;
+    proposal_origin?: 'post_inquiry' | 'pre_issuance' | null;
+    residual_adjustment?: boolean | null;
+    change_detail?: string | null;
   }>;
   blockedBillingEvidence: Array<{
     blockers: Array<{
@@ -523,17 +534,24 @@ function buildUnresolvedItems(args: {
     ...args.inquiries.map((item) => ({
       source_type: 'inquiry' as const,
       title: `疑義照会 ${item.reason}`,
-      summary: item.inquiry_content,
+      summary:
+        compactTimelineValues([
+          getInquiryPrimaryDetail({
+            inquiryContent: item.inquiry_content,
+            changeDetail: item.change_detail,
+          }),
+          ...getInquiryPresentationBadges({
+            proposalOrigin: item.proposal_origin,
+            residualAdjustment: item.residual_adjustment,
+          }),
+        ]).join(' / ') || item.inquiry_content,
       severity: 'high' as const,
       href: '/workflow',
     })),
     ...args.blockedBillingEvidence.map((item) => ({
       source_type: 'billing' as const,
       title: '算定ブロッカー',
-      summary:
-        item.blockers[0]?.reason ??
-        item.validation_notes ??
-        '算定条件の再確認が必要です。',
+      summary: item.blockers[0]?.reason ?? item.validation_notes ?? '算定条件の再確認が必要です。',
       severity: 'normal' as const,
       href: '/billing',
     })),
@@ -603,7 +621,9 @@ function buildFallbackHeadline(args: {
     return `${urgentCommunication.title} の確認が最優先です。`;
   }
 
-  const highUnresolved = args.unresolvedItems.find((item) => item.severity === 'urgent' || item.severity === 'high');
+  const highUnresolved = args.unresolvedItems.find(
+    (item) => item.severity === 'urgent' || item.severity === 'high',
+  );
   if (highUnresolved) {
     return `${highUnresolved.title} が未解決です。`;
   }
@@ -694,11 +714,13 @@ function buildRuleSummary(args: {
 }
 
 async function getVisitBriefAiOperationStats(db: DbClient, orgId: string) {
-  const auditLogClient = (db as unknown as {
-    auditLog?: {
-      count?: (args: Record<string, unknown>) => Promise<number>;
-    };
-  }).auditLog;
+  const auditLogClient = (
+    db as unknown as {
+      auditLog?: {
+        count?: (args: Record<string, unknown>) => Promise<number>;
+      };
+    }
+  ).auditLog;
   if (!auditLogClient?.count) {
     return {
       successCount: 0,
@@ -767,10 +789,9 @@ async function buildAiSummary(args: {
   });
 }
 
-
 export async function getPatientVisitBrief(
   db: DbClient,
-  args: BuildVisitBriefArgs
+  args: BuildVisitBriefArgs,
 ): Promise<VisitBrief> {
   const caseIds = (
     await db.careCase.findMany({
@@ -1019,6 +1040,9 @@ export async function getPatientVisitBrief(
       select: {
         reason: true,
         inquiry_content: true,
+        proposal_origin: true,
+        residual_adjustment: true,
+        change_detail: true,
       },
     }),
     listBillingEvidenceBlockers(db, {
@@ -1130,7 +1154,7 @@ export async function getPatientVisitBrief(
         : null;
     const highlightedRisks = Array.isArray(visitBriefMetadata?.highlighted_risks)
       ? visitBriefMetadata.highlighted_risks.filter(
-          (item): item is string => typeof item === 'string' && item.length > 0
+          (item): item is string => typeof item === 'string' && item.length > 0,
         )
       : [];
 
@@ -1168,32 +1192,29 @@ export async function getPatientVisitBrief(
         currentLines,
         previousLines,
         currentIntake.prescribed_date.toISOString(),
-        currentIntake.prescriber_name
+        currentIntake.prescriber_name,
       )
     : [];
 
   // Enrich with DrugMaster data for price/generic/narcotic display
-  const drugCodes = currentLines
-    .map((l) => l.drug_code)
-    .filter((c): c is string => c !== null);
+  const drugCodes = currentLines.map((l) => l.drug_code).filter((c): c is string => c !== null);
 
-  const drugMasters = drugCodes.length > 0
-    ? await db.drugMaster.findMany({
-        where: { yj_code: { in: drugCodes } },
-        select: {
-          yj_code: true,
-          drug_price: true,
-          is_generic: true,
-          is_narcotic: true,
-          is_psychotropic: true,
-          therapeutic_category: true,
-        },
-      })
-    : [];
+  const drugMasters =
+    drugCodes.length > 0
+      ? await db.drugMaster.findMany({
+          where: { yj_code: { in: drugCodes } },
+          select: {
+            yj_code: true,
+            drug_price: true,
+            is_generic: true,
+            is_narcotic: true,
+            is_psychotropic: true,
+            therapeutic_category: true,
+          },
+        })
+      : [];
 
-  const drugMasterMap = new Map(
-    drugMasters.map((dm) => [dm.yj_code, dm]),
-  );
+  const drugMasterMap = new Map(drugMasters.map((dm) => [dm.yj_code, dm]));
 
   const medications = buildMedicationItems({
     currentLines,
@@ -1220,10 +1241,16 @@ export async function getPatientVisitBrief(
     communicationRequests,
     contactLogs,
   });
+  const unresolvedInquiries = inquiries.map((item) => ({
+    ...item,
+    proposal_origin: (item.proposal_origin === 'pre_issuance' ? 'pre_issuance' : 'post_inquiry') as
+      | 'post_inquiry'
+      | 'pre_issuance',
+  }));
   const unresolvedItems = buildUnresolvedItems({
     tasks,
     medicationIssues,
-    inquiries,
+    inquiries: unresolvedInquiries,
     blockedBillingEvidence,
   });
   const mustCheckToday = buildMustCheckToday({
@@ -1258,8 +1285,7 @@ export async function getPatientVisitBrief(
   const recentOperationStats = await getVisitBriefAiOperationStats(db, args.orgId);
   const recentGenerationCount =
     recentOperationStats.successCount + recentOperationStats.failureCount + 1;
-  const recentFailureCount =
-    recentOperationStats.failureCount + (aiSummary.is_fallback ? 1 : 0);
+  const recentFailureCount = recentOperationStats.failureCount + (aiSummary.is_fallback ? 1 : 0);
   const hydratedAiSummary: VisitBriefAiSummary = {
     ...aiSummary,
     recent_generation_count_24h: recentGenerationCount,
@@ -1270,11 +1296,13 @@ export async function getPatientVisitBrief(
         : null,
   };
 
-  const auditLogClient = (db as unknown as {
-    auditLog?: {
-      create?: (args: Record<string, unknown>) => Promise<unknown>;
-    };
-  }).auditLog;
+  const auditLogClient = (
+    db as unknown as {
+      auditLog?: {
+        create?: (args: Record<string, unknown>) => Promise<unknown>;
+      };
+    }
+  ).auditLog;
   if (auditLogClient?.create) {
     await auditLogClient.create({
       data: {
@@ -1332,7 +1360,7 @@ export async function getPatientVisitBrief(
 
 export async function getScheduleVisitBrief(
   db: DbClient,
-  args: Omit<BuildVisitBriefArgs, 'context'>
+  args: Omit<BuildVisitBriefArgs, 'context'>,
 ): Promise<VisitBrief> {
   return getPatientVisitBrief(db, {
     ...args,

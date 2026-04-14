@@ -39,10 +39,14 @@ careviax/
 
 ```bash
 pnpm dev
+pnpm dev:e2e:local
+pnpm build:e2e:local
+pnpm start:e2e:local
 pnpm build
 pnpm lint
 pnpm test
 pnpm test:e2e
+pnpm test:e2e:local
 pnpm test:e2e:list
 pnpm test:e2e:audit
 pnpm db:generate

@@ -242,10 +242,7 @@ describe('rule-engine: buildBillingCandidateSpecs', () => {
     const singleRule = makeBaseRule(); // should be skipped
     const tx = makeTx([singleRule, onlineRule]);
 
-    const specs = await buildBillingCandidateSpecs(
-      tx,
-      makeContext({ onlineEligible: true }),
-    );
+    const specs = await buildBillingCandidateSpecs(tx, makeContext({ onlineEligible: true }));
 
     const base = specs.find((s) => s.ssotKey === 'medical.home_visit.online');
     expect(base).toBeDefined();
@@ -260,10 +257,7 @@ describe('rule-engine: buildBillingCandidateSpecs', () => {
     });
     const tx = makeTx([singleRule]);
 
-    const specs = await buildBillingCandidateSpecs(
-      tx,
-      makeContext({ monthlyVisitCount: 5 }),
-    );
+    const specs = await buildBillingCandidateSpecs(tx, makeContext({ monthlyVisitCount: 5 }));
 
     expect(specs).toHaveLength(1);
     expect(specs[0].status).toBe('excluded');
@@ -277,10 +271,7 @@ describe('rule-engine: buildBillingCandidateSpecs', () => {
     });
     const tx = makeTx([singleRule]);
 
-    const specs = await buildBillingCandidateSpecs(
-      tx,
-      makeContext({ weeklyVisitCount: 41 }),
-    );
+    const specs = await buildBillingCandidateSpecs(tx, makeContext({ weeklyVisitCount: 41 }));
 
     expect(specs).toHaveLength(1);
     expect(specs[0].status).toBe('excluded');
@@ -295,10 +286,7 @@ describe('rule-engine: buildBillingCandidateSpecs', () => {
     });
     const tx = makeTx([singleRule, narcoticRule]);
 
-    const specs = await buildBillingCandidateSpecs(
-      tx,
-      makeContext({ narcoticRequired: true }),
-    );
+    const specs = await buildBillingCandidateSpecs(tx, makeContext({ narcoticRequired: true }));
 
     const addition = specs.find((s) => s.ssotKey === 'medical.addition.narcotic');
     expect(addition).toBeDefined();
@@ -318,10 +306,7 @@ describe('rule-engine: buildBillingCandidateSpecs', () => {
     });
     const tx = makeTx([singleRule, infantRule]);
 
-    const specs = await buildBillingCandidateSpecs(
-      tx,
-      makeContext({ infantEligible: true }),
-    );
+    const specs = await buildBillingCandidateSpecs(tx, makeContext({ infantEligible: true }));
 
     const addition = specs.find((s) => s.ssotKey === 'medical.addition.infant');
     expect(addition).toBeDefined();
@@ -347,10 +332,7 @@ describe('rule-engine: buildBillingCandidateSpecs', () => {
     });
     const tx = makeTx([singleRule, nightRule, holidayRule]);
 
-    const specs = await buildBillingCandidateSpecs(
-      tx,
-      makeContext({ afterHoursVisit: 'night' }),
-    );
+    const specs = await buildBillingCandidateSpecs(tx, makeContext({ afterHoursVisit: 'night' }));
 
     const nightAddition = specs.find((s) => s.ssotKey === 'medical.addition.night');
     const holidayAddition = specs.find((s) => s.ssotKey === 'medical.addition.holiday');
@@ -404,6 +386,73 @@ describe('rule-engine: buildBillingCandidateSpecs', () => {
         base_points: 650,
         derived_points: 98,
       }),
+    );
+  });
+
+  it('does not include inquiry-derived home adverse event rules in visit candidate specs', async () => {
+    const singleRule = makeBaseRule();
+    const inquiryDerivedRule = makeAdditionRule({
+      ssot_key: 'medical.adverse_event_prevention.home_proposal',
+      code: 'MED_ADVERSE_EVENT_HOME_PROPOSAL',
+      name: '薬学的有害事象等防止加算 イ（在宅・処方提案反映）',
+      conditions: { adverse_event_prevention_type: 'proposal_reflected' },
+    });
+    const tx = makeTx([singleRule, inquiryDerivedRule]);
+
+    const specs = await buildBillingCandidateSpecs(tx, makeContext());
+
+    expect(specs).toHaveLength(1);
+    expect(specs.find((s) => s.code === 'MED_ADVERSE_EVENT_HOME_PROPOSAL')).toBeUndefined();
+  });
+
+  it('keeps multi-staff visit excluded until the visit is explicitly marked eligible', async () => {
+    const singleRule = makeBaseRule();
+    const multiStaffRule = makeAdditionRule({
+      ssot_key: 'medical.multi_staff_visit',
+      code: 'MED_MULTI_STAFF_VISIT',
+      name: '複数名薬剤管理指導訪問料',
+      conditions: { building_tier: 'single', requires_multi_staff_visit: true },
+    });
+    const tx = makeTx([singleRule, multiStaffRule]);
+
+    const withoutEligibility = await buildBillingCandidateSpecs(tx, makeContext());
+    expect(withoutEligibility.find((s) => s.code === 'MED_MULTI_STAFF_VISIT')?.status).toBe(
+      'excluded',
+    );
+
+    const withEligibility = await buildBillingCandidateSpecs(
+      tx,
+      makeContext({ multiStaffVisitEligible: true }),
+    );
+    expect(withEligibility.find((s) => s.code === 'MED_MULTI_STAFF_VISIT')?.status).toBe(
+      'candidate',
+    );
+  });
+
+  it('requires both single-building and explicit eligibility for physician simultaneous guidance', async () => {
+    const singleRule = makeBaseRule();
+    const physicianSimultaneousRule = makeAdditionRule({
+      ssot_key: 'medical.physician_simultaneous_guidance',
+      code: 'MED_PHYSICIAN_SIMULTANEOUS',
+      name: '訪問薬剤管理医師同時指導料',
+      conditions: { building_tier: 'single', requires_physician_simultaneous: true },
+    });
+    const tx = makeTx([singleRule, physicianSimultaneousRule]);
+
+    const multiBuilding = await buildBillingCandidateSpecs(
+      tx,
+      makeContext({ buildingPatientCount: 3, physicianSimultaneousEligible: true }),
+    );
+    expect(multiBuilding.find((s) => s.code === 'MED_PHYSICIAN_SIMULTANEOUS')?.status).toBe(
+      'excluded',
+    );
+
+    const singleBuilding = await buildBillingCandidateSpecs(
+      tx,
+      makeContext({ physicianSimultaneousEligible: true }),
+    );
+    expect(singleBuilding.find((s) => s.code === 'MED_PHYSICIAN_SIMULTANEOUS')?.status).toBe(
+      'candidate',
     );
   });
 

@@ -43,11 +43,10 @@ import { mergeScheduleProposalSearchParams } from './proposal-query-state';
 import {
   PRIORITY_LABELS,
   PROPOSAL_STATUS_LABELS,
-  type BillingCadencePreview,
-  type BillingRequirementAlert,
   type CaseOption,
   type Proposal,
   type VisitPriority,
+  type VisitScheduleBillingPreview,
   type VisitSchedule,
   type VisitType,
   VISIT_TYPE_LABELS,
@@ -182,7 +181,12 @@ function computeFacilitySuggestions(proposals: Proposal[]): FacilitySuggestion[]
   >();
 
   for (const proposal of proposals) {
-    if (!['proposed', 'patient_contact_pending', 'reschedule_pending'].includes(proposal.proposal_status)) continue;
+    if (
+      !['proposed', 'patient_contact_pending', 'reschedule_pending'].includes(
+        proposal.proposal_status,
+      )
+    )
+      continue;
     const key = normalizeFacilityKey(proposal);
     if (!key) continue;
     const residence = proposal.case_.patient.residences[0];
@@ -201,18 +205,25 @@ function computeFacilitySuggestions(proposals: Proposal[]): FacilitySuggestion[]
       for (const proposal of group.proposals) {
         const key = dateKey(proposal.proposed_date);
         counts.set(key, (counts.get(key) ?? 0) + 1);
-        pharmacistCounts.set(proposal.proposed_pharmacist_id, (pharmacistCounts.get(proposal.proposed_pharmacist_id) ?? 0) + 1);
+        pharmacistCounts.set(
+          proposal.proposed_pharmacist_id,
+          (pharmacistCounts.get(proposal.proposed_pharmacist_id) ?? 0) + 1,
+        );
       }
       if (counts.size <= 1 || group.proposals.length < 2) return null;
 
-      const [targetDate] = [...counts.entries()].sort((left, right) => {
-        if (right[1] !== left[1]) return right[1] - left[1];
-        return left[0].localeCompare(right[0]);
-      })[0] ?? [];
+      const [targetDate] =
+        [...counts.entries()].sort((left, right) => {
+          if (right[1] !== left[1]) return right[1] - left[1];
+          return left[0].localeCompare(right[0]);
+        })[0] ?? [];
       if (!targetDate) return null;
 
-      const [targetPharmacistId] = [...pharmacistCounts.entries()].sort((left, right) => right[1] - left[1])[0] ?? [];
-      const outliers = group.proposals.filter((proposal) => dateKey(proposal.proposed_date) !== targetDate);
+      const [targetPharmacistId] =
+        [...pharmacistCounts.entries()].sort((left, right) => right[1] - left[1])[0] ?? [];
+      const outliers = group.proposals.filter(
+        (proposal) => dateKey(proposal.proposed_date) !== targetDate,
+      );
       if (outliers.length === 0 || !targetPharmacistId) return null;
 
       return {
@@ -240,7 +251,7 @@ function buildRouteReorderPayloads(args: {
   }> = [];
 
   const sourceRemaining = args.sourceSchedules.filter(
-    (schedule) => schedule.id !== args.draggedSchedule.id
+    (schedule) => schedule.id !== args.draggedSchedule.id,
   );
   sourceRemaining.forEach((schedule, index) => {
     payloads.push({
@@ -299,7 +310,9 @@ export function ScheduleWeeklyOptimizer({
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [weekAnchor, setWeekAnchor] = useState(() =>
-    initialDate ? startOfWeek(parseISO(initialDate), { weekStartsOn: 1 }) : startOfWeek(new Date(), { weekStartsOn: 1 })
+    initialDate
+      ? startOfWeek(parseISO(initialDate), { weekStartsOn: 1 })
+      : startOfWeek(new Date(), { weekStartsOn: 1 }),
   );
   const [selectedCaseId, setSelectedCaseId] = useState(initialCaseId ?? '');
   const [caseSearchInput, setCaseSearchInput] = useState('');
@@ -344,7 +357,7 @@ export function ScheduleWeeklyOptimizer({
   const weekEnd = endOfWeek(weekAnchor, { weekStartsOn: 1 });
   const days = useMemo(
     () => eachDayOfInterval({ start: weekStart, end: weekEnd }),
-    [weekEnd, weekStart]
+    [weekEnd, weekStart],
   );
   const dateFrom = format(weekStart, 'yyyy-MM-dd');
   const dateTo = format(weekEnd, 'yyyy-MM-dd');
@@ -428,15 +441,15 @@ export function ScheduleWeeklyOptimizer({
   const cases = useMemo(() => casesQuery.data?.data ?? EMPTY_CASES, [casesQuery.data]);
   const caseSearchResults = useMemo(
     () => caseSearchQuery.data?.data ?? EMPTY_CASES,
-    [caseSearchQuery.data]
+    [caseSearchQuery.data],
   );
   const schedules = useMemo(
     () => schedulesQuery.data?.data ?? EMPTY_SCHEDULES,
-    [schedulesQuery.data]
+    [schedulesQuery.data],
   );
   const proposals = useMemo(
     () => proposalsQuery.data?.data ?? EMPTY_PROPOSALS,
-    [proposalsQuery.data]
+    [proposalsQuery.data],
   );
   const shifts = useMemo(() => shiftsQuery.data?.data ?? EMPTY_SHIFTS, [shiftsQuery.data]);
 
@@ -461,13 +474,7 @@ export function ScheduleWeeklyOptimizer({
         headers: { 'x-org-id': orgId },
       });
       if (!response.ok) throw new Error('算定プレビューの取得に失敗しました');
-      return response.json() as Promise<{
-        alerts: BillingRequirementAlert[];
-        cadence: BillingCadencePreview;
-        recommended_visit_type: VisitType;
-        recommended_priority: VisitPriority;
-        recommended_candidate_count: number;
-      }>;
+      return response.json() as Promise<VisitScheduleBillingPreview>;
     },
     enabled: !!orgId && !!selectedCaseId,
   });
@@ -493,16 +500,15 @@ export function ScheduleWeeklyOptimizer({
     }
 
     return Array.from(map.values()).sort((left, right) =>
-      left.name.localeCompare(right.name, 'ja')
+      left.name.localeCompare(right.name, 'ja'),
     );
   }, [shifts]);
   const defaultSelectedRouteCell =
     pharmacists.length > 0 && days.length > 0
       ? {
-          pharmacistId:
-            pharmacists.some((pharmacist) => pharmacist.id === initialRoutePharmacistId)
-              ? (initialRoutePharmacistId as string)
-              : pharmacists[0].id,
+          pharmacistId: pharmacists.some((pharmacist) => pharmacist.id === initialRoutePharmacistId)
+            ? (initialRoutePharmacistId as string)
+            : pharmacists[0].id,
           dateKey:
             initialRouteDate && days.some((day) => format(day, 'yyyy-MM-dd') === initialRouteDate)
               ? initialRouteDate
@@ -546,7 +552,11 @@ export function ScheduleWeeklyOptimizer({
   const proposalsByCell = useMemo(() => {
     const map = new Map<string, Proposal[]>();
     for (const proposal of proposals) {
-      if (!['proposed', 'patient_contact_pending', 'reschedule_pending'].includes(proposal.proposal_status)) {
+      if (
+        !['proposed', 'patient_contact_pending', 'reschedule_pending'].includes(
+          proposal.proposal_status,
+        )
+      ) {
         continue;
       }
       const key = `${proposal.proposed_pharmacist_id}:${dateKey(proposal.proposed_date)}`;
@@ -570,22 +580,26 @@ export function ScheduleWeeklyOptimizer({
 
   const selectedCellSchedules = useMemo(() => {
     if (!effectiveSelectedRouteCell) return [];
-    return schedulesByCell.get(
-      `${effectiveSelectedRouteCell.pharmacistId}:${effectiveSelectedRouteCell.dateKey}`
-    ) ?? [];
+    return (
+      schedulesByCell.get(
+        `${effectiveSelectedRouteCell.pharmacistId}:${effectiveSelectedRouteCell.dateKey}`,
+      ) ?? []
+    );
   }, [effectiveSelectedRouteCell, schedulesByCell]);
   const selectedCellProposals = useMemo(() => {
     if (!effectiveSelectedRouteCell) return [];
-    return proposalsByCell.get(
-      `${effectiveSelectedRouteCell.pharmacistId}:${effectiveSelectedRouteCell.dateKey}`
-    ) ?? [];
+    return (
+      proposalsByCell.get(
+        `${effectiveSelectedRouteCell.pharmacistId}:${effectiveSelectedRouteCell.dateKey}`,
+      ) ?? []
+    );
   }, [effectiveSelectedRouteCell, proposalsByCell]);
   const currentSelectedCellOrderedIds = useMemo(
     () => [
       ...selectedCellSchedules.map((schedule) => schedule.id),
       ...selectedCellProposals.map((proposal) => `proposal:${proposal.id}`),
     ],
-    [selectedCellProposals, selectedCellSchedules]
+    [selectedCellProposals, selectedCellSchedules],
   );
 
   const routePreviewQuery = useQuery<VisitRoutePlan>({
@@ -619,8 +633,8 @@ export function ScheduleWeeklyOptimizer({
     },
     enabled: Boolean(
       orgId &&
-        effectiveSelectedRouteCell &&
-        (selectedCellSchedules.length > 0 || selectedCellProposals.length > 0)
+      effectiveSelectedRouteCell &&
+      (selectedCellSchedules.length > 0 || selectedCellProposals.length > 0),
     ),
   });
   const selectedCellRouteDraft = useRouteOrderDraft({
@@ -656,7 +670,9 @@ export function ScheduleWeeklyOptimizer({
       }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['visit-schedule-proposals', orgId] }),
-        queryClient.invalidateQueries({ queryKey: ['visit-schedule-proposals', 'weekly-optimizer', orgId] }),
+        queryClient.invalidateQueries({
+          queryKey: ['visit-schedule-proposals', 'weekly-optimizer', orgId],
+        }),
       ]);
     },
     onError: (error) => {
@@ -671,7 +687,7 @@ export function ScheduleWeeklyOptimizer({
         scheduled_date: string;
         pharmacist_id: string;
         route_order: number;
-      }>
+      }>,
     ) => applyVisitScheduleRouteUpdates({ orgId, updates: payloads }),
     onSuccess: async () => {
       toast.success('route_order を再採番して訪問予定を再配置しました');
@@ -696,10 +712,10 @@ export function ScheduleWeeklyOptimizer({
   const selectedCellRoutePoints = useMemo(() => {
     const plan = routePreviewQuery.data;
     const planById = new Map(
-      (plan?.stopSummaries ?? []).map((summary) => [summary.scheduleId, summary])
+      (plan?.stopSummaries ?? []).map((summary) => [summary.scheduleId, summary]),
     );
     const draftIndexById = new Map(
-      selectedCellRouteDraft.draftIds.map((scheduleId, index) => [scheduleId, index + 1])
+      selectedCellRouteDraft.draftIds.map((scheduleId, index) => [scheduleId, index + 1]),
     );
     return [
       ...selectedCellSchedules.map((schedule) => {
@@ -745,8 +761,7 @@ export function ScheduleWeeklyOptimizer({
               : null,
         };
       }),
-    ]
-      .filter((value): value is NonNullable<typeof value> => value != null);
+    ].filter((value): value is NonNullable<typeof value> => value != null);
   }, [
     routePreviewQuery.data,
     selectedCellProposals,
@@ -799,7 +814,7 @@ export function ScheduleWeeklyOptimizer({
             scheduled_date: string;
             pharmacist_id: string;
             route_order: number;
-          } => item != null
+          } => item != null,
         );
       const proposalUpdates = selectedCellRouteDraft.draftIds
         .map((scheduleId, index) =>
@@ -808,7 +823,7 @@ export function ScheduleWeeklyOptimizer({
                 proposal_id: scheduleId.replace('proposal:', ''),
                 route_order: index + 1,
               }
-            : null
+            : null,
         )
         .filter(
           (
@@ -816,7 +831,7 @@ export function ScheduleWeeklyOptimizer({
           ): item is {
             proposal_id: string;
             route_order: number;
-          } => item != null
+          } => item != null,
         );
 
       if (scheduleUpdates.length > 0) {
@@ -875,7 +890,7 @@ export function ScheduleWeeklyOptimizer({
   const moveSelectionToNextDay = () => {
     if (!effectiveSelectedRouteCell) return;
     const currentIndex = days.findIndex(
-      (day) => format(day, 'yyyy-MM-dd') === effectiveSelectedRouteCell.dateKey
+      (day) => format(day, 'yyyy-MM-dd') === effectiveSelectedRouteCell.dateKey,
     );
     const nextDay = days[currentIndex + 1] ?? null;
     if (!nextDay) return;
@@ -887,7 +902,7 @@ export function ScheduleWeeklyOptimizer({
   const selectAlternatePharmacist = () => {
     if (!effectiveSelectedRouteCell) return;
     const currentIndex = pharmacists.findIndex(
-      (pharmacist) => pharmacist.id === effectiveSelectedRouteCell.pharmacistId
+      (pharmacist) => pharmacist.id === effectiveSelectedRouteCell.pharmacistId,
     );
     const alternate =
       pharmacists.find((pharmacist) => pharmacist.id !== effectiveSelectedRouteCell.pharmacistId) ??
@@ -932,12 +947,12 @@ export function ScheduleWeeklyOptimizer({
         draggedSchedule: draggingSchedule,
         sourceSchedules:
           schedulesByCell.get(
-            `${draggingSchedule.sourcePharmacistId}:${draggingSchedule.sourceDateKey}`
+            `${draggingSchedule.sourcePharmacistId}:${draggingSchedule.sourceDateKey}`,
           ) ?? [],
         targetSchedules,
         targetPharmacistId: pharmacistId,
         targetDate: scheduledDate,
-      })
+      }),
     );
     setDraggingSchedule(null);
     setHoveredCell(null);
@@ -1158,13 +1173,14 @@ export function ScheduleWeeklyOptimizer({
             <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3 text-sm">
               <p className="font-medium text-foreground">{activeCase.patient.name}</p>
               <p className="text-muted-foreground">
-                主担当 {activeCase.primary_pharmacist_name ?? '未設定'} / 希望枠 {plannerSettings.preferred_time_from} - {plannerSettings.preferred_time_to}
+                主担当 {activeCase.primary_pharmacist_name ?? '未設定'} / 希望枠{' '}
+                {plannerSettings.preferred_time_from} - {plannerSettings.preferred_time_to}
               </p>
               {cadencePreview ? (
                 <p className="mt-2 text-xs text-muted-foreground">
                   次回算定可能日 {cadencePreview.cadence.next_billable_date ?? '提案不可'} / 残回数{' '}
-                  {cadencePreview.cadence.remaining_month_count} / 推奨候補数{' '}
-                  {cadencePreview.recommended_candidate_count}
+                  {cadencePreview.cadence.remaining_month_count} / 推奨枠数{' '}
+                  {cadencePreview.suggested_schedule_slot_count}
                 </p>
               ) : null}
             </div>
@@ -1173,7 +1189,9 @@ export function ScheduleWeeklyOptimizer({
           {isLoading ? (
             <p className="py-8 text-sm text-muted-foreground">週間最適化ビューを読み込み中...</p>
           ) : pharmacists.length === 0 ? (
-            <p className="py-8 text-sm text-muted-foreground">対象週に勤務シフトがある薬剤師がいません。</p>
+            <p className="py-8 text-sm text-muted-foreground">
+              対象週に勤務シフトがある薬剤師がいません。
+            </p>
           ) : (
             <div className="overflow-x-auto">
               <div className="grid min-w-[1100px] grid-cols-[220px_repeat(7,minmax(170px,1fr))] gap-3">
@@ -1181,7 +1199,10 @@ export function ScheduleWeeklyOptimizer({
                   薬剤師 / 日付
                 </div>
                 {days.map((day) => (
-                  <div key={day.toISOString()} className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                  <div
+                    key={day.toISOString()}
+                    className="rounded-xl border border-border/70 bg-muted/20 p-3"
+                  >
                     <p className="text-sm font-medium text-foreground">
                       {format(day, 'M/d(E)', { locale: ja })}
                     </p>
@@ -1195,7 +1216,9 @@ export function ScheduleWeeklyOptimizer({
                       className="rounded-xl border border-border/70 bg-background p-3"
                     >
                       <p className="text-sm font-medium text-foreground">{pharmacist.name}</p>
-                      <p className="text-xs text-muted-foreground">{pharmacist.siteName ?? '拠点未設定'}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {pharmacist.siteName ?? '拠点未設定'}
+                      </p>
                     </div>
                     {days.map((day) => {
                       const dayKey = format(day, 'yyyy-MM-dd');
@@ -1209,7 +1232,8 @@ export function ScheduleWeeklyOptimizer({
                         shiftFitsSchedule(shift, draggingSchedule);
                       const isSuggestedBillableDay =
                         cadencePreview?.cadence.suggested_dates.includes(dayKey) ?? false;
-                      const isNextBillableDay = cadencePreview?.cadence.next_billable_date === dayKey;
+                      const isNextBillableDay =
+                        cadencePreview?.cadence.next_billable_date === dayKey;
 
                       return (
                         <div
@@ -1258,11 +1282,17 @@ export function ScheduleWeeklyOptimizer({
                                 <Badge variant="outline">{cellProposals.length}候補</Badge>
                               ) : null}
                               {isNextBillableDay ? (
-                                <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                                <Badge
+                                  variant="outline"
+                                  className="border-emerald-200 bg-emerald-50 text-emerald-700"
+                                >
                                   次回算定可
                                 </Badge>
                               ) : isSuggestedBillableDay ? (
-                                <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">
+                                <Badge
+                                  variant="outline"
+                                  className="border-sky-200 bg-sky-50 text-sky-700"
+                                >
                                   候補日
                                 </Badge>
                               ) : null}
@@ -1303,7 +1333,9 @@ export function ScheduleWeeklyOptimizer({
                                     </p>
                                     <p className="text-[11px] text-muted-foreground">
                                       {timeLabel(schedule.time_window_start) ?? '時間未定'}
-                                      {schedule.time_window_end ? ` - ${timeLabel(schedule.time_window_end)}` : ''}
+                                      {schedule.time_window_end
+                                        ? ` - ${timeLabel(schedule.time_window_end)}`
+                                        : ''}
                                     </p>
                                   </div>
                                   {!schedule.confirmed_at ? (
@@ -1314,8 +1346,13 @@ export function ScheduleWeeklyOptimizer({
                             ))}
 
                             {cellProposals.slice(0, 3).map((proposal) => (
-                              <div key={proposal.id} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs">
-                                <p className="font-medium text-amber-900">{proposal.case_.patient.name}</p>
+                              <div
+                                key={proposal.id}
+                                className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs"
+                              >
+                                <p className="font-medium text-amber-900">
+                                  {proposal.case_.patient.name}
+                                </p>
                                 <p className="mt-1 text-amber-800">
                                   {PROPOSAL_STATUS_LABELS[proposal.proposal_status]}
                                 </p>
@@ -1363,12 +1400,16 @@ export function ScheduleWeeklyOptimizer({
           </CardHeader>
           <CardContent className="space-y-3">
             {facilitySuggestions.map((suggestion) => (
-              <div key={`${suggestion.label}-${suggestion.targetDate}`} className="rounded-2xl border border-border/70 px-4 py-3">
+              <div
+                key={`${suggestion.label}-${suggestion.targetDate}`}
+                className="rounded-2xl border border-border/70 px-4 py-3"
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="font-medium text-foreground">{suggestion.label}</p>
                     <p className="text-sm text-muted-foreground">
-                      集約候補日 {format(parseISO(suggestion.targetDate), 'M/d(E)', { locale: ja })} / 対象 {suggestion.outliers.length} 件
+                      集約候補日 {format(parseISO(suggestion.targetDate), 'M/d(E)', { locale: ja })}{' '}
+                      / 対象 {suggestion.outliers.length} 件
                     </p>
                   </div>
                   <Button
@@ -1384,9 +1425,11 @@ export function ScheduleWeeklyOptimizer({
                           start_date: suggestion.targetDate,
                           locked_date: suggestion.targetDate,
                           preferred_time_from:
-                            timeLabel(proposal.time_window_start) ?? plannerSettings.preferred_time_from,
+                            timeLabel(proposal.time_window_start) ??
+                            plannerSettings.preferred_time_from,
                           preferred_time_to:
-                            timeLabel(proposal.time_window_end) ?? plannerSettings.preferred_time_to,
+                            timeLabel(proposal.time_window_end) ??
+                            plannerSettings.preferred_time_to,
                           preferred_pharmacist_id: suggestion.targetPharmacistId,
                           candidate_count: 1,
                         });
@@ -1400,7 +1443,8 @@ export function ScheduleWeeklyOptimizer({
                 <div className="mt-3 flex flex-wrap gap-2">
                   {suggestion.outliers.map((proposal) => (
                     <Badge key={proposal.id} variant="outline">
-                      {proposal.case_.patient.name} / {format(parseISO(proposal.proposed_date), 'M/d', { locale: ja })}
+                      {proposal.case_.patient.name} /{' '}
+                      {format(parseISO(proposal.proposed_date), 'M/d', { locale: ja })}
                     </Badge>
                   ))}
                 </div>
@@ -1453,7 +1497,9 @@ export function ScheduleWeeklyOptimizer({
           onResetRouteDraft={selectedCellRouteDraft.resetToOptimized}
           routeDiffCount={selectedCellRouteDraft.diffCount}
           routeLoading={routePreviewQuery.isLoading}
-          routeError={routePreviewQuery.error instanceof Error ? routePreviewQuery.error.message : null}
+          routeError={
+            routePreviewQuery.error instanceof Error ? routePreviewQuery.error.message : null
+          }
           onApplyRoute={() => applySelectedRouteMutation.mutate()}
           applyRouteDisabled={
             !routePreviewQuery.data ||
@@ -1468,33 +1514,29 @@ export function ScheduleWeeklyOptimizer({
           onGenerateForCell={() =>
             handleGenerateForCell(
               effectiveSelectedRouteCell.pharmacistId,
-              effectiveSelectedRouteCell.dateKey
+              effectiveSelectedRouteCell.dateKey,
             )
           }
           generateDisabled={!selectedCaseId || createProposalMutation.isPending}
           diagnostics={lastPlannerDiagnostics}
-          onApplyTimeExpansion={() =>
-            {
-              setPlannerSettings((current) => ({
-                ...current,
-                preferred_time_from: '09:00',
-                preferred_time_to: '18:00',
-              }));
-              replaceOptimizerUrl({
-                optimizer_time_from: '09:00',
-                optimizer_time_to: '18:00',
-              });
-            }
-          }
-          onSwitchToDrive={() =>
-            {
-              setPlannerSettings((current) => ({
-                ...current,
-                travel_mode: 'DRIVE',
-              }));
-              replaceOptimizerUrl({ optimizer_travel_mode: 'DRIVE' });
-            }
-          }
+          onApplyTimeExpansion={() => {
+            setPlannerSettings((current) => ({
+              ...current,
+              preferred_time_from: '09:00',
+              preferred_time_to: '18:00',
+            }));
+            replaceOptimizerUrl({
+              optimizer_time_from: '09:00',
+              optimizer_time_to: '18:00',
+            });
+          }}
+          onSwitchToDrive={() => {
+            setPlannerSettings((current) => ({
+              ...current,
+              travel_mode: 'DRIVE',
+            }));
+            replaceOptimizerUrl({ optimizer_travel_mode: 'DRIVE' });
+          }}
           onMoveSelectionToNextDay={moveSelectionToNextDay}
           onSelectAlternatePharmacist={selectAlternatePharmacist}
         />

@@ -127,6 +127,8 @@ export type WorkflowData = {
     summary: string;
     reason: string;
     inquiry_to_physician: string;
+    proposal_origin: 'post_inquiry' | 'pre_issuance' | null;
+    residual_adjustment: boolean | null;
     change_detail: string | null;
     line: {
       id: string;

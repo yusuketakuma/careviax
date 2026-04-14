@@ -10,8 +10,8 @@ const { withAuthMock, careReportFindManyMock, patientFindManyMock } = vi.hoisted
 vi.mock('@/lib/auth/middleware', () => ({
   withAuth: (
     handler: (
-      req: NextRequest & { orgId: string; userId: string; role?: string }
-    ) => Promise<Response>
+      req: NextRequest & { orgId: string; userId: string; role?: string },
+    ) => Promise<Response>,
   ) => {
     withAuthMock.mockImplementation(handler);
     return handler;
@@ -45,6 +45,10 @@ describe('/api/care-reports GET', () => {
         status: 'response_waiting',
         content: {
           summary: '服薬状況は安定。夜間の眠気について経過観察。',
+          billing_context: {
+            effective_revision_code: '2026',
+            site_config_status: 'resolved',
+          },
         },
         template_id: null,
         pdf_url: null,
@@ -109,6 +113,8 @@ describe('/api/care-reports GET', () => {
         latest_delivery_recipient_name: string | null;
         failed_delivery_count: number;
         pending_delivery_count: number;
+        effective_revision_code: string | null;
+        site_config_status: string | null;
       }>;
       deliverySummary: {
         pending_delivery_count: number;
@@ -123,6 +129,8 @@ describe('/api/care-reports GET', () => {
       latest_delivery_recipient_name: '在宅主治医',
       failed_delivery_count: 1,
       pending_delivery_count: 1,
+      effective_revision_code: '2026',
+      site_config_status: 'resolved',
     });
     expect(payload.deliverySummary).toMatchObject({
       pending_delivery_count: 1,

@@ -218,6 +218,8 @@ export type PatientCommunicationsSnapshot = {
       claimable: boolean;
       exclusion_reason: string | null;
       validation_notes: string | null;
+      effective_revision_code: string | null;
+      site_config_status: string | null;
       blockers: Array<{
         key: string;
         reason: string;
@@ -234,6 +236,8 @@ export type PatientCommunicationsSnapshot = {
       points: number | null;
       status: string;
       exclusion_reason: string | null;
+      effective_revision_code: string | null;
+      site_config_status: string | null;
     }>;
   };
 };

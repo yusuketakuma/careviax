@@ -93,22 +93,22 @@ enum PatientConditionType {
 }
 
 model Patient {
-  id                       String   @id @default(cuid())
+  id                       String    @id @default(cuid())
   org_id                   String
   name                     String
   name_kana                String
-  birth_date               DateTime @db.Date
+  birth_date               DateTime  @db.Date
   gender                   Gender
   phone                    String?
   medical_insurance_number String?
   care_insurance_number    String?
-  billing_support_flag     Boolean  @default(false) // 請求支援フラグ
+  billing_support_flag     Boolean   @default(false) // 請求支援フラグ
   allergy_info             Json? // アレルギー情報 (AllergyEntry[])
   notes                    String?
   archived_at              DateTime?
   archived_by              String?
-  created_at               DateTime @default(now())
-  updated_at               DateTime @updatedAt
+  created_at               DateTime  @default(now())
+  updated_at               DateTime  @updatedAt
 
   residences            Residence[]
   cases                 CareCase[]
@@ -134,21 +134,21 @@ model Residence {
   patient_id       String
   patient          Patient       @relation(fields: [patient_id], references: [id])
   address          String
-  building_id      String?       // レガシー: 自由テキスト (後方互換)
-  facility_id      String?       // FK: Facility マスターへのリンク
+  building_id      String? // レガシー: 自由テキスト (後方互換)
+  facility_id      String? // FK: Facility マスターへのリンク
   facility         Facility?     @relation(fields: [facility_id], references: [id])
-  facility_unit_id String?       // FK: FacilityUnit (フロア/ユニット)
+  facility_unit_id String? // FK: FacilityUnit (フロア/ユニット)
   facility_unit    FacilityUnit? @relation(fields: [facility_unit_id], references: [id])
-  unit_name        String?       // 部屋番号等 (e.g., "203号室")
-  lat         Float?
-  lng         Float?
+  unit_name        String? // 部屋番号等 (e.g., "203号室")
+  lat              Float?
+  lng              Float?
   geocode_status   String?
   geocode_source   String?
   geocode_accuracy String?
   geocoded_at      DateTime?
-  is_primary  Boolean  @default(true)
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  is_primary       Boolean       @default(true)
+  created_at       DateTime      @default(now())
+  updated_at       DateTime      @updatedAt
 
   @@index([org_id])
   @@index([patient_id])
@@ -157,29 +157,29 @@ model Residence {
 }
 
 model CareCase {
-  id                    String     @id @default(cuid())
-  org_id                String
-  patient_id            String
-  patient               Patient    @relation(fields: [patient_id], references: [id])
-  status                CaseStatus @default(referral_received)
-  referral_source       String? // 紹介元
-  referral_date         DateTime?
-  start_date            DateTime?
-  end_date              DateTime?
-  end_reason            String?
-  primary_pharmacist_id String?
-  backup_pharmacist_id  String?
+  id                     String     @id @default(cuid())
+  org_id                 String
+  patient_id             String
+  patient                Patient    @relation(fields: [patient_id], references: [id])
+  status                 CaseStatus @default(referral_received)
+  referral_source        String? // 紹介元
+  referral_date          DateTime?
+  start_date             DateTime?
+  end_date               DateTime?
+  end_reason             String?
+  primary_pharmacist_id  String?
+  backup_pharmacist_id   String?
   required_visit_support Json?
-  notes                 String?
-  created_at            DateTime   @default(now())
-  updated_at            DateTime   @updatedAt
+  notes                  String?
+  created_at             DateTime   @default(now())
+  updated_at             DateTime   @updatedAt
 
-  care_team_links   CareTeamLink[]
-  management_plans  ManagementPlan[]
-  medication_cycles MedicationCycle[]
-  visit_schedules   VisitSchedule[]
+  care_team_links          CareTeamLink[]
+  management_plans         ManagementPlan[]
+  medication_cycles        MedicationCycle[]
+  visit_schedules          VisitSchedule[]
   visit_schedule_proposals VisitScheduleProposal[]
-  care_reports      CareReport[]
+  care_reports             CareReport[]
 
   @@index([org_id])
   @@index([patient_id])
@@ -187,47 +187,47 @@ model CareCase {
 }
 
 model ContactParty {
-  id                String          @id @default(cuid())
-  org_id            String
-  patient_id        String
-  patient           Patient         @relation(fields: [patient_id], references: [id])
-  name              String
-  relation          ContactRelation
-  phone             String?
-  email             String?
-  fax               String?
-  organization_name String? // 所属組織名
-  department        String?
-  address           String?
-  is_primary        Boolean         @default(false)
-  is_emergency_contact Boolean     @default(false)
-  notes             String?
-  created_at        DateTime        @default(now())
-  updated_at        DateTime        @updatedAt
+  id                   String          @id @default(cuid())
+  org_id               String
+  patient_id           String
+  patient              Patient         @relation(fields: [patient_id], references: [id])
+  name                 String
+  relation             ContactRelation
+  phone                String?
+  email                String?
+  fax                  String?
+  organization_name    String? // 所属組織名
+  department           String?
+  address              String?
+  is_primary           Boolean         @default(false)
+  is_emergency_contact Boolean         @default(false)
+  notes                String?
+  created_at           DateTime        @default(now())
+  updated_at           DateTime        @updatedAt
 
   @@index([org_id])
   @@index([patient_id])
 }
 
 model CareTeamLink {
-  id                String   @id @default(cuid())
-  org_id            String
-  case_id           String
-  case_             CareCase @relation(fields: [case_id], references: [id])
+  id                       String                @id @default(cuid())
+  org_id                   String
+  case_id                  String
+  case_                    CareCase              @relation(fields: [case_id], references: [id])
   external_professional_id String?
-  external_professional ExternalProfessional? @relation(fields: [external_professional_id], references: [id], onDelete: SetNull)
-  role              String // physician/nurse/care_manager/pharmacist/other
-  name              String
-  organization_name String?
-  department        String?
-  phone             String?
-  email             String?
-  fax               String?
-  address           String?
-  is_primary        Boolean  @default(false)
-  notes             String?
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
+  external_professional    ExternalProfessional? @relation(fields: [external_professional_id], references: [id], onDelete: SetNull)
+  role                     String // physician/nurse/care_manager/pharmacist/other
+  name                     String
+  organization_name        String?
+  department               String?
+  phone                    String?
+  email                    String?
+  fax                      String?
+  address                  String?
+  is_primary               Boolean               @default(false)
+  notes                    String?
+  created_at               DateTime              @default(now())
+  updated_at               DateTime              @updatedAt
 
   @@index([org_id])
   @@index([case_id])
@@ -254,37 +254,37 @@ model PatientCondition {
 }
 
 model ConsentRecord {
-  id                 String        @id @default(cuid())
-  org_id             String
-  patient_id         String
-  patient            Patient       @relation(fields: [patient_id], references: [id])
-  case_id            String?
-  template_id        String?
-  template           Template?     @relation(fields: [template_id], references: [id])
-  template_version   Int?
-  consent_type       ConsentType
-  method             ConsentMethod
-  obtained_date      DateTime
-  expiry_date        DateTime?
-  revoked_date       DateTime?
-  document_url       String? // S3のスキャン文書URL
-  is_active          Boolean       @default(true)
-  access_restricted  Boolean       @default(false) // 撤回後の閲覧制限フラグ
-  created_at         DateTime      @default(now())
-  updated_at         DateTime      @updatedAt
+  id                String        @id @default(cuid())
+  org_id            String
+  patient_id        String
+  patient           Patient       @relation(fields: [patient_id], references: [id])
+  case_id           String?
+  template_id       String?
+  template          Template?     @relation(fields: [template_id], references: [id])
+  template_version  Int?
+  consent_type      ConsentType
+  method            ConsentMethod
+  obtained_date     DateTime
+  expiry_date       DateTime?
+  revoked_date      DateTime?
+  document_url      String? // S3のスキャン文書URL
+  is_active         Boolean       @default(true)
+  access_restricted Boolean       @default(false) // 撤回後の閲覧制限フラグ
+  created_at        DateTime      @default(now())
+  updated_at        DateTime      @updatedAt
 
   @@index([org_id])
   @@index([patient_id])
 }
 
 model ManagementPlan {
-  id               String   @id @default(cuid())
+  id               String               @id @default(cuid())
   org_id           String
   case_id          String
-  case_            CareCase @relation(fields: [case_id], references: [id])
+  case_            CareCase             @relation(fields: [case_id], references: [id])
   status           ManagementPlanStatus @default(draft)
-  version          Int      @default(1)
-  title            String   @default("訪問薬剤管理指導計画書")
+  version          Int                  @default(1)
+  title            String               @default("訪問薬剤管理指導計画書")
   summary          String?
   content          Json // 計画書内容
   created_by       String // User ID
@@ -292,35 +292,35 @@ model ManagementPlan {
   approved_at      DateTime?
   reviewed_by      String?
   reviewed_at      DateTime?
-  effective_from   DateTime? @db.Date
+  effective_from   DateTime?            @db.Date
   next_review_date DateTime?
   source_plan_id   String?
-  created_at       DateTime @default(now())
-  updated_at       DateTime @updatedAt
+  created_at       DateTime             @default(now())
+  updated_at       DateTime             @updatedAt
 
+  @@unique([case_id, version])
   @@index([org_id])
   @@index([case_id])
   @@index([status])
-  @@unique([case_id, version])
 }
 
 model PatientSchedulePreference {
-  id                      String   @id @default(cuid())
-  org_id                  String
-  patient_id              String   @unique
-  patient                 Patient  @relation(fields: [patient_id], references: [id])
-  preferred_weekdays      Json?
-  preferred_time_from     DateTime? @db.Time()
-  preferred_time_to       DateTime? @db.Time()
-  phone_contact_from      DateTime? @db.Time()
-  phone_contact_to        DateTime? @db.Time()
-  facility_time_from      DateTime? @db.Time()
-  facility_time_to        DateTime? @db.Time()
-  family_presence_required Boolean @default(false)
-  visit_buffer_minutes    Int?
-  preferred_contact_name  String?
-  preferred_contact_phone String?
-  notes                   String?
+  id                            String    @id @default(cuid())
+  org_id                        String
+  patient_id                    String    @unique
+  patient                       Patient   @relation(fields: [patient_id], references: [id])
+  preferred_weekdays            Json?
+  preferred_time_from           DateTime? @db.Time()
+  preferred_time_to             DateTime? @db.Time()
+  phone_contact_from            DateTime? @db.Time()
+  phone_contact_to              DateTime? @db.Time()
+  facility_time_from            DateTime? @db.Time()
+  facility_time_to              DateTime? @db.Time()
+  family_presence_required      Boolean   @default(false)
+  visit_buffer_minutes          Int?
+  preferred_contact_name        String?
+  preferred_contact_phone       String?
+  notes                         String?
   // HVI-01B: structured scheduling & onboarding fields
   visit_before_contact_required Boolean?
   first_visit_preferred_date    DateTime? @db.Date
@@ -334,9 +334,9 @@ model PatientSchedulePreference {
   dementia_level                String?
   swallowing_route              String?
   care_level                    String?
-  infection_isolation           Boolean  @default(false)
-  created_at              DateTime @default(now())
-  updated_at              DateTime @updatedAt
+  infection_isolation           Boolean   @default(false)
+  created_at                    DateTime  @default(now())
+  updated_at                    DateTime  @updatedAt
 
   @@index([org_id])
 }
@@ -345,44 +345,44 @@ model PatientSchedulePreference {
 // model MedicationProfile は他ファイルで定義
 
 model PatientPackagingProfile {
-  id                       String          @id @default(cuid())
+  id                       String           @id @default(cuid())
   org_id                   String
-  patient_id               String          @unique
-  patient                  Patient         @relation(fields: [patient_id], references: [id])
+  patient_id               String           @unique
+  patient                  Patient          @relation(fields: [patient_id], references: [id])
   default_packaging_method PackagingMethod?
   medication_box_color     String?
   notes                    String?
-  box_config               Json?    // 配薬BOX設定 (例: 仕切り数、ラベル色など)
-  special_instructions     String?  // 個別特記指示
-  cognitive_note           String?  // 認知機能・服薬自己管理に関する注記
-  created_at               DateTime @default(now())
-  updated_at               DateTime @updatedAt
+  box_config               Json? // 配薬BOX設定 (例: 仕切り数、ラベル色など)
+  special_instructions     String? // 個別特記指示
+  cognitive_note           String? // 認知機能・服薬自己管理に関する注記
+  created_at               DateTime         @default(now())
+  updated_at               DateTime         @updatedAt
 
   @@index([org_id])
   @@index([patient_id])
 }
 
 model PatientMcsLink {
-  id               String   @id @default(cuid())
-  org_id           String
-  patient_id       String   @unique
-  patient          Patient  @relation(fields: [patient_id], references: [id])
-  source_url       String
-  mcs_patient_id   String?
-  mcs_patient_url  String?
-  mcs_project_id   String?
-  mcs_project_url  String?
-  project_title    String?
-  project_memo     String?
-  member_count     Int?
+  id                   String    @id @default(cuid())
+  org_id               String
+  patient_id           String    @unique
+  patient              Patient   @relation(fields: [patient_id], references: [id])
+  source_url           String
+  mcs_patient_id       String?
+  mcs_patient_url      String?
+  mcs_project_id       String?
+  mcs_project_url      String?
+  project_title        String?
+  project_memo         String?
+  member_count         Int?
   last_sync_attempt_at DateTime?
-  last_synced_at   DateTime?
-  last_sync_status String?
-  last_sync_error  String?
-  created_by       String?
-  updated_by       String?
-  created_at       DateTime @default(now())
-  updated_at       DateTime @updatedAt
+  last_synced_at       DateTime?
+  last_sync_status     String?
+  last_sync_error      String?
+  created_by           String?
+  updated_by           String?
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
 
   messages PatientMcsMessage[]
   summary  PatientMcsSummary?
@@ -393,30 +393,30 @@ model PatientMcsLink {
 }
 
 model PatientMcsSummary {
-  id                              String         @id @default(cuid())
-  org_id                          String
-  patient_id                      String         @unique
-  patient                         Patient        @relation(fields: [patient_id], references: [id])
-  link_id                         String         @unique
-  link                            PatientMcsLink @relation(fields: [link_id], references: [id], onDelete: Cascade)
-  generation_id                   String
-  provider                        String
-  requested_provider              String
-  is_fallback                     Boolean        @default(false)
-  model                           String?
-  fallback_reason                 String?
-  headline                        String
-  bullets                         String[]       @default([])
-  must_check_today                String[]       @default([])
-  suggested_actions               String[]       @default([])
-  source_refs                     String[]       @default([])
-  message_count                   Int            @default(0)
-  other_professional_message_count Int           @default(0)
-  latest_posted_at                DateTime?
-  generated_at                    DateTime
-  duration_ms                     Int?
-  created_at                      DateTime       @default(now())
-  updated_at                      DateTime       @updatedAt
+  id                               String         @id @default(cuid())
+  org_id                           String
+  patient_id                       String         @unique
+  patient                          Patient        @relation(fields: [patient_id], references: [id])
+  link_id                          String         @unique
+  link                             PatientMcsLink @relation(fields: [link_id], references: [id], onDelete: Cascade)
+  generation_id                    String
+  provider                         String
+  requested_provider               String
+  is_fallback                      Boolean        @default(false)
+  model                            String?
+  fallback_reason                  String?
+  headline                         String
+  bullets                          String[]       @default([])
+  must_check_today                 String[]       @default([])
+  suggested_actions                String[]       @default([])
+  source_refs                      String[]       @default([])
+  message_count                    Int            @default(0)
+  other_professional_message_count Int            @default(0)
+  latest_posted_at                 DateTime?
+  generated_at                     DateTime
+  duration_ms                      Int?
+  created_at                       DateTime       @default(now())
+  updated_at                       DateTime       @updatedAt
 
   @@index([org_id])
   @@index([patient_id])
@@ -424,22 +424,22 @@ model PatientMcsSummary {
 }
 
 model PatientInsurance {
-  id              String        @id @default(cuid())
-  org_id          String
-  patient_id      String
-  patient         Patient       @relation(fields: [patient_id], references: [id])
-  insurance_type  InsuranceType
-  insurer_number  String?  // 保険者番号
-  symbol          String?  // 記号
-  number          String?  // 番号
-  branch_number   String?  // 枝番
-  copay_ratio     Int?     // 自己負担割合（例: 30 = 3割）
-  valid_from      DateTime? @db.Date
-  valid_until     DateTime? @db.Date
-  is_active       Boolean  @default(true)
-  notes           String?
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  id             String        @id @default(cuid())
+  org_id         String
+  patient_id     String
+  patient        Patient       @relation(fields: [patient_id], references: [id])
+  insurance_type InsuranceType
+  insurer_number String? // 保険者番号
+  symbol         String? // 記号
+  number         String? // 番号
+  branch_number  String? // 枝番
+  copay_ratio    Int? // 自己負担割合（例: 30 = 3割）
+  valid_from     DateTime?     @db.Date
+  valid_until    DateTime?     @db.Date
+  is_active      Boolean       @default(true)
+  notes          String?
+  created_at     DateTime      @default(now())
+  updated_at     DateTime      @updatedAt
 
   @@index([org_id])
   @@index([patient_id])
@@ -447,23 +447,23 @@ model PatientInsurance {
 }
 
 model PatientLabObservation {
-  id                     String          @id @default(cuid())
+  id                     String         @id @default(cuid())
   org_id                 String
   patient_id             String
-  patient                Patient         @relation(fields: [patient_id], references: [id])
+  patient                Patient        @relation(fields: [patient_id], references: [id])
   analyte_code           LabAnalyteCode
   measured_at            DateTime
   value_numeric          Float?
   value_text             String?
   unit                   String?
-  abnormal_flag          String?         // "H" | "L" | "HH" | "LL" | "A"
+  abnormal_flag          String? // "H" | "L" | "HH" | "LL" | "A"
   reference_low          Float?
   reference_high         Float?
-  source_type            String          // "manual" | "visit_record" | "import"
+  source_type            String // "manual" | "visit_record" | "import"
   source_visit_record_id String?
   note                   String?
-  created_at             DateTime        @default(now())
-  updated_at             DateTime        @updatedAt
+  created_at             DateTime       @default(now())
+  updated_at             DateTime       @updatedAt
 
   @@index([org_id])
   @@index([patient_id, analyte_code, measured_at])
@@ -471,28 +471,28 @@ model PatientLabObservation {
 }
 
 model PatientMcsMessage {
-  id                String   @id @default(cuid())
-  org_id            String
-  patient_id        String
-  patient           Patient  @relation(fields: [patient_id], references: [id])
-  link_id           String
-  link              PatientMcsLink @relation(fields: [link_id], references: [id], onDelete: Cascade)
-  source_message_id String
-  author_name       String
-  author_role       String?
+  id                  String         @id @default(cuid())
+  org_id              String
+  patient_id          String
+  patient             Patient        @relation(fields: [patient_id], references: [id])
+  link_id             String
+  link                PatientMcsLink @relation(fields: [link_id], references: [id], onDelete: Cascade)
+  source_message_id   String
+  author_name         String
+  author_role         String?
   author_organization String?
-  author_descriptor String?
-  posted_at         DateTime?
-  posted_at_label   String
-  body              String
-  reaction_count    Int      @default(0)
-  reply_count       Int      @default(0)
-  sort_order        Int?
-  source_url        String
-  raw_payload       Json?
-  synced_at         DateTime @default(now())
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
+  author_descriptor   String?
+  posted_at           DateTime?
+  posted_at_label     String
+  body                String
+  reaction_count      Int            @default(0)
+  reply_count         Int            @default(0)
+  sort_order          Int?
+  source_url          String
+  raw_payload         Json?
+  synced_at           DateTime       @default(now())
+  created_at          DateTime       @default(now())
+  updated_at          DateTime       @updatedAt
 
   @@unique([link_id, source_message_id])
   @@index([org_id])

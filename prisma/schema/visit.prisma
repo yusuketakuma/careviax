@@ -67,51 +67,51 @@ enum VisitScheduleOverrideStatus {
 }
 
 model VisitSchedule {
-  id                            String           @id @default(cuid())
+  id                            String              @id @default(cuid())
   org_id                        String
   cycle_id                      String?
-  cycle                         MedicationCycle? @relation(fields: [cycle_id], references: [id])
+  cycle                         MedicationCycle?    @relation(fields: [cycle_id], references: [id])
   case_id                       String
-  case_                         CareCase         @relation(fields: [case_id], references: [id])
+  case_                         CareCase            @relation(fields: [case_id], references: [id])
   site_id                       String?
-  site                          PharmacySite?    @relation(fields: [site_id], references: [id])
+  site                          PharmacySite?       @relation(fields: [site_id], references: [id])
   visit_type                    VisitType
-  priority                      VisitPriority    @default(normal)
-  schedule_status               ScheduleStatus   @default(planned)
-  scheduled_date                DateTime         @db.Date
-  time_window_start             DateTime?        @db.Time()
-  time_window_end               DateTime?        @db.Time()
+  priority                      VisitPriority       @default(normal)
+  schedule_status               ScheduleStatus      @default(planned)
+  scheduled_date                DateTime            @db.Date
+  time_window_start             DateTime?           @db.Time()
+  time_window_end               DateTime?           @db.Time()
   pharmacist_id                 String // User ID
   assignment_mode               VisitAssignmentMode @default(primary)
   escalation_reason             String?
   route_order                   Int?
   carry_items                   Json? // 持参薬情報
   carry_items_status            String? // ready/partial/blocked
-  pre_visit_checklist_completed Boolean          @default(false)
+  pre_visit_checklist_completed Boolean             @default(false)
   recurrence_rule               String? // RRULE
   recurrence_parent_id          String? // 繰返しの親スケジュールID
   facility_batch_id             String?
   facility_batch                FacilityVisitBatch? @relation(fields: [facility_batch_id], references: [id])
   facility_unit_id              String?
   facility_unit                 FacilityUnit?       @relation(fields: [facility_unit_id], references: [id])
-  time_constraint_start         DateTime?        @db.Time()
-  time_constraint_end           DateTime?        @db.Time()
-  medication_start_date         DateTime?        @db.Date
-  medication_end_date           DateTime?        @db.Date
-  visit_deadline_date           DateTime?        @db.Date
+  time_constraint_start         DateTime?           @db.Time()
+  time_constraint_end           DateTime?           @db.Time()
+  medication_start_date         DateTime?           @db.Date
+  medication_end_date           DateTime?           @db.Date
+  visit_deadline_date           DateTime?           @db.Date
   confirmed_at                  DateTime?
   confirmed_by                  String?
-  version                       Int              @default(1)
-  created_at                    DateTime         @default(now())
-  updated_at                    DateTime         @updatedAt
+  version                       Int                 @default(1)
+  created_at                    DateTime            @default(now())
+  updated_at                    DateTime            @updatedAt
 
-  visit_record  VisitRecord?
-  preparation   VisitPreparation?
-  proposal_finalization VisitScheduleProposal? @relation("ProposalFinalizedSchedule")
-  reschedule_proposals VisitScheduleProposal[] @relation("ProposalRescheduleSource")
-  contact_logs  VisitScheduleContactLog[]
-  override_request VisitScheduleOverride? @relation("OverrideSourceSchedule")
-  applied_override VisitScheduleOverride? @relation("OverrideReplacementSchedule")
+  visit_record          VisitRecord?
+  preparation           VisitPreparation?
+  proposal_finalization VisitScheduleProposal?    @relation("ProposalFinalizedSchedule")
+  reschedule_proposals  VisitScheduleProposal[]   @relation("ProposalRescheduleSource")
+  contact_logs          VisitScheduleContactLog[]
+  override_request      VisitScheduleOverride?    @relation("OverrideSourceSchedule")
+  applied_override      VisitScheduleOverride?    @relation("OverrideReplacementSchedule")
 
   @@index([org_id])
   @@index([scheduled_date])
@@ -125,19 +125,19 @@ model VisitSchedule {
 }
 
 model FacilityVisitBatch {
-  id                    String   @id @default(cuid())
-  org_id                String
-  facility_id           String // 施設ID
-  facility_unit_id      String? // ユニットID（ユニット単位グルーピング時）
-  facility_unit         FacilityUnit? @relation(fields: [facility_unit_id], references: [id])
-  scheduled_date        DateTime @db.Date
-  pharmacist_id         String
-  patient_ids           Json // String[]
-  estimated_duration    Int? // 分
-  route_from_pharmacy   Json? // ルート情報
-  notes                 String? // 施設共通注意事項
-  created_at            DateTime @default(now())
-  updated_at            DateTime @updatedAt
+  id                  String        @id @default(cuid())
+  org_id              String
+  facility_id         String // 施設ID
+  facility_unit_id    String? // ユニットID（ユニット単位グルーピング時）
+  facility_unit       FacilityUnit? @relation(fields: [facility_unit_id], references: [id])
+  scheduled_date      DateTime      @db.Date
+  pharmacist_id       String
+  patient_ids         Json // String[]
+  estimated_duration  Int? // 分
+  route_from_pharmacy Json? // ルート情報
+  notes               String? // 施設共通注意事項
+  created_at          DateTime      @default(now())
+  updated_at          DateTime      @updatedAt
 
   visit_schedules VisitSchedule[]
 
@@ -147,31 +147,31 @@ model FacilityVisitBatch {
 }
 
 model VisitRecord {
-  id                        String         @id @default(cuid())
-  org_id                    String
-  schedule_id               String         @unique
-  schedule                  VisitSchedule  @relation(fields: [schedule_id], references: [id])
-  patient_id                String
-  pharmacist_id             String
-  visit_date                DateTime
-  outcome_status            VisitOutcome
-  soap_subjective           String? // S
-  soap_objective            String? // O
-  soap_assessment           String? // A
-  soap_plan                 String? // P
-  receipt_person_name       String? // 受領者名
-  receipt_person_relation   String? // 続柄
-  receipt_at                DateTime?
+  id                         String        @id @default(cuid())
+  org_id                     String
+  schedule_id                String        @unique
+  schedule                   VisitSchedule @relation(fields: [schedule_id], references: [id])
+  patient_id                 String
+  pharmacist_id              String
+  visit_date                 DateTime
+  outcome_status             VisitOutcome
+  soap_subjective            String? // S
+  soap_objective             String? // O
+  soap_assessment            String? // A
+  soap_plan                  String? // P
+  receipt_person_name        String? // 受領者名
+  receipt_person_relation    String? // 続柄
+  receipt_at                 DateTime?
   next_visit_suggestion_date DateTime?     @db.Date
-  cancellation_reason       String?
-  postpone_reason           String?
-  revisit_reason            String?
+  cancellation_reason        String?
+  postpone_reason            String?
+  revisit_reason             String?
   structured_soap            Json? // StructuredSoap (構造化SOAP、薬学的評価シート7項目含む)
-  visit_geo_log             Json? // optional geolocation log for visit start/end
-  attachments               Json? // S3 URLs
-  version                   Int            @default(1)
-  created_at                DateTime       @default(now())
-  updated_at                DateTime       @updatedAt
+  visit_geo_log              Json? // optional geolocation log for visit start/end
+  attachments                Json? // S3 URLs
+  version                    Int           @default(1)
+  created_at                 DateTime      @default(now())
+  updated_at                 DateTime      @updatedAt
 
   @@index([org_id])
   @@index([patient_id])
@@ -180,62 +180,62 @@ model VisitRecord {
 }
 
 model VisitPreparation {
-  id                         String        @id @default(cuid())
-  org_id                     String
-  schedule_id                String        @unique
-  schedule                   VisitSchedule @relation(fields: [schedule_id], references: [id])
-  checklist                  Json
-  medication_changes_reviewed Boolean      @default(false)
-  carry_items_confirmed       Boolean      @default(false)
-  previous_issues_reviewed    Boolean      @default(false)
-  route_confirmed             Boolean      @default(false)
-  offline_synced              Boolean      @default(false)
-  prepared_by                String // User ID
-  prepared_at                DateTime?
-  created_at                 DateTime      @default(now())
-  updated_at                 DateTime      @updatedAt
+  id                          String        @id @default(cuid())
+  org_id                      String
+  schedule_id                 String        @unique
+  schedule                    VisitSchedule @relation(fields: [schedule_id], references: [id])
+  checklist                   Json
+  medication_changes_reviewed Boolean       @default(false)
+  carry_items_confirmed       Boolean       @default(false)
+  previous_issues_reviewed    Boolean       @default(false)
+  route_confirmed             Boolean       @default(false)
+  offline_synced              Boolean       @default(false)
+  prepared_by                 String // User ID
+  prepared_at                 DateTime?
+  created_at                  DateTime      @default(now())
+  updated_at                  DateTime      @updatedAt
 
   @@index([org_id])
   @@index([schedule_id])
 }
 
 model VisitScheduleProposal {
-  id                           String              @id @default(cuid())
-  org_id                       String
-  cycle_id                     String?
-  cycle                        MedicationCycle?    @relation(fields: [cycle_id], references: [id])
-  case_id                      String
-  case_                        CareCase            @relation(fields: [case_id], references: [id])
-  site_id                      String?
-  site                         PharmacySite?       @relation(fields: [site_id], references: [id])
-  visit_type                   VisitType
-  priority                     VisitPriority       @default(normal)
-  proposal_status              VisitProposalStatus @default(proposed)
-  patient_contact_status       PatientContactStatus @default(pending)
-  proposed_date                DateTime            @db.Date
-  time_window_start            DateTime?           @db.Time()
-  time_window_end              DateTime?           @db.Time()
-  proposed_pharmacist_id       String
-  assignment_mode              VisitAssignmentMode @default(primary)
-  route_order                  Int?
-  route_distance_score         Float?
-  medication_end_date          DateTime?           @db.Date
-  visit_deadline_date          DateTime?           @db.Date
-  proposal_reason              String?
-  suggested_recurrence_rule    String?
-  escalation_reason            String?
-  approved_by                  String?
-  approved_at                  DateTime?
-  patient_contacted_at         DateTime?
-  confirmed_by                 String?
-  confirmed_at                 DateTime?
-  finalized_schedule_id        String?             @unique
-  finalized_schedule           VisitSchedule?      @relation("ProposalFinalizedSchedule", fields: [finalized_schedule_id], references: [id])
+  id                            String                    @id @default(cuid())
+  org_id                        String
+  cycle_id                      String?
+  cycle                         MedicationCycle?          @relation(fields: [cycle_id], references: [id])
+  case_id                       String
+  case_                         CareCase                  @relation(fields: [case_id], references: [id])
+  site_id                       String?
+  site                          PharmacySite?             @relation(fields: [site_id], references: [id])
+  visit_type                    VisitType
+  priority                      VisitPriority             @default(normal)
+  proposal_status               VisitProposalStatus       @default(proposed)
+  patient_contact_status        PatientContactStatus      @default(pending)
+  proposed_date                 DateTime                  @db.Date
+  time_window_start             DateTime?                 @db.Time()
+  time_window_end               DateTime?                 @db.Time()
+  proposed_pharmacist_id        String
+  assignment_mode               VisitAssignmentMode       @default(primary)
+  route_order                   Int?
+  route_distance_score          Float?
+  medication_end_date           DateTime?                 @db.Date
+  visit_deadline_date           DateTime?                 @db.Date
+  proposal_reason               String?
+  suggested_recurrence_rule     String?
+  escalation_reason             String?
+  approved_by                   String?
+  approved_at                   DateTime?
+  patient_contacted_at          DateTime?
+  confirmed_by                  String?
+  confirmed_at                  DateTime?
+  finalized_schedule_id         String?                   @unique
+  finalized_schedule            VisitSchedule?            @relation("ProposalFinalizedSchedule", fields: [finalized_schedule_id], references: [id])
   reschedule_source_schedule_id String?
-  reschedule_source_schedule   VisitSchedule?      @relation("ProposalRescheduleSource", fields: [reschedule_source_schedule_id], references: [id])
-  contact_logs                 VisitScheduleContactLog[]
-  created_at                   DateTime            @default(now())
-  updated_at                   DateTime            @updatedAt
+  reschedule_source_schedule    VisitSchedule?            @relation("ProposalRescheduleSource", fields: [reschedule_source_schedule_id], references: [id])
+  contact_logs                  VisitScheduleContactLog[]
+  created_at                    DateTime                  @default(now())
+  updated_at                    DateTime                  @updatedAt
 
   @@index([org_id, proposal_status])
   @@index([case_id, proposed_date])
@@ -243,12 +243,12 @@ model VisitScheduleProposal {
 }
 
 model VisitScheduleContactLog {
-  id              String               @id @default(cuid())
+  id              String                @id @default(cuid())
   org_id          String
   proposal_id     String
   proposal        VisitScheduleProposal @relation(fields: [proposal_id], references: [id])
   schedule_id     String?
-  schedule        VisitSchedule?       @relation(fields: [schedule_id], references: [id])
+  schedule        VisitSchedule?        @relation(fields: [schedule_id], references: [id])
   patient_id      String
   case_id         String
   outcome         PatientContactStatus
@@ -257,10 +257,10 @@ model VisitScheduleContactLog {
   contact_phone   String?
   note            String?
   callback_due_at DateTime?
-  called_at       DateTime             @default(now())
+  called_at       DateTime              @default(now())
   called_by       String
-  created_at      DateTime             @default(now())
-  updated_at      DateTime             @updatedAt
+  created_at      DateTime              @default(now())
+  updated_at      DateTime              @updatedAt
 
   @@index([org_id, proposal_id])
   @@index([org_id, schedule_id])
@@ -269,23 +269,23 @@ model VisitScheduleContactLog {
 }
 
 model VisitScheduleOverride {
-  id                     String                      @id @default(cuid())
-  org_id                 String
-  source_schedule_id     String                      @unique
-  source_schedule        VisitSchedule               @relation("OverrideSourceSchedule", fields: [source_schedule_id], references: [id])
-  replacement_schedule_id String?                    @unique
-  replacement_schedule   VisitSchedule?              @relation("OverrideReplacementSchedule", fields: [replacement_schedule_id], references: [id])
-  status                 VisitScheduleOverrideStatus @default(pending)
-  reason                 String
-  requested_by           String
-  approved_by            String?
-  requested_at           DateTime                    @default(now())
-  approved_at            DateTime?
-  before_snapshot        Json
-  impact_summary         Json?
-  after_snapshot         Json?
-  created_at             DateTime                    @default(now())
-  updated_at             DateTime                    @updatedAt
+  id                      String                      @id @default(cuid())
+  org_id                  String
+  source_schedule_id      String                      @unique
+  source_schedule         VisitSchedule               @relation("OverrideSourceSchedule", fields: [source_schedule_id], references: [id])
+  replacement_schedule_id String?                     @unique
+  replacement_schedule    VisitSchedule?              @relation("OverrideReplacementSchedule", fields: [replacement_schedule_id], references: [id])
+  status                  VisitScheduleOverrideStatus @default(pending)
+  reason                  String
+  requested_by            String
+  approved_by             String?
+  requested_at            DateTime                    @default(now())
+  approved_at             DateTime?
+  before_snapshot         Json
+  impact_summary          Json?
+  after_snapshot          Json?
+  created_at              DateTime                    @default(now())
+  updated_at              DateTime                    @updatedAt
 
   @@index([org_id, status])
 }

@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
         status: true,
         billing_code: true,
         billing_name: true,
+        source_snapshot: true,
       },
       orderBy: [{ billing_month: 'asc' }, { created_at: 'asc' }],
     }),
@@ -50,6 +51,7 @@ export async function GET(req: NextRequest) {
         billing_month: true,
         claimable: true,
         exclusion_reason: true,
+        calculation_context: true,
       },
       orderBy: [{ billing_month: 'asc' }, { created_at: 'asc' }],
     }),
@@ -73,6 +75,8 @@ export async function GET(req: NextRequest) {
       exported: 0,
       claimable_evidence: 0,
       unclaimable_evidence: 0,
+      revision_counts: {} as Record<string, number>,
+      site_config_issue_count: 0,
     };
   });
   const monthlyTrendByMonth = new Map(monthlyTrend.map((item) => [item.month, item]));
@@ -87,6 +91,11 @@ export async function GET(req: NextRequest) {
     if (!bucket) continue;
 
     bucket.total_candidates += 1;
+    const sourceSnapshot = candidate.source_snapshot as Record<string, unknown> | null;
+    const candidateRevision =
+      typeof sourceSnapshot?.revision_code === 'string' ? sourceSnapshot.revision_code : 'unknown';
+    bucket.revision_counts[candidateRevision] =
+      (bucket.revision_counts[candidateRevision] ?? 0) + 1;
     switch (candidate.status) {
       case 'confirmed':
         bucket.confirmed += 1;
@@ -123,6 +132,19 @@ export async function GET(req: NextRequest) {
     observedMonths.add(monthKey);
     const bucket = monthlyTrendByMonth.get(monthKey);
     if (!bucket) continue;
+    const calculationContext = evidence.calculation_context as Record<string, unknown> | null;
+    const evidenceRevision =
+      typeof calculationContext?.effective_revision_code === 'string'
+        ? calculationContext.effective_revision_code
+        : 'unknown';
+    bucket.revision_counts[evidenceRevision] = (bucket.revision_counts[evidenceRevision] ?? 0) + 1;
+    const siteConfigStatus =
+      typeof calculationContext?.site_config_status === 'string'
+        ? calculationContext.site_config_status
+        : null;
+    if (siteConfigStatus === 'config_missing' || siteConfigStatus === 'revision_mismatch') {
+      bucket.site_config_issue_count += 1;
+    }
 
     if (evidence.claimable) {
       bucket.claimable_evidence += 1;
@@ -131,7 +153,7 @@ export async function GET(req: NextRequest) {
       if (evidence.exclusion_reason) {
         blockerReasons.set(
           evidence.exclusion_reason,
-          (blockerReasons.get(evidence.exclusion_reason) ?? 0) + 1
+          (blockerReasons.get(evidence.exclusion_reason) ?? 0) + 1,
         );
       }
     }
@@ -143,7 +165,7 @@ export async function GET(req: NextRequest) {
     monthlyTrendByMonth.get(currentMonthKey)?.claimable_evidence ||
     monthlyTrendByMonth.get(currentMonthKey)?.unclaimable_evidence
       ? currentMonthKey
-      : [...observedMonths].sort().at(-1) ?? currentMonthKey;
+      : ([...observedMonths].sort().at(-1) ?? currentMonthKey);
   const currentMonthBucket =
     monthlyTrendByMonth.get(summaryMonthKey) ?? monthlyTrend[monthlyTrend.length - 1];
   const claimableEvidenceTotal =
@@ -156,9 +178,11 @@ export async function GET(req: NextRequest) {
     currentMonthBucket.total_candidates === 0
       ? 0
       : Math.round(
-          ((currentMonthBucket.confirmed + currentMonthBucket.exported + currentMonthBucket.excluded) /
+          ((currentMonthBucket.confirmed +
+            currentMonthBucket.exported +
+            currentMonthBucket.excluded) /
             currentMonthBucket.total_candidates) *
-            100
+            100,
         );
 
   return success({
@@ -171,14 +195,22 @@ export async function GET(req: NextRequest) {
         current_month_claimable_rate: currentMonthClaimableRate,
         current_month_close_rate: currentMonthCloseRate,
         current_month_exported: currentMonthBucket.exported,
+        current_month_revision_counts: currentMonthBucket.revision_counts,
+        current_month_site_config_issue_count: currentMonthBucket.site_config_issue_count,
       },
       monthly_trend: monthlyTrend,
       blocker_reasons: Array.from(blockerReasons.entries())
         .map(([reason, count]) => ({ reason, count }))
-        .sort((left, right) => right.count - left.count || left.reason.localeCompare(right.reason, 'ja'))
+        .sort(
+          (left, right) =>
+            right.count - left.count || left.reason.localeCompare(right.reason, 'ja'),
+        )
         .slice(0, 5),
       top_codes: Array.from(topCodes.values())
-        .sort((left, right) => right.count - left.count || left.billing_code.localeCompare(right.billing_code))
+        .sort(
+          (left, right) =>
+            right.count - left.count || left.billing_code.localeCompare(right.billing_code),
+        )
         .slice(0, 5),
     },
   });

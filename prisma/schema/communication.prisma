@@ -73,25 +73,25 @@ model CommunicationEvent {
 }
 
 model CommunicationRequest {
-  id            String        @id @default(cuid())
-  org_id        String
-  patient_id    String?
-  case_id       String?
-  request_type  String
-  template_key  String?
-  recipient_name String?
-  recipient_role String?
+  id                  String        @id @default(cuid())
+  org_id              String
+  patient_id          String?
+  case_id             String?
+  request_type        String
+  template_key        String?
+  recipient_name      String?
+  recipient_role      String?
   related_entity_type String?
   related_entity_id   String?
-  context_snapshot Json?
-  status        RequestStatus @default(draft)
-  subject       String
-  content       String
-  requested_by  String // User ID
-  requested_at  DateTime      @default(now())
-  due_date      DateTime?
-  created_at    DateTime      @default(now())
-  updated_at    DateTime      @updatedAt
+  context_snapshot    Json?
+  status              RequestStatus @default(draft)
+  subject             String
+  content             String
+  requested_by        String // User ID
+  requested_at        DateTime      @default(now())
+  due_date            DateTime?
+  created_at          DateTime      @default(now())
+  updated_at          DateTime      @updatedAt
 
   responses CommunicationResponse[]
 
@@ -116,20 +116,20 @@ model CommunicationResponse {
 }
 
 model CareReport {
-  id               String       @id @default(cuid())
-  org_id           String
-  visit_record_id  String?
-  patient_id       String
-  case_id          String?
-  case_            CareCase?    @relation(fields: [case_id], references: [id])
-  report_type      ReportType
-  status           ReportStatus @default(draft)
-  content          Json
-  template_id      String?
-  pdf_url          String? // S3
-  created_by       String // User ID
-  created_at       DateTime     @default(now())
-  updated_at       DateTime     @updatedAt
+  id              String       @id @default(cuid())
+  org_id          String
+  visit_record_id String?
+  patient_id      String
+  case_id         String?
+  case_           CareCase?    @relation(fields: [case_id], references: [id])
+  report_type     ReportType
+  status          ReportStatus @default(draft)
+  content         Json
+  template_id     String?
+  pdf_url         String? // S3
+  created_by      String // User ID
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
 
   delivery_records DeliveryRecord[]
 
@@ -169,26 +169,26 @@ enum ConferenceNoteType {
 }
 
 model ConferenceNote {
-  id                 String             @id @default(cuid())
-  org_id             String
-  case_id            String?
-  patient_id         String?
-  facility_id        String?
-  note_type          ConferenceNoteType @default(regular)
-  title              String
-  content            String
-  structured_content Json?
-  metadata           Json?
-  billing_eligible   Boolean            @default(false)
-  billing_code       String?
-  follow_up_date     DateTime?
-  follow_up_completed Boolean           @default(false)
+  id                  String             @id @default(cuid())
+  org_id              String
+  case_id             String?
+  patient_id          String?
+  facility_id         String?
+  note_type           ConferenceNoteType @default(regular)
+  title               String
+  content             String
+  structured_content  Json?
+  metadata            Json?
+  billing_eligible    Boolean            @default(false)
+  billing_code        String?
+  follow_up_date      DateTime?
+  follow_up_completed Boolean            @default(false)
   generated_report_id String?
-  participants       Json // [{name, role}]
-  conference_date    DateTime
-  action_items       Json? // Task 変換用
-  created_at         DateTime           @default(now())
-  updated_at         DateTime           @updatedAt
+  participants        Json // [{name, role}]
+  conference_date     DateTime
+  action_items        Json? // Task 変換用
+  created_at          DateTime           @default(now())
+  updated_at          DateTime           @updatedAt
 
   @@index([org_id])
   @@index([case_id])
@@ -213,39 +213,39 @@ model EscalationRule {
 }
 
 model ExternalAccessGrant {
-  id                   String    @id @default(cuid())
-  org_id               String
-  patient_id           String
-  token_hash           String    @unique
-  expires_at           DateTime
-  otp_hash             String?
-  granted_to_name      String
-  granted_to_contact   String?
-  scope                Json // アクセス可能な情報の範囲
-  accessed_at          DateTime?
-  revoked_at           DateTime?
-  created_at           DateTime  @default(now())
-  updated_at           DateTime  @updatedAt
+  id                 String    @id @default(cuid())
+  org_id             String
+  patient_id         String
+  token_hash         String    @unique
+  expires_at         DateTime
+  otp_hash           String?
+  granted_to_name    String
+  granted_to_contact String?
+  scope              Json // アクセス可能な情報の範囲
+  accessed_at        DateTime?
+  revoked_at         DateTime?
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
 
   @@index([org_id])
   @@index([token_hash])
 }
 
 model TracingReport {
-  id                  String              @id @default(cuid())
-  org_id              String
-  patient_id          String
-  case_id             String?
-  issue_id            String?
-  issue               MedicationIssue?    @relation(fields: [issue_id], references: [id])
-  content             Json
-  status              TracingReportStatus @default(draft)
-  sent_to_physician   String?
-  sent_at             DateTime?
-  acknowledged_at     DateTime?
-  pdf_url             String?
-  created_at          DateTime            @default(now())
-  updated_at          DateTime            @updatedAt
+  id                String              @id @default(cuid())
+  org_id            String
+  patient_id        String
+  case_id           String?
+  issue_id          String?
+  issue             MedicationIssue?    @relation(fields: [issue_id], references: [id])
+  content           Json
+  status            TracingReportStatus @default(draft)
+  sent_to_physician String?
+  sent_at           DateTime?
+  acknowledged_at   DateTime?
+  pdf_url           String?
+  created_at        DateTime            @default(now())
+  updated_at        DateTime            @updatedAt
 
   @@index([org_id])
   @@index([patient_id])
@@ -253,22 +253,22 @@ model TracingReport {
 }
 
 model PatientSelfReport {
-  id                     String           @id @default(cuid())
-  org_id                 String
-  patient_id             String
+  id                       String           @id @default(cuid())
+  org_id                   String
+  patient_id               String
   external_access_grant_id String?
-  reported_by_name       String
-  relation               String?
-  category               String
-  subject                String
-  content                String
-  requested_callback     Boolean          @default(false)
-  preferred_contact_time String?
-  status                 SelfReportStatus @default(submitted)
-  triaged_by             String?
-  triaged_at             DateTime?
-  created_at             DateTime         @default(now())
-  updated_at             DateTime         @updatedAt
+  reported_by_name         String
+  relation                 String?
+  category                 String
+  subject                  String
+  content                  String
+  requested_callback       Boolean          @default(false)
+  preferred_contact_time   String?
+  status                   SelfReportStatus @default(submitted)
+  triaged_by               String?
+  triaged_at               DateTime?
+  created_at               DateTime         @default(now())
+  updated_at               DateTime         @updatedAt
 
   @@index([org_id])
   @@index([patient_id])
@@ -276,21 +276,21 @@ model PatientSelfReport {
 }
 
 model CommunityActivity {
-  id                String   @id @default(cuid())
-  org_id            String
-  activity_type     String
-  title             String
-  description       String?
-  partner_name      String?
-  activity_date     DateTime
-  target_population String?
-  attendee_count    Int?
+  id                  String   @id @default(cuid())
+  org_id              String
+  activity_type       String
+  title               String
+  description         String?
+  partner_name        String?
+  activity_date       DateTime
+  target_population   String?
+  attendee_count      Int?
   referrals_generated Int?
-  follow_up_required Boolean @default(false)
-  outcome_summary   String?
-  created_by        String
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
+  follow_up_required  Boolean  @default(false)
+  outcome_summary     String?
+  created_by          String
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
 
   @@index([org_id])
   @@index([activity_type])
@@ -302,7 +302,7 @@ model CommunityActivity {
 model TaskComment {
   id          String   @id @default(cuid())
   org_id      String
-  entity_type String   // medication_cycle, dispense_task, set_plan, visit_record, care_report
+  entity_type String // medication_cycle, dispense_task, set_plan, visit_record, care_report
   entity_id   String
   author_id   String
   content     String
@@ -316,12 +316,12 @@ model TaskComment {
 }
 
 model HandoffBoard {
-  id         String       @id @default(cuid())
+  id         String        @id @default(cuid())
   org_id     String
-  shift_date DateTime     @db.Date
+  shift_date DateTime      @db.Date
   created_by String
   items      HandoffItem[]
-  created_at DateTime     @default(now())
+  created_at DateTime      @default(now())
 
   @@unique([org_id, shift_date])
   @@index([org_id])
@@ -333,9 +333,9 @@ model HandoffItem {
   board       HandoffBoard @relation(fields: [board_id], references: [id])
   content     String
   priority    String       @default("normal") // normal, high, urgent
-  entity_type String?      // optional link to workflow entity
+  entity_type String? // optional link to workflow entity
   entity_id   String?
-  read_by     String[]     // user IDs who confirmed reading
+  read_by     String[] // user IDs who confirmed reading
   created_by  String
   created_at  DateTime     @default(now())
 

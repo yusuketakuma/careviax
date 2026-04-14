@@ -11,6 +11,9 @@ Playwright 実行物は `tools/tests/`、関連ドキュメントは `docs/testi
 
 - `pnpm test`
 - `pnpm test:e2e`
+- `pnpm test:e2e:local`
+- `pnpm build:e2e:local`
+- `pnpm start:e2e:local`
 - `pnpm test:e2e:list`
 - `pnpm test:e2e:audit`
 - `pnpm test:e2e:audit:list`

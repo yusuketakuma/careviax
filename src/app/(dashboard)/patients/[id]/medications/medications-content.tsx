@@ -7,15 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { differenceInCalendarDays, format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import {
-  CheckCircle2,
-  ClipboardPlus,
-  Edit3,
-  Plus,
-  Printer,
-  QrCode,
-  RefreshCw,
-} from 'lucide-react';
+import { CheckCircle2, ClipboardPlus, Edit3, Plus, Printer, QrCode, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,10 +33,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ResidualMedicationChart } from '@/components/features/patients/residual-medication-chart';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
-import {
-  buildJahisQRText,
-  type JahisPatient,
-} from '@/lib/pharmacy/jahis-qr';
+import { buildJahisQRText, type JahisPatient } from '@/lib/pharmacy/jahis-qr';
 import { toast } from 'sonner';
 
 type MedicationProfile = {
@@ -93,6 +82,8 @@ type InquiryRecord = {
   inquiry_to_physician: string;
   inquiry_content: string;
   result: 'changed' | 'unchanged' | 'pending' | null;
+  proposal_origin: 'post_inquiry' | 'pre_issuance' | null;
+  residual_adjustment: boolean | null;
   change_detail: string | null;
   inquired_at: string;
   resolved_at: string | null;
@@ -169,15 +160,13 @@ function formatMedicationDate(value: string | null) {
 
 function extractTimingTags(frequency: string | null) {
   if (!frequency) return [];
-  return timingRules
-    .filter((rule) => rule.pattern.test(frequency))
-    .map((rule) => rule.label);
+  return timingRules.filter((rule) => rule.pattern.test(frequency)).map((rule) => rule.label);
 }
 
 function buildMedicationStats(profiles: MedicationProfile[]) {
   const today = new Date();
   const activePrescribers = new Set(
-    profiles.map((item) => item.prescriber).filter((value): value is string => Boolean(value))
+    profiles.map((item) => item.prescriber).filter((value): value is string => Boolean(value)),
   );
   const recentlyStarted = profiles.filter((item) => {
     if (!item.start_date) return false;
@@ -224,7 +213,9 @@ function formatDateTime(value: string | null) {
   return format(parseISO(value), 'yyyy/MM/dd HH:mm', { locale: ja });
 }
 
-function getIssueBadgeVariant(issue: MedicationIssue): 'default' | 'secondary' | 'destructive' | 'outline' {
+function getIssueBadgeVariant(
+  issue: MedicationIssue,
+): 'default' | 'secondary' | 'destructive' | 'outline' {
   if (issue.priority === 'critical') return 'destructive';
   if (issue.status === 'resolved') return 'secondary';
   if (issue.status === 'in_progress') return 'default';
@@ -286,13 +277,7 @@ type AddMedicationFormData = {
   prescriber: string;
 };
 
-function AddMedicationDialog({
-  patientId,
-  onClose,
-}: {
-  patientId: string;
-  onClose: () => void;
-}) {
+function AddMedicationDialog({ patientId, onClose }: { patientId: string; onClose: () => void }) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<AddMedicationFormData>({
@@ -345,7 +330,9 @@ function AddMedicationDialog({
             <Input
               id="drug_name"
               value={form.drug_name}
-              onChange={(event) => setForm((current) => ({ ...current, drug_name: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, drug_name: event.target.value }))
+              }
               placeholder="例: アムロジピン錠5mg"
               required
               className="mt-1"
@@ -447,7 +434,9 @@ function IssueEditorDialog({
             <Input
               id="issue-title"
               value={form.title}
-              onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, title: event.target.value }))
+              }
               placeholder="例: 夕食後薬の飲み忘れが継続"
             />
           </div>
@@ -497,7 +486,9 @@ function IssueEditorDialog({
                 onValueChange={(value) =>
                   setForm((current) => ({
                     ...current,
-                    category: (value ?? current.category) as NonNullable<MedicationIssue['category']>,
+                    category: (value ?? current.category) as NonNullable<
+                      MedicationIssue['category']
+                    >,
                   }))
                 }
               >
@@ -622,12 +613,7 @@ function QrExportDialog({
               />
               <p className="mt-3 text-xs text-muted-foreground">生成日時: {state.generatedAt}</p>
               <div className="mt-4 flex flex-wrap justify-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handlePrint}
-                >
+                <Button type="button" variant="outline" size="sm" onClick={handlePrint}>
                   <Printer className="size-3.5" aria-hidden="true" />
                   印刷
                 </Button>
@@ -691,7 +677,7 @@ export function MedicationsContent({
     queryFn: async () => {
       const response = await fetch(
         `/api/medication-profiles?patient_id=${patientId}&is_current=true`,
-        { headers: { 'x-org-id': orgId } }
+        { headers: { 'x-org-id': orgId } },
       );
       if (!response.ok) throw new Error('取得に失敗しました');
       return response.json() as Promise<{ data: MedicationProfile[] }>;
@@ -770,9 +756,9 @@ export function MedicationsContent({
               : {
                   patient_id: patientId,
                   ...form,
-                }
+                },
           ),
-        }
+        },
       );
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
@@ -840,11 +826,11 @@ export function MedicationsContent({
 
   const openIssues = useMemo(
     () => issues.filter((issue) => issue.status === 'open' || issue.status === 'in_progress'),
-    [issues]
+    [issues],
   );
   const sideEffectHistory = useMemo(
     () => issues.filter((issue) => issue.category === 'side_effect').slice(0, 4),
-    [issues]
+    [issues],
   );
   const residualSuggestions = useMemo(
     () =>
@@ -852,11 +838,11 @@ export function MedicationsContent({
         .filter((item) => item.is_reduction_target || item.is_prohibited_reduction)
         .sort((left, right) => (right.excess_days ?? 0) - (left.excess_days ?? 0))
         .slice(0, 5),
-    [residuals]
+    [residuals],
   );
   const inquiryBacklog = useMemo(
     () => inquiries.filter((item) => !item.result || item.result === 'pending'),
-    [inquiries]
+    [inquiries],
   );
 
   const handleEditIssue = (issue: MedicationIssue) => {
@@ -922,10 +908,7 @@ export function MedicationsContent({
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-semibold">服薬中薬剤</h2>
           <div className="flex items-center gap-2">
-            <Link
-              href="/qr-scan"
-              className={buttonVariants({ variant: 'outline', size: 'sm' })}
-            >
+            <Link href="/qr-scan" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
               <QrCode className="size-4" aria-hidden="true" />
               QRスキャン
             </Link>
@@ -976,10 +959,15 @@ export function MedicationsContent({
                 {profiles.map((item) => {
                   const timingTags = extractTimingTags(item.frequency);
                   return (
-                    <article key={item.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <article
+                      key={item.id}
+                      className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+                    >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="space-y-1">
-                          <p className="text-base font-semibold text-foreground">{item.drug_name}</p>
+                          <p className="text-base font-semibold text-foreground">
+                            {item.drug_name}
+                          </p>
                           <p className="text-sm text-muted-foreground">
                             {item.dose ?? '用量未登録'} / {item.frequency ?? '用法未登録'}
                           </p>
@@ -996,22 +984,30 @@ export function MedicationsContent({
                           </Badge>
                         ))}
                         <Badge variant="secondary">
-                          {item.source ? (sourceLabel[item.source] ?? item.source) : '登録方法未設定'}
+                          {item.source
+                            ? (sourceLabel[item.source] ?? item.source)
+                            : '登録方法未設定'}
                         </Badge>
                       </div>
 
                       <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
                         <div>
                           <dt className="text-xs text-muted-foreground">処方医</dt>
-                          <dd className="mt-1 font-medium text-foreground">{item.prescriber ?? '未登録'}</dd>
+                          <dd className="mt-1 font-medium text-foreground">
+                            {item.prescriber ?? '未登録'}
+                          </dd>
                         </div>
                         <div>
                           <dt className="text-xs text-muted-foreground">開始日</dt>
-                          <dd className="mt-1 text-foreground">{formatMedicationDate(item.start_date)}</dd>
+                          <dd className="mt-1 text-foreground">
+                            {formatMedicationDate(item.start_date)}
+                          </dd>
                         </div>
                         <div>
                           <dt className="text-xs text-muted-foreground">終了日</dt>
-                          <dd className="mt-1 text-foreground">{formatMedicationDate(item.end_date)}</dd>
+                          <dd className="mt-1 text-foreground">
+                            {formatMedicationDate(item.end_date)}
+                          </dd>
                         </div>
                         <div>
                           <dt className="text-xs text-muted-foreground">確認メモ</dt>
@@ -1069,7 +1065,10 @@ export function MedicationsContent({
                 </div>
               ) : (
                 issues.map((issue) => (
-                  <div key={issue.id} className="rounded-xl border border-border/70 bg-background p-4">
+                  <div
+                    key={issue.id}
+                    className="rounded-xl border border-border/70 bg-background p-4"
+                  >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
@@ -1103,7 +1102,10 @@ export function MedicationsContent({
                             variant="outline"
                             size="sm"
                             onClick={() =>
-                              issueStatusMutation.mutate({ issueId: issue.id, status: 'in_progress' })
+                              issueStatusMutation.mutate({
+                                issueId: issue.id,
+                                status: 'in_progress',
+                              })
                             }
                             disabled={issueStatusMutation.isPending}
                           >
@@ -1153,9 +1155,16 @@ export function MedicationsContent({
                   <p className="text-sm text-muted-foreground">疑義照会の記録はありません。</p>
                 ) : (
                   inquiries.slice(0, 4).map((item) => (
-                    <div key={item.id} className="rounded-lg border border-border/70 bg-background p-3">
+                    <div
+                      key={item.id}
+                      className="rounded-lg border border-border/70 bg-background p-3"
+                    >
                       <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant={item.result === 'pending' || !item.result ? 'outline' : 'secondary'}>
+                        <Badge
+                          variant={
+                            item.result === 'pending' || !item.result ? 'outline' : 'secondary'
+                          }
+                        >
                           {item.result === 'changed'
                             ? '変更あり'
                             : item.result === 'unchanged'
@@ -1167,6 +1176,12 @@ export function MedicationsContent({
                             {item.line.line_number ? `#${item.line.line_number} ` : ''}
                             {item.line.drug_name}
                           </span>
+                        ) : null}
+                        {item.proposal_origin === 'pre_issuance' ? (
+                          <Badge variant="outline">事前提案反映</Badge>
+                        ) : null}
+                        {item.residual_adjustment ? (
+                          <Badge variant="outline">残薬調整</Badge>
                         ) : null}
                       </div>
                       <p className="mt-2 text-sm font-medium text-foreground">{item.reason}</p>
@@ -1218,14 +1233,18 @@ export function MedicationsContent({
                     sideEffectHistory.map((item) => (
                       <div key={item.id} className="rounded-lg border border-border/70 p-3">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant={getIssueBadgeVariant(item)}>{issueStatusLabel[item.status]}</Badge>
+                          <Badge variant={getIssueBadgeVariant(item)}>
+                            {issueStatusLabel[item.status]}
+                          </Badge>
                           <p className="text-sm font-medium text-foreground">{item.title}</p>
                         </div>
                         <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
                       </div>
                     ))
                   ) : (
-                    <p className="text-sm text-muted-foreground">副作用歴はまだ登録されていません。</p>
+                    <p className="text-sm text-muted-foreground">
+                      副作用歴はまだ登録されていません。
+                    </p>
                   )}
                 </div>
               </div>
@@ -1250,7 +1269,10 @@ export function MedicationsContent({
                   </div>
                 ) : (
                   residualSuggestions.map((item) => (
-                    <div key={item.id} className="rounded-xl border border-border/70 bg-background p-4">
+                    <div
+                      key={item.id}
+                      className="rounded-xl border border-border/70 bg-background p-4"
+                    >
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-medium text-foreground">{item.drug_name}</p>
                         {item.is_prohibited_reduction ? (
@@ -1262,7 +1284,9 @@ export function MedicationsContent({
                       <p className="mt-2 text-sm text-muted-foreground">
                         残数 {item.remaining_quantity}
                         {item.excess_days !== null ? ` / 余剰 ${item.excess_days}日` : ''}
-                        {item.prescribed_quantity !== null ? ` / 前回処方量 ${item.prescribed_quantity}` : ''}
+                        {item.prescribed_quantity !== null
+                          ? ` / 前回処方量 ${item.prescribed_quantity}`
+                          : ''}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {item.is_prohibited_reduction
@@ -1285,7 +1309,8 @@ export function MedicationsContent({
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="rounded-xl border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">
-                患者名、生年月日、服薬中薬剤を QR に反映します。QR スキャンと対になる発行方向の導線です。
+                患者名、生年月日、服薬中薬剤を QR に反映します。QR
+                スキャンと対になる発行方向の導線です。
               </div>
               <Button type="button" onClick={handleGenerateQrExport}>
                 <QrCode className="size-4" aria-hidden="true" />

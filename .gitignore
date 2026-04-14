@@ -68,3 +68,4 @@ tmp/
 .idea/
 *.swp
 *.swo
+.omx/

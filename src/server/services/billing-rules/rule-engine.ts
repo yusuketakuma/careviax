@@ -13,23 +13,19 @@ function buildingTier(buildingPatientCount: number) {
 
 function conditionValue(
   rule: Awaited<ReturnType<typeof getHomeCareBillingSsotSummary>>['rules'][number],
-  key: string
+  key: string,
 ) {
   return ((rule.conditions ?? {}) as Record<string, unknown>)[key];
 }
 
 function hasRegionAddOn(
   regionAddOns: BillingEvidenceContext['regionAddOnEligible'],
-  regionKey: string
+  regionKey: string,
 ) {
   return (regionAddOns ?? []).some((value) => value === regionKey);
 }
 
-export async function getHomeCareBillingSsotSummary(
-  tx: Tx,
-  orgId: string,
-  asOfDate?: Date
-) {
+export async function getHomeCareBillingSsotSummary(tx: Tx, orgId: string, asOfDate?: Date) {
   const targetDate = asOfDate ?? new Date();
   const now = new Date(
     Date.UTC(targetDate.getUTCFullYear(), targetDate.getUTCMonth(), targetDate.getUTCDate()),
@@ -47,13 +43,8 @@ export async function getHomeCareBillingSsotSummary(
         org_id: orgId,
         billing_scope: 'home_care_ssot',
         is_active: true,
-        OR: [
-          { effective_from: null },
-          { effective_from: { lte: now } },
-        ],
-        AND: [
-          { OR: [{ effective_to: null }, { effective_to: { gte: now } }] },
-        ],
+        OR: [{ effective_from: null }, { effective_from: { lte: now } }],
+        AND: [{ OR: [{ effective_to: null }, { effective_to: { gte: now } }] }],
       },
       orderBy: [{ display_order: 'asc' }, { created_at: 'asc' }],
     }),
@@ -67,7 +58,7 @@ export async function getHomeCareBillingSsotSummary(
 
 function chooseBaseRule(
   rules: Awaited<ReturnType<typeof getHomeCareBillingSsotSummary>>['rules'],
-  context: BillingEvidenceContext
+  context: BillingEvidenceContext,
 ) {
   // 緊急訪問 → 在宅患者緊急訪問薬剤管理指導料を優先選択
   // emergency_category がある場合はその区分を優先し、
@@ -86,16 +77,15 @@ function chooseBaseRule(
     );
   }
 
-  const onlineRule =
-    context.onlineEligible
-      ? rules.find((rule) => {
-          if (rule.rule_type !== 'base') return false;
-          if (rule.service_type !== context.serviceType) return false;
-          if (rule.payer_basis !== context.payerBasis) return false;
-          if (rule.provider_scope && rule.provider_scope !== context.providerScope) return false;
-          return conditionValue(rule, 'requires_online_visit') === true;
-        }) ?? null
-      : null;
+  const onlineRule = context.onlineEligible
+    ? (rules.find((rule) => {
+        if (rule.rule_type !== 'base') return false;
+        if (rule.service_type !== context.serviceType) return false;
+        if (rule.payer_basis !== context.payerBasis) return false;
+        if (rule.provider_scope && rule.provider_scope !== context.providerScope) return false;
+        return conditionValue(rule, 'requires_online_visit') === true;
+      }) ?? null)
+    : null;
 
   if (onlineRule) return onlineRule;
 
@@ -115,23 +105,30 @@ function chooseBaseRule(
 
 function manualRuleCandidates(
   rules: Awaited<ReturnType<typeof getHomeCareBillingSsotSummary>>['rules'],
-  context: BillingEvidenceContext
+  context: BillingEvidenceContext,
 ) {
   return rules.filter((rule) => {
+    const conditions = (rule.conditions ?? {}) as Record<string, unknown>;
     if (rule.service_type !== context.serviceType && rule.service_type !== 'generic') return false;
     if (rule.payer_basis !== context.payerBasis) return false;
     if (rule.provider_scope && rule.provider_scope !== context.providerScope) return false;
+    if (
+      typeof conditions.adverse_event_prevention_type === 'string' ||
+      conditions.requires_residual_adjustment_home === true
+    ) {
+      return false;
+    }
     // Exclude emergency rules from manual candidates for non-emergency visits
-    if (conditionValue(rule, 'visit_type') === 'emergency' && context.visitType !== 'emergency') return false;
+    if (conditions.visit_type === 'emergency' && context.visitType !== 'emergency') return false;
     if (rule.rule_type === 'base') {
       // For emergency visits, include emergency_visit.1 as manual upgrade option
       if (context.visitType === 'emergency') {
         return (
-          conditionValue(rule, 'visit_type') === 'emergency' &&
-          conditionValue(rule, 'emergency_category') !== 'other_exacerbation'
+          conditions.visit_type === 'emergency' &&
+          conditions.emergency_category !== 'other_exacerbation'
         );
       }
-      return conditionValue(rule, 'requires_online_visit') === true;
+      return conditions.requires_online_visit === true;
     }
     return true;
   });
@@ -139,7 +136,7 @@ function manualRuleCandidates(
 
 export async function buildBillingCandidateSpecs(
   tx: Tx,
-  context: BillingEvidenceContext
+  context: BillingEvidenceContext,
 ): Promise<BillingCandidateSpec[]> {
   await ensureHomeCareBillingSsot(tx, context.orgId, {
     asOfDate: context.asOfDate,
@@ -154,10 +151,10 @@ export async function buildBillingCandidateSpecs(
     let exclusionReason: string | null = null;
     const conditions = (baseRule.conditions ?? {}) as Record<string, unknown>;
     const monthlyCap = Number(
-      context.specialCapEligible ? conditions.special_monthly_cap : conditions.monthly_cap
+      context.specialCapEligible ? conditions.special_monthly_cap : conditions.monthly_cap,
     );
     const weeklyCap = Number(
-      context.specialCapEligible ? conditions.special_weekly_cap : conditions.weekly_pharmacist_cap
+      context.specialCapEligible ? conditions.special_weekly_cap : conditions.weekly_pharmacist_cap,
     );
 
     if (!context.claimable) {
@@ -199,15 +196,18 @@ export async function buildBillingCandidateSpecs(
     const regionKey = String(conditions.region_add_on ?? '');
     const requiresOnline = conditions.requires_online_visit === true;
     const afterHoursVisit = (conditions.after_hours_visit as string | undefined) ?? null;
+    const manualRuleBuildingTier = (conditions.building_tier as string | undefined) ?? null;
     // 患者データから自動判定された条件でフィルタリング
     const narcoticMatch =
       conditions.requires_narcotic_management !== true || context.narcoticRequired === true;
     const narcoticPrescriptionMatch =
       conditions.requires_narcotic_prescription !== true || context.narcoticRequired === true;
     const narcoticInjectionMatch =
-      conditions.requires_narcotic_continuous_injection !== true || context.narcoticInjectionRequired === true;
+      conditions.requires_narcotic_continuous_injection !== true ||
+      context.narcoticInjectionRequired === true;
     const centralVenousMatch =
-      conditions.requires_central_venous_nutrition !== true || context.centralVenousRequired === true;
+      conditions.requires_central_venous_nutrition !== true ||
+      context.centralVenousRequired === true;
     const infantMatch =
       conditions.requires_infant_eligibility !== true || context.infantEligible === true;
     const pediatricMatch =
@@ -216,9 +216,24 @@ export async function buildBillingCandidateSpecs(
       conditions.requires_enteral_feeding !== true || context.enteralRequired === true;
     const specialCapMatch =
       conditions.special_cap_eligible !== true || context.specialCapEligible === true;
+    const multiStaffVisitMatch =
+      conditions.requires_multi_staff_visit !== true || context.multiStaffVisitEligible === true;
+    const physicianSimultaneousMatch =
+      conditions.requires_physician_simultaneous !== true ||
+      context.physicianSimultaneousEligible === true;
+    const buildingTierMatch = manualRuleBuildingTier == null || manualRuleBuildingTier === tier;
     const patientConditionsMet =
-      narcoticMatch && narcoticPrescriptionMatch && narcoticInjectionMatch &&
-      centralVenousMatch && infantMatch && pediatricMatch && enteralMatch && specialCapMatch;
+      narcoticMatch &&
+      narcoticPrescriptionMatch &&
+      narcoticInjectionMatch &&
+      centralVenousMatch &&
+      infantMatch &&
+      pediatricMatch &&
+      enteralMatch &&
+      specialCapMatch &&
+      multiStaffVisitMatch &&
+      physicianSimultaneousMatch &&
+      buildingTierMatch;
 
     const suggested =
       patientConditionsMet &&
@@ -228,7 +243,9 @@ export async function buildBillingCandidateSpecs(
 
     const ratePercent = manualRule.calculation_unit === 'percent' ? manualRule.amount : null;
     const derivedPoints =
-      ratePercent != null && baseRule ? Math.round((baseRule.amount * ratePercent) / 100) : manualRule.amount;
+      ratePercent != null && baseRule
+        ? Math.round((baseRule.amount * ratePercent) / 100)
+        : manualRule.amount;
 
     specs.push({
       ssotKey: manualRule.ssot_key ?? manualRule.code ?? manualRule.id,
@@ -239,7 +256,7 @@ export async function buildBillingCandidateSpecs(
       exclusionReason:
         context.claimable && suggested
           ? 'SSOT上の追加算定候補です。要件確認後に採否を確定してください'
-          : context.exclusionReason ?? '基礎算定が成立していないため候補化しません',
+          : (context.exclusionReason ?? '基礎算定が成立していないため候補化しません'),
       calculationBreakdown: {
         calculation_unit: manualRule.calculation_unit,
         rate_percent: ratePercent,

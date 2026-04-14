@@ -485,11 +485,13 @@ function formatDate(value?: Date | string | null, includeTime = false) {
 }
 
 function sanitizeFileName(value: string) {
-  return value
-    .trim()
-    .replaceAll(/[^A-Za-z0-9._-]/g, '_')
-    .replaceAll(/_+/g, '_')
-    .replaceAll(/^_+|_+$/g, '') || 'document';
+  return (
+    value
+      .trim()
+      .replaceAll(/[^A-Za-z0-9._-]/g, '_')
+      .replaceAll(/_+/g, '_')
+      .replaceAll(/^_+|_+$/g, '') || 'document'
+  );
 }
 
 function inferPharmacyName(orgName?: string | null, siteName?: string | null) {
@@ -506,7 +508,9 @@ function flattenJson(value: unknown, labelPrefix = ''): KeyValueRow[] {
       return labelPrefix ? [{ label: labelPrefix, value: '—' }] : [];
     }
 
-    if (value.every((item) => item == null || ['string', 'number', 'boolean'].includes(typeof item))) {
+    if (
+      value.every((item) => item == null || ['string', 'number', 'boolean'].includes(typeof item))
+    ) {
       return labelPrefix
         ? [{ label: labelPrefix, value: value.map((item) => String(item ?? '—')).join(' / ') }]
         : [];
@@ -534,16 +538,14 @@ function flattenJson(value: unknown, labelPrefix = ''): KeyValueRow[] {
 function parseConferenceParticipants(raw: unknown): ConferenceNoteParticipant[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter(
-    (item): item is ConferenceNoteParticipant =>
-      typeof item === 'object' && item !== null,
+    (item): item is ConferenceNoteParticipant => typeof item === 'object' && item !== null,
   );
 }
 
 function parseConferenceActionItems(raw: unknown): ConferenceNoteActionItem[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter(
-    (item): item is ConferenceNoteActionItem =>
-      typeof item === 'object' && item !== null,
+    (item): item is ConferenceNoteActionItem => typeof item === 'object' && item !== null,
   );
 }
 
@@ -557,7 +559,7 @@ function parseConferenceStructuredSections(raw: unknown): ConferenceNoteStructur
     return [];
   }
 
-  return ((raw as { sections: unknown[] }).sections).filter(
+  return (raw as { sections: unknown[] }).sections.filter(
     (item): item is ConferenceNoteStructuredSection =>
       typeof item === 'object' && item !== null && 'label' in item && 'key' in item,
   );
@@ -638,9 +640,7 @@ function buildMedicationCalendarSlots(
       if (!slots[slot]) {
         slots[slot] = [];
       }
-      slots[slot].push(
-        [profile.drug_name, profile.dose].filter(Boolean).join(' '),
-      );
+      slots[slot].push([profile.drug_name, profile.dose].filter(Boolean).join(' '));
     }
   }
 
@@ -670,10 +670,7 @@ function PdfShell({
           </Text>
         </View>
 
-        <Text
-          fixed
-          style={styles.footerLeft}
-        >
+        <Text fixed style={styles.footerLeft}>
           CareViaX PDF
         </Text>
         <Text
@@ -688,13 +685,7 @@ function PdfShell({
   );
 }
 
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>{title}</Text>
@@ -749,11 +740,7 @@ function Table({
         {headers.map((header, index) => (
           <Text
             key={header}
-            style={[
-              ...cellStyle,
-              styles.tableHeaderCell,
-              { width: `${widths[index]}%` },
-            ]}
+            style={[...cellStyle, styles.tableHeaderCell, { width: `${widths[index]}%` }]}
           >
             {header}
           </Text>
@@ -780,7 +767,10 @@ function renderBaselineContextSection(baseline: BaselineContext) {
     (p) => specialProcedureLabels[p] ?? p,
   );
   const rows: KeyValueRow[] = [
-    { label: '介護度', value: careLevelLabels[baseline.care_level ?? ''] ?? baseline.care_level ?? '—' },
+    {
+      label: '介護度',
+      value: careLevelLabels[baseline.care_level ?? ''] ?? baseline.care_level ?? '—',
+    },
     { label: 'ADL', value: adlLabels[baseline.adl_level ?? ''] ?? baseline.adl_level ?? '—' },
     {
       label: '認知症',
@@ -797,14 +787,14 @@ function renderBaselineContextSection(baseline: BaselineContext) {
   return (
     <Section title="患者状態（受付時ベースライン）">
       <KeyValueCards rows={rows} />
-      {procedureLabels.length > 0 ? (
-        <BulletList items={procedureLabels} />
-      ) : null}
+      {procedureLabels.length > 0 ? <BulletList items={procedureLabels} /> : null}
     </Section>
   );
 }
 
 function renderCareReportContent(report: CareReportRecord) {
+  const billingContext = (report.content as Record<string, unknown> | null)
+    ?.billing_context as Record<string, unknown> | null;
   if (report.report_type === 'physician_report') {
     const content = report.content as unknown as PhysicianReportContent;
     return (
@@ -823,6 +813,35 @@ function renderCareReportContent(report: CareReportRecord) {
             ]}
           />
         </Section>
+        {billingContext ? (
+          <Section title="請求コンテキスト">
+            <KeyValueCards
+              rows={[
+                {
+                  label: '保険種別',
+                  value:
+                    typeof billingContext.payer_basis === 'string'
+                      ? billingContext.payer_basis
+                      : '—',
+                },
+                {
+                  label: '適用改定',
+                  value:
+                    typeof billingContext.effective_revision_code === 'string'
+                      ? billingContext.effective_revision_code
+                      : '—',
+                },
+                {
+                  label: '薬局設定',
+                  value:
+                    typeof billingContext.site_config_status === 'string'
+                      ? billingContext.site_config_status
+                      : '—',
+                },
+              ]}
+            />
+          </Section>
+        ) : null}
         {content.baseline_context ? renderBaselineContextSection(content.baseline_context) : null}
 
         <Section title="処方内容">
@@ -897,6 +916,35 @@ function renderCareReportContent(report: CareReportRecord) {
             ]}
           />
         </Section>
+        {billingContext ? (
+          <Section title="請求コンテキスト">
+            <KeyValueCards
+              rows={[
+                {
+                  label: '保険種別',
+                  value:
+                    typeof billingContext.payer_basis === 'string'
+                      ? billingContext.payer_basis
+                      : '—',
+                },
+                {
+                  label: '適用改定',
+                  value:
+                    typeof billingContext.effective_revision_code === 'string'
+                      ? billingContext.effective_revision_code
+                      : '—',
+                },
+                {
+                  label: '薬局設定',
+                  value:
+                    typeof billingContext.site_config_status === 'string'
+                      ? billingContext.site_config_status
+                      : '—',
+                },
+              ]}
+            />
+          </Section>
+        ) : null}
         {content.baseline_context ? renderBaselineContextSection(content.baseline_context) : null}
 
         <Section title="服薬管理サマリー">
@@ -916,7 +964,9 @@ function renderCareReportContent(report: CareReportRecord) {
               },
               {
                 label: 'カレンダー使用',
-                value: content.medication_management_summary.calendar_used ? '使用あり' : '使用なし',
+                value: content.medication_management_summary.calendar_used
+                  ? '使用あり'
+                  : '使用なし',
               },
             ]}
           />
@@ -1158,7 +1208,8 @@ function renderVisitRecordEntryContent(record: VisitRecordPdfEntry) {
             `受領者: ${record.receipt_person_name ?? '記録なし'}`,
             `続柄: ${
               record.receipt_person_relation
-                ? (RELATION_LABELS[record.receipt_person_relation] ?? record.receipt_person_relation)
+                ? (RELATION_LABELS[record.receipt_person_relation] ??
+                  record.receipt_person_relation)
                 : '—'
             }`,
             `受領日時: ${formatDate(record.receipt_at, true)}`,
@@ -1295,7 +1346,9 @@ function renderTracingReportContent(report: TracingReportRecord) {
       ) : null}
 
       <Section title="報告内容">
-        <BulletList items={flattenJson(report.content).map((row) => `${row.label}: ${row.value}`)} />
+        <BulletList
+          items={flattenJson(report.content).map((row) => `${row.label}: ${row.value}`)}
+        />
       </Section>
     </>
   );
@@ -1334,7 +1387,10 @@ function renderConferenceNoteContent(record: ConferenceNotePdfRecord) {
       <Section title="基本情報">
         <KeyValueCards
           rows={[
-            { label: '会議種別', value: CONFERENCE_NOTE_TYPE_LABELS[record.note_type] ?? record.note_type },
+            {
+              label: '会議種別',
+              value: CONFERENCE_NOTE_TYPE_LABELS[record.note_type] ?? record.note_type,
+            },
             { label: '開催日時', value: formatDate(record.conference_date, true) },
             { label: 'タイトル', value: record.title },
             { label: '患者名', value: record.patient?.name ?? '未紐付け' },
@@ -1363,11 +1419,7 @@ function renderConferenceNoteContent(record: ConferenceNotePdfRecord) {
       </Section>
 
       <Section title="アクションアイテム">
-        <Table
-          headers={['内容', '担当', '状態']}
-          widths={[56, 22, 22]}
-          rows={actionRows}
-        />
+        <Table headers={['内容', '担当', '状態']} widths={[56, 22, 22]} rows={actionRows} />
       </Section>
 
       {metadataRows.length > 0 ? (
@@ -1386,9 +1438,7 @@ function renderConferenceNoteContent(record: ConferenceNotePdfRecord) {
 
 async function renderPdf(document: React.ReactElement, fileName: string) {
   ensurePdfFontRegistered();
-  const buffer = await renderToBuffer(
-    document as React.ReactElement<DocumentProps>,
-  );
+  const buffer = await renderToBuffer(document as React.ReactElement<DocumentProps>);
   return { buffer, fileName };
 }
 
@@ -1722,10 +1772,7 @@ async function getVisitRecordEntries(
   });
 }
 
-async function getVisitRecordEntry(
-  orgId: string,
-  recordId: string,
-): Promise<VisitRecordPdfEntry> {
+async function getVisitRecordEntry(orgId: string, recordId: string): Promise<VisitRecordPdfEntry> {
   const entries = await getVisitRecordEntries(orgId, { id: recordId });
   const entry = entries[0];
   if (!entry) {
@@ -2010,13 +2057,9 @@ export async function buildPatientVisitRecordsPdf(
   dateTo?: string | null,
 ): Promise<PdfRenderResult> {
   const normalizedDateFrom =
-    dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom)
-      ? new Date(`${dateFrom}T00:00:00.000Z`)
-      : null;
+    dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom) ? new Date(`${dateFrom}T00:00:00.000Z`) : null;
   const normalizedDateTo =
-    dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo)
-      ? new Date(`${dateTo}T23:59:59.999Z`)
-      : null;
+    dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo) ? new Date(`${dateTo}T23:59:59.999Z`) : null;
 
   const [branding, record] = await Promise.all([
     getPdfBranding(orgId),
@@ -2047,9 +2090,7 @@ export async function buildMedicationCalendarPdf(
   month?: string | null,
 ): Promise<PdfRenderResult> {
   const parsedMonth =
-    month && /^\d{4}-\d{2}$/.test(month)
-      ? new Date(`${month}-01T00:00:00.000Z`)
-      : new Date();
+    month && /^\d{4}-\d{2}$/.test(month) ? new Date(`${month}-01T00:00:00.000Z`) : new Date();
   const currentMonth = new Date(parsedMonth.getFullYear(), parsedMonth.getMonth(), 1);
 
   const [branding, record] = await Promise.all([

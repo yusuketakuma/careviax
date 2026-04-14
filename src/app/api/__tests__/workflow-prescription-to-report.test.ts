@@ -226,9 +226,15 @@ type TxCallback = (tx: unknown) => unknown | Promise<unknown>;
 describe('Workflow: prescription intake to care report', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-10T09:00:00.000Z'));
     prismaMembershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
     evaluateVisitWorkflowGateMock.mockResolvedValue({ ok: true, issues: [] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   /* ---------------------------------------------------------------------- */

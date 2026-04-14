@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import type { HomeLinkContext, WorkflowFocus } from '@/lib/dashboard/home-link-builders';
+import { getInquiryStructuredMetaFromLegacy } from '@/lib/inquiries/presentation';
 import type {
   InquiryEditState,
   InquiryWorkbenchItem,
@@ -16,39 +17,35 @@ import { WorkflowDashboardView } from './workflow-dashboard-view';
 
 function buildInquiryEditState(item: InquiryWorkbenchItem): InquiryEditState {
   const detail = item.change_detail ?? '';
+  const structuredMeta = getInquiryStructuredMetaFromLegacy({
+    proposalOrigin: item.proposal_origin,
+    residualAdjustment: item.residual_adjustment,
+    reason: item.reason,
+    changeDetail: detail,
+  });
   return {
     changeDetail: detail,
     drugName: item.line?.drug_name ?? '',
     dose: item.line?.dose ?? '',
     frequency: item.line?.frequency ?? '',
     days: item.line ? String(item.line.days) : '',
-    proposalOrigin: detail.includes('proposal_origin:pre_issuance')
-      ? 'pre_issuance'
-      : 'post_inquiry',
-    residualAdjustment:
-      item.reason.includes('残薬') || detail.toLowerCase().includes('residual_adjustment:true'),
+    proposalOrigin: structuredMeta.proposalOrigin,
+    residualAdjustment: structuredMeta.residualAdjustment,
   };
 }
 
 function buildInquiryResolutionDetail(args: {
   result: 'changed' | 'unchanged' | 'pending';
   changeDetail?: string;
-  proposalOrigin?: InquiryEditState['proposalOrigin'];
-  residualAdjustment?: boolean;
 }) {
-  const baseDetail =
+  return (
     args.changeDetail?.trim() ||
     (args.result === 'changed'
       ? 'workflow から処方反映ありで確定'
       : args.result === 'unchanged'
         ? 'workflow から変更なしで確定'
-        : 'workflow から回答待ちへ更新');
-
-  return [
-    baseDetail,
-    `proposal_origin:${args.proposalOrigin ?? 'post_inquiry'}`,
-    `residual_adjustment:${args.residualAdjustment ? 'true' : 'false'}`,
-  ].join(' | ');
+        : 'workflow から回答待ちへ更新')
+  );
 }
 
 type WorkflowDashboardContentProps = {
@@ -165,11 +162,15 @@ export function WorkflowDashboardContent({
       inquiryId,
       result,
       changeDetail,
+      proposalOrigin,
+      residualAdjustment,
       lineUpdate,
     }: {
       inquiryId: string;
       result: 'changed' | 'unchanged' | 'pending';
       changeDetail?: string;
+      proposalOrigin?: InquiryEditState['proposalOrigin'];
+      residualAdjustment?: boolean;
       lineUpdate?: {
         drug_name: string;
         dose: string;
@@ -192,6 +193,8 @@ export function WorkflowDashboardContent({
               : result === 'unchanged'
                 ? 'workflow から変更なしで確定'
                 : 'workflow から回答待ちへ更新'),
+          proposal_origin: proposalOrigin,
+          residual_adjustment: residualAdjustment,
           ...(lineUpdate ? { line_update: lineUpdate } : {}),
         }),
       });

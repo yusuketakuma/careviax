@@ -4,15 +4,19 @@ import { buildVisitScheduleBillingPreviewBatch } from '@/server/services/visit-s
 import { z } from 'zod';
 
 const batchPreviewSchema = z.object({
-  items: z.array(
-    z.object({
-      key: z.string().min(1),
-      case_id: z.string().min(1),
-      proposed_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-      pharmacist_id: z.string().optional(),
-      visit_type: z.string().optional(),
-    }),
-  ).min(1).max(100),
+  items: z
+    .array(
+      z.object({
+        key: z.string().min(1),
+        case_id: z.string().min(1),
+        proposed_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        pharmacist_id: z.string().optional(),
+        site_id: z.string().optional(),
+        visit_type: z.string().optional(),
+      }),
+    )
+    .min(1)
+    .max(100),
 });
 
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
@@ -31,6 +35,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         caseId: item.case_id,
         proposedDate: item.proposed_date,
         pharmacistId: item.pharmacist_id,
+        siteId: item.site_id,
         visitType: item.visit_type,
       })),
       req.orgId,

@@ -203,6 +203,10 @@ export default function ReportDetailPage() {
   const isPhysician = report.report_type === 'physician_report';
   const isCareManager = report.report_type === 'care_manager_report';
   const hasContentView = isPhysician || isCareManager;
+  const billingContext =
+    typeof report.content === 'object' && report.content !== null
+      ? ((report.content as Record<string, unknown>).billing_context as Record<string, unknown> | null)
+      : null;
 
   const warnings =
     (report.content as { warnings?: string[] }).warnings ?? [];
@@ -371,6 +375,38 @@ export default function ReportDetailPage() {
               </dl>
             </CardContent>
           </Card>
+
+          {billingContext && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">請求コンテキスト</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <dl className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
+                  <div className="space-y-1">
+                    <dt className="text-xs font-medium text-muted-foreground">保険種別</dt>
+                    <dd>{typeof billingContext.payer_basis === 'string' ? billingContext.payer_basis : '—'}</dd>
+                  </div>
+                  <div className="space-y-1">
+                    <dt className="text-xs font-medium text-muted-foreground">適用改定</dt>
+                    <dd>
+                      {typeof billingContext.effective_revision_code === 'string'
+                        ? billingContext.effective_revision_code
+                        : '—'}
+                    </dd>
+                  </div>
+                  <div className="space-y-1">
+                    <dt className="text-xs font-medium text-muted-foreground">薬局設定</dt>
+                    <dd>
+                      {typeof billingContext.site_config_status === 'string'
+                        ? billingContext.site_config_status
+                        : '—'}
+                    </dd>
+                  </div>
+                </dl>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Report content view or edit form */}
           {hasContentView && (

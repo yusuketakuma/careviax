@@ -18,13 +18,28 @@ const configField = {
   config: z.record(z.string(), z.unknown()).default({}),
 };
 
+function hasSupportedRevision(insuranceType: 'medical' | 'care', revisionCode: string) {
+  if (insuranceType === 'care') return revisionCode === '2024';
+  return revisionCode === '2024' || revisionCode === '2026';
+}
+
 export const pharmacySiteInsuranceConfigCreateSchema = z
   .object({
     insurance_type: z.enum(['medical', 'care']),
     revision_code: z.string().min(1, '改定年度コードは必須です'),
     revision_label: z.string().optional().nullable(),
+    auto_close_overlaps: z.boolean().optional(),
     ...effectiveDateFields,
     ...configField,
+  })
+  .superRefine((value, ctx) => {
+    if (!hasSupportedRevision(value.insurance_type, value.revision_code)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${value.insurance_type === 'care' ? '介護保険' : '医療保険'}で未対応の改定年度です`,
+        path: ['revision_code'],
+      });
+    }
   })
   .refine(hasValidEffectiveRange, {
     message: '適用終了日は適用開始日より後の日付を指定してください',

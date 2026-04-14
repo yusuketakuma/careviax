@@ -7,6 +7,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const caseId = searchParams.get('case_id');
   const proposedDate = searchParams.get('proposed_date');
   const pharmacistId = searchParams.get('pharmacist_id');
+  const siteId = searchParams.get('site_id');
   const visitTypeParam = searchParams.get('visit_type');
 
   if (!caseId || !proposedDate) {
@@ -18,6 +19,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     caseId,
     proposedDate,
     pharmacistId,
+    siteId,
     visitType: visitTypeParam,
   });
   if (!preview) return notFound('ケースが見つかりません');

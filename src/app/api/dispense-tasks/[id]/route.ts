@@ -11,7 +11,11 @@ import { z } from 'zod';
 const updateDispenseTaskSchema = z.object({
   assigned_to: z.string().optional(),
   priority: z.enum(['emergency', 'urgent', 'normal']).optional(),
-  due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}/).nullable().optional(),
+  due_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}/)
+    .nullable()
+    .optional(),
   status: z.enum(['pending', 'in_progress', 'completed']).optional(),
 });
 
@@ -147,12 +151,12 @@ async function buildLineStockGuidance(input: {
   });
 
   return input.lines.map((line) => {
-    const exactMaster = line.drug_code ? masterByYjCode.get(line.drug_code) ?? null : null;
+    const exactMaster = line.drug_code ? (masterByYjCode.get(line.drug_code) ?? null) : null;
     const genericName =
       exactMaster?.generic_name ??
       (line.is_generic_name_prescription ? line.drug_name.trim() : null);
     const exactStock = exactMaster
-      ? stockEntries.find((entry) => entry.drug_master_id === exactMaster.id) ?? null
+      ? (stockEntries.find((entry) => entry.drug_master_id === exactMaster.id) ?? null)
       : null;
     const relatedStocks = genericName
       ? stockEntries.filter((entry) => entry.drug_master.generic_name === genericName)
@@ -165,12 +169,15 @@ async function buildLineStockGuidance(input: {
       relatedStocks.find((entry) => entry.preferred_generic)?.preferred_generic ??
       null;
 
-    const candidateMap = new Map<string, {
-      drug_master_id: string;
-      drug_name: string;
-      yj_code: string;
-      source: 'exact' | 'preferred_generic' | 'alternative';
-    }>();
+    const candidateMap = new Map<
+      string,
+      {
+        drug_master_id: string;
+        drug_name: string;
+        yj_code: string;
+        source: 'exact' | 'preferred_generic' | 'alternative';
+      }
+    >();
 
     if (exactStock) {
       candidateMap.set(exactStock.drug_master.id, {
@@ -193,20 +200,18 @@ async function buildLineStockGuidance(input: {
         drug_master_id: entry.drug_master.id,
         drug_name: entry.drug_master.drug_name,
         yj_code: entry.drug_master.yj_code,
-        source:
-          entry.preferred_generic_id != null ? 'preferred_generic' : 'alternative',
+        source: entry.preferred_generic_id != null ? 'preferred_generic' : 'alternative',
       });
     }
 
     const stockedCandidates = Array.from(candidateMap.values());
-    const recommendedCandidate =
-      preferredGeneric
-        ? stockedCandidates.find((candidate) => candidate.drug_master_id === preferredGeneric.id)
-        : exactStock
-          ? stockedCandidates.find(
-              (candidate) => candidate.drug_master_id === exactStock.drug_master.id
-            )
-          : stockedCandidates[0];
+    const recommendedCandidate = preferredGeneric
+      ? stockedCandidates.find((candidate) => candidate.drug_master_id === preferredGeneric.id)
+      : exactStock
+        ? stockedCandidates.find(
+            (candidate) => candidate.drug_master_id === exactStock.drug_master.id,
+          )
+        : stockedCandidates[0];
 
     let stockStatus: 'stocked' | 'preferred_generic' | 'alternative_available' | 'out_of_stock' =
       'out_of_stock';
@@ -239,10 +244,7 @@ async function buildLineStockGuidance(input: {
   });
 }
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return withAuth(async (authReq: AuthenticatedRequest) => {
     const { id } = await params;
 
@@ -321,6 +323,8 @@ export async function GET(
                 inquiry_to_physician: true,
                 inquiry_content: true,
                 result: true,
+                proposal_origin: true,
+                residual_adjustment: true,
                 change_detail: true,
                 line: {
                   select: {
@@ -391,7 +395,7 @@ export async function GET(
     const prefill = await generateDispensePrefill(
       task.cycle_id,
       authReq.orgId,
-      site?.id ?? null
+      site?.id ?? null,
     ).catch(() => null);
 
     return success({
@@ -415,10 +419,7 @@ export async function GET(
   })(req);
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return withAuth(async (authReq: AuthenticatedRequest) => {
     const { id } = await params;
 
@@ -445,7 +446,7 @@ export async function PATCH(
       if (nextOrder < currentOrder) {
         return validationError(
           `ステータス "${existing.status}" から "${status}" への遷移は許可されていません`,
-          { current: existing.status, requested: status }
+          { current: existing.status, requested: status },
         );
       }
     }

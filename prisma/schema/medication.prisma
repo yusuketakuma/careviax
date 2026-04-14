@@ -58,7 +58,7 @@ model MedicationProfile {
 }
 
 model ResidualMedication {
-  id                      String  @id @default(cuid())
+  id                      String   @id @default(cuid())
   org_id                  String
   visit_record_id         String
   drug_name               String
@@ -67,8 +67,8 @@ model ResidualMedication {
   remaining_quantity      Float
   remaining_days          Int?
   excess_days             Int? // 余剰日数
-  is_reduction_target     Boolean @default(false) // 減数調剤対象
-  is_prohibited_reduction Boolean @default(false) // 減数調剤禁止（麻薬/抗がん剤）
+  is_reduction_target     Boolean  @default(false) // 減数調剤対象
+  is_prohibited_reduction Boolean  @default(false) // 減数調剤禁止（麻薬/抗がん剤）
   created_at              DateTime @default(now())
   updated_at              DateTime @updatedAt
 
@@ -139,25 +139,25 @@ model Task {
   created_at          DateTime     @default(now())
   updated_at          DateTime     @updatedAt
 
+  @@unique([org_id, dedupe_key])
   @@index([org_id])
   @@index([status])
   @@index([assigned_to])
   @@index([task_type, status])
   @@index([sla_due_at])
-  @@unique([org_id, dedupe_key])
 }
 
 model FirstVisitDocument {
-  id               String    @id @default(cuid())
-  org_id           String
-  patient_id       String
-  case_id          String
+  id                 String    @id @default(cuid())
+  org_id             String
+  patient_id         String
+  case_id            String
   emergency_contacts Json
-  document_url     String? // S3
-  delivered_at     DateTime?
-  delivered_to     String?
-  created_at       DateTime  @default(now())
-  updated_at       DateTime  @updatedAt
+  document_url       String? // S3
+  delivered_at       DateTime?
+  delivered_to       String?
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
 
   @@index([org_id])
   @@index([patient_id])

@@ -844,6 +844,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         inquiry_to_physician: true,
         inquiry_content: true,
         result: true,
+        proposal_origin: true,
+        residual_adjustment: true,
         change_detail: true,
         inquired_at: true,
         resolved_at: true,
@@ -1181,6 +1183,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             ? '変更なし'
             : '回答待ち';
       const detail = item.change_detail ?? item.inquiry_content ?? null;
+      const metadata = compactTimelineValues([
+        item.inquired_at ? `照会 ${formatTimelineDate(item.inquired_at)}` : null,
+        item.proposal_origin === 'pre_issuance' ? '事前提案反映' : '照会後変更',
+        item.residual_adjustment ? '残薬調整' : null,
+      ]);
 
       return {
         id: `inquiry:${item.id}`,
@@ -1196,9 +1203,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         status: item.result ?? 'pending',
         status_label: inquiryStatus,
         actor_name: null,
-        metadata: compactTimelineValues([
-          item.inquired_at ? `照会 ${formatTimelineDate(item.inquired_at)}` : null,
-        ]),
+        metadata,
       };
     }),
     ...careReports.flatMap((item) => [
@@ -1678,7 +1683,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             if (hasOwnKey(intake, 'infection_isolation')) {
               const rawIsolation = normalizeNullableText(intake.infection_isolation);
               if (rawIsolation !== undefined) {
-                const trueValues = ['要', 'あり', 'true', '1', 'yes', 'droplet', 'contact', 'airborne'];
+                const trueValues = [
+                  '要',
+                  'あり',
+                  'true',
+                  '1',
+                  'yes',
+                  'droplet',
+                  'contact',
+                  'airborne',
+                ];
                 const falseValues = ['不要', 'なし', 'false', '0', 'no', 'none'];
                 const lower = rawIsolation.toLowerCase();
                 const isolationValue = trueValues.some((v) => v === rawIsolation || v === lower)
@@ -1780,9 +1794,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               select: { id: true, number: true },
             });
 
-            const numberChanged = currentInsurance
-              ? currentInsurance.number !== nextNumber
-              : true;
+            const numberChanged = currentInsurance ? currentInsurance.number !== nextNumber : true;
 
             if (numberChanged) {
               const today = new Date();

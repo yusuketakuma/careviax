@@ -9,3 +9,4 @@ export {
 export * from './site-config-2024';
 export * from './site-config-2026';
 export * from './official-2024';
+export * from './official-2026';

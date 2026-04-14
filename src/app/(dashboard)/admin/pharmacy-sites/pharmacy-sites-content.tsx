@@ -31,6 +31,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { AlertTriangle } from 'lucide-react';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type PharmacySite = {
@@ -76,64 +78,33 @@ type ConfigForm = {
   config: Record<string, unknown>;
 };
 
-const EMPTY_CONFIG: ConfigForm = {
-  insurance_type: 'medical',
-  revision_code: '2024',
-  revision_label: '令和6年度改定',
-  effective_from: '2024-06-01',
-  effective_to: '',
-  config: {},
-};
+import {
+  CARE_BOOL_FIELDS,
+  getAvailableRevisions,
+  getMedicalConfigFields,
+  getDefaultRevisionCode,
+  getRevisionMeta,
+  normalizeInsuranceConfigForRevision,
+} from '@/lib/constants/site-config-fields';
+
+function makeEmptyConfig(): ConfigForm {
+  const insuranceType = 'medical';
+  const code = getDefaultRevisionCode(insuranceType);
+  const meta = getRevisionMeta(code, insuranceType);
+  return {
+    insurance_type: insuranceType,
+    revision_code: code,
+    revision_label: meta?.label ?? '',
+    effective_from: meta?.effectiveFrom ?? '',
+    effective_to: '',
+    config: {},
+  };
+}
 
 const INSURANCE_TYPE_LABELS: Record<string, string> = {
   medical: '医療保険',
   care: '介護保険',
 };
-
-const MEDICAL_CONFIG_FIELDS = [
-  { key: 'dispensing_fee_category', label: '調剤基本料', options: [
-    ['basic_1', '基本料1 (45点)'],
-    ['basic_2', '基本料2 (29点)'],
-    ['basic_3_i', '基本料3イ (24点)'],
-    ['basic_3_ro', '基本料3ロ (19点)'],
-    ['basic_3_ha', '基本料3ハ (35点)'],
-    ['special_a', '特別調剤基本料A (5点)'],
-    ['special_b', '特別調剤基本料B (3点)'],
-  ]},
-  { key: 'regional_support_level', label: '地域支援体制加算', options: [
-    ['', 'なし'],
-    ['level_1', '加算1 (32点)'],
-    ['level_2', '加算2 (40点)'],
-    ['level_3', '加算3 (10点)'],
-    ['level_4', '加算4 (32点)'],
-  ]},
-  { key: 'generic_dispensing_level', label: '後発医薬品調剤体制加算', options: [
-    ['', 'なし'],
-    ['level_1', '加算1 (21点/80%以上)'],
-    ['level_2', '加算2 (28点/85%以上)'],
-    ['level_3', '加算3 (30点/90%以上)'],
-  ]},
-  { key: 'home_comprehensive_level', label: '在宅薬学総合体制加算', options: [
-    ['', 'なし'],
-    ['level_1', '加算1 (15点)'],
-    ['level_2', '加算2 (50点)'],
-  ]},
-] as const;
-
-const MEDICAL_BOOL_FIELDS = [
-  { key: 'cooperation_enhancement', label: '連携強化加算 (5点)' },
-  { key: 'medical_dx_promotion', label: '医療DX推進体制整備加算 (4点)' },
-  { key: 'narcotic_dealer_license', label: '麻薬小売業者の免許' },
-  { key: 'high_care_medical_device_license', label: '高度管理医療機器販売業の許可' },
-] as const;
-
-const CARE_BOOL_FIELDS = [
-  { key: 'region_special_15', label: '特別地域加算 (15%)' },
-  { key: 'region_small_office_10', label: '中山間地域等小規模事業所加算 (10%)' },
-  { key: 'region_resident_5', label: '中山間地域等居住者サービス提供加算 (5%)' },
-  { key: 'narcotic_dealer_license', label: '麻薬小売業者の免許' },
-  { key: 'high_care_medical_device_license', label: '高度管理医療機器販売業の許可' },
-] as const;
 
 export function PharmacySitesContent() {
   const orgId = useOrgId();
@@ -143,7 +114,9 @@ export function PharmacySitesContent() {
   const [configSiteId, setConfigSiteId] = useState<string | null>(null);
   const [configForm, setConfigForm] = useState<ConfigForm | null>(null);
   const [editingConfigId, setEditingConfigId] = useState<string | null>(null);
-  const [deleteConfig, setDeleteConfig] = useState<{ siteId: string; configId: string } | null>(null);
+  const [deleteConfig, setDeleteConfig] = useState<{ siteId: string; configId: string } | null>(
+    null,
+  );
 
   const { data, isLoading } = useQuery({
     queryKey: ['pharmacy-sites-admin', orgId],
@@ -210,6 +183,10 @@ export function PharmacySitesContent() {
         headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
         body: JSON.stringify({
           ...configForm,
+          auto_close_overlaps:
+            !editingConfigId &&
+            configForm.insurance_type === 'medical' &&
+            configForm.revision_code === '2026',
           effective_to: configForm.effective_to || null,
         }),
       });
@@ -235,7 +212,7 @@ export function PharmacySitesContent() {
       if (!deleteConfig) throw new Error('削除対象がありません');
       const response = await fetch(
         `/api/pharmacy-sites/${deleteConfig.siteId}/insurance-configs/${deleteConfig.configId}`,
-        { method: 'DELETE', headers: { 'x-org-id': orgId } }
+        { method: 'DELETE', headers: { 'x-org-id': orgId } },
       );
       if (!response.ok) throw new Error('削除に失敗しました');
     },
@@ -263,15 +240,48 @@ export function PharmacySitesContent() {
     });
   }
 
+  function has2026Config(insuranceType: string) {
+    return configs.some((c) => c.insurance_type === insuranceType && c.revision_code === '2026');
+  }
+
+  function cloneConfigFor2026(source: InsuranceConfig) {
+    const revisionCode = '2026';
+    const meta = getRevisionMeta(revisionCode, source.insurance_type);
+    const clonedConfig = normalizeInsuranceConfigForRevision({
+      insuranceType: source.insurance_type,
+      revisionCode,
+      config: (source.config ?? {}) as Record<string, unknown>,
+    });
+
+    setEditingConfigId(null);
+    setConfigForm({
+      insurance_type: source.insurance_type,
+      revision_code: revisionCode,
+      revision_label: meta?.label ?? '令和8年度改定',
+      effective_from: meta?.effectiveFrom ?? '2026-06-01',
+      effective_to: '',
+      config: clonedConfig,
+    });
+  }
+
   function openConfigEdit(config: InsuranceConfig) {
+    const normalizedConfig = normalizeInsuranceConfigForRevision({
+      insuranceType: config.insurance_type,
+      revisionCode: config.revision_code,
+      config: (config.config ?? {}) as Record<string, unknown>,
+    });
+
     setEditingConfigId(config.id);
     setConfigForm({
       insurance_type: config.insurance_type,
       revision_code: config.revision_code,
-      revision_label: config.revision_label ?? '',
+      revision_label:
+        config.revision_label ??
+        getRevisionMeta(config.revision_code, config.insurance_type)?.label ??
+        '',
       effective_from: config.effective_from.slice(0, 10),
       effective_to: config.effective_to?.slice(0, 10) ?? '',
-      config: (config.config ?? {}) as Record<string, unknown>,
+      config: normalizedConfig,
     });
   }
 
@@ -311,9 +321,13 @@ export function PharmacySitesContent() {
                   <span className="text-muted-foreground">FAX:</span> {site.fax ?? '未設定'}
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  {site.is_health_support_pharmacy && <Badge variant="outline">健康サポート薬局</Badge>}
+                  {site.is_health_support_pharmacy && (
+                    <Badge variant="outline">健康サポート薬局</Badge>
+                  )}
                   {site.is_regional_support && <Badge variant="outline">地域連携薬局</Badge>}
-                  {site.is_specialized_pharmacy && <Badge variant="outline">専門医療機関連携薬局</Badge>}
+                  {site.is_specialized_pharmacy && (
+                    <Badge variant="outline">専門医療機関連携薬局</Badge>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -322,7 +336,15 @@ export function PharmacySitesContent() {
       )}
 
       {/* Site Edit Sheet */}
-      <Sheet open={!!editingSite && !!siteForm} onOpenChange={(open) => { if (!open) { setEditingSite(null); setSiteForm(null); } }}>
+      <Sheet
+        open={!!editingSite && !!siteForm}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingSite(null);
+            setSiteForm(null);
+          }
+        }}
+      >
         <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
           <SheetHeader>
             <SheetTitle>薬局情報を編集</SheetTitle>
@@ -333,25 +355,25 @@ export function PharmacySitesContent() {
               <Field label="薬局名">
                 <Input
                   value={siteForm.name}
-                  onChange={(e) => setSiteForm((f) => f ? { ...f, name: e.target.value } : f)}
+                  onChange={(e) => setSiteForm((f) => (f ? { ...f, name: e.target.value } : f))}
                 />
               </Field>
               <Field label="住所">
                 <Input
                   value={siteForm.address}
-                  onChange={(e) => setSiteForm((f) => f ? { ...f, address: e.target.value } : f)}
+                  onChange={(e) => setSiteForm((f) => (f ? { ...f, address: e.target.value } : f))}
                 />
               </Field>
               <Field label="電話番号">
                 <Input
                   value={siteForm.phone}
-                  onChange={(e) => setSiteForm((f) => f ? { ...f, phone: e.target.value } : f)}
+                  onChange={(e) => setSiteForm((f) => (f ? { ...f, phone: e.target.value } : f))}
                 />
               </Field>
               <Field label="FAX">
                 <Input
                   value={siteForm.fax}
-                  onChange={(e) => setSiteForm((f) => f ? { ...f, fax: e.target.value } : f)}
+                  onChange={(e) => setSiteForm((f) => (f ? { ...f, fax: e.target.value } : f))}
                 />
               </Field>
               <div className="space-y-3 rounded-lg border border-border p-4">
@@ -359,27 +381,39 @@ export function PharmacySitesContent() {
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
                     checked={siteForm.is_health_support_pharmacy}
-                    onCheckedChange={(c) => setSiteForm((f) => f ? { ...f, is_health_support_pharmacy: c === true } : f)}
+                    onCheckedChange={(c) =>
+                      setSiteForm((f) => (f ? { ...f, is_health_support_pharmacy: c === true } : f))
+                    }
                   />
                   健康サポート薬局
                 </label>
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
                     checked={siteForm.is_regional_support}
-                    onCheckedChange={(c) => setSiteForm((f) => f ? { ...f, is_regional_support: c === true } : f)}
+                    onCheckedChange={(c) =>
+                      setSiteForm((f) => (f ? { ...f, is_regional_support: c === true } : f))
+                    }
                   />
                   地域連携薬局
                 </label>
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
                     checked={siteForm.is_specialized_pharmacy}
-                    onCheckedChange={(c) => setSiteForm((f) => f ? { ...f, is_specialized_pharmacy: c === true } : f)}
+                    onCheckedChange={(c) =>
+                      setSiteForm((f) => (f ? { ...f, is_specialized_pharmacy: c === true } : f))
+                    }
                   />
                   専門医療機関連携薬局
                 </label>
               </div>
               <div className="flex justify-end gap-2 pt-4">
-                <Button variant="outline" onClick={() => { setEditingSite(null); setSiteForm(null); }}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setEditingSite(null);
+                    setSiteForm(null);
+                  }}
+                >
                   キャンセル
                 </Button>
                 <Button
@@ -395,7 +429,16 @@ export function PharmacySitesContent() {
       </Sheet>
 
       {/* Insurance Config Sheet */}
-      <Sheet open={!!configSiteId} onOpenChange={(open) => { if (!open) { setConfigSiteId(null); setConfigForm(null); setEditingConfigId(null); } }}>
+      <Sheet
+        open={!!configSiteId}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfigSiteId(null);
+            setConfigForm(null);
+            setEditingConfigId(null);
+          }
+        }}
+      >
         <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
           <SheetHeader>
             <SheetTitle>保険算定設定</SheetTitle>
@@ -406,14 +449,35 @@ export function PharmacySitesContent() {
               <div className="text-sm font-medium">登録済み設定</div>
               <Button
                 size="sm"
-                onClick={() => { setConfigForm({ ...EMPTY_CONFIG }); setEditingConfigId(null); }}
+                onClick={() => {
+                  setConfigForm(makeEmptyConfig());
+                  setEditingConfigId(null);
+                }}
               >
                 設定を追加
               </Button>
             </div>
 
+            {/* 2026改定への移行アラート */}
+            {new Date() >= new Date('2026-03-01') &&
+              configs.some((c) => c.insurance_type === 'medical' && c.revision_code === '2024') &&
+              !configs.some(
+                (c) => c.insurance_type === 'medical' && c.revision_code === '2026',
+              ) && (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>2026年改定の医療保険設定が未作成です</AlertTitle>
+                  <AlertDescription>
+                    令和8年度診療報酬改定（2026年6月1日施行）に対応する保険設定を作成してください。
+                    既存の2024設定カードの「2026設定を作成」ボタンから簡単に作成できます。
+                  </AlertDescription>
+                </Alert>
+              )}
+
             {configs.length === 0 ? (
-              <div className="text-sm text-muted-foreground">保険設定はまだ登録されていません。</div>
+              <div className="text-sm text-muted-foreground">
+                保険設定はまだ登録されていません。
+              </div>
             ) : (
               configs.map((config) => (
                 <Card key={config.id}>
@@ -433,13 +497,26 @@ export function PharmacySitesContent() {
                       </div>
                     </div>
                     <div className="flex gap-1">
+                      {config.insurance_type === 'medical' &&
+                        config.revision_code === '2024' &&
+                        !has2026Config(config.insurance_type) && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => cloneConfigFor2026(config)}
+                          >
+                            2026設定を作成
+                          </Button>
+                        )}
                       <Button size="sm" variant="outline" onClick={() => openConfigEdit(config)}>
                         編集
                       </Button>
                       <Button
                         size="sm"
                         variant="destructive"
-                        onClick={() => setDeleteConfig({ siteId: config.site_id, configId: config.id })}
+                        onClick={() =>
+                          setDeleteConfig({ siteId: config.site_id, configId: config.id })
+                        }
                       >
                         削除
                       </Button>
@@ -462,7 +539,23 @@ export function PharmacySitesContent() {
                     <Field label="保険種別">
                       <Select
                         value={configForm.insurance_type}
-                        onValueChange={(v) => setConfigForm((f) => f ? { ...f, insurance_type: v ?? '', config: {} } : f)}
+                        onValueChange={(v) => {
+                          if (!v) return;
+                          const code = getDefaultRevisionCode(v);
+                          const meta = getRevisionMeta(code, v);
+                          setConfigForm((f) =>
+                            f
+                              ? {
+                                  ...f,
+                                  insurance_type: v,
+                                  revision_code: code,
+                                  revision_label: meta?.label ?? '',
+                                  effective_from: meta?.effectiveFrom ?? '',
+                                  config: {},
+                                }
+                              : f,
+                          );
+                        }}
                         disabled={!!editingConfigId}
                       >
                         <SelectTrigger>
@@ -474,31 +567,54 @@ export function PharmacySitesContent() {
                         </SelectContent>
                       </Select>
                     </Field>
-                    <Field label="改定年度コード">
-                      <Input
+                    <Field label="改定年度">
+                      <Select
                         value={configForm.revision_code}
-                        onChange={(e) => setConfigForm((f) => f ? { ...f, revision_code: e.target.value } : f)}
+                        onValueChange={(v) => {
+                          if (!v) return;
+                          const meta = getRevisionMeta(v, configForm.insurance_type);
+                          setConfigForm((f) =>
+                            f
+                              ? {
+                                  ...f,
+                                  revision_code: v,
+                                  revision_label: meta?.label ?? f.revision_label,
+                                  effective_from: meta?.effectiveFrom ?? f.effective_from,
+                                  config: {},
+                                }
+                              : f,
+                          );
+                        }}
                         disabled={!!editingConfigId}
-                      />
-                    </Field>
-                    <Field label="改定名称">
-                      <Input
-                        value={configForm.revision_label}
-                        onChange={(e) => setConfigForm((f) => f ? { ...f, revision_label: e.target.value } : f)}
-                      />
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {getAvailableRevisions(configForm.insurance_type).map((rev) => (
+                            <SelectItem key={rev.code} value={rev.code}>
+                              {rev.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </Field>
                     <Field label="施行日">
                       <Input
                         type="date"
                         value={configForm.effective_from}
-                        onChange={(e) => setConfigForm((f) => f ? { ...f, effective_from: e.target.value } : f)}
+                        onChange={(e) =>
+                          setConfigForm((f) => (f ? { ...f, effective_from: e.target.value } : f))
+                        }
                       />
                     </Field>
                     <Field label="終了日（空欄=現行）">
                       <Input
                         type="date"
                         value={configForm.effective_to}
-                        onChange={(e) => setConfigForm((f) => f ? { ...f, effective_to: e.target.value } : f)}
+                        onChange={(e) =>
+                          setConfigForm((f) => (f ? { ...f, effective_to: e.target.value } : f))
+                        }
                       />
                     </Field>
                   </div>
@@ -506,46 +622,62 @@ export function PharmacySitesContent() {
                   {/* Config-specific fields */}
                   <div className="space-y-3 rounded-lg border border-dashed border-border p-4">
                     <div className="text-sm font-medium">算定項目設定</div>
-                    {configForm.insurance_type === 'medical' && (
-                      <>
-                        {MEDICAL_CONFIG_FIELDS.map((field) => (
-                          <Field key={field.key} label={field.label}>
-                            <Select
-                              value={(configForm.config[field.key] as string) ?? ''}
-                              onValueChange={(v) =>
-                                setConfigForm((f) =>
-                                  f ? { ...f, config: { ...f.config, [field.key]: v || undefined } } : f
-                                )
-                              }
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="選択してください" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {field.options.map(([value, label]) => (
-                                  <SelectItem key={value || '__none'} value={value || '__none'}>
-                                    {label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </Field>
-                        ))}
-                        {MEDICAL_BOOL_FIELDS.map((field) => (
-                          <label key={field.key} className="flex items-center gap-2 text-sm">
-                            <Checkbox
-                              checked={configForm.config[field.key] === true}
-                              onCheckedChange={(c) =>
-                                setConfigForm((f) =>
-                                  f ? { ...f, config: { ...f.config, [field.key]: c === true } } : f
-                                )
-                              }
-                            />
-                            {field.label}
-                          </label>
-                        ))}
-                      </>
-                    )}
+                    {configForm.insurance_type === 'medical' &&
+                      (() => {
+                        const { configFields, boolFields } = getMedicalConfigFields(
+                          configForm.revision_code,
+                        );
+                        return (
+                          <>
+                            {configFields.map((field) => (
+                              <Field key={field.key} label={field.label}>
+                                <Select
+                                  value={(configForm.config[field.key] as string) || '__none'}
+                                  onValueChange={(v) =>
+                                    setConfigForm((f) =>
+                                      f
+                                        ? {
+                                            ...f,
+                                            config: {
+                                              ...f.config,
+                                              [field.key]: v === '__none' ? undefined : v,
+                                            },
+                                          }
+                                        : f,
+                                    )
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="選択してください" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {field.options.map(([value, label]) => (
+                                      <SelectItem key={value || '__none'} value={value || '__none'}>
+                                        {label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                            ))}
+                            {boolFields.map((field) => (
+                              <label key={field.key} className="flex items-center gap-2 text-sm">
+                                <Checkbox
+                                  checked={configForm.config[field.key] === true}
+                                  onCheckedChange={(c) =>
+                                    setConfigForm((f) =>
+                                      f
+                                        ? { ...f, config: { ...f.config, [field.key]: c === true } }
+                                        : f,
+                                    )
+                                  }
+                                />
+                                {field.label}
+                              </label>
+                            ))}
+                          </>
+                        );
+                      })()}
                     {configForm.insurance_type === 'care' && (
                       <>
                         {CARE_BOOL_FIELDS.map((field) => (
@@ -554,7 +686,9 @@ export function PharmacySitesContent() {
                               checked={configForm.config[field.key] === true}
                               onCheckedChange={(c) =>
                                 setConfigForm((f) =>
-                                  f ? { ...f, config: { ...f.config, [field.key]: c === true } } : f
+                                  f
+                                    ? { ...f, config: { ...f.config, [field.key]: c === true } }
+                                    : f,
                                 )
                               }
                             />
@@ -566,14 +700,24 @@ export function PharmacySitesContent() {
                   </div>
 
                   <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={() => { setConfigForm(null); setEditingConfigId(null); }}>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setConfigForm(null);
+                        setEditingConfigId(null);
+                      }}
+                    >
                       キャンセル
                     </Button>
                     <Button
                       onClick={() => saveConfigMutation.mutate()}
                       disabled={saveConfigMutation.isPending}
                     >
-                      {saveConfigMutation.isPending ? '保存中...' : editingConfigId ? '更新する' : '登録する'}
+                      {saveConfigMutation.isPending
+                        ? '保存中...'
+                        : editingConfigId
+                          ? '更新する'
+                          : '登録する'}
                     </Button>
                   </div>
                 </CardContent>

@@ -55,6 +55,8 @@ type InquiryRecord = {
   inquiry_to_physician: string;
   inquiry_content: string;
   result: string | null;
+  proposal_origin: 'post_inquiry' | 'pre_issuance' | null;
+  residual_adjustment: boolean | null;
   change_detail: string | null;
   inquired_at: string;
   resolved_at: string | null;
@@ -104,10 +106,13 @@ type PrescriptionIntakeDetail = {
   };
 };
 
-const INQUIRY_RESULT_CONFIG: Record<string, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }> = {
-  changed:   { label: '処方変更', variant: 'secondary' },
+const INQUIRY_RESULT_CONFIG: Record<
+  string,
+  { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }
+> = {
+  changed: { label: '処方変更', variant: 'secondary' },
   unchanged: { label: '変更なし', variant: 'outline' },
-  pending:   { label: '回答待ち', variant: 'destructive' },
+  pending: { label: '回答待ち', variant: 'destructive' },
 };
 
 const GENDER_LABELS: Record<string, string> = {
@@ -166,7 +171,10 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
   if (isLoading || !data) return <Loading />;
 
   const patient = data.cycle.case_.patient;
-  const statusConfig = CYCLE_STATUS_CONFIG[data.cycle.overall_status] ?? { label: data.cycle.overall_status, variant: 'outline' as const };
+  const statusConfig = CYCLE_STATUS_CONFIG[data.cycle.overall_status] ?? {
+    label: data.cycle.overall_status,
+    variant: 'outline' as const,
+  };
   const inquiries = data.cycle.inquiries;
   const expiryDate = data.prescription_expiry_date ? parseISO(data.prescription_expiry_date) : null;
   const daysUntilExpiry = expiryDate ? differenceInCalendarDays(expiryDate, new Date()) : null;
@@ -196,7 +204,10 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
       <div className="space-y-6">
         {/* ── ステータスサマリ ── 薬剤師が最初に見るべき情報 */}
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/70 bg-card/70 px-4 py-3">
-          <Badge variant={statusConfig.variant} className={`text-sm ${statusConfig.className ?? ''}`}>
+          <Badge
+            variant={statusConfig.variant}
+            className={`text-sm ${statusConfig.className ?? ''}`}
+          >
             {statusConfig.label}
           </Badge>
           <Separator orientation="vertical" className="h-5" />
@@ -210,9 +221,14 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
           {expiryDate && (
             <>
               <Separator orientation="vertical" className="h-5" />
-              <span className={`text-sm ${daysUntilExpiry != null && daysUntilExpiry < 0 ? 'font-medium text-destructive' : daysUntilExpiry != null && daysUntilExpiry <= 1 ? 'font-medium text-amber-700' : 'text-muted-foreground'}`}>
+              <span
+                className={`text-sm ${daysUntilExpiry != null && daysUntilExpiry < 0 ? 'font-medium text-destructive' : daysUntilExpiry != null && daysUntilExpiry <= 1 ? 'font-medium text-amber-700' : 'text-muted-foreground'}`}
+              >
                 {daysUntilExpiry != null && daysUntilExpiry < 0 ? (
-                  <><AlertTriangle className="mr-1 inline size-3.5" aria-hidden="true" />期限切れ</>
+                  <>
+                    <AlertTriangle className="mr-1 inline size-3.5" aria-hidden="true" />
+                    期限切れ
+                  </>
                 ) : (
                   <>有効期限: {format(expiryDate, 'MM/dd')}</>
                 )}
@@ -272,9 +288,12 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
                   <p>{data.prescriber_institution ?? '未入力'}</p>
                   {data.prescriber_institution_ref && (
                     <p className="text-xs text-muted-foreground">
-                      {data.prescriber_institution_ref.institution_code && `機関コード: ${data.prescriber_institution_ref.institution_code}`}
-                      {data.prescriber_institution_ref.phone && ` / TEL: ${data.prescriber_institution_ref.phone}`}
-                      {data.prescriber_institution_ref.fax && ` / FAX: ${data.prescriber_institution_ref.fax}`}
+                      {data.prescriber_institution_ref.institution_code &&
+                        `機関コード: ${data.prescriber_institution_ref.institution_code}`}
+                      {data.prescriber_institution_ref.phone &&
+                        ` / TEL: ${data.prescriber_institution_ref.phone}`}
+                      {data.prescriber_institution_ref.fax &&
+                        ` / FAX: ${data.prescriber_institution_ref.fax}`}
                     </p>
                   )}
                 </div>
@@ -300,7 +319,9 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
                       {data.refill_next_dispense_date && (
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">次回調剤予定</span>
-                          <span>{format(parseISO(data.refill_next_dispense_date), 'yyyy/MM/dd')}</span>
+                          <span>
+                            {format(parseISO(data.refill_next_dispense_date), 'yyyy/MM/dd')}
+                          </span>
                         </div>
                       )}
                     </>
@@ -316,7 +337,9 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
                       {data.split_next_dispense_date && (
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">次回調剤予定</span>
-                          <span>{format(parseISO(data.split_next_dispense_date), 'yyyy/MM/dd')}</span>
+                          <span>
+                            {format(parseISO(data.split_next_dispense_date), 'yyyy/MM/dd')}
+                          </span>
                         </div>
                       )}
                     </>
@@ -344,29 +367,51 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
                     <table className="w-full text-sm" aria-label="処方明細一覧">
                       <thead>
                         <tr className="border-b text-left text-xs font-medium text-muted-foreground">
-                          <th scope="col" className="pb-2 pr-3">#</th>
-                          <th scope="col" className="pb-2 pr-3">薬剤名</th>
-                          <th scope="col" className="pb-2 pr-3">用量</th>
-                          <th scope="col" className="pb-2 pr-3">用法</th>
-                          <th scope="col" className="pb-2 pr-3">日数</th>
-                          <th scope="col" className="pb-2 pr-3 max-md:hidden">投与経路</th>
-                          <th scope="col" className="pb-2 pr-3 max-md:hidden">調剤方法</th>
-                          <th scope="col" className="pb-2 max-md:hidden">後発品</th>
+                          <th scope="col" className="pb-2 pr-3">
+                            #
+                          </th>
+                          <th scope="col" className="pb-2 pr-3">
+                            薬剤名
+                          </th>
+                          <th scope="col" className="pb-2 pr-3">
+                            用量
+                          </th>
+                          <th scope="col" className="pb-2 pr-3">
+                            用法
+                          </th>
+                          <th scope="col" className="pb-2 pr-3">
+                            日数
+                          </th>
+                          <th scope="col" className="pb-2 pr-3 max-md:hidden">
+                            投与経路
+                          </th>
+                          <th scope="col" className="pb-2 pr-3 max-md:hidden">
+                            調剤方法
+                          </th>
+                          <th scope="col" className="pb-2 max-md:hidden">
+                            後発品
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
                         {data.lines.map((line) => (
                           <tr key={line.id} className="border-b border-border/40 last:border-0">
-                            <td className="py-2.5 pr-3 text-xs text-muted-foreground">{line.line_number}</td>
+                            <td className="py-2.5 pr-3 text-xs text-muted-foreground">
+                              {line.line_number}
+                            </td>
                             <td className="py-2.5 pr-3">
                               <div>
                                 <span className="font-medium">{line.drug_name}</span>
                                 {line.drug_code && (
-                                  <span className="ml-1 text-[11px] text-muted-foreground">{line.drug_code}</span>
+                                  <span className="ml-1 text-[11px] text-muted-foreground">
+                                    {line.drug_code}
+                                  </span>
                                 )}
                               </div>
                               {line.dosage_form && (
-                                <span className="text-xs text-muted-foreground">{line.dosage_form}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {line.dosage_form}
+                                </span>
                               )}
                               {line.packaging_instructions && (
                                 <p className="mt-0.5 text-xs text-amber-700">
@@ -386,15 +431,23 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
                               {line.route ? (ROUTE_LABELS[line.route] ?? line.route) : '—'}
                             </td>
                             <td className="py-2.5 pr-3 max-md:hidden text-muted-foreground">
-                              {line.dispensing_method ? (METHOD_LABELS[line.dispensing_method] ?? line.dispensing_method) : '—'}
+                              {line.dispensing_method
+                                ? (METHOD_LABELS[line.dispensing_method] ?? line.dispensing_method)
+                                : '—'}
                             </td>
                             <td className="py-2.5 max-md:hidden">
                               {line.is_generic ? (
-                                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[11px]">
+                                <Badge
+                                  variant="outline"
+                                  className="bg-blue-50 text-blue-700 border-blue-200 text-[11px]"
+                                >
                                   後発
                                 </Badge>
                               ) : line.is_generic_name_prescription ? (
-                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-[11px]">
+                                <Badge
+                                  variant="outline"
+                                  className="bg-green-50 text-green-700 border-green-200 text-[11px]"
+                                >
                                   一般名
                                 </Badge>
                               ) : (
@@ -425,7 +478,10 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
                   <div className="space-y-3">
                     {inquiries.map((inq) => {
                       const resultConfig = inq.result
-                        ? (INQUIRY_RESULT_CONFIG[inq.result] ?? { label: inq.result, variant: 'outline' as const })
+                        ? (INQUIRY_RESULT_CONFIG[inq.result] ?? {
+                            label: inq.result,
+                            variant: 'outline' as const,
+                          })
                         : null;
 
                       return (
@@ -434,7 +490,9 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
                           className="rounded-lg border border-border/70 bg-muted/20 p-4 space-y-2"
                         >
                           <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="secondary" className="text-xs">{inq.reason}</Badge>
+                            <Badge variant="secondary" className="text-xs">
+                              {inq.reason}
+                            </Badge>
                             {resultConfig && (
                               <Badge variant={resultConfig.variant} className="text-xs">
                                 {inq.resolved_at ? (
@@ -445,23 +503,49 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
                                 {resultConfig.label}
                               </Badge>
                             )}
+                            {inq.proposal_origin === 'pre_issuance' && (
+                              <Badge
+                                variant="outline"
+                                className="text-xs border-blue-300 text-blue-700"
+                              >
+                                事前提案反映
+                              </Badge>
+                            )}
+                            {inq.residual_adjustment && (
+                              <Badge
+                                variant="outline"
+                                className="text-xs border-amber-300 text-amber-700"
+                              >
+                                残薬調整
+                              </Badge>
+                            )}
                             <span className="text-xs text-muted-foreground">
-                              照会日: {format(parseISO(inq.inquired_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
+                              照会日:{' '}
+                              {format(parseISO(inq.inquired_at), 'yyyy/MM/dd HH:mm', {
+                                locale: ja,
+                              })}
                             </span>
                             {inq.resolved_at && (
                               <span className="text-xs text-muted-foreground">
-                                解決: {format(parseISO(inq.resolved_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
+                                解決:{' '}
+                                {format(parseISO(inq.resolved_at), 'yyyy/MM/dd HH:mm', {
+                                  locale: ja,
+                                })}
                               </span>
                             )}
                           </div>
                           <div className="text-sm">
-                            <p className="text-xs text-muted-foreground">照会先: {inq.inquiry_to_physician}</p>
+                            <p className="text-xs text-muted-foreground">
+                              照会先: {inq.inquiry_to_physician}
+                            </p>
                             <p className="mt-1 whitespace-pre-wrap">{inq.inquiry_content}</p>
                           </div>
                           {inq.change_detail && (
                             <div className="rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2 text-sm">
                               <p className="text-xs font-medium text-amber-800">変更内容:</p>
-                              <p className="whitespace-pre-wrap text-amber-900">{inq.change_detail}</p>
+                              <p className="whitespace-pre-wrap text-amber-900">
+                                {inq.change_detail}
+                              </p>
                             </div>
                           )}
                         </div>

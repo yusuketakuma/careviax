@@ -118,6 +118,8 @@ type ResolveInquiryPayload = {
   inquiryId: string;
   result: 'changed' | 'unchanged' | 'pending';
   changeDetail?: string;
+  proposalOrigin?: 'post_inquiry' | 'pre_issuance';
+  residualAdjustment?: boolean;
   lineUpdate?: {
     drug_name: string;
     dose: string;
@@ -133,10 +135,7 @@ type WorkflowDashboardViewProps = {
   initialFocus?: WorkflowFocus;
   initialContext?: HomeLinkContext | null;
   getInquiryEditState: (item: InquiryWorkbenchItem) => InquiryEditState;
-  updateInquiryEditState: (
-    item: InquiryWorkbenchItem,
-    patch: Partial<InquiryEditState>,
-  ) => void;
+  updateInquiryEditState: (item: InquiryWorkbenchItem, patch: Partial<InquiryEditState>) => void;
   buildInquiryResolutionDetail: (args: {
     result: 'changed' | 'unchanged' | 'pending';
     changeDetail?: string;
@@ -194,7 +193,10 @@ export function WorkflowDashboardView({
   return (
     <div className="space-y-8">
       {contextSummary ? (
-        <Alert className="border-sky-200 bg-sky-50 text-sky-900" data-testid="workflow-context-banner">
+        <Alert
+          className="border-sky-200 bg-sky-50 text-sky-900"
+          data-testid="workflow-context-banner"
+        >
           <AlertTriangle className="size-4 text-sky-700" aria-hidden="true" />
           <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
         </Alert>
@@ -541,7 +543,8 @@ export function WorkflowDashboardView({
                             <div className="space-y-1">
                               <p className="text-xs font-medium text-foreground">変更反映対象</p>
                               <p className="text-xs text-muted-foreground">
-                                現在: {item.line.drug_name} / {item.line.dose} / {item.line.frequency} / {item.line.days}日
+                                現在: {item.line.drug_name} / {item.line.dose} /{' '}
+                                {item.line.frequency} / {item.line.days}日
                               </p>
                             </div>
                             <div className="grid gap-2 md:grid-cols-2">
@@ -601,7 +604,11 @@ export function WorkflowDashboardView({
                             <Button
                               size="sm"
                               type="button"
-                              variant={inquiryEdit?.proposalOrigin === 'post_inquiry' ? 'default' : 'outline'}
+                              variant={
+                                inquiryEdit?.proposalOrigin === 'post_inquiry'
+                                  ? 'default'
+                                  : 'outline'
+                              }
                               onClick={() =>
                                 updateInquiryEditState(item, { proposalOrigin: 'post_inquiry' })
                               }
@@ -611,7 +618,11 @@ export function WorkflowDashboardView({
                             <Button
                               size="sm"
                               type="button"
-                              variant={inquiryEdit?.proposalOrigin === 'pre_issuance' ? 'default' : 'outline'}
+                              variant={
+                                inquiryEdit?.proposalOrigin === 'pre_issuance'
+                                  ? 'default'
+                                  : 'outline'
+                              }
                               onClick={() =>
                                 updateInquiryEditState(item, { proposalOrigin: 'pre_issuance' })
                               }
@@ -653,11 +664,11 @@ export function WorkflowDashboardView({
                               resolveInquiryMutation.mutate({
                                 inquiryId: item.inquiry_id,
                                 result: 'pending',
+                                proposalOrigin: inquiryEdit?.proposalOrigin,
+                                residualAdjustment: inquiryEdit?.residualAdjustment,
                                 changeDetail: buildInquiryResolutionDetail({
                                   result: 'pending',
                                   changeDetail: inquiryEdit?.changeDetail,
-                                  proposalOrigin: inquiryEdit?.proposalOrigin,
-                                  residualAdjustment: inquiryEdit?.residualAdjustment,
                                 }),
                               })
                             }
@@ -673,11 +684,11 @@ export function WorkflowDashboardView({
                               resolveInquiryMutation.mutate({
                                 inquiryId: item.inquiry_id,
                                 result: 'changed',
+                                proposalOrigin: inquiryEdit?.proposalOrigin,
+                                residualAdjustment: inquiryEdit?.residualAdjustment,
                                 changeDetail: buildInquiryResolutionDetail({
                                   result: 'changed',
                                   changeDetail: inquiryEdit?.changeDetail,
-                                  proposalOrigin: inquiryEdit?.proposalOrigin,
-                                  residualAdjustment: inquiryEdit?.residualAdjustment,
                                 }),
                                 lineUpdate:
                                   item.line_id != null && inquiryEdit
@@ -691,7 +702,9 @@ export function WorkflowDashboardView({
                               })
                             }
                             disabled={
-                              !item.inquiry_id || resolveInquiryMutation.isPending || !canSubmitChanged
+                              !item.inquiry_id ||
+                              resolveInquiryMutation.isPending ||
+                              !canSubmitChanged
                             }
                           >
                             変更ありで確定
@@ -704,11 +717,11 @@ export function WorkflowDashboardView({
                               resolveInquiryMutation.mutate({
                                 inquiryId: item.inquiry_id,
                                 result: 'unchanged',
+                                proposalOrigin: inquiryEdit?.proposalOrigin,
+                                residualAdjustment: inquiryEdit?.residualAdjustment,
                                 changeDetail: buildInquiryResolutionDetail({
                                   result: 'unchanged',
                                   changeDetail: inquiryEdit?.changeDetail,
-                                  proposalOrigin: inquiryEdit?.proposalOrigin,
-                                  residualAdjustment: inquiryEdit?.residualAdjustment,
                                 }),
                               })
                             }
@@ -745,7 +758,8 @@ export function WorkflowDashboardView({
                     <div>
                       <p className="text-sm font-semibold text-foreground">{item.patient_name}</p>
                       <p className="text-xs text-muted-foreground">
-                        自己申告 {item.unresolved_self_reports} / 課題 {item.open_issues} / タスク {item.open_tasks}
+                        自己申告 {item.unresolved_self_reports} / 課題 {item.open_issues} / タスク{' '}
+                        {item.open_tasks}
                       </p>
                     </div>
                     <Badge variant={item.level === 'high' ? 'destructive' : 'outline'}>
@@ -796,8 +810,14 @@ export function WorkflowDashboardView({
             <CardContent className="space-y-3">
               <p className="text-sm font-semibold text-foreground">地域・紹介パイプライン</p>
               <div className="grid grid-cols-3 gap-2 text-sm">
-                <LoadPill label="活動フォロー" value={workflow?.regional_pipeline.follow_up_activities ?? 0} />
-                <LoadPill label="会議Action" value={workflow?.regional_pipeline.conference_action_items ?? 0} />
+                <LoadPill
+                  label="活動フォロー"
+                  value={workflow?.regional_pipeline.follow_up_activities ?? 0}
+                />
+                <LoadPill
+                  label="会議Action"
+                  value={workflow?.regional_pipeline.conference_action_items ?? 0}
+                />
                 <LoadPill label="導入案件" value={workflow?.regional_pipeline.intake_cases ?? 0} />
               </div>
             </CardContent>
@@ -806,9 +826,15 @@ export function WorkflowDashboardView({
             <CardContent className="space-y-3">
               <p className="text-sm font-semibold text-foreground">請求予防</p>
               <div className="grid grid-cols-3 gap-2 text-sm">
-                <LoadPill label="訪問前ブロック" value={workflow?.billing_prevention.previsit_blockers ?? 0} />
+                <LoadPill
+                  label="訪問前ブロック"
+                  value={workflow?.billing_prevention.previsit_blockers ?? 0}
+                />
                 <LoadPill label="レビュー" value={workflow?.billing_prevention.review_tasks ?? 0} />
-                <LoadPill label="報告滞留" value={workflow?.billing_prevention.report_delivery_backlog ?? 0} />
+                <LoadPill
+                  label="報告滞留"
+                  value={workflow?.billing_prevention.report_delivery_backlog ?? 0}
+                />
               </div>
             </CardContent>
           </Card>
@@ -864,9 +890,7 @@ export function WorkflowDashboardView({
                     {item.patient_name && <span>患者: {item.patient_name}</span>}
                     {item.owner_name && <span>担当: {item.owner_name}</span>}
                     {item.due_at && (
-                      <span>
-                        期限 {format(parseISO(item.due_at), 'M/d HH:mm', { locale: ja })}
-                      </span>
+                      <span>期限 {format(parseISO(item.due_at), 'M/d HH:mm', { locale: ja })}</span>
                     )}
                   </div>
                 </CardContent>
@@ -893,7 +917,9 @@ export function WorkflowDashboardView({
                         </Badge>
                         <p className="text-sm font-semibold text-foreground">{item.title}</p>
                       </div>
-                      <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.description}</p>
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                        {item.description}
+                      </p>
                     </div>
                     <a
                       href={item.action_href}
@@ -931,7 +957,9 @@ export function WorkflowDashboardView({
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-foreground">{item.title}</p>
-                    <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.description}</p>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                      {item.description}
+                    </p>
                   </div>
                   <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
                     {item.patient_name && <span>患者: {item.patient_name}</span>}
@@ -951,11 +979,36 @@ export function WorkflowDashboardView({
       <section>
         <h2 className="mb-3 text-base font-semibold text-foreground">工程・アウトカム</h2>
         <div className="grid gap-3 md:grid-cols-5">
-          <MetricCard icon={ClipboardList} label="完了訪問" value={workflow?.outcome_metrics.completed_last_7_days ?? 0} caption="直近7日" />
-          <MetricCard icon={AlertTriangle} label="中断・延期" value={workflow?.outcome_metrics.disrupted_last_7_days ?? 0} caption="直近7日" />
-          <MetricCard icon={TrendingUp} label="至急完了" value={workflow?.outcome_metrics.urgent_completed_last_7_days ?? 0} caption="直近7日" />
-          <MetricCard icon={BellRing} label="報告待ち" value={workflow?.outcome_metrics.awaiting_reports ?? 0} caption="送信待ち" />
-          <MetricCard icon={XCircle} label="例外未解消" value={workflow?.outcome_metrics.open_exceptions ?? 0} caption="オープン中" />
+          <MetricCard
+            icon={ClipboardList}
+            label="完了訪問"
+            value={workflow?.outcome_metrics.completed_last_7_days ?? 0}
+            caption="直近7日"
+          />
+          <MetricCard
+            icon={AlertTriangle}
+            label="中断・延期"
+            value={workflow?.outcome_metrics.disrupted_last_7_days ?? 0}
+            caption="直近7日"
+          />
+          <MetricCard
+            icon={TrendingUp}
+            label="至急完了"
+            value={workflow?.outcome_metrics.urgent_completed_last_7_days ?? 0}
+            caption="直近7日"
+          />
+          <MetricCard
+            icon={BellRing}
+            label="報告待ち"
+            value={workflow?.outcome_metrics.awaiting_reports ?? 0}
+            caption="送信待ち"
+          />
+          <MetricCard
+            icon={XCircle}
+            label="例外未解消"
+            value={workflow?.outcome_metrics.open_exceptions ?? 0}
+            caption="オープン中"
+          />
         </div>
       </section>
 
@@ -1002,7 +1055,9 @@ export function WorkflowDashboardView({
                         <p className="text-sm font-semibold text-foreground">{cluster.label}</p>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {format(parseISO(cluster.date), 'M/d(E)', { locale: ja })} / {cluster.site_name ?? '拠点未設定'} / {cluster.pharmacist_name ?? '担当未設定'}
+                        {format(parseISO(cluster.date), 'M/d(E)', { locale: ja })} /{' '}
+                        {cluster.site_name ?? '拠点未設定'} /{' '}
+                        {cluster.pharmacist_name ?? '担当未設定'}
                       </p>
                     </div>
                     <Badge variant="outline">{cluster.patient_count}名</Badge>
@@ -1031,7 +1086,10 @@ export function WorkflowDashboardView({
                       <p className="text-sm font-semibold text-foreground">{item.patient_name}</p>
                       <p className="text-xs text-muted-foreground">{item.category}</p>
                     </div>
-                    <a href={item.action_href} className="text-xs font-medium text-primary hover:underline">
+                    <a
+                      href={item.action_href}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
                       {item.action_label}
                     </a>
                   </div>
@@ -1076,7 +1134,9 @@ export function WorkflowDashboardView({
                     <span>
                       受付 {format(parseISO(report.created_at), 'M/d HH:mm', { locale: ja })}
                     </span>
-                    {report.preferred_contact_time && <span>希望連絡帯 {report.preferred_contact_time}</span>}
+                    {report.preferred_contact_time && (
+                      <span>希望連絡帯 {report.preferred_contact_time}</span>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -1105,8 +1165,12 @@ export function WorkflowDashboardView({
                   </CardHeader>
                   <CardContent>
                     <div className="flex items-end justify-between">
-                      <span className="text-3xl font-bold tabular-nums text-foreground">{count}</span>
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${config.color}`}>
+                      <span className="text-3xl font-bold tabular-nums text-foreground">
+                        {count}
+                      </span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${config.color}`}
+                      >
                         件
                       </span>
                     </div>
@@ -1121,27 +1185,78 @@ export function WorkflowDashboardView({
       <section>
         <h2 className="mb-3 text-base font-semibold text-foreground">連携ダッシュボード</h2>
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
-          <MetricCard icon={BellRing} label="返信待ち依頼" value={workflow?.communication_requests.pending ?? 0} caption="未完了" />
-          <MetricCard icon={Clock} label="期限超過" value={workflow?.communication_requests.overdue ?? 0} caption="依頼" />
-          <MetricCard icon={XCircle} label="送付失敗" value={workflow?.delivery.failures ?? 0} caption="送信" />
-          <MetricCard icon={AlertTriangle} label="例外未解消" value={workflow?.workflow_exceptions.open ?? 0} caption="workflow" />
-          <MetricCard icon={Route} label="確定ロック" value={workflow?.route_operations.locked_confirmed_visits ?? 0} caption="route" />
-          <MetricCard icon={UserRound} label="代替担当" value={workflow?.route_operations.fallback_assignments ?? 0} caption="handoff" />
+          <MetricCard
+            icon={BellRing}
+            label="返信待ち依頼"
+            value={workflow?.communication_requests.pending ?? 0}
+            caption="未完了"
+          />
+          <MetricCard
+            icon={Clock}
+            label="期限超過"
+            value={workflow?.communication_requests.overdue ?? 0}
+            caption="依頼"
+          />
+          <MetricCard
+            icon={XCircle}
+            label="送付失敗"
+            value={workflow?.delivery.failures ?? 0}
+            caption="送信"
+          />
+          <MetricCard
+            icon={AlertTriangle}
+            label="例外未解消"
+            value={workflow?.workflow_exceptions.open ?? 0}
+            caption="workflow"
+          />
+          <MetricCard
+            icon={Route}
+            label="確定ロック"
+            value={workflow?.route_operations.locked_confirmed_visits ?? 0}
+            caption="route"
+          />
+          <MetricCard
+            icon={UserRound}
+            label="代替担当"
+            value={workflow?.route_operations.fallback_assignments ?? 0}
+            caption="handoff"
+          />
         </div>
       </section>
 
       <section>
         <h2 className="mb-3 text-base font-semibold text-foreground">運用キュー</h2>
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-7">
-          <QueueCard label="訪問候補承認待ち" count={workflow?.operations_queue.visit_demands ?? 0} />
-          <QueueCard label="再架電待ち" count={workflow?.operations_queue.callback_followups ?? 0} />
-          <QueueCard label="計画見直し" count={workflow?.operations_queue.management_plan_reviews ?? 0} />
-          <QueueCard label="訪問準備未完了" count={workflow?.operations_queue.preparation_pending ?? 0} />
-          <QueueCard label="変更承認待ち" count={workflow?.route_operations.override_pending ?? 0} />
+          <QueueCard
+            label="訪問候補承認待ち"
+            count={workflow?.operations_queue.visit_demands ?? 0}
+          />
+          <QueueCard
+            label="再架電待ち"
+            count={workflow?.operations_queue.callback_followups ?? 0}
+          />
+          <QueueCard
+            label="計画見直し"
+            count={workflow?.operations_queue.management_plan_reviews ?? 0}
+          />
+          <QueueCard
+            label="訪問準備未完了"
+            count={workflow?.operations_queue.preparation_pending ?? 0}
+          />
+          <QueueCard
+            label="変更承認待ち"
+            count={workflow?.route_operations.override_pending ?? 0}
+          />
           <QueueCard label="住所座標確認" count={workflow?.operations_queue.geocode_reviews ?? 0} />
           <QueueCard label="Intake未接続" count={workflow?.operations_queue.intake_linkages ?? 0} />
-          <QueueCard label="セルフレポート" count={workflow?.operations_queue.self_reports_triage ?? 0} />
-          <QueueCard label="緊急候補" count={workflow?.route_operations.emergency_candidates ?? 0} />
+          <QueueCard
+            label="セルフレポート"
+            count={workflow?.operations_queue.self_reports_triage ?? 0}
+          />
+          <QueueCard
+            label="緊急候補"
+            count={workflow?.route_operations.emergency_candidates ?? 0}
+          />
         </div>
       </section>
 
@@ -1154,10 +1269,18 @@ export function WorkflowDashboardView({
             <table className="w-full text-sm">
               <thead className="bg-muted/60">
                 <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">患者名</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">状況</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">次回調剤日</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-muted-foreground">再訪候補</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">
+                    患者名
+                  </th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">
+                    状況
+                  </th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">
+                    次回調剤日
+                  </th>
+                  <th className="px-4 py-2 text-right text-xs font-medium text-muted-foreground">
+                    再訪候補
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -1189,7 +1312,11 @@ export function WorkflowDashboardView({
                           size="sm"
                           variant="outline"
                           onClick={() => generateRefillProposalMutation.mutate(item)}
-                          disabled={!item.case_id || item.has_existing_route || generateRefillProposalMutation.isPending}
+                          disabled={
+                            !item.case_id ||
+                            item.has_existing_route ||
+                            generateRefillProposalMutation.isPending
+                          }
                         >
                           候補生成
                         </Button>

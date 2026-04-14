@@ -88,7 +88,7 @@ describe('/api/inquiry-records/[id] PATCH', () => {
         medicationIssue: {
           update: vi.fn().mockResolvedValue({}),
         },
-      })
+      }),
     );
 
     const response = await PATCH(
@@ -102,7 +102,7 @@ describe('/api/inquiry-records/[id] PATCH', () => {
           days: 14,
         },
       }),
-      { params: Promise.resolve({ id: 'inquiry_1' }) }
+      { params: Promise.resolve({ id: 'inquiry_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -114,14 +114,72 @@ describe('/api/inquiry-records/[id] PATCH', () => {
           frequency: '1日2回',
           days: 14,
         }),
-      })
+      }),
     );
     expect(cycleUpdateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: { overall_status: 'inquiry_resolved' },
-      })
+      }),
     );
     expect(resolveOperationalTasksMock).toHaveBeenCalled();
+  });
+
+  it('persists structured inquiry fields when provided', async () => {
+    inquiryRecordFindFirstMock.mockResolvedValue({
+      id: 'inquiry_1',
+      cycle_id: 'cycle_1',
+      line_id: null,
+      issue_id: null,
+      result: 'pending',
+    });
+
+    const inquiryUpdateMock = vi.fn().mockResolvedValue({
+      id: 'inquiry_1',
+      result: 'unchanged',
+      proposal_origin: 'pre_issuance',
+      residual_adjustment: true,
+    });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        prescriptionLine: {
+          update: vi.fn().mockResolvedValue({}),
+        },
+        inquiryRecord: {
+          update: inquiryUpdateMock,
+          count: vi.fn().mockResolvedValue(0),
+        },
+        medicationCycle: {
+          update: vi.fn().mockResolvedValue({}),
+        },
+        communicationRequest: {
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        medicationIssue: {
+          update: vi.fn().mockResolvedValue({}),
+        },
+      }),
+    );
+
+    const response = await PATCH(
+      createRequest({
+        result: 'unchanged',
+        proposal_origin: 'pre_issuance',
+        residual_adjustment: true,
+      }),
+      { params: Promise.resolve({ id: 'inquiry_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(inquiryUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          proposal_origin: 'pre_issuance',
+          residual_adjustment: true,
+        }),
+      }),
+    );
   });
 
   it('keeps the cycle in inquiry_pending when other unresolved inquiries remain', async () => {
@@ -156,7 +214,7 @@ describe('/api/inquiry-records/[id] PATCH', () => {
         medicationIssue: {
           update: vi.fn().mockResolvedValue({}),
         },
-      })
+      }),
     );
 
     const response = await PATCH(
@@ -164,7 +222,7 @@ describe('/api/inquiry-records/[id] PATCH', () => {
         result: 'unchanged',
         change_detail: '変更なし',
       }),
-      { params: Promise.resolve({ id: 'inquiry_1' }) }
+      { params: Promise.resolve({ id: 'inquiry_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -172,7 +230,7 @@ describe('/api/inquiry-records/[id] PATCH', () => {
     expect(cycleUpdateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: { overall_status: 'inquiry_pending' },
-      })
+      }),
     );
   });
 
@@ -190,7 +248,7 @@ describe('/api/inquiry-records/[id] PATCH', () => {
         result: 'changed',
         change_detail: '変更あり',
       }),
-      { params: Promise.resolve({ id: 'inquiry_1' }) }
+      { params: Promise.resolve({ id: 'inquiry_1' }) },
     );
 
     if (!response) throw new Error('response is required');

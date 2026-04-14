@@ -1,9 +1,7 @@
 import { z } from 'zod';
 import { dispensingLineMetadataSchema } from './dispensing-line';
 
-const optionalDateStringSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です');
+const optionalDateStringSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です');
 
 /**
  * 処方明細行のコアスキーマ（処方箋記載の医学的情報のみ）。
@@ -23,15 +21,23 @@ export const corePrescriptionLineSchema = z.object({
   is_generic_name_prescription: z.boolean().default(false),
   notes: z.string().optional(),
   route: z.enum(['internal', 'external', 'injection', 'other']).optional(),
-  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）').optional(),
-  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）').optional(),
+  start_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
+    .optional(),
+  end_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
+    .optional(),
 });
 
 /**
  * 処方明細行の完全スキーマ（コア + 調剤メタデータ）。
  * 処方登録APIの入力として使用。調剤メタデータはドラフト値として扱われる。
  */
-export const prescriptionLineSchema = corePrescriptionLineSchema.merge(dispensingLineMetadataSchema);
+export const prescriptionLineSchema = corePrescriptionLineSchema.merge(
+  dispensingLineMetadataSchema,
+);
 
 export type CorePrescriptionLineInput = z.infer<typeof corePrescriptionLineSchema>;
 
@@ -42,106 +48,115 @@ export const prescriptionInquiryDraftSchema = z.object({
   request_due_date: optionalDateStringSchema.optional(),
 });
 
-export const createPrescriptionIntakeSchema = z.object({
-  cycle_id: z.string().min(1, 'サイクルIDは必須です').optional(),
-  case_id: z.string().min(1, 'ケースIDは必須です').optional(),
-  patient_id: z.string().min(1, '患者IDは必須です').optional(),
-  source_type: z.enum(['paper', 'fax', 'e_prescription', 'facility_batch', 'refill', 'qr_scan'], {
-    error: 'ソースタイプを選択してください',
-  }),
-  prescribed_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）'),
-  prescriber_name: z.string().optional(),
-  prescriber_institution_id: z.string().optional(),
-  prescriber_institution: z.string().optional(),
-  original_document_url: z.string().url().optional(),
-  refill_remaining_count: z.number().int().min(0).optional(),
-  refill_next_dispense_date: optionalDateStringSchema.optional(),
-  split_dispense_total: z.number().int().min(1).optional(),
-  split_dispense_current: z.number().int().min(1).optional(),
-  split_next_dispense_date: optionalDateStringSchema.optional(),
-  prescription_category: z.enum(['regular', 'emergency']).default('regular'),
-  emergency_category: z.enum(['planned_disease_exacerbation', 'other_exacerbation', 'online']).optional(),
-  lines: z.array(prescriptionLineSchema).min(1, '処方明細は1行以上必要です'),
-  inquiry: prescriptionInquiryDraftSchema.optional(),
-}).superRefine((value, ctx) => {
-  const hasCycleId = typeof value.cycle_id === 'string' && value.cycle_id.length > 0;
-  const hasCaseAndPatient =
-    typeof value.case_id === 'string' &&
-    value.case_id.length > 0 &&
-    typeof value.patient_id === 'string' &&
-    value.patient_id.length > 0;
+export const createPrescriptionIntakeSchema = z
+  .object({
+    cycle_id: z.string().min(1, 'サイクルIDは必須です').optional(),
+    case_id: z.string().min(1, 'ケースIDは必須です').optional(),
+    patient_id: z.string().min(1, '患者IDは必須です').optional(),
+    source_type: z.enum(['paper', 'fax', 'e_prescription', 'facility_batch', 'refill', 'qr_scan'], {
+      error: 'ソースタイプを選択してください',
+    }),
+    prescribed_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）'),
+    prescriber_name: z.string().optional(),
+    prescriber_institution_id: z.string().optional(),
+    prescriber_institution: z.string().optional(),
+    original_document_url: z.string().url().optional(),
+    refill_remaining_count: z.number().int().min(0).optional(),
+    refill_next_dispense_date: optionalDateStringSchema.optional(),
+    split_dispense_total: z.number().int().min(1).optional(),
+    split_dispense_current: z.number().int().min(1).optional(),
+    split_next_dispense_date: optionalDateStringSchema.optional(),
+    prescription_category: z.enum(['regular', 'emergency']).default('regular'),
+    emergency_category: z
+      .enum(['planned_disease_exacerbation', 'other_exacerbation', 'online'])
+      .optional(),
+    lines: z.array(prescriptionLineSchema).min(1, '処方明細は1行以上必要です'),
+    inquiry: prescriptionInquiryDraftSchema.optional(),
+  })
+  .superRefine((value, ctx) => {
+    const hasCycleId = typeof value.cycle_id === 'string' && value.cycle_id.length > 0;
+    const hasCaseAndPatient =
+      typeof value.case_id === 'string' &&
+      value.case_id.length > 0 &&
+      typeof value.patient_id === 'string' &&
+      value.patient_id.length > 0;
 
-  if (!hasCycleId && !hasCaseAndPatient) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'サイクルID、または患者IDとケースIDの組み合わせが必要です',
-      path: ['cycle_id'],
-    });
-  }
+    if (!hasCycleId && !hasCaseAndPatient) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'サイクルID、または患者IDとケースIDの組み合わせが必要です',
+        path: ['cycle_id'],
+      });
+    }
 
-  if (value.prescription_category === 'emergency' && !value.emergency_category) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: '緊急処方の場合は緊急区分の選択が必須です',
-      path: ['emergency_category'],
-    });
-  }
-});
+    if (value.prescription_category === 'emergency' && !value.emergency_category) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '緊急処方の場合は緊急区分の選択が必須です',
+        path: ['emergency_category'],
+      });
+    }
+  });
 
-export const createFacilityBatchPrescriptionIntakeSchema = z.object({
-  source_type: z.literal('facility_batch'),
-  prescribed_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）'),
-  prescriber_name: z.string().optional(),
-  prescriber_institution_id: z.string().optional(),
-  prescriber_institution: z.string().optional(),
-  original_document_url: z.string().url().optional(),
-  prescription_category: z.enum(['regular', 'emergency']).default('regular'),
-  emergency_category: z.enum(['planned_disease_exacerbation', 'other_exacerbation', 'online']).optional(),
-  entries: z
-    .array(
-      z.object({
-        case_id: z.string().min(1, 'ケースIDは必須です'),
-        patient_id: z.string().min(1, '患者IDは必須です'),
-        lines: z.array(prescriptionLineSchema).min(1, '処方明細は1行以上必要です'),
-      })
-    )
-    .min(2, '施設まとめ処方は2名以上の患者が必要です'),
-}).superRefine((value, ctx) => {
-  if (value.prescription_category === 'emergency' && !value.emergency_category) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: '緊急処方の場合は緊急区分の選択が必須です',
-      path: ['emergency_category'],
-    });
-  }
-});
+export const createFacilityBatchPrescriptionIntakeSchema = z
+  .object({
+    source_type: z.literal('facility_batch'),
+    prescribed_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）'),
+    prescriber_name: z.string().optional(),
+    prescriber_institution_id: z.string().optional(),
+    prescriber_institution: z.string().optional(),
+    original_document_url: z.string().url().optional(),
+    prescription_category: z.enum(['regular', 'emergency']).default('regular'),
+    emergency_category: z
+      .enum(['planned_disease_exacerbation', 'other_exacerbation', 'online'])
+      .optional(),
+    entries: z
+      .array(
+        z.object({
+          case_id: z.string().min(1, 'ケースIDは必須です'),
+          patient_id: z.string().min(1, '患者IDは必須です'),
+          lines: z.array(prescriptionLineSchema).min(1, '処方明細は1行以上必要です'),
+        }),
+      )
+      .min(2, '施設まとめ処方は2名以上の患者が必要です'),
+  })
+  .superRefine((value, ctx) => {
+    if (value.prescription_category === 'emergency' && !value.emergency_category) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '緊急処方の場合は緊急区分の選択が必須です',
+        path: ['emergency_category'],
+      });
+    }
+  });
 
-export const updatePrescriptionIntakeSchema = z.object({
-  prescriber_name: z.string().optional(),
-  prescriber_institution_id: z.string().nullable().optional(),
-  prescriber_institution: z.string().optional(),
-  original_document_url: z.string().url().optional(),
-  original_collected_at: z.string().datetime('日時形式が不正です').optional(),
-  refill_remaining_count: z.number().int().min(0).optional(),
-  refill_next_dispense_date: optionalDateStringSchema.nullable().optional(),
-  split_dispense_total: z.number().int().min(1).optional(),
-  split_dispense_current: z.number().int().min(1).optional(),
-  split_next_dispense_date: optionalDateStringSchema.nullable().optional(),
-  prescription_category: z.enum(['regular', 'emergency']).optional(),
-  emergency_category: z.enum(['planned_disease_exacerbation', 'other_exacerbation', 'online']).nullable().optional(),
-}).superRefine((value, ctx) => {
-  if (value.prescription_category === 'emergency' && value.emergency_category === undefined) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: '緊急処方の場合は緊急区分の選択が必須です',
-      path: ['emergency_category'],
-    });
-  }
-});
+export const updatePrescriptionIntakeSchema = z
+  .object({
+    prescriber_name: z.string().optional(),
+    prescriber_institution_id: z.string().nullable().optional(),
+    prescriber_institution: z.string().optional(),
+    original_document_url: z.string().url().optional(),
+    original_collected_at: z.string().datetime('日時形式が不正です').optional(),
+    refill_remaining_count: z.number().int().min(0).optional(),
+    refill_next_dispense_date: optionalDateStringSchema.nullable().optional(),
+    split_dispense_total: z.number().int().min(1).optional(),
+    split_dispense_current: z.number().int().min(1).optional(),
+    split_next_dispense_date: optionalDateStringSchema.nullable().optional(),
+    prescription_category: z.enum(['regular', 'emergency']).optional(),
+    emergency_category: z
+      .enum(['planned_disease_exacerbation', 'other_exacerbation', 'online'])
+      .nullable()
+      .optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.prescription_category === 'emergency' && value.emergency_category === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '緊急処方の場合は緊急区分の選択が必須です',
+        path: ['emergency_category'],
+      });
+    }
+  });
 
 export const createInquiryRecordSchema = z.object({
   cycle_id: z.string().min(1, 'サイクルIDは必須です'),
@@ -150,6 +165,8 @@ export const createInquiryRecordSchema = z.object({
   reason: z.string().min(1, '照会理由は必須です'),
   inquiry_to_physician: z.string().min(1, '照会先医師名は必須です'),
   inquiry_content: z.string().min(1, '照会内容は必須です'),
+  proposal_origin: z.enum(['post_inquiry', 'pre_issuance']).optional(),
+  residual_adjustment: z.boolean().optional(),
   inquired_at: z.string().regex(/^\d{4}-\d{2}-\d{2}/, '日付形式が不正です'),
   request_due_date: z
     .string()
@@ -170,6 +187,8 @@ const inquiryLineUpdateSchema = z.object({
 export const updateInquiryRecordSchema = z.object({
   result: z.enum(['changed', 'unchanged', 'pending']).optional(),
   change_detail: z.string().optional(),
+  proposal_origin: z.enum(['post_inquiry', 'pre_issuance']).optional(),
+  residual_adjustment: z.boolean().optional(),
   resolved_at: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}/, '日付形式が不正です')

@@ -4,14 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  addDays,
-  eachDayOfInterval,
-  endOfWeek,
-  format,
-  parseISO,
-  startOfWeek,
-} from 'date-fns';
+import { addDays, eachDayOfInterval, endOfWeek, format, parseISO, startOfWeek } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
   AlertTriangle,
@@ -34,13 +27,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { HomeCareFeatureHighlights } from '@/components/home-care/home-care-feature-board';
 import { VisitBriefCard } from '@/components/visit-brief/visit-brief-card';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -121,12 +108,10 @@ import {
   type VisitType,
   type BillingCadencePreview,
   type BillingRequirementAlert,
+  type VisitScheduleBillingPreview,
   VISIT_TYPE_LABELS,
 } from './day-view.shared';
-import {
-  OnboardingWarningBadges,
-  ScheduleBoardSkeleton,
-} from './schedule-day-view.chrome';
+import { OnboardingWarningBadges, ScheduleBoardSkeleton } from './schedule-day-view.chrome';
 import {
   buildFacilityRouteDefaults,
   buildFacilityTracker,
@@ -210,8 +195,8 @@ export function ScheduleDayView({
   const isBootstrappingOrg = !orgId;
   const queryClient = useQueryClient();
   const [plannerCandidateCountManual, setPlannerCandidateCountManual] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(() =>
-    initialSelectedDate ?? format(new Date(), 'yyyy-MM-dd')
+  const [selectedDate, setSelectedDate] = useState(
+    () => initialSelectedDate ?? format(new Date(), 'yyyy-MM-dd'),
   );
   const [plannerForm, setPlannerForm] = useState({
     case_id: '',
@@ -232,20 +217,19 @@ export function ScheduleDayView({
       | 'facility_request'
       | 'weather'
       | 'other',
-    communication_channel: 'phone' as
-      | 'phone'
-      | 'fax'
-      | 'email'
-      | 'collaboration'
-      | 'in_person',
+    communication_channel: 'phone' as 'phone' | 'fax' | 'email' | 'collaboration' | 'in_person',
     communication_result: 'pending' as 'pending' | 'sent' | 'verbal_notified',
     start_date: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
     priority: 'normal' as VisitPriority,
   });
   const [contactLogTarget, setContactLogTarget] = useState<Proposal | null>(null);
   const [contactLogForm, setContactLogForm] = useState({
-    outcome:
-      'attempted' as 'attempted' | 'unreachable' | 'declined' | 'change_requested' | 'confirmed',
+    outcome: 'attempted' as
+      | 'attempted'
+      | 'unreachable'
+      | 'declined'
+      | 'change_requested'
+      | 'confirmed',
     contact_method: 'phone' as 'phone' | 'fax' | 'email',
     contact_name: '',
     contact_phone: '',
@@ -315,17 +299,11 @@ export function ScheduleDayView({
   }
 
   const selectedDay = useMemo(() => parseISO(selectedDate), [selectedDate]);
-  const weekStart = useMemo(
-    () => startOfWeek(selectedDay, { weekStartsOn: 1 }),
-    [selectedDay]
-  );
-  const weekEnd = useMemo(
-    () => endOfWeek(selectedDay, { weekStartsOn: 1 }),
-    [selectedDay]
-  );
+  const weekStart = useMemo(() => startOfWeek(selectedDay, { weekStartsOn: 1 }), [selectedDay]);
+  const weekEnd = useMemo(() => endOfWeek(selectedDay, { weekStartsOn: 1 }), [selectedDay]);
   const visibleDays = useMemo(
     () => eachDayOfInterval({ start: weekStart, end: weekEnd }),
-    [weekEnd, weekStart]
+    [weekEnd, weekStart],
   );
 
   const { data: casesData, isLoading: casesLoading } = useQuery({
@@ -430,9 +408,9 @@ export function ScheduleDayView({
   const cases = useMemo(
     () =>
       (casesData?.data ?? []).filter(
-        (careCase) => !['discharged', 'terminated'].includes(careCase.status)
+        (careCase) => !['discharged', 'terminated'].includes(careCase.status),
       ),
-    [casesData]
+    [casesData],
   );
   const pharmacists = useMemo(() => pharmacistsData?.data ?? [], [pharmacistsData]);
   const proposals = useMemo(() => proposalsData?.data ?? [], [proposalsData]);
@@ -441,25 +419,29 @@ export function ScheduleDayView({
   const callbackTasks = useMemo(
     () =>
       (callbackTasksData?.data ?? []).filter((task) =>
-        ['pending', 'in_progress'].includes(task.status)
+        ['pending', 'in_progress'].includes(task.status),
       ),
-    [callbackTasksData]
+    [callbackTasksData],
   );
   const resolvedPlannerCaseId = plannerForm.case_id || cases[0]?.id || '';
-  const selectedCase =
-    cases.find((careCase) => careCase.id === resolvedPlannerCaseId) ?? null;
+  const selectedCase = cases.find((careCase) => careCase.id === resolvedPlannerCaseId) ?? null;
   const selectedPlannerPharmacistId = selectedCase?.primary_pharmacist_id ?? '';
   const pharmacistNameById = useMemo(
     () => new Map(pharmacists.map((pharmacist) => [pharmacist.id, pharmacist.name])),
-    [pharmacists]
+    [pharmacists],
   );
+  const pharmacistSiteIdById = useMemo(
+    () => new Map(pharmacists.map((pharmacist) => [pharmacist.id, pharmacist.site_id])),
+    [pharmacists],
+  );
+  const selectedPlannerSiteId = pharmacistSiteIdById.get(selectedPlannerPharmacistId) ?? null;
   const proposalById = useMemo(
     () => new Map(proposals.map((proposal) => [proposal.id, proposal])),
-    [proposals]
+    [proposals],
   );
   const scheduleById = useMemo(
     () => new Map(schedules.map((schedule) => [schedule.id, schedule])),
-    [schedules]
+    [schedules],
   );
   const { data: billingPreviewData } = useQuery({
     queryKey: [
@@ -469,6 +451,7 @@ export function ScheduleDayView({
       plannerForm.start_date,
       plannerForm.visit_type,
       selectedPlannerPharmacistId,
+      selectedPlannerSiteId,
     ],
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -477,22 +460,18 @@ export function ScheduleDayView({
       });
       if (plannerForm.visit_type) params.set('visit_type', plannerForm.visit_type);
       if (selectedPlannerPharmacistId) params.set('pharmacist_id', selectedPlannerPharmacistId);
+      if (selectedPlannerSiteId) params.set('site_id', selectedPlannerSiteId);
       const res = await fetch(`/api/visit-schedule-proposals/billing-preview?${params}`, {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('算定プレビューの取得に失敗しました');
-      return res.json() as Promise<{
-        alerts: BillingRequirementAlert[];
-        cadence: BillingCadencePreview;
-        recommended_visit_type: VisitType;
-        recommended_priority: VisitPriority;
-        recommended_candidate_count: number;
-      }>;
+      return res.json() as Promise<VisitScheduleBillingPreview>;
     },
     enabled: !!orgId && !!resolvedPlannerCaseId && !!plannerForm.start_date,
   });
   const billingCadence = billingPreviewData?.cadence ?? null;
   const billingAlerts = billingPreviewData?.alerts ?? [];
+  const billingPreviewWarnings = billingPreviewData?.warnings ?? [];
   const billedDateSet = useMemo(
     () => new Set(billingCadence?.scheduled_dates_current_month ?? []),
     [billingCadence],
@@ -516,6 +495,7 @@ export function ScheduleDayView({
         caseId: proposal.case_id,
         proposedDate: proposal.proposed_date.slice(0, 10),
         pharmacistId: proposal.proposed_pharmacist_id,
+        siteId: proposal.site?.id ?? null,
         visitType: proposal.visit_type,
       })),
     [selectedDateProposals],
@@ -535,22 +515,14 @@ export function ScheduleDayView({
             case_id: item.caseId,
             proposed_date: item.proposedDate,
             pharmacist_id: item.pharmacistId,
+            site_id: item.siteId,
             visit_type: item.visitType,
           })),
         }),
       });
       if (!res.ok) throw new Error('提案の算定プレビュー取得に失敗しました');
       const payload = (await res.json()) as {
-        data: Record<
-          string,
-          {
-            alerts: BillingRequirementAlert[];
-            cadence: BillingCadencePreview;
-            recommended_visit_type: VisitType;
-            recommended_priority: VisitPriority;
-            recommended_candidate_count: number;
-          }
-        >;
+        data: Record<string, VisitScheduleBillingPreview>;
       };
       return new Map(Object.entries(payload.data));
     },
@@ -562,24 +534,24 @@ export function ScheduleDayView({
         .filter(
           (task) =>
             SCHEDULING_TASK_TYPES.has(task.task_type) &&
-            task.task_type !== 'visit_contact_followup'
+            task.task_type !== 'visit_contact_followup',
         )
         .slice(0, 6),
-    [tasks]
+    [tasks],
   );
 
   const weekProposalStats = useMemo(() => {
     return {
       approvalPending: proposals.filter((proposal) =>
-        ['proposed', 'reschedule_pending'].includes(proposal.proposal_status)
+        ['proposed', 'reschedule_pending'].includes(proposal.proposal_status),
       ).length,
       contactPending: proposals.filter(
-        (proposal) => proposal.proposal_status === 'patient_contact_pending'
+        (proposal) => proposal.proposal_status === 'patient_contact_pending',
       ).length,
       confirmedSchedules: schedules.filter((schedule) => schedule.confirmed_at).length,
       lockedSchedules: schedules.filter((schedule) => Boolean(schedule.confirmed_at)).length,
       pendingOverrides: schedules.filter(
-        (schedule) => schedule.override_request?.status === 'pending'
+        (schedule) => schedule.override_request?.status === 'pending',
       ).length,
       emergencyImpacts:
         proposals.filter((proposal) => proposal.priority === 'emergency').length +
@@ -634,8 +606,8 @@ export function ScheduleDayView({
       return leftTime.localeCompare(rightTime);
     });
   const effectivePlannerCandidateCount =
-    !plannerCandidateCountManual && billingPreviewData?.recommended_candidate_count
-      ? String(billingPreviewData.recommended_candidate_count)
+    !plannerCandidateCountManual && billingPreviewData?.suggested_schedule_slot_count
+      ? String(billingPreviewData.suggested_schedule_slot_count)
       : plannerForm.candidate_count;
   const schedulePreviewRequests = useMemo(
     () =>
@@ -644,6 +616,7 @@ export function ScheduleDayView({
         caseId: schedule.case_id,
         proposedDate: schedule.scheduled_date.slice(0, 10),
         pharmacistId: schedule.pharmacist_id,
+        siteId: schedule.site?.id ?? null,
         visitType: schedule.visit_type,
       })),
     [selectedDateSchedules],
@@ -663,22 +636,14 @@ export function ScheduleDayView({
             case_id: item.caseId,
             proposed_date: item.proposedDate,
             pharmacist_id: item.pharmacistId,
+            site_id: item.siteId,
             visit_type: item.visitType,
           })),
         }),
       });
       if (!res.ok) throw new Error('確定予定の算定プレビュー取得に失敗しました');
       const payload = (await res.json()) as {
-        data: Record<
-          string,
-          {
-            alerts: BillingRequirementAlert[];
-            cadence: BillingCadencePreview;
-            recommended_visit_type: VisitType;
-            recommended_priority: VisitPriority;
-            recommended_candidate_count: number;
-          }
-        >;
+        data: Record<string, VisitScheduleBillingPreview>;
       };
       return new Map(Object.entries(payload.data));
     },
@@ -686,11 +651,11 @@ export function ScheduleDayView({
   });
   const facilityTracker = useMemo(
     () => buildFacilityTracker(selectedDateSchedules),
-    [selectedDateSchedules]
+    [selectedDateSchedules],
   );
   const facilityRouteDefaults = useMemo(
     () => buildFacilityRouteDefaults(facilityTracker),
-    [facilityTracker]
+    [facilityTracker],
   );
   const isScheduleBoardLoading =
     isBootstrappingOrg ||
@@ -714,7 +679,7 @@ export function ScheduleDayView({
   function reorderFacilityPatients(
     group: FacilityTrackerGroup,
     draggedScheduleId: string,
-    targetScheduleId: string
+    targetScheduleId: string,
   ) {
     const routeDraft = {
       ...(facilityRouteDefaults[group.key] ?? {}),
@@ -734,7 +699,7 @@ export function ScheduleDayView({
     setFacilityRouteOverrides((prev) => ({
       ...prev,
       [group.key]: Object.fromEntries(
-        nextOrdered.map((scheduleId, index) => [scheduleId, String(index + 1)])
+        nextOrdered.map((scheduleId, index) => [scheduleId, String(index + 1)]),
       ),
     }));
   }
@@ -754,7 +719,7 @@ export function ScheduleDayView({
   }, [activeFacilityFilter, selectedDateSchedules]);
   const cachedVisitBriefByScheduleId = useMemo(
     () => new Map(cachedVisitBriefs.map((item) => [item.scheduleId, item])),
-    [cachedVisitBriefs]
+    [cachedVisitBriefs],
   );
   const mobileVisitSchedules = useMemo(
     () =>
@@ -771,7 +736,7 @@ export function ScheduleDayView({
         const rightTime = right.time_window_start ?? '';
         return leftTime.localeCompare(rightTime);
       }),
-    [visibleSchedules]
+    [visibleSchedules],
   );
   const routePharmacistOptions = useMemo(
     () =>
@@ -781,8 +746,7 @@ export function ScheduleDayView({
             schedule.pharmacist_id,
             {
               id: schedule.pharmacist_id,
-              name:
-                pharmacistNameById.get(schedule.pharmacist_id) ?? '薬剤師未登録',
+              name: pharmacistNameById.get(schedule.pharmacist_id) ?? '薬剤師未登録',
               siteName: schedule.site?.name ?? null,
             },
           ]),
@@ -790,15 +754,14 @@ export function ScheduleDayView({
       ),
     [pharmacistNameById, visibleSchedules],
   );
-  const resolvedRoutePharmacistId =
-    routePharmacistOptions.some((option) => option.id === selectedRoutePharmacistId)
-      ? selectedRoutePharmacistId
-      : routePharmacistOptions[0]?.id ?? '';
+  const resolvedRoutePharmacistId = routePharmacistOptions.some(
+    (option) => option.id === selectedRoutePharmacistId,
+  )
+    ? selectedRoutePharmacistId
+    : (routePharmacistOptions[0]?.id ?? '');
   const routeMapSchedules = useMemo(
     () =>
-      visibleSchedules.filter(
-        (schedule) => schedule.pharmacist_id === resolvedRoutePharmacistId,
-      ),
+      visibleSchedules.filter((schedule) => schedule.pharmacist_id === resolvedRoutePharmacistId),
     [resolvedRoutePharmacistId, visibleSchedules],
   );
   const currentOrderedRouteScheduleIds = useMemo(
@@ -848,18 +811,14 @@ export function ScheduleDayView({
         const error = await res.json().catch(() => ({}));
         throw new Error(error.message ?? 'ルート最適化の取得に失敗しました');
       }
-      return (res.json() as Promise<{ data: VisitRoutePlan }>).then((payload) => payload.data ?? null);
+      return (res.json() as Promise<{ data: VisitRoutePlan }>).then(
+        (payload) => payload.data ?? null,
+      );
     },
-    enabled:
-      !!orgId &&
-      !!resolvedRoutePharmacistId &&
-      currentOrderedRouteScheduleIds.length > 0,
+    enabled: !!orgId && !!resolvedRoutePharmacistId && currentOrderedRouteScheduleIds.length > 0,
   });
   const routePlanByScheduleId = useMemo(
-    () =>
-      new Map(
-        (routePlanData?.stopSummaries ?? []).map((item) => [item.scheduleId, item]),
-      ),
+    () => new Map((routePlanData?.stopSummaries ?? []).map((item) => [item.scheduleId, item])),
     [routePlanData],
   );
   const routeOrderDraft = useRouteOrderDraft({
@@ -897,11 +856,7 @@ export function ScheduleDayView({
               ),
         };
       })
-      .filter(
-        (
-          point,
-        ): point is NonNullable<typeof point> => point !== null,
-      );
+      .filter((point): point is NonNullable<typeof point> => point !== null);
   }, [
     routeMapSchedules,
     routeOrderDraft.draftIds,
@@ -919,12 +874,12 @@ export function ScheduleDayView({
       lng: site.lng,
     };
   }, [routeMapSchedules]);
-  const routeSelectionLabel =
-    routePharmacistOptions.find((option) => option.id === resolvedRoutePharmacistId)
-      ? `${routePharmacistOptions.find((option) => option.id === resolvedRoutePharmacistId)?.name ?? resolvedRoutePharmacistId} / ${selectedDate}`
-      : null;
-  const routeOptimizationDirty =
-    routeOrderDraft.differsFromCurrent;
+  const routeSelectionLabel = routePharmacistOptions.find(
+    (option) => option.id === resolvedRoutePharmacistId,
+  )
+    ? `${routePharmacistOptions.find((option) => option.id === resolvedRoutePharmacistId)?.name ?? resolvedRoutePharmacistId} / ${selectedDate}`
+    : null;
+  const routeOptimizationDirty = routeOrderDraft.differsFromCurrent;
   const ganttWindow = useMemo(() => {
     if (visibleSchedules.length === 0) {
       return {
@@ -939,12 +894,9 @@ export function ScheduleDayView({
     for (const schedule of visibleSchedules) {
       const startMinutes = minutesFromTimestamp(
         schedule.time_window_start,
-        GANTT_DEFAULT_START_MINUTES
+        GANTT_DEFAULT_START_MINUTES,
       );
-      const endMinutes = minutesFromTimestamp(
-        schedule.time_window_end,
-        startMinutes + 60
-      );
+      const endMinutes = minutesFromTimestamp(schedule.time_window_end, startMinutes + 60);
       earliest = Math.min(earliest, startMinutes);
       latest = Math.max(latest, endMinutes);
     }
@@ -952,12 +904,9 @@ export function ScheduleDayView({
     return {
       startMinutes: Math.max(
         6 * 60,
-        roundDownToSlot(earliest - GANTT_SLOT_MINUTES, GANTT_SLOT_MINUTES)
+        roundDownToSlot(earliest - GANTT_SLOT_MINUTES, GANTT_SLOT_MINUTES),
       ),
-      endMinutes: Math.min(
-        22 * 60,
-        roundUpToSlot(latest + GANTT_SLOT_MINUTES, GANTT_SLOT_MINUTES)
-      ),
+      endMinutes: Math.min(22 * 60, roundUpToSlot(latest + GANTT_SLOT_MINUTES, GANTT_SLOT_MINUTES)),
     };
   }, [visibleSchedules]);
   const ganttSlots = useMemo(() => {
@@ -990,22 +939,18 @@ export function ScheduleDayView({
     for (const schedule of visibleSchedules) {
       const existing = columns.get(schedule.pharmacist_id) ?? {
         pharmacistId: schedule.pharmacist_id,
-        pharmacistName:
-          pharmacistNameById.get(schedule.pharmacist_id) ?? '薬剤師未登録',
+        pharmacistName: pharmacistNameById.get(schedule.pharmacist_id) ?? '薬剤師未登録',
         siteName: schedule.site?.name ?? null,
         schedules: [],
       };
 
       const blockStartMinutes = minutesFromTimestamp(
         schedule.time_window_start,
-        ganttWindow.startMinutes
+        ganttWindow.startMinutes,
       );
       const blockEndMinutes = Math.max(
         blockStartMinutes + GANTT_SLOT_MINUTES,
-        minutesFromTimestamp(
-          schedule.time_window_end,
-          blockStartMinutes + GANTT_SLOT_MINUTES * 2
-        )
+        minutesFromTimestamp(schedule.time_window_end, blockStartMinutes + GANTT_SLOT_MINUTES * 2),
       );
 
       existing.schedules.push({
@@ -1030,9 +975,7 @@ export function ScheduleDayView({
           return left.blockStartMinutes - right.blockStartMinutes;
         }),
       }))
-      .sort((left, right) =>
-        left.pharmacistName.localeCompare(right.pharmacistName, 'ja')
-      );
+      .sort((left, right) => left.pharmacistName.localeCompare(right.pharmacistName, 'ja'));
   }, [ganttWindow.startMinutes, pharmacistNameById, visibleSchedules]);
   const ganttTableColumns = useMemo(
     () =>
@@ -1052,14 +995,16 @@ export function ScheduleDayView({
         for (const schedule of column.schedules) {
           const startIndex = Math.max(
             0,
-            Math.floor((schedule.blockStartMinutes - ganttWindow.startMinutes) / GANTT_SLOT_MINUTES)
+            Math.floor(
+              (schedule.blockStartMinutes - ganttWindow.startMinutes) / GANTT_SLOT_MINUTES,
+            ),
           );
           const endIndex = Math.min(
             ganttSlots.length,
             Math.max(
               startIndex + 1,
-              Math.ceil((schedule.blockEndMinutes - ganttWindow.startMinutes) / GANTT_SLOT_MINUTES)
-            )
+              Math.ceil((schedule.blockEndMinutes - ganttWindow.startMinutes) / GANTT_SLOT_MINUTES),
+            ),
           );
           const span = Math.max(1, endIndex - startIndex);
 
@@ -1075,14 +1020,14 @@ export function ScheduleDayView({
           coveredSlots,
         };
       }),
-    [ganttColumns, ganttSlots.length, ganttWindow.startMinutes]
+    [ganttColumns, ganttSlots.length, ganttWindow.startMinutes],
   );
 
   function ganttBlockClass(
     schedule: VisitSchedule & {
       blockStartMinutes: number;
       blockEndMinutes: number;
-    }
+    },
   ) {
     if (schedule.priority === 'emergency') {
       return 'border-rose-300 bg-rose-50 text-rose-900 shadow-rose-100';
@@ -1113,7 +1058,9 @@ export function ScheduleDayView({
         const freshRows = rows.filter((row) => isOfflineCacheFresh(row.updatedAt));
         const staleRows = rows.filter((row) => !isOfflineCacheFresh(row.updatedAt));
 
-        await Promise.all(staleRows.map((row) => row.id && offlineDb.visitBriefCache.delete(row.id)));
+        await Promise.all(
+          staleRows.map((row) => row.id && offlineDb.visitBriefCache.delete(row.id)),
+        );
 
         const decoded = await Promise.all(
           freshRows.map(async (row) => {
@@ -1127,26 +1074,27 @@ export function ScheduleDayView({
             } catch {
               return null;
             }
-          })
+          }),
         );
 
         const usableRows = decoded.filter(
           (
-            item
-          ): item is { row: import('@/lib/stores/offline-db').OfflineVisitBriefCache; payload: CachedVisitBriefCard } =>
-            item !== null
+            item,
+          ): item is {
+            row: import('@/lib/stores/offline-db').OfflineVisitBriefCache;
+            payload: CachedVisitBriefCard;
+          } => item !== null,
         );
         setCachedVisitBriefs(
           usableRows
             .map((item) => item.payload)
             .sort((left, right) =>
-              (left.timeWindowStart ?? '').localeCompare(right.timeWindowStart ?? '')
-            )
+              (left.timeWindowStart ?? '').localeCompare(right.timeWindowStart ?? ''),
+            ),
         );
         const latestUpdatedAt = usableRows.reduce<Date | null>(
-          (latest, item) =>
-            !latest || item.row.updatedAt > latest ? item.row.updatedAt : latest,
-          null
+          (latest, item) => (!latest || item.row.updatedAt > latest ? item.row.updatedAt : latest),
+          null,
         );
         setCachedVisitBriefUpdatedAt(formatOfflineCacheUpdatedAt(latestUpdatedAt));
       });
@@ -1187,9 +1135,7 @@ export function ScheduleDayView({
           timeWindowEnd: schedule.time_window_end,
           priority: schedule.priority,
           facilityLabel:
-            schedule.facility_hint?.label ??
-            schedule.case_.patient.residences[0]?.address ??
-            null,
+            schedule.facility_hint?.label ?? schedule.case_.patient.residences[0]?.address ?? null,
           siteName: schedule.site?.name ?? null,
           headline: payload.data.ai_summary.headline,
           mustCheckToday: payload.data.ai_summary.must_check_today,
@@ -1199,10 +1145,7 @@ export function ScheduleDayView({
           isFallback: payload.data.ai_summary.is_fallback,
         };
 
-        await offlineDb.visitBriefCache
-          .where('scheduleId')
-          .equals(schedule.id)
-          .delete();
+        await offlineDb.visitBriefCache.where('scheduleId').equals(schedule.id).delete();
         await offlineDb.visitBriefCache.add({
           scheduleId: schedule.id,
           patientId: schedule.case_.patient.id,
@@ -1212,15 +1155,15 @@ export function ScheduleDayView({
         });
 
         return snapshot;
-      })
+      }),
     ).then((items) => {
       if (cancelled) return;
       const filtered = items.filter((item): item is CachedVisitBriefCard => Boolean(item));
       if (filtered.length > 0) {
         setCachedVisitBriefs(
           filtered.sort((left, right) =>
-            (left.timeWindowStart ?? '').localeCompare(right.timeWindowStart ?? '')
-          )
+            (left.timeWindowStart ?? '').localeCompare(right.timeWindowStart ?? ''),
+          ),
         );
         setCachedVisitBriefUpdatedAt(new Date().toISOString());
       }
@@ -1272,9 +1215,9 @@ export function ScheduleDayView({
             ? 'declined'
             : proposal.patient_contact_status === 'change_requested'
               ? 'change_requested'
-            : proposal.patient_contact_status === 'unreachable'
-              ? 'unreachable'
-              : 'attempted',
+              : proposal.patient_contact_status === 'unreachable'
+                ? 'unreachable'
+                : 'attempted',
       contact_method:
         latestLog?.contact_method === 'fax' || latestLog?.contact_method === 'email'
           ? latestLog.contact_method
@@ -1313,32 +1256,29 @@ export function ScheduleDayView({
     })
       .then(async (res) => {
         if (!res.ok) throw new Error('訪問準備情報の取得に失敗しました');
-        return (res.json() as Promise<{
-          data: {
-            preparation: VisitPreparation | null;
-            pack: VisitPreparationPack | null;
-          };
-        }>).then((payload) => payload.data);
+        return (
+          res.json() as Promise<{
+            data: {
+              preparation: VisitPreparation | null;
+              pack: VisitPreparationPack | null;
+            };
+          }>
+        ).then((payload) => payload.data);
       })
       .then((payload) => {
         if (preparationRequestIdRef.current !== scheduleId) return;
         setPreparationDetails(payload);
         setPreparationForm({
-          medication_changes_reviewed:
-            payload.preparation?.medication_changes_reviewed ?? false,
-          carry_items_confirmed:
-            payload.preparation?.carry_items_confirmed ?? false,
-          previous_issues_reviewed:
-            payload.preparation?.previous_issues_reviewed ?? false,
+          medication_changes_reviewed: payload.preparation?.medication_changes_reviewed ?? false,
+          carry_items_confirmed: payload.preparation?.carry_items_confirmed ?? false,
+          previous_issues_reviewed: payload.preparation?.previous_issues_reviewed ?? false,
           route_confirmed: payload.preparation?.route_confirmed ?? false,
           offline_synced: payload.preparation?.offline_synced ?? false,
         });
       })
       .catch((error) => {
         if (preparationRequestIdRef.current !== scheduleId) return;
-        toast.error(
-          error instanceof Error ? error.message : '訪問準備情報の取得に失敗しました'
-        );
+        toast.error(error instanceof Error ? error.message : '訪問準備情報の取得に失敗しました');
       })
       .finally(() => {
         if (preparationRequestIdRef.current !== scheduleId) return;
@@ -1374,9 +1314,9 @@ export function ScheduleDayView({
     onSuccess: async (data) => {
       toast.success(`${data.data.length}件の訪問候補を生成しました`);
       if ((data.alerts?.length ?? 0) > 0) {
-        const warningMessages = data.alerts
-          ?.filter((alert) => alert.severity !== 'info')
-          .map((alert) => alert.message) ?? [];
+        const warningMessages =
+          data.alerts?.filter((alert) => alert.severity !== 'info').map((alert) => alert.message) ??
+          [];
         if (warningMessages.length > 0) {
           toast.warning('算定アラート', {
             description: warningMessages.slice(0, 2).join(' / '),
@@ -1435,13 +1375,13 @@ export function ScheduleDayView({
               ? '候補を却下しました'
               : variables.payload.outcome === 'change_requested'
                 ? '変更希望として記録しました'
-              : variables.payload.outcome === 'declined'
-                ? '患者辞退として記録しました'
-              : variables.payload.outcome === 'unreachable'
-                ? '不通として記録しました'
-                : variables.payload.outcome === 'confirmed'
-                  ? '患者確認済みとして記録しました'
-                  : '架電状況を更新しました';
+                : variables.payload.outcome === 'declined'
+                  ? '患者辞退として記録しました'
+                  : variables.payload.outcome === 'unreachable'
+                    ? '不通として記録しました'
+                    : variables.payload.outcome === 'confirmed'
+                      ? '患者確認済みとして記録しました'
+                      : '架電状況を更新しました';
 
       toast.success(message);
       if (variables.payload.action === 'contact_attempt') {
@@ -1515,7 +1455,7 @@ export function ScheduleDayView({
       toast.success(
         variables.status === 'completed'
           ? '再架電タスクを完了しました'
-          : '再架電タスクを対応中にしました'
+          : '再架電タスクを対応中にしました',
       );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['tasks', 'schedule-board', orgId] }),
@@ -1530,13 +1470,7 @@ export function ScheduleDayView({
   });
 
   const preparationMutation = useMutation({
-    mutationFn: async ({
-      scheduleId,
-      markReady,
-    }: {
-      scheduleId: string;
-      markReady: boolean;
-    }) => {
+    mutationFn: async ({ scheduleId, markReady }: { scheduleId: string; markReady: boolean }) => {
       const preparationRes = await fetch(`/api/visit-preparations/${scheduleId}`, {
         method: 'PUT',
         headers: {
@@ -1574,9 +1508,7 @@ export function ScheduleDayView({
     },
     onSuccess: async (_data, variables) => {
       toast.success(
-        variables.markReady
-          ? '訪問準備を保存し、ready へ進めました'
-          : '訪問準備を保存しました'
+        variables.markReady ? '訪問準備を保存し、ready へ進めました' : '訪問準備を保存しました',
       );
       preparationRequestIdRef.current = null;
       setPreparationLoading(false);
@@ -1633,7 +1565,7 @@ export function ScheduleDayView({
       toast.success(
         variables.carryItemsConfirmed
           ? '施設バッチの順序と持参確認を保存しました'
-          : '施設バッチの順序を保存しました'
+          : '施設バッチの順序を保存しました',
       );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] }),
@@ -1641,9 +1573,7 @@ export function ScheduleDayView({
       ]);
     },
     onError: (error) => {
-      toast.error(
-        error instanceof Error ? error.message : '施設一括訪問の保存に失敗しました'
-      );
+      toast.error(error instanceof Error ? error.message : '施設一括訪問の保存に失敗しました');
     },
   });
 
@@ -1763,9 +1693,7 @@ export function ScheduleDayView({
       ]);
     },
     onError: (error) => {
-      toast.error(
-        error instanceof Error ? error.message : '最適順序の反映に失敗しました',
-      );
+      toast.error(error instanceof Error ? error.message : '最適順序の反映に失敗しました');
     },
   });
 
@@ -1778,7 +1706,7 @@ export function ScheduleDayView({
             visit_record: '/api/visit-records',
           },
         },
-        itemId
+        itemId,
       );
       if (!result.ok) throw new Error(result.message);
       return result;
@@ -1868,15 +1796,15 @@ export function ScheduleDayView({
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
               服薬最終日より前の訪問候補を自動生成し、患者住所と既存訪問順から
-              ルート効率を加味して提案します。確定後は専用のリスケジュール操作以外で
-              変更しません。
+              ルート効率を加味して提案します。確定後は専用のリスケジュール操作以外で 変更しません。
             </p>
           </div>
           <div className="grid gap-2 rounded-2xl border border-white/70 bg-white/70 p-4 shadow-sm backdrop-blur">
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-500">対象週</span>
               <span className="font-medium text-slate-900">
-                {format(weekStart, 'M/d', { locale: ja })} - {format(weekEnd, 'M/d', { locale: ja })}
+                {format(weekStart, 'M/d', { locale: ja })} -{' '}
+                {format(weekEnd, 'M/d', { locale: ja })}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm">
@@ -1903,18 +1831,14 @@ export function ScheduleDayView({
         <CardHeader className="flex flex-col gap-4 border-b lg:flex-row lg:items-end lg:justify-between">
           <div>
             <CardTitle className="text-base">週間スケジュール</CardTitle>
-            <CardDescription>
-              候補件数と確定件数を見ながら日別に切り替えます
-            </CardDescription>
+            <CardDescription>候補件数と確定件数を見ながら日別に切り替えます</CardDescription>
           </div>
           <div className="flex flex-col gap-3 lg:items-end">
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 size="icon"
                 variant="outline"
-                onClick={() =>
-                  setSelectedDate(format(addDays(selectedDay, -7), 'yyyy-MM-dd'))
-                }
+                onClick={() => setSelectedDate(format(addDays(selectedDay, -7), 'yyyy-MM-dd'))}
                 aria-label="前週"
               >
                 <ChevronLeft className="size-4" />
@@ -1929,9 +1853,7 @@ export function ScheduleDayView({
               <Button
                 size="icon"
                 variant="outline"
-                onClick={() =>
-                  setSelectedDate(format(addDays(selectedDay, 7), 'yyyy-MM-dd'))
-                }
+                onClick={() => setSelectedDate(format(addDays(selectedDay, 7), 'yyyy-MM-dd'))}
                 aria-label="翌週"
               >
                 <ChevronRight className="size-4" />
@@ -1941,10 +1863,10 @@ export function ScheduleDayView({
               {visibleDays.map((day) => {
                 const dateKey = format(day, 'yyyy-MM-dd');
                 const proposalCount = proposals.filter(
-                  (proposal) => toDateKey(proposal.proposed_date) === dateKey
+                  (proposal) => toDateKey(proposal.proposed_date) === dateKey,
                 ).length;
                 const scheduleCount = schedules.filter(
-                  (schedule) => toDateKey(schedule.scheduled_date) === dateKey
+                  (schedule) => toDateKey(schedule.scheduled_date) === dateKey,
                 ).length;
                 const isSelected = dateKey === selectedDate;
                 const isBillableHistoryDate = billedDateSet.has(dateKey);
@@ -1963,9 +1885,7 @@ export function ScheduleDayView({
                         : 'border-border bg-background hover:border-slate-400',
                     ].join(' ')}
                   >
-                    <div className="text-xs">
-                      {format(day, 'M/d(E)', { locale: ja })}
-                    </div>
+                    <div className="text-xs">{format(day, 'M/d(E)', { locale: ja })}</div>
                     <div className="mt-1 text-[11px] opacity-80">
                       候補 {proposalCount} / 確定 {scheduleCount}
                     </div>
@@ -1999,10 +1919,7 @@ export function ScheduleDayView({
       <section className="space-y-3 md:hidden" aria-labelledby="mobile-visit-list-heading">
         <div className="flex items-center justify-between">
           <div>
-            <h2
-              id="mobile-visit-list-heading"
-              className="text-base font-semibold text-foreground"
-            >
+            <h2 id="mobile-visit-list-heading" className="text-base font-semibold text-foreground">
               本日の訪問リスト
             </h2>
             <p className="text-xs text-muted-foreground">
@@ -2084,7 +2001,12 @@ export function ScheduleDayView({
                   </Select>
                 </div>
                 {routeOrderDraft.manualDirty ? (
-                  <Button type="button" size="sm" variant="outline" onClick={routeOrderDraft.resetToOptimized}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={routeOrderDraft.resetToOptimized}
+                  >
                     最適順へ戻す
                   </Button>
                 ) : null}
@@ -2093,9 +2015,7 @@ export function ScheduleDayView({
             loading={routePlanLoading}
             actionLabel="最適順を route_order に反映"
             actionDisabled={
-              routePlanLoading ||
-              applyOptimizedRouteMutation.isPending ||
-              !routeOptimizationDirty
+              routePlanLoading || applyOptimizedRouteMutation.isPending || !routeOptimizationDirty
             }
             actionPending={applyOptimizedRouteMutation.isPending}
             onAction={() => applyOptimizedRouteMutation.mutate()}
@@ -2166,7 +2086,8 @@ export function ScheduleDayView({
               <div className="rounded-xl border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                 <p className="font-medium text-foreground">朝の事前同期</p>
                 <p className="mt-1">
-                  当日訪問予定の軽量 brief を端末へ保持し、患者サマリー / 前回課題 / 持参チェック対象を read-only で参照できます。
+                  当日訪問予定の軽量 brief を端末へ保持し、患者サマリー / 前回課題 /
+                  持参チェック対象を read-only で参照できます。
                 </p>
                 <p className="mt-1">
                   最終同期:{' '}
@@ -2185,9 +2106,7 @@ export function ScheduleDayView({
                   {manualSyncMutation.isPending ? '同期中...' : '今すぐ同期'}
                 </Button>
                 {syncConflicts.length > 0 && (
-                  <span className="text-xs text-amber-700">
-                    409 競合は下のカードで解決します
-                  </span>
+                  <span className="text-xs text-amber-700">409 競合は下のカードで解決します</span>
                 )}
               </div>
               {syncConflicts.length > 0 ? (
@@ -2254,9 +2173,7 @@ export function ScheduleDayView({
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">
-                  競合している下書きはありません。
-                </p>
+                <p className="text-sm text-muted-foreground">競合している下書きはありません。</p>
               )}
             </CardContent>
           </Card>
@@ -2265,7 +2182,8 @@ export function ScheduleDayView({
             <CardHeader>
               <CardTitle className="text-base">軽量訪問ブリーフ</CardTitle>
               <CardDescription>
-                重要情報だけを端末へ AES-GCM で暗号化して保存し、オフライン時は read-only で表示します
+                重要情報だけを端末へ AES-GCM で暗号化して保存し、オフライン時は read-only
+                で表示します
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -2314,24 +2232,20 @@ export function ScheduleDayView({
           <Card id="planner">
             <CardHeader>
               <CardTitle className="text-base">訪問候補を生成</CardTitle>
-              <CardDescription>
-                システムが候補を提案し、承認後に患者へ架電します
-              </CardDescription>
+              <CardDescription>システムが候補を提案し、承認後に患者へ架電します</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-1.5">
                 <Label htmlFor="planner-case">対象ケース</Label>
                 <Select
                   value={resolvedPlannerCaseId}
-                  onValueChange={(value) =>
-                    {
-                      setPlannerCandidateCountManual(false);
-                      setPlannerForm((current) => ({
-                        ...current,
-                        case_id: value ?? current.case_id,
-                      }));
-                    }
-                  }
+                  onValueChange={(value) => {
+                    setPlannerCandidateCountManual(false);
+                    setPlannerForm((current) => ({
+                      ...current,
+                      case_id: value ?? current.case_id,
+                    }));
+                  }}
                 >
                   <SelectTrigger id="planner-case" className="w-full">
                     <SelectValue placeholder={casesLoading ? '読み込み中...' : 'ケースを選択'} />
@@ -2389,7 +2303,7 @@ export function ScheduleDayView({
                                 priority:
                                   billingPreviewData?.recommended_priority ?? current.priority,
                                 candidate_count: String(
-                                  billingPreviewData?.recommended_candidate_count ??
+                                  billingPreviewData?.suggested_schedule_slot_count ??
                                     Number(current.candidate_count),
                                 ),
                               }));
@@ -2402,22 +2316,31 @@ export function ScheduleDayView({
                     </div>
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                       <p>
-                        月内算定: {billingCadence.current_month_count} / {billingCadence.monthly_cap}
+                        月内算定: {billingCadence.current_month_count} /{' '}
+                        {billingCadence.monthly_cap}
                       </p>
                       <p>残回数: {billingCadence.remaining_month_count}</p>
                       <p>
                         週内算定: {billingCadence.current_week_count}
                         {billingCadence.weekly_cap != null ? ` / ${billingCadence.weekly_cap}` : ''}
                       </p>
+                      <p>次回算定可能日: {billingCadence.next_billable_date ?? '提案不可'}</p>
+                      <p>適用改定: {billingPreviewData?.effective_revision_label ?? '未判定'}</p>
+                      <p>薬局設定: {billingPreviewData?.site_config_status ?? '未判定'}</p>
                       <p>
-                        次回算定可能日: {billingCadence.next_billable_date ?? '提案不可'}
+                        推奨設定:{' '}
+                        {billingPreviewData?.recommended_visit_type ?? plannerForm.visit_type} /{' '}
+                        {
+                          PRIORITY_LABELS[
+                            billingPreviewData?.recommended_priority ?? plannerForm.priority
+                          ]
+                        }
                       </p>
                       <p>
-                        推奨設定: {billingPreviewData?.recommended_visit_type ?? plannerForm.visit_type} /{' '}
-                        {PRIORITY_LABELS[billingPreviewData?.recommended_priority ?? plannerForm.priority]}
-                      </p>
-                      <p>
-                        推奨候補数: {billingPreviewData?.recommended_candidate_count ?? Number(effectivePlannerCandidateCount)}件
+                        推奨枠数:{' '}
+                        {billingPreviewData?.suggested_schedule_slot_count ??
+                          Number(effectivePlannerCandidateCount)}
+                        件
                       </p>
                     </div>
                     {billingCadence.scheduled_dates_current_month.length > 0 && (
@@ -2447,6 +2370,13 @@ export function ScheduleDayView({
                           >
                             {alert.message}
                           </p>
+                        ))}
+                      </div>
+                    )}
+                    {billingPreviewWarnings.length > 0 && (
+                      <div className="mt-2 space-y-1 text-amber-900">
+                        {billingPreviewWarnings.map((warning) => (
+                          <p key={warning}>{warning}</p>
                         ))}
                       </div>
                     )}
@@ -2522,15 +2452,13 @@ export function ScheduleDayView({
                   <Label htmlFor="planner-candidate-count">候補数</Label>
                   <Select
                     value={effectivePlannerCandidateCount}
-                    onValueChange={(value) =>
-                      {
-                        setPlannerCandidateCountManual(true);
-                        setPlannerForm((current) => ({
-                          ...current,
-                          candidate_count: value ?? current.candidate_count,
-                        }));
-                      }
-                    }
+                    onValueChange={(value) => {
+                      setPlannerCandidateCountManual(true);
+                      setPlannerForm((current) => ({
+                        ...current,
+                        candidate_count: value ?? current.candidate_count,
+                      }));
+                    }}
                   >
                     <SelectTrigger id="planner-candidate-count" className="w-full">
                       <SelectValue />
@@ -2610,7 +2538,7 @@ export function ScheduleDayView({
                   </div>
                   {callbackTasks.map((task) => {
                     const relatedProposal = task.related_entity_id
-                      ? proposalById.get(task.related_entity_id) ?? null
+                      ? (proposalById.get(task.related_entity_id) ?? null)
                       : null;
 
                     return (
@@ -2625,10 +2553,7 @@ export function ScheduleDayView({
                               <Badge variant="outline">
                                 {TASK_TYPE_LABELS[task.task_type] ?? task.task_type}
                               </Badge>
-                              <Badge
-                                variant="outline"
-                                className={taskPriorityClass(task.priority)}
-                              >
+                              <Badge variant="outline" className={taskPriorityClass(task.priority)}>
                                 {task.priority}
                               </Badge>
                             </div>
@@ -2661,7 +2586,7 @@ export function ScheduleDayView({
                                 })}{' '}
                                 {timeLabel(
                                   relatedProposal.time_window_start,
-                                  relatedProposal.time_window_end
+                                  relatedProposal.time_window_end,
                                 )}
                               </p>
                             ) : (
@@ -2739,11 +2664,10 @@ export function ScheduleDayView({
                 schedulingTasks.map((task) => {
                   const relatedSchedule =
                     task.related_entity_type === 'visit_schedule' && task.related_entity_id
-                      ? scheduleById.get(task.related_entity_id) ?? null
+                      ? (scheduleById.get(task.related_entity_id) ?? null)
                       : null;
                   const canApproveOverride =
-                    task.task_type === 'visit_schedule_override_approval' &&
-                    task.related_entity_id;
+                    task.task_type === 'visit_schedule_override_approval' && task.related_entity_id;
                   const canOpenPreparation =
                     task.task_type === 'visit_preparation' && relatedSchedule;
 
@@ -2759,10 +2683,7 @@ export function ScheduleDayView({
                             <Badge variant="outline">
                               {TASK_TYPE_LABELS[task.task_type] ?? task.task_type}
                             </Badge>
-                            <Badge
-                              variant="outline"
-                              className={taskPriorityClass(task.priority)}
-                            >
+                            <Badge variant="outline" className={taskPriorityClass(task.priority)}>
                               {task.priority}
                             </Badge>
                           </div>
@@ -2785,13 +2706,11 @@ export function ScheduleDayView({
                               })}{' '}
                               {timeLabel(
                                 relatedSchedule.time_window_start,
-                                relatedSchedule.time_window_end
+                                relatedSchedule.time_window_end,
                               )}
                             </p>
                           )}
-                          {task.description && (
-                            <p className="leading-5">{task.description}</p>
-                          )}
+                          {task.description && <p className="leading-5">{task.description}</p>}
                         </div>
                       )}
 
@@ -2832,9 +2751,7 @@ export function ScheduleDayView({
           <Card>
             <CardHeader>
               <CardTitle className="text-base">関連管理</CardTitle>
-              <CardDescription>
-                ケース担当・シフト・休日設定は管理画面で更新します
-              </CardDescription>
+              <CardDescription>ケース担当・シフト・休日設定は管理画面で更新します</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <Link
@@ -2910,15 +2827,15 @@ export function ScheduleDayView({
                   pharmacistNameById.get(proposal.proposed_pharmacist_id) ??
                   '薬剤師未登録';
                 const canApprove = ['proposed', 'reschedule_pending'].includes(
-                  proposal.proposal_status
+                  proposal.proposal_status,
                 );
                 const canCall = proposal.proposal_status === 'patient_contact_pending';
                 const canConfirm = canCall && proposal.patient_contact_status === 'confirmed';
                 const impactCount = readImpactCount(
-                  proposal.reschedule_source_schedule?.override_request?.impact_summary
+                  proposal.reschedule_source_schedule?.override_request?.impact_summary,
                 );
                 const impactedPatientNames = readImpactedPatientNames(
-                  proposal.reschedule_source_schedule?.override_request?.impact_summary
+                  proposal.reschedule_source_schedule?.override_request?.impact_summary,
                 );
 
                 return (
@@ -2971,8 +2888,12 @@ export function ScheduleDayView({
                           </div>
                           <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                             <span>{VISIT_TYPE_LABELS[proposal.visit_type]}</span>
-                            <span>{timeLabel(proposal.time_window_start, proposal.time_window_end)}</span>
-                            <span>架電状態: {CONTACT_STATUS_LABELS[proposal.patient_contact_status]}</span>
+                            <span>
+                              {timeLabel(proposal.time_window_start, proposal.time_window_end)}
+                            </span>
+                            <span>
+                              架電状態: {CONTACT_STATUS_LABELS[proposal.patient_contact_status]}
+                            </span>
                           </div>
                         </div>
                         <div className="text-right text-sm">
@@ -2993,7 +2914,9 @@ export function ScheduleDayView({
                             <p className="text-muted-foreground">服薬最終日</p>
                             <p className="text-foreground">
                               {proposal.medication_end_date
-                                ? format(parseISO(proposal.medication_end_date), 'yyyy/MM/dd', { locale: ja })
+                                ? format(parseISO(proposal.medication_end_date), 'yyyy/MM/dd', {
+                                    locale: ja,
+                                  })
                                 : '未計算'}
                             </p>
                           </div>
@@ -3001,7 +2924,9 @@ export function ScheduleDayView({
                             <p className="text-muted-foreground">訪問期限</p>
                             <p className="text-foreground">
                               {proposal.visit_deadline_date
-                                ? format(parseISO(proposal.visit_deadline_date), 'yyyy/MM/dd', { locale: ja })
+                                ? format(parseISO(proposal.visit_deadline_date), 'yyyy/MM/dd', {
+                                    locale: ja,
+                                  })
                                 : '未設定'}
                             </p>
                           </div>
@@ -3039,8 +2964,8 @@ export function ScheduleDayView({
                           <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-950">
                             <p className="font-medium">算定 cadence</p>
                             <p className="mt-1">
-                              次回算定可能日: {proposalCadence.next_billable_date ?? '提案不可'} / 残回数{' '}
-                              {proposalCadence.remaining_month_count}
+                              次回算定可能日: {proposalCadence.next_billable_date ?? '提案不可'} /
+                              残回数 {proposalCadence.remaining_month_count}
                             </p>
                             {proposalWarningMessages.length > 0 && (
                               <p className="mt-1 text-amber-800">
@@ -3108,7 +3033,7 @@ export function ScheduleDayView({
                               variant="outline"
                               onClick={() =>
                                 rescheduleApprovalMutation.mutate(
-                                  proposal.reschedule_source_schedule_id as string
+                                  proposal.reschedule_source_schedule_id as string,
                                 )
                               }
                               disabled={rescheduleApprovalMutation.isPending}
@@ -3174,14 +3099,15 @@ export function ScheduleDayView({
                             </Button>
                           </>
                         )}
-                        {proposal.proposal_status === 'confirmed' && proposal.finalized_schedule && (
-                          <Link
-                            href={`/visits/${proposal.finalized_schedule.id}/record`}
-                            className="inline-flex h-8 items-center rounded-lg border px-3 text-sm text-foreground hover:bg-muted/30"
-                          >
-                            確定予定を開く
-                          </Link>
-                        )}
+                        {proposal.proposal_status === 'confirmed' &&
+                          proposal.finalized_schedule && (
+                            <Link
+                              href={`/visits/${proposal.finalized_schedule.id}/record`}
+                              className="inline-flex h-8 items-center rounded-lg border px-3 text-sm text-foreground hover:bg-muted/30"
+                            >
+                              確定予定を開く
+                            </Link>
+                          )}
                       </div>
                     </CardContent>
                   </Card>
@@ -3242,7 +3168,10 @@ export function ScheduleDayView({
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge variant="outline">
-                              ルート順 {group.routeOrders.length > 0 ? group.routeOrders.join(', ') : '未設定'}
+                              ルート順{' '}
+                              {group.routeOrders.length > 0
+                                ? group.routeOrders.join(', ')
+                                : '未設定'}
                             </Badge>
                             {group.batchId ? <Badge variant="secondary">保存済み</Badge> : null}
                           </div>
@@ -3288,7 +3217,7 @@ export function ScheduleDayView({
                                 reorderFacilityPatients(
                                   group,
                                   draggingFacilityPatient.scheduleId,
-                                  patient.scheduleId
+                                  patient.scheduleId,
                                 );
                                 setDraggingFacilityPatient(null);
                               }}
@@ -3391,7 +3320,9 @@ export function ScheduleDayView({
                 site={routeMapSite}
                 orderedIds={routeOrderDraft.draftIds}
                 currentOrderedIds={routeOrderDraft.currentIds}
-                onMoveItem={(scheduleId, direction) => routeOrderDraft.moveItem(scheduleId, direction)}
+                onMoveItem={(scheduleId, direction) =>
+                  routeOrderDraft.moveItem(scheduleId, direction)
+                }
                 headerControls={
                   <>
                     <div className="space-y-1">
@@ -3416,7 +3347,12 @@ export function ScheduleDayView({
                       </Select>
                     </div>
                     {routeOrderDraft.manualDirty ? (
-                      <Button type="button" size="sm" variant="outline" onClick={routeOrderDraft.resetToOptimized}>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={routeOrderDraft.resetToOptimized}
+                      >
                         最適順へ戻す
                       </Button>
                     ) : null}
@@ -3451,7 +3387,10 @@ export function ScheduleDayView({
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex flex-wrap gap-2 text-xs">
-                    <Badge variant="outline">時間帯 {formatMinutesLabel(ganttWindow.startMinutes)} - {formatMinutesLabel(ganttWindow.endMinutes)}</Badge>
+                    <Badge variant="outline">
+                      時間帯 {formatMinutesLabel(ganttWindow.startMinutes)} -{' '}
+                      {formatMinutesLabel(ganttWindow.endMinutes)}
+                    </Badge>
                     <Badge variant="outline">薬剤師 {ganttColumns.length} 名</Badge>
                     <Badge variant="outline">確定訪問 {visibleSchedules.length} 件</Badge>
                     <Badge variant="outline">横向き推奨</Badge>
@@ -3512,7 +3451,7 @@ export function ScheduleDayView({
                                           <p className="text-[11px] opacity-80">
                                             {timeLabel(
                                               scheduleCell.schedule.time_window_start,
-                                              scheduleCell.schedule.time_window_end
+                                              scheduleCell.schedule.time_window_end,
                                             )}
                                           </p>
                                         </div>
@@ -3585,76 +3524,78 @@ export function ScheduleDayView({
                     .map((alert) => alert.message) ?? [];
 
                 return (
-                <Card
-                  key={schedule.id}
-                  id={`schedule-${schedule.id}`}
-                  className={cn(
-                    'overflow-hidden scroll-mt-28',
-                    highlightedScheduleId === schedule.id ? 'ring-2 ring-primary/30' : null,
-                  )}
-                >
-                  <CardContent className="space-y-4 py-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-base font-semibold text-foreground">
-                            {schedule.case_.patient.name}
-                          </p>
-                          <Badge
-                            variant="outline"
-                            className={statusBadgeClass(schedule.schedule_status)}
-                          >
-                            {SCHEDULE_STATUS_LABELS[schedule.schedule_status]}
-                          </Badge>
-                          <Badge
-                            variant="outline"
-                            className={priorityBadgeClass(schedule.priority)}
-                          >
-                            {PRIORITY_LABELS[schedule.priority]}
-                          </Badge>
-                          {schedule.confirmed_at && (
+                  <Card
+                    key={schedule.id}
+                    id={`schedule-${schedule.id}`}
+                    className={cn(
+                      'overflow-hidden scroll-mt-28',
+                      highlightedScheduleId === schedule.id ? 'ring-2 ring-primary/30' : null,
+                    )}
+                  >
+                    <CardContent className="space-y-4 py-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-base font-semibold text-foreground">
+                              {schedule.case_.patient.name}
+                            </p>
                             <Badge
                               variant="outline"
-                              className="border-emerald-200 bg-emerald-50 text-emerald-700"
+                              className={statusBadgeClass(schedule.schedule_status)}
                             >
-                              電話確定済み
+                              {SCHEDULE_STATUS_LABELS[schedule.schedule_status]}
                             </Badge>
-                          )}
-                          <Badge
-                            variant="outline"
-                            className={scheduleLockText(schedule).className}
-                          >
-                            {scheduleLockText(schedule).label}
-                          </Badge>
-                          <Badge
-                            variant="outline"
-                            className={
-                              schedule.preparation?.prepared_at
-                                ? 'border-sky-200 bg-sky-50 text-sky-700'
-                                : 'border-amber-200 bg-amber-50 text-amber-700'
-                            }
-                          >
-                            {schedule.preparation?.prepared_at
-                              ? `準備完了 ${countCompletedPreparationItems(schedule.preparation)}/5`
-                              : `準備 ${countCompletedPreparationItems(schedule.preparation)}/5`}
-                          </Badge>
+                            <Badge
+                              variant="outline"
+                              className={priorityBadgeClass(schedule.priority)}
+                            >
+                              {PRIORITY_LABELS[schedule.priority]}
+                            </Badge>
+                            {schedule.confirmed_at && (
+                              <Badge
+                                variant="outline"
+                                className="border-emerald-200 bg-emerald-50 text-emerald-700"
+                              >
+                                電話確定済み
+                              </Badge>
+                            )}
+                            <Badge
+                              variant="outline"
+                              className={scheduleLockText(schedule).className}
+                            >
+                              {scheduleLockText(schedule).label}
+                            </Badge>
+                            <Badge
+                              variant="outline"
+                              className={
+                                schedule.preparation?.prepared_at
+                                  ? 'border-sky-200 bg-sky-50 text-sky-700'
+                                  : 'border-amber-200 bg-amber-50 text-amber-700'
+                              }
+                            >
+                              {schedule.preparation?.prepared_at
+                                ? `準備完了 ${countCompletedPreparationItems(schedule.preparation)}/5`
+                                : `準備 ${countCompletedPreparationItems(schedule.preparation)}/5`}
+                            </Badge>
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                            <span>{VISIT_TYPE_LABELS[schedule.visit_type]}</span>
+                            <span>
+                              {timeLabel(schedule.time_window_start, schedule.time_window_end)}
+                            </span>
+                            <span>ルート順 {schedule.route_order ?? '未設定'}</span>
+                            <span>当日担当 {schedule.workload_hint.daily_visit_count}件</span>
+                          </div>
                         </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                          <span>{VISIT_TYPE_LABELS[schedule.visit_type]}</span>
-                          <span>{timeLabel(schedule.time_window_start, schedule.time_window_end)}</span>
-                          <span>ルート順 {schedule.route_order ?? '未設定'}</span>
-                          <span>当日担当 {schedule.workload_hint.daily_visit_count}件</span>
+                        <div className="text-right text-sm">
+                          <p className="font-medium text-foreground">
+                            {pharmacistNameById.get(schedule.pharmacist_id) ?? '薬剤師未登録'}
+                          </p>
+                          <p className="text-muted-foreground">
+                            {schedule.site?.name ?? '拠点未設定'}
+                          </p>
                         </div>
                       </div>
-                      <div className="text-right text-sm">
-                        <p className="font-medium text-foreground">
-                          {pharmacistNameById.get(schedule.pharmacist_id) ?? '薬剤師未登録'}
-                        </p>
-                        <p className="text-muted-foreground">
-                          {schedule.site?.name ?? '拠点未設定'}
-                        </p>
-                      </div>
-                    </div>
 
                       <div className="grid gap-3 rounded-2xl bg-muted/30 p-4 lg:grid-cols-2">
                         <div className="space-y-1 text-sm">
@@ -3672,205 +3613,212 @@ export function ScheduleDayView({
                         </div>
                       </div>
 
-                    {(schedule.facility_hint || schedule.handoff_hint) && (
-                      <div className="grid gap-3 lg:grid-cols-2">
-                        {schedule.facility_hint && (
-                          <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-                            <p className="font-medium">施設モード</p>
-                            <p className="mt-1 leading-6">
-                              {schedule.facility_hint.label} で同日 {schedule.facility_hint.patient_count} 名を担当
-                            </p>
-                            <p className="mt-1 text-xs text-sky-800/80">
-                              {schedule.facility_hint.patient_names.join('、')}
-                            </p>
-                          </div>
-                        )}
-                        {schedule.handoff_hint && (
-                          <div className="rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-900">
-                            <p className="font-medium">引継ぎ・例外メモ</p>
-                            <p className="mt-1 leading-6">{schedule.handoff_hint.summary}</p>
-                            {schedule.workload_hint.urgent_visit_count > 0 && (
-                              <p className="mt-1 text-xs text-purple-800/80">
-                                当日至急案件 {schedule.workload_hint.urgent_visit_count} 件
+                      {(schedule.facility_hint || schedule.handoff_hint) && (
+                        <div className="grid gap-3 lg:grid-cols-2">
+                          {schedule.facility_hint && (
+                            <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                              <p className="font-medium">施設モード</p>
+                              <p className="mt-1 leading-6">
+                                {schedule.facility_hint.label} で同日{' '}
+                                {schedule.facility_hint.patient_count} 名を担当
                               </p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {schedule.override_request?.status === 'pending' && (
-                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <p className="font-medium">確定済み訪問の変更承認待ち</p>
-                            <p className="mt-1 leading-6">
-                              {schedule.override_request.reason}
-                            </p>
-                            {schedule.override_request.impact_summary &&
-                              typeof schedule.override_request.impact_summary
-                                .impacted_schedule_count === 'number' && (
-                                <p className="mt-1 text-xs text-amber-800/80">
-                                  影響予定:{' '}
-                                  {
-                                    schedule.override_request.impact_summary
-                                      .impacted_schedule_count as number
-                                  }
-                                  件
+                              <p className="mt-1 text-xs text-sky-800/80">
+                                {schedule.facility_hint.patient_names.join('、')}
+                              </p>
+                            </div>
+                          )}
+                          {schedule.handoff_hint && (
+                            <div className="rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-900">
+                              <p className="font-medium">引継ぎ・例外メモ</p>
+                              <p className="mt-1 leading-6">{schedule.handoff_hint.summary}</p>
+                              {schedule.workload_hint.urgent_visit_count > 0 && (
+                                <p className="mt-1 text-xs text-purple-800/80">
+                                  当日至急案件 {schedule.workload_hint.urgent_visit_count} 件
                                 </p>
                               )}
-                            {schedule.override_request.impact_summary &&
-                              typeof schedule.override_request.impact_summary
-                                .proposed_replacements === 'number' && (
-                                <p className="mt-1 text-xs text-amber-800/80">
-                                  再提案候補:{' '}
-                                  {
-                                    schedule.override_request.impact_summary
-                                      .proposed_replacements as number
-                                  }
-                                  件
-                                </p>
-                              )}
-                            {readImpactedPatientNames(
-                              schedule.override_request.impact_summary
-                            ).length > 0 && (
-                              <p className="mt-1 text-xs text-amber-800/80">
-                                影響患者:{' '}
-                                {readImpactedPatientNames(
-                                  schedule.override_request.impact_summary
-                                ).join('、')}
-                              </p>
-                            )}
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => rescheduleApprovalMutation.mutate(schedule.id)}
-                            disabled={rescheduleApprovalMutation.isPending}
-                          >
-                            変更承認
-                          </Button>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    )}
-
-                    <div className="rounded-xl border bg-muted/20 px-4 py-3 text-sm">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="font-medium text-foreground">訪問準備</p>
-                        <span className="text-xs text-muted-foreground">
-                          {countCompletedPreparationItems(schedule.preparation)}/
-                          {PREPARATION_ITEMS.length} 完了
-                        </span>
-                      </div>
-                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                        {PREPARATION_ITEMS.map(([field, label]) => (
-                          <div
-                            key={field}
-                            className="flex items-center gap-2 rounded-lg border border-border/60 bg-background px-3 py-2"
-                          >
-                            <div
-                              className={[
-                                'size-2 rounded-full',
-                                schedule.preparation?.[field]
-                                  ? 'bg-emerald-500'
-                                  : 'bg-slate-300',
-                              ].join(' ')}
-                            />
-                            <span className="text-xs text-foreground">{label}</span>
-                          </div>
-                        ))}
-                      </div>
-                      {schedule.preparation?.prepared_at && (
-                        <p className="mt-3 text-xs text-muted-foreground">
-                          最終更新{' '}
-                          {format(parseISO(schedule.preparation.prepared_at), 'yyyy/MM/dd HH:mm', {
-                            locale: ja,
-                          })}
-                        </p>
                       )}
-                    </div>
 
-                    {scheduleCadence && (
-                      <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-950">
-                        <p className="font-medium">算定 cadence</p>
-                        <p className="mt-1">
-                          次回算定可能日: {scheduleCadence.next_billable_date ?? '提案不可'} / 残回数{' '}
-                          {scheduleCadence.remaining_month_count}
-                        </p>
-                        {scheduleWarningMessages.length > 0 && (
-                          <p className="mt-1 text-amber-800">
-                            {scheduleWarningMessages.slice(0, 2).join(' / ')}
+                      {schedule.override_request?.status === 'pending' && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="font-medium">確定済み訪問の変更承認待ち</p>
+                              <p className="mt-1 leading-6">{schedule.override_request.reason}</p>
+                              {schedule.override_request.impact_summary &&
+                                typeof schedule.override_request.impact_summary
+                                  .impacted_schedule_count === 'number' && (
+                                  <p className="mt-1 text-xs text-amber-800/80">
+                                    影響予定:{' '}
+                                    {
+                                      schedule.override_request.impact_summary
+                                        .impacted_schedule_count as number
+                                    }
+                                    件
+                                  </p>
+                                )}
+                              {schedule.override_request.impact_summary &&
+                                typeof schedule.override_request.impact_summary
+                                  .proposed_replacements === 'number' && (
+                                  <p className="mt-1 text-xs text-amber-800/80">
+                                    再提案候補:{' '}
+                                    {
+                                      schedule.override_request.impact_summary
+                                        .proposed_replacements as number
+                                    }
+                                    件
+                                  </p>
+                                )}
+                              {readImpactedPatientNames(schedule.override_request.impact_summary)
+                                .length > 0 && (
+                                <p className="mt-1 text-xs text-amber-800/80">
+                                  影響患者:{' '}
+                                  {readImpactedPatientNames(
+                                    schedule.override_request.impact_summary,
+                                  ).join('、')}
+                                </p>
+                              )}
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => rescheduleApprovalMutation.mutate(schedule.id)}
+                              disabled={rescheduleApprovalMutation.isPending}
+                            >
+                              変更承認
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="rounded-xl border bg-muted/20 px-4 py-3 text-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="font-medium text-foreground">訪問準備</p>
+                          <span className="text-xs text-muted-foreground">
+                            {countCompletedPreparationItems(schedule.preparation)}/
+                            {PREPARATION_ITEMS.length} 完了
+                          </span>
+                        </div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          {PREPARATION_ITEMS.map(([field, label]) => (
+                            <div
+                              key={field}
+                              className="flex items-center gap-2 rounded-lg border border-border/60 bg-background px-3 py-2"
+                            >
+                              <div
+                                className={[
+                                  'size-2 rounded-full',
+                                  schedule.preparation?.[field] ? 'bg-emerald-500' : 'bg-slate-300',
+                                ].join(' ')}
+                              />
+                              <span className="text-xs text-foreground">{label}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {schedule.preparation?.prepared_at && (
+                          <p className="mt-3 text-xs text-muted-foreground">
+                            最終更新{' '}
+                            {format(
+                              parseISO(schedule.preparation.prepared_at),
+                              'yyyy/MM/dd HH:mm',
+                              {
+                                locale: ja,
+                              },
+                            )}
                           </p>
                         )}
                       </div>
-                    )}
 
-                    {schedule.applied_override && (
-                      <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
-                        <p className="font-medium">例外変更履歴</p>
-                        <p className="mt-1 leading-6">
-                          {format(
-                            parseISO(schedule.applied_override.source_schedule.scheduled_date),
-                            'yyyy/MM/dd',
-                            { locale: ja }
-                          )}{' '}
-                          {timeLabel(
-                            schedule.applied_override.source_schedule.time_window_start,
-                            schedule.applied_override.source_schedule.time_window_end
-                          )}{' '}
-                          から再調整。理由: {schedule.applied_override.reason}
-                        </p>
-                        <p className="mt-1 text-xs text-orange-800/80">
-                          変更前担当:
-                          {' '}
-                          {pharmacistNameById.get(
-                            schedule.applied_override.source_schedule.pharmacist_id
-                          ) ?? '薬剤師未登録'}
-                        </p>
-                      </div>
-                    )}
+                      {scheduleCadence && (
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-950">
+                          <p className="font-medium">算定 cadence</p>
+                          <p className="mt-1">
+                            次回算定可能日: {scheduleCadence.next_billable_date ?? '提案不可'} /
+                            残回数 {scheduleCadence.remaining_month_count}
+                          </p>
+                          {scheduleWarningMessages.length > 0 && (
+                            <p className="mt-1 text-amber-800">
+                              {scheduleWarningMessages.slice(0, 2).join(' / ')}
+                            </p>
+                          )}
+                        </div>
+                      )}
 
-                    {['completed', 'cancelled', 'rescheduled'].includes(schedule.schedule_status) ? null : (
-                      <div className="flex flex-wrap gap-2 border-t pt-4">
-                        {['ready', 'departed'].includes(schedule.schedule_status) && (
+                      {schedule.applied_override && (
+                        <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
+                          <p className="font-medium">例外変更履歴</p>
+                          <p className="mt-1 leading-6">
+                            {format(
+                              parseISO(schedule.applied_override.source_schedule.scheduled_date),
+                              'yyyy/MM/dd',
+                              { locale: ja },
+                            )}{' '}
+                            {timeLabel(
+                              schedule.applied_override.source_schedule.time_window_start,
+                              schedule.applied_override.source_schedule.time_window_end,
+                            )}{' '}
+                            から再調整。理由: {schedule.applied_override.reason}
+                          </p>
+                          <p className="mt-1 text-xs text-orange-800/80">
+                            変更前担当:{' '}
+                            {pharmacistNameById.get(
+                              schedule.applied_override.source_schedule.pharmacist_id,
+                            ) ?? '薬剤師未登録'}
+                          </p>
+                        </div>
+                      )}
+
+                      {['completed', 'cancelled', 'rescheduled'].includes(
+                        schedule.schedule_status,
+                      ) ? null : (
+                        <div className="flex flex-wrap gap-2 border-t pt-4">
+                          {['ready', 'departed'].includes(schedule.schedule_status) && (
+                            <Button
+                              size="sm"
+                              className="gap-1.5"
+                              variant={
+                                getDepartureCarryWarning(schedule) ? 'destructive' : 'default'
+                              }
+                              onClick={() => handleVisitStart(schedule)}
+                            >
+                              <PlayCircle className="size-4" aria-hidden="true" />
+                              {getDepartureCarryWarning(schedule)
+                                ? '警告を確認して訪問開始'
+                                : '訪問開始'}
+                            </Button>
+                          )}
+                          {schedule.schedule_status === 'in_progress' && (
+                            <Link href={`/visits/${schedule.id}/record`}>
+                              <Button
+                                size="sm"
+                                variant="default"
+                                className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+                              >
+                                <CheckCircle2 className="size-4" aria-hidden="true" />
+                                訪問完了
+                              </Button>
+                            </Link>
+                          )}
                           <Button
                             size="sm"
-                            className="gap-1.5"
-                            variant={getDepartureCarryWarning(schedule) ? 'destructive' : 'default'}
-                            onClick={() => handleVisitStart(schedule)}
+                            variant="outline"
+                            onClick={() => openPreparationDialog(schedule)}
                           >
-                            <PlayCircle className="size-4" aria-hidden="true" />
-                            {getDepartureCarryWarning(schedule)
-                              ? '警告を確認して訪問開始'
-                              : '訪問開始'}
+                            訪問準備
                           </Button>
-                        )}
-                        {schedule.schedule_status === 'in_progress' && (
-                          <Link href={`/visits/${schedule.id}/record`}>
-                            <Button size="sm" variant="default" className="gap-1.5 bg-emerald-600 hover:bg-emerald-700">
-                              <CheckCircle2 className="size-4" aria-hidden="true" />
-                              訪問完了
-                            </Button>
-                          </Link>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => openPreparationDialog(schedule)}
-                        >
-                          訪問準備
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => openRescheduleDialog(schedule)}
-                        >
-                          リスケ候補を作る
-                        </Button>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openRescheduleDialog(schedule)}
+                          >
+                            リスケ候補を作る
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
                 );
               })
             )}
@@ -3902,7 +3850,7 @@ export function ScheduleDayView({
                     })}{' '}
                     {timeLabel(
                       rescheduleTarget.time_window_start,
-                      rescheduleTarget.time_window_end
+                      rescheduleTarget.time_window_end,
                     )}
                   </p>
                 </>
@@ -3933,7 +3881,8 @@ export function ScheduleDayView({
                   onValueChange={(value) =>
                     setRescheduleForm((current) => ({
                       ...current,
-                      reason_code: (value as typeof current.reason_code | null) ?? current.reason_code,
+                      reason_code:
+                        (value as typeof current.reason_code | null) ?? current.reason_code,
                     }))
                   }
                 >
@@ -4076,17 +4025,12 @@ export function ScheduleDayView({
           <div className="space-y-4">
             {contactLogTarget && (
               <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm">
-                <p className="font-medium text-foreground">
-                  {contactLogTarget.case_.patient.name}
-                </p>
+                <p className="font-medium text-foreground">{contactLogTarget.case_.patient.name}</p>
                 <p className="text-muted-foreground">
                   {format(parseISO(contactLogTarget.proposed_date), 'yyyy/MM/dd', {
                     locale: ja,
                   })}{' '}
-                  {timeLabel(
-                    contactLogTarget.time_window_start,
-                    contactLogTarget.time_window_end
-                  )}
+                  {timeLabel(contactLogTarget.time_window_start, contactLogTarget.time_window_end)}
                 </p>
               </div>
             )}
@@ -4243,7 +4187,8 @@ export function ScheduleDayView({
           <DialogHeader>
             <DialogTitle>施設単位の定期訪問日を設定</DialogTitle>
             <DialogDescription>
-              同一施設患者の訪問曜日と受入時間帯をまとめて保存し、RRULE 生成時の共通条件として使います。
+              同一施設患者の訪問曜日と受入時間帯をまとめて保存し、RRULE
+              生成時の共通条件として使います。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -4274,8 +4219,12 @@ export function ScheduleDayView({
                           setFacilityVisitDayForm((current) => ({
                             ...current,
                             preferred_weekdays: next
-                              ? [...current.preferred_weekdays, weekday.value].sort((left, right) => left - right)
-                              : current.preferred_weekdays.filter((value) => value !== weekday.value),
+                              ? [...current.preferred_weekdays, weekday.value].sort(
+                                  (left, right) => left - right,
+                                )
+                              : current.preferred_weekdays.filter(
+                                  (value) => value !== weekday.value,
+                                ),
                           }))
                         }
                       />
@@ -4427,25 +4376,27 @@ export function ScheduleDayView({
                   })}{' '}
                   {timeLabel(
                     preparationTarget.time_window_start,
-                    preparationTarget.time_window_end
+                    preparationTarget.time_window_end,
                   )}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {preparationLoading
                     ? '最新の訪問準備を読み込み中...'
                     : preparationDetails?.preparation?.prepared_at
-                      ? `最終更新 ${format(parseISO(preparationDetails.preparation.prepared_at), 'yyyy/MM/dd HH:mm', {
-                          locale: ja,
-                        })}`
+                      ? `最終更新 ${format(
+                          parseISO(preparationDetails.preparation.prepared_at),
+                          'yyyy/MM/dd HH:mm',
+                          {
+                            locale: ja,
+                          },
+                        )}`
                       : '未保存'}
                 </p>
               </div>
             )}
             {getDepartureCarryWarning(preparationTarget) && (
               <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-900">
-                <p className="font-medium">
-                  {getDepartureCarryWarning(preparationTarget)?.title}
-                </p>
+                <p className="font-medium">{getDepartureCarryWarning(preparationTarget)?.title}</p>
                 <p className="mt-1 leading-6">
                   {getDepartureCarryWarning(preparationTarget)?.description}
                 </p>
@@ -4491,7 +4442,9 @@ export function ScheduleDayView({
                 )}
 
                 {preparationDetails.pack.onboarding_readiness && (
-                  <OnboardingWarningBadges readiness={preparationDetails.pack.onboarding_readiness} />
+                  <OnboardingWarningBadges
+                    readiness={preparationDetails.pack.onboarding_readiness}
+                  />
                 )}
 
                 {preparationDetails.pack.previous_visit && (
@@ -4501,7 +4454,7 @@ export function ScheduleDayView({
                       {format(
                         parseISO(preparationDetails.pack.previous_visit.visit_date),
                         'yyyy/MM/dd',
-                        { locale: ja }
+                        { locale: ja },
                       )}{' '}
                       / {preparationDetails.pack.previous_visit.outcome_status}
                     </p>
@@ -4539,18 +4492,27 @@ export function ScheduleDayView({
                       <span className="text-[11px] text-sky-800/80">
                         {preparationDetails.pack.prescription_changes.previous_prescribed_date
                           ? `${format(
-                              parseISO(preparationDetails.pack.prescription_changes.previous_prescribed_date),
+                              parseISO(
+                                preparationDetails.pack.prescription_changes
+                                  .previous_prescribed_date,
+                              ),
                               'yyyy/MM/dd',
-                              { locale: ja }
+                              { locale: ja },
                             )} → ${format(
-                              parseISO(preparationDetails.pack.prescription_changes.current_prescribed_date),
+                              parseISO(
+                                preparationDetails.pack.prescription_changes
+                                  .current_prescribed_date,
+                              ),
                               'yyyy/MM/dd',
-                              { locale: ja }
+                              { locale: ja },
                             )}`
                           : `最新 ${format(
-                              parseISO(preparationDetails.pack.prescription_changes.current_prescribed_date),
+                              parseISO(
+                                preparationDetails.pack.prescription_changes
+                                  .current_prescribed_date,
+                              ),
                               'yyyy/MM/dd',
-                              { locale: ja }
+                              { locale: ja },
                             )}`}
                       </span>
                     </div>
@@ -4572,9 +4534,11 @@ export function ScheduleDayView({
                           <p className="mt-1 text-sky-800/80">なし</p>
                         ) : (
                           <ul className="mt-1 space-y-1 text-sky-900">
-                            {preparationDetails.pack.prescription_changes.added.slice(0, 4).map((drug) => (
-                              <li key={`added-${drug}`}>+ {drug}</li>
-                            ))}
+                            {preparationDetails.pack.prescription_changes.added
+                              .slice(0, 4)
+                              .map((drug) => (
+                                <li key={`added-${drug}`}>+ {drug}</li>
+                              ))}
                           </ul>
                         )}
                       </div>
@@ -4584,14 +4548,16 @@ export function ScheduleDayView({
                           <p className="mt-1 text-sky-800/80">なし</p>
                         ) : (
                           <ul className="mt-1 space-y-1 text-sky-900">
-                            {preparationDetails.pack.prescription_changes.changed.slice(0, 4).map((item) => (
-                              <li key={`changed-${item.drug_name}`}>
-                                {item.drug_name}
-                                <span className="block text-[11px] text-sky-800/80">
-                                  {item.reasons.join(' / ')}
-                                </span>
-                              </li>
-                            ))}
+                            {preparationDetails.pack.prescription_changes.changed
+                              .slice(0, 4)
+                              .map((item) => (
+                                <li key={`changed-${item.drug_name}`}>
+                                  {item.drug_name}
+                                  <span className="block text-[11px] text-sky-800/80">
+                                    {item.reasons.join(' / ')}
+                                  </span>
+                                </li>
+                              ))}
                           </ul>
                         )}
                       </div>
@@ -4601,9 +4567,11 @@ export function ScheduleDayView({
                           <p className="mt-1 text-sky-800/80">なし</p>
                         ) : (
                           <ul className="mt-1 space-y-1 text-sky-900">
-                            {preparationDetails.pack.prescription_changes.removed.slice(0, 4).map((drug) => (
-                              <li key={`removed-${drug}`}>- {drug}</li>
-                            ))}
+                            {preparationDetails.pack.prescription_changes.removed
+                              .slice(0, 4)
+                              .map((drug) => (
+                                <li key={`removed-${drug}`}>- {drug}</li>
+                              ))}
                           </ul>
                         )}
                       </div>
@@ -4815,7 +4783,7 @@ export function ScheduleDayView({
                 })}{' '}
                 {timeLabel(
                   departureWarningTarget.time_window_start,
-                  departureWarningTarget.time_window_end
+                  departureWarningTarget.time_window_end,
                 )}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">

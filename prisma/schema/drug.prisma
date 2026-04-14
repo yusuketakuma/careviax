@@ -51,26 +51,26 @@ enum ImportStatus {
 
 // グローバルマスタ（org_id なし）
 model DrugMaster {
-  id                      String   @id @default(cuid())
-  yj_code                 String   @unique // YJコード 12桁
-  receipt_code            String? // レセ電コード 9桁
-  hot_code                String? // HOTコード 13桁
-  jan_code                String?
-  drug_name               String
-  drug_name_kana          String?
-  generic_name            String?
-  drug_price              Decimal? @db.Decimal(10, 2)
-  unit                    String?
-  dosage_form             String?
-  therapeutic_category    String? // 薬効分類 4桁
-  manufacturer            String?
-  is_generic              Boolean  @default(false)
-  is_narcotic             Boolean  @default(false)
-  is_psychotropic         Boolean  @default(false)
-  max_administration_days Int?
+  id                       String    @id @default(cuid())
+  yj_code                  String    @unique // YJコード 12桁
+  receipt_code             String? // レセ電コード 9桁
+  hot_code                 String? // HOTコード 13桁
+  jan_code                 String?
+  drug_name                String
+  drug_name_kana           String?
+  generic_name             String?
+  drug_price               Decimal?  @db.Decimal(10, 2)
+  unit                     String?
+  dosage_form              String?
+  therapeutic_category     String? // 薬効分類 4桁
+  manufacturer             String?
+  is_generic               Boolean   @default(false)
+  is_narcotic              Boolean   @default(false)
+  is_psychotropic          Boolean   @default(false)
+  max_administration_days  Int?
   transitional_expiry_date DateTime?
-  created_at              DateTime @default(now())
-  updated_at              DateTime @updatedAt
+  created_at               DateTime  @default(now())
+  updated_at               DateTime  @updatedAt
 
   package_inserts   DrugPackageInsert[]
   interactions_as_a DrugInteraction[]   @relation("DrugA")
@@ -86,9 +86,9 @@ model DrugMaster {
 
 // グローバルマスタ（org_id なし）
 model DrugPackageInsert {
-  id                      String               @id @default(cuid())
+  id                      String                @id @default(cuid())
   drug_master_id          String
-  drug_master             DrugMaster           @relation(fields: [drug_master_id], references: [id])
+  drug_master             DrugMaster            @relation(fields: [drug_master_id], references: [id])
   contraindications       Json?
   interactions            Json?
   adverse_effects         Json?
@@ -97,25 +97,25 @@ model DrugPackageInsert {
   document_version        String?
   revised_at              DateTime?
   source_format           DocumentSourceFormat?
-  created_at              DateTime             @default(now())
-  updated_at              DateTime             @updatedAt
+  created_at              DateTime              @default(now())
+  updated_at              DateTime              @updatedAt
 
   @@index([drug_master_id])
 }
 
 // グローバルマスタ（org_id なし）
 model DrugInteraction {
-  id              String             @id @default(cuid())
+  id              String              @id @default(cuid())
   drug_a_id       String
-  drug_a          DrugMaster         @relation("DrugA", fields: [drug_a_id], references: [id])
+  drug_a          DrugMaster          @relation("DrugA", fields: [drug_a_id], references: [id])
   drug_b_id       String
-  drug_b          DrugMaster         @relation("DrugB", fields: [drug_b_id], references: [id])
+  drug_b          DrugMaster          @relation("DrugB", fields: [drug_b_id], references: [id])
   severity        InteractionSeverity
   mechanism       String?
   clinical_effect String?
   source          InteractionSource
-  created_at      DateTime           @default(now())
-  updated_at      DateTime           @updatedAt
+  created_at      DateTime            @default(now())
+  updated_at      DateTime            @updatedAt
 
   @@unique([drug_a_id, drug_b_id, source])
   @@index([drug_a_id])
@@ -138,20 +138,20 @@ model DrugAlertRule {
 
 // テナント別
 model PharmacyDrugStock {
-  id                  String      @id @default(cuid())
-  org_id              String
-  site_id             String
-  site                PharmacySite @relation(fields: [site_id], references: [id])
-  drug_master_id      String
-  drug_master         DrugMaster  @relation(fields: [drug_master_id], references: [id])
-  is_stocked          Boolean     @default(true)
-  stock_qty           Int?
-  reorder_point       Int?
-  last_dispensed_at   DateTime?
+  id                   String       @id @default(cuid())
+  org_id               String
+  site_id              String
+  site                 PharmacySite @relation(fields: [site_id], references: [id])
+  drug_master_id       String
+  drug_master          DrugMaster   @relation(fields: [drug_master_id], references: [id])
+  is_stocked           Boolean      @default(true)
+  stock_qty            Int?
+  reorder_point        Int?
+  last_dispensed_at    DateTime?
   preferred_generic_id String?
-  preferred_generic   DrugMaster? @relation("PreferredGeneric", fields: [preferred_generic_id], references: [id])
-  created_at          DateTime    @default(now())
-  updated_at          DateTime    @updatedAt
+  preferred_generic    DrugMaster?  @relation("PreferredGeneric", fields: [preferred_generic_id], references: [id])
+  created_at           DateTime     @default(now())
+  updated_at           DateTime     @updatedAt
 
   @@unique([site_id, drug_master_id])
   @@index([org_id])

@@ -20,15 +20,15 @@ enum SettingScope {
 }
 
 model NotificationRule {
-  id          String   @id @default(cuid())
-  org_id      String
-  event_type  String
-  channel     String   // in_app/email/sms/line/fax/mcs
-  recipients  Json
-  enabled     Boolean  @default(true)
-  conditions  Json?
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  id         String   @id @default(cuid())
+  org_id     String
+  event_type String
+  channel    String // in_app/email/sms/line/fax/mcs
+  recipients Json
+  enabled    Boolean  @default(true)
+  conditions Json?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   @@index([org_id])
   @@index([event_type])
@@ -40,10 +40,10 @@ model BillingRule {
   org_id                String
   ssot_key              String?
   billing_scope         String      @default("custom") // home_care_ssot/custom_override
-  rule_type             String      // base/addition/regional_addition/reduction
+  rule_type             String // base/addition/regional_addition/reduction
   service_type          String      @default("generic") // medical_home_visit/care_home_management
   payer_basis           PayerBasis?
-  provider_scope        String?     // pharmacy/hospital_clinic
+  provider_scope        String? // pharmacy/hospital_clinic
   selection_mode        String      @default("manual") // auto/manual
   calculation_unit      String      @default("point") // point/unit/percent
   display_order         Int         @default(0)
@@ -61,38 +61,38 @@ model BillingRule {
   created_at            DateTime    @default(now())
   updated_at            DateTime    @updatedAt
 
+  @@unique([org_id, ssot_key])
   @@index([org_id])
   @@index([rule_type])
   @@index([billing_scope])
   @@index([service_type])
   @@index([is_active])
-  @@unique([org_id, ssot_key])
 }
 
 model BillingCandidate {
-  id                  String   @id @default(cuid())
-  org_id              String
-  patient_id          String
-  cycle_id            String?
-  evidence_id         String?
-  rule_id             String?
-  dedupe_key          String?
-  billing_month       DateTime @db.Date // YYYY-MM-01
-  billing_code        String
-  billing_name        String
-  points              Int?
-  quantity            Int      @default(1)
+  id                    String   @id @default(cuid())
+  org_id                String
+  patient_id            String
+  cycle_id              String?
+  evidence_id           String?
+  rule_id               String?
+  dedupe_key            String?
+  billing_month         DateTime @db.Date // YYYY-MM-01
+  billing_code          String
+  billing_name          String
+  points                Int?
+  quantity              Int      @default(1)
   calculation_breakdown Json?
-  source_snapshot     Json?
-  status              String   @default("candidate") // candidate/confirmed/excluded/exported
-  exclusion_reason    String?
-  created_at          DateTime @default(now())
-  updated_at          DateTime @updatedAt
+  source_snapshot       Json?
+  status                String   @default("candidate") // candidate/confirmed/excluded/exported
+  exclusion_reason      String?
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
 
+  @@unique([org_id, dedupe_key])
   @@index([org_id])
   @@index([billing_month])
   @@index([status])
-  @@unique([org_id, dedupe_key])
 }
 
 model BillingEvidence {
@@ -103,8 +103,8 @@ model BillingEvidence {
   cycle_id                   String?
   billing_month              DateTime?  @db.Date
   payer_basis                PayerBasis
-  billing_service_type       String?    // medical_home_visit/care_home_management
-  provider_scope             String?    // pharmacy/hospital_clinic
+  billing_service_type       String? // medical_home_visit/care_home_management
+  provider_scope             String? // pharmacy/hospital_clinic
   claimable                  Boolean    @default(false)
   exclusion_reason           String?
   order_ref                  String?
@@ -124,11 +124,11 @@ model BillingEvidence {
   created_at                 DateTime   @default(now())
   updated_at                 DateTime   @updatedAt
 
+  @@unique([org_id, visit_record_id])
   @@index([org_id])
   @@index([visit_record_id])
   @@index([billing_month])
   @@index([cycle_id])
-  @@unique([org_id, visit_record_id])
 }
 
 model Notification {
@@ -147,11 +147,11 @@ model Notification {
   created_at DateTime         @default(now())
   updated_at DateTime         @updatedAt
 
+  @@unique([org_id, user_id, dedupe_key])
   @@index([org_id])
   @@index([user_id])
   @@index([is_read])
   @@index([event_type])
-  @@unique([org_id, user_id, dedupe_key])
 }
 
 model AuditLog {
@@ -174,44 +174,44 @@ model AuditLog {
 }
 
 model IntegrationJob {
-  id          String    @id @default(cuid())
-  org_id      String?
-  job_type    String
-  dedupe_key  String?
-  status      String    @default("pending") // pending/running/completed/failed
-  input       Json?
-  output      Json?
-  error_log   String?
-  run_at      DateTime?
-  locked_at   DateTime?
-  started_at  DateTime?
+  id           String    @id @default(cuid())
+  org_id       String?
+  job_type     String
+  dedupe_key   String?
+  status       String    @default("pending") // pending/running/completed/failed
+  input        Json?
+  output       Json?
+  error_log    String?
+  run_at       DateTime?
+  locked_at    DateTime?
+  started_at   DateTime?
   completed_at DateTime?
-  retry_count Int       @default(0)
-  max_retries Int       @default(3)
-  created_at  DateTime  @default(now())
-  updated_at  DateTime  @updatedAt
+  retry_count  Int       @default(0)
+  max_retries  Int       @default(3)
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
 
+  @@unique([job_type, org_id, dedupe_key])
   @@index([job_type])
   @@index([status])
   @@index([run_at])
-  @@unique([job_type, org_id, dedupe_key])
 }
 
 model Template {
-  id            String   @id @default(cuid())
-  org_id        String
-  name          String
-  template_type String // care_report/tracing_report/management_plan/medication_calendar/consent_form
-  target_role   String?
-  format        String   @default("html") // html/pdf
-  version       Int      @default(1)
-  effective_from DateTime? @db.Date
-  effective_to  DateTime? @db.Date
-  content       Json
-  is_default    Boolean  @default(false)
+  id              String          @id @default(cuid())
+  org_id          String
+  name            String
+  template_type   String // care_report/tracing_report/management_plan/medication_calendar/consent_form
+  target_role     String?
+  format          String          @default("html") // html/pdf
+  version         Int             @default(1)
+  effective_from  DateTime?       @db.Date
+  effective_to    DateTime?       @db.Date
+  content         Json
+  is_default      Boolean         @default(false)
   consent_records ConsentRecord[]
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
 
   @@index([org_id])
   @@index([template_type])
@@ -223,7 +223,7 @@ model DocumentDeliveryRule {
   org_id            String
   document_type     String
   target_role       String
-  channel           String   // email/fax/mcs
+  channel           String // email/fax/mcs
   fallback_channels Json?
   is_active         Boolean  @default(true)
   created_at        DateTime @default(now())
@@ -260,21 +260,21 @@ model LabelDictionary {
 }
 
 model UatFeedback {
-  id                  String   @id @default(cuid())
-  org_id              String
-  submitted_by        String?
-  priority            String
-  status              String   @default("open")
-  owner_user_id       String?
-  feedback            String
-  checklist_progress  String?
-  checked_items       Json?
-  source              String   @default("pilot_pharmacy")
-  linked_work_item    String?
-  due_date            DateTime?
-  resolved_at         DateTime?
-  created_at          DateTime @default(now())
-  updated_at          DateTime @updatedAt
+  id                 String    @id @default(cuid())
+  org_id             String
+  submitted_by       String?
+  priority           String
+  status             String    @default("open")
+  owner_user_id      String?
+  feedback           String
+  checklist_progress String?
+  checked_items      Json?
+  source             String    @default("pilot_pharmacy")
+  linked_work_item   String?
+  due_date           DateTime?
+  resolved_at        DateTime?
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
 
   @@index([org_id])
   @@index([priority])

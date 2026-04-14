@@ -1,10 +1,11 @@
 {
-  "active": true,
-  "current_phase": "architect-review",
+  "active": false,
+  "current_phase": "cancelled",
   "started_at": "2026-04-03T02:48:47Z",
   "source_spec": ".omx/specs/deep-interview-uiux-improvement.md",
   "prd_path": ".omx/plans/prd-uiux-improvement.md",
   "test_spec_path": ".omx/plans/test-spec-uiux-improvement.md",
   "iteration": 85,
-  "last_turn_at": "2026-04-04T23:45:02.813Z"
+  "last_turn_at": "2026-04-04T23:45:02.813Z",
+  "completed_at": "2026-04-14T06:12:25.629Z"
 }

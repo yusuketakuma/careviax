@@ -92,8 +92,22 @@ describe('/api/billing-evidence/stats GET', () => {
       .mockResolvedValueOnce(8)
       .mockResolvedValueOnce(3);
     billingEvidenceFindManyMock.mockResolvedValue([
-      { claimable: true, exclusion_reason: null },
-      { claimable: false, exclusion_reason: '同意未取得' },
+      {
+        claimable: true,
+        exclusion_reason: null,
+        calculation_context: {
+          effective_revision_code: '2026',
+          site_config_status: 'resolved',
+        },
+      },
+      {
+        claimable: false,
+        exclusion_reason: '同意未取得',
+        calculation_context: {
+          effective_revision_code: '2024',
+          site_config_status: 'config_missing',
+        },
+      },
     ]);
     taskCountMock.mockResolvedValue(6);
     visitScheduleFindManyMock.mockResolvedValue([
@@ -129,6 +143,14 @@ describe('/api/billing-evidence/stats GET', () => {
         current_month_candidates: 11,
         current_month_claimable_evidence: 1,
         current_month_unclaimable_evidence: 1,
+        current_month_revision_breakdown: {
+          '2024': 1,
+          '2026': 1,
+        },
+        current_month_site_config_issues: {
+          missing: 1,
+          revision_mismatch: 0,
+        },
         current_month_close_ready: 8,
         current_month_close_blocked: 3,
         open_billing_review_tasks: 6,

@@ -111,6 +111,10 @@ pnpm test              # Run all tests once
 pnpm test:watch        # Watch mode
 pnpm test:coverage     # Run with coverage report
 pnpm test:e2e          # Run Playwright suite
+pnpm dev:e2e:local     # Start local app server for URL-based Playwright runs
+pnpm build:e2e:local   # Build the app for stable URL-based Playwright runs
+pnpm start:e2e:local   # Start the built app at http://localhost:3012
+pnpm test:e2e:local    # Run Playwright against http://localhost:3012
 pnpm test:e2e:list     # List Playwright tests without executing
 pnpm test:e2e:audit    # Run the audit-focused Playwright config
 pnpm test:e2e:audit:list

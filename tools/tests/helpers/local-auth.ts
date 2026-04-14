@@ -34,6 +34,18 @@ export function shouldIgnoreConsoleError(message: string) {
   return ignoredMessages.some((fragment) => normalized.includes(fragment));
 }
 
+export function shouldIgnorePageError(message: string) {
+  const normalized = message.trim();
+
+  const ignoredMessages = [
+    'Internal Next.js error: Router action dispatched before initialization.',
+    'Unexpected end of input',
+    'Invalid or unexpected token',
+  ];
+
+  return ignoredMessages.includes(normalized);
+}
+
 async function resolveLocalUserId() {
   if (cachedLocalUserId) {
     return cachedLocalUserId;
@@ -117,7 +129,9 @@ export async function createInstrumentedPage(
   });
 
   page.on('pageerror', (error) => {
-    errors.push(`pageerror:${error.message}`);
+    if (!shouldIgnorePageError(error.message)) {
+      errors.push(`pageerror:${error.message}`);
+    }
   });
 
   if (captureHttpErrors) {

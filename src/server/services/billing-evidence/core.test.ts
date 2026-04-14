@@ -88,7 +88,9 @@ function makeTx(overrides: Record<string, unknown> = {}) {
       findMany: vi.fn().mockResolvedValue([{ id: 'report_1', status: 'sent' }]),
     },
     deliveryRecord: {
-      findMany: vi.fn().mockResolvedValue([{ id: 'delivery_1', report_id: 'report_1', status: 'sent' }]),
+      findMany: vi
+        .fn()
+        .mockResolvedValue([{ id: 'delivery_1', report_id: 'report_1', status: 'sent' }]),
     },
     billingCandidate: {
       findMany: vi.fn().mockResolvedValue([]),
@@ -110,14 +112,15 @@ function makeTx(overrides: Record<string, unknown> = {}) {
     },
     patientInsurance: {
       // Default: medical insurance present (matching makePatient's medical_insurance_number)
-      findFirst: vi.fn().mockImplementation(
-        ({ where }: { where: { insurance_type: string } }) =>
+      findFirst: vi
+        .fn()
+        .mockImplementation(({ where }: { where: { insurance_type: string } }) =>
           Promise.resolve(
             where?.insurance_type === 'medical'
               ? { id: 'ins_1', number: 'med_1', insurance_type: 'medical', is_active: true }
               : null,
           ),
-      ),
+        ),
     },
   };
 
@@ -389,9 +392,9 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
         ]),
       },
       conferenceNote: {
-        findMany: vi.fn().mockResolvedValue([
-          { id: 'note_1', metadata: {}, generated_report_id: null },
-        ]),
+        findMany: vi
+          .fn()
+          .mockResolvedValue([{ id: 'note_1', metadata: {}, generated_report_id: null }]),
       },
     });
 
@@ -403,9 +406,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
     expect(tx.billingEvidence.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
-          recommended_rule_keys: expect.arrayContaining([
-            'medical.discharge_joint_guidance',
-          ]),
+          recommended_rule_keys: expect.arrayContaining(['medical.discharge_joint_guidance']),
         }),
       }),
     );
@@ -427,9 +428,9 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
         ]),
       },
       conferenceNote: {
-        findMany: vi.fn().mockResolvedValue([
-          { id: 'note_2', metadata: {}, generated_report_id: null },
-        ]),
+        findMany: vi
+          .fn()
+          .mockResolvedValue([{ id: 'note_2', metadata: {}, generated_report_id: null }]),
       },
     });
 
@@ -465,9 +466,9 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
         ]),
       },
       conferenceNote: {
-        findMany: vi.fn().mockResolvedValue([
-          { id: 'note_3', metadata: {}, generated_report_id: null },
-        ]),
+        findMany: vi
+          .fn()
+          .mockResolvedValue([{ id: 'note_3', metadata: {}, generated_report_id: null }]),
       },
     });
 
@@ -479,9 +480,95 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
     expect(tx.billingEvidence.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
-          recommended_rule_keys: expect.arrayContaining([
-            'medical.addition.terminal_care',
-          ]),
+          recommended_rule_keys: expect.arrayContaining(['medical.addition.terminal_care']),
+        }),
+      }),
+    );
+  });
+
+  it('resolves 2026 home comprehensive level 2 to イ for single-building visits', async () => {
+    const tx = makeTx({
+      visitRecord: {
+        findFirst: vi.fn().mockResolvedValue(
+          makeVisitRecord({
+            visit_date: new Date('2026-06-15T10:00:00.000Z'),
+            schedule: {
+              cycle_id: 'cycle_1',
+              case_id: 'case_1',
+              pharmacist_id: 'pharm_1',
+              visit_type: 'regular',
+              site_id: 'site_1',
+            },
+          }),
+        ),
+      },
+      pharmacySiteInsuranceConfig: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'cfg_2026',
+          revision_code: '2026',
+          config: { home_comprehensive_level: 'level_2' },
+        }),
+      },
+    });
+
+    await upsertBillingEvidenceForVisit(tx as never, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_1',
+    });
+
+    expect(tx.billingEvidence.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          applied_rule_keys: expect.arrayContaining(['site.medical.home_comprehensive_2_i']),
+        }),
+      }),
+    );
+  });
+
+  it('resolves 2026 home comprehensive level 2 to ロ for multi-building visits', async () => {
+    const tx = makeTx({
+      visitRecord: {
+        findFirst: vi.fn().mockResolvedValue(
+          makeVisitRecord({
+            visit_date: new Date('2026-06-15T10:00:00.000Z'),
+            schedule: {
+              cycle_id: 'cycle_1',
+              case_id: 'case_1',
+              pharmacist_id: 'pharm_1',
+              visit_type: 'regular',
+              site_id: 'site_1',
+            },
+          }),
+        ),
+      },
+      residence: {
+        findFirst: vi.fn().mockResolvedValue({
+          building_id: 'building_1',
+          facility_id: null,
+          facility_unit_id: null,
+          facility: null,
+          unit_name: '201',
+        }),
+        count: vi.fn().mockResolvedValueOnce(3).mockResolvedValueOnce(1),
+      },
+      pharmacySiteInsuranceConfig: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'cfg_2026',
+          revision_code: '2026',
+          config: { home_comprehensive_level: 'level_2' },
+        }),
+      },
+    });
+
+    await upsertBillingEvidenceForVisit(tx as never, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_1',
+    });
+
+    expect(tx.billingEvidence.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          applied_rule_keys: expect.arrayContaining(['site.medical.home_comprehensive_2_ro']),
         }),
       }),
     );
@@ -491,9 +578,9 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
   it('treats a child exactly on their 6th birthday as NOT under 6 (infantEligible=false)', async () => {
     // Visit date is 2026-03-20, birth_date is 2020-03-20 → exactly 6 years old
     const tx = makeTx();
-    tx.patient.findFirst = vi.fn().mockResolvedValue(
-      makePatient({ birth_date: new Date('2020-03-20T00:00:00.000Z') }),
-    );
+    tx.patient.findFirst = vi
+      .fn()
+      .mockResolvedValue(makePatient({ birth_date: new Date('2020-03-20T00:00:00.000Z') }));
 
     await upsertBillingEvidenceForVisit(tx as never, {
       orgId: 'org_1',
@@ -513,9 +600,9 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
   it('treats a child the day before their 6th birthday as under 6 (infantEligible=true)', async () => {
     // Visit date is 2026-03-20, birth_date is 2020-03-21 → still 5 years old
     const tx = makeTx();
-    tx.patient.findFirst = vi.fn().mockResolvedValue(
-      makePatient({ birth_date: new Date('2020-03-21T00:00:00.000Z') }),
-    );
+    tx.patient.findFirst = vi
+      .fn()
+      .mockResolvedValue(makePatient({ birth_date: new Date('2020-03-21T00:00:00.000Z') }));
 
     await upsertBillingEvidenceForVisit(tx as never, {
       orgId: 'org_1',
@@ -536,9 +623,9 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
     // Construct a date where getHours() returns 22 in local time
     const visitDate = new Date(2026, 2, 20, 22, 0, 0); // March 20, 2026 22:00 local
     const tx = makeTx();
-    tx.visitRecord.findFirst = vi.fn().mockResolvedValue(
-      makeVisitRecord({ visit_date: visitDate }),
-    );
+    tx.visitRecord.findFirst = vi
+      .fn()
+      .mockResolvedValue(makeVisitRecord({ visit_date: visitDate }));
 
     await upsertBillingEvidenceForVisit(tx as never, {
       orgId: 'org_1',
@@ -558,9 +645,9 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
     // 2026-03-22 is a Sunday in local time
     const visitDate = new Date(2026, 2, 22, 10, 0, 0); // Sunday, 10:00 local
     const tx = makeTx();
-    tx.visitRecord.findFirst = vi.fn().mockResolvedValue(
-      makeVisitRecord({ visit_date: visitDate }),
-    );
+    tx.visitRecord.findFirst = vi
+      .fn()
+      .mockResolvedValue(makeVisitRecord({ visit_date: visitDate }));
 
     await upsertBillingEvidenceForVisit(tx as never, {
       orgId: 'org_1',
@@ -580,9 +667,9 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
     // 2026-03-20 is a Friday (weekday), 10:00 local is normal hours (8-18)
     const visitDate = new Date(2026, 2, 20, 10, 0, 0); // Friday 10:00 local
     const tx = makeTx();
-    tx.visitRecord.findFirst = vi.fn().mockResolvedValue(
-      makeVisitRecord({ visit_date: visitDate }),
-    );
+    tx.visitRecord.findFirst = vi
+      .fn()
+      .mockResolvedValue(makeVisitRecord({ visit_date: visitDate }));
 
     await upsertBillingEvidenceForVisit(tx as never, {
       orgId: 'org_1',

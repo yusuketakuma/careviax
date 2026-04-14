@@ -14,10 +14,14 @@ import type {
 
 function priorityRank(p: QueuePriority) {
   switch (p) {
-    case 'urgent': return 0;
-    case 'high': return 1;
-    case 'normal': return 2;
-    default: return 3;
+    case 'urgent':
+      return 0;
+    case 'high':
+      return 1;
+    case 'normal':
+      return 2;
+    default:
+      return 3;
   }
 }
 
@@ -193,7 +197,8 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   );
 
   const cadenceRiskCount = Object.values(cadencePreviewByScheduleId).filter(
-    (preview) => preview != null && preview.alerts.filter((alert) => alert.severity !== 'info').length > 0,
+    (preview) =>
+      preview != null && preview.alerts.filter((alert) => alert.severity !== 'info').length > 0,
   ).length;
 
   const aggregateItems = buildCycleAggregateActionItems(statusMap);

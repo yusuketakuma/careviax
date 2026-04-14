@@ -19,6 +19,11 @@ type BillingStats = {
   current_month_candidates: number;
   current_month_claimable_evidence: number;
   current_month_unclaimable_evidence: number;
+  current_month_revision_breakdown: Record<string, number>;
+  current_month_site_config_issues: {
+    missing: number;
+    revision_mismatch: number;
+  };
   current_month_close_ready: number;
   current_month_close_blocked: number;
   open_billing_review_tasks: number;
@@ -35,6 +40,8 @@ type BillingAnalytics = {
     current_month_claimable_rate: number;
     current_month_close_rate: number;
     current_month_exported: number;
+    current_month_revision_counts: Record<string, number>;
+    current_month_site_config_issue_count: number;
   };
   monthly_trend: Array<{
     month: string;
@@ -119,11 +126,24 @@ export function BillingDashboardContent() {
               <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
                 {stats?.current_month_candidates ?? 0}
               </p>
+              <div className="mt-2 flex flex-wrap gap-1">
+                {Object.entries(stats?.current_month_revision_breakdown ?? {}).map(
+                  ([revision, count]) => (
+                    <Badge key={revision} variant="outline">
+                      {revision}: {count}
+                    </Badge>
+                  ),
+                )}
+              </div>
             </div>
             <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
               <p className="text-xs text-rose-700">締めブロック</p>
               <p className="mt-1 text-2xl font-semibold tabular-nums text-rose-700">
                 {stats?.current_month_close_blocked ?? 0}
+              </p>
+              <p className="mt-2 text-xs text-rose-700">
+                site設定不足 {stats?.current_month_site_config_issues?.missing ?? 0} / 改定不一致{' '}
+                {stats?.current_month_site_config_issues?.revision_mismatch ?? 0}
               </p>
             </div>
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
@@ -300,6 +320,9 @@ export function BillingDashboardContent() {
                 </p>
                 <p className="text-xs text-muted-foreground">
                   対象月: {analytics?.summary.current_month ?? '—'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  site設定注意: {analytics?.summary.current_month_site_config_issue_count ?? 0}
                 </p>
               </div>
             )}

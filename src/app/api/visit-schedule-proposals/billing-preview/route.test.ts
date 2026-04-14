@@ -8,6 +8,7 @@ const {
   visitScheduleFindManyMock,
   visitScheduleCountMock,
   userFindFirstMock,
+  pharmacySiteInsuranceConfigFindFirstMock,
   findActiveVisitConsentMock,
   findCurrentManagementPlanMock,
 } = vi.hoisted(() => ({
@@ -28,6 +29,7 @@ const {
   visitScheduleFindManyMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
   userFindFirstMock: vi.fn(),
+  pharmacySiteInsuranceConfigFindFirstMock: vi.fn(),
   findActiveVisitConsentMock: vi.fn(),
   findCurrentManagementPlanMock: vi.fn(),
 }));
@@ -50,6 +52,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     user: {
       findFirst: userFindFirstMock,
+    },
+    pharmacySiteInsuranceConfig: {
+      findFirst: pharmacySiteInsuranceConfigFindFirstMock,
     },
     patientInsurance: {
       findFirst: vi.fn().mockResolvedValue(null),
@@ -87,6 +92,7 @@ describe('/api/visit-schedule-proposals/billing-preview GET', () => {
     ]);
     visitScheduleCountMock.mockResolvedValue(2);
     userFindFirstMock.mockResolvedValue({ max_weekly_visits: 40 });
+    pharmacySiteInsuranceConfigFindFirstMock.mockResolvedValue(null);
     findActiveVisitConsentMock.mockResolvedValue({ id: 'consent_1', expiry_date: new Date('2027-12-31') });
     findCurrentManagementPlanMock.mockResolvedValue({ current: { id: 'plan_1', status: 'approved' }, reviewOverdue: false });
   });
@@ -99,7 +105,7 @@ describe('/api/visit-schedule-proposals/billing-preview GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      recommended_candidate_count: 3,
+      suggested_schedule_slot_count: 3,
       cadence: expect.objectContaining({
         current_month_count: 2,
         monthly_cap: 4,

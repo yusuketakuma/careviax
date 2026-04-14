@@ -3,13 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import {
-  CheckCircle2,
-  Clock,
-  ExternalLink,
-  MessageSquare,
-  RefreshCw,
-} from 'lucide-react';
+import { CheckCircle2, Clock, ExternalLink, MessageSquare, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -44,6 +38,8 @@ type InquiryRecord = {
   inquiry_to_physician: string;
   inquiry_content: string;
   result: string | null;
+  proposal_origin: 'post_inquiry' | 'pre_issuance' | null;
+  residual_adjustment: boolean | null;
   change_detail: string | null;
   inquired_at: string;
   resolved_at: string | null;
@@ -92,13 +88,15 @@ type IntakeDetail = {
 };
 
 const INQUIRY_RESULT_CONFIG: Record<string, { label: string; className: string }> = {
-  changed:   { label: '処方変更', className: 'bg-amber-100 text-amber-800' },
+  changed: { label: '処方変更', className: 'bg-amber-100 text-amber-800' },
   unchanged: { label: '変更なし', className: 'bg-gray-100 text-gray-700' },
-  pending:   { label: '回答待ち', className: 'bg-red-100 text-red-800' },
+  pending: { label: '回答待ち', className: 'bg-red-100 text-red-800' },
 };
 
 const GENDER_LABELS: Record<string, string> = {
-  male: '男', female: '女', other: '他',
+  male: '男',
+  female: '女',
+  other: '他',
 };
 
 // ---------------------------------------------------------------------------
@@ -137,14 +135,20 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
   }
 
   const patient = data.cycle.case_.patient;
-  const statusConfig = CYCLE_STATUS_CONFIG[data.cycle.overall_status] ?? { label: data.cycle.overall_status, variant: 'outline' as const };
+  const statusConfig = CYCLE_STATUS_CONFIG[data.cycle.overall_status] ?? {
+    label: data.cycle.overall_status,
+    variant: 'outline' as const,
+  };
   const inquiries = data.cycle.inquiries;
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* ── ヘッダ: 患者 + ステータス ── */}
       <div className="flex flex-wrap items-center gap-2 border-b bg-muted/30 px-3 py-2">
-        <Badge variant={statusConfig.variant} className={`text-[11px] ${statusConfig.className ?? ''}`}>
+        <Badge
+          variant={statusConfig.variant}
+          className={`text-[11px] ${statusConfig.className ?? ''}`}
+        >
           {statusConfig.label}
         </Badge>
         <div className="flex items-baseline gap-1.5">
@@ -173,10 +177,14 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
       {/* ── 処方メタ情報 ── */}
       <div className="flex flex-wrap gap-x-4 gap-y-1 border-b px-3 py-2 text-[11px] text-muted-foreground">
         <span>{SOURCE_LABELS[data.source_type] ?? data.source_type}</span>
-        <span>処方日: {format(parseISO(data.prescribed_date), 'yyyy/MM/dd (E)', { locale: ja })}</span>
+        <span>
+          処方日: {format(parseISO(data.prescribed_date), 'yyyy/MM/dd (E)', { locale: ja })}
+        </span>
         {data.prescriber_name && <span>処方医: {data.prescriber_name}</span>}
         {data.prescriber_institution && <span>機関: {data.prescriber_institution}</span>}
-        {data.prescriber_institution_ref?.phone && <span>TEL: {data.prescriber_institution_ref.phone}</span>}
+        {data.prescriber_institution_ref?.phone && (
+          <span>TEL: {data.prescriber_institution_ref.phone}</span>
+        )}
         {data.prescription_expiry_date && (
           <span>期限: {format(parseISO(data.prescription_expiry_date), 'MM/dd')}</span>
         )}
@@ -187,7 +195,9 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
           </span>
         )}
         {data.split_dispense_total && (
-          <span>分割 {data.split_dispense_current}/{data.split_dispense_total}回</span>
+          <span>
+            分割 {data.split_dispense_current}/{data.split_dispense_total}回
+          </span>
         )}
         <span className="text-[10px]">ID: {data.id.slice(-8)}</span>
       </div>
@@ -197,12 +207,24 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
         <table className="w-full text-xs" aria-label="処方明細">
           <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur-sm">
             <tr className="border-b text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              <th scope="col" className="w-8 px-2 py-1">#</th>
-              <th scope="col" className="px-2 py-1">薬剤名</th>
-              <th scope="col" className="px-2 py-1">用量</th>
-              <th scope="col" className="px-2 py-1">用法</th>
-              <th scope="col" className="w-14 px-2 py-1">日数</th>
-              <th scope="col" className="w-12 px-2 py-1">区分</th>
+              <th scope="col" className="w-8 px-2 py-1">
+                #
+              </th>
+              <th scope="col" className="px-2 py-1">
+                薬剤名
+              </th>
+              <th scope="col" className="px-2 py-1">
+                用量
+              </th>
+              <th scope="col" className="px-2 py-1">
+                用法
+              </th>
+              <th scope="col" className="w-14 px-2 py-1">
+                日数
+              </th>
+              <th scope="col" className="w-12 px-2 py-1">
+                区分
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -218,10 +240,14 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
                     <span className="text-[10px] text-muted-foreground">{line.drug_code}</span>
                   )}
                   {line.dosage_form && (
-                    <span className="ml-1 text-[10px] text-muted-foreground">{line.dosage_form}</span>
+                    <span className="ml-1 text-[10px] text-muted-foreground">
+                      {line.dosage_form}
+                    </span>
                   )}
                   {line.packaging_instructions && (
-                    <div className="text-[10px] text-amber-700">包: {line.packaging_instructions}</div>
+                    <div className="text-[10px] text-amber-700">
+                      包: {line.packaging_instructions}
+                    </div>
                   )}
                 </td>
                 <td className="px-2 py-1 text-muted-foreground">{line.dose}</td>
@@ -229,9 +255,13 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
                 <td className="px-2 py-1 tabular-nums">{line.days}日</td>
                 <td className="px-2 py-1">
                   {line.is_generic ? (
-                    <span className="rounded bg-blue-50 px-1 py-0.5 text-[9px] font-medium text-blue-700">後発</span>
+                    <span className="rounded bg-blue-50 px-1 py-0.5 text-[9px] font-medium text-blue-700">
+                      後発
+                    </span>
                   ) : line.is_generic_name_prescription ? (
-                    <span className="rounded bg-green-50 px-1 py-0.5 text-[9px] font-medium text-green-700">一般名</span>
+                    <span className="rounded bg-green-50 px-1 py-0.5 text-[9px] font-medium text-green-700">
+                      一般名
+                    </span>
                   ) : (
                     <span className="text-[10px] text-muted-foreground">先発</span>
                   )}
@@ -263,9 +293,25 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="font-medium">{inq.reason}</span>
                     {resultCfg && (
-                      <span className={`rounded px-1 py-0.5 text-[9px] font-medium ${resultCfg.className}`}>
-                        {inq.resolved_at ? <CheckCircle2 className="mr-0.5 inline size-2.5" /> : <Clock className="mr-0.5 inline size-2.5" />}
+                      <span
+                        className={`rounded px-1 py-0.5 text-[9px] font-medium ${resultCfg.className}`}
+                      >
+                        {inq.resolved_at ? (
+                          <CheckCircle2 className="mr-0.5 inline size-2.5" />
+                        ) : (
+                          <Clock className="mr-0.5 inline size-2.5" />
+                        )}
                         {resultCfg.label}
+                      </span>
+                    )}
+                    {inq.proposal_origin === 'pre_issuance' && (
+                      <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-medium text-blue-800">
+                        事前提案反映
+                      </span>
+                    )}
+                    {inq.residual_adjustment && (
+                      <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-medium text-amber-800">
+                        残薬調整
                       </span>
                     )}
                     <span className="text-[10px] text-muted-foreground">
@@ -286,9 +332,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
           <Link href="/dispensing">調剤キューへ</Link>
         </Button>
         <Button variant="outline" size="sm" className="h-6 px-3 text-[11px]" asChild>
-          <Link href={`/prescriptions/${data.id}`}>
-            全画面表示
-          </Link>
+          <Link href={`/prescriptions/${data.id}`}>全画面表示</Link>
         </Button>
       </div>
     </div>

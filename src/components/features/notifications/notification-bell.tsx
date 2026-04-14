@@ -39,6 +39,14 @@ export function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const seenIdsRef = useRef(new Set<string>());
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const maybeShowBrowserNotifications = useCallback(async (items: Notification[]) => {
     if (
@@ -62,6 +70,7 @@ export function NotificationBell() {
   }, []);
 
   const mergeNotifications = useCallback((items: Notification[], options?: { announce?: boolean }) => {
+    if (!mountedRef.current) return;
     const unseenItems = items.filter((item) => !seenIdsRef.current.has(item.id));
     for (const item of items) {
       seenIdsRef.current.add(item.id);
@@ -149,6 +158,7 @@ export function NotificationBell() {
         headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
         body: JSON.stringify({ ids }),
       });
+      if (!mountedRef.current) return;
       setNotifications((prev) =>
         prev.map((notification) =>
           ids.includes(notification.id) ? { ...notification, is_read: true } : notification

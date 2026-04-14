@@ -37,6 +37,10 @@ describe('/api/billing-candidates/export GET', () => {
               billing_name: '在宅患者訪問薬剤管理指導料 単一建物1人',
               points: 650,
               status: 'confirmed',
+              source_snapshot: {
+                revision_code: '2026',
+                site_config_revision_code: '2026',
+              },
             },
           ]),
         },
@@ -65,7 +69,7 @@ describe('/api/billing-candidates/export GET', () => {
             },
           ]),
         },
-      })
+      }),
     );
   });
 
@@ -87,6 +91,8 @@ describe('/api/billing-candidates/export GET', () => {
     expect(csv).toContain('"山田 太郎"');
     expect(csv).toContain('"building_a"');
     expect(csv).toContain('"201"');
+    expect(csv).toContain('effective_revision_code');
+    expect(csv).toContain('"2026"');
     expect(csv).toContain('"1149019|2149001"');
     expect(recordDataExportAuditMock).toHaveBeenCalledWith(
       expect.any(Object),

@@ -6,10 +6,7 @@ import { updateInquiryRecordSchema } from '@/lib/validations/prescription';
 import { prisma } from '@/lib/db/client';
 import { resolveOperationalTasks } from '@/server/services/operational-tasks';
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '問い合わせ記録の更新権限がありません',
@@ -33,7 +30,8 @@ export async function PATCH(
   });
   if (!existing) return notFound('疑義照会記録が見つかりません');
 
-  const { result, change_detail, resolved_at, line_update } = parsed.data;
+  const { result, change_detail, proposal_origin, residual_adjustment, resolved_at, line_update } =
+    parsed.data;
   const resolvedAt =
     resolved_at != null
       ? new Date(resolved_at)
@@ -50,16 +48,10 @@ export async function PATCH(
       await tx.prescriptionLine.update({
         where: { id: existing.line_id },
         data: {
-          ...(line_update.drug_name !== undefined
-            ? { drug_name: line_update.drug_name }
-            : {}),
-          ...(line_update.drug_code !== undefined
-            ? { drug_code: line_update.drug_code }
-            : {}),
+          ...(line_update.drug_name !== undefined ? { drug_name: line_update.drug_name } : {}),
+          ...(line_update.drug_code !== undefined ? { drug_code: line_update.drug_code } : {}),
           ...(line_update.dose !== undefined ? { dose: line_update.dose } : {}),
-          ...(line_update.frequency !== undefined
-            ? { frequency: line_update.frequency }
-            : {}),
+          ...(line_update.frequency !== undefined ? { frequency: line_update.frequency } : {}),
           ...(line_update.days !== undefined ? { days: line_update.days } : {}),
           ...(line_update.packaging_instructions !== undefined
             ? { packaging_instructions: line_update.packaging_instructions }
@@ -74,6 +66,8 @@ export async function PATCH(
       data: {
         ...(result !== undefined ? { result } : {}),
         ...(change_detail !== undefined ? { change_detail } : {}),
+        ...(proposal_origin !== undefined ? { proposal_origin } : {}),
+        ...(residual_adjustment !== undefined ? { residual_adjustment } : {}),
         ...(resolvedAt ? { resolved_at: resolvedAt } : {}),
       },
     });
@@ -92,10 +86,7 @@ export async function PATCH(
       await tx.medicationCycle.update({
         where: { id: existing.cycle_id },
         data: {
-          overall_status:
-            remainingUnresolvedCount === 0
-              ? 'inquiry_resolved'
-              : 'inquiry_pending',
+          overall_status: remainingUnresolvedCount === 0 ? 'inquiry_resolved' : 'inquiry_pending',
         },
       });
 

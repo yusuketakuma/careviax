@@ -51,55 +51,55 @@ enum UserAccountStatus {
 }
 
 model Organization {
-  id               String  @id @default(cuid())
+  id               String   @id @default(cuid())
   name             String
-  corporate_number String? @unique // 法人番号
+  corporate_number String?  @unique // 法人番号
   address          String?
   phone            String?
   email            String?
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
 
-  sites                 PharmacySite[]
-  memberships           Membership[]
-  facilities            Facility[]
-  external_professionals ExternalProfessional[]
+  sites                   PharmacySite[]
+  memberships             Membership[]
+  facilities              Facility[]
+  external_professionals  ExternalProfessional[]
   prescriber_institutions PrescriberInstitution[]
-  service_areas         ServiceArea[]
-  webhook_registrations WebhookRegistration[]
+  service_areas           ServiceArea[]
+  webhook_registrations   WebhookRegistration[]
 
   @@index([name])
 }
 
 model PharmacySite {
-  id      String       @id @default(cuid())
-  org_id  String
-  org     Organization @relation(fields: [org_id], references: [id])
-  name    String
-  address String
-  phone   String?
-  fax     String?
-  lat     Float?
-  lng     Float?
+  id                         String       @id @default(cuid())
+  org_id                     String
+  org                        Organization @relation(fields: [org_id], references: [id])
+  name                       String
+  address                    String
+  phone                      String?
+  fax                        String?
+  lat                        Float?
+  lng                        Float?
   // 届出フラグ
-  is_health_support_pharmacy Boolean @default(false) // 健康サポート薬局
-  is_regional_support        Boolean @default(false) // 地域連携薬局
-  is_specialized_pharmacy    Boolean @default(false) // 専門医療機関連携薬局
+  is_health_support_pharmacy Boolean      @default(false) // 健康サポート薬局
+  is_regional_support        Boolean      @default(false) // 地域連携薬局
+  is_specialized_pharmacy    Boolean      @default(false) // 専門医療機関連携薬局
   // 体制加算区分
-  dispensing_fee_category String? // 調剤基本料区分
-  created_at              DateTime @default(now())
-  updated_at              DateTime @updatedAt
+  dispensing_fee_category    String? // 調剤基本料区分
+  created_at                 DateTime     @default(now())
+  updated_at                 DateTime     @updatedAt
 
-  memberships          Membership[]
-  pharmacist_shifts    PharmacistShift[]
+  memberships                Membership[]
+  pharmacist_shifts          PharmacistShift[]
   pharmacist_shift_templates PharmacistShiftTemplate[]
-  facility_standards   FacilityStandardRegistration[]
-  drug_stocks          PharmacyDrugStock[]
-  visit_schedules      VisitSchedule[]
-  visit_schedule_proposals VisitScheduleProposal[]
-  business_holidays    BusinessHoliday[]
-  insurance_configs    PharmacySiteInsuranceConfig[]
-  service_areas        ServiceArea[]
+  facility_standards         FacilityStandardRegistration[]
+  drug_stocks                PharmacyDrugStock[]
+  visit_schedules            VisitSchedule[]
+  visit_schedule_proposals   VisitScheduleProposal[]
+  business_holidays          BusinessHoliday[]
+  insurance_configs          PharmacySiteInsuranceConfig[]
+  service_areas              ServiceArea[]
 
   @@index([org_id])
 }
@@ -131,28 +131,28 @@ model ServiceArea {
 ///   care:    CareSiteConfig2024    (types.ts)
 /// DB スキーマを改定ごとに変更する必要がない設計。
 model PharmacySiteInsuranceConfig {
-  id               String       @id @default(cuid())
-  org_id           String
-  site_id          String
-  site             PharmacySite @relation(fields: [site_id], references: [id])
+  id      String       @id @default(cuid())
+  org_id  String
+  site_id String
+  site    PharmacySite @relation(fields: [site_id], references: [id])
 
   /// 保険種別: medical(医療保険) / care(介護保険)
-  insurance_type   String       // 'medical' | 'care'
+  insurance_type String // 'medical' | 'care'
   /// 改定年度コード (e.g., '2024')
-  revision_code    String
+  revision_code  String
   /// 改定名称 (e.g., '令和6年度 診療報酬改定')
-  revision_label   String?
+  revision_label String?
 
   /// 施行日
-  effective_from   DateTime     @db.Date
+  effective_from DateTime  @db.Date
   /// 終了日 (null = 現行)
-  effective_to     DateTime?    @db.Date
+  effective_to   DateTime? @db.Date
 
   /// 改定固有の設定 (TypeScript 側で改定年度ごとの型を適用)
-  config           Json         @default("{}")
+  config Json @default("{}")
 
-  created_at       DateTime     @default(now())
-  updated_at       DateTime     @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   @@unique([org_id, site_id, insurance_type, revision_code])
   @@index([org_id])
@@ -160,36 +160,36 @@ model PharmacySiteInsuranceConfig {
 }
 
 model User {
-  id                  String            @id @default(cuid())
-  org_id              String
-  cognito_sub         String            @unique // Cognito User Pool の sub
-  cognito_username    String?           @unique
-  email               String            @unique
-  name                String
-  name_kana           String?
-  phone               String?
-  default_site_id     String?
-  max_daily_visits    Int?
-  max_weekly_visits   Int?
-  max_travel_minutes  Int?
-  visit_specialties   Json?
-  coverage_area       Json?
-  can_accept_emergency Boolean          @default(true)
-  is_active           Boolean           @default(true)
-  account_status      UserAccountStatus @default(invited)
-  invited_at          DateTime?
-  invited_by          String?
-  last_invited_at     DateTime?
-  activated_at        DateTime?
-  deactivated_at      DateTime?
-  deactivation_reason String?
-  session_version     Int               @default(0)
-  created_at          DateTime          @default(now())
-  updated_at          DateTime          @updatedAt
+  id                   String            @id @default(cuid())
+  org_id               String
+  cognito_sub          String            @unique // Cognito User Pool の sub
+  cognito_username     String?           @unique
+  email                String            @unique
+  name                 String
+  name_kana            String?
+  phone                String?
+  default_site_id      String?
+  max_daily_visits     Int?
+  max_weekly_visits    Int?
+  max_travel_minutes   Int?
+  visit_specialties    Json?
+  coverage_area        Json?
+  can_accept_emergency Boolean           @default(true)
+  is_active            Boolean           @default(true)
+  account_status       UserAccountStatus @default(invited)
+  invited_at           DateTime?
+  invited_by           String?
+  last_invited_at      DateTime?
+  activated_at         DateTime?
+  deactivated_at       DateTime?
+  deactivation_reason  String?
+  session_version      Int               @default(0)
+  created_at           DateTime          @default(now())
+  updated_at           DateTime          @updatedAt
 
-  memberships  Membership[]
-  credentials  PharmacistCredential[]
-  shifts       PharmacistShift[]
+  memberships     Membership[]
+  credentials     PharmacistCredential[]
+  shifts          PharmacistShift[]
   shift_templates PharmacistShiftTemplate[]
 
   @@index([org_id])
@@ -206,49 +206,49 @@ model Membership {
   site_id            String?
   site               PharmacySite? @relation(fields: [site_id], references: [id])
   role               MemberRole
-  can_dispense       Boolean @default(false)
-  can_audit_dispense Boolean @default(false)
-  can_set            Boolean @default(false)
-  can_audit_set      Boolean @default(false)
-  is_active          Boolean  @default(true)
-  created_at         DateTime @default(now())
-  updated_at         DateTime @updatedAt
+  can_dispense       Boolean       @default(false)
+  can_audit_dispense Boolean       @default(false)
+  can_set            Boolean       @default(false)
+  can_audit_set      Boolean       @default(false)
+  is_active          Boolean       @default(true)
+  created_at         DateTime      @default(now())
+  updated_at         DateTime      @updatedAt
 
   @@unique([user_id, org_id, site_id])
   @@index([org_id])
 }
 
 model FacilityStandardRegistration {
-  id                   String       @id @default(cuid())
-  org_id               String
-  site_id              String
-  site                 PharmacySite @relation(fields: [site_id], references: [id])
-  standard_type        String // 届出種別
-  filed_date           DateTime // 届出日
-  effective_date       DateTime? // 有効日
-  expiry_date          DateTime? // 有効期限
-  renewal_alert_date   DateTime? // 更新期限アラート日
-  requirements_status  Json? // 要件達成状態
-  created_at           DateTime @default(now())
-  updated_at           DateTime @updatedAt
+  id                  String       @id @default(cuid())
+  org_id              String
+  site_id             String
+  site                PharmacySite @relation(fields: [site_id], references: [id])
+  standard_type       String // 届出種別
+  filed_date          DateTime // 届出日
+  effective_date      DateTime? // 有効日
+  expiry_date         DateTime? // 有効期限
+  renewal_alert_date  DateTime? // 更新期限アラート日
+  requirements_status Json? // 要件達成状態
+  created_at          DateTime     @default(now())
+  updated_at          DateTime     @updatedAt
 
   @@index([org_id])
   @@index([site_id])
 }
 
 model PharmacistCredential {
-  id                   String   @id @default(cuid())
+  id                   String    @id @default(cuid())
   org_id               String
   user_id              String
-  user                 User     @relation(fields: [user_id], references: [id])
+  user                 User      @relation(fields: [user_id], references: [id])
   certification_type   String // 研修認定証タイプ
   certification_number String?
   issued_date          DateTime?
   expiry_date          DateTime?
   tenure_years         Float? // 在籍継続年数
   weekly_work_hours    Float? // 週勤務時間実績
-  created_at           DateTime @default(now())
-  updated_at           DateTime @updatedAt
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
 
   @@index([org_id])
   @@index([user_id])
@@ -294,16 +294,16 @@ model PharmacistShiftTemplate {
 }
 
 model BusinessHoliday {
-  id           String       @id @default(cuid())
+  id           String        @id @default(cuid())
   org_id       String
   site_id      String?
   site         PharmacySite? @relation(fields: [site_id], references: [id])
-  date         DateTime     @db.Date
+  date         DateTime      @db.Date
   name         String
   holiday_type HolidayType
-  is_closed    Boolean      @default(true)
-  created_at   DateTime     @default(now())
-  updated_at   DateTime     @updatedAt
+  is_closed    Boolean       @default(true)
+  created_at   DateTime      @default(now())
+  updated_at   DateTime      @updatedAt
 
   @@index([org_id, date])
   @@index([site_id, date])
@@ -313,26 +313,26 @@ model BusinessHoliday {
 // model PharmacyDrugStock は他ファイルで定義
 
 model Facility {
-  id                     String          @id @default(cuid())
+  id                     String           @id @default(cuid())
   org_id                 String
-  org                    Organization    @relation(fields: [org_id], references: [id])
+  org                    Organization     @relation(fields: [org_id], references: [id])
   name                   String
   facility_type          FacilityTypeEnum
   address                String?
   phone                  String?
   fax                    String?
-  acceptance_time_from   DateTime?       @db.Time()
-  acceptance_time_to     DateTime?       @db.Time()
+  acceptance_time_from   DateTime?        @db.Time()
+  acceptance_time_to     DateTime?        @db.Time()
   regular_visit_weekdays Json?
   notes                  String?
   /// 総戸数（マンション）またはユニット数（施設）。特例判定に使用
   total_units            Int?
-  created_at             DateTime        @default(now())
-  updated_at             DateTime        @default(now()) @updatedAt
+  created_at             DateTime         @default(now())
+  updated_at             DateTime         @default(now()) @updatedAt
 
-  contacts   FacilityContact[]
-  units      FacilityUnit[]
-  residences Residence[]
+  contacts               FacilityContact[]
+  units                  FacilityUnit[]
+  residences             Residence[]
   external_professionals ExternalProfessional[]
 
   @@unique([org_id, name])
@@ -347,10 +347,10 @@ model FacilityUnit {
   org_id        String
   facility_id   String
   facility      Facility @relation(fields: [facility_id], references: [id])
-  name          String   // e.g., "2F東ユニット"
-  floor         String?  // e.g., "2F"
+  name          String // e.g., "2F東ユニット"
+  floor         String? // e.g., "2F"
   unit_type     String   @default("unit") // floor / wing / unit
-  capacity      Int?     // 定員
+  capacity      Int? // 定員
   notes         String?
   display_order Int      @default(0)
   created_at    DateTime @default(now())
@@ -366,38 +366,38 @@ model FacilityUnit {
 }
 
 model FacilityContact {
-  id                     String               @id @default(cuid())
-  org_id                 String
-  facility_id            String
-  facility               Facility             @relation(fields: [facility_id], references: [id], onDelete: Cascade)
-  name                   String
-  role                   String?
-  phone                  String?
-  email                  String?
-  fax                    String?
+  id                       String                @id @default(cuid())
+  org_id                   String
+  facility_id              String
+  facility                 Facility              @relation(fields: [facility_id], references: [id], onDelete: Cascade)
+  name                     String
+  role                     String?
+  phone                    String?
+  email                    String?
+  fax                      String?
   preferred_contact_method CommunicationChannel?
-  preferred_contact_time String?
-  last_contacted_at      DateTime?
-  last_success_channel   CommunicationChannel?
-  is_primary             Boolean              @default(false)
-  notes                  String?
-  created_at             DateTime             @default(now())
-  updated_at             DateTime             @default(now()) @updatedAt
+  preferred_contact_time   String?
+  last_contacted_at        DateTime?
+  last_success_channel     CommunicationChannel?
+  is_primary               Boolean               @default(false)
+  notes                    String?
+  created_at               DateTime              @default(now())
+  updated_at               DateTime              @default(now()) @updatedAt
 
   @@index([org_id])
   @@index([facility_id])
 }
 
 model ExternalProfessional {
-  id                       String               @id @default(cuid())
+  id                       String                @id @default(cuid())
   org_id                   String
-  org                      Organization         @relation(fields: [org_id], references: [id])
+  org                      Organization          @relation(fields: [org_id], references: [id])
   profession_type          ProfessionTypeEnum
   name                     String
   organization_name        String?
   department               String?
   facility_id              String?
-  facility                 Facility?            @relation(fields: [facility_id], references: [id])
+  facility                 Facility?             @relation(fields: [facility_id], references: [id])
   phone                    String?
   email                    String?
   fax                      String?
@@ -407,8 +407,8 @@ model ExternalProfessional {
   last_success_channel     CommunicationChannel?
   address                  String?
   notes                    String?
-  created_at               DateTime             @default(now())
-  updated_at               DateTime             @default(now()) @updatedAt
+  created_at               DateTime              @default(now())
+  updated_at               DateTime              @default(now()) @updatedAt
   care_team_links          CareTeamLink[]
 
   @@index([org_id])
@@ -417,9 +417,9 @@ model ExternalProfessional {
 }
 
 model PrescriberInstitution {
-  id                       String               @id @default(cuid())
+  id                       String                @id @default(cuid())
   org_id                   String
-  org                      Organization         @relation(fields: [org_id], references: [id])
+  org                      Organization          @relation(fields: [org_id], references: [id])
   name                     String
   institution_code         String?
   address                  String?
@@ -430,8 +430,8 @@ model PrescriberInstitution {
   last_contacted_at        DateTime?
   last_success_channel     CommunicationChannel?
   notes                    String?
-  created_at               DateTime             @default(now())
-  updated_at               DateTime             @default(now()) @updatedAt
+  created_at               DateTime              @default(now())
+  updated_at               DateTime              @default(now()) @updatedAt
 
   prescription_intakes PrescriptionIntake[]
 

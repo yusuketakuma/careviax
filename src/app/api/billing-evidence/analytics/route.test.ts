@@ -60,18 +60,21 @@ describe('/api/billing-evidence/analytics GET', () => {
         status: 'candidate',
         billing_code: 'M001',
         billing_name: '在宅患者訪問薬剤管理指導料',
+        source_snapshot: { revision_code: '2026' },
       },
       {
         billing_month: new Date('2026-03-01T00:00:00.000Z'),
         status: 'confirmed',
         billing_code: 'M001',
         billing_name: '在宅患者訪問薬剤管理指導料',
+        source_snapshot: { revision_code: '2026' },
       },
       {
         billing_month: new Date('2026-03-01T00:00:00.000Z'),
         status: 'exported',
         billing_code: 'A010',
         billing_name: '麻薬加算',
+        source_snapshot: { revision_code: '2024' },
       },
     ]);
     billingEvidenceFindManyMock.mockResolvedValue([
@@ -79,11 +82,19 @@ describe('/api/billing-evidence/analytics GET', () => {
         billing_month: new Date('2026-03-01T00:00:00.000Z'),
         claimable: true,
         exclusion_reason: null,
+        calculation_context: {
+          effective_revision_code: '2026',
+          site_config_status: 'resolved',
+        },
       },
       {
         billing_month: new Date('2026-03-01T00:00:00.000Z'),
         claimable: false,
         exclusion_reason: '報告書送付が未完了です',
+        calculation_context: {
+          effective_revision_code: '2024',
+          site_config_status: 'revision_mismatch',
+        },
       },
     ]);
   });
@@ -106,6 +117,8 @@ describe('/api/billing-evidence/analytics GET', () => {
           current_month_claimable_rate: expect.any(Number),
           current_month_close_rate: expect.any(Number),
           current_month_exported: expect.any(Number),
+          current_month_revision_counts: expect.any(Object),
+          current_month_site_config_issue_count: expect.any(Number),
         },
         blocker_reasons: expect.any(Array),
         top_codes: expect.any(Array),

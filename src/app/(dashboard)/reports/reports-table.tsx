@@ -42,6 +42,8 @@ type CareReport = {
   report_type: string;
   status: string;
   created_at: string;
+  effective_revision_code: string | null;
+  site_config_status: string | null;
   latest_delivery_status: string | null;
   latest_delivery_recipient_name: string | null;
   latest_delivery_sent_at: string | null;
@@ -87,7 +89,16 @@ function buildColumns(): ColumnDef<CareReport>[] {
           >
             {REPORT_TYPE_LABELS[row.original.report_type] ?? row.original.report_type}
           </Link>
-          <p className="text-xs text-muted-foreground">本文、送付先、送達履歴を確認</p>
+          <p className="text-xs text-muted-foreground">
+            {row.original.effective_revision_code
+              ? `改定 ${row.original.effective_revision_code}`
+              : '本文、送付先、送達履歴を確認'}
+          </p>
+          {row.original.site_config_status ? (
+            <p className="text-xs text-muted-foreground">
+              薬局設定 {row.original.site_config_status}
+            </p>
+          ) : null}
         </div>
       ),
     },

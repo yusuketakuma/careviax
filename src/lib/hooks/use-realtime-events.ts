@@ -29,16 +29,17 @@ export function useRealtimeEvents({ onEvent, enabled = true }: UseRealtimeEvents
       abortRef.current.abort();
       abortRef.current = null;
     }
-    setConnected(false);
   }, []);
 
   useEffect(() => {
     if (!enabled || !orgId || NOTIFICATION_STREAM_DISABLED) {
       cleanup();
+      setConnected(false);
       return;
     }
 
     let unmounted = false;
+    setConnected(false);
 
     async function connect() {
       if (unmounted) return;

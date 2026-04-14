@@ -58,9 +58,7 @@ export function AppProvider({
   initialOrgId,
   initialSiteId,
 }: AppProviderProps) {
-  const initializedRef = useRef(false);
-
-  if (!initializedRef.current) {
+  useEffect(() => {
     useAuthStore.setState({
       orgId: initialOrgId,
       siteId: initialSiteId,
@@ -71,8 +69,14 @@ export function AppProvider({
         cognitoSub: session?.user?.cognitoSub ?? null,
       },
     });
-    initializedRef.current = true;
-  }
+  }, [
+    initialOrgId,
+    initialSiteId,
+    session?.user?.cognitoSub,
+    session?.user?.email,
+    session?.user?.id,
+    session?.user?.name,
+  ]);
 
   return (
     <SessionProvider session={session}>
