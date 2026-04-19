@@ -39,8 +39,8 @@ export function WorkflowPageIntro({
     ) : null);
 
   return (
-    <div className={cn('space-y-4', className)}>
-      <div className="border-b border-border/70 pb-3">
+    <div className={cn('space-y-4', className)} data-page-header="true">
+      <div className="rounded-xl border border-border/70 bg-background/70 px-4 py-3">
         <WorkflowBackLink href={backHref} label={backLabel} />
       </div>
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -54,7 +54,9 @@ export function WorkflowPageIntro({
           />
         </div>
         {rightRail ? (
-          <div className="flex flex-wrap items-center gap-2 xl:justify-end">{rightRail}</div>
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/70 bg-background/75 px-4 py-4 xl:justify-end">
+            {rightRail}
+          </div>
         ) : null}
       </div>
     </div>

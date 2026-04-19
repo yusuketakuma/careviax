@@ -8,7 +8,26 @@ type PageScaffoldProps = ComponentPropsWithoutRef<'div'> & {
 };
 
 const stackVariants = {
-  card: '[&>*]:overflow-hidden [&>*]:rounded-xl [&>*]:border [&>*]:border-border/70 [&>*]:bg-card [&>*]:px-4 [&>*]:py-4 [&>*]:shadow-sm sm:[&>*]:rounded-2xl sm:[&>*]:px-6 sm:[&>*]:py-6',
+  card: [
+    '[&>*]:overflow-hidden',
+    '[&>*]:rounded-xl',
+    '[&>*]:border',
+    '[&>*]:border-border/70',
+    '[&>*]:bg-card',
+    '[&>*]:px-4',
+    '[&>*]:py-4',
+    '[&>*]:shadow-sm',
+    'sm:[&>*]:rounded-2xl',
+    'sm:[&>*]:px-6',
+    'sm:[&>*]:py-6',
+    '[&>[data-page-header=true]]:border-border/70',
+    '[&>[data-page-header=true]]:bg-[radial-gradient(circle_at_top_left,rgba(34,113,177,0.10),transparent_35%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.10),transparent_24%),linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,1))]',
+    '[&>[data-page-header=true]]:shadow-sm',
+    '[&>[data-page-header=true]]:px-5',
+    '[&>[data-page-header=true]]:py-5',
+    'sm:[&>[data-page-header=true]]:px-6',
+    'sm:[&>[data-page-header=true]]:py-6',
+  ].join(' '),
   bare: '',
 } as const;
 
@@ -21,11 +40,11 @@ export function PageScaffold({
   ...props
 }: PageScaffoldProps) {
   return (
-    <div className={cn('p-3 md:p-4 xl:p-5', className)} data-testid={testId} {...props}>
+    <div className={cn('p-4 md:p-5 xl:p-6', className)} data-testid={testId} {...props}>
       <div
         data-testid={`${testId}-stack`}
         className={cn(
-          'space-y-4 sm:space-y-6',
+          'space-y-5 sm:space-y-6 xl:space-y-7',
           stackVariants[variant],
           stackClassName,
         )}

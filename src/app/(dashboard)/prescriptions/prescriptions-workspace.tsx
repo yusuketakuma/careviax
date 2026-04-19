@@ -7,7 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
-import { useKeyboardShortcuts, type ShortcutDefinition } from '@/components/features/keyboard/use-keyboard-shortcuts';
+import {
+  useKeyboardShortcuts,
+  type ShortcutDefinition,
+} from '@/components/features/keyboard/use-keyboard-shortcuts';
+import { cn } from '@/lib/utils';
 import { useSelectableQueueState } from '../dispensing/dispense-work-queue.shared';
 import { PrescriptionsTable, type PrescriptionIntakeRow } from './prescriptions-table';
 import { PrescriptionInlineDetail } from './prescription-inline-detail';
@@ -43,7 +47,7 @@ const SOURCE_FILTER_OPTIONS: Array<{ value: FilterKey; label: string }> = [
 // Workspace (レセコン風 master-detail)
 // ---------------------------------------------------------------------------
 
-export function PrescriptionsWorkspace() {
+export function PrescriptionsWorkspace({ className }: { className?: string } = {}) {
   const orgId = useOrgId();
   const [statusFilter, setStatusFilter] = useState<FilterKey>('all');
   const [sourceFilter, setSourceFilter] = useState<FilterKey>('all');
@@ -102,13 +106,8 @@ export function PrescriptionsWorkspace() {
   }, [allItems]);
 
   // Selection state
-  const {
-    selectedItem,
-    handleMoveUp,
-    handleMoveDown,
-    handleRowClick,
-    resetSelection,
-  } = useSelectableQueueState(filteredItems);
+  const { selectedItem, handleMoveUp, handleMoveDown, handleRowClick, resetSelection } =
+    useSelectableQueueState(filteredItems);
 
   const selectedId = selectedItem?.id ?? null;
 
@@ -122,21 +121,27 @@ export function PrescriptionsWorkspace() {
   );
   useKeyboardShortcuts(shortcuts);
 
-  const handleFilterStatus = useCallback((value: FilterKey) => {
-    setStatusFilter(value);
-    resetSelection();
-  }, [resetSelection]);
+  const handleFilterStatus = useCallback(
+    (value: FilterKey) => {
+      setStatusFilter(value);
+      resetSelection();
+    },
+    [resetSelection],
+  );
 
-  const handleFilterSource = useCallback((value: FilterKey) => {
-    setSourceFilter(value);
-    resetSelection();
-  }, [resetSelection]);
+  const handleFilterSource = useCallback(
+    (value: FilterKey) => {
+      setSourceFilter(value);
+      resetSelection();
+    },
+    [resetSelection],
+  );
 
   const inquiryCount = statusCounts['inquiry_pending'] ?? 0;
   const readyCount = statusCounts['ready_to_dispense'] ?? 0;
 
   return (
-    <div className="flex h-[calc(100vh-64px)] flex-col overflow-hidden">
+    <div className={cn('flex h-[calc(100vh-64px)] flex-col overflow-hidden', className)}>
       {/* ━━ ステータスバー (レセコン上部) ━━ */}
       <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-3 py-1.5">
         {/* タイトル */}
@@ -199,7 +204,9 @@ export function PrescriptionsWorkspace() {
             >
               {opt.label}
               {count > 0 && (
-                <span className={`text-[9px] ${isActive ? 'text-primary-foreground/70' : 'text-muted-foreground/60'}`}>
+                <span
+                  className={`text-[9px] ${isActive ? 'text-primary-foreground/70' : 'text-muted-foreground/60'}`}
+                >
                   {count}
                 </span>
               )}
@@ -261,10 +268,28 @@ export function PrescriptionsWorkspace() {
       <div className="flex items-center gap-4 border-t bg-muted/30 px-3 py-1">
         <Keyboard className="size-3 text-muted-foreground" aria-hidden="true" />
         <div className="flex gap-3 text-[10px] text-muted-foreground">
-          <span><kbd className="rounded border bg-background px-1 font-mono">↑</kbd><kbd className="ml-0.5 rounded border bg-background px-1 font-mono">↓</kbd> 選択</span>
-          <span><kbd className="rounded border bg-background px-1 font-mono">N</kbd> <Link href="/prescriptions/new" className="hover:underline">新規受付</Link></span>
-          <span><kbd className="rounded border bg-background px-1 font-mono">D</kbd> <Link href="/dispensing" className="hover:underline">調剤キュー</Link></span>
-          <span><kbd className="rounded border bg-background px-1 font-mono">Q</kbd> <Link href="/prescriptions/qr-drafts" className="hover:underline">QR下書き</Link></span>
+          <span>
+            <kbd className="rounded border bg-background px-1 font-mono">↑</kbd>
+            <kbd className="ml-0.5 rounded border bg-background px-1 font-mono">↓</kbd> 選択
+          </span>
+          <span>
+            <kbd className="rounded border bg-background px-1 font-mono">N</kbd>{' '}
+            <Link href="/prescriptions/new" className="hover:underline">
+              新規受付
+            </Link>
+          </span>
+          <span>
+            <kbd className="rounded border bg-background px-1 font-mono">D</kbd>{' '}
+            <Link href="/dispensing" className="hover:underline">
+              調剤キュー
+            </Link>
+          </span>
+          <span>
+            <kbd className="rounded border bg-background px-1 font-mono">Q</kbd>{' '}
+            <Link href="/prescriptions/qr-drafts" className="hover:underline">
+              QR下書き
+            </Link>
+          </span>
         </div>
       </div>
     </div>

@@ -31,12 +31,14 @@ function SectionHeader({
   description: string;
 }) {
   return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-2">
+    <div className="flex items-start gap-3">
+      <div className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-muted/15">
         <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       </div>
-      <p className="text-sm text-muted-foreground">{description}</p>
+      <div className="space-y-1">
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </div>
     </div>
   );
 }
@@ -45,13 +47,22 @@ function NavigationCluster({
   title,
   description,
   children,
+  tone = 'default',
 }: {
   title: string;
   description: string;
   children: React.ReactNode;
+  tone?: 'default' | 'cool' | 'warm' | 'neutral';
 }) {
+  const toneClasses = {
+    default: 'border-border/70 bg-muted/15',
+    cool: 'border-primary/15 bg-primary/[0.05]',
+    warm: 'border-amber-200/80 bg-amber-500/[0.06]',
+    neutral: 'border-slate-200/80 bg-slate-500/[0.05]',
+  } as const;
+
   return (
-    <Card className="border-border/70 bg-muted/15">
+    <Card className={toneClasses[tone]}>
       <CardContent className="space-y-4 p-4">
         <div className="space-y-1">
           <h3 className="text-sm font-semibold text-foreground">{title}</h3>
@@ -63,11 +74,7 @@ function NavigationCluster({
   );
 }
 
-export function DashboardContent({
-  focusRole = 'common',
-}: {
-  focusRole?: DashboardFocusRole;
-}) {
+export function DashboardContent({ focusRole = 'common' }: { focusRole?: DashboardFocusRole }) {
   return (
     <div className="space-y-8">
       <DashboardSectionGroup
@@ -75,9 +82,10 @@ export function DashboardContent({
         eyebrow="Daily Operations"
         title="今日の運用"
         description="緊急度、今日の予定、優先作業をひとまとまりにし、出勤直後にその日の動きを決めやすい配置へ整理しています。"
+        tone="daily"
       >
         <div
-          className="grid gap-8 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]"
+          className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.95fr)]"
           data-testid="dashboard-priority-actions"
         >
           <section className="space-y-4" aria-labelledby="dashboard-tasks-section">
@@ -105,30 +113,27 @@ export function DashboardContent({
       </DashboardSectionGroup>
 
       <DashboardSectionGroup
-        id="dashboard-role-guide-group"
-        eyebrow="Who Handles What"
-        title="担当別の開始導線"
-        description="薬剤師、事務スタッフ、全員共通の入口を分け、誰が最初に何を確認するかを揃えて判断できるようにしています。"
-      >
-        <section className="space-y-4" aria-labelledby="dashboard-role-guide-section">
-          <SectionHeader
-            icon={Users}
-            title="職種ごとの初動"
-            description="職種別の優先順とすぐ開く画面を一つのまとまりで示し、朝の迷いを減らします。"
-          />
-          <div id="dashboard-role-guide-section">
-            <DashboardRoleGuide focusRole={focusRole} />
-          </div>
-        </section>
-      </DashboardSectionGroup>
-
-      <DashboardSectionGroup
         id="dashboard-navigation-group"
         eyebrow="Workflow Navigation"
         title="業務導線"
-        description="日次の優先判断を終えたあとに、工程入口と補助メニューを役割ごとに辿りやすくまとめています。"
+        description="日次の優先判断を終えたあとに、担当別の初動と主要フロー入口を同じまとまりで辿れるようにしています。"
+        tone="workflow"
+        contentClassName="space-y-6"
       >
         <div className="space-y-6">
+          <section className="space-y-4" aria-labelledby="dashboard-role-guide-section">
+            <SectionHeader
+              icon={Users}
+              title="職種ごとの初動"
+              description="薬剤師、事務スタッフ、全員共通の入口を分け、誰が最初に何を確認するかを揃えて判断できるようにしています。"
+            />
+            <div id="dashboard-role-guide-section">
+              <DashboardRoleGuide focusRole={focusRole} />
+            </div>
+          </section>
+
+          <Separator />
+
           <section className="space-y-4" aria-labelledby="dashboard-workflows-section">
             <SectionHeader
               icon={FolderKanban}
@@ -152,18 +157,21 @@ export function DashboardContent({
               <NavigationCluster
                 title="共通ワークベンチ"
                 description="個人タスク、請求、提案確認などの横断作業。"
+                tone="cool"
               >
                 <WorkbenchNavigation focusRole={focusRole} />
               </NavigationCluster>
               <NavigationCluster
                 title="連携・モニタ"
                 description="通知、外部連携、依頼・照会、申し送り。"
+                tone="warm"
               >
                 <CoordinationNavigation focusRole={focusRole} />
               </NavigationCluster>
               <NavigationCluster
                 title="運営・管理"
                 description="管理ダッシュボード、監視、分析、探索。"
+                tone="neutral"
               >
                 <AdminNavigation />
               </NavigationCluster>
@@ -172,41 +180,46 @@ export function DashboardContent({
         </div>
       </DashboardSectionGroup>
 
-      <DashboardSectionGroup
-        id="dashboard-patients-group"
-        eyebrow="Patient Monitoring"
-        title="患者確認"
-        description="患者検索とリスク確認は独立したまとまりに分離し、日次業務を回し始めた後に横断確認しやすくしています。"
-      >
-        <section className="space-y-4" aria-labelledby="dashboard-patients-section">
-          <SectionHeader
-            icon={Users}
-            title="患者カード"
-            description="リスク順に患者を並べ、検索しながら処方受付や個別確認へそのまま遷移します。"
-          />
-          <div id="dashboard-patients-section">
-            <PatientGridSection />
-          </div>
-        </section>
-      </DashboardSectionGroup>
+      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.95fr)]">
+        <DashboardSectionGroup
+          id="dashboard-patients-group"
+          eyebrow="Patient Monitoring"
+          title="患者確認"
+          description="患者検索とリスク確認を横断監視として独立させ、日次業務を回し始めた後に見直しやすくしています。"
+          tone="monitoring"
+        >
+          <section className="space-y-4" aria-labelledby="dashboard-patients-section">
+            <SectionHeader
+              icon={Users}
+              title="患者カード"
+              description="リスク順に患者を並べ、検索しながら処方受付や個別確認へそのまま遷移します。"
+            />
+            <div id="dashboard-patients-section">
+              <PatientGridSection />
+            </div>
+          </section>
+        </DashboardSectionGroup>
 
-      <DashboardSectionGroup
-        id="dashboard-billing-kpi"
-        eyebrow="Billing KPI"
-        title="請求状況"
-        description="当月の請求候補、未確定、締めブロッカーを補助監視として分離し、日次オペレーションの後段で確認できるようにしています。"
-      >
-        <section className="space-y-4" aria-labelledby="dashboard-billing-kpi-section">
-          <SectionHeader
-            icon={Receipt}
-            title="当月請求 KPI"
-            description="候補数、未確定、ブロッカーを見て、月次締め前に対処が必要な項目を把握します。"
-          />
-          <div id="dashboard-billing-kpi-section">
-            <BillingKpiSection />
-          </div>
-        </section>
-      </DashboardSectionGroup>
+        <DashboardSectionGroup
+          id="dashboard-billing-kpi"
+          eyebrow="Billing KPI"
+          title="請求状況"
+          description="当月の請求候補、未確定、締めブロッカーを補助監視として分離し、月次締め前の確認を独立して行えるようにしています。"
+          tone="reference"
+          className="self-start"
+        >
+          <section className="space-y-4" aria-labelledby="dashboard-billing-kpi-section">
+            <SectionHeader
+              icon={Receipt}
+              title="当月請求 KPI"
+              description="候補数、未確定、ブロッカーを見て、月次締め前に対処が必要な項目を把握します。"
+            />
+            <div id="dashboard-billing-kpi-section">
+              <BillingKpiSection />
+            </div>
+          </section>
+        </DashboardSectionGroup>
+      </div>
     </div>
   );
 }

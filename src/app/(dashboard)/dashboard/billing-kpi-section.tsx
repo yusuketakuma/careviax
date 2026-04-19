@@ -26,10 +26,9 @@ export function BillingKpiSection() {
   const { data } = useQuery({
     queryKey: ['billing-kpi', orgId, billingMonth],
     queryFn: async () => {
-      const res = await fetch(
-        `/api/billing-candidates?billing_month=${billingMonth}&limit=1`,
-        { headers: { 'x-org-id': orgId } }
-      );
+      const res = await fetch(`/api/billing-candidates?billing_month=${billingMonth}&limit=1`, {
+        headers: { 'x-org-id': orgId },
+      });
       if (!res.ok) return null;
       const payload = (await res.json()) as { summary: BillingKpiSummary | null };
       return payload.summary;
@@ -42,13 +41,12 @@ export function BillingKpiSection() {
 
   const deliveryIncomplete =
     data.blocker_reasons.find((r) => r.reason === 'delivery_incomplete')?.count ?? 0;
-  const notClaimable =
-    data.blocker_reasons.find((r) => r.reason === 'not_claimable')?.count ?? 0;
+  const notClaimable = data.blocker_reasons.find((r) => r.reason === 'not_claimable')?.count ?? 0;
 
   return (
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-3">
-        <Card size="sm">
+        <Card size="sm" className="border-primary/15 bg-primary/[0.04] shadow-none">
           <CardHeader className="pb-1">
             <CardTitle className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <Receipt className="size-3.5" aria-hidden="true" />
@@ -58,7 +56,7 @@ export function BillingKpiSection() {
           <CardContent>
             <Link
               href="/billing/candidates"
-              className="text-2xl font-bold tabular-nums hover:text-blue-600"
+              className="text-2xl font-bold tabular-nums transition-colors hover:text-primary"
             >
               {data.total}
             </Link>
@@ -66,7 +64,7 @@ export function BillingKpiSection() {
           </CardContent>
         </Card>
 
-        <Card size="sm">
+        <Card size="sm" className="border-amber-200/80 bg-amber-500/[0.06] shadow-none">
           <CardHeader className="pb-1">
             <CardTitle className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <AlertTriangle className="size-3.5 text-yellow-500" aria-hidden="true" />
@@ -76,7 +74,7 @@ export function BillingKpiSection() {
           <CardContent>
             <Link
               href="/billing/candidates"
-              className={`text-2xl font-bold tabular-nums ${data.pending_review > 0 ? 'text-yellow-600 hover:text-yellow-700' : 'hover:text-blue-600'}`}
+              className={`text-2xl font-bold tabular-nums transition-colors ${data.pending_review > 0 ? 'text-yellow-700 hover:text-yellow-800' : 'hover:text-primary'}`}
             >
               {data.pending_review}
             </Link>
@@ -84,7 +82,7 @@ export function BillingKpiSection() {
           </CardContent>
         </Card>
 
-        <Card size="sm">
+        <Card size="sm" className="border-red-200/80 bg-red-500/[0.06] shadow-none">
           <CardHeader className="pb-1">
             <CardTitle className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <XCircle className="size-3.5 text-red-500" aria-hidden="true" />
@@ -94,7 +92,7 @@ export function BillingKpiSection() {
           <CardContent>
             <Link
               href="/billing/candidates"
-              className={`text-2xl font-bold tabular-nums ${data.blocked_from_close > 0 ? 'text-red-600 hover:text-red-700' : 'hover:text-blue-600'}`}
+              className={`text-2xl font-bold tabular-nums transition-colors ${data.blocked_from_close > 0 ? 'text-red-700 hover:text-red-800' : 'hover:text-primary'}`}
             >
               {data.blocked_from_close}
             </Link>
@@ -104,7 +102,7 @@ export function BillingKpiSection() {
       </div>
 
       {(deliveryIncomplete > 0 || notClaimable > 0) && (
-        <div className="flex flex-wrap items-center gap-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+        <div className="flex flex-wrap items-center gap-4 rounded-xl border border-amber-200/80 bg-amber-500/[0.08] px-4 py-3 text-xs text-amber-950">
           <CheckCircle2 className="size-3.5 shrink-0 text-amber-600" aria-hidden="true" />
           {deliveryIncomplete > 0 && (
             <span>

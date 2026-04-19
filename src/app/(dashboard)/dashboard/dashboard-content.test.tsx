@@ -48,7 +48,6 @@ describe('DashboardContent', () => {
     render(<DashboardContent />);
 
     expect(screen.getByText('今日の運用')).toBeTruthy();
-    expect(screen.getByText('担当別の開始導線')).toBeTruthy();
     expect(screen.getByText('業務導線')).toBeTruthy();
     expect(screen.getByText('患者確認')).toBeTruthy();
     expect(screen.getByText('職種ごとの初動')).toBeTruthy();

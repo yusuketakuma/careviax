@@ -37,8 +37,8 @@ export function AdminPageHeader({
   childrenLabel = shortcuts.length > 0 ? '関連導線' : undefined,
 }: AdminPageHeaderProps) {
   return (
-    <div className="space-y-4">
-      <div className="border-b border-border/70 pb-3">
+    <div className="space-y-4" data-page-header="true">
+      <div className="rounded-xl border border-border/70 bg-background/70 px-4 py-3">
         <WorkflowBackLink href="/admin" label="管理ダッシュボードへ戻る" />
       </div>
       <WorkflowPageHeader

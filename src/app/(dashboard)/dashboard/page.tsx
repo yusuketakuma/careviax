@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth/config';
 import { memberRoleLabel } from '@/lib/auth/member-roles';
 import { prisma } from '@/lib/db';
 import { resolveLocalUserByIdentity } from '@/lib/auth/user-resolution';
+import { CalendarDays, ListChecks, UserRound } from 'lucide-react';
 import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
 import { DashboardContent } from './dashboard-content';
 import { dashboardFocusSummary, resolveDashboardFocusRole } from './dashboard-role-focus';
@@ -42,25 +43,60 @@ async function getDashboardViewer() {
 
 export default async function DashboardPage() {
   const viewer = await getDashboardViewer();
+  const todayLabel = new Intl.DateTimeFormat('ja-JP', {
+    month: 'long',
+    day: 'numeric',
+    weekday: 'short',
+  }).format(new Date());
 
   return (
     <div>
-      <div className="border-b border-border px-6 py-4">
+      <div className="border-b border-border bg-[radial-gradient(circle_at_top_left,rgba(34,113,177,0.10),transparent_34%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.10),transparent_26%),linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,1))] px-6 py-5">
         <WorkflowPageHeader
           className="mb-0 space-y-0"
           eyebrow="Daily Operations Home"
           title="CareViaX ホーム"
           description={`今日の優先対応、予定、担当別の入口を最初に確認するための運用トップです。現在は ${viewer.roleLabel} 向けの見方を強調しています。`}
           supportingContent={
-            <div className="space-y-1">
-              <div className="flex items-center gap-3">
-                <p className="text-sm font-medium text-foreground">最初に把握すること</p>
-                <OnboardingRestoreLink />
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
+              <div className="space-y-1">
+                <div className="flex items-center gap-3">
+                  <p className="text-sm font-medium text-foreground">最初に把握すること</p>
+                  <OnboardingRestoreLink />
+                </div>
+                <p className="text-sm font-medium text-foreground">
+                  {dashboardFocusSummary(viewer.focusRole)}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  緊急対応、今日の予定、薬剤師と事務スタッフの担当入口、工程ごとの滞留をこの順で確認します。
+                </p>
               </div>
-              <p className="text-sm font-medium text-foreground">{dashboardFocusSummary(viewer.focusRole)}</p>
-              <p className="text-sm text-muted-foreground">
-                緊急対応、今日の予定、薬剤師と事務スタッフの担当入口、工程ごとの滞留をこの順で確認します。
-              </p>
+
+              <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+                <div className="rounded-xl border border-border/70 bg-background/80 px-3 py-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    <CalendarDays className="size-3.5" aria-hidden="true" />
+                    今日
+                  </div>
+                  <p className="mt-2 text-sm font-semibold text-foreground">{todayLabel}</p>
+                </div>
+                <div className="rounded-xl border border-border/70 bg-background/80 px-3 py-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    <UserRound className="size-3.5" aria-hidden="true" />
+                    強調ロール
+                  </div>
+                  <p className="mt-2 text-sm font-semibold text-foreground">{viewer.roleLabel}</p>
+                </div>
+                <div className="rounded-xl border border-border/70 bg-background/80 px-3 py-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    <ListChecks className="size-3.5" aria-hidden="true" />
+                    確認順
+                  </div>
+                  <p className="mt-2 text-sm font-semibold text-foreground">
+                    緊急対応 → 予定 → 導線
+                  </p>
+                </div>
+              </div>
             </div>
           }
           childrenLabel="主要導線"
@@ -78,6 +114,7 @@ export default async function DashboardPage() {
           eyebrow="Reference"
           title="利用環境の目安"
           description="主要業務の推奨端末を補足情報として分離し、日次オペレーションの情報と混ざらないようにしています。"
+          tone="reference"
         >
           <DeviceSupportMatrix embedded />
         </DashboardSectionGroup>

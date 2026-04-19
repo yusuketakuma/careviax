@@ -37,6 +37,7 @@ import { CareManagerReportView } from '@/components/features/reports/care-manage
 import { ReportEditForm } from '@/components/features/reports/report-edit-form';
 import { ComplianceChecklist } from '@/components/features/reports/compliance-checklist';
 import type { PhysicianReportContent, CareManagerReportContent } from '@/types/care-report-content';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 import { cn } from '@/lib/utils';
 
 // --- Types ---
@@ -185,17 +186,17 @@ export default function ReportDetailPage() {
 
   if (isBootstrappingOrg || isLoading) {
     return (
-      <div className="p-3 md:p-4 xl:p-5">
+      <PageScaffold>
         <Loading />
-      </div>
+      </PageScaffold>
     );
   }
 
   if (!report) {
     return (
-      <div className="p-3 md:p-4 xl:p-5">
+      <PageScaffold>
         <p className="text-sm text-muted-foreground">報告書が見つかりません</p>
-      </div>
+      </PageScaffold>
     );
   }
 
@@ -276,7 +277,7 @@ export default function ReportDetailPage() {
   }
 
   return (
-    <div className="p-4 md:p-6">
+    <PageScaffold>
       {/* Header */}
       <WorkflowPageIntro
         backHref="/reports"
@@ -614,6 +615,6 @@ export default function ReportDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageScaffold>
   );
 }

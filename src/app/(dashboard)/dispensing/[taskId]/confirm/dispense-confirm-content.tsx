@@ -15,6 +15,7 @@ import { CdsAlertPanel, type CdsAlert } from '@/components/features/cds/alert-pa
 import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
 import { getDispenseConfirmShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 import { cn } from '@/lib/utils';
 import { HIGH_RISK_KEYWORDS, CARRY_TYPE_LABELS } from '@/lib/dispensing/constants';
 import { PRIORITY_LABELS } from '@/lib/constants/status-labels';
@@ -256,9 +257,9 @@ export function DispenseConfirmContent() {
   const dateWarnings: DateContinuityWarning[] = task.prefill?.dateWarnings ?? [];
 
   return (
-    <div className="p-4 md:p-6">
+    <PageScaffold>
       {/* Page header */}
-      <div className="mb-4">
+      <div>
         <Link
           href={`/dispensing/${taskId}`}
           className="inline-flex h-7 items-center gap-1 rounded-lg px-2.5 text-[0.8rem] font-medium text-foreground hover:bg-muted"
@@ -554,6 +555,6 @@ export function DispenseConfirmContent() {
           </p>
         )}
       </div>
-    </div>
+    </PageScaffold>
   );
 }

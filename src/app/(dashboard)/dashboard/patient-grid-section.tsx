@@ -69,9 +69,9 @@ export function PatientGridSection() {
   const totalPages = data ? Math.ceil(data.total / 12) : 1;
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <Card className="border-border/70 bg-card/95 shadow-none">
+      <CardHeader className="border-b border-border/70 pb-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <CardTitle className="flex items-center gap-2 text-base">
             <Users className="size-4" aria-hidden="true" />
             患者一覧
@@ -79,7 +79,7 @@ export function PatientGridSection() {
               <span className="text-sm font-normal text-muted-foreground">({data.total}名)</span>
             )}
           </CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="relative">
               <Search
                 className="absolute left-2.5 top-2.5 size-4 text-muted-foreground"
@@ -113,7 +113,7 @@ export function PatientGridSection() {
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-4">
         {isBootstrappingOrg || isLoading ? (
           <PatientsSkeleton />
         ) : isError ? (

@@ -8,6 +8,7 @@ import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page
 import { HandoffConfirmPanel } from '@/components/features/visits/handoff-confirm-panel';
 import { ErrorState } from '@/components/ui/error-state';
 import { Loading } from '@/components/ui/loading';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import type { VisitHandoff } from '@/types/visit-brief';
 
@@ -30,7 +31,7 @@ export function HandoffReviewContent({ visitRecordId }: { visitRecordId: string 
   });
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
+    <PageScaffold>
       <div>
         <WorkflowBackLink href="/handoff" label="申し送り一覧へ戻る" />
       </div>
@@ -72,6 +73,6 @@ export function HandoffReviewContent({ visitRecordId }: { visitRecordId: string 
           action={{ label: '申し送り一覧へ戻る', href: '/handoff' }}
         />
       )}
-    </div>
+    </PageScaffold>
   );
 }
