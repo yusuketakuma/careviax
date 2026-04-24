@@ -37,10 +37,10 @@ export function PatientReadinessCard({ patientId }: { patientId: string }) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">訪問開始 readiness</CardTitle>
+          <CardTitle className="text-base">患者情報・訪問開始 readiness</CardTitle>
         </CardHeader>
         <CardContent>
-          <Loading label="訪問開始 readiness を読み込み中..." />
+          <Loading label="患者情報・訪問開始 readiness を読み込み中..." />
         </CardContent>
       </Card>
     );
@@ -50,10 +50,10 @@ export function PatientReadinessCard({ patientId }: { patientId: string }) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">訪問開始 readiness</CardTitle>
+          <CardTitle className="text-base">患者情報・訪問開始 readiness</CardTitle>
         </CardHeader>
         <CardContent>
-          <Loading label="訪問開始 readiness を読み込み中..." />
+          <Loading label="患者情報・訪問開始 readiness を読み込み中..." />
         </CardContent>
       </Card>
     );
@@ -63,7 +63,7 @@ export function PatientReadinessCard({ patientId }: { patientId: string }) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">訪問開始 readiness</CardTitle>
+          <CardTitle className="text-base">患者情報・訪問開始 readiness</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-destructive">{readinessQuery.error.message}</p>
@@ -77,8 +77,8 @@ export function PatientReadinessCard({ patientId }: { patientId: string }) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">訪問開始 readiness</CardTitle>
-          <CardDescription>初回訪問前の前提条件を確認します。</CardDescription>
+          <CardTitle className="text-base">患者情報・訪問開始 readiness</CardTitle>
+          <CardDescription>患者情報と初回訪問前の前提条件を確認します。</CardDescription>
         </CardHeader>
         <CardContent>
           <EmptyState
@@ -98,9 +98,9 @@ export function PatientReadinessCard({ patientId }: { patientId: string }) {
       <CardHeader className="space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="text-base">訪問開始 readiness</CardTitle>
+            <CardTitle className="text-base">患者情報・訪問開始 readiness</CardTitle>
             <CardDescription className="mt-1">
-              初回訪問に必要な前提条件を患者詳細から確認できます。
+              訪問時、報告書、他職種連携に必要な患者情報と前提条件を確認できます。
             </CardDescription>
           </div>
           <Badge variant={readiness.overall_status === 'ready' ? 'default' : 'secondary'}>

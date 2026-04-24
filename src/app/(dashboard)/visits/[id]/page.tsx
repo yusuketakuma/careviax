@@ -32,6 +32,8 @@ export default async function VisitRecordDetailPage({
           </div>
         }
         shortcuts={getVisitDetailShortcutLinks(id)}
+        mainWorkflowSteps={['visits']}
+        mainWorkflowDescription="訪問詳細では、記録確認から報告書作成へ進む流れを上部で固定して示します。"
       />
 
       <VisitRecordDetail recordId={id} />

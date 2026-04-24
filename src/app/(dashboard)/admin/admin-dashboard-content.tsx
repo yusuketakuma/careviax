@@ -21,8 +21,14 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Loading } from '@/components/ui/loading';
 import { SegmentedProgressBar } from '@/components/ui/segmented-progress-bar';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { SectionIntro } from '@/components/ui/section-intro';
+import {
+  ADMIN_MASTER_READINESS_GROUPS,
+  type AdminMasterReadinessSnapshot,
+  type AdminMasterReadinessStatus,
+} from '@/lib/admin/master-readiness';
 
 type OverdueDashboard = {
   summary: {
@@ -221,6 +227,129 @@ function SummaryCard({
   }
 
   return <Card>{content}</Card>;
+}
+
+const masterReadinessStatusMeta: Record<AdminMasterReadinessStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' }> = {
+  ready: { label: '整備済み', variant: 'default' },
+  warning: { label: '要確認', variant: 'secondary' },
+  missing: { label: '不足', variant: 'destructive' },
+};
+
+export function MasterReadinessSection({
+  snapshot,
+}: {
+  snapshot?: AdminMasterReadinessSnapshot | null;
+}) {
+  const groups = snapshot?.groups ?? ADMIN_MASTER_READINESS_GROUPS.map((group) => ({
+    ...group,
+    status: 'warning' as const,
+    ready_count: 0,
+    warning_count: group.items.length,
+    missing_count: 0,
+    items: group.items.map((item) => ({
+      ...item,
+      status: 'warning' as const,
+      count: 0,
+      detail: '整備状況を読み込み中、または未集計です。',
+      issues: [],
+    })),
+  }));
+  const defaultTab = groups[0]?.key ?? 'operations';
+
+  return (
+    <Card data-testid="admin-master-readiness">
+      <CardHeader>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <CardTitle className="text-base">設定・マスター整備</CardTitle>
+            <CardDescription>
+              訪問時、報告書、他職種連携、算定要件に影響する管理項目を用途別に確認します。
+            </CardDescription>
+          </div>
+          {snapshot ? (
+            <div className="flex flex-wrap gap-2 text-xs">
+              <Badge variant="default">整備済み {snapshot.summary.ready_count}</Badge>
+              <Badge variant="secondary">要確認 {snapshot.summary.warning_count}</Badge>
+              <Badge variant={snapshot.summary.missing_count > 0 ? 'destructive' : 'outline'}>
+                不足 {snapshot.summary.missing_count}
+              </Badge>
+            </div>
+          ) : null}
+        </div>
+      </CardHeader>
+      <CardContent>
+        <Tabs defaultValue={defaultTab} className="space-y-4">
+          <TabsList className="w-full overflow-x-auto" aria-label="設定・マスターカテゴリ">
+            {groups.map((group) => {
+              const statusMeta = masterReadinessStatusMeta[group.status];
+              return (
+                <TabsTrigger key={group.key} value={group.key} className="gap-2 whitespace-nowrap">
+                  {group.title}
+                  <Badge variant={statusMeta.variant} className="text-[10px]">
+                    {statusMeta.label}
+                  </Badge>
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
+
+          {groups.map((group) => {
+            const statusMeta = masterReadinessStatusMeta[group.status];
+            return (
+              <TabsContent key={group.key} value={group.key}>
+              <section
+                className="rounded-2xl border border-border/70 bg-muted/[0.06] p-3"
+                aria-labelledby={`admin-master-readiness-${group.key}`}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="space-y-1">
+                    <h3 id={`admin-master-readiness-${group.key}`} className="text-sm font-semibold text-foreground">
+                      {group.title}
+                    </h3>
+                    <p className="text-xs leading-5 text-muted-foreground">{group.description}</p>
+                  </div>
+                  <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {group.items.map((item) => (
+                    <Link
+                      key={`${group.key}:${item.href}`}
+                      href={item.href}
+                      className="rounded-xl border border-border/70 bg-background px-3 py-2.5 text-sm transition-colors hover:border-primary/40 hover:bg-muted/30"
+                    >
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-foreground">{item.label}</span>
+                        <Badge variant={masterReadinessStatusMeta[item.status].variant}>
+                          {masterReadinessStatusMeta[item.status].label}
+                        </Badge>
+                      </span>
+                      <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                        {item.purpose}
+                      </span>
+                      {item.issues.length > 0 ? (
+                        <span className="mt-2 block space-y-1">
+                          {item.issues.map((issue) => (
+                            <span key={issue} className="block text-[11px] leading-5 text-amber-700">
+                              {issue}
+                            </span>
+                          ))}
+                        </span>
+                      ) : (
+                        <span className="mt-1 block text-[11px] leading-5 text-muted-foreground">
+                          {item.detail}
+                        </span>
+                      )}
+                    </Link>
+                  ))}
+                </div>
+              </section>
+              </TabsContent>
+            );
+          })}
+        </Tabs>
+      </CardContent>
+    </Card>
+  );
 }
 
 function ProgressBar({ value, max }: { value: number; max: number }) {
@@ -552,8 +681,25 @@ export function AdminDashboardContent() {
     retry: false,
     enabled: !!orgId,
   });
+  const masterReadinessQuery = useQuery<{ data: AdminMasterReadinessSnapshot }, AdminDashboardFetchError>({
+    queryKey: ['admin', 'master-readiness', orgId],
+    queryFn: () =>
+      fetchJson<{ data: AdminMasterReadinessSnapshot }>(
+        '/api/admin/master-readiness',
+        orgId,
+        '設定・マスター整備状況の取得に失敗しました。',
+      ),
+    staleTime: 60_000,
+    retry: false,
+    enabled: !!orgId,
+  });
 
-  const firstError = overdueQuery.error ?? monthlyStatsQuery.error ?? workflowQuery.error ?? null;
+  const firstError =
+    overdueQuery.error ??
+    monthlyStatsQuery.error ??
+    workflowQuery.error ??
+    masterReadinessQuery.error ??
+    null;
 
   if (!orgId) {
     return <Loading label="組織情報を読み込み中..." />;
@@ -562,7 +708,8 @@ export function AdminDashboardContent() {
   if (
     (overdueQuery.isLoading && !overdueQuery.data) ||
     (monthlyStatsQuery.isLoading && !monthlyStatsQuery.data) ||
-    (workflowQuery.isLoading && !workflowQuery.data)
+    (workflowQuery.isLoading && !workflowQuery.data) ||
+    (masterReadinessQuery.isLoading && !masterReadinessQuery.data)
   ) {
     return <Loading label="管理者ダッシュボードを読み込み中..." />;
   }
@@ -593,6 +740,7 @@ export function AdminDashboardContent() {
             void overdueQuery.refetch();
             void monthlyStatsQuery.refetch();
             void workflowQuery.refetch();
+            void masterReadinessQuery.refetch();
           },
           size: 'lg',
         }}
@@ -651,6 +799,12 @@ export function AdminDashboardContent() {
           <SummaryCard key={card.title} {...card} />
         ))}
       </div>
+
+      <SectionIntro
+        title="設定・マスター"
+        description="訪問時、報告書、他職種連携、算定要件に影響する設定とマスターの整備状況を確認します。"
+      />
+      <MasterReadinessSection snapshot={masterReadinessQuery.data?.data ?? null} />
 
       <SectionIntro
         title="月間進捗"

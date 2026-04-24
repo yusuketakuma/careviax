@@ -384,6 +384,8 @@ export default function QRScanPage() {
         }
         className="mb-0"
         shortcuts={getQrScanShortcutLinks()}
+        mainWorkflowSteps={['prescriptions']}
+        mainWorkflowDescription="QR スキャンは処方登録の前段支援として扱い、受付確定へ戻る位置を明示しています。"
         actions={
           phase !== 'camera' ? (
             <Button variant="outline" size="sm" onClick={resetScan}>

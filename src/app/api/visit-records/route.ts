@@ -3,6 +3,7 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { conflict, success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
+import { decodeKeysetCursor, encodeKeysetCursor } from '@/lib/api/keyset-cursor';
 import {
   createVisitRecordSchema,
   type CreateVisitRecordInput,
@@ -10,6 +11,7 @@ import {
 import { prisma } from '@/lib/db/client';
 import { getRequestAuthContext } from '@/lib/auth/request-context';
 import { buildAllSoapTexts } from '@/lib/utils/soap-text-builder';
+import { transitionCycleStatus } from '@/lib/db/cycle-transition';
 import { getNextSimpleRruleOccurrence } from '@/lib/visits/rrule';
 import type { StructuredSoap } from '@/types/structured-soap';
 import type { Prisma, LabAnalyteCode } from '@prisma/client';
@@ -74,7 +76,7 @@ type VisitRecordHandoffExtractionPayload = {
 async function loadExistingVisitRecordConflict(
   tx: Prisma.TransactionClient,
   orgId: string,
-  scheduleId: string
+  scheduleId: string,
 ): Promise<VisitRecordConflictDetail | null> {
   const existing = await tx.visitRecord.findFirst({
     where: {
@@ -131,9 +133,28 @@ async function loadExistingVisitRecordConflict(
 }
 
 const LAB_ANALYTE_CODES = new Set([
-  'wbc', 'neut', 'hb', 'plt', 'pt_inr', 'ast', 'alt', 't_bil',
-  'scr', 'egfr', 'bun', 'ck', 'bnp', 'nt_pro_bnp', 'na', 'k', 'cl',
-  'hba1c', 'blood_glucose', 'alb', 'tp', 'crp',
+  'wbc',
+  'neut',
+  'hb',
+  'plt',
+  'pt_inr',
+  'ast',
+  'alt',
+  't_bil',
+  'scr',
+  'egfr',
+  'bun',
+  'ck',
+  'bnp',
+  'nt_pro_bnp',
+  'na',
+  'k',
+  'cl',
+  'hba1c',
+  'blood_glucose',
+  'alb',
+  'tp',
+  'crp',
 ]);
 
 async function syncLabObservations(
@@ -172,7 +193,7 @@ async function replaceResidualMedications(
   tx: Prisma.TransactionClient,
   orgId: string,
   visitRecordId: string,
-  residualMedications: CreateVisitRecordInput['residual_medications']
+  residualMedications: CreateVisitRecordInput['residual_medications'],
 ) {
   await tx.residualMedication.deleteMany({
     where: {
@@ -191,9 +212,7 @@ async function replaceResidualMedications(
         medication.prescribed_daily_dose > 0 &&
         medication.remaining_quantity > 0
       ) {
-        excessDays = Math.floor(
-          medication.remaining_quantity / medication.prescribed_daily_dose
-        );
+        excessDays = Math.floor(medication.remaining_quantity / medication.prescribed_daily_dose);
       }
 
       return tx.residualMedication.create({
@@ -209,7 +228,7 @@ async function replaceResidualMedications(
           is_prohibited_reduction: medication.is_prohibited_reduction,
         },
       });
-    })
+    }),
   );
 }
 
@@ -223,25 +242,25 @@ type ResidualReductionCandidate = {
 };
 
 function collectResidualReductionCandidates(
-  residualMedications: CreateVisitRecordInput['residual_medications']
+  residualMedications: CreateVisitRecordInput['residual_medications'],
 ): ResidualReductionCandidate[] {
   const candidates: ResidualReductionCandidate[] = [];
 
   for (const medication of residualMedications ?? []) {
-      const prescribedDailyDose = medication.prescribed_daily_dose ?? 0;
-      if (prescribedDailyDose <= 0 || medication.remaining_quantity <= 0) continue;
+    const prescribedDailyDose = medication.prescribed_daily_dose ?? 0;
+    if (prescribedDailyDose <= 0 || medication.remaining_quantity <= 0) continue;
 
-      const excessDays = Math.floor(medication.remaining_quantity / prescribedDailyDose);
-      if (excessDays <= 7) continue;
+    const excessDays = Math.floor(medication.remaining_quantity / prescribedDailyDose);
+    if (excessDays <= 7) continue;
 
-      candidates.push({
-        drug_name: medication.drug_name,
-        drug_code: medication.drug_code ?? undefined,
-        remaining_quantity: medication.remaining_quantity,
-        prescribed_daily_dose: prescribedDailyDose,
-        excess_days: excessDays,
-        is_prohibited_reduction: medication.is_prohibited_reduction,
-      });
+    candidates.push({
+      drug_name: medication.drug_name,
+      drug_code: medication.drug_code ?? undefined,
+      remaining_quantity: medication.remaining_quantity,
+      prescribed_daily_dose: prescribedDailyDose,
+      excess_days: excessDays,
+      is_prohibited_reduction: medication.is_prohibited_reduction,
+    });
   }
 
   return candidates;
@@ -305,7 +324,7 @@ async function upsertFirstVisitDocument(args: {
   });
 
   const documentUrl = existing?.document_url ?? `/api/visit-records/${args.recordId}/pdf`;
-  const deliveredAt = args.receiptAt ? new Date(args.receiptAt) : existing?.delivered_at ?? null;
+  const deliveredAt = args.receiptAt ? new Date(args.receiptAt) : (existing?.delivered_at ?? null);
   const deliveredTo = args.receiptPersonName?.trim() || existing?.delivered_to || null;
 
   if (existing) {
@@ -350,7 +369,7 @@ function getNextVisitSuggestionDate(args: {
   }
 
   const cutoffCandidates = [args.medicationEndDate, args.visitDeadlineDate].filter(
-    (value): value is Date => value instanceof Date
+    (value): value is Date => value instanceof Date,
   );
   const cutoff =
     cutoffCandidates.length > 0
@@ -360,75 +379,291 @@ function getNextVisitSuggestionDate(args: {
   return getNextSimpleRruleOccurrence(args.recurrenceRule, args.visitRecordedAt, cutoff);
 }
 
-export const GET = withAuth(async (req: AuthenticatedRequest) => {
-  const { searchParams } = new URL(req.url);
-  const { cursor, limit } = parsePaginationParams(searchParams);
+type VisitRecordListItem = {
+  id: string;
+  patient_id: string;
+};
 
-  const patientId = searchParams.get('patient_id') ?? undefined;
-  const pharmacistId = searchParams.get('pharmacist_id') ?? undefined;
-  const dateFrom = searchParams.get('date_from') ?? undefined;
-  const dateTo = searchParams.get('date_to') ?? undefined;
+const VISIT_RECORD_CURSOR_KEYS = ['visit_date', 'created_at'] as const;
 
-  const where = {
-    org_id: req.orgId,
-    ...(patientId ? { patient_id: patientId } : {}),
-    ...(pharmacistId ? { pharmacist_id: pharmacistId } : {}),
-    ...(dateFrom || dateTo
-      ? {
-          visit_date: {
-            ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
-            ...(dateTo ? { lte: new Date(dateTo + 'T23:59:59') } : {}),
-          },
-        }
-      : {}),
+function buildVisitRecordKeysetWhere(
+  cursor: ReturnType<typeof decodeKeysetCursor<(typeof VISIT_RECORD_CURSOR_KEYS)[number]>>,
+): Prisma.VisitRecordWhereInput | null {
+  if (!cursor) return null;
+
+  return {
+    OR: [
+      { visit_date: { lt: cursor.visit_date } },
+      {
+        visit_date: cursor.visit_date,
+        created_at: { lt: cursor.created_at },
+      },
+      {
+        visit_date: cursor.visit_date,
+        created_at: cursor.created_at,
+        id: { lt: cursor.id },
+      },
+    ],
   };
+}
 
-  const records = await prisma.visitRecord.findMany({
-    where,
-    take: limit + 1,
-    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    orderBy: { visit_date: 'desc' },
-    select: {
-      id: true,
-      schedule_id: true,
-      patient_id: true,
-      pharmacist_id: true,
-      visit_date: true,
-      outcome_status: true,
-      soap_subjective: true,
-      soap_objective: true,
-      soap_assessment: true,
-      soap_plan: true,
-      receipt_person_name: true,
-      receipt_person_relation: true,
-      receipt_at: true,
-      next_visit_suggestion_date: true,
-      version: true,
-      created_at: true,
-      updated_at: true,
-      schedule: {
-        select: {
-          visit_type: true,
-          scheduled_date: true,
+type LatestPrescriptionHistoryRow = {
+  patient_id: string;
+  id: string;
+  prescribed_date: Date;
+  prescriber_name: string | null;
+  prescription_count: bigint | number | string;
+  drug_names: string[] | null;
+};
+
+type PreviousVisitHistoryRow = {
+  record_id: string;
+  visit_count: bigint | number | string | null;
+  previous_visit_id: string | null;
+  previous_visit_date: Date | null;
+  previous_outcome_status: string | null;
+  previous_next_visit_suggestion_date: Date | null;
+};
+
+function toCount(value: bigint | number | string | null | undefined) {
+  if (typeof value === 'bigint') return Number(value);
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') return Number(value);
+  return 0;
+}
+
+async function buildVisitRecordPatientHistorySummaries(
+  orgId: string,
+  records: VisitRecordListItem[],
+) {
+  const patientIds = Array.from(new Set(records.map((record) => record.patient_id)));
+  const recordIds = records.map((record) => record.id);
+  if (patientIds.length === 0) return new Map<string, unknown>();
+
+  const [latestPrescriptions, previousVisits] = await Promise.all([
+    prisma.$queryRaw<LatestPrescriptionHistoryRow[]>`
+      SELECT
+        ranked.patient_id,
+        ranked.id,
+        ranked.prescribed_date,
+        ranked.prescriber_name,
+        ranked.prescription_count,
+        COALESCE(
+          array_agg(line.drug_name ORDER BY line.line_number)
+            FILTER (WHERE line.drug_name IS NOT NULL),
+          ARRAY[]::text[]
+        ) AS drug_names
+      FROM (
+        SELECT
+          cycle.patient_id,
+          intake.id,
+          intake.prescribed_date,
+          intake.prescriber_name,
+          COUNT(*) OVER (PARTITION BY cycle.patient_id)::bigint AS prescription_count,
+          ROW_NUMBER() OVER (
+            PARTITION BY cycle.patient_id
+            ORDER BY intake.prescribed_date DESC, intake.id DESC
+          ) AS rn
+        FROM "PrescriptionIntake" intake
+        INNER JOIN "MedicationCycle" cycle
+          ON cycle.id = intake.cycle_id
+          AND cycle.org_id = intake.org_id
+        WHERE intake.org_id = ${orgId}
+          AND cycle.patient_id = ANY(${patientIds}::text[])
+      ) ranked
+      LEFT JOIN LATERAL (
+        SELECT drug_name, line_number
+        FROM "PrescriptionLine"
+        WHERE org_id = ${orgId}
+          AND intake_id = ranked.id
+        ORDER BY line_number ASC
+        LIMIT 3
+      ) line ON TRUE
+      WHERE ranked.rn = 1
+      GROUP BY
+        ranked.patient_id,
+        ranked.id,
+        ranked.prescribed_date,
+        ranked.prescriber_name,
+        ranked.prescription_count
+    `,
+    prisma.$queryRaw<PreviousVisitHistoryRow[]>`
+      WITH current_records AS (
+        SELECT id, patient_id, visit_date, created_at
+        FROM "VisitRecord"
+        WHERE org_id = ${orgId}
+          AND id = ANY(${recordIds}::text[])
+      ),
+      visit_counts AS (
+        SELECT patient_id, COUNT(*)::bigint AS visit_count
+        FROM "VisitRecord"
+        WHERE org_id = ${orgId}
+          AND patient_id = ANY(${patientIds}::text[])
+        GROUP BY patient_id
+      )
+      SELECT
+        current_records.id AS record_id,
+        visit_counts.visit_count,
+        previous_visit.id AS previous_visit_id,
+        previous_visit.visit_date AS previous_visit_date,
+        previous_visit.outcome_status::text AS previous_outcome_status,
+        previous_visit.next_visit_suggestion_date AS previous_next_visit_suggestion_date
+      FROM current_records
+      LEFT JOIN visit_counts
+        ON visit_counts.patient_id = current_records.patient_id
+      LEFT JOIN LATERAL (
+        SELECT id, visit_date, outcome_status, next_visit_suggestion_date
+        FROM "VisitRecord" visit
+        WHERE visit.org_id = ${orgId}
+          AND visit.patient_id = current_records.patient_id
+          AND (
+            visit.visit_date < current_records.visit_date
+            OR (
+              visit.visit_date = current_records.visit_date
+              AND (
+                visit.created_at < current_records.created_at
+                OR (
+                  visit.created_at = current_records.created_at
+                  AND visit.id < current_records.id
+                )
+              )
+            )
+          )
+        ORDER BY visit.visit_date DESC, visit.created_at DESC, visit.id DESC
+        LIMIT 1
+      ) previous_visit ON TRUE
+    `,
+  ]);
+
+  const latestPrescriptionByPatient = new Map(
+    latestPrescriptions.map((prescription) => [prescription.patient_id, prescription]),
+  );
+  const previousVisitByRecord = new Map(previousVisits.map((visit) => [visit.record_id, visit]));
+
+  const summaries = new Map<string, unknown>();
+  for (const record of records) {
+    const latestPrescription = latestPrescriptionByPatient.get(record.patient_id) ?? null;
+    const previousVisit = previousVisitByRecord.get(record.id) ?? null;
+
+    summaries.set(record.id, {
+      prescription_count: toCount(latestPrescription?.prescription_count),
+      visit_count: toCount(previousVisit?.visit_count),
+      latest_prescription: latestPrescription
+        ? {
+            id: latestPrescription.id,
+            prescribed_date: latestPrescription.prescribed_date,
+            prescriber_name: latestPrescription.prescriber_name,
+            drug_names: latestPrescription.drug_names ?? [],
+          }
+        : null,
+      previous_visit: previousVisit?.previous_visit_id
+        ? {
+            id: previousVisit.previous_visit_id,
+            visit_date: previousVisit.previous_visit_date,
+            outcome_status: previousVisit.previous_outcome_status,
+            next_visit_suggestion_date: previousVisit.previous_next_visit_suggestion_date,
+          }
+        : null,
+    });
+  }
+
+  return summaries;
+}
+
+export const GET = withAuth(
+  async (req: AuthenticatedRequest) => {
+    const { searchParams } = new URL(req.url);
+    const { cursor, limit } = parsePaginationParams(searchParams);
+    const keysetCursor = decodeKeysetCursor(VISIT_RECORD_CURSOR_KEYS, cursor);
+    const keysetWhere = buildVisitRecordKeysetWhere(keysetCursor);
+
+    const patientId = searchParams.get('patient_id') ?? undefined;
+    const pharmacistId = searchParams.get('pharmacist_id') ?? undefined;
+    const dateFrom = searchParams.get('date_from') ?? undefined;
+    const dateTo = searchParams.get('date_to') ?? undefined;
+    const includeHistorySummary = searchParams.get('include_history_summary') === 'true';
+
+    const where = {
+      org_id: req.orgId,
+      ...(patientId ? { patient_id: patientId } : {}),
+      ...(pharmacistId ? { pharmacist_id: pharmacistId } : {}),
+      ...(keysetWhere ?? {}),
+      ...(dateFrom || dateTo
+        ? {
+            visit_date: {
+              ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
+              ...(dateTo ? { lte: new Date(dateTo + 'T23:59:59') } : {}),
+            },
+          }
+        : {}),
+    };
+
+    const records = await prisma.visitRecord.findMany({
+      where,
+      take: limit + 1,
+      orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        schedule_id: true,
+        patient_id: true,
+        pharmacist_id: true,
+        visit_date: true,
+        outcome_status: true,
+        soap_subjective: true,
+        soap_objective: true,
+        soap_assessment: true,
+        soap_plan: true,
+        receipt_person_name: true,
+        receipt_person_relation: true,
+        receipt_at: true,
+        next_visit_suggestion_date: true,
+        version: true,
+        created_at: true,
+        updated_at: true,
+        schedule: {
+          select: {
+            visit_type: true,
+            scheduled_date: true,
+            case_: {
+              select: {
+                patient: {
+                  select: {
+                    id: true,
+                    name: true,
+                    name_kana: true,
+                  },
+                },
+              },
+            },
+          },
         },
       },
-    },
-  });
+    });
 
-  const hasMore = records.length > limit;
-  const data = hasMore ? records.slice(0, limit) : records;
-  const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
+    const hasMore = records.length > limit;
+    const pageRecords = hasMore ? records.slice(0, limit) : records;
+    const patientHistorySummaries = includeHistorySummary
+      ? await buildVisitRecordPatientHistorySummaries(req.orgId, pageRecords)
+      : null;
+    const data = pageRecords.map((record) => ({
+      ...record,
+      patient_history_summary: patientHistorySummaries?.get(record.id) ?? null,
+    }));
+    const nextCursor = hasMore ? pageRecords[pageRecords.length - 1] : null;
 
-  return success({ data, hasMore, nextCursor });
-}, {
-  permission: 'canVisit',
-  message: '訪問記録の閲覧権限がありません',
-});
+    return success({
+      data,
+      hasMore,
+      nextCursor: nextCursor ? encodeKeysetCursor(VISIT_RECORD_CURSOR_KEYS, nextCursor) : undefined,
+    });
+  },
+  {
+    permission: 'canVisit',
+    message: '訪問記録の閲覧権限がありません',
+  },
+);
 
-async function saveVisitRecord(
-  req: AuthenticatedRequest,
-  input: CreateVisitRecordInput
-) {
+async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitRecordInput) {
   const {
     schedule_id,
     patient_id,
@@ -565,7 +800,14 @@ async function saveVisitRecord(
     // Sync structured lab values to PatientLabObservation
     const labValues = (structured_soap as StructuredSoap | undefined)?.objective?.lab_values;
     if (labValues) {
-      await syncLabObservations(tx, req.orgId, careCase.patient_id, record.id, visitRecordedAt, labValues as Record<string, unknown>);
+      await syncLabObservations(
+        tx,
+        req.orgId,
+        careCase.patient_id,
+        record.id,
+        visitRecordedAt,
+        labValues as Record<string, unknown>,
+      );
     }
 
     if (schedule.visit_type === 'initial' && firstVisitDocumentOutcomes.has(outcome_status)) {
@@ -582,10 +824,10 @@ async function saveVisitRecord(
 
     if (reductionCandidates.length > 0) {
       const prohibitedCandidates = reductionCandidates.filter(
-        (candidate) => candidate.is_prohibited_reduction
+        (candidate) => candidate.is_prohibited_reduction,
       );
       const allowedCandidates = reductionCandidates.filter(
-        (candidate) => !candidate.is_prohibited_reduction
+        (candidate) => !candidate.is_prohibited_reduction,
       );
 
       for (const candidate of allowedCandidates) {
@@ -743,7 +985,10 @@ async function saveVisitRecord(
           taskType: 'residual_reduction_review',
           title: '減数調剤禁止薬の残薬を確認',
           description: prohibitedCandidates
-            .map((candidate) => `${candidate.drug_name} は減数調剤禁止です。処方医へ通常報告のみ行ってください。`)
+            .map(
+              (candidate) =>
+                `${candidate.drug_name} は減数調剤禁止です。処方医へ通常報告のみ行ってください。`,
+            )
             .join(' / '),
           priority: 'high',
           assignedTo: req.userId,
@@ -791,9 +1036,13 @@ async function saveVisitRecord(
         cycle &&
         (cycle.overall_status === 'set_audited' || cycle.overall_status === 'visit_ready')
       ) {
-        await tx.medicationCycle.update({
-          where: { id: cycle.id },
-          data: { overall_status: 'visit_completed' },
+        if (cycle.overall_status === 'set_audited') {
+          await transitionCycleStatus(tx, cycle.id, req.orgId, 'visit_ready', req.userId, {
+            note: '訪問記録作成に伴う訪問準備完了',
+          });
+        }
+        await transitionCycleStatus(tx, cycle.id, req.orgId, 'visit_completed', req.userId, {
+          note: '訪問記録作成に伴う訪問完了',
         });
       }
 
@@ -814,8 +1063,7 @@ async function saveVisitRecord(
               org_id: req.orgId,
               cycle_id: schedule.cycle_id,
               exception_type: 'missing_visit_consent',
-              description:
-                '訪問薬剤管理の有効な同意記録がない状態で訪問記録が登録されました',
+              description: '訪問薬剤管理の有効な同意記録がない状態で訪問記録が登録されました',
               severity: 'critical',
               status: 'open',
             },
@@ -916,58 +1164,64 @@ async function saveVisitRecord(
   });
 }
 
-export const POST = withAuth(async (req: AuthenticatedRequest) => {
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+export const POST = withAuth(
+  async (req: AuthenticatedRequest) => {
+    const body = await req.json().catch(() => null);
+    if (!body) return validationError('リクエストボディが不正です');
 
-  const parsed = createVisitRecordSchema.safeParse(body);
-  if (!parsed.success) {
-    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-  }
+    const parsed = createVisitRecordSchema.safeParse(body);
+    if (!parsed.success) {
+      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    }
 
-  const result = await saveVisitRecord(req, parsed.data);
+    const result = await saveVisitRecord(req, parsed.data);
 
-  if ('error' in result) {
-    if (result.error === 'schedule_not_found') {
+    if ('error' in result) {
+      if (result.error === 'schedule_not_found') {
+        return validationError('指定されたスケジュールが見つかりません');
+      }
+      if (result.error === 'case_not_found') {
+        return validationError('訪問予定に紐づくケースが見つかりません');
+      }
+      if (result.error === 'patient_mismatch') {
+        return validationError('訪問予定に紐づく患者と記録対象患者が一致しません');
+      }
+      if (result.error === 'record_conflict') {
+        return conflict(
+          'この訪問予定には既に記録があります。サーバー版との差分を確認してください。',
+          {
+            existing_record: result.existingRecord,
+          },
+        );
+      }
       return validationError('指定されたスケジュールが見つかりません');
     }
-    if (result.error === 'case_not_found') {
-      return validationError('訪問予定に紐づくケースが見つかりません');
-    }
-    if (result.error === 'patient_mismatch') {
-      return validationError('訪問予定に紐づく患者と記録対象患者が一致しません');
-    }
-    if (result.error === 'record_conflict') {
-      return conflict('この訪問予定には既に記録があります。サーバー版との差分を確認してください。', {
-        existing_record: result.existingRecord,
+
+    const requestContext = getRequestAuthContext();
+    if (result.handoffExtraction) {
+      void processHandoffExtraction(prisma, {
+        orgId: req.orgId,
+        visitRecordId: result.record.id,
+        patientId: result.handoffExtraction.patientId,
+        patientName: result.handoffExtraction.patientName,
+        structuredSoap: result.handoffExtraction.structuredSoap,
+        soapAssessment: result.handoffExtraction.soapAssessment,
+        soapPlan: result.handoffExtraction.soapPlan,
+        requestContext,
+      }).catch((cause) => {
+        console.warn('[visit-records] handoff extraction failed', cause);
       });
     }
-    return validationError('指定されたスケジュールが見つかりません');
-  }
 
-  const requestContext = getRequestAuthContext();
-  if (result.handoffExtraction) {
-    void processHandoffExtraction(prisma, {
-      orgId: req.orgId,
-      visitRecordId: result.record.id,
-      patientId: result.handoffExtraction.patientId,
-      patientName: result.handoffExtraction.patientName,
-      structuredSoap: result.handoffExtraction.structuredSoap,
-      soapAssessment: result.handoffExtraction.soapAssessment,
-      soapPlan: result.handoffExtraction.soapPlan,
-      requestContext,
-    }).catch((cause) => {
-      console.warn('[visit-records] handoff extraction failed', cause);
-    });
-  }
-
-  const responsePayload = {
-    record: result.record,
-    suggestedSchedule: result.suggestedSchedule,
-    conflictResolved: result.conflictResolved,
-  };
-  return success(responsePayload, result.conflictResolved ? 200 : 201);
-}, {
-  permission: 'canVisit',
-  message: '訪問記録の作成権限がありません',
-});
+    const responsePayload = {
+      record: result.record,
+      suggestedSchedule: result.suggestedSchedule,
+      conflictResolved: result.conflictResolved,
+    };
+    return success(responsePayload, result.conflictResolved ? 200 : 201);
+  },
+  {
+    permission: 'canVisit',
+    message: '訪問記録の作成権限がありません',
+  },
+);

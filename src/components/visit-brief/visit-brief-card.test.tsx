@@ -31,6 +31,7 @@ function buildBrief(): VisitBrief {
     delivery_status: [],
     dosage_form_support: [],
     multidisciplinary_updates: [],
+    jahis_supplemental_records: [],
     unresolved_items: [],
     must_check_today: [],
     rule_summary: {
@@ -78,13 +79,11 @@ describe('VisitBriefCard', () => {
     render(
       <QueryClientProvider client={queryClient}>
         <VisitBriefCard brief={buildBrief()} />
-      </QueryClientProvider>
+      </QueryClientProvider>,
     );
 
     expect(screen.getByText('退院前カンファレンス')).toBeTruthy();
-    expect(
-      screen.getByText('退院後初回訪問。持参薬の確認と生活指導が優先。')
-    ).toBeTruthy();
+    expect(screen.getByText('退院後初回訪問。持参薬の確認と生活指導が優先。')).toBeTruthy();
     expect(screen.getByText('服薬アドヒアランス低下')).toBeTruthy();
     expect(screen.getByText('転倒リスク')).toBeTruthy();
   });

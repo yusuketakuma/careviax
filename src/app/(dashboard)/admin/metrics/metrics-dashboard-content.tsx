@@ -2,7 +2,8 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { TrendingUp, Users, Home, FileText, Activity } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { HelpPopover } from '@/components/ui/help-popover';
 import { SegmentedProgressBar } from '@/components/ui/segmented-progress-bar';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
@@ -88,8 +89,8 @@ function MetricCard({
             <CardTitle className="flex items-center gap-2 text-base">
               <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
               {title}
+              <HelpPopover title={title} description={description} />
             </CardTitle>
-            <CardDescription className="mt-0.5 text-xs">{description}</CardDescription>
           </div>
         </div>
       </CardHeader>

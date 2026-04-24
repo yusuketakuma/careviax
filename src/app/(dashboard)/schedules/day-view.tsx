@@ -58,6 +58,10 @@ import { decryptOfflinePayload, encryptOfflinePayload } from '@/lib/offline/cryp
 import { offlineDb } from '@/lib/stores/offline-db';
 import { useOfflineStore } from '@/lib/stores/offline-store';
 import {
+  createFacilityVisitRecordHref,
+  type FacilityVisitContext,
+} from '@/lib/visits/facility-visit-context';
+import {
   discardSyncQueueItem,
   overwriteVisitRecordConflict,
   processSyncQueue,
@@ -65,10 +69,12 @@ import {
 } from '@/lib/stores/sync-engine';
 import { cn } from '@/lib/utils';
 import { VisitCardMobile } from '@/components/features/visits/visit-card-mobile';
+import { FacilityPatientSwipeRail } from '@/components/features/visits/facility-patient-swipe-rail';
 import { VisitRoutePreviewPanel } from '@/components/features/visits/visit-route-preview-panel';
 import { ScheduleMetricCard } from './schedule-metric-card';
 import { applyVisitScheduleRouteUpdates } from './visit-route-client';
 import { useRouteOrderDraft } from './route-order-draft';
+import { ProposalHumanDecisionFlow } from './proposal-human-decision-flow';
 import {
   buildOrderedFacilityScheduleIds,
   formatEtaLabel,
@@ -106,7 +112,6 @@ import {
   type VisitPriority,
   type VisitSchedule,
   type VisitType,
-  type BillingCadencePreview,
   type BillingRequirementAlert,
   type VisitScheduleBillingPreview,
   VISIT_TYPE_LABELS,
@@ -118,6 +123,7 @@ import {
   buildDirectionsUrl,
   buildMapEmbedUrl,
   type FacilityTrackerGroup,
+  getFacilityTrackerGrouping,
   getDepartureCarryWarning,
   proposalLockText,
   scheduleLockText,
@@ -284,19 +290,6 @@ export function ScheduleDayView({
   const syncConflicts = useOfflineStore((state) => state.syncConflicts);
   const syncOnlineStatus = useOfflineStore((state) => state.syncOnlineStatus);
   const refreshSyncState = useOfflineStore((state) => state.refreshSyncState);
-
-  function handleVisitStart(schedule: VisitSchedule) {
-    if (getDepartureCarryWarning(schedule)) {
-      setDepartureWarningTarget(schedule);
-      return;
-    }
-
-    router.push(`/visits/${schedule.id}/record`);
-  }
-
-  function handleVisitComplete(schedule: VisitSchedule) {
-    router.push(`/visits/${schedule.id}/record`);
-  }
 
   const selectedDay = useMemo(() => parseISO(selectedDate), [selectedDate]);
   const weekStart = useMemo(() => startOfWeek(selectedDay, { weekStartsOn: 1 }), [selectedDay]);
@@ -707,14 +700,7 @@ export function ScheduleDayView({
   const visibleSchedules = useMemo(() => {
     if (!activeFacilityFilter) return selectedDateSchedules;
     return selectedDateSchedules.filter((schedule) => {
-      const facilityLabel =
-        schedule.facility_hint?.label ?? schedule.case_.patient.residences[0]?.address ?? null;
-      const key = [
-        schedule.site?.id ?? 'site:none',
-        schedule.facility_batch_id ?? 'batch:none',
-        facilityLabel ?? 'facility:none',
-      ].join(':');
-      return key === activeFacilityFilter;
+      return getFacilityTrackerGrouping(schedule)?.key === activeFacilityFilter;
     });
   }, [activeFacilityFilter, selectedDateSchedules]);
   const cachedVisitBriefByScheduleId = useMemo(
@@ -738,6 +724,43 @@ export function ScheduleDayView({
       }),
     [visibleSchedules],
   );
+  const mobileFacilityGroups = useMemo(
+    () =>
+      activeFacilityFilter
+        ? facilityTracker.filter((group) => group.key === activeFacilityFilter)
+        : facilityTracker,
+    [activeFacilityFilter, facilityTracker],
+  );
+
+  function createVisitRecordHref(schedule: VisitSchedule) {
+    const groupKey = getFacilityTrackerGrouping(schedule)?.key;
+    if (!groupKey) return `/visits/${schedule.id}/record`;
+
+    const group = facilityTracker.find((candidate) => candidate.key === groupKey);
+    if (!group || group.patients.length < 2) return `/visits/${schedule.id}/record`;
+
+    const context: FacilityVisitContext = {
+      label: group.label,
+      siteName: group.siteName,
+      patients: group.patients,
+    };
+
+    return createFacilityVisitRecordHref(schedule.id, context);
+  }
+
+  function handleVisitStart(schedule: VisitSchedule) {
+    if (getDepartureCarryWarning(schedule)) {
+      setDepartureWarningTarget(schedule);
+      return;
+    }
+
+    router.push(createVisitRecordHref(schedule));
+  }
+
+  function handleVisitComplete(schedule: VisitSchedule) {
+    router.push(createVisitRecordHref(schedule));
+  }
+
   const routePharmacistOptions = useMemo(
     () =>
       Array.from(
@@ -1534,7 +1557,7 @@ export function ScheduleDayView({
     }) => {
       const group = facilityTracker.find((candidate) => candidate.key === groupKey);
       if (!group) {
-        throw new Error('施設グループが見つかりません');
+        throw new Error('訪問先グループが見つかりません');
       }
 
       const routeDraft = {
@@ -1553,19 +1576,20 @@ export function ScheduleDayView({
           schedule_ids: group.scheduleIds,
           ordered_schedule_ids: orderedScheduleIds,
           carry_items_confirmed: carryItemsConfirmed,
+          allow_mixed_unit: true,
         }),
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '施設一括訪問の保存に失敗しました');
+        throw new Error(error.message ?? '同時訪問グループの保存に失敗しました');
       }
       return res.json();
     },
     onSuccess: async (_data, variables) => {
       toast.success(
         variables.carryItemsConfirmed
-          ? '施設バッチの順序と持参確認を保存しました'
-          : '施設バッチの順序を保存しました',
+          ? '同時訪問グループの順序と持参確認を保存しました'
+          : '同時訪問グループの順序を保存しました',
       );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] }),
@@ -1573,14 +1597,14 @@ export function ScheduleDayView({
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '施設一括訪問の保存に失敗しました');
+      toast.error(error instanceof Error ? error.message : '同時訪問グループの保存に失敗しました');
     },
   });
 
   const facilityVisitDayMutation = useMutation({
     mutationFn: async () => {
       if (!facilityVisitDayTarget) {
-        throw new Error('施設グループが選択されていません');
+        throw new Error('訪問先グループが選択されていません');
       }
 
       const res = await fetch('/api/facility-visit-batches/visit-days', {
@@ -1605,12 +1629,12 @@ export function ScheduleDayView({
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
-        throw new Error(error.message ?? '施設訪問日の保存に失敗しました');
+        throw new Error(error.message ?? '訪問先グループの定期訪問日の保存に失敗しました');
       }
       return res.json();
     },
     onSuccess: async () => {
-      toast.success('施設単位の定期訪問日を保存しました');
+      toast.success('訪問先グループの定期訪問日を保存しました');
       setFacilityVisitDayTarget(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] }),
@@ -1618,7 +1642,9 @@ export function ScheduleDayView({
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : '施設訪問日の保存に失敗しました');
+      toast.error(
+        error instanceof Error ? error.message : '訪問先グループの定期訪問日の保存に失敗しました',
+      );
     },
   });
 
@@ -2026,32 +2052,39 @@ export function ScheduleDayView({
             }
           />
         ) : (
-          mobileVisitSchedules.map((schedule) => {
-            const brief = cachedVisitBriefByScheduleId.get(schedule.id);
-            return (
-              <VisitCardMobile
-                key={schedule.id}
-                id={schedule.id}
-                patientName={schedule.case_.patient.name}
-                patientHref={`/patients/${schedule.case_.patient.id}`}
-                address={addressOfPatient(schedule)}
-                lat={schedule.case_.patient.residences[0]?.lat ?? undefined}
-                lng={schedule.case_.patient.residences[0]?.lng ?? undefined}
-                routeOrder={schedule.route_order}
-                scheduledTimeStart={timeLabel(schedule.time_window_start, null)}
-                scheduledTimeEnd={
-                  schedule.time_window_end
-                    ? format(parseISO(schedule.time_window_end), 'HH:mm')
-                    : undefined
-                }
-                status={schedule.schedule_status}
-                carryItemsStatus={schedule.carry_items_status}
-                mustCheckToday={brief?.mustCheckToday ?? []}
-                onStartVisit={() => handleVisitStart(schedule)}
-                onCompleteVisit={() => handleVisitComplete(schedule)}
-              />
-            );
-          })
+          <>
+            <FacilityPatientSwipeRail
+              groups={mobileFacilityGroups}
+              activeGroupKey={activeFacilityFilter}
+              onSelectGroup={setFacilityFilter}
+            />
+            {mobileVisitSchedules.map((schedule) => {
+              const brief = cachedVisitBriefByScheduleId.get(schedule.id);
+              return (
+                <VisitCardMobile
+                  key={schedule.id}
+                  id={schedule.id}
+                  patientName={schedule.case_.patient.name}
+                  patientHref={`/patients/${schedule.case_.patient.id}`}
+                  address={addressOfPatient(schedule)}
+                  lat={schedule.case_.patient.residences[0]?.lat ?? undefined}
+                  lng={schedule.case_.patient.residences[0]?.lng ?? undefined}
+                  routeOrder={schedule.route_order}
+                  scheduledTimeStart={timeLabel(schedule.time_window_start, null)}
+                  scheduledTimeEnd={
+                    schedule.time_window_end
+                      ? format(parseISO(schedule.time_window_end), 'HH:mm')
+                      : undefined
+                  }
+                  status={schedule.schedule_status}
+                  carryItemsStatus={schedule.carry_items_status}
+                  mustCheckToday={brief?.mustCheckToday ?? []}
+                  onStartVisit={() => handleVisitStart(schedule)}
+                  onCompleteVisit={() => handleVisitComplete(schedule)}
+                />
+              );
+            })}
+          </>
         )}
       </section>
 
@@ -2943,6 +2976,8 @@ export function ScheduleDayView({
                         </div>
                       </div>
 
+                      <ProposalHumanDecisionFlow proposal={proposal} compact />
+
                       <div className="space-y-2 text-sm">
                         <p className="font-medium text-foreground">提案理由</p>
                         <div className="flex flex-wrap gap-2">
@@ -3122,10 +3157,10 @@ export function ScheduleDayView({
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Building2 className="size-4 text-sky-600" aria-hidden="true" />
-                    施設一括訪問トラッカー
+                    同時訪問グループトラッカー
                   </CardTitle>
                   <CardDescription>
-                    同日・同施設の訪問を束ねて、未準備と未完了を施設単位で確認します
+                    同日・同一施設または個人宅の訪問を束ねて、未準備と未完了を訪問先単位で確認します
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -3284,7 +3319,7 @@ export function ScheduleDayView({
                             }
                             disabled={facilityBatchMutation.isPending}
                           >
-                            施設バッチを保存
+                            同時訪問を保存
                           </Button>
                           <Button
                             size="sm"
@@ -4185,9 +4220,9 @@ export function ScheduleDayView({
       >
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>施設単位の定期訪問日を設定</DialogTitle>
+            <DialogTitle>訪問先グループの定期訪問日を設定</DialogTitle>
             <DialogDescription>
-              同一施設患者の訪問曜日と受入時間帯をまとめて保存し、RRULE
+              同一施設または個人宅の夫婦・同居人の訪問曜日と受入時間帯をまとめて保存し、RRULE
               生成時の共通条件として使います。
             </DialogDescription>
           </DialogHeader>
@@ -4341,7 +4376,7 @@ export function ScheduleDayView({
                 facilityVisitDayMutation.isPending
               }
             >
-              {facilityVisitDayMutation.isPending ? '保存中...' : '施設訪問日を保存'}
+              {facilityVisitDayMutation.isPending ? '保存中...' : '定期訪問日を保存'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -4799,7 +4834,7 @@ export function ScheduleDayView({
               variant="destructive"
               onClick={() => {
                 if (!departureWarningTarget) return;
-                router.push(`/visits/${departureWarningTarget.id}/record`);
+                router.push(createVisitRecordHref(departureWarningTarget));
                 setDepartureWarningTarget(null);
               }}
             >

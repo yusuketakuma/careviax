@@ -6,6 +6,7 @@ exports[`/api/visit-schedules > lists visit schedules with workload and facility
     {
       "applied_override": null,
       "assignment_mode": "fallback",
+      "carry_items_status": "ready",
       "case_": {
         "patient": {
           "id": "patient_1",
@@ -18,6 +19,7 @@ exports[`/api/visit-schedules > lists visit schedules with workload and facility
           ],
         },
       },
+      "confirmed_at": "2026-03-29T09:00:00.000Z",
       "cycle": {
         "overall_status": "visit_ready",
       },
@@ -33,6 +35,8 @@ exports[`/api/visit-schedules > lists visit schedules with workload and facility
       "pharmacist_id": "user_2",
       "preparation": null,
       "priority": "urgent",
+      "route_order": 2,
+      "schedule_status": "ready",
       "scheduled_date": "2026-03-30T00:00:00.000Z",
       "site": {
         "address": "東京都",
@@ -41,6 +45,7 @@ exports[`/api/visit-schedules > lists visit schedules with workload and facility
         "lng": 139,
         "name": "本店",
       },
+      "time_window_end": "1970-01-01T10:00:00.000Z",
       "time_window_start": "1970-01-01T09:00:00.000Z",
       "visit_record": null,
       "workload_hint": {

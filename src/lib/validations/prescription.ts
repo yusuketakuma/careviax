@@ -53,6 +53,7 @@ export const createPrescriptionIntakeSchema = z
     cycle_id: z.string().min(1, 'サイクルIDは必須です').optional(),
     case_id: z.string().min(1, 'ケースIDは必須です').optional(),
     patient_id: z.string().min(1, '患者IDは必須です').optional(),
+    qr_draft_id: z.string().min(1, 'QR下書きIDは必須です').optional(),
     source_type: z.enum(['paper', 'fax', 'e_prescription', 'facility_batch', 'refill', 'qr_scan'], {
       error: 'ソースタイプを選択してください',
     }),

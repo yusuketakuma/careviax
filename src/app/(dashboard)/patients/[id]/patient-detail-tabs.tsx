@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { differenceInDays, differenceInYears, format } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -19,6 +20,7 @@ import { PatientConditionsCard } from './patient-conditions-card';
 import { PatientIntakeSummaryCard } from './patient-intake-summary-card';
 import { PatientInsuranceCard } from './patient-insurance-card';
 import { PatientMasterCard } from './patient-master-card';
+import { PatientFacilityMultiVisitCard } from './patient-facility-multi-visit-card';
 import { PatientPackagingCard } from './patient-packaging-card';
 import { PatientLabsCard } from './patient-labs-card';
 import { PatientWorkflowPreviewCard } from './patient-workflow-preview-card';
@@ -31,6 +33,8 @@ import { PatientTimelinePanel } from './patient-timeline-panel';
 import { deriveStatusFromPatient, selectNextVisit } from './patient-detail-helpers';
 import { PrescriptionHistoryContent } from './prescriptions/prescription-history-content';
 import { VisitConstraintsCard } from './visit-constraints-card';
+import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
+import { normalizeJahisSupplementalRecords } from '@/lib/pharmacy/jahis-supplemental-records-view';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import {
@@ -70,6 +74,33 @@ const PATIENT_DETAIL_TABS = [
 
 type PatientDetailTabValue = (typeof PATIENT_DETAIL_TABS)[number]['value'];
 
+export function PatientDetailInfoGroup({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  const titleId = useId();
+
+  return (
+    <section
+      aria-labelledby={titleId}
+      className="space-y-4 rounded-2xl border border-border/70 bg-card/95 p-4"
+    >
+      <div>
+        <h2 id={titleId} className="text-base font-semibold text-foreground">
+          {title}
+        </h2>
+        <p className="mt-1 text-sm leading-5 text-muted-foreground">{description}</p>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">{children}</div>
+    </section>
+  );
+}
+
 const STATUS_ICONS = {
   stable: UserCheck,
   new: Sparkles,
@@ -88,8 +119,29 @@ const STATUS_ICONS = {
 export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<PatientDetailTabValue>('basic');
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const requestedTabValue = PATIENT_DETAIL_TABS.some((tab) => tab.value === requestedTab)
+    ? (requestedTab as PatientDetailTabValue)
+    : null;
+  const activeTab = requestedTabValue ?? 'basic';
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+
+  const handleTabChange = (value: string) => {
+    const nextTab = PATIENT_DETAIL_TABS.some((tab) => tab.value === value)
+      ? (value as PatientDetailTabValue)
+      : 'basic';
+    const nextParams = new URLSearchParams(searchParams.toString());
+    if (nextTab === 'basic') {
+      nextParams.delete('tab');
+    } else {
+      nextParams.set('tab', nextTab);
+    }
+    const nextQuery = nextParams.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+  };
 
   const {
     data: patient,
@@ -161,6 +213,15 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
       );
     },
   });
+
+  useEffect(() => {
+    const hash = window.location.hash.slice(1);
+    if (!hash) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(decodeURIComponent(hash))?.scrollIntoView({ block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeTab, patientId]);
 
   if (!orgId || isLoading) return <Loading />;
   if (error || !patient) {
@@ -289,10 +350,7 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
           );
         })()}
 
-      <Tabs
-        value={activeTab}
-        onValueChange={(value) => setActiveTab(value as PatientDetailTabValue)}
-      >
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <div className="space-y-4">
           <div className="md:hidden">
             <VisitBriefCard
@@ -423,7 +481,7 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
                       key={tab.value}
                       type="button"
                       aria-pressed={isActive}
-                      onClick={() => setActiveTab(tab.value)}
+                      onClick={() => handleTabChange(tab.value)}
                       className={`flex min-h-11 w-full items-start justify-between gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
                         isActive
                           ? 'border-primary/30 bg-primary/5 text-foreground'
@@ -458,25 +516,60 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
 
             {/* 基本情報タブ */}
             <TabsContent value="basic">
-              <div className="grid gap-4 lg:grid-cols-2">
-                <PatientWorkflowPreviewCard patientId={patient.id} />
-                <PatientIntakeSummaryCard patient={patient} />
-                <PatientMasterCard patient={patient} orgId={orgId} />
-                <PatientRiskCard riskSummary={patient.risk_summary} />
-                <PatientReadinessCard patientId={patient.id} />
-                <PatientInsuranceCard patientId={patient.id} orgId={orgId} />
-                <PatientLabsCard patientId={patient.id} orgId={orgId} />
-                <PatientPackagingCard patientId={patient.id} orgId={orgId} />
+              <div className="space-y-6">
+                <PatientDetailInfoGroup
+                  title="受付・ワークフロー"
+                  description="新規依頼、訪問予定、報告、連携の進み具合をまとめて確認します。"
+                >
+                  <PatientWorkflowPreviewCard patientId={patient.id} />
+                  <PatientIntakeSummaryCard patient={patient} />
+                </PatientDetailInfoGroup>
 
-                <PatientConditionsCard
-                  patientId={patient.id}
-                  orgId={orgId}
-                  initialConditions={patient.conditions}
-                />
+                <PatientDetailInfoGroup
+                  title="患者基本・保険"
+                  description="患者マスタ、住所、連絡先、保険、請求支援の前提情報をまとめます。"
+                >
+                  <div id="patient-facility-section">
+                    <PatientMasterCard patient={patient} orgId={orgId} />
+                  </div>
+                  <PatientInsuranceCard patientId={patient.id} orgId={orgId} />
+                </PatientDetailInfoGroup>
 
-                <div className="lg:col-span-2">
-                  <VisitConstraintsCard patientId={patient.id} orgId={orgId} />
-                </div>
+                <PatientDetailInfoGroup
+                  title="臨床・安全情報"
+                  description="リスク、readiness、検査値、病名・課題、お薬手帳QR由来情報をまとめます。"
+                >
+                  <PatientRiskCard riskSummary={patient.risk_summary} />
+                  <PatientReadinessCard patientId={patient.id} />
+                  <PatientLabsCard patientId={patient.id} orgId={orgId} />
+                  <PatientConditionsCard
+                    patientId={patient.id}
+                    orgId={orgId}
+                    initialConditions={patient.conditions}
+                  />
+                  <JahisSupplementalRecordsCard
+                    records={normalizeJahisSupplementalRecords(
+                      undefined,
+                      patient.jahis_supplemental_records,
+                    )}
+                    description="お薬手帳QR由来の手帳メモ、残薬、患者記入、かかりつけ薬剤師情報を患者単位で管理します。"
+                    className="lg:col-span-2"
+                    gridClassName="grid gap-3 md:grid-cols-2"
+                  />
+                </PatientDetailInfoGroup>
+
+                <PatientDetailInfoGroup
+                  title="訪問・配薬条件"
+                  description="同時訪問グループ、配薬設定、訪問条件、連絡制約をまとめます。"
+                >
+                  <div className="lg:col-span-2">
+                    <PatientFacilityMultiVisitCard patient={patient} />
+                  </div>
+                  <PatientPackagingCard patientId={patient.id} orgId={orgId} />
+                  <div id="patient-visit-constraints-section">
+                    <VisitConstraintsCard patientId={patient.id} orgId={orgId} />
+                  </div>
+                </PatientDetailInfoGroup>
               </div>
             </TabsContent>
 
@@ -510,11 +603,13 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
               />
             </TabsContent>
             <TabsContent value="communications">
-              <PatientCommunicationsPanel
-                patientId={patient.id}
-                cases={patient.cases}
-                enabled={activeTab === 'communications'}
-              />
+              <div id="patient-care-team-section">
+                <PatientCommunicationsPanel
+                  patientId={patient.id}
+                  cases={patient.cases}
+                  enabled={activeTab === 'communications'}
+                />
+              </div>
             </TabsContent>
             <TabsContent value="documents">
               <PatientDocumentsPanel

@@ -36,7 +36,11 @@ const {
       findMany: vi.fn(),
     },
     medicationCycle: {
+      findFirst: vi.fn(),
       updateMany: vi.fn(),
+    },
+    cycleTransitionLog: {
+      create: vi.fn(),
     },
     communicationEvent: {
       create: vi.fn(),
@@ -123,7 +127,9 @@ describe('/api/care-reports/[id]/send POST', () => {
     txMock.visitRecord.findFirst.mockResolvedValue(null);
     txMock.visitRecord.findMany.mockResolvedValue([]);
     txMock.careReport.findMany.mockResolvedValue([]);
+    txMock.medicationCycle.findFirst.mockResolvedValue(null);
     txMock.medicationCycle.updateMany.mockResolvedValue({ count: 0 });
+    txMock.cycleTransitionLog.create.mockResolvedValue({ id: 'transition_1' });
     txMock.communicationEvent.create = communicationEventCreateMock;
     communicationEventCreateMock.mockResolvedValue({ id: 'event_1' });
     upsertBillingEvidenceForVisitMock.mockResolvedValue(undefined);
@@ -194,6 +200,62 @@ describe('/api/care-reports/[id]/send POST', () => {
       occurredAt: expect.any(Date),
       markSuccess: true,
     });
+  });
+
+  it('advances the medication cycle to reported through transition logging when all visit reports are delivered', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'draft',
+      visit_record_id: 'visit_record_1',
+      content: {},
+      report_type: 'physician_report',
+      pdf_url: 'https://example.com/report.pdf',
+    });
+    txMock.visitRecord.findFirst.mockResolvedValue({
+      schedule: {
+        cycle_id: 'cycle_1',
+      },
+    });
+    txMock.careReport.findMany.mockResolvedValue([{ status: 'sent' }]);
+    txMock.medicationCycle.findFirst
+      .mockResolvedValueOnce({ id: 'cycle_1', overall_status: 'visit_completed' })
+      .mockResolvedValueOnce({
+        id: 'cycle_1',
+        overall_status: 'visit_completed',
+        version: 1,
+        patient_id: 'patient_1',
+      });
+    txMock.medicationCycle.updateMany.mockResolvedValue({ count: 1 });
+
+    const response = await POST(
+      createRequest({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) }
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(txMock.medicationCycle.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'cycle_1', version: 1 }),
+        data: expect.objectContaining({ overall_status: 'reported' }),
+      }),
+    );
+    expect(txMock.cycleTransitionLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          cycle_id: 'cycle_1',
+          from_status: 'visit_completed',
+          to_status: 'reported',
+          note: '報告書送付完了',
+        }),
+      }),
+    );
   });
 
   it('marks the delivery as failed when SES send fails', async () => {

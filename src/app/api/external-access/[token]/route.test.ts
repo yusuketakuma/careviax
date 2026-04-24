@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
 const {
+  checkAuthRateLimitMock,
   validateExternalAccessGrantMock,
   markExternalAccessViewedMock,
   buildExternalAccessPayloadMock,
 } = vi.hoisted(() => ({
+  checkAuthRateLimitMock: vi.fn(),
   validateExternalAccessGrantMock: vi.fn(),
   markExternalAccessViewedMock: vi.fn(),
   buildExternalAccessPayloadMock: vi.fn(),
@@ -18,7 +20,7 @@ vi.mock('@/server/services/external-access', () => ({
 }));
 
 vi.mock('@/lib/api/rate-limit', () => ({
-  createRateLimiter: () => async () => ({ allowed: true, remaining: 4, resetAt: new Date() }),
+  checkAuthRateLimit: checkAuthRateLimitMock,
 }));
 
 import { GET } from './route';
@@ -34,6 +36,11 @@ function makeRequest(otp: string) {
 describe('/api/external-access/[token]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    checkAuthRateLimitMock.mockResolvedValue({
+      allowed: true,
+      remaining: 4,
+      resetAt: Date.now() + 60_000,
+    });
     validateExternalAccessGrantMock.mockResolvedValue({
       ok: true,
       grant: { id: 'grant_1' },
@@ -51,5 +58,20 @@ describe('/api/external-access/[token]', () => {
     expect(response.status).toBe(200);
     expect(validateExternalAccessGrantMock).toHaveBeenCalledWith('token_1', '1234');
     expect(markExternalAccessViewedMock).toHaveBeenCalledWith('grant_1');
+  });
+
+  it('returns 429 when OTP verification is rate limited', async () => {
+    checkAuthRateLimitMock.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      resetAt: Date.now() + 60_000,
+    });
+
+    const response = await GET(makeRequest('1234'), {
+      params: Promise.resolve({ token: 'token_1' }),
+    });
+
+    expect(response.status).toBe(429);
+    expect(validateExternalAccessGrantMock).not.toHaveBeenCalled();
   });
 });

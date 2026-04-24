@@ -281,6 +281,8 @@ export function DispenseConfirmContent() {
             </p>
           </div>
         }
+        mainWorkflowSteps={['dispensing']}
+        mainWorkflowDescription="調剤確認チェックの画面でも、調剤工程の仕上げ位置を固定表示しています。"
         className="mb-4"
       >
         <PageShortcutLinks links={getDispenseConfirmShortcutLinks(taskId)} />

@@ -11,7 +11,6 @@ import {
   HOME_CARE_BILLING_RULESET_VERSION,
 } from '../home-care-billing-ssot';
 import { resolveBillingRuntimeContext } from '../billing-runtime-context';
-import { normalizeHomeComprehensiveLevel2026 } from '../billing-rules/revisions/medical/site-config-2026';
 
 export type Tx = Prisma.TransactionClient | typeof prisma;
 
@@ -164,6 +163,43 @@ function csvFromUnique(values: Array<string | null | undefined>) {
     ),
   );
   return unique.length > 0 ? unique.join(',') : null;
+}
+
+async function listJahisSupplementalRecordsForBilling(
+  tx: Tx,
+  args: { orgId: string; patientId: string },
+) {
+  const client = (
+    tx as unknown as {
+      jahisSupplementalRecord?: {
+        findMany?: (args: Record<string, unknown>) => Promise<
+          Array<{
+            record_type: string;
+            record_label: string;
+            summary: string | null;
+            raw_line: string;
+          }>
+        >;
+      };
+    }
+  ).jahisSupplementalRecord;
+
+  if (!client?.findMany) return [];
+
+  return client.findMany({
+    where: {
+      org_id: args.orgId,
+      patient_id: args.patientId,
+    },
+    orderBy: [{ created_at: 'desc' }, { line_number: 'asc' }],
+    take: 12,
+    select: {
+      record_type: true,
+      record_label: true,
+      summary: true,
+      raw_line: true,
+    },
+  });
 }
 
 function readConferenceCandidateLinkage(sourceSnapshot: Prisma.JsonValue | null) {
@@ -775,6 +811,7 @@ export async function upsertBillingEvidenceForVisit(
     conferenceCandidates,
     latestPrescriptionIntake,
     businessHoliday,
+    jahisSupplementalRecords,
   ] = await Promise.all([
     findActiveVisitConsent(tx, {
       orgId: args.orgId,
@@ -882,6 +919,10 @@ export async function upsertBillingEvidenceForVisit(
         OR: [{ site_id: null }, { site_id: visitRecord.schedule.site_id ?? null }],
       },
       select: { id: true },
+    }),
+    listJahisSupplementalRecordsForBilling(tx, {
+      orgId: args.orgId,
+      patientId: visitRecord.patient_id,
     }),
   ]);
 
@@ -1288,6 +1329,16 @@ export async function upsertBillingEvidenceForVisit(
     central_venous_required: centralVenousRequired,
     enteral_required: enteralRequired,
     care_level_category: careLevelCategory,
+    jahis_supplemental_record_count: jahisSupplementalRecords.length,
+    jahis_supplemental_record_types: Array.from(
+      new Set(jahisSupplementalRecords.map((record) => record.record_type)),
+    ),
+    jahis_residual_confirmation_count: jahisSupplementalRecords.filter(
+      (record) => record.record_type === '421',
+    ).length,
+    jahis_patient_note_count: jahisSupplementalRecords.filter(
+      (record) => record.record_type === '4' || record.record_type === '601',
+    ).length,
     runtime_warnings: runtimeContext.warnings,
   };
 

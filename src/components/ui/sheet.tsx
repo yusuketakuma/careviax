@@ -5,6 +5,7 @@ import { Dialog as SheetPrimitive } from "@base-ui/react/dialog"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { HelpPopover } from "@/components/ui/help-popover"
 import { XIcon } from "lucide-react"
 
 function Sheet({ ...props }: SheetPrimitive.Root.Props) {
@@ -115,14 +116,22 @@ function SheetTitle({ className, ...props }: SheetPrimitive.Title.Props) {
 
 function SheetDescription({
   className,
+  children,
+  helpTitle = "説明",
   ...props
-}: SheetPrimitive.Description.Props) {
+}: SheetPrimitive.Description.Props & { helpTitle?: string }) {
   return (
     <SheetPrimitive.Description
       data-slot="sheet-description"
-      className={cn("text-sm text-muted-foreground", className)}
+      className={cn("inline-flex items-center", className)}
       {...props}
-    />
+    >
+      <HelpPopover
+        title={helpTitle}
+        description={<span className="text-muted-foreground">{children}</span>}
+        buttonLabel={`${helpTitle}を表示`}
+      />
+    </SheetPrimitive.Description>
   )
 }
 

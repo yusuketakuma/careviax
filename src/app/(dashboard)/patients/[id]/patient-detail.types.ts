@@ -1,6 +1,7 @@
 import type { HomeCareFeatureSummary } from '@/types/home-care';
 import type { VisitBrief } from '@/types/visit-brief';
 import type { AllergyEntry } from '@/lib/validations/patient-allergy';
+import type { JahisSupplementalRecordDbView } from '@/lib/pharmacy/jahis-supplemental-records-view';
 
 export type PatientOverview = {
   id: string;
@@ -27,6 +28,17 @@ export type PatientOverview = {
     is_primary: boolean;
   }>;
   scheduling_preference: {
+    preferred_weekdays: number[] | null;
+    preferred_time_from: string | null;
+    preferred_time_to: string | null;
+    phone_contact_from: string | null;
+    phone_contact_to: string | null;
+    facility_time_from: string | null;
+    facility_time_to: string | null;
+    family_presence_required: boolean | null;
+    visit_buffer_minutes: number | null;
+    preferred_contact_name: string | null;
+    preferred_contact_phone: string | null;
     visit_before_contact_required: boolean | null;
     first_visit_preferred_date: string | null;
     first_visit_time_slot: string | null;
@@ -112,6 +124,7 @@ export type PatientOverview = {
     unit: string | null;
     abnormal_flag: string | null;
   }>;
+  jahis_supplemental_records: JahisSupplementalRecordDbView[];
   privacy: {
     sensitive_fields_masked: boolean;
     address_fields_masked: boolean;
@@ -319,6 +332,11 @@ export type PatientReadinessSnapshot = {
   } | null;
   items: Array<{
     key:
+      | 'patient_profile'
+      | 'primary_residence'
+      | 'insurance'
+      | 'visit_preferences'
+      | 'care_team_recipients'
       | 'visit_consent'
       | 'emergency_contact'
       | 'primary_physician'

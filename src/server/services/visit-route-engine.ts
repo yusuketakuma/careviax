@@ -8,6 +8,7 @@ export type VisitRouteWaypoint = {
   address: string;
   lat: number;
   lng: number;
+  priority?: string | null;
 };
 
 export type VisitRouteOrigin = {
@@ -80,10 +81,22 @@ function localSpeedKph(travelMode: VisitRouteTravelMode) {
   }
 }
 
-function haversineDistanceKm(
-  from: { lat: number; lng: number },
-  to: { lat: number; lng: number }
-) {
+function routePriorityBonusSeconds(priority: string | null | undefined) {
+  switch (priority) {
+    case 'emergency':
+      return 45 * 60;
+    case 'urgent':
+      return 25 * 60;
+    default:
+      return 0;
+  }
+}
+
+function hasPriorityRouteConstraint(waypoints: VisitRouteWaypoint[]) {
+  return waypoints.some((waypoint) => routePriorityBonusSeconds(waypoint.priority) > 0);
+}
+
+function haversineDistanceKm(from: { lat: number; lng: number }, to: { lat: number; lng: number }) {
   const earthRadiusKm = 6371;
   const dLat = ((to.lat - from.lat) * Math.PI) / 180;
   const dLng = ((to.lng - from.lng) * Math.PI) / 180;
@@ -91,9 +104,7 @@ function haversineDistanceKm(
   const lat2 = (to.lat * Math.PI) / 180;
   const sinDLat = Math.sin(dLat / 2);
   const sinDLng = Math.sin(dLng / 2);
-  const h =
-    sinDLat * sinDLat +
-    Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
+  const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
   return 2 * earthRadiusKm * Math.asin(Math.sqrt(h));
 }
 
@@ -248,10 +259,7 @@ async function computeHeuristicRoute(args: {
 }): Promise<VisitRoutePlan> {
   // Fix #1: validate geocodes before doing any computation
   const missingGeocodeWaypointIds = args.waypoints
-    .filter(
-      (waypoint) =>
-        !Number.isFinite(waypoint.lat) || !Number.isFinite(waypoint.lng)
-    )
+    .filter((waypoint) => !Number.isFinite(waypoint.lat) || !Number.isFinite(waypoint.lng))
     .map((waypoint) => waypoint.scheduleId);
 
   if (missingGeocodeWaypointIds.length > 0) {
@@ -297,7 +305,7 @@ async function computeHeuristicRoute(args: {
   // matrix[i][j] = { meters, seconds } | null, i !== j
   const matrix: Array<Array<{ meters: number; seconds: number } | null>> = Array.from(
     { length: n },
-    () => new Array<{ meters: number; seconds: number } | null>(n).fill(null)
+    () => new Array<{ meters: number; seconds: number } | null>(n).fill(null),
   );
 
   const pairs: Array<{ i: number; j: number }> = [];
@@ -324,7 +332,7 @@ async function computeHeuristicRoute(args: {
         }
         // else: matrix[i][j] stays null (unreachable pair)
       }
-    })
+    }),
   );
 
   // waypoint node index in `nodes` array = waypointIndex + 1 (0 is origin)
@@ -334,9 +342,11 @@ async function computeHeuristicRoute(args: {
   let currentNodeIndex = 0; // origin
   let totalDistanceMeters = 0;
   let totalDurationSeconds = 0;
+  const usesPriorityConstraint = hasPriorityRouteConstraint(args.waypoints);
 
   while (remaining.length > 0) {
     let bestRemIdx = 0;
+    let bestScoreSeconds = Number.POSITIVE_INFINITY;
     let bestDistanceMeters = Number.POSITIVE_INFINITY;
     let bestDurationSeconds = Number.POSITIVE_INFINITY;
 
@@ -347,6 +357,8 @@ async function computeHeuristicRoute(args: {
 
       const distanceMeters = cell ? cell.meters : Number.POSITIVE_INFINITY;
       const durationSeconds = cell ? cell.seconds : Number.POSITIVE_INFINITY;
+      const scoreSeconds =
+        durationSeconds - routePriorityBonusSeconds(args.waypoints[waypointIdx].priority);
 
       // Guard: never let NaN participate in comparisons (Fix #1 defence-in-depth)
       if (!Number.isFinite(durationSeconds) && !Number.isFinite(distanceMeters)) {
@@ -354,10 +366,14 @@ async function computeHeuristicRoute(args: {
       }
 
       if (
-        durationSeconds < bestDurationSeconds ||
-        (durationSeconds === bestDurationSeconds && distanceMeters < bestDistanceMeters)
+        scoreSeconds < bestScoreSeconds ||
+        (scoreSeconds === bestScoreSeconds && durationSeconds < bestDurationSeconds) ||
+        (scoreSeconds === bestScoreSeconds &&
+          durationSeconds === bestDurationSeconds &&
+          distanceMeters < bestDistanceMeters)
       ) {
         bestRemIdx = remIdx;
+        bestScoreSeconds = scoreSeconds;
         bestDistanceMeters = distanceMeters;
         bestDurationSeconds = durationSeconds;
       }
@@ -384,7 +400,9 @@ async function computeHeuristicRoute(args: {
 
   return {
     status: 'ok',
-    note: 'ヒューリスティック順序を表示しています',
+    note: usesPriorityConstraint
+      ? '優先度補正を含むヒューリスティック順序を表示しています'
+      : 'ヒューリスティック順序を表示しています',
     travelMode: args.travelMode,
     origin: args.origin,
     encodedPath: null,
@@ -438,7 +456,7 @@ export async function computeOptimizedVisitRoute(args: {
 
   const providerName = process.env.ROUTING_API_PROVIDER ?? 'osrm';
   const googleApiKey = resolveGoogleMapsServerApiKey();
-  if (providerName === 'google' && googleApiKey) {
+  if (providerName === 'google' && googleApiKey && !hasPriorityRouteConstraint(args.waypoints)) {
     return computeGoogleWaypointRoute({
       origin: args.origin,
       travelMode: args.travelMode,

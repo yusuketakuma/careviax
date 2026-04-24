@@ -1,6 +1,10 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { PageShortcutLinks, type PageShortcutLink } from './page-shortcut-links';
+import {
+  MainWorkflowCompactNav,
+  type MainWorkflowStepKey,
+} from './main-workflow-route';
 import { WorkflowBackLink } from './workflow-back-link';
 import { WorkflowPageHeader } from './workflow-page-header';
 
@@ -14,6 +18,8 @@ type WorkflowPageIntroProps = {
   actions?: ReactNode;
   controls?: ReactNode;
   supportingContent?: ReactNode;
+  mainWorkflowSteps?: MainWorkflowStepKey[];
+  mainWorkflowDescription?: string;
   className?: string;
 };
 
@@ -27,6 +33,8 @@ export function WorkflowPageIntro({
   actions,
   controls,
   supportingContent,
+  mainWorkflowSteps,
+  mainWorkflowDescription,
   className,
 }: WorkflowPageIntroProps) {
   const rightRail =
@@ -59,6 +67,15 @@ export function WorkflowPageIntro({
           </div>
         ) : null}
       </div>
+      {mainWorkflowSteps && mainWorkflowSteps.length > 0 ? (
+        <MainWorkflowCompactNav
+          currentSteps={mainWorkflowSteps}
+          description={
+            mainWorkflowDescription ??
+            '詳細画面でも、主業務フロー上の現在地を固定表示して前後工程を見失わないようにしています。'
+          }
+        />
+      ) : null}
     </div>
   );
 }

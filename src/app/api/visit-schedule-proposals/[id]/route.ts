@@ -171,6 +171,7 @@ async function buildRoutePreview(args: {
       address: residence.address,
       lat: residence.lat,
       lng: residence.lng,
+      priority: schedule.priority,
     });
     points.push({
       schedule_id: schedule.id,
@@ -200,6 +201,7 @@ async function buildRoutePreview(args: {
         address: residence.address,
         lat: residence.lat,
         lng: residence.lng,
+        priority: previewProposal.priority,
       });
       points.push({
         schedule_id: scheduleId,

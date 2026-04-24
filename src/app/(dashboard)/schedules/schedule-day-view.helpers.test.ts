@@ -5,6 +5,7 @@ import {
   buildDirectionsUrl,
   buildMapEmbedUrl,
   getDepartureCarryWarning,
+  getFacilityTrackerGrouping,
   proposalLockText,
   scheduleLockText,
   splitTrace,
@@ -133,6 +134,32 @@ describe('schedule-day-view.helpers', () => {
         schedule_1: '2',
         schedule_2: '2',
       },
+    });
+  });
+
+  it('uses one shared facility tracker key for filters and record links', () => {
+    const schedule = {
+      facility_batch_id: 'batch_1',
+      facility_hint: null,
+      site: { id: 'site_1', name: '中央薬局' },
+      case_: {
+        patient: {
+          residences: [
+            {
+              facility_id: 'facility_1',
+              facility_unit_id: 'unit_2',
+              building_id: '青空ホーム',
+              address: '東京都千代田区1-1',
+              unit_name: '2F 東',
+            },
+          ],
+        },
+      },
+    } as unknown as VisitSchedule;
+
+    expect(getFacilityTrackerGrouping(schedule)).toEqual({
+      key: 'site_1:batch_1:facility:facility_1',
+      label: '青空ホーム',
     });
   });
 });

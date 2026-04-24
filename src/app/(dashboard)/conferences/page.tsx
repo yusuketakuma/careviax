@@ -1,5 +1,6 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
+import { CollaborationWorkflowPanel } from '@/components/features/workflow/collaboration-workflow-panel';
 import { Loading } from '@/components/ui/loading';
 import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
 import { ConferencesContent } from './conferences-content';
@@ -44,6 +45,10 @@ export default async function ConferencesPage({ searchParams }: ConferencesPageP
           ]}
         />
       </WorkflowPageHeader>
+      <CollaborationWorkflowPanel
+        focus="conference"
+        description="カンファレンスで整理した論点を、依頼・照会、訪問時の申し送り、報告書送付へ戻せるようにしています。"
+      />
 
       <Suspense fallback={<Loading />}>
         <ConferencesContent

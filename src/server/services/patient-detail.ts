@@ -121,6 +121,17 @@ function readObjectString(input: unknown, key: string) {
   return typeof value === 'string' ? value : null;
 }
 
+function normalizeCareTeamRole(role: string) {
+  if (['physician', 'doctor', 'clinic', 'prescriber'].includes(role)) return 'physician';
+  if (['nurse', 'visiting_nurse', 'home_nurse'].includes(role)) return 'nurse';
+  if (['care_manager', 'caremanager', 'cm'].includes(role)) return 'care_manager';
+  return role;
+}
+
+function hasJsonArrayItems(value: Prisma.JsonValue | null | undefined) {
+  return Array.isArray(value) && value.length > 0;
+}
+
 function normalizeFirstVisitDocumentContacts(
   value: Prisma.JsonValue | null | undefined,
 ): FirstVisitDocumentContact[] {
@@ -171,6 +182,17 @@ async function findPatientOverviewBase(db: DbClient, args: DetailArgs) {
       residences: true,
       scheduling_preference: {
         select: {
+          preferred_weekdays: true,
+          preferred_time_from: true,
+          preferred_time_to: true,
+          phone_contact_from: true,
+          phone_contact_to: true,
+          facility_time_from: true,
+          facility_time_to: true,
+          family_presence_required: true,
+          visit_buffer_minutes: true,
+          preferred_contact_name: true,
+          preferred_contact_phone: true,
           visit_before_contact_required: true,
           first_visit_preferred_date: true,
           first_visit_time_slot: true,
@@ -258,69 +280,93 @@ export async function getPatientOverview(db: DbClient, args: DetailArgs) {
   if (!patient) return null;
 
   const caseIds = patient.cases.map((item) => item.id);
-  const [visitSchedules, openTasksCount, riskSummary, visitBrief, labSummary, archivedByNameMap] =
-    await Promise.all([
-      caseIds.length === 0
-        ? Promise.resolve([])
-        : db.visitSchedule.findMany({
-            where: {
-              org_id: args.orgId,
-              case_id: { in: caseIds },
-            },
-            orderBy: [{ scheduled_date: 'desc' }, { time_window_start: 'desc' }],
-            take: 8,
-            select: {
-              id: true,
-              scheduled_date: true,
-              schedule_status: true,
-              visit_record: {
-                select: {
-                  id: true,
-                  outcome_status: true,
-                },
+  const [
+    visitSchedules,
+    openTasksCount,
+    riskSummary,
+    visitBrief,
+    labSummary,
+    jahisSupplementalRecords,
+    archivedByNameMap,
+  ] = await Promise.all([
+    caseIds.length === 0
+      ? Promise.resolve([])
+      : db.visitSchedule.findMany({
+          where: {
+            org_id: args.orgId,
+            case_id: { in: caseIds },
+          },
+          orderBy: [{ scheduled_date: 'desc' }, { time_window_start: 'desc' }],
+          take: 8,
+          select: {
+            id: true,
+            scheduled_date: true,
+            schedule_status: true,
+            visit_record: {
+              select: {
+                id: true,
+                outcome_status: true,
               },
             },
-          }),
-      db.task.count({
-        where: {
-          org_id: args.orgId,
-          status: {
-            in: ['pending', 'in_progress'],
           },
-          OR: [
-            {
-              related_entity_type: 'patient',
-              related_entity_id: args.patientId,
-            },
-            ...(caseIds.length > 0
-              ? [
-                  {
-                    related_entity_type: 'case',
-                    related_entity_id: {
-                      in: caseIds,
-                    },
-                  },
-                ]
-              : []),
-          ],
+        }),
+    db.task.count({
+      where: {
+        org_id: args.orgId,
+        status: {
+          in: ['pending', 'in_progress'],
         },
-      }),
-      getPatientRiskSummary(db, {
-        orgId: args.orgId,
-        patientId: args.patientId,
-      }),
-      getPatientVisitBrief(db, {
-        orgId: args.orgId,
-        patientId: args.patientId,
-        context: 'patient',
-      }),
-      listLabSummary(db, args),
-      batchResolveNames(
-        db as typeof prisma,
-        args.orgId,
-        patient.archived_by ? [patient.archived_by] : [],
-      ),
-    ]);
+        OR: [
+          {
+            related_entity_type: 'patient',
+            related_entity_id: args.patientId,
+          },
+          ...(caseIds.length > 0
+            ? [
+                {
+                  related_entity_type: 'case',
+                  related_entity_id: {
+                    in: caseIds,
+                  },
+                },
+              ]
+            : []),
+        ],
+      },
+    }),
+    getPatientRiskSummary(db, {
+      orgId: args.orgId,
+      patientId: args.patientId,
+    }),
+    getPatientVisitBrief(db, {
+      orgId: args.orgId,
+      patientId: args.patientId,
+      context: 'patient',
+    }),
+    listLabSummary(db, args),
+    db.jahisSupplementalRecord.findMany({
+      where: {
+        org_id: args.orgId,
+        patient_id: args.patientId,
+      },
+      orderBy: [{ created_at: 'desc' }, { line_number: 'asc' }],
+      take: 8,
+      select: {
+        id: true,
+        record_type: true,
+        record_label: true,
+        line_number: true,
+        summary: true,
+        payload: true,
+        raw_line: true,
+      },
+    }),
+    batchResolveNames(
+      db as typeof prisma,
+      args.orgId,
+      patient.archived_by ? [patient.archived_by] : [],
+    ),
+  ]);
 
   const privacy = getPatientPrivacyFlags(args.role);
 
@@ -351,6 +397,7 @@ export async function getPatientOverview(db: DbClient, args: DetailArgs) {
     risk_summary: riskSummary,
     visit_brief: visitBrief,
     lab_summary: labSummary,
+    jahis_supplemental_records: jahisSupplementalRecords,
     privacy: {
       sensitive_fields_masked: privacy.sensitiveFieldsMasked,
       address_fields_masked: privacy.addressFieldsMasked,
@@ -1243,6 +1290,46 @@ export async function getPatientReadinessData(db: DbClient, args: DetailArgs) {
     where: { id: args.patientId, org_id: args.orgId },
     select: {
       id: true,
+      name: true,
+      name_kana: true,
+      birth_date: true,
+      gender: true,
+      phone: true,
+      medical_insurance_number: true,
+      care_insurance_number: true,
+      residences: {
+        where: { is_primary: true },
+        take: 1,
+        select: {
+          address: true,
+          facility_id: true,
+          facility_unit_id: true,
+          building_id: true,
+          unit_name: true,
+        },
+      },
+      scheduling_preference: {
+        select: {
+          preferred_weekdays: true,
+          preferred_time_from: true,
+          preferred_time_to: true,
+          facility_time_from: true,
+          facility_time_to: true,
+          visit_buffer_minutes: true,
+          preferred_contact_name: true,
+          preferred_contact_phone: true,
+          visit_before_contact_required: true,
+        },
+      },
+      insurances: {
+        where: { is_active: true },
+        select: {
+          insurance_type: true,
+          insurer_number: true,
+          number: true,
+          valid_until: true,
+        },
+      },
       contacts: {
         select: {
           is_emergency_contact: true,
@@ -1309,9 +1396,95 @@ export async function getPatientReadinessData(db: DbClient, args: DetailArgs) {
   ]);
 
   const hasEmergencyContact = patient.contacts.some((contact) => contact.is_emergency_contact);
-  const hasPrimaryPhysician = currentCase.care_team_links.some((link) => link.role === 'physician');
+  const careTeamRoles = new Set(
+    currentCase.care_team_links.map((link) => normalizeCareTeamRole(link.role)),
+  );
+  const hasPrimaryPhysician = careTeamRoles.has('physician');
+  const hasNurse = careTeamRoles.has('nurse');
+  const hasCareManager = careTeamRoles.has('care_manager');
+  const primaryResidence = patient.residences[0] ?? null;
+  const hasPrimaryResidence = Boolean(
+    primaryResidence?.address ||
+      primaryResidence?.facility_id ||
+      primaryResidence?.building_id,
+  );
+  const hasInsurance =
+    Boolean(patient.medical_insurance_number || patient.care_insurance_number) ||
+    patient.insurances.some(
+      (insurance) =>
+        Boolean(insurance.insurer_number || insurance.number) &&
+        (!insurance.valid_until || insurance.valid_until >= new Date()),
+    );
+  const hasVisitPreferences = Boolean(
+    hasJsonArrayItems(patient.scheduling_preference?.preferred_weekdays) ||
+      patient.scheduling_preference?.preferred_time_from ||
+      patient.scheduling_preference?.preferred_time_to ||
+      patient.scheduling_preference?.facility_time_from ||
+      patient.scheduling_preference?.facility_time_to ||
+      patient.scheduling_preference?.visit_buffer_minutes != null ||
+      patient.scheduling_preference?.preferred_contact_name ||
+      patient.scheduling_preference?.preferred_contact_phone ||
+      patient.scheduling_preference?.visit_before_contact_required != null,
+  );
 
   const items = [
+    {
+      key: 'patient_profile' as const,
+      label: '患者基本情報',
+      completed: Boolean(patient.name && patient.name_kana && patient.birth_date && patient.gender),
+      description:
+        patient.name && patient.name_kana && patient.birth_date && patient.gender
+          ? '氏名、カナ、生年月日、性別が登録されています。'
+          : '氏名、カナ、生年月日、性別を登録してください。',
+      action_href: `/patients/${args.patientId}/edit`,
+      action_label: '患者基本を編集',
+      severity: 'high' as const,
+    },
+    {
+      key: 'primary_residence' as const,
+      label: '訪問先住所・施設',
+      completed: hasPrimaryResidence,
+      description: hasPrimaryResidence
+        ? '訪問先住所、施設、または個人宅グループが登録されています。'
+        : '訪問先住所、施設、または個人宅グループを登録してください。',
+      action_href: `/patients/${args.patientId}?tab=basic#patient-facility-section`,
+      action_label: '訪問先を編集',
+      severity: 'high' as const,
+    },
+    {
+      key: 'insurance' as const,
+      label: '保険情報',
+      completed: hasInsurance,
+      description: hasInsurance
+        ? '医療保険または介護保険情報が登録されています。'
+        : '医療保険または介護保険情報を登録してください。',
+      action_href: `/patients/${args.patientId}?tab=basic`,
+      action_label: '保険を確認',
+      severity: 'high' as const,
+    },
+    {
+      key: 'visit_preferences' as const,
+      label: '訪問条件',
+      completed: hasVisitPreferences,
+      description: hasVisitPreferences
+        ? '訪問希望曜日・時間帯・連絡条件のいずれかが登録されています。'
+        : '訪問希望曜日、時間帯、連絡条件を登録してください。',
+      action_href: `/patients/${args.patientId}?tab=basic#patient-visit-constraints-section`,
+      action_label: '訪問条件を編集',
+      severity: 'normal' as const,
+    },
+    {
+      key: 'care_team_recipients' as const,
+      label: '報告書送付先',
+      completed: hasPrimaryPhysician && hasNurse && hasCareManager,
+      description:
+        hasPrimaryPhysician && hasNurse && hasCareManager
+          ? 'クリニック・訪問看護・ケアマネジャーが患者情報に登録されています。'
+          : 'クリニック・訪問看護・ケアマネジャーを患者情報のケアチームに登録してください。',
+      action_href: `/patients/${args.patientId}?tab=communications`,
+      action_label: '連携先を編集',
+      severity: 'normal' as const,
+    },
     {
       key: 'visit_consent' as const,
       label: '訪問同意',

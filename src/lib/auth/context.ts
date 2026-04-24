@@ -94,10 +94,7 @@ export function isAdmin(role: MemberRole): boolean {
 export async function requireAuthContext(
   request: NextRequest,
   options?: RequireAuthContextOptions
-): Promise<
-  | { ctx: AuthContext; response?: never }
-  | { ctx?: never; response: NextResponse }
-> {
+): Promise<{ ctx: AuthContext } | { response: NextResponse }> {
   clearRequestAuthContext();
 
   const session = await auth();
@@ -259,7 +256,7 @@ export async function requireApiKeyOrAuthContext(
   }
 
   const authResult = await requireAuthContext(request, options);
-  if ('response' in authResult && authResult.response) {
+  if ('response' in authResult) {
     return { response: authResult.response };
   }
 

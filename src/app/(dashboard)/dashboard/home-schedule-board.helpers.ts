@@ -1,9 +1,24 @@
 import type { Proposal, VisitSchedule, VisitPriority } from '@/app/(dashboard)/schedules/day-view.shared';
 import { buildScheduleProposalHref } from '@/app/(dashboard)/schedules/proposals/proposal-query-state';
 
-export type HomeVisitScope = 'all' | 'mine';
+export type HomeVisitScope = 'pharmacy' | 'mine' | 'user';
 export type HomeProposalFilter = 'all' | 'pending' | 'change_requested' | 'reschedule';
 export type HomeVisitStatusFilter = 'all' | 'before_departure' | 'ready_to_depart' | 'in_progress';
+export type HomeScheduleStaffOption = {
+  id: string;
+  name: string;
+  siteName: string | null;
+  monthlyVisitCount?: number;
+};
+export type HomeScheduleStaffSummary = {
+  id: string;
+  name: string;
+  siteName: string | null;
+  totalVisits: number;
+  preparationPending: number;
+  timingGaps: number;
+  inProgress: number;
+};
 export type HomeScheduleReasonKey =
   | 'urgent_priority'
   | 'preparation_pending'
@@ -75,13 +90,30 @@ export function proposalNeedsCoordination(proposal: Proposal) {
 export function filterSchedulesByScope(
   schedules: VisitSchedule[],
   scope: HomeVisitScope,
-  pharmacistId: string | null,
+  currentUserId: string | null,
+  selectedUserId?: string | null,
 ) {
-  if (scope !== 'mine' || !pharmacistId) {
-    return schedules;
+  switch (scope) {
+    case 'mine':
+      return currentUserId
+        ? schedules.filter((schedule) => schedule.pharmacist_id === currentUserId)
+        : [];
+    case 'user':
+      return selectedUserId
+        ? schedules.filter((schedule) => schedule.pharmacist_id === selectedUserId)
+        : [];
+    default:
+      return schedules;
   }
+}
 
-  return schedules.filter((schedule) => schedule.pharmacist_id === pharmacistId);
+export function countSchedulesByScope(
+  schedules: VisitSchedule[],
+  scope: HomeVisitScope,
+  currentUserId: string | null,
+  selectedUserId?: string | null,
+) {
+  return filterSchedulesByScope(schedules, scope, currentUserId, selectedUserId).length;
 }
 
 export function filterSchedulesByStatus(
@@ -145,6 +177,10 @@ export function buildScheduleBoardHref(
   return `/schedules?${params.toString()}#schedule-${schedule.id}`;
 }
 
+export function buildSchedulePatientHref(schedule: VisitSchedule) {
+  return `/patients/${schedule.case_.patient.id}?tab=visits`;
+}
+
 export function buildProposalBoardHref(proposal: Proposal): string {
   const patch: Record<string, string | null | undefined> = {
     workspace: 'dashboard',
@@ -173,6 +209,10 @@ export function buildProposalBoardHref(proposal: Proposal): string {
     params: { workspace: 'dashboard' },
     patch,
   });
+}
+
+export function buildProposalPatientHref(proposal: Proposal) {
+  return `/patients/${proposal.case_.patient.id}?tab=visits`;
 }
 
 export function resolveProposalPrimaryAction(proposal: Proposal): HomeProposalAction {
@@ -403,4 +443,54 @@ export function buildHomeScheduleMetrics(schedules: VisitSchedule[], proposals: 
     timingGaps,
     coordinationPending,
   };
+}
+
+export function buildHomeScheduleStaffOptions(
+  schedules: VisitSchedule[],
+  staffOptions: HomeScheduleStaffOption[],
+) {
+  const optionsById = new Map(staffOptions.map((staff) => [staff.id, staff]));
+
+  for (const schedule of schedules) {
+    if (!optionsById.has(schedule.pharmacist_id)) {
+      optionsById.set(schedule.pharmacist_id, {
+        id: schedule.pharmacist_id,
+        name: '担当者未登録',
+        siteName: null,
+      });
+    }
+  }
+
+  return Array.from(optionsById.values()).sort((left, right) =>
+    left.name.localeCompare(right.name, 'ja'),
+  );
+}
+
+export function buildHomeScheduleStaffSummaries(
+  schedules: VisitSchedule[],
+  staffOptions: HomeScheduleStaffOption[],
+): HomeScheduleStaffSummary[] {
+  const options = buildHomeScheduleStaffOptions(schedules, staffOptions);
+
+  return options
+    .map((staff) => {
+      const staffSchedules = schedules.filter((schedule) => schedule.pharmacist_id === staff.id);
+      return {
+        id: staff.id,
+        name: staff.name,
+        siteName: staff.siteName,
+        totalVisits: staffSchedules.length,
+        preparationPending: staffSchedules.filter(scheduleNeedsPreparation).length,
+        timingGaps: staffSchedules.filter(scheduleHasTimingGap).length,
+        inProgress: staffSchedules.filter((schedule) =>
+          schedule.schedule_status === 'departed' || schedule.schedule_status === 'in_progress',
+        ).length,
+      };
+    })
+    .filter((summary) => summary.totalVisits > 0)
+    .sort((left, right) => {
+      const totalDiff = right.totalVisits - left.totalVisits;
+      if (totalDiff !== 0) return totalDiff;
+      return left.name.localeCompare(right.name, 'ja');
+    });
 }

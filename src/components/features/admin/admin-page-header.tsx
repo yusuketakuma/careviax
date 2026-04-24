@@ -5,6 +5,7 @@ import {
 } from '@/components/features/workflow/page-shortcut-links';
 import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
+import { SectionIntro } from '@/components/ui/section-intro';
 
 type AdminPageHeaderProps = {
   eyebrow?: string;
@@ -27,12 +28,10 @@ export function AdminPageHeader({
   shortcuts = [],
   action,
   supportingContent = (
-    <div className="space-y-1">
-      <p className="text-sm font-medium text-foreground">最初に見るポイント</p>
-      <p className="text-sm text-muted-foreground">
-        対象データ、主要な設定値、関連導線を上から確認し、必要な管理操作へ進みます。
-      </p>
-    </div>
+    <SectionIntro
+      title="最初に見るポイント"
+      description="対象データ、主要な設定値、関連導線を上から確認し、必要な管理操作へ進みます。"
+    />
   ),
   childrenLabel = shortcuts.length > 0 ? '関連導線' : undefined,
 }: AdminPageHeaderProps) {

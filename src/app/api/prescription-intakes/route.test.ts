@@ -12,16 +12,16 @@ const {
   validateOrgReferencesMock,
   upsertOperationalTaskMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn((
-    handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>
-  ) => {
-    return (req: NextRequest) =>
-      handler({
-        ...req,
-        orgId: 'org_1',
-        userId: 'user_1',
-      } as NextRequest & { orgId: string; userId: string });
-  }),
+  withAuthMock: vi.fn(
+    (handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>) => {
+      return (req: NextRequest) =>
+        handler({
+          ...req,
+          orgId: 'org_1',
+          userId: 'user_1',
+        } as NextRequest & { orgId: string; userId: string });
+    },
+  ),
   withOrgContextMock: vi.fn(),
   prescriptionIntakeFindManyMock: vi.fn(),
   validateOrgReferencesMock: vi.fn().mockResolvedValue({ ok: true }),
@@ -101,7 +101,7 @@ describe('/api/prescription-intakes POST', () => {
         prescriptionIntake: {
           create: vi.fn(),
         },
-      })
+      }),
     );
 
     const response = await POST(
@@ -120,7 +120,7 @@ describe('/api/prescription-intakes POST', () => {
             days: 28,
           },
         ],
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -156,7 +156,7 @@ describe('/api/prescription-intakes POST', () => {
         prescriptionIntake: {
           create: intakeCreateMock,
         },
-      })
+      }),
     );
 
     const response = await POST(
@@ -182,7 +182,7 @@ describe('/api/prescription-intakes POST', () => {
             days: 14,
           },
         ],
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -222,7 +222,7 @@ describe('/api/prescription-intakes POST', () => {
         prescriptionIntake: {
           create: intakeCreateMock,
         },
-      })
+      }),
     );
 
     const response = await POST(
@@ -239,7 +239,7 @@ describe('/api/prescription-intakes POST', () => {
             days: 7,
           },
         ],
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -261,7 +261,7 @@ describe('/api/prescription-intakes POST', () => {
           exception_type: 'prescription_structuring_block',
           cycle_id: 'cycle_1',
         }),
-      })
+      }),
     );
     expect(intakeCreateMock).not.toHaveBeenCalled();
   });
@@ -283,7 +283,7 @@ describe('/api/prescription-intakes POST', () => {
             days: 14,
           },
         ],
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -311,7 +311,7 @@ describe('/api/prescription-intakes POST', () => {
             days: 14,
           },
         ],
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -390,7 +390,7 @@ describe('/api/prescription-intakes POST', () => {
           findFirst: vi.fn().mockResolvedValue(null),
           create: dispenseTaskCreateMock,
         },
-      })
+      }),
     );
 
     const response = await POST(
@@ -409,7 +409,7 @@ describe('/api/prescription-intakes POST', () => {
             days: 14,
           },
         ],
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -514,7 +514,7 @@ describe('/api/prescription-intakes POST', () => {
           findFirst: vi.fn(),
           create: vi.fn(),
         },
-      })
+      }),
     );
 
     const response = await POST(
@@ -539,7 +539,7 @@ describe('/api/prescription-intakes POST', () => {
             days: 14,
           },
         ],
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -551,7 +551,7 @@ describe('/api/prescription-intakes POST', () => {
           reason: '用量疑義',
           inquiry_to_physician: '山田 太郎 先生',
         }),
-      })
+      }),
     );
     expect(communicationRequestCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -560,12 +560,151 @@ describe('/api/prescription-intakes POST', () => {
           case_id: 'case_2',
           related_entity_id: 'inq_1',
         }),
-      })
+      }),
     );
     expect(upsertOperationalTaskMock).toHaveBeenCalled();
     expect(cycleUpdateManyMock).toHaveBeenCalledWith({
       where: { id: 'cycle_2', version: 1 },
       data: expect.objectContaining({ overall_status: 'inquiry_pending' }),
+    });
+  });
+
+  it('links QR draft supplemental records when creating from the prescription edit screen', async () => {
+    const cycleCreateMock = vi.fn().mockResolvedValue({
+      id: 'cycle_qr',
+      patient_id: 'patient_qr',
+      case_id: 'case_qr',
+      overall_status: 'intake_received',
+      version: 1,
+    });
+    const cycleFindFirstMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: 'cycle_qr',
+        patient_id: 'patient_qr',
+        overall_status: 'intake_received',
+        version: 1,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_qr',
+        patient_id: 'patient_qr',
+        overall_status: 'structuring',
+        version: 2,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_qr',
+        patient_id: 'patient_qr',
+        overall_status: 'ready_to_dispense',
+        version: 3,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_qr',
+        patient_id: 'patient_qr',
+        case_id: 'case_qr',
+      });
+    const cycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const qrDraftFindFirstMock = vi.fn().mockResolvedValue({
+      id: 'draft_qr',
+      status: 'pending',
+      patient_id: 'patient_qr',
+      parsed_data: {
+        supplementalRecords: [
+          {
+            recordType: '421',
+            recordLabel: '残薬確認',
+            lineNumber: 4,
+            fields: ['残薬あり', '1'],
+            details: [{ label: '残薬内容', value: '残薬あり' }],
+            summary: '残薬あり',
+            rawLine: '421,残薬あり,1',
+          },
+        ],
+      },
+    });
+    const qrDraftUpdateMock = vi.fn().mockResolvedValue({ id: 'draft_qr', status: 'confirmed' });
+    const supplementalUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        qrScanDraft: {
+          findFirst: qrDraftFindFirstMock,
+          update: qrDraftUpdateMock,
+        },
+        jahisSupplementalRecord: {
+          updateMany: supplementalUpdateManyMock,
+        },
+        careCase: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'case_qr',
+            patient_id: 'patient_qr',
+            primary_pharmacist_id: 'pharmacist_1',
+          }),
+        },
+        medicationCycle: {
+          create: cycleCreateMock,
+          findFirst: cycleFindFirstMock,
+          updateMany: cycleUpdateManyMock,
+        },
+        cycleTransitionLog: {
+          create: vi.fn().mockResolvedValue({}),
+        },
+        workflowException: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn(),
+        },
+        prescriptionIntake: {
+          create: vi.fn().mockResolvedValue({ id: 'intake_qr' }),
+        },
+        inquiryRecord: {
+          count: vi.fn().mockResolvedValue(0),
+        },
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockResolvedValue({ id: 'task_qr' }),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_qr',
+        patient_id: 'patient_qr',
+        qr_draft_id: 'draft_qr',
+        source_type: 'qr_scan',
+        prescribed_date: TODAY,
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(supplementalUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        qr_draft_id: 'draft_qr',
+        prescription_intake_id: null,
+      },
+      data: {
+        patient_id: 'patient_qr',
+        prescription_intake_id: 'intake_qr',
+      },
+    });
+    expect(qrDraftUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'draft_qr' },
+      data: {
+        patient_id: 'patient_qr',
+        status: 'confirmed',
+        confirmed_intake_id: 'intake_qr',
+      },
     });
   });
 
@@ -635,7 +774,7 @@ describe('/api/prescription-intakes POST', () => {
           findFirst: vi.fn().mockResolvedValue(null),
           create: vi.fn().mockResolvedValue({ id: 'task_3' }),
         },
-      })
+      }),
     );
 
     const response = await POST(
@@ -654,7 +793,7 @@ describe('/api/prescription-intakes POST', () => {
             days: 14,
           },
         ],
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -708,7 +847,7 @@ describe('/api/prescription-intakes POST', () => {
           findFirst: vi.fn().mockResolvedValue(null),
           create: dispenseTaskCreateMock,
         },
-      })
+      }),
     );
 
     const response = await POST(
@@ -726,7 +865,7 @@ describe('/api/prescription-intakes POST', () => {
             days: 14,
           },
         ],
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -783,7 +922,7 @@ describe('/api/prescription-intakes POST', () => {
           findFirst: vi.fn().mockResolvedValue(null),
           create: dispenseTaskCreateMock,
         },
-      })
+      }),
     );
 
     const response = await POST(
@@ -803,7 +942,7 @@ describe('/api/prescription-intakes POST', () => {
             days: 14,
           },
         ],
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');

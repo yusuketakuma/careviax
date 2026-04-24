@@ -54,6 +54,9 @@ vi.mock('@/lib/db/client', () => ({
     patientInsurance: {
       findFirst: vi.fn().mockResolvedValue(null),
     },
+    pharmacySiteInsuranceConfig: {
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
   },
 }));
 

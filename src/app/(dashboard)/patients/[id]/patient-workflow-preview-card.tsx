@@ -19,6 +19,17 @@ function timeValue(value: string | null) {
   return value ? value.slice(11, 16) : '—';
 }
 
+const reportTargetSourceLabels: Record<
+  PatientWorkflowPreviewSnapshot['report_targets'][number]['source'],
+  string
+> = {
+  care_team: '患者情報',
+  requester: '依頼元',
+  intake: '受付情報',
+  patient_setting: '患者設定',
+  missing: '未設定',
+};
+
 export function PatientWorkflowPreviewCard({ patientId }: { patientId: string }) {
   const orgId = useOrgId();
   const previewQuery = useQuery<PatientWorkflowPreviewSnapshot>({
@@ -199,7 +210,7 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
                   <Badge variant={target.available ? 'default' : 'outline'}>
                     {target.available ? '有効' : '未解決'}
                   </Badge>
-                  <Badge variant="outline">{target.source}</Badge>
+                  <Badge variant="outline">{reportTargetSourceLabels[target.source]}</Badge>
                 </div>
                 <p className="mt-2 text-foreground">
                   {labelList(

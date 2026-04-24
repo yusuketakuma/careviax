@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 import { clearRequestAuthContext } from '../request-context';
 
@@ -30,6 +30,8 @@ vi.mock('../security-events', () => ({
 }));
 
 import { getAuthContext, requireAuthContext } from '../context';
+
+const originalTrustProxyHeaders = process.env.TRUST_PROXY_HEADERS;
 
 function createRequest(headers?: Record<string, string>) {
   return {
@@ -96,6 +98,10 @@ describe('requireAuthContext', () => {
     vi.clearAllMocks();
     userFindUniqueMock.mockResolvedValue(null);
     clearRequestAuthContext();
+  });
+
+  afterEach(() => {
+    process.env.TRUST_PROXY_HEADERS = originalTrustProxyHeaders;
   });
 
   it('returns 401 when the session is missing', async () => {
@@ -201,6 +207,7 @@ describe('requireAuthContext', () => {
   });
 
   it('returns auth context when permission check passes', async () => {
+    process.env.TRUST_PROXY_HEADERS = 'true';
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 

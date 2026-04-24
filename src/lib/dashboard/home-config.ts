@@ -43,7 +43,7 @@ export const DASHBOARD_PIPELINE_STEPS = [
   },
   {
     key: 'visit_planning',
-    label: '準備',
+    label: 'スケジュール',
     statuses: ['visit_ready'],
   },
   {
@@ -53,7 +53,7 @@ export const DASHBOARD_PIPELINE_STEPS = [
   },
   {
     key: 'reporting',
-    label: '報告',
+    label: '報告書',
     statuses: ['visit_completed'],
   },
 ] as const;
@@ -203,6 +203,12 @@ export const DASHBOARD_WORKFLOW_LINKS: readonly DashboardNavigationLink[] = [
     key: 'medication_sets',
     title: 'セット管理',
     description: 'セット計画、グリッド鑑査、持参パック作成へ進みます。',
+    href: '/medication-sets',
+  },
+  {
+    key: 'set_audit',
+    title: 'セット監査',
+    description: 'セット結果の承認・差戻しを確認し、持参内容を確定します。',
     href: '/medication-sets',
   },
   {

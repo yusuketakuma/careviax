@@ -25,6 +25,13 @@ import { Separator } from '@/components/ui/separator';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import {
+  JahisSupplementalRecordsCard,
+} from '@/components/features/prescriptions/jahis-supplemental-records-card';
+import {
+  normalizeJahisSupplementalRecords,
+  type JahisSupplementalRecordDbView,
+} from '@/lib/pharmacy/jahis-supplemental-records-view';
 import { SOURCE_LABELS } from '../new/prescription-form.shared';
 import { CYCLE_STATUS_CONFIG } from '../prescription.shared';
 
@@ -87,6 +94,7 @@ type PrescriptionIntakeDetail = {
   split_dispense_current: number | null;
   split_next_dispense_date: string | null;
   created_at: string;
+  jahis_supplemental_records: JahisSupplementalRecordDbView[];
   lines: PrescriptionLine[];
   cycle: {
     id: string;
@@ -190,6 +198,8 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
           label: '一覧へ戻る',
           icon: <ArrowLeft className="size-4" aria-hidden="true" />,
         }}
+        mainWorkflowSteps={['prescriptions']}
+        mainWorkflowDescription="処方受付の詳細画面でも、主業務フローのどこを見ているかを固定表示します。"
         childrenLabel="関連導線"
       >
         <PageShortcutLinks
@@ -299,6 +309,14 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
                 </div>
               </CardContent>
             </Card>
+
+            <JahisSupplementalRecordsCard
+              records={normalizeJahisSupplementalRecords(
+                undefined,
+                data.jahis_supplemental_records,
+              )}
+              description="QR由来のOTC薬、残薬、患者等記入、かかりつけ薬剤師などを処方受付に紐付けています。"
+            />
 
             {/* リフィル / 分割調剤 */}
             {(data.source_type === 'refill' || data.split_dispense_total) && (

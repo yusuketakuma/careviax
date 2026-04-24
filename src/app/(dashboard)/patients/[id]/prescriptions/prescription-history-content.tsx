@@ -28,6 +28,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { HelpPopover } from '@/components/ui/help-popover';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { Loading } from '@/components/ui/loading';
 import { toast } from 'sonner';
@@ -1023,15 +1024,15 @@ export function PrescriptionHistoryContent() {
           {overviewCards.map((item) => (
             <Card key={item.label} className="border-slate-200 shadow-sm">
               <CardHeader className="pb-2">
-                <CardDescription>{item.label}</CardDescription>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-muted-foreground">{item.label}</p>
+                  <HelpPopover title={item.label} description={item.description} />
+                </div>
                 <CardTitle className="flex items-center gap-2 text-xl">
                   <CalendarDays className="size-4 text-sky-700" aria-hidden="true" />
                   {item.value}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="pt-0 text-xs text-muted-foreground">
-                {item.description}
-              </CardContent>
             </Card>
           ))}
         </div>

@@ -5,6 +5,7 @@ import type { ElementType } from 'react';
 import { Bell, CalendarClock, Route, Siren } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { HelpPopover } from '@/components/ui/help-popover';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type WorkflowSnapshot = {
@@ -191,9 +192,11 @@ function MetricCard({
     <Card>
       <CardContent className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-muted-foreground">{title}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium text-muted-foreground">{title}</p>
+            <HelpPopover title={title} description={description} />
+          </div>
           <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">{value}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{description}</p>
         </div>
         <div className="rounded-full border border-border bg-background p-2">
           <Icon className="size-4 text-muted-foreground" aria-hidden="true" />

@@ -54,6 +54,7 @@ export default async function SchedulesPage({ searchParams }: SchedulesPageProps
             </p>
           </div>
         }
+        mainWorkflowSteps={['schedules']}
         childrenLabel="関連導線"
       >
         <div className="flex flex-wrap items-center justify-end gap-2">

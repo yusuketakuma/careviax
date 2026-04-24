@@ -1,4 +1,5 @@
 import type { Proposal, VisitSchedule } from './day-view.shared';
+import { deriveVisitPlaceGroup } from '@/lib/utils/facility';
 
 export type DepartureCarryWarning = {
   title: string;
@@ -29,6 +30,34 @@ export type FacilityTrackerGroup = {
   incompleteCount: number;
   routeOrders: number[];
 };
+
+type FacilityTrackableSchedule = Pick<
+  VisitSchedule,
+  'case_' | 'facility_batch_id' | 'facility_hint' | 'site'
+>;
+
+export type FacilityTrackerGrouping = {
+  key: string;
+  label: string;
+};
+
+export function getFacilityTrackerGrouping(
+  schedule: FacilityTrackableSchedule
+): FacilityTrackerGrouping | null {
+  const visitPlaceGroup = deriveVisitPlaceGroup(schedule.case_.patient.residences[0] ?? null);
+  const label = schedule.facility_hint?.label ?? visitPlaceGroup?.label ?? null;
+  const placeKey = schedule.facility_hint?.label ?? visitPlaceGroup?.key ?? null;
+  if (!label || !placeKey) return null;
+
+  return {
+    key: [
+      schedule.site?.id ?? 'site:none',
+      schedule.facility_batch_id ?? 'batch:none',
+      placeKey,
+    ].join(':'),
+    label,
+  };
+}
 
 export function getDepartureCarryWarning(
   schedule: Pick<VisitSchedule, 'carry_items_status'> | null
@@ -133,20 +162,13 @@ export function buildFacilityTracker(
   const groups = new Map<string, FacilityTrackerGroup>();
 
   for (const schedule of schedules) {
-    const facilityLabel =
-      schedule.facility_hint?.label ?? schedule.case_.patient.residences[0]?.address ?? null;
-    if (!facilityLabel) continue;
+    const grouping = getFacilityTrackerGrouping(schedule);
+    if (!grouping) continue;
 
-    const key = [
-      schedule.site?.id ?? 'site:none',
-      schedule.facility_batch_id ?? 'batch:none',
-      facilityLabel,
-    ].join(':');
-
-    const existing = groups.get(key) ?? {
-      key,
+    const existing = groups.get(grouping.key) ?? {
+      key: grouping.key,
       batchId: schedule.facility_batch_id,
-      label: facilityLabel,
+      label: grouping.label,
       siteName: schedule.site?.name ?? null,
       patientNames: [],
       scheduleIds: [],
@@ -173,7 +195,7 @@ export function buildFacilityTracker(
     }
     if (schedule.route_order != null) existing.routeOrders.push(schedule.route_order);
 
-    groups.set(key, existing);
+    groups.set(grouping.key, existing);
   }
 
   return Array.from(groups.values())

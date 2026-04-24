@@ -18,3 +18,10 @@
 - `pnpm test:e2e:list`
 - `pnpm test:e2e:audit`
 - `pnpm test:e2e:audit:list`
+- `pnpm test:e2e:harness:doctor`
+- `pnpm test:e2e:harness:patient-detail`
+
+## Browser Harness
+
+`tools/browser-harness/` contains optional real-Chrome E2E checks powered by `browser-use/browser-harness`.
+Use these for local exploratory verification and self-healing browser diagnosis; keep Playwright as the deterministic CI suite.

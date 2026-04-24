@@ -78,6 +78,16 @@ export type VisitBriefCommunicationItem = {
   severity: VisitBriefSeverity;
 };
 
+export type VisitBriefJahisSupplementalRecord = {
+  id: string;
+  record_type: string;
+  record_label: string;
+  summary: string | null;
+  details: Array<{ label: string; value: string }>;
+  raw_line: string;
+  created_at: string;
+};
+
 export type VisitBriefUnresolvedItem = {
   source_type: 'task' | 'issue' | 'inquiry' | 'billing';
   title: string;
@@ -157,6 +167,7 @@ export type VisitBrief = {
   delivery_status: VisitBriefDeliveryItem[];
   dosage_form_support: VisitBriefDosageFormCandidate[];
   multidisciplinary_updates: VisitBriefCommunicationItem[];
+  jahis_supplemental_records: VisitBriefJahisSupplementalRecord[];
   unresolved_items: VisitBriefUnresolvedItem[];
   must_check_today: string[];
   rule_summary: VisitBriefRuleSummary;

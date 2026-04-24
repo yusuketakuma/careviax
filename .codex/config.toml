@@ -1,0 +1,81 @@
+################################################################################
+# Project-local Codex configuration
+# Codex CLI 0.124.0 verification showed runtime mode is loaded from
+# ~/.codex/config.toml. Keep this file as repo-local documentation and future
+# compatibility; do not rely on it as the active enforcement layer.
+################################################################################
+model = "gpt-5.5"
+model_provider = "openai"
+review_model = "gpt-5.5"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+model_reasoning_effort = "xhigh"
+plan_mode_reasoning_effort = "xhigh"
+model_reasoning_summary = "detailed"
+model_supports_reasoning_summaries = true
+model_verbosity = "high"
+personality = "pragmatic"
+web_search = "live"
+service_tier = "fast"
+project_doc_max_bytes = 131072
+project_doc_fallback_filenames = [
+  "CLAUDE.md",
+  ".agents.md",
+  "TEAM_GUIDE.md",
+  "CONTRIBUTING.md"
+]
+[agents]
+max_threads = 10
+max_depth = 2
+job_max_runtime_seconds = 7200
+
+[agents.explorer-deep]
+description = "Read-only deep codebase explorer for architecture, dependency, impact-radius, and hidden-coupling analysis."
+config_file = "agents/explorer-deep.toml"
+nickname_candidates = ["explorer-deep"]
+
+[agents.worker-fixer]
+description = "Implementation agent for fixing bugs, validation failures, integration issues, and repository-wide defects."
+config_file = "agents/worker-fixer.toml"
+nickname_candidates = ["worker-fixer"]
+
+[agents.security-auditor]
+description = "Read-only security reviewer for auth, authorization, injection, secrets, input validation, and dependency risk."
+config_file = "agents/security-auditor.toml"
+nickname_candidates = ["security-auditor"]
+
+[agents.performance-auditor]
+description = "Read-only performance reviewer for N+1, repeated I/O, redundant computation, rendering waste, memory pressure, and blocking paths."
+config_file = "agents/performance-auditor.toml"
+nickname_candidates = ["performance-auditor"]
+
+[agents.test-auditor]
+description = "Read-only test and validation reviewer for missing coverage, flaky tests, weak assertions, and broken CI assumptions."
+config_file = "agents/test-auditor.toml"
+nickname_candidates = ["test-auditor"]
+
+[agents.reviewer-strict]
+description = "Read-only strict reviewer for correctness, maintainability, regression risk, validation quality, and hidden side effects."
+config_file = "agents/reviewer-strict.toml"
+nickname_candidates = ["reviewer-strict"]
+[features]
+fast_mode = true
+multi_agent = true
+personality = true
+shell_snapshot = true
+shell_tool = true
+skill_mcp_dependency_install = true
+undo = true
+unified_exec = true
+enable_request_compression = true
+prevent_idle_sleep = true
+memories = true
+codex_hooks = true
+apps = false
+[sandbox_workspace_write]
+writable_roots = []
+network_access = true
+exclude_tmpdir_env_var = false
+exclude_slash_tmp = false
+[tools]
+view_image = true

@@ -1,0 +1,12 @@
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
+model_reasoning_summary = "detailed"
+model_verbosity = "high"
+sandbox_mode = "read-only"
+developer_instructions = """
+You are a read-only exploration agent.
+Map the codebase, architecture, dependencies, entrypoints, data flow, and risk areas.
+Do not modify files.
+Return concise findings with file paths, evidence, and recommended next actions.
+Focus on hidden coupling, missing validation, fragile assumptions, and likely bug locations.
+"""

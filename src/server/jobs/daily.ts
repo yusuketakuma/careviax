@@ -47,9 +47,7 @@ import {
 } from '@/server/services/billing-evidence';
 import { queueOverdueReportResponseReminders } from '@/server/services/report-reminders';
 import { trackPatientStatusChanges } from '@/server/services/patient-status-tracker';
-import {
-  buildVisitScheduleContactFollowupTask,
-} from '@/server/services/visit-schedule-communication';
+import { buildVisitScheduleContactFollowupTask } from '@/server/services/visit-schedule-communication';
 
 const DOSAGE_SUPPORT_KEYWORDS = [
   '飲みにく',
@@ -94,7 +92,7 @@ export async function checkMedicationDeadlines() {
           metadata: {
             schedule_id: schedule.id,
           },
-        })
+        }),
       );
     }
 
@@ -142,7 +140,7 @@ export async function checkRefillPrescriptions() {
             cycle_id: intake.cycle_id,
             intake_id: intake.id,
           },
-        })
+        }),
       );
     }
 
@@ -223,17 +221,12 @@ export async function checkIntakeToVisitLinkage() {
     for (const intake of intakes) {
       const careCase = intake.cycle?.case_;
       if (!careCase) continue;
-      if (
-        intake.cycle?.visit_schedules.length ||
-        intake.cycle?.visit_schedule_proposals.length
-      ) {
+      if (intake.cycle?.visit_schedules.length || intake.cycle?.visit_schedule_proposals.length) {
         continue;
       }
 
       const dueDate =
-        intake.refill_next_dispense_date ??
-        intake.prescription_expiry_date ??
-        addDays(today, 1);
+        intake.refill_next_dispense_date ?? intake.prescription_expiry_date ?? addDays(today, 1);
       const reason =
         intake.source_type === 'refill'
           ? 'リフィルの次回調剤日に向けた訪問候補が未連携です。'
@@ -404,7 +397,7 @@ export async function checkVisitRecordRetention() {
       const daysUntilExpiry = Math.ceil(
         (retentionUntil.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
       );
-      const priority = daysUntilExpiry <= 7 ? 'urgent' as const : 'high' as const;
+      const priority = daysUntilExpiry <= 7 ? ('urgent' as const) : ('high' as const);
       const thresholdLabel = daysUntilExpiry <= 7 ? '7日以内' : '30日以内';
       const patientName = patientById.get(record.patient_id) ?? record.patient_id;
 
@@ -539,8 +532,8 @@ export async function generateVisitDemands() {
             drafts.map((draft) =>
               tx.visitScheduleProposal.create({
                 data: draft,
-              })
-            )
+              }),
+            ),
           );
 
           await upsertOperationalTask(tx, {
@@ -607,9 +600,7 @@ export async function generateVisitDemands() {
           continue;
         }
 
-        errors.push(
-          error instanceof Error ? error.message : `cycle:${cycle.id}:unknown_error`
-        );
+        errors.push(error instanceof Error ? error.message : `cycle:${cycle.id}:unknown_error`);
       }
     }
 
@@ -648,7 +639,7 @@ export async function checkManagementPlanReviews() {
           patientId: plan.case_.patient_id,
           dueDate: nextReviewDate,
           assignedTo: plan.case_.primary_pharmacist_id ?? null,
-        })
+        }),
       );
     }
 
@@ -690,8 +681,8 @@ export async function checkCallbackFollowups() {
             assignedTo: log.proposal.proposed_pharmacist_id,
             dueAt: callbackDueAt,
             description: log.note ?? '折り返し期限を過ぎています。',
-          })
-        )
+          }),
+        ),
       );
     }
 
@@ -704,11 +695,7 @@ export async function checkResidenceGeocodeQuality() {
     const residences = await prisma.residence.findMany({
       where: {
         is_primary: true,
-        OR: [
-          { lat: null },
-          { lng: null },
-          { geocode_status: { not: 'verified' } },
-        ],
+        OR: [{ lat: null }, { lng: null }, { geocode_status: { not: 'verified' } }],
       },
       include: {
         patient: {
@@ -749,7 +736,7 @@ export async function checkResidenceGeocodeQuality() {
             residence_id: residence.id,
             case_id: careCase?.id ?? null,
           },
-        })
+        }),
       );
     }
 
@@ -793,7 +780,7 @@ export async function checkPreparationBacklog() {
           relatedEntityType: 'visit_schedule',
           relatedEntityId: schedule.id,
           dedupeKey: buildPreparationTaskKey(schedule.id),
-        })
+        }),
       );
     }
 
@@ -843,7 +830,7 @@ export async function checkInitialHomeVisitAssessmentBacklog() {
           orgId: schedule.org_id,
           patientId,
           targetDate: schedule.scheduled_date,
-        })
+        }),
       );
 
       if (!requirement.required || requirement.satisfied) continue;
@@ -855,8 +842,7 @@ export async function checkInitialHomeVisitAssessmentBacklog() {
         dedupeKey,
         title: '初回算定月の事前訪問要件を確認してください',
         description:
-          requirement.reason ??
-          '初回訪問前日までの患家訪問・環境聴取記録が不足しています。',
+          requirement.reason ?? '初回訪問前日までの患家訪問・環境聴取記録が不足しています。',
         priority: 'high',
         assignedTo: schedule.pharmacist_id,
         dueDate: schedule.scheduled_date,
@@ -886,7 +872,7 @@ export async function checkInitialHomeVisitAssessmentBacklog() {
             patient_id: patientId,
             schedule_id: schedule.id,
           } as Prisma.InputJsonValue,
-        })
+        }),
       );
       notificationCount += 1;
     }
@@ -908,9 +894,7 @@ export async function generateBillingEvidenceDaily() {
 
     const visitRecords = await prisma.visitRecord.findMany({
       where: {
-        ...(existingVisitRecordIds.length > 0
-          ? { id: { notIn: existingVisitRecordIds } }
-          : {}),
+        ...(existingVisitRecordIds.length > 0 ? { id: { notIn: existingVisitRecordIds } } : {}),
       },
       select: {
         id: true,
@@ -923,7 +907,7 @@ export async function generateBillingEvidenceDaily() {
         upsertBillingEvidenceForVisit(tx, {
           orgId: visitRecord.org_id,
           visitRecordId: visitRecord.id,
-        })
+        }),
       );
     }
 
@@ -977,7 +961,9 @@ export async function checkSelfReportFollowups() {
     for (const report of reports) {
       const patient = patientMap.get(report.patient_id);
       const careCase = patient?.cases[0];
-      const dueAt = report.requested_callback ? addDays(new Date(report.created_at), 1) : addDays(new Date(report.created_at), 2);
+      const dueAt = report.requested_callback
+        ? addDays(new Date(report.created_at), 1)
+        : addDays(new Date(report.created_at), 2);
 
       await withOrgContext(report.org_id, async (tx) => {
         await upsertOperationalTask(tx, {
@@ -1041,7 +1027,8 @@ export async function checkCommunityFollowups() {
           description:
             activity.outcome_summary ??
             `${activity.partner_name ?? '地域連携先'} へのフォローが必要です。`,
-          priority: activity.referrals_generated && activity.referrals_generated > 0 ? 'high' : 'normal',
+          priority:
+            activity.referrals_generated && activity.referrals_generated > 0 ? 'high' : 'normal',
           assignedTo: activity.created_by,
           dueDate: addDays(new Date(activity.activity_date), 7),
           slaDueAt: addDays(new Date(activity.activity_date), 7),
@@ -1053,7 +1040,7 @@ export async function checkCommunityFollowups() {
             partner_name: activity.partner_name,
             referrals_generated: activity.referrals_generated,
           },
-        })
+        }),
       );
     }
 
@@ -1080,7 +1067,7 @@ export async function checkConferenceMeetingReminders() {
     });
 
     const caseIds = Array.from(
-      new Set(notes.map((note) => note.case_id).filter((value): value is string => Boolean(value)))
+      new Set(notes.map((note) => note.case_id).filter((value): value is string => Boolean(value))),
     );
     const careCases =
       caseIds.length > 0
@@ -1113,8 +1100,7 @@ export async function checkConferenceMeetingReminders() {
       if (!meetingDate) continue;
 
       const isReminderWindow =
-        meetingDate.getTime() === today.getTime() ||
-        meetingDate.getTime() === tomorrow.getTime();
+        meetingDate.getTime() === today.getTime() || meetingDate.getTime() === tomorrow.getTime();
       if (!isReminderWindow) continue;
 
       const careCase = careCaseById.get(note.case_id);
@@ -1196,7 +1182,7 @@ export async function checkReportDeliveryBacklog() {
     let queuedResponseReminders = 0;
     for (const orgId of orgIds) {
       const result = await withOrgContext(orgId, (tx) =>
-        queueOverdueReportResponseReminders(tx, orgId)
+        queueOverdueReportResponseReminders(tx, orgId),
       );
       queuedResponseReminders += result.queued_count;
     }
@@ -1249,7 +1235,7 @@ export async function checkCarryItemReadiness() {
             patient_id: schedule.case_.patient.id,
             carry_items_status: schedule.carry_items_status,
           },
-        })
+        }),
       );
     }
 
@@ -1301,7 +1287,10 @@ export async function checkEmergencyCoverageGaps() {
     ]);
 
     const shiftCoverage = new Set(
-      shifts.map((shift) => `${shift.org_id}:${shift.site_id ?? 'org'}:${shift.date.toISOString().slice(0, 10)}`)
+      shifts.map(
+        (shift) =>
+          `${shift.org_id}:${shift.site_id ?? 'org'}:${shift.date.toISOString().slice(0, 10)}`,
+      ),
     );
 
     let processedCount = 0;
@@ -1326,7 +1315,7 @@ export async function checkEmergencyCoverageGaps() {
             holiday_name: holiday.name,
             site_id: holiday.site_id,
           },
-        })
+        }),
       );
       processedCount += 1;
     }
@@ -1418,7 +1407,9 @@ export async function syncVisitSupportFeatureTasks() {
               gte: today,
               lte: sevenDaysFromNow,
             },
-            schedule_status: { in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'] },
+            schedule_status: {
+              in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
+            },
           },
           select: {
             id: true,
@@ -1457,14 +1448,12 @@ export async function syncVisitSupportFeatureTasks() {
       ]);
 
     const firstVisitCaseIds = new Set(firstVisitDocs.map((item) => item.case_id));
-    const patientCaseMap = new Map(
-      activeCases.map((careCase) => [careCase.patient_id, careCase])
-    );
+    const patientCaseMap = new Map(activeCases.map((careCase) => [careCase.patient_id, careCase]));
     const taskSpecs: GeneratedTaskSpec[] = [];
 
     for (const careCase of activeCases) {
       const hasEmergencyContact = careCase.patient.contacts.some(
-        (contact) => contact.is_emergency_contact || contact.relation === 'facility_staff'
+        (contact) => contact.is_emergency_contact || contact.relation === 'facility_staff',
       );
       const hasFirstVisitDoc = firstVisitCaseIds.has(careCase.id);
       if (hasEmergencyContact && hasFirstVisitDoc) continue;
@@ -1498,10 +1487,7 @@ export async function syncVisitSupportFeatureTasks() {
 
     for (const report of openSelfReports) {
       if (
-        !hasAnyKeyword(
-          [report.category, report.subject, report.content],
-          DOSAGE_SUPPORT_KEYWORDS
-        )
+        !hasAnyKeyword([report.category, report.subject, report.content], DOSAGE_SUPPORT_KEYWORDS)
       ) {
         continue;
       }
@@ -1630,9 +1616,7 @@ export async function syncVisitSupportFeatureTasks() {
         title: `${schedule.case_.patient.name} のオフライン同期確認`,
         description: '訪問前に端末同期とモバイル準備を完了してください。',
         priority:
-          schedule.priority === 'emergency' || schedule.priority === 'urgent'
-            ? 'urgent'
-            : 'high',
+          schedule.priority === 'emergency' || schedule.priority === 'urgent' ? 'urgent' : 'high',
         assignedTo: schedule.pharmacist_id,
         dueDate: schedule.scheduled_date,
         slaDueAt: schedule.scheduled_date,
@@ -1685,7 +1669,7 @@ export async function checkFacilityStandardExpiry() {
     for (const reg of expiring) {
       if (!reg.expiry_date) continue;
       const daysUntilExpiry = Math.ceil(
-        (reg.expiry_date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+        (reg.expiry_date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
       );
 
       const threshold = thresholds.find((t) => daysUntilExpiry <= t.days);
@@ -1761,7 +1745,7 @@ export async function checkCredentialExpiry() {
     for (const cred of expiring) {
       if (!cred.expiry_date) continue;
       const daysUntilExpiry = Math.ceil(
-        (cred.expiry_date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+        (cred.expiry_date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
       );
 
       const threshold = thresholds.find((t) => daysUntilExpiry <= t.days);
@@ -1830,10 +1814,10 @@ export async function checkConsentExpiry() {
     for (const consent of expiring) {
       if (!consent.expiry_date) continue;
       const daysUntilExpiry = Math.ceil(
-        (consent.expiry_date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+        (consent.expiry_date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
       );
 
-      const priority = daysUntilExpiry <= 7 ? 'urgent' as const : 'high' as const;
+      const priority = daysUntilExpiry <= 7 ? ('urgent' as const) : ('high' as const);
       const patientName = consent.patient?.name ?? '不明';
 
       // Find the primary pharmacist from the patient's active case
@@ -1843,7 +1827,10 @@ export async function checkConsentExpiry() {
             select: { primary_pharmacist_id: true },
           })
         : await prisma.careCase.findFirst({
-            where: { patient_id: consent.patient_id, status: { notIn: ['discharged', 'terminated'] } },
+            where: {
+              patient_id: consent.patient_id,
+              status: { notIn: ['discharged', 'terminated'] },
+            },
             select: { primary_pharmacist_id: true },
           });
 
@@ -1907,12 +1894,27 @@ export async function trackAllOrgPatientStatuses() {
 export async function cleanupAbandonedQrDrafts() {
   return runJob('cleanup_abandoned_qr_drafts', async () => {
     const cutoff = subHours(new Date(), 24);
-    const result = await prisma.qrScanDraft.updateMany({
+    const abandonedDrafts = await prisma.qrScanDraft.findMany({
       where: {
         status: 'pending',
         created_at: { lt: cutoff },
       },
+      select: { id: true },
+    });
+    const abandonedDraftIds = abandonedDrafts.map((draft) => draft.id);
+    if (abandonedDraftIds.length === 0) return { processedCount: 0 };
+
+    const result = await prisma.qrScanDraft.updateMany({
+      where: {
+        id: { in: abandonedDraftIds },
+      },
       data: { status: 'discarded' },
+    });
+    await prisma.jahisSupplementalRecord.deleteMany({
+      where: {
+        qr_draft_id: { in: abandonedDraftIds },
+        prescription_intake_id: null,
+      },
     });
     if (result.count > 0) {
       console.log(`[daily] Discarded ${result.count} abandoned QR scan drafts`);
@@ -1954,9 +1956,7 @@ export async function runDailyOperations() {
 
     return {
       processedCount: results.reduce((total, result) => total + result.processedCount, 0),
-      errors: results.flatMap((result) =>
-        'errors' in result ? result.errors ?? [] : []
-      ),
+      errors: results.flatMap((result) => ('errors' in result ? (result.errors ?? []) : [])),
     };
   });
 }

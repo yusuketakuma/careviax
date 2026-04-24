@@ -1,8 +1,14 @@
 import { NextRequest } from 'next/server';
-import { success, notFound, validationError } from '@/lib/api/response';
+import { success, notFound, validationError, error } from '@/lib/api/response';
+import { checkAuthRateLimit } from '@/lib/api/rate-limit';
+import { getClientIp } from '@/lib/api/request-ip';
 import { prisma } from '@/lib/db/client';
 import { validateExternalAccessGrant } from '@/server/services/external-access';
 import { z } from 'zod';
+import {
+  createExternalAccessOtpRateLimitIdentifier,
+  EXTERNAL_ACCESS_OTP_RATE_LIMIT_PATH,
+} from '../../shared';
 
 const createSelfReportSchema = z.object({
   otp: z.string().trim().min(4).optional(),
@@ -20,6 +26,19 @@ export async function POST(
   { params }: { params: Promise<{ token: string }> }
 ) {
   const { token } = await params;
+  const ip = getClientIp(req) ?? 'unknown';
+  const rateLimit = await checkAuthRateLimit(
+    createExternalAccessOtpRateLimitIdentifier(token, ip),
+    EXTERNAL_ACCESS_OTP_RATE_LIMIT_PATH,
+  );
+  if (!rateLimit.allowed) {
+    return error(
+      'RATE_LIMIT_EXCEEDED',
+      'リクエストが多すぎます。しばらく待ってから再試行してください。',
+      429
+    );
+  }
+
   const body = await req.json().catch(() => null);
 
   if (!body) {
@@ -31,8 +50,7 @@ export async function POST(
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const otp =
-    parsed.data.otp ?? req.nextUrl.searchParams.get('otp') ?? undefined;
+  const otp = parsed.data.otp ?? req.headers.get('x-otp') ?? undefined;
   const validation = await validateExternalAccessGrant(token, otp);
 
   if (!validation.ok) {

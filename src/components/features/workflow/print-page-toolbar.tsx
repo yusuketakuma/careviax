@@ -1,5 +1,6 @@
 'use client';
 
+import { type MainWorkflowStepKey } from './main-workflow-route';
 import { PageShortcutLinks, type PageShortcutLink } from './page-shortcut-links';
 import { PrintActionButton } from './print-action-button';
 import { WorkflowPageIntro } from './workflow-page-intro';
@@ -10,6 +11,8 @@ type PrintPageToolbarProps = {
   title: string;
   description: string;
   shortcuts: readonly PageShortcutLink[];
+  mainWorkflowSteps?: MainWorkflowStepKey[];
+  mainWorkflowDescription?: string;
 };
 
 export function PrintPageToolbar({
@@ -18,6 +21,8 @@ export function PrintPageToolbar({
   title,
   description,
   shortcuts,
+  mainWorkflowSteps,
+  mainWorkflowDescription,
 }: PrintPageToolbarProps) {
   return (
     <WorkflowPageIntro
@@ -25,6 +30,8 @@ export function PrintPageToolbar({
       backLabel={backLabel}
       title={title}
       description={description}
+      mainWorkflowSteps={mainWorkflowSteps}
+      mainWorkflowDescription={mainWorkflowDescription}
       className="mb-4 print:hidden"
       controls={
         <>

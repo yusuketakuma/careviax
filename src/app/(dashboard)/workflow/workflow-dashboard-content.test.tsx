@@ -160,6 +160,10 @@ describe('WorkflowDashboardContent', () => {
 
     expect(screen.getByTestId('workflow-context-banner')).toBeTruthy();
     expect(screen.getByText('ホームから連携・通知まわりにフォーカスして開いています。')).toBeTruthy();
+    expect(screen.getByText('主業務フロー')).toBeTruthy();
+    expect(screen.getByTestId('workflow-main-workflow-route')).toBeTruthy();
+    expect(screen.getByTestId('workflow-integration-map')).toBeTruthy();
+    expect(screen.getByText('訪問記録を報告書へ展開する')).toBeTruthy();
     expect(screen.getByTestId('workflow-communication')).toBeTruthy();
   });
 });

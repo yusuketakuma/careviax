@@ -4,7 +4,9 @@ import type { NextRequest } from 'next/server';
 const {
   authMock,
   membershipFindFirstMock,
+  pharmacistShiftFindFirstMock,
   visitScheduleFindManyMock,
+  visitScheduleFindFirstMock,
   careCaseFindFirstMock,
   validateOrgReferencesMock,
   evaluateVisitWorkflowGateMock,
@@ -13,7 +15,9 @@ const {
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
+  pharmacistShiftFindFirstMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
+  visitScheduleFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
   evaluateVisitWorkflowGateMock: vi.fn(),
@@ -32,6 +36,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     visitSchedule: {
       findMany: visitScheduleFindManyMock,
+    },
+    pharmacistShift: {
+      findFirst: pharmacistShiftFindFirstMock,
     },
     careCase: {
       findFirst: careCaseFindFirstMock,
@@ -76,10 +83,16 @@ describe('/api/visit-schedules', () => {
         id: 'schedule_1',
         org_id: 'org_1',
         pharmacist_id: 'user_2',
+        schedule_status: 'ready',
         scheduled_date: new Date('2026-03-30T00:00:00.000Z'),
         time_window_start: new Date('1970-01-01T09:00:00.000Z'),
+        time_window_end: new Date('1970-01-01T10:00:00.000Z'),
         priority: 'urgent',
         assignment_mode: 'fallback',
+        route_order: 2,
+        facility_batch_id: null,
+        confirmed_at: new Date('2026-03-29T09:00:00.000Z'),
+        carry_items_status: 'ready',
         visit_record: null,
         facility_batch: null,
         preparation: null,
@@ -96,6 +109,8 @@ describe('/api/visit-schedules', () => {
         site: { id: 'site_1', name: '本店', address: '東京都', lat: 35, lng: 139 },
       },
     ]);
+    pharmacistShiftFindFirstMock.mockResolvedValue(null);
+    visitScheduleFindFirstMock.mockResolvedValue(null);
     careCaseFindFirstMock.mockResolvedValue({
       patient_id: 'patient_1',
       primary_pharmacist_id: 'user_2',
@@ -109,6 +124,7 @@ describe('/api/visit-schedules', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitSchedule: {
+          findFirst: visitScheduleFindFirstMock,
           create: visitScheduleCreateMock,
         },
       }),
@@ -127,6 +143,17 @@ describe('/api/visit-schedules', () => {
       data: [
         expect.objectContaining({
           id: 'schedule_1',
+          pharmacist_id: 'user_2',
+          schedule_status: 'ready',
+          priority: 'urgent',
+          route_order: 2,
+          confirmed_at: '2026-03-29T09:00:00.000Z',
+          case_: expect.objectContaining({
+            patient: expect.objectContaining({
+              id: 'patient_1',
+              name: '患者A',
+            }),
+          }),
           facility_hint: null,
           handoff_hint: expect.objectContaining({
             summary: expect.stringContaining('代替担当'),
@@ -184,8 +211,69 @@ describe('/api/visit-schedules', () => {
         pharmacist_id: 'user_2',
         assignment_mode: 'primary',
         confirmed_by: 'user_1',
+        route_order: 1,
       }),
     });
+  });
+
+  it('uses the pharmacist shift site and appends route order when creating a schedule', async () => {
+    pharmacistShiftFindFirstMock.mockResolvedValueOnce({
+      site_id: 'shift_site_1',
+      available: true,
+      available_from: new Date('1970-01-01T08:30:00'),
+      available_to: new Date('1970-01-01T17:30:00'),
+    });
+    visitScheduleFindFirstMock.mockResolvedValueOnce({ route_order: 3 });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
+      case_id: 'case_1',
+      pharmacist_id: 'user_2',
+      site_id: 'shift_site_1',
+    });
+    expect(visitScheduleCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        site_id: 'shift_site_1',
+        route_order: 4,
+      }),
+    });
+  });
+
+  it('rejects schedules outside an explicit pharmacist shift window', async () => {
+    pharmacistShiftFindFirstMock.mockResolvedValueOnce({
+      site_id: 'shift_site_1',
+      available: true,
+      available_from: new Date('1970-01-01T09:30:00'),
+      available_to: new Date('1970-01-01T17:30:00'),
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '訪問開始時刻が薬剤師シフトの開始前です',
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects unsupported visit schedule notes instead of dropping them silently', async () => {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
 const {
@@ -99,6 +99,8 @@ function createRequest(body?: unknown) {
 describe('/api/patients GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-20T12:00:00.000Z'));
     patientCreateMock.mockResolvedValue({ id: 'patient_new' });
     residenceCreateMock.mockResolvedValue({ id: 'residence_new' });
     contactPartyCreateManyMock.mockResolvedValue({ count: 1 });
@@ -266,6 +268,10 @@ describe('/api/patients GET', () => {
         missing_management_plan: false,
       },
     ]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('supports advanced patient filters and enriches risk, consent, and assignment fields', async () => {

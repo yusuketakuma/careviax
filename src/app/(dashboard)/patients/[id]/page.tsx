@@ -1,8 +1,10 @@
 import { Metadata } from 'next';
+import { Suspense } from 'react';
 import { getPatientHubShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { PatientDetailTabs } from './patient-detail-tabs';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { Loading } from '@/components/ui/loading';
 
 export const metadata: Metadata = {
   title: '患者詳細 — CareViaX',
@@ -31,7 +33,9 @@ export default async function PatientDetailPage({ params }: { params: Promise<{ 
         className="mb-6"
       />
 
-      <PatientDetailTabs patientId={id} />
+      <Suspense fallback={<Loading />}>
+        <PatientDetailTabs patientId={id} />
+      </Suspense>
     </PageScaffold>
   );
 }

@@ -25,6 +25,7 @@ export default function DispensingPage() {
             </p>
           </div>
         }
+        mainWorkflowSteps={['dispensing']}
         childrenLabel="関連導線"
       >
         <PageShortcutLinks

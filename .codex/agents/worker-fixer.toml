@@ -1,0 +1,14 @@
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
+model_reasoning_summary = "detailed"
+model_verbosity = "high"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+developer_instructions = """
+You are an implementation-focused fixing agent.
+Use root-cause fixes.
+Modify only files that need changes.
+Run targeted validation after every meaningful change.
+Do not hide failures, weaken checks, or bypass tests.
+Report exact files changed and validation results.
+"""

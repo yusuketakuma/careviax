@@ -35,9 +35,18 @@ import { REPORT_TYPE_LABELS, REPORT_STATUS_CONFIG, CHANNEL_LABELS } from '@/lib/
 import { PhysicianReportView } from '@/components/features/reports/physician-report-view';
 import { CareManagerReportView } from '@/components/features/reports/care-manager-report-view';
 import { ReportEditForm } from '@/components/features/reports/report-edit-form';
-import { ComplianceChecklist } from '@/components/features/reports/compliance-checklist';
+import {
+  ComplianceChecklist,
+  deriveReportComplianceChecks,
+} from '@/components/features/reports/compliance-checklist';
+import {
+  VisitReportReadinessPanel,
+  type VisitReportReadinessItem,
+} from '@/components/features/visits/visit-report-readiness-panel';
+import { PatientCareTeamSourcePanel } from '@/components/features/visits/patient-care-team-source-panel';
 import type { PhysicianReportContent, CareManagerReportContent } from '@/types/care-report-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { readReportBillingContext, readReportWarnings } from '@/lib/reports/report-content';
 import { cn } from '@/lib/utils';
 
 // --- Types ---
@@ -97,12 +106,14 @@ type ExternalProfessionalSuggestion = {
   phone: string | null;
   email: string | null;
   fax: string | null;
+  address: string | null;
   preferred_contact_method: string | null;
   preferred_contact_time: string | null;
   last_contacted_at: string | null;
   last_success_channel: string | null;
   recommended_channels: string[];
   is_primary: boolean;
+  source?: 'patient_care_team' | 'external_professional_master';
 };
 
 // --- Main ---
@@ -204,16 +215,50 @@ export default function ReportDetailPage() {
   const isPhysician = report.report_type === 'physician_report';
   const isCareManager = report.report_type === 'care_manager_report';
   const hasContentView = isPhysician || isCareManager;
-  const billingContext =
-    typeof report.content === 'object' && report.content !== null
-      ? ((report.content as Record<string, unknown>).billing_context as Record<string, unknown> | null)
-      : null;
-
-  const warnings =
-    (report.content as { warnings?: string[] }).warnings ?? [];
+  const billingContext = readReportBillingContext(report.content);
+  const warnings = readReportWarnings(report.content);
+  const complianceChecks = hasContentView
+    ? deriveReportComplianceChecks(report.report_type, report.content)
+    : [];
+  const complianceReady =
+    hasContentView && warnings.length === 0 && complianceChecks.every((item) => item.passed);
   const prescriberInstitutionSuggestion = report.prescriber_institution_suggestion;
   const externalProfessionalSuggestions = externalProfessionalSuggestionsQuery.data?.data ?? [];
+  const careTeamSuggestionContacts = externalProfessionalSuggestions.map((suggestion) => ({
+    id: suggestion.id,
+    role: suggestion.profession_type,
+    name: suggestion.name,
+    organization_name: suggestion.organization_name,
+    phone: suggestion.phone,
+  }));
   const deliveryRuleSuggestion = report.delivery_rule_suggestion ?? null;
+  const reportReadinessItems: VisitReportReadinessItem[] = [
+    {
+      key: 'content',
+      label: '報告書本文',
+      description: '訪問記録から生成された本文を確認し、必要に応じて編集します。',
+      done: hasContentView,
+    },
+    {
+      key: 'billing',
+      label: '算定要件チェック',
+      description: '算定要件チェックリストと自動生成警告を確認します。',
+      done: complianceReady,
+    },
+    {
+      key: 'recipient',
+      label: '送付先候補',
+      description: '処方元医療機関、ケアチーム、送達ルールから送付先を選べます。',
+      done: Boolean(prescriberInstitutionSuggestion || externalProfessionalSuggestions.length > 0 || deliveryRuleSuggestion),
+    },
+    {
+      key: 'delivery',
+      label: '送達履歴',
+      description: '送付済み、返信待ち、失敗を確認して他職種連携を閉じます。',
+      done: report.delivery_records.length > 0,
+      required: false,
+    },
+  ];
 
   function applySuggestion(
     type: 'institution' | 'professional',
@@ -276,6 +321,21 @@ export default function ReportDetailPage() {
     applySuggestion('professional', suggestion);
   }
 
+  const sendReportAction = (
+    <Button
+      size="sm"
+      onClick={() => {
+        if (prescriberInstitutionSuggestion) {
+          applyInstitutionSuggestion();
+        }
+        setSendDialogOpen(true);
+      }}
+    >
+      <Send className="mr-1.5 size-3.5" aria-hidden="true" />
+      送付
+    </Button>
+  );
+
   return (
     <PageScaffold>
       {/* Header */}
@@ -285,6 +345,8 @@ export default function ReportDetailPage() {
         title={REPORT_TYPE_LABELS[report.report_type] ?? report.report_type}
         description={`作成日: ${format(new Date(report.created_at), 'yyyy年M月d日', { locale: ja })}`}
         shortcuts={getReportDetailShortcutLinks(report.patient_id ?? null, report.id)}
+        mainWorkflowSteps={['reports']}
+        mainWorkflowDescription="報告書詳細でも、主業務フローの終点として現在地を上部に固定表示します。"
         actions={
           <>
             {statusCfg && <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>}
@@ -313,26 +375,19 @@ export default function ReportDetailPage() {
                 印刷ビュー
               </Button>
             </Link>
-            <Button
-              size="sm"
-              onClick={() => {
-                if (prescriberInstitutionSuggestion) {
-                  applyInstitutionSuggestion();
-                }
-                setSendDialogOpen(true);
-              }}
-            >
-              <Send className="mr-1.5 size-3.5" aria-hidden="true" />
-              送付
-            </Button>
           </>
         }
       />
+      <VisitReportReadinessPanel
+        mode="report_detail"
+        items={reportReadinessItems}
+        actions={sendReportAction}
+      />
 
       {/* Main + Sidebar layout */}
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.28fr)] 2xl:grid-cols-[minmax(0,1fr)_22rem]">
         {/* Main content area */}
-        <div className="min-w-0 flex-1 space-y-6">
+        <div className="min-w-0 space-y-4 xl:space-y-5">
           {/* Report meta */}
           <Card>
             <CardHeader>
@@ -483,12 +538,15 @@ export default function ReportDetailPage() {
 
         {/* Sidebar: compliance checklist (desktop = right column, mobile = below) */}
         {hasContentView && (
-          <div className="w-full lg:w-72 lg:shrink-0">
+          <div className="w-full space-y-4">
             <ComplianceChecklist
               reportType={report.report_type}
               content={report.content}
               warnings={warnings}
             />
+            {careTeamSuggestionContacts.length > 0 ? (
+              <PatientCareTeamSourcePanel contacts={careTeamSuggestionContacts} compact />
+            ) : null}
           </div>
         )}
       </div>
@@ -533,7 +591,10 @@ export default function ReportDetailPage() {
 
             {externalProfessionalSuggestions.length > 0 ? (
               <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-3 text-sm">
-                <p className="font-medium text-emerald-900">ケアチーム送付候補</p>
+                <p className="font-medium text-emerald-900">患者情報のケアチーム送付候補</p>
+                <p className="mt-1 text-xs text-emerald-800">
+                  患者情報ページのクリニック・訪問看護・ケアマネジャーを送付先候補として取得しています。
+                </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {externalProfessionalSuggestions.map((suggestion) => (
                     <Button
@@ -544,11 +605,12 @@ export default function ReportDetailPage() {
                       onClick={() => applyExternalProfessionalSuggestion(suggestion)}
                     >
                       {suggestion.name}
+                      {suggestion.source === 'patient_care_team' ? '（患者情報）' : ''}
                     </Button>
                   ))}
                 </div>
                 <p className="mt-2 text-xs text-emerald-800">
-                  他職種マスターの希望チャネルに加えて、送達実績から学習した優先順で送付先を補完します。
+                  他職種マスターに未登録でも、患者情報ページのケアチームに入力されていれば候補に出ます。
                 </p>
               </div>
             ) : null}

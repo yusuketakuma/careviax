@@ -18,9 +18,9 @@ const visitBriefCacheWhereMock = vi.hoisted(() =>
     equals: vi.fn(() =>
       field === 'scheduledDate'
         ? { toArray: visitBriefCacheToArrayMock }
-        : { delete: visitBriefCacheDeleteMock }
+        : { delete: visitBriefCacheDeleteMock },
     ),
-  }))
+  })),
 );
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -77,26 +77,30 @@ vi.mock('@/lib/stores/offline-db', () => ({
 }));
 
 vi.mock('@/lib/stores/offline-store', () => ({
-  useOfflineStore: vi.fn((selector: (state: {
-    isOffline: boolean;
-    pendingSyncCount: number;
-    pendingQueue: never[];
-    syncConflicts: never[];
-    cacheTtlHours: number;
-    lastSyncRefreshAt: null;
-    syncOnlineStatus: ReturnType<typeof vi.fn>;
-    refreshSyncState: ReturnType<typeof vi.fn>;
-  }) => unknown) =>
-    selector({
-      isOffline: false,
-      pendingSyncCount: 0,
-      pendingQueue: [],
-      syncConflicts: [],
-      cacheTtlHours: 24,
-      lastSyncRefreshAt: null,
-      syncOnlineStatus: vi.fn(),
-      refreshSyncState: vi.fn(),
-    })),
+  useOfflineStore: vi.fn(
+    (
+      selector: (state: {
+        isOffline: boolean;
+        pendingSyncCount: number;
+        pendingQueue: never[];
+        syncConflicts: never[];
+        cacheTtlHours: number;
+        lastSyncRefreshAt: null;
+        syncOnlineStatus: ReturnType<typeof vi.fn>;
+        refreshSyncState: ReturnType<typeof vi.fn>;
+      }) => unknown,
+    ) =>
+      selector({
+        isOffline: false,
+        pendingSyncCount: 0,
+        pendingQueue: [],
+        syncConflicts: [],
+        cacheTtlHours: 24,
+        lastSyncRefreshAt: null,
+        syncOnlineStatus: vi.fn(),
+        refreshSyncState: vi.fn(),
+      }),
+  ),
 }));
 
 vi.mock('@/lib/stores/sync-engine', () => ({
@@ -109,6 +113,43 @@ vi.mock('@/lib/stores/sync-engine', () => ({
 import { ScheduleDayView } from './day-view';
 
 setupDomTestEnv();
+
+function buildProposal(overrides?: Record<string, unknown>) {
+  return {
+    id: 'proposal_1',
+    case_id: 'case_1',
+    visit_type: 'regular',
+    priority: 'normal',
+    proposal_status: 'patient_contact_pending',
+    patient_contact_status: 'attempted',
+    proposed_date: '2026-04-09',
+    time_window_start: '2026-04-09T09:00:00.000Z',
+    time_window_end: '2026-04-09T10:00:00.000Z',
+    proposed_pharmacist_id: 'pharmacist_1',
+    proposed_pharmacist: { id: 'pharmacist_1', name: '薬剤師A', name_kana: null },
+    assignment_mode: 'primary',
+    route_order: 1,
+    route_distance_score: 1.4,
+    medication_end_date: '2026-04-10',
+    visit_deadline_date: '2026-04-09',
+    proposal_reason: '担当薬剤師優先 / 服薬期限内',
+    escalation_reason: null,
+    finalized_schedule_id: null,
+    reschedule_source_schedule_id: null,
+    case_: {
+      patient: {
+        id: 'patient_1',
+        name: '山田花子',
+        residences: [{ address: '東京都千代田区1-1-1', lat: 35.1, lng: 139.1 }],
+      },
+    },
+    site: { id: 'site_1', name: '本店', address: '東京都千代田区2-2-2', lat: 35.0, lng: 139.0 },
+    finalized_schedule: null,
+    reschedule_source_schedule: null,
+    contact_logs: [],
+    ...overrides,
+  };
+}
 
 describe('ScheduleDayView', () => {
   beforeEach(() => {
@@ -141,5 +182,31 @@ describe('ScheduleDayView', () => {
     render(<ScheduleDayView />);
 
     expect(screen.getByTestId('schedule-board-skeleton')).toBeTruthy();
+  });
+
+  it('shows the human decision flow on daily proposal cards', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedule-proposals') {
+        return {
+          data: { data: [buildProposal()] },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    render(<ScheduleDayView initialSelectedDate="2026-04-09" />);
+
+    expect(screen.getByText('提案から確定まで')).toBeTruthy();
+    expect(screen.getAllByText('患者電話確認').length).toBeGreaterThan(0);
+    expect(
+      screen.getByText('患者へ電話し、結果を「確認済み」で保存すると日時確定できます。'),
+    ).toBeTruthy();
   });
 });

@@ -12,12 +12,10 @@ const computeVisitRouteSchema = z
     schedule_ids: z.array(z.string().trim().min(1)).max(50).default([]),
     proposal_ids: z.array(z.string().trim().min(1)).max(50).default([]),
     travel_mode: z
-      .enum(
-        ['DRIVE', 'BICYCLE', 'WALK', 'TWO_WHEELER'] satisfies [
-          VisitRouteTravelMode,
-          ...VisitRouteTravelMode[],
-        ]
-      )
+      .enum(['DRIVE', 'BICYCLE', 'WALK', 'TWO_WHEELER'] satisfies [
+        VisitRouteTravelMode,
+        ...VisitRouteTravelMode[],
+      ])
       .default('DRIVE'),
   })
   .superRefine((value, ctx) => {
@@ -62,6 +60,7 @@ export const POST = withAuth(
                 },
                 select: {
                   id: true,
+                  priority: true,
                   site: {
                     select: {
                       id: true,
@@ -99,6 +98,7 @@ export const POST = withAuth(
                 },
                 select: {
                   id: true,
+                  priority: true,
                   site: {
                     select: {
                       id: true,
@@ -138,6 +138,7 @@ export const POST = withAuth(
               id: schedule.id,
               route_id: schedule.id,
               patient_name: schedule.case_.patient.name,
+              priority: schedule.priority,
               residence: schedule.case_.patient.residences[0] ?? null,
               site: schedule.site,
             })),
@@ -148,6 +149,7 @@ export const POST = withAuth(
               id: proposal.id,
               route_id: `proposal:${proposal.id}`,
               patient_name: proposal.case_.patient.name,
+              priority: proposal.priority,
               residence: proposal.case_.patient.residences[0] ?? null,
               site: proposal.site,
             })),
@@ -162,9 +164,7 @@ export const POST = withAuth(
         }
 
         const originSite = orderedItems[0]?.site ?? null;
-        const sameSite = orderedItems.every(
-          (item) => item.site?.id === originSite?.id,
-        );
+        const sameSite = orderedItems.every((item) => item.site?.id === originSite?.id);
 
         const origin =
           sameSite && originSite?.lat != null && originSite.lng != null
@@ -190,6 +190,7 @@ export const POST = withAuth(
               address: residence.address,
               lat: residence.lat!,
               lng: residence.lng!,
+              priority: item.priority,
             };
           }),
         });

@@ -138,12 +138,11 @@ describe('ScheduleProposalsContent', () => {
 
     expect(useRouterMock().replace).toHaveBeenCalledWith(
       expect.stringContaining('workspace=dashboard'),
-      { scroll: false }
+      { scroll: false },
     );
-    expect(useRouterMock().replace).toHaveBeenCalledWith(
-      expect.stringContaining('preset=today'),
-      { scroll: false }
-    );
+    expect(useRouterMock().replace).toHaveBeenCalledWith(expect.stringContaining('preset=today'), {
+      scroll: false,
+    });
   });
 
   it('highlights the active detail proposal row from the URL state', () => {
@@ -153,9 +152,50 @@ describe('ScheduleProposalsContent', () => {
   });
 
   it('shows a preset context banner when opened from a focused dashboard link', () => {
-    render(<ScheduleProposalsContent initialPreset="contact" initialStatus="patient_contact_pending" />);
+    render(
+      <ScheduleProposalsContent initialPreset="contact" initialStatus="patient_contact_pending" />,
+    );
 
     expect(screen.getByTestId('proposal-preset-banner')).toBeTruthy();
     expect(screen.getByText('未架電・連絡対応の候補を表示中です。')).toBeTruthy();
+  });
+
+  it('shows the human approval and phone confirmation flow on proposal cards', () => {
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'schedule-proposals-dashboard') {
+        return {
+          data: {
+            data: [
+              buildProposal({
+                proposal_status: 'patient_contact_pending',
+                patient_contact_status: 'attempted',
+              }),
+            ],
+          },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      if (queryKey[0] === 'schedule-proposal-detail') {
+        return {
+          data: undefined,
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: undefined,
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    render(<ScheduleProposalsContent initialStatus="patient_contact_pending" />);
+
+    expect(screen.getByText('提案から確定まで')).toBeTruthy();
+    expect(screen.getAllByText('患者電話確認').length).toBeGreaterThan(0);
+    expect(
+      screen.getByText('患者へ電話し、結果を「確認済み」で保存すると日時確定できます。'),
+    ).toBeTruthy();
   });
 });

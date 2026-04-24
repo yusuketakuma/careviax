@@ -8,6 +8,7 @@ import { upsertBillingEvidenceForVisit } from '@/server/services/billing-evidenc
 import { resolveOperationalTasks } from '@/server/services/operational-tasks';
 import { sendCareReportEmail } from '@/server/services/report-delivery';
 import { learnContactProfileFromCommunication } from '@/lib/contact-profiles';
+import { transitionCycleStatus } from '@/lib/db/cycle-transition';
 
 function toPrimaryCommunicationEventType(reportType: string) {
   switch (reportType) {
@@ -223,18 +224,26 @@ export async function POST(
           );
 
         if (allReportsDelivered) {
-          await tx.medicationCycle.updateMany({
+          const cycle = await tx.medicationCycle.findFirst({
             where: {
               id: schedule.schedule.cycle_id,
               org_id: ctx.orgId,
-              overall_status: {
-                in: ['visit_ready', 'visit_completed'],
-              },
             },
-            data: {
-              overall_status: 'reported',
-            },
+            select: { id: true, overall_status: true },
           });
+
+          if (cycle?.overall_status === 'visit_ready') {
+            await transitionCycleStatus(tx, cycle.id, ctx.orgId, 'visit_completed', ctx.userId, {
+              note: '報告書送付に伴う訪問完了',
+            });
+            await transitionCycleStatus(tx, cycle.id, ctx.orgId, 'reported', ctx.userId, {
+              note: '報告書送付完了',
+            });
+          } else if (cycle?.overall_status === 'visit_completed') {
+            await transitionCycleStatus(tx, cycle.id, ctx.orgId, 'reported', ctx.userId, {
+              note: '報告書送付完了',
+            });
+          }
 
           await resolveOperationalTasks(tx, {
             orgId: ctx.orgId,

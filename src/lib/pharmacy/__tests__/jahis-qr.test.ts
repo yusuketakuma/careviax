@@ -18,6 +18,7 @@ import {
   MULTI_QR_PART1,
   MULTI_QR_PART2,
   ERA_DATE_QR,
+  SUPPLEMENTAL_RECORDS_QR,
 } from './fixtures/jahis-samples';
 
 // ── parseJahisDate ──
@@ -339,6 +340,53 @@ describe('parseJahisQR', () => {
     });
   });
 
+  describe('with SUPPLEMENTAL_RECORDS_QR', () => {
+    it('parses JAHIS supplemental records without warning as unknown records', () => {
+      const result = parseJahisQRSafe(SUPPLEMENTAL_RECORDS_QR);
+      expect(result.success).toBe(true);
+      expect(result.warnings.map((warning) => warning.recordType)).not.toEqual(
+        expect.arrayContaining(['3', '31', '4', '411', '421', '601', '701']),
+      );
+    });
+
+    it('keeps OTC, residual medication, patient note, and primary pharmacist records', () => {
+      const result = parseJahisQR(SUPPLEMENTAL_RECORDS_QR);
+      expect(result.supplementalRecords).toHaveLength(7);
+      expect(result.supplementalRecords?.map((record) => record.recordType)).toEqual([
+        '3',
+        '31',
+        '4',
+        '411',
+        '421',
+        '601',
+        '701',
+      ]);
+    });
+
+    it('builds labels, details, and summaries for visit-management display', () => {
+      const result = parseJahisQR(SUPPLEMENTAL_RECORDS_QR);
+      const memo = result.supplementalRecords?.find((record) => record.recordType === '4');
+      const residual = result.supplementalRecords?.find((record) => record.recordType === '421');
+      const primaryPharmacist = result.supplementalRecords?.find(
+        (record) => record.recordType === '701',
+      );
+
+      expect(memo?.recordLabel).toBe('手帳メモ');
+      expect(memo?.summary).toBe('市販薬服用中は胃部不快感に注意');
+      expect(residual?.recordLabel).toBe('残薬確認');
+      expect(residual?.summary).toContain('アムロジピンが10錠残薬');
+      expect(residual?.details).toContainEqual({
+        label: '残薬内容',
+        value: 'アムロジピンが10錠残薬。症状改善による自己判断で服用中断。',
+      });
+      expect(primaryPharmacist?.summary).toBe('工業会 次郎 / 工業会薬局 駅前店');
+      expect(primaryPharmacist?.details).toContainEqual({
+        label: '連絡先',
+        value: '03-3506-8010',
+      });
+    });
+  });
+
   describe('with MULTI_QR_PART1', () => {
     it('parses splitInfo from record 911', () => {
       const result = parseJahisQR(MULTI_QR_PART1);
@@ -486,5 +534,13 @@ describe('mergeJahisQRPages', () => {
     const page2 = parseJahisQR(MULTI_MED_QR);
     const merged = mergeJahisQRPages([page1, page2]);
     expect(merged.dispensingDate).toBe('2026-04-01');
+  });
+
+  it('merges supplemental records from all pages', () => {
+    const page1 = parseJahisQR(SUPPLEMENTAL_RECORDS_QR);
+    const page2 = parseJahisQR(SIMPLE_QR);
+    const merged = mergeJahisQRPages([page1, page2]);
+    expect(merged.supplementalRecords).toHaveLength(7);
+    expect(merged.supplementalRecords?.[0].recordLabel).toBe('要指導医薬品・一般用医薬品服用');
   });
 });

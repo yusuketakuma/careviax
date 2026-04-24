@@ -22,6 +22,8 @@
  *       311 — 用法補足
  *       391 — 処方服用注意
  *       401 — 服用注意
+ *       411 — 医療機関等提供情報
+ *       421 — 残薬確認
  *       501 — 備考
  *       601 — 患者等記入
  *       701 — かかりつけ薬剤師
@@ -33,32 +35,32 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 export interface JahisPatient {
-  name: string;       // 患者氏名（漢字）
-  nameKana?: string;  // 患者氏名（カナ）
+  name: string; // 患者氏名（漢字）
+  nameKana?: string; // 患者氏名（カナ）
   birthDate?: string; // YYYY-MM-DD
   gender?: 'male' | 'female' | 'other';
 }
 
 export interface JahisMedication {
-  rpNumber?: number;       // 処方グループ番号
-  drugCode?: string;       // 薬剤コード
-  drugCodeType?: number;   // コード種別: 1=なし, 2=レセ電, 3=厚労省, 4=YJ, 6=HOT
-  drugName: string;        // 薬剤名称
-  genericName?: string;    // 一般名（ver.2.5以降）
+  rpNumber?: number; // 処方グループ番号
+  drugCode?: string; // 薬剤コード
+  drugCodeType?: number; // コード種別: 1=なし, 2=レセ電, 3=厚労省, 4=YJ, 6=HOT
+  drugName: string; // 薬剤名称
+  genericName?: string; // 一般名（ver.2.5以降）
   genericCodeType?: number;
   genericCode?: string;
-  dose?: string;           // 1回用量
-  unit?: string;           // 単位
-  usage?: string;          // 用法テキスト（record 301 usage_name）
-  usageQuantity?: string;  // 用法数量（record 301 quantity, e.g. "14"）
-  usageUnit?: string;      // 用法単位（record 301 unit, e.g. "日分"）
-  formCode?: number;       // 剤形コード（record 301）
+  dose?: string; // 1回用量
+  unit?: string; // 単位
+  usage?: string; // 用法テキスト（record 301 usage_name）
+  usageQuantity?: string; // 用法数量（record 301 quantity, e.g. "14"）
+  usageUnit?: string; // 用法単位（record 301 unit, e.g. "日分"）
+  formCode?: number; // 剤形コード（record 301）
   /** @deprecated use usageQuantity + usageUnit */
-  daysOrTimes?: string;    // 後方互換: record 301 の quantity+unit を結合した文字列
+  daysOrTimes?: string; // 後方互換: record 301 の quantity+unit を結合した文字列
   /** @deprecated dispensed quantity is not a separate JAHIS record */
   dispensedQuantity?: string;
-  supplements: string[];   // 補足情報（record 281, 311）
-  usageNotes: string[];    // 服用注意（record 291, 391）
+  supplements: string[]; // 補足情報（record 281, 311）
+  usageNotes: string[]; // 服用注意（record 291, 391）
 }
 
 export interface JahisInstitution {
@@ -71,23 +73,41 @@ export interface JahisInstitution {
 }
 
 export interface JahisSplitInfo {
-  dataId: string;          // 14桁ユニークID
-  splitCount: number;      // 分割総数
-  sequenceNumber: number;  // このQRの順番
+  dataId: string; // 14桁ユニークID
+  splitCount: number; // 分割総数
+  sequenceNumber: number; // このQRの順番
+}
+
+export type JahisSupplementalRecordType = '3' | '31' | '4' | '411' | '421' | '601' | '701';
+
+export interface JahisSupplementalRecordDetail {
+  label: string;
+  value: string;
+}
+
+export interface JahisSupplementalRecord {
+  recordType: JahisSupplementalRecordType;
+  recordLabel: string;
+  lineNumber: number;
+  fields: string[];
+  details: JahisSupplementalRecordDetail[];
+  summary: string;
+  rawLine: string;
 }
 
 export interface JahisQRData {
   patient: JahisPatient;
   medications: JahisMedication[];
   prescribingInstitution: JahisInstitution; // record 51: 処方-医療機関
-  dispensingInstitution: JahisInstitution;  // record 11: 調剤-医療機関
-  dispensingPharmacist?: string;            // record 15: 調剤-薬剤師名
-  prescribingDoctor?: string;               // record 55: 処方-医師名
-  prescribingDepartment?: string;           // record 55: 診療科
-  dispensingDate?: string;                  // record 5: 調剤日 YYYY-MM-DD
-  remarks: string[];                        // record 401, 501
-  patientNotes: string[];                   // record 2
-  splitInfo?: JahisSplitInfo;              // record 911
+  dispensingInstitution: JahisInstitution; // record 11: 調剤-医療機関
+  dispensingPharmacist?: string; // record 15: 調剤-薬剤師名
+  prescribingDoctor?: string; // record 55: 処方-医師名
+  prescribingDepartment?: string; // record 55: 診療科
+  dispensingDate?: string; // record 5: 調剤日 YYYY-MM-DD
+  remarks: string[]; // record 401, 501
+  patientNotes: string[]; // record 2
+  supplementalRecords?: JahisSupplementalRecord[];
+  splitInfo?: JahisSplitInfo; // record 911
   rawText: string;
 
   /**
@@ -149,7 +169,12 @@ export interface JahisParseWarning {
 
 export type JahisParseResult =
   | { success: true; data: JahisQRData; warnings: JahisParseWarning[] }
-  | { success: false; data: Partial<JahisQRData>; errors: JahisParseError[]; warnings: JahisParseWarning[] };
+  | {
+      success: false;
+      data: Partial<JahisQRData>;
+      errors: JahisParseError[];
+      warnings: JahisParseWarning[];
+    };
 
 export interface JahisDaysOrTimes {
   days?: number;
@@ -205,7 +230,11 @@ export function parseJahisDate(raw: string): string | undefined {
     const d = cleaned.substring(5, 7);
 
     const eraOffsets: Record<string, number> = {
-      'M': 1867, 'T': 1911, 'S': 1925, 'H': 1988, 'R': 2018,
+      M: 1867,
+      T: 1911,
+      S: 1925,
+      H: 1988,
+      R: 2018,
     };
     const offset = eraOffsets[era];
     if (offset !== undefined && !isNaN(eraYear)) {
@@ -254,9 +283,7 @@ export function buildJahisQRText_placeholder_removed(): never {
   throw new Error('unreachable');
 }
 
-function getInstitutionName(
-  institution?: JahisInstitution | JahisQrExportInput['pharmacy']
-) {
+function getInstitutionName(institution?: JahisInstitution | JahisQrExportInput['pharmacy']) {
   if (!institution) return undefined;
   const legacyInstitution = institution as JahisQrExportInput['pharmacy'];
   if (legacyInstitution?.institutionName !== undefined) {
@@ -265,11 +292,118 @@ function getInstitutionName(
   return (institution as JahisInstitution).name;
 }
 
-function getInstitutionCode(
-  institution?: JahisInstitution | JahisQrExportInput['pharmacy']
-) {
+function getInstitutionCode(institution?: JahisInstitution | JahisQrExportInput['pharmacy']) {
   if (!institution) return undefined;
   return institution.institutionCode;
+}
+
+const SUPPLEMENTAL_RECORD_LABELS: Record<JahisSupplementalRecordType, string> = {
+  '3': '要指導医薬品・一般用医薬品服用',
+  '31': '要指導医薬品・一般用医薬品成分',
+  '4': '手帳メモ',
+  '411': '医療機関等提供情報',
+  '421': '残薬確認',
+  '601': '患者等記入',
+  '701': 'かかりつけ薬剤師',
+};
+
+const SUPPLEMENTAL_RECORD_FIELD_LABELS: Record<JahisSupplementalRecordType, string[]> = {
+  '3': ['薬品名称', '服用開始年月日', '服用終了年月日', 'レコード作成者', '通番', 'JANコード'],
+  '31': ['要指導・一般用薬通番', '成分名', 'コード種別', '成分コード', 'レコード作成者'],
+  '4': ['手帳メモ情報', 'メモ入力年月日', 'レコード作成者'],
+  '411': ['内容', '提供情報種別', 'レコード作成者'],
+  '421': ['残薬内容', 'レコード作成者'],
+  '601': ['患者等記入情報', '入力年月日'],
+  '701': [
+    'かかりつけ薬剤師氏名',
+    '勤務先薬局名称',
+    '連絡先',
+    '担当開始日',
+    '担当終了日',
+    'レコード作成者',
+  ],
+};
+
+function isSupplementalRecordType(value: string): value is JahisSupplementalRecordType {
+  return value in SUPPLEMENTAL_RECORD_LABELS;
+}
+
+function buildSupplementalRecordDetails(
+  recordType: JahisSupplementalRecordType,
+  fields: string[],
+): JahisSupplementalRecordDetail[] {
+  const labels = SUPPLEMENTAL_RECORD_FIELD_LABELS[recordType];
+  return fields.flatMap((field, index): JahisSupplementalRecordDetail[] => {
+    const value = field.trim();
+    if (!value) return [];
+    return [{ label: labels[index] ?? `項目${index + 1}`, value }];
+  });
+}
+
+function summarizeSupplementalRecord(
+  recordType: JahisSupplementalRecordType,
+  fields: string[],
+  details: JahisSupplementalRecordDetail[],
+) {
+  const detailValue = (label: string) => details.find((detail) => detail.label === label)?.value;
+
+  switch (recordType) {
+    case '3': {
+      const drugName = detailValue('薬品名称');
+      const startDate = detailValue('服用開始年月日');
+      const endDate = detailValue('服用終了年月日');
+      if (!drugName) break;
+      if (startDate && endDate) return `${drugName}（${startDate} - ${endDate}）`;
+      if (startDate) return `${drugName}（${startDate} から）`;
+      if (endDate) return `${drugName}（${endDate} まで）`;
+      return drugName;
+    }
+    case '31': {
+      const ingredient = detailValue('成分名');
+      const code = detailValue('成分コード');
+      if (ingredient && code) return `${ingredient} / ${code}`;
+      if (ingredient) return ingredient;
+      break;
+    }
+    case '4':
+      return detailValue('手帳メモ情報') ?? SUPPLEMENTAL_RECORD_LABELS[recordType];
+    case '411':
+      return detailValue('内容') ?? SUPPLEMENTAL_RECORD_LABELS[recordType];
+    case '421':
+      return detailValue('残薬内容') ?? SUPPLEMENTAL_RECORD_LABELS[recordType];
+    case '601':
+      return detailValue('患者等記入情報') ?? SUPPLEMENTAL_RECORD_LABELS[recordType];
+    case '701': {
+      const pharmacist = detailValue('かかりつけ薬剤師氏名');
+      const pharmacy = detailValue('勤務先薬局名称');
+      if (pharmacist && pharmacy) return `${pharmacist} / ${pharmacy}`;
+      if (pharmacist) return pharmacist;
+      break;
+    }
+  }
+
+  const nonEmpty = fields.map((field) => field.trim()).filter(Boolean);
+  const base = nonEmpty.slice(0, 4).join(' / ');
+  return base || SUPPLEMENTAL_RECORD_LABELS[recordType];
+}
+
+function buildSupplementalRecord(args: {
+  recordType: JahisSupplementalRecordType;
+  fields: string[];
+  lineNumber: number;
+  rawLine: string;
+}): JahisSupplementalRecord {
+  const details = buildSupplementalRecordDetails(args.recordType, args.fields);
+
+  return {
+    recordType: args.recordType,
+    recordLabel: SUPPLEMENTAL_RECORD_LABELS[args.recordType],
+    lineNumber: args.lineNumber,
+    fields: args.fields,
+    details,
+    summary: summarizeSupplementalRecord(args.recordType, args.fields, details),
+    rawLine: args.rawLine,
+  };
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -294,7 +428,7 @@ export function buildJahisQRText(input: JahisQrExportInput): string {
       '', // blood_type
       '', // weight
       sanitizeJahisField(input.patient.nameKana),
-    ].join(',')
+    ].join(','),
   );
 
   // 調剤日 (Record 5)
@@ -319,7 +453,7 @@ export function buildJahisQRText(input: JahisQrExportInput): string {
         '', // score_table_code
         sanitizeJahisField(presInstCode),
         '1', // creator
-      ].join(',')
+      ].join(','),
     );
   }
 
@@ -332,7 +466,7 @@ export function buildJahisQRText(input: JahisQrExportInput): string {
         sanitizeJahisField(doctorName),
         sanitizeJahisField(input.prescribingDepartment),
         '1',
-      ].join(',')
+      ].join(','),
     );
   }
 
@@ -350,7 +484,7 @@ export function buildJahisQRText(input: JahisQrExportInput): string {
         '1', // code_type: none (簡易エクスポート)
         sanitizeJahisField(medication.drugCode),
         '1', // creator
-      ].join(',')
+      ].join(','),
     );
 
     // 用法 (Record 301)
@@ -366,7 +500,7 @@ export function buildJahisQRText(input: JahisQrExportInput): string {
           '', // usage_code_type
           '', // usage_code
           '1', // creator
-        ].join(',')
+        ].join(','),
       );
     }
   }
@@ -406,7 +540,10 @@ export function parseDaysOrTimes(raw: string): JahisDaysOrTimes {
  * 旧APIとの互換性のため、引数は text（QR全体）を受け取る。
  */
 export function detectMultiQR(text: string): JahisSplitInfo | null {
-  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  const lines = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
   for (const line of lines) {
     const parts = line.split(',');
     if (parts[0] === '911') {
@@ -443,13 +580,17 @@ export function mergeJahisQRPages(pages: JahisQRData[]): JahisQRData {
   const allMedications = sorted.flatMap((p) => p.medications);
   const allRemarks = sorted.flatMap((p) => p.remarks);
   const allPatientNotes = sorted.flatMap((p) => p.patientNotes);
+  const allSupplementalRecords = sorted.flatMap((p) => p.supplementalRecords ?? []);
   const rawText = sorted.map((p) => p.rawText).join('\n---QR_PAGE_BREAK---\n');
 
   const prescribingInstitution: JahisInstitution = {
     name: sorted.find((p) => p.prescribingInstitution.name)?.prescribingInstitution.name,
-    prefCode: sorted.find((p) => p.prescribingInstitution.prefCode)?.prescribingInstitution.prefCode,
-    scoreTableCode: sorted.find((p) => p.prescribingInstitution.scoreTableCode)?.prescribingInstitution.scoreTableCode,
-    institutionCode: sorted.find((p) => p.prescribingInstitution.institutionCode)?.prescribingInstitution.institutionCode,
+    prefCode: sorted.find((p) => p.prescribingInstitution.prefCode)?.prescribingInstitution
+      .prefCode,
+    scoreTableCode: sorted.find((p) => p.prescribingInstitution.scoreTableCode)
+      ?.prescribingInstitution.scoreTableCode,
+    institutionCode: sorted.find((p) => p.prescribingInstitution.institutionCode)
+      ?.prescribingInstitution.institutionCode,
     address: sorted.find((p) => p.prescribingInstitution.address)?.prescribingInstitution.address,
     phone: sorted.find((p) => p.prescribingInstitution.phone)?.prescribingInstitution.phone,
   };
@@ -457,8 +598,10 @@ export function mergeJahisQRPages(pages: JahisQRData[]): JahisQRData {
   const dispensingInstitution: JahisInstitution = {
     name: sorted.find((p) => p.dispensingInstitution.name)?.dispensingInstitution.name,
     prefCode: sorted.find((p) => p.dispensingInstitution.prefCode)?.dispensingInstitution.prefCode,
-    scoreTableCode: sorted.find((p) => p.dispensingInstitution.scoreTableCode)?.dispensingInstitution.scoreTableCode,
-    institutionCode: sorted.find((p) => p.dispensingInstitution.institutionCode)?.dispensingInstitution.institutionCode,
+    scoreTableCode: sorted.find((p) => p.dispensingInstitution.scoreTableCode)
+      ?.dispensingInstitution.scoreTableCode,
+    institutionCode: sorted.find((p) => p.dispensingInstitution.institutionCode)
+      ?.dispensingInstitution.institutionCode,
     address: sorted.find((p) => p.dispensingInstitution.address)?.dispensingInstitution.address,
     phone: sorted.find((p) => p.dispensingInstitution.phone)?.dispensingInstitution.phone,
   };
@@ -479,6 +622,7 @@ export function mergeJahisQRPages(pages: JahisQRData[]): JahisQRData {
     dispensingDate,
     remarks: allRemarks,
     patientNotes: allPatientNotes,
+    supplementalRecords: allSupplementalRecords,
     rawText,
     // 後方互換
     pharmacy: {
@@ -512,6 +656,7 @@ export function parseJahisQRSafe(text: string): JahisParseResult {
   let dispensingDate: string | undefined;
   const remarks: string[] = [];
   const patientNotes: string[] = [];
+  const supplementalRecords: JahisSupplementalRecord[] = [];
   let splitInfo: JahisSplitInfo | undefined;
   let currentMed: JahisMedication | null = null;
 
@@ -578,7 +723,7 @@ export function parseJahisQRSafe(text: string): JahisParseResult {
           flushMed();
           const rpNumber = parts[1] ? parseInt(parts[1], 10) : undefined;
           currentMed = {
-            rpNumber: (rpNumber !== undefined && !isNaN(rpNumber)) ? rpNumber : undefined,
+            rpNumber: rpNumber !== undefined && !isNaN(rpNumber) ? rpNumber : undefined,
             drugCode: parts[6] || undefined,
             drugCodeType: parts[5] ? parseInt(parts[5], 10) : undefined,
             drugName: parts[2] || '不明',
@@ -641,11 +786,23 @@ export function parseJahisQRSafe(text: string): JahisParseResult {
           if (parts[1]) remarks.push(parts[1]);
           break;
         }
+        case '3':
+        case '31':
+        case '4':
         case '411':
         case '421':
         case '601':
         case '701': {
-          warnings.push({ recordType, field: 'info', message: `Record type ${recordType} noted but not mapped` });
+          if (isSupplementalRecordType(recordType)) {
+            supplementalRecords.push(
+              buildSupplementalRecord({
+                recordType,
+                fields: parts.slice(1),
+                lineNumber: i + 1,
+                rawLine: line,
+              }),
+            );
+          }
           break;
         }
         case '911': {
@@ -657,7 +814,11 @@ export function parseJahisQRSafe(text: string): JahisParseResult {
           break;
         }
         default:
-          warnings.push({ recordType, field: 'unknown', message: `Unknown record type ${recordType} at line ${i + 1}` });
+          warnings.push({
+            recordType,
+            field: 'unknown',
+            message: `Unknown record type ${recordType} at line ${i + 1}`,
+          });
           break;
       }
     } catch (err) {
@@ -683,6 +844,7 @@ export function parseJahisQRSafe(text: string): JahisParseResult {
     dispensingDate,
     remarks,
     patientNotes,
+    supplementalRecords,
     splitInfo,
     rawText: text,
     pharmacy: {

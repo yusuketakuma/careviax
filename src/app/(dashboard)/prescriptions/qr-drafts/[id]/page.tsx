@@ -39,6 +39,14 @@ import { LoadingButton } from '@/components/ui/loading-button';
 import { cn } from '@/lib/utils';
 import { buildQrDraftShortcutLinks, QR_DRAFT_CONFIRM_SUCCESS_HREF } from './page.helpers';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import {
+  JahisSupplementalRecordsCard,
+} from '@/components/features/prescriptions/jahis-supplemental-records-card';
+import {
+  normalizeJahisSupplementalRecords,
+  type JahisSupplementalRecordDbView,
+  type JahisSupplementalRecordView,
+} from '@/lib/pharmacy/jahis-supplemental-records-view';
 
 // ── Types ──
 
@@ -73,6 +81,7 @@ interface JahisQRData {
   prescriberInstitutionId?: string | null;
   prescriberInstitutionCode?: string;
   lines?: JahisQRLine[];
+  supplementalRecords?: JahisSupplementalRecordView[];
 }
 
 interface AutoCompletedField {
@@ -92,6 +101,7 @@ interface QrScanDraft {
   parse_errors: Array<{ field?: string; message: string }> | null;
   auto_completed: AutoCompletedField[] | null;
   expected_qr_count: number | null;
+  jahis_supplemental_records?: JahisSupplementalRecordDbView[];
   created_at: string;
 }
 
@@ -255,7 +265,10 @@ export default function QrDraftReviewPage() {
     enabled: !!orgId && !!draft?.patient_id,
   });
 
-  const initialLines = buildInitialLines(draft?.parsed_data.lines ?? [], draft?.auto_completed ?? null);
+  const initialLines = buildInitialLines(
+    draft?.parsed_data.lines ?? [],
+    draft?.auto_completed ?? null,
+  );
   const isCurrentDraftState = draft != null && formState.draftId === draft.id;
   const lines = isCurrentDraftState && formState.lines ? formState.lines : initialLines;
   const autoSelectedCaseId = casesData?.data.length === 1 ? casesData.data[0].id : '';
@@ -396,6 +409,10 @@ export default function QrDraftReviewPage() {
   const pd = draft.parsed_data;
   const cases = casesData?.data ?? [];
   const hasParseErrors = (draft.parse_errors?.length ?? 0) > 0;
+  const supplementalRecords = normalizeJahisSupplementalRecords(
+    pd.supplementalRecords,
+    draft.jahis_supplemental_records,
+  );
 
   return (
     <div className="space-y-6 p-3 md:p-4 xl:p-5">
@@ -415,6 +432,8 @@ export default function QrDraftReviewPage() {
           </div>
         }
         shortcuts={buildQrDraftShortcutLinks(draft.patient_id)}
+        mainWorkflowSteps={['prescriptions']}
+        mainWorkflowDescription="QR 読取下書きの確認画面でも、処方登録工程の一部として現在地を揃えています。"
         actions={
           hasParseErrors ? (
             <Badge variant="destructive" className="gap-1">
@@ -441,6 +460,12 @@ export default function QrDraftReviewPage() {
           </ul>
         </div>
       )}
+
+      <JahisSupplementalRecordsCard
+        records={supplementalRecords}
+        description="OTC薬、残薬、患者等記入、かかりつけ薬剤師など、訪問前後の確認に回す補足データです。"
+        gridClassName="grid gap-3 md:grid-cols-2"
+      />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Patient info */}
@@ -857,7 +882,12 @@ export default function QrDraftReviewPage() {
         </AlertDialog>
 
         <div className="flex items-center gap-3">
-          <Link href={registrationHref} className={cn('inline-flex h-10 items-center justify-center rounded-lg border border-input bg-background px-4 text-sm font-medium hover:bg-accent')}>
+          <Link
+            href={registrationHref}
+            className={cn(
+              'inline-flex h-10 items-center justify-center rounded-lg border border-input bg-background px-4 text-sm font-medium hover:bg-accent',
+            )}
+          >
             処方登録画面で編集
           </Link>
           <Button

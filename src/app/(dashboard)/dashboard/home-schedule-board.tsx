@@ -11,12 +11,15 @@ import { useAuthStore } from '@/lib/stores/auth-store';
 import { type Proposal, type VisitSchedule } from '@/app/(dashboard)/schedules/day-view.shared';
 import { fetchVisitSchedulesWindow } from '@/app/(dashboard)/schedules/visit-schedule-fetch.helpers';
 import {
+  buildHomeScheduleStaffOptions,
+  buildHomeScheduleStaffSummaries,
   buildHomeScheduleMetrics,
   filterCoordinationProposals,
   filterProposalsByReason,
   filterSchedulesByReason,
   filterSchedulesByScope,
   filterSchedulesByStatus,
+  type HomeScheduleStaffOption,
   type HomeProposalReasonKey,
   type HomeProposalFilter,
   type HomeScheduleReasonKey,
@@ -31,6 +34,7 @@ import {
   HomeCoordinationSection,
   HomeScheduleBoardSkeleton,
   HomeScheduleMetricsSection,
+  HomeScheduleScopeSection,
   HomeScheduleShortcutSection,
   HomeVisitsSection,
 } from './home-schedule-board-sections';
@@ -54,6 +58,29 @@ async function fetchHomeProposals(
   return payload.data ?? [];
 }
 
+async function fetchHomeScheduleStaff(orgId: string): Promise<HomeScheduleStaffOption[]> {
+  const response = await fetch('/api/pharmacists', {
+    headers: { 'x-org-id': orgId },
+  });
+  if (!response.ok) throw new Error('担当者一覧の取得に失敗しました');
+
+  const payload = (await response.json()) as {
+    data?: Array<{
+      id: string;
+      name: string;
+      site_name: string | null;
+      monthly_visit_count?: number;
+    }>;
+  };
+
+  return (payload.data ?? []).map((staff) => ({
+    id: staff.id,
+    name: staff.name,
+    siteName: staff.site_name,
+    monthlyVisitCount: staff.monthly_visit_count,
+  }));
+}
+
 export function HomeScheduleBoard({
   focusRole = 'common',
 }: {
@@ -61,10 +88,12 @@ export function HomeScheduleBoard({
 }) {
   const orgId = useOrgId();
   const currentUserId = useAuthStore((state) => state.currentUser.id);
-  const [today, setToday] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+  const [currentDate, setCurrentDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+  const [selectedDate, setSelectedDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [visitScope, setVisitScope] = useState<HomeVisitScope>(
-    focusRole === 'pharmacist' ? 'mine' : 'all',
+    focusRole === 'pharmacist' ? 'mine' : 'pharmacy',
   );
+  const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [visitStatusFilter, setVisitStatusFilter] = useState<HomeVisitStatusFilter>('all');
   const [scheduleReasonFilter, setScheduleReasonFilter] = useState<HomeScheduleReasonKey | 'all'>('all');
   const [proposalFilter, setProposalFilter] = useState<HomeProposalFilter>(
@@ -72,10 +101,17 @@ export function HomeScheduleBoard({
   );
   const [proposalReasonFilter, setProposalReasonFilter] = useState<HomeProposalReasonKey | 'all'>('all');
   const coordinationDateTo = useMemo(
-    () => format(addDays(parseISO(`${today}T00:00:00`), 2), 'yyyy-MM-dd'),
-    [today],
+    () => format(addDays(parseISO(`${selectedDate}T00:00:00`), 2), 'yyyy-MM-dd'),
+    [selectedDate],
   );
   const isBootstrappingOrg = !orgId;
+
+  const handleDateChange = (nextDate: string) => {
+    if (!nextDate) return;
+    setSelectedDate(nextDate);
+    setScheduleReasonFilter('all');
+    setVisitStatusFilter('all');
+  };
 
   useEffect(() => {
     const now = new Date();
@@ -84,19 +120,23 @@ export function HomeScheduleBoard({
     const delay = nextMidnight.getTime() - now.getTime();
 
     const timeoutId = window.setTimeout(() => {
-      setToday(format(new Date(), 'yyyy-MM-dd'));
+      const nextCurrentDate = format(new Date(), 'yyyy-MM-dd');
+      setSelectedDate((previousSelectedDate) =>
+        previousSelectedDate === currentDate ? nextCurrentDate : previousSelectedDate,
+      );
+      setCurrentDate(nextCurrentDate);
     }, delay);
 
     return () => window.clearTimeout(timeoutId);
-  }, [today]);
+  }, [currentDate]);
 
   const schedulesQuery = useRealtimeQuery({
-    queryKey: ['dashboard', 'home-schedules', orgId, today],
+    queryKey: ['dashboard', 'home-schedules', orgId, selectedDate],
     queryFn: () =>
       fetchVisitSchedulesWindow<VisitSchedule>({
         orgId,
-        dateFrom: today,
-        dateTo: today,
+        dateFrom: selectedDate,
+        dateTo: selectedDate,
         statusScope: 'active',
       }),
     enabled: !isBootstrappingOrg,
@@ -105,10 +145,18 @@ export function HomeScheduleBoard({
   });
 
   const proposalsQuery = useRealtimeQuery({
-    queryKey: ['dashboard', 'home-schedule-proposals', orgId, today, coordinationDateTo],
-    queryFn: () => fetchHomeProposals(orgId, today, coordinationDateTo),
+    queryKey: ['dashboard', 'home-schedule-proposals', orgId, selectedDate, coordinationDateTo],
+    queryFn: () => fetchHomeProposals(orgId, selectedDate, coordinationDateTo),
     enabled: !isBootstrappingOrg,
     staleTime: 60_000,
+    invalidateOn: ['workflow_refresh'],
+  });
+
+  const staffQuery = useRealtimeQuery({
+    queryKey: ['dashboard', 'home-schedule-staff', orgId],
+    queryFn: () => fetchHomeScheduleStaff(orgId),
+    enabled: !isBootstrappingOrg,
+    staleTime: 5 * 60_000,
     invalidateOn: ['workflow_refresh'],
   });
 
@@ -141,15 +189,26 @@ export function HomeScheduleBoard({
   }
 
   const allSchedules = sortHomeSchedules(schedulesQuery.data ?? []);
-  const scopedSchedules = filterSchedulesByScope(allSchedules, visitScope, currentUserId);
+  const staffOptions = buildHomeScheduleStaffOptions(allSchedules, staffQuery.data ?? []);
+  const activeSelectedUserId =
+    visitScope === 'user'
+      ? selectedUserId || staffOptions[0]?.id || ''
+      : selectedUserId;
+  const scopedSchedules = filterSchedulesByScope(
+    allSchedules,
+    visitScope,
+    currentUserId,
+    activeSelectedUserId,
+  );
   const statusScopedSchedules = filterSchedulesByStatus(scopedSchedules, visitStatusFilter);
   const schedules = filterSchedulesByReason(statusScopedSchedules, scheduleReasonFilter);
+  const staffSummaries = buildHomeScheduleStaffSummaries(allSchedules, staffOptions);
   const allCoordinationProposals = sortCoordinationProposals(
     (proposalsQuery.data ?? []).filter(proposalNeedsCoordination),
   );
   const proposalScopedItems = filterCoordinationProposals(allCoordinationProposals, proposalFilter);
   const coordinationProposals = filterProposalsByReason(proposalScopedItems, proposalReasonFilter);
-  const metrics = buildHomeScheduleMetrics(schedules, allCoordinationProposals);
+  const metrics = buildHomeScheduleMetrics(scopedSchedules, allCoordinationProposals);
 
   return (
     <div className="space-y-4">
@@ -166,20 +225,36 @@ export function HomeScheduleBoard({
         </Alert>
       )}
 
+      <HomeScheduleScopeSection
+        currentUserId={currentUserId}
+        selectedDate={selectedDate}
+        currentDate={currentDate}
+        selectedUserId={activeSelectedUserId}
+        staffOptions={staffOptions}
+        staffSummaries={staffSummaries}
+        visitScope={visitScope}
+        allSchedules={allSchedules}
+        scopedSchedules={scopedSchedules}
+        onDateChange={handleDateChange}
+        onVisitScopeChange={setVisitScope}
+        onSelectedUserChange={setSelectedUserId}
+        staffLoading={staffQuery.isLoading}
+        staffError={staffQuery.isError}
+      />
+
       <HomeScheduleMetricsSection focusRole={focusRole} metrics={metrics} />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)]">
         <HomeVisitsSection
           focusRole={focusRole}
-          currentUserId={currentUserId}
-          allSchedules={allSchedules}
+          selectedUserId={activeSelectedUserId}
           scopedSchedules={scopedSchedules}
           statusScopedSchedules={statusScopedSchedules}
           schedules={schedules}
+          staffOptions={staffOptions}
           visitScope={visitScope}
           visitStatusFilter={visitStatusFilter}
           scheduleReasonFilter={scheduleReasonFilter}
-          onVisitScopeChange={setVisitScope}
           onVisitStatusFilterChange={setVisitStatusFilter}
           onScheduleReasonFilterChange={setScheduleReasonFilter}
         />

@@ -23,6 +23,8 @@ export default function NewPrescriptionPage() {
             </p>
           </div>
         }
+        mainWorkflowSteps={['prescriptions']}
+        mainWorkflowDescription="新規受付の入力画面でも、主業務フロー上の現在地を見失わないようにしています。"
       >
         <PageShortcutLinks
           links={[

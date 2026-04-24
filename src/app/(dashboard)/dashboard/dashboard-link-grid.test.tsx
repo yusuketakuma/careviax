@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { Bell } from 'lucide-react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -46,5 +46,25 @@ describe('DashboardLinkGrid', () => {
     expect(screen.getByRole('link', { name: /提案一覧/ }).getAttribute('href')).toBe(
       '/schedules/proposals',
     );
+  });
+
+  it('moves link descriptions into a ? help window', () => {
+    render(
+      <DashboardLinkGrid
+        links={[
+          {
+            key: 'known',
+            title: '通知',
+            description: '通知一覧を開きます。',
+            href: '/notifications',
+          },
+        ]}
+        iconMap={{ known: Bell }}
+      />,
+    );
+
+    expect(screen.queryByText('通知一覧を開きます。')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '通知の説明' }));
+    expect(screen.getByText('通知一覧を開きます。')).toBeTruthy();
   });
 });

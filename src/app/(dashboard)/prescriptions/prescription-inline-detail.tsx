@@ -7,6 +7,8 @@ import { CheckCircle2, Clock, ExternalLink, MessageSquare, RefreshCw } from 'luc
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { PatientHistoryQuickLinks } from '@/components/features/patients/patient-history-quick-links';
+import { PatientHistorySummary } from '@/components/features/patients/patient-history-summary';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { SOURCE_LABELS } from './new/prescription-form.shared';
 import { CYCLE_STATUS_CONFIG } from './prescription.shared';
@@ -201,6 +203,9 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
         )}
         <span className="text-[10px]">ID: {data.id.slice(-8)}</span>
       </div>
+
+      <PatientHistoryQuickLinks patientId={patient.id} patientName={patient.name} />
+      <PatientHistorySummary patientId={patient.id} excludePrescriptionIntakeId={data.id} />
 
       {/* ── 処方明細テーブル (メイン領域) ── */}
       <div className="flex-1 overflow-y-auto">

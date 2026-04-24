@@ -32,6 +32,8 @@ export default async function SetAuditPage({ params }: { params: Promise<{ planI
           { href: `/medication-sets/full?plan_id=${planId}`, label: '計画詳細' },
           { href: '/workflow', label: 'ワークフロー' },
         ]}
+        mainWorkflowSteps={['set_audit']}
+        mainWorkflowDescription="セット監査の判断中でも、セットからスケジュール登録へ進む本流上の位置を保ちます。"
       />
 
       <Suspense fallback={<Loading />}>

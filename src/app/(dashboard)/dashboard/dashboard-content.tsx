@@ -2,6 +2,7 @@
 
 import { CalendarDays, FolderKanban, ListChecks, Receipt, Settings2, Users } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import { HelpPopover } from '@/components/ui/help-popover';
 import { Separator } from '@/components/ui/separator';
 import { AdminNavigation } from './admin-navigation';
 import { BillingKpiSection } from './billing-kpi-section';
@@ -35,9 +36,11 @@ function SectionHeader({
       <div className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-muted/15">
         <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
       </div>
-      <div className="space-y-1">
-        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-        <p className="text-sm text-muted-foreground">{description}</p>
+      <div>
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          <HelpPopover title={title} description={description} />
+        </div>
       </div>
     </div>
   );
@@ -64,9 +67,9 @@ function NavigationCluster({
   return (
     <Card className={toneClasses[tone]}>
       <CardContent className="space-y-4 p-4">
-        <div className="space-y-1">
+        <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-          <p className="text-sm text-muted-foreground">{description}</p>
+          <HelpPopover title={title} description={description} />
         </div>
         {children}
       </CardContent>
@@ -116,7 +119,7 @@ export function DashboardContent({ focusRole = 'common' }: { focusRole?: Dashboa
         id="dashboard-navigation-group"
         eyebrow="Workflow Navigation"
         title="業務導線"
-        description="日次の優先判断を終えたあとに、担当別の初動と主要フロー入口を同じまとまりで辿れるようにしています。"
+        description="日次の優先判断を終えたあとに、職種ごとの初動と主業務フローを別グループで追えるようにし、次に開く画面を迷わない構成にしています。"
         tone="workflow"
         contentClassName="space-y-6"
       >
@@ -137,11 +140,11 @@ export function DashboardContent({ focusRole = 'common' }: { focusRole?: Dashboa
           <section className="space-y-4" aria-labelledby="dashboard-workflows-section">
             <SectionHeader
               icon={FolderKanban}
-              title="主要フロー入口"
-              description="現在の担当に合わせて先頭の入口を並べ替え、最初に押す画面がカード順だけで分かるようにしています。"
+              title="主業務フロー"
+              description="処方登録から報告書までを固定順で見せ、画面の並びそのものを業務手順として読めるようにしています。"
             />
             <div id="dashboard-workflows-section">
-              <WorkflowNavigation focusRole={focusRole} />
+              <WorkflowNavigation />
             </div>
           </section>
 

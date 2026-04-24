@@ -40,11 +40,18 @@ export function PageScaffold({
   ...props
 }: PageScaffoldProps) {
   return (
-    <div className={cn('p-4 md:p-5 xl:p-6', className)} data-testid={testId} {...props}>
+    <div
+      className={cn(
+        'min-h-full bg-muted/20 p-2 sm:p-3 lg:p-4 xl:p-5 print:bg-background print:p-0',
+        className,
+      )}
+      data-testid={testId}
+      {...props}
+    >
       <div
         data-testid={`${testId}-stack`}
         className={cn(
-          'space-y-5 sm:space-y-6 xl:space-y-7',
+          'space-y-3 sm:space-y-4 xl:space-y-5',
           stackVariants[variant],
           stackClassName,
         )}

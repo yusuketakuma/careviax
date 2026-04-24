@@ -1,5 +1,6 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
+import { CollaborationWorkflowPanel } from '@/components/features/workflow/collaboration-workflow-panel';
 import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { Loading } from '@/components/ui/loading';
@@ -44,6 +45,10 @@ export default async function ExternalViewerPage({ searchParams }: ExternalViewe
           ]}
         />
       </WorkflowPageHeader>
+      <CollaborationWorkflowPanel
+        focus="external"
+        description="外部共有、自己申告、地域活動フォローを、訪問時と報告書工程へ戻す横断画面として整理しています。"
+      />
 
       <Suspense fallback={<Loading />}>
         <ExternalViewerContent

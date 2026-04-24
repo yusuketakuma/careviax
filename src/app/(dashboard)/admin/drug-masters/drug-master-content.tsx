@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/sheet';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import type { DrugMasterImportStatusResponse } from '@/app/api/drug-master-imports/status/route';
 
 type DrugMasterRow = {
   id: string;
@@ -364,31 +365,6 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     staleTime: 300_000,
   });
 
-  type MasterStatusSource = {
-    source: string;
-    label: string;
-    is_free: boolean;
-    threshold_days: number;
-    last_success: { imported_at: string; record_count: number; days_ago: number | null } | null;
-    last_failure: { imported_at: string; error: string | null } | null;
-    freshness: 'fresh' | 'aging' | 'stale' | 'never';
-  };
-
-  type MasterStatusResponse = {
-    data: {
-      sources: MasterStatusSource[];
-      totals: {
-        drug_master_count: number;
-        hot_code_coverage: number;
-        package_insert_count: number;
-        interaction_count: number;
-        active_alert_rule_count: number;
-        generic_mapping_count: number;
-      };
-      checked_at: string;
-    };
-  };
-
   const { data: masterStatusData } = useQuery({
     queryKey: ['drug-master-status'],
     queryFn: async () => {
@@ -396,7 +372,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('マスターステータスの取得に失敗しました');
-      return res.json() as Promise<MasterStatusResponse>;
+      return res.json() as Promise<DrugMasterImportStatusResponse>;
     },
     enabled: !!orgId,
     staleTime: 60_000,
@@ -715,29 +691,35 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
         </CardContent>
       </Card>
 
-      {masterStatusData?.data && (
+      {masterStatusData && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">マスター更新ステータス</CardTitle>
             <p className="text-xs text-muted-foreground">
-              総品目数: {masterStatusData.data.totals.drug_master_count.toLocaleString()}件 ・
-              添付文書: {masterStatusData.data.totals.package_insert_count.toLocaleString()}件 ・
-              相互作用: {masterStatusData.data.totals.interaction_count.toLocaleString()}件 ・
-              アラートルール: {masterStatusData.data.totals.active_alert_rule_count}件
+              総品目数: {masterStatusData.totals.drug_master_count.toLocaleString()}件 ・
+              添付文書: {masterStatusData.totals.package_insert_count.toLocaleString()}件 ・
+              相互作用: {masterStatusData.totals.interaction_count.toLocaleString()}件 ・
+              アラートルール: {masterStatusData.totals.active_alert_rule_count}件
             </p>
           </CardHeader>
           <CardContent className="space-y-2">
-            {masterStatusData.data.sources.filter((s) => s.is_free).map((source) => (
+            {masterStatusData.sources.map((source) => (
               <div
                 key={source.source}
                 className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2"
               >
                 <div className="space-y-0.5">
-                  <span className="text-sm font-medium">{source.label}</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">{source.label}</span>
+                    <Badge variant="outline" className="text-[10px]">
+                      {source.is_free ? '標準取込' : '外部設定'}
+                    </Badge>
+                  </div>
                   <div className="text-xs text-muted-foreground">
                     {source.last_success
                       ? `最終取込: ${new Date(source.last_success.imported_at).toLocaleDateString('ja-JP')} (${source.last_success.days_ago}日前) ・ ${source.last_success.record_count.toLocaleString()}件`
                       : '未取込'}
+                    {source.last_failure ? ` / 直近失敗: ${source.last_failure.error ?? '詳細なし'}` : ''}
                   </div>
                 </div>
                 <Badge

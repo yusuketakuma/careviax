@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
 /* -------------------------------------------------------------------------- */
@@ -644,9 +644,14 @@ describe('Workflow: prescription intake to care report', () => {
           findFirst: vi.fn().mockResolvedValue({
             id: IDS.cycle,
             overall_status: 'visit_ready',
+            version: 1,
+            patient_id: IDS.patient,
           }),
           update: vi.fn().mockResolvedValue({}),
           updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        cycleTransitionLog: {
+          create: vi.fn().mockResolvedValue({ id: 'transition_1' }),
         },
         workflowException: {
           findFirst: vi.fn().mockResolvedValue(null),

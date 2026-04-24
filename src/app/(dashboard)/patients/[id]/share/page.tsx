@@ -1,5 +1,6 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
+import { CollaborationWorkflowPanel } from '@/components/features/workflow/collaboration-workflow-panel';
 import { getPatientShareShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { Loading } from '@/components/ui/loading';
@@ -30,6 +31,10 @@ export default async function ExternalSharePage({ params }: { params: Promise<{ 
           </div>
         }
         shortcuts={getPatientShareShortcutLinks(id)}
+      />
+      <CollaborationWorkflowPanel
+        focus="share"
+        description="患者単位の外部共有を、訪問時の確認と報告書送付へつながる連携接点として扱います。"
       />
 
       <Suspense fallback={<Loading />}>

@@ -5,6 +5,7 @@ import { ArrowUpRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
+import { HelpPopover } from '@/components/ui/help-popover';
 import {
   useWorkflowPhaseAccess,
   type WorkflowPhaseAccessItem,
@@ -29,7 +30,16 @@ type WorkflowPhasePanelProps = {
 
 export function WorkflowPhasePanel({
   currentPhase,
-  phaseKeys = ['prescriptions', 'dispensing', 'auditing', 'medication_sets', 'visits', 'reports'],
+  phaseKeys = [
+    'prescriptions',
+    'dispensing',
+    'auditing',
+    'medication_sets',
+    'set_audit',
+    'schedules',
+    'visits',
+    'reports',
+  ],
   title = '工程ショートカット',
   description = '件数と次の 1 件を見ながら、途中中断してもすぐ復帰できます。',
   className,
@@ -52,8 +62,10 @@ export function WorkflowPhasePanel({
   return (
     <Card className={cn('border-border/70', className)} data-testid="workflow-phase-panel">
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm">{title}</CardTitle>
-        <p className="text-xs text-muted-foreground">{description}</p>
+        <div className="flex items-center gap-2">
+          <CardTitle className="text-sm">{title}</CardTitle>
+          <HelpPopover title={title} description={description} />
+        </div>
       </CardHeader>
       <CardContent className="grid gap-3 xl:grid-cols-3">
         {phases.map((phase) => (
@@ -68,8 +80,10 @@ export function WorkflowPhasePanel({
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground">{phase.label}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{phase.summary}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-foreground">{phase.label}</p>
+                  <HelpPopover title={phase.label} description={phase.summary} />
+                </div>
               </div>
               <Badge variant={phase.pending_count > 0 ? 'default' : 'outline'}>
                 {phase.pending_count}件

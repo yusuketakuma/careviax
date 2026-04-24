@@ -155,6 +155,8 @@ export default function PatientVisitRecordsPrintPage() {
         backLabel="患者詳細へ戻る"
         title="訪問記録一覧 印刷ビュー"
         description="対象期間の訪問記録を薬歴向けにまとめて印刷できます。"
+        mainWorkflowSteps={['visits']}
+        mainWorkflowDescription="印刷ビューでも、訪問時工程の派生画面として現在地を上部で保ちます。"
         shortcuts={getPatientVisitRecordPrintShortcutLinks(patientId)}
       />
 

@@ -75,6 +75,7 @@ const COVERAGE_CATEGORY_ENTRIES = {
     'VisitPreparation',
     'VisitScheduleProposal',
     'QrScanDraft',
+    'JahisSupplementalRecord',
   ],
   backend_only: [
     'IntegrationJob',

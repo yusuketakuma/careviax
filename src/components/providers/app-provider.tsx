@@ -62,21 +62,8 @@ export function AppProvider({
     useAuthStore.setState({
       orgId: initialOrgId,
       siteId: initialSiteId,
-      currentUser: {
-        id: session?.user?.id ?? null,
-        email: session?.user?.email ?? null,
-        name: session?.user?.name ?? null,
-        cognitoSub: session?.user?.cognitoSub ?? null,
-      },
     });
-  }, [
-    initialOrgId,
-    initialSiteId,
-    session?.user?.cognitoSub,
-    session?.user?.email,
-    session?.user?.id,
-    session?.user?.name,
-  ]);
+  }, [initialOrgId, initialSiteId]);
 
   return (
     <SessionProvider session={session}>

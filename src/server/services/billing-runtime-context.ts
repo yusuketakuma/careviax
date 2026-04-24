@@ -8,7 +8,7 @@ import { normalizeHomeComprehensiveLevel2026 } from './billing-rules/revisions/m
 
 type TxLike = {
   pharmacySiteInsuranceConfig: {
-    findFirst: (...args: any[]) => Promise<{
+    findFirst: (args: Prisma.PharmacySiteInsuranceConfigFindFirstArgs) => Promise<{
       id: string;
       revision_code: string;
       effective_from: Date;

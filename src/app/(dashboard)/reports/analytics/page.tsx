@@ -16,6 +16,8 @@ export default function ReportsAnalyticsPage() {
         <WorkflowPageHeader
           title="報告書送達分析"
           description="月別送達成功率・医師別集計・チャネル別集計・未確認報告フォロー"
+          mainWorkflowSteps={['reports']}
+          mainWorkflowDescription="送達分析も報告書工程の延長として扱い、主業務フローの終点にあることを固定表示します。"
           className="mb-0 mt-3"
         >
           <PageShortcutLinks

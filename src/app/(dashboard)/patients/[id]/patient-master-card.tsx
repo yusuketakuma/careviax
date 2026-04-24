@@ -225,9 +225,8 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
         )}
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* A. 基本属性 */}
-        <fieldset className="space-y-3">
-          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <fieldset className="space-y-3 rounded-2xl border border-border/70 bg-muted/20 p-4">
+          <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             A. 基本属性
           </legend>
           <div className="grid gap-4 md:grid-cols-2">
@@ -278,11 +277,8 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
           </div>
         </fieldset>
 
-        <hr className="border-border/50" />
-
-        {/* B. 連絡・住所 */}
-        <fieldset className="space-y-3">
-          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <fieldset className="space-y-3 rounded-2xl border border-border/70 bg-muted/20 p-4">
+          <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             B. 連絡・住所
           </legend>
           <div className="grid gap-4 md:grid-cols-2">
@@ -329,7 +325,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
                   <SelectValue placeholder="自宅または施設を選択" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="home">自宅・手入力</SelectItem>
+                  <SelectItem value="home">個人宅（自宅・同居人）</SelectItem>
                   {(facilitiesQuery.data?.data ?? []).map((facility) => (
                     <SelectItem key={facility.id} value={facility.id}>
                       {facility.name}
@@ -370,12 +366,13 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="建物ID">
+            <Field label="同時訪問グループID">
               <Input
                 value={form.building_id}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, building_id: event.target.value }))
                 }
+                placeholder="例: 山田家 / 夫婦宅A"
               />
             </Field>
             <Field label="部屋番号等">
@@ -389,11 +386,8 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
           </div>
         </fieldset>
 
-        <hr className="border-border/50" />
-
-        {/* C. 保険 */}
-        <fieldset className="space-y-3">
-          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <fieldset className="space-y-3 rounded-2xl border border-border/70 bg-muted/20 p-4">
+          <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             C. 保険
           </legend>
           <div className="grid gap-4 md:grid-cols-2">
@@ -451,11 +445,8 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
           </div>
         </fieldset>
 
-        <hr className="border-border/50" />
-
-        {/* D. アレルギー */}
-        <fieldset className="space-y-3">
-          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <fieldset className="space-y-3 rounded-2xl border border-border/70 bg-muted/20 p-4">
+          <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             D. アレルギー
           </legend>
           <div className="space-y-2">
@@ -553,11 +544,8 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
           </div>
         </fieldset>
 
-        <hr className="border-border/50" />
-
-        {/* E. 補助メモ */}
-        <fieldset className="space-y-3">
-          <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <fieldset className="space-y-3 rounded-2xl border border-border/70 bg-muted/20 p-4">
+          <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             E. 補助メモ
           </legend>
           <Field label="患者メモ">

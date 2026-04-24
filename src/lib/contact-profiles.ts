@@ -12,12 +12,14 @@ type ExternalProfessionalSuggestion = {
   phone: string | null;
   email: string | null;
   fax: string | null;
+  address: string | null;
   preferred_contact_method: CommunicationChannel | null;
   preferred_contact_time: string | null;
   last_contacted_at: Date | null;
   last_success_channel: CommunicationChannel | null;
   recommended_channels: CommunicationChannel[];
   is_primary: boolean;
+  source: 'patient_care_team' | 'external_professional_master';
 };
 
 type ContactProfileRow = {
@@ -83,7 +85,13 @@ function deriveAvailableChannels(input: {
     available.add('postal');
     available.add('in_person');
   }
-  if (input.preferred) {
+  if (
+    input.preferred &&
+    ((input.preferred === 'phone' && input.phone) ||
+      ((input.preferred === 'email' || input.preferred === 'ses') && input.email) ||
+      (input.preferred === 'fax' && input.fax) ||
+      ((input.preferred === 'postal' || input.preferred === 'in_person') && input.address))
+  ) {
     available.add(input.preferred);
   }
   return available;
@@ -215,14 +223,18 @@ export async function findExternalProfessionalSuggestions(
     select: {
       id: true,
       care_team_links: {
-        where: {
-          external_professional_id: {
-            not: null,
-          },
-        },
         orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
         select: {
+          id: true,
           is_primary: true,
+          role: true,
+          name: true,
+          organization_name: true,
+          department: true,
+          phone: true,
+          email: true,
+          fax: true,
+          address: true,
           external_professional_id: true,
           external_professional: {
             select: {
@@ -234,6 +246,7 @@ export async function findExternalProfessionalSuggestions(
               phone: true,
               email: true,
               fax: true,
+              address: true,
               preferred_contact_method: true,
               preferred_contact_time: true,
               last_contacted_at: true,
@@ -249,23 +262,32 @@ export async function findExternalProfessionalSuggestions(
   for (const careCase of cases) {
     for (const link of careCase.care_team_links) {
       const professional = link.external_professional;
-      if (!professional || !link.external_professional_id) continue;
-      if (deduped.has(professional.id)) continue;
-      deduped.set(professional.id, {
-        id: professional.id,
-        name: professional.name,
-        profession_type: professional.profession_type,
-        organization_name: professional.organization_name,
-        department: professional.department,
-        phone: professional.phone,
-        email: professional.email,
-        fax: professional.fax,
-        preferred_contact_method: professional.preferred_contact_method,
-        preferred_contact_time: professional.preferred_contact_time,
-        last_contacted_at: professional.last_contacted_at,
-        last_success_channel: professional.last_success_channel,
+      const candidateKey = link.external_professional_id
+        ? `external:${link.external_professional_id}`
+        : `care-team:${link.role}:${link.name}:${link.organization_name ?? ''}:${link.phone ?? ''}:${link.email ?? ''}:${link.fax ?? ''}`;
+
+      if (deduped.has(candidateKey)) continue;
+
+      const name = link.name || professional?.name;
+      if (!name) continue;
+
+      deduped.set(candidateKey, {
+        id: professional?.id ?? `care-team:${link.id}`,
+        name,
+        profession_type: link.role || professional?.profession_type || 'other',
+        organization_name: link.organization_name ?? professional?.organization_name ?? null,
+        department: link.department ?? professional?.department ?? null,
+        phone: link.phone ?? professional?.phone ?? null,
+        email: link.email ?? professional?.email ?? null,
+        fax: link.fax ?? professional?.fax ?? null,
+        address: link.address ?? professional?.address ?? null,
+        preferred_contact_method: professional?.preferred_contact_method ?? null,
+        preferred_contact_time: professional?.preferred_contact_time ?? null,
+        last_contacted_at: professional?.last_contacted_at ?? null,
+        last_success_channel: professional?.last_success_channel ?? null,
         recommended_channels: [],
         is_primary: link.is_primary,
+        source: link.external_professional_id ? 'external_professional_master' : 'patient_care_team',
       });
     }
   }
@@ -285,7 +307,7 @@ export async function findExternalProfessionalSuggestions(
         phone: suggestion.phone,
         email: suggestion.email,
         fax: suggestion.fax,
-        address: null,
+        address: suggestion.address,
       }),
     });
   }

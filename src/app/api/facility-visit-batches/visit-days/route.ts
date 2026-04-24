@@ -1,5 +1,5 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
-import { deriveFacilityLabel } from '@/lib/utils/facility';
+import { deriveVisitPlaceGroup } from '@/lib/utils/facility';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { upsertFacilityVisitDaysSchema } from '@/lib/validations/visit-constraints';
@@ -8,7 +8,6 @@ import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cac
 function toTimeValue(value?: string | null) {
   return value ? new Date(`1970-01-01T${value}`) : null;
 }
-
 
 export const POST = withAuth(
   async (req: AuthenticatedRequest) => {
@@ -44,6 +43,9 @@ export const POST = withAuth(
                     select: {
                       address: true,
                       building_id: true,
+                      facility_id: true,
+                      facility_unit_id: true,
+                      unit_name: true,
                     },
                   },
                 },
@@ -60,7 +62,7 @@ export const POST = withAuth(
       const facilityLabels = Array.from(
         new Set(
           schedules
-            .map((schedule) => deriveFacilityLabel(schedule.case_.patient.residences[0] ?? null))
+            .map((schedule) => deriveVisitPlaceGroup(schedule.case_.patient.residences[0] ?? null)?.label ?? null)
             .filter((value): value is string => value != null)
         )
       );
@@ -130,10 +132,10 @@ export const POST = withAuth(
 
     if ('error' in result) {
       if (result.error === 'missing_schedule') {
-        return validationError('施設訪問日の対象予定が見つかりません');
+        return validationError('訪問先グループの対象予定が見つかりません');
       }
       if (result.error === 'mixed_facility') {
-        return validationError('同一施設の訪問予定のみをまとめて更新できます', {
+        return validationError('同一訪問先グループの訪問予定のみをまとめて更新できます', {
           facilities: result.facilities,
         });
       }
@@ -148,6 +150,6 @@ export const POST = withAuth(
   },
   {
     permission: 'canVisit',
-    message: '施設訪問日の更新権限がありません',
+    message: '訪問先グループ定期訪問日の更新権限がありません',
   }
 );

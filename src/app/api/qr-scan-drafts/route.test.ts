@@ -6,6 +6,9 @@ const {
   withOrgContextMock,
   qrScanDraftFindFirstMock,
   qrScanDraftCreateMock,
+  patientFindFirstMock,
+  jahisSupplementalRecordDeleteManyMock,
+  jahisSupplementalRecordCreateManyMock,
   broadcastStatusUpdateMock,
   parseJahisQRSafeMock,
   mergeJahisQRPagesMock,
@@ -20,11 +23,14 @@ const {
           orgId: 'org_1',
           userId: 'user_1',
         } as NextRequest & { orgId: string; userId: string });
-    }
+    },
   ),
   withOrgContextMock: vi.fn(),
   qrScanDraftFindFirstMock: vi.fn().mockResolvedValue(null),
   qrScanDraftCreateMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
+  jahisSupplementalRecordDeleteManyMock: vi.fn(),
+  jahisSupplementalRecordCreateManyMock: vi.fn(),
   broadcastStatusUpdateMock: vi.fn(),
   parseJahisQRSafeMock: vi.fn(),
   mergeJahisQRPagesMock: vi.fn(),
@@ -44,6 +50,9 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     qrScanDraft: {
       findFirst: qrScanDraftFindFirstMock,
+    },
+    patient: {
+      findFirst: patientFindFirstMock,
     },
   },
 }));
@@ -76,6 +85,7 @@ function createRequest(body: unknown) {
 describe('/api/qr-scan-drafts POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     mergeJahisQRPagesMock.mockImplementation((pages: unknown[]) => pages[0]);
     parseJahisQRSafeMock.mockReturnValue({
       success: true,
@@ -97,6 +107,23 @@ describe('/api/qr-scan-drafts POST', () => {
         dispensingDate: '2026-04-01',
         remarks: ['一包化'],
         patientNotes: ['他職種共有あり'],
+        supplementalRecords: [
+          {
+            recordType: '421',
+            recordLabel: '残薬確認',
+            lineNumber: 8,
+            fields: ['アムロジピンが10錠残薬。症状改善による自己判断で服用中断。', '1'],
+            details: [
+              {
+                label: '残薬内容',
+                value: 'アムロジピンが10錠残薬。症状改善による自己判断で服用中断。',
+              },
+              { label: 'レコード作成者', value: '1' },
+            ],
+            summary: 'アムロジピンが10錠残薬。症状改善による自己判断で服用中断。',
+            rawLine: '421,アムロジピンが10錠残薬。症状改善による自己判断で服用中断。,1',
+          },
+        ],
         rawText: 'JAHISTC08,1',
       },
     });
@@ -129,8 +156,12 @@ describe('/api/qr-scan-drafts POST', () => {
       prescriberInstitutionCode: '1234567',
       prescriberInstitutionId: 'inst_1',
       isNewInstitution: false,
-      autoCompletedFields: [{ lineIndex: 0, field: 'dosage_form', value: '錠', source: 'drug_master' }],
-      unmatchedDrugs: [{ lineIndex: 0, drugName: '薬A', drugCode: null, reason: 'no_code_provided' }],
+      autoCompletedFields: [
+        { lineIndex: 0, field: 'dosage_form', value: '錠', source: 'drug_master' },
+      ],
+      unmatchedDrugs: [
+        { lineIndex: 0, drugName: '薬A', drugCode: null, reason: 'no_code_provided' },
+      ],
       formularyStatus: [
         {
           lineIndex: 0,
@@ -152,7 +183,11 @@ describe('/api/qr-scan-drafts POST', () => {
         qrScanDraft: {
           create: qrScanDraftCreateMock,
         },
-      })
+        jahisSupplementalRecord: {
+          deleteMany: jahisSupplementalRecordDeleteManyMock,
+          createMany: jahisSupplementalRecordCreateManyMock,
+        },
+      }),
     );
   });
 
@@ -162,7 +197,7 @@ describe('/api/qr-scan-drafts POST', () => {
         qr_texts: ['JAHISTC08,1'],
         patient_id: 'patient_1',
         site_id: 'site_1',
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -185,10 +220,56 @@ describe('/api/qr-scan-drafts POST', () => {
                 dispensingMethod: 'unit_dose',
               }),
             ],
+            supplementalRecords: [
+              expect.objectContaining({
+                recordType: '421',
+                recordLabel: '残薬確認',
+              }),
+            ],
           }),
         }),
-      })
+      }),
     );
+    expect(jahisSupplementalRecordDeleteManyMock).toHaveBeenCalledWith({
+      where: { org_id: 'org_1', qr_draft_id: 'draft_1' },
+    });
+    expect(jahisSupplementalRecordCreateManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          qr_draft_id: 'draft_1',
+          prescription_intake_id: null,
+          record_type: '421',
+          record_label: '残薬確認',
+          payload: expect.objectContaining({
+            details: expect.arrayContaining([
+              {
+                label: '残薬内容',
+                value: 'アムロジピンが10錠残薬。症状改善による自己判断で服用中断。',
+              },
+            ]),
+          }),
+        }),
+      ],
+    });
     expect(broadcastStatusUpdateMock).toHaveBeenCalled();
+  });
+
+  it('rejects patient_id outside the current org before saving the draft', async () => {
+    patientFindFirstMock.mockResolvedValue(null);
+
+    const response = await POST(
+      createRequest({
+        qr_texts: ['JAHISTC08,1'],
+        patient_id: 'patient_other_org',
+        site_id: 'site_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
+    expect(jahisSupplementalRecordCreateManyMock).not.toHaveBeenCalled();
   });
 });

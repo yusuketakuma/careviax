@@ -1,8 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { getAuthContext } from '@/lib/auth/context';
+import { hasPermission } from '@/lib/auth/permissions';
 import { prisma } from '@/lib/db/client';
 import { runBackupMonitorChecks } from '@/server/services/backup-monitor';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const checks: Record<
     string,
     {
@@ -46,8 +48,20 @@ export async function GET() {
     }
   }
 
+  const authContext = await getAuthContext(req).catch(() => null);
+  const includeDetailedChecks = Boolean(
+    authContext && hasPermission(authContext.role, 'canAdmin'),
+  );
+  const publicChecks = Object.fromEntries(
+    Object.entries(checks).map(([key, value]) => [key, { status: value.status }]),
+  );
+
   return NextResponse.json(
-    { status: overall, checks, timestamp: new Date().toISOString() },
+    {
+      status: overall,
+      checks: includeDetailedChecks ? checks : publicChecks,
+      timestamp: new Date().toISOString(),
+    },
     { status: overall === 'down' ? 503 : 200 },
   );
 }

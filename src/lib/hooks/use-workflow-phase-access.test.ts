@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildWorkflowPhaseAccess } from './use-workflow-phase-access';
+import { MAIN_WORKFLOW_STEPS } from '@/components/features/workflow/main-workflow-route';
 import type { WorkflowDashboardResponse } from '@/types/api/workflow-dashboard';
 
 function createWorkflowPayload(
@@ -85,21 +86,45 @@ function createWorkflowPayload(
 }
 
 describe('buildWorkflowPhaseAccess', () => {
-  it('falls back to cycle status counts for medication-set access when workbench items are absent', () => {
+  it('covers every main workflow step key', () => {
+    const phaseAccess = buildWorkflowPhaseAccess(createWorkflowPayload());
+
+    expect(Object.keys(phaseAccess)).toEqual(
+      expect.arrayContaining(MAIN_WORKFLOW_STEPS.map((step) => step.key)),
+    );
+  });
+
+  it('separates set preparation, set audit, and schedule registration access', () => {
     const phaseAccess = buildWorkflowPhaseAccess(
       createWorkflowPayload({
         cycle_status_counts: {
           setting: 2,
           set_audited: 1,
         },
+        operations_queue: {
+          visit_demands: 2,
+          callback_followups: 0,
+          management_plan_reviews: 0,
+          preparation_pending: 0,
+          geocode_reviews: 0,
+          intake_linkages: 1,
+          self_reports_triage: 0,
+        },
       })
     );
 
-    expect(phaseAccess.medication_sets.pending_count).toBe(3);
-    expect(phaseAccess.medication_sets.summary).toBe('セット 2件 / セット監査 1件');
-    expect(phaseAccess.medication_sets.next_action).toEqual({
+    expect(phaseAccess.medication_sets.pending_count).toBe(2);
+    expect(phaseAccess.medication_sets.summary).toBe('セット 2件');
+    expect(phaseAccess.set_audit.pending_count).toBe(1);
+    expect(phaseAccess.set_audit.summary).toBe('セット監査 1件');
+    expect(phaseAccess.set_audit.next_action).toEqual({
       href: '/medication-sets',
       label: 'セット監査を確認',
+    });
+    expect(phaseAccess.schedules.pending_count).toBe(3);
+    expect(phaseAccess.schedules.next_action).toEqual({
+      href: '/schedules',
+      label: 'スケジュール登録を開く',
     });
   });
 });

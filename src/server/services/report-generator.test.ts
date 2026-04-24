@@ -110,6 +110,7 @@ describe('generateReportsFromVisit', () => {
     });
     visitScheduleFindUniqueMock.mockResolvedValue({
       case_id: 'case-1',
+      cycle_id: null,
       org_id: 'org-WRONG',
     });
 
@@ -130,6 +131,7 @@ describe('generateReportsFromVisit', () => {
     });
     visitScheduleFindUniqueMock.mockResolvedValue({
       case_id: 'case-1',
+      cycle_id: null,
       org_id: 'org-1',
     });
     patientFindFirstMock.mockResolvedValue({
@@ -171,6 +173,7 @@ describe('generateReportsFromVisit', () => {
     });
     visitScheduleFindUniqueMock.mockResolvedValue({
       case_id: 'case-1',
+      cycle_id: null,
       org_id: 'org-1',
     });
     patientFindFirstMock.mockResolvedValue({
@@ -233,6 +236,7 @@ describe('generateReportsFromVisit', () => {
     });
     visitScheduleFindUniqueMock.mockResolvedValue({
       case_id: 'case-1',
+      cycle_id: null,
       org_id: 'org-1',
     });
     patientFindFirstMock.mockResolvedValue(null);
@@ -245,6 +249,63 @@ describe('generateReportsFromVisit', () => {
 
     await expect(generateReportsFromVisit('org-1', 'user-1', 'vr-1')).rejects.toThrow(
       'Patient not found',
+    );
+  });
+
+  it('uses the visit schedule cycle_id instead of the latest case cycle when generating report prescriptions', async () => {
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'vr-1',
+      org_id: 'org-1',
+      patient_id: 'p-1',
+      pharmacist_id: 'pharm-1',
+      visit_date: new Date(),
+      structured_soap: null,
+      schedule_id: 'vs-1',
+    });
+    visitScheduleFindUniqueMock.mockResolvedValue({
+      case_id: 'case-1',
+      cycle_id: 'cycle-from-schedule',
+      org_id: 'org-1',
+    });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'p-1',
+      name: '田中太郎',
+      birth_date: new Date('1950-01-01'),
+      gender: 'male',
+    });
+    medicationCycleFindFirstMock.mockResolvedValue({ id: 'cycle-from-schedule' });
+    residualMedicationFindManyMock.mockResolvedValue([]);
+    careTeamLinkFindManyMock.mockResolvedValue([]);
+    userFindFirstMock.mockResolvedValue({ name: '薬剤師A' });
+    billingEvidenceFindFirstMock.mockResolvedValue({ payer_basis: 'medical' });
+    careCaseFindFirstMock.mockResolvedValue({ required_visit_support: null });
+    prescriptionLineFindManyMock.mockResolvedValue([]);
+    buildPhysicianReportMock.mockReturnValue({ title: 'physician report' });
+    careReportFindManyMock.mockResolvedValue([]);
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          careReport: {
+            create: careReportCreateMock.mockResolvedValue({
+              id: 'report-new',
+              report_type: 'physician_report',
+            }),
+          },
+        }),
+    );
+
+    await generateReportsFromVisit('org-1', 'user-1', 'vr-1');
+
+    expect(medicationCycleFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'cycle-from-schedule', org_id: 'org-1' },
+      }),
+    );
+    expect(prescriptionLineFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { org_id: 'org-1', intake: { cycle_id: 'cycle-from-schedule' } },
+      }),
     );
   });
 });

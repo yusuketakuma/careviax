@@ -110,19 +110,20 @@ model Patient {
   created_at               DateTime  @default(now())
   updated_at               DateTime  @updatedAt
 
-  residences            Residence[]
-  cases                 CareCase[]
-  contacts              ContactParty[]
-  conditions            PatientCondition[]
-  consents              ConsentRecord[]
-  scheduling_preference PatientSchedulePreference?
-  medication_profiles   MedicationProfile[]
-  packaging_profile     PatientPackagingProfile?
-  mcs_link              PatientMcsLink?
-  mcs_summary           PatientMcsSummary?
-  mcs_messages          PatientMcsMessage[]
-  insurances            PatientInsurance[]
-  lab_observations      PatientLabObservation[]
+  residences                 Residence[]
+  cases                      CareCase[]
+  contacts                   ContactParty[]
+  conditions                 PatientCondition[]
+  consents                   ConsentRecord[]
+  scheduling_preference      PatientSchedulePreference?
+  medication_profiles        MedicationProfile[]
+  packaging_profile          PatientPackagingProfile?
+  mcs_link                   PatientMcsLink?
+  mcs_summary                PatientMcsSummary?
+  mcs_messages               PatientMcsMessage[]
+  insurances                 PatientInsurance[]
+  lab_observations           PatientLabObservation[]
+  jahis_supplemental_records JahisSupplementalRecord[]
 
   @@index([org_id])
   @@index([name_kana])

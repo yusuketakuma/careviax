@@ -18,7 +18,7 @@ export async function GET(
     permission: 'canAdmin',
     message: 'データ探索画面の利用権限がありません',
   });
-  if ('response' in authResult && authResult.response) return authResult.response;
+  if ('response' in authResult) return authResult.response;
 
   const { table } = await routeContext.params;
   const parsed = searchParamsSchema.safeParse({

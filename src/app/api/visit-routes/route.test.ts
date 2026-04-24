@@ -9,9 +9,7 @@ const {
   proposalFindManyMock,
 } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
-    (
-      handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>,
-    ) => {
+    (handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>) => {
       return (req: NextRequest) =>
         handler({
           ...req,
@@ -67,39 +65,41 @@ describe('/api/visit-routes POST', () => {
     });
 
     scheduleFindManyMock.mockResolvedValue([
-            {
-              id: 'schedule_1',
-              scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
-              site: {
-                id: 'site_1',
-                name: '本店',
-                lat: 35.0,
-                lng: 139.0,
-              },
-              case_: {
-                patient: {
-                  name: '山田 太郎',
-                  residences: [{ address: '東京都港区1-1-1', lat: 35.1, lng: 139.1 }],
-                },
-              },
-            },
-            {
-              id: 'schedule_2',
-              scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
-              site: {
-                id: 'site_1',
-                name: '本店',
-                lat: 35.0,
-                lng: 139.0,
-              },
-              case_: {
-                patient: {
-                  name: '佐藤 花子',
-                  residences: [{ address: '東京都港区1-1-2', lat: 35.2, lng: 139.2 }],
-                },
-              },
-            },
-          ]);
+      {
+        id: 'schedule_1',
+        priority: 'normal',
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        site: {
+          id: 'site_1',
+          name: '本店',
+          lat: 35.0,
+          lng: 139.0,
+        },
+        case_: {
+          patient: {
+            name: '山田 太郎',
+            residences: [{ address: '東京都港区1-1-1', lat: 35.1, lng: 139.1 }],
+          },
+        },
+      },
+      {
+        id: 'schedule_2',
+        priority: 'urgent',
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        site: {
+          id: 'site_1',
+          name: '本店',
+          lat: 35.0,
+          lng: 139.0,
+        },
+        case_: {
+          patient: {
+            name: '佐藤 花子',
+            residences: [{ address: '東京都港区1-1-2', lat: 35.2, lng: 139.2 }],
+          },
+        },
+      },
+    ]);
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -129,8 +129,8 @@ describe('/api/visit-routes POST', () => {
       origin: { lat: 35.0, lng: 139.0, label: '本店' },
       travelMode: 'DRIVE',
       waypoints: [
-        expect.objectContaining({ scheduleId: 'schedule_1' }),
-        expect.objectContaining({ scheduleId: 'schedule_2' }),
+        expect.objectContaining({ scheduleId: 'schedule_1', priority: 'normal' }),
+        expect.objectContaining({ scheduleId: 'schedule_2', priority: 'urgent' }),
       ],
     });
   });
@@ -149,39 +149,41 @@ describe('/api/visit-routes POST', () => {
     });
 
     scheduleFindManyMock.mockResolvedValue([
-            {
-              id: 'schedule_1',
-              scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
-              site: {
-                id: 'site_1',
-                name: '本店',
-                lat: 35.0,
-                lng: 139.0,
-              },
-              case_: {
-                patient: {
-                  name: '山田 太郎',
-                  residences: [{ address: '東京都港区1-1-1', lat: 35.1, lng: 139.1 }],
-                },
-              },
-            },
-            {
-              id: 'schedule_2',
-              scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
-              site: {
-                id: 'site_1',
-                name: '本店',
-                lat: 35.0,
-                lng: 139.0,
-              },
-              case_: {
-                patient: {
-                  name: '座標なし患者',
-                  residences: [{ address: '東京都港区1-1-9', lat: null, lng: null }],
-                },
-              },
-            },
-          ]);
+      {
+        id: 'schedule_1',
+        priority: 'normal',
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        site: {
+          id: 'site_1',
+          name: '本店',
+          lat: 35.0,
+          lng: 139.0,
+        },
+        case_: {
+          patient: {
+            name: '山田 太郎',
+            residences: [{ address: '東京都港区1-1-1', lat: 35.1, lng: 139.1 }],
+          },
+        },
+      },
+      {
+        id: 'schedule_2',
+        priority: 'normal',
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        site: {
+          id: 'site_1',
+          name: '本店',
+          lat: 35.0,
+          lng: 139.0,
+        },
+        case_: {
+          patient: {
+            name: '座標なし患者',
+            residences: [{ address: '東京都港区1-1-9', lat: null, lng: null }],
+          },
+        },
+      },
+    ]);
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -223,23 +225,24 @@ describe('/api/visit-routes POST', () => {
     });
 
     scheduleFindManyMock.mockResolvedValue([
-            {
-              id: 'schedule_1',
-              scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
-              site: {
-                id: 'site_1',
-                name: '本店',
-                lat: 35.0,
-                lng: 139.0,
-              },
-              case_: {
-                patient: {
-                  name: '山田 太郎',
-                  residences: [{ address: '東京都港区1-1-1', lat: 35.1, lng: 139.1 }],
-                },
-              },
-            },
-          ]);
+      {
+        id: 'schedule_1',
+        priority: 'normal',
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        site: {
+          id: 'site_1',
+          name: '本店',
+          lat: 35.0,
+          lng: 139.0,
+        },
+        case_: {
+          patient: {
+            name: '山田 太郎',
+            residences: [{ address: '東京都港区1-1-1', lat: 35.1, lng: 139.1 }],
+          },
+        },
+      },
+    ]);
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -283,6 +286,7 @@ describe('/api/visit-routes POST', () => {
     scheduleFindManyMock.mockResolvedValue([
       {
         id: 'schedule_1',
+        priority: 'urgent',
         site: {
           id: 'site_1',
           name: '本店',
@@ -300,6 +304,7 @@ describe('/api/visit-routes POST', () => {
     proposalFindManyMock.mockResolvedValue([
       {
         id: 'proposal_1',
+        priority: 'emergency',
         site: {
           id: 'site_1',
           name: '本店',
@@ -339,8 +344,8 @@ describe('/api/visit-routes POST', () => {
       origin: { lat: 35.0, lng: 139.0, label: '本店' },
       travelMode: 'DRIVE',
       waypoints: [
-        expect.objectContaining({ scheduleId: 'schedule_1' }),
-        expect.objectContaining({ scheduleId: 'proposal:proposal_1' }),
+        expect.objectContaining({ scheduleId: 'schedule_1', priority: 'urgent' }),
+        expect.objectContaining({ scheduleId: 'proposal:proposal_1', priority: 'emergency' }),
       ],
     });
   });

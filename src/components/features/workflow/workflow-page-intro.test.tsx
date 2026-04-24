@@ -80,4 +80,22 @@ describe('WorkflowPageIntro', () => {
       '/patients/p1/share',
     );
   });
+
+  it('can render the compact main workflow navigator below the header', () => {
+    render(
+      <WorkflowPageIntro
+        backHref="/dispensing"
+        backLabel="調剤キューへ戻る"
+        title="調剤入力"
+        description="調剤の詳細入力です。"
+        mainWorkflowSteps={['dispensing']}
+        mainWorkflowDescription="詳細画面でも、主業務フローの現在地を固定表示します。"
+      />,
+    );
+
+    expect(screen.getByTestId('main-workflow-compact-nav')).toBeTruthy();
+    expect(screen.getByText('主業務フロー上の現在地')).toBeTruthy();
+    expect(screen.getByText('詳細画面でも、主業務フローの現在地を固定表示します。')).toBeTruthy();
+    expect(screen.getAllByText('現在地')).toHaveLength(1);
+  });
 });

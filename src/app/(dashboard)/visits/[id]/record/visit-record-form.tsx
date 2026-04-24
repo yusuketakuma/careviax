@@ -48,6 +48,15 @@ import { ResidualMedicationForm } from '@/components/features/visits/residual-me
 import { SoapVoiceFieldToggle } from '@/components/features/visits/soap-voice-field-toggle';
 import { SoapStepWizard } from '@/components/features/visits/soap-step-wizard';
 import { VoiceSoapAssist } from '@/components/features/visits/voice-soap-assist';
+import { FacilityVisitRecordSwitcher } from '@/components/features/visits/facility-visit-record-switcher';
+import {
+  PatientCareTeamSourcePanel,
+  type PatientCareTeamSourceContact,
+} from '@/components/features/visits/patient-care-team-source-panel';
+import {
+  VisitReportReadinessPanel,
+  type VisitReportReadinessItem,
+} from '@/components/features/visits/visit-report-readiness-panel';
 import {
   VisitAttachmentsField,
   type VisitAttachmentDraft,
@@ -68,6 +77,7 @@ import {
   getVisitExecutionQueryKeys,
   invalidateQueryKeys,
 } from '@/lib/visits/query-invalidations';
+import type { FacilityVisitContext } from '@/lib/visits/facility-visit-context';
 import {
   buildAttachmentId,
   classifyVisitAttachment,
@@ -133,6 +143,14 @@ type UploadedVisitAttachment = {
   size_bytes: number;
   uploaded_at: string | null;
   kind: 'photo' | 'attachment';
+};
+
+type VisitPreparationSnapshot = {
+  data: {
+    pack: {
+      care_team: PatientCareTeamSourceContact[];
+    };
+  };
 };
 
 const { maxAttachments: MAX_VISIT_ATTACHMENTS } = getVisitAttachmentConstraints();
@@ -210,7 +228,13 @@ function buildDraftMetadata(values: FormValues, visitGeoLog: VisitGeoLog | null)
   };
 }
 
-export function VisitRecordForm({ id }: { id: string }) {
+export function VisitRecordForm({
+  id,
+  facilityVisitContext = null,
+}: {
+  id: string;
+  facilityVisitContext?: FacilityVisitContext | null;
+}) {
   const router = useRouter();
   const orgId = useOrgId();
   const isBootstrappingOrg = !orgId;
@@ -262,6 +286,17 @@ export function VisitRecordForm({ id }: { id: string }) {
     },
     enabled: !!orgId && !!schedule?.cycle_id,
     staleTime: 30_000,
+  });
+  const { data: visitPreparationSnapshot, isLoading: visitPreparationLoading } = useQuery<VisitPreparationSnapshot>({
+    queryKey: ['visit-preparation-care-team', id, orgId],
+    queryFn: async () => {
+      const res = await fetch(`/api/visit-preparations/${id}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('訪問準備情報の取得に失敗しました');
+      return res.json();
+    },
+    enabled: !!orgId && !!id,
   });
 
   const today = format(new Date(), 'yyyy-MM-dd');
@@ -895,6 +930,59 @@ export function VisitRecordForm({ id }: { id: string }) {
   const voiceRecognition = useSpeechRecognition({
     onTranscript: handleAppendTranscript,
   });
+  const structuredSoapDraft = buildStructuredSoap(watchedValues);
+  const patientCareTeamContacts = visitPreparationSnapshot?.data.pack.care_team ?? [];
+  const visitReportReadinessItems: VisitReportReadinessItem[] = [
+    {
+      key: 'subjective',
+      label: '患者・家族の訴え',
+      description: '服薬状況、困りごと、自己申告を S に残します。',
+      done: Boolean(structuredSoapDraft.subjective.free_text?.trim() || structuredSoapDraft.subjective.symptom_checks.length > 0),
+    },
+    {
+      key: 'objective',
+      label: '客観情報・観察',
+      description: '残薬、服薬カレンダー、バイタル、検査値、添付写真を O に残します。',
+      done: Boolean(
+        structuredSoapDraft.objective.free_text?.trim() ||
+          structuredSoapDraft.objective.side_effect_checks.length > 0 ||
+          selectedAttachments.length > 0,
+      ),
+    },
+    {
+      key: 'assessment',
+      label: '薬学的評価',
+      description: '問題点、重症度、薬学的判断を A に残します。',
+      done: Boolean(structuredSoapDraft.assessment.free_text?.trim() || structuredSoapDraft.assessment.problem_checks.length > 0),
+    },
+    {
+      key: 'plan',
+      label: '介入・次回計画',
+      description: '介入内容、次回訪問日、処方提案を P に残します。',
+      done: Boolean(
+        structuredSoapDraft.plan.free_text?.trim() ||
+          structuredSoapDraft.plan.intervention_checks.length > 0 ||
+          structuredSoapDraft.plan.next_visit_date,
+      ),
+    },
+    {
+      key: 'collaboration',
+      label: '他職種へ渡す事項',
+      description: '医師向け、ケアマネ向け、介護サービス連携の要点を分けて残します。',
+      done: Boolean(
+        structuredSoapDraft.plan.physician_report_items?.trim() ||
+          structuredSoapDraft.plan.care_manager_report_items?.trim() ||
+          structuredSoapDraft.plan.care_service_coordination?.trim(),
+      ),
+    },
+    {
+      key: 'receipt',
+      label: '受領・現地証跡',
+      description: '受領者、位置情報、添付で訪問時の証跡を補強します。',
+      done: Boolean(watchedValues.receipt_person_name?.trim() || visitGeoLog?.start || visitGeoLog?.end),
+      required: false,
+    },
+  ];
 
   useEffect(() => {
     if ((createRecord.isPending || isOffline) && voiceRecognition.isListening) {
@@ -917,8 +1005,14 @@ export function VisitRecordForm({ id }: { id: string }) {
         <input type="hidden" {...form.register('schedule_id')} />
         <input type="hidden" {...form.register('patient_id')} />
 
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
+
+          <FacilityVisitRecordSwitcher currentScheduleId={id} context={facilityVisitContext} />
+
+          {!visitPreparationLoading ? (
+            <PatientCareTeamSourcePanel contacts={patientCareTeamContacts} compact />
+          ) : null}
 
           {carryItemsWarning && (
             <Card className="border-rose-200 bg-rose-50">
@@ -1052,8 +1146,10 @@ export function VisitRecordForm({ id }: { id: string }) {
             </div>
           )}
 
+          <VisitReportReadinessPanel mode="visit_mobile" items={visitReportReadinessItems} />
+
           {/* Visit date + Outcome */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="visit_date">
                 訪問日 <span className="text-destructive" aria-label="必須">*</span>
@@ -1162,7 +1258,7 @@ export function VisitRecordForm({ id }: { id: string }) {
           ) : (
             <>
               {/* SOAP — tablet 2-column */}
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 xl:gap-5">
                 {/* S + O (left column) */}
                 <div className="space-y-4">
                   <Card>

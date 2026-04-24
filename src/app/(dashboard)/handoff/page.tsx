@@ -33,6 +33,8 @@ export default async function HandoffPage({ searchParams }: HandoffPageProps) {
             </p>
           </div>
         }
+        mainWorkflowSteps={['visits']}
+        mainWorkflowDescription="申し送りは訪問後の派生確認として扱い、訪問工程の延長にあることを固定表示します。"
         childrenLabel="関連導線"
       >
         <PageShortcutLinks

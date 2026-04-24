@@ -25,6 +25,7 @@ export default function VisitsPage() {
             </p>
           </div>
         }
+        mainWorkflowSteps={['visits']}
         childrenLabel="関連導線"
       >
         <PageShortcutLinks

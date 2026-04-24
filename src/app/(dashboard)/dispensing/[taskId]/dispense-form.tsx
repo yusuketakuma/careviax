@@ -49,12 +49,16 @@ import { PresenceAvatars } from '@/components/features/collaboration/presence-av
 import { useCollaborativeForm } from '@/lib/hooks/use-collaborative-form';
 import { CollaborativeTextarea } from '@/components/features/collaboration/collaborative-textarea';
 import { CARRY_TYPE_OPTIONS } from '@/lib/dispensing/constants';
+import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
+import {
+  normalizeJahisSupplementalRecords,
+  type JahisSupplementalRecordDbView,
+} from '@/lib/pharmacy/jahis-supplemental-records-view';
 import type {
   DispensePrefillLine,
   DispensePrefillResult,
   PackagingGroupAssignment,
 } from '@/lib/dispensing/prefill-generator';
-import type { DateContinuityWarning } from '@/lib/dispensing/date-continuity';
 
 function toLineIdMap<T extends { line_id: string }>(items: T[]): Map<string, T> {
   return new Map(items.map((x) => [x.line_id, x]));
@@ -108,6 +112,8 @@ type PrescriptionLine = {
   unit: string | null;
   packaging_instructions: string | null;
   notes: string | null;
+  start_date: string | null;
+  end_date: string | null;
 };
 
 type DispenseTaskDetail = {
@@ -162,6 +168,7 @@ type DispenseTaskDetail = {
       prescriber_name: string | null;
       prescriber_institution: string | null;
       original_collected_at: string | null;
+      jahis_supplemental_records: JahisSupplementalRecordDbView[];
       lines: PrescriptionLine[];
     }>;
     inquiries: Array<{
@@ -220,6 +227,247 @@ const priorityVariant: Record<string, 'default' | 'secondary' | 'outline' | 'des
   normal: 'outline',
 };
 
+const sourceTypeLabel: Record<string, string> = {
+  paper: '紙処方箋',
+  fax: 'FAX',
+  e_prescription: '電子処方箋',
+  facility_batch: '施設一括',
+  refill: 'リフィル',
+  qr_scan: 'QR取込',
+};
+
+const changeTypeLabel: Record<NonNullable<DispensePrefillLine['changeMarker']>, string> = {
+  added: '新規追加',
+  removed: '削除',
+  dose_changed: '用量変更',
+  frequency_changed: '用法変更',
+};
+
+function formatMaybeDate(value: string | null | undefined) {
+  if (!value) return '—';
+  return value.slice(0, 10);
+}
+
+function DispensingInformationPanel({
+  intake,
+  previousIntake,
+  prefill,
+}: {
+  intake: DispenseTaskDetail['cycle']['prescription_intakes'][number];
+  previousIntake: DispenseTaskDetail['cycle']['prescription_intakes'][number] | null;
+  prefill: DispensePrefillResult | null | undefined;
+}) {
+  const medicationChanges = prefill?.medicationChanges ?? [];
+  const dateWarnings = prefill?.dateWarnings ?? [];
+  const supplementalRecords = normalizeJahisSupplementalRecords(
+    undefined,
+    intake.jahis_supplemental_records,
+  );
+  const summaryItems = [
+    {
+      label: '取込',
+      value: sourceTypeLabel[intake.source_type] ?? intake.source_type,
+      tone:
+        intake.source_type === 'qr_scan' ? 'bg-sky-100 text-sky-800' : 'bg-muted text-foreground',
+    },
+    {
+      label: '前回処方',
+      value: previousIntake ? 'あり' : 'なし',
+      tone: previousIntake ? 'bg-emerald-100 text-emerald-800' : 'bg-muted text-muted-foreground',
+    },
+    {
+      label: '変更',
+      value: `${medicationChanges.length}件`,
+      tone:
+        medicationChanges.length > 0
+          ? 'bg-amber-100 text-amber-800'
+          : 'bg-muted text-muted-foreground',
+    },
+    {
+      label: '日付注意',
+      value: `${dateWarnings.length}件`,
+      tone:
+        dateWarnings.length > 0 ? 'bg-amber-100 text-amber-800' : 'bg-muted text-muted-foreground',
+    },
+    {
+      label: 'QR補足',
+      value: `${supplementalRecords.length}件`,
+      tone:
+        supplementalRecords.length > 0
+          ? 'bg-sky-100 text-sky-800'
+          : 'bg-muted text-muted-foreground',
+    },
+  ];
+
+  return (
+    <Card className="border-sky-200 bg-sky-50/30">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">調剤前確認</CardTitle>
+        <p className="text-xs leading-5 text-muted-foreground">
+          QR由来情報、前回処方、服用日付、処方変更を先に確認し、下の調剤実績入力へ進みます。
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          {summaryItems.map((item) => (
+            <div
+              key={item.label}
+              className="rounded-lg border border-border/70 bg-background px-3 py-2"
+            >
+              <p className="text-[11px] font-medium text-muted-foreground">{item.label}</p>
+              <p
+                className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${item.tone}`}
+              >
+                {item.value}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-3">
+          <Card className="bg-background">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">処方由来情報</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">取込種別</span>
+                <Badge variant={intake.source_type === 'qr_scan' ? 'default' : 'outline'}>
+                  {sourceTypeLabel[intake.source_type] ?? intake.source_type}
+                </Badge>
+              </div>
+              <p className="text-muted-foreground">
+                処方日{' '}
+                <span className="font-medium text-foreground">
+                  {formatMaybeDate(intake.prescribed_date)}
+                </span>
+              </p>
+              <p className="text-muted-foreground">
+                処方医{' '}
+                <span className="font-medium text-foreground">{intake.prescriber_name ?? '—'}</span>
+              </p>
+              <p className="text-muted-foreground">
+                医療機関{' '}
+                <span className="font-medium text-foreground">
+                  {intake.prescriber_institution ?? '—'}
+                </span>
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-background xl:col-span-2">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">服用日付</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {intake.lines.map((line) => (
+                  <div
+                    key={line.id}
+                    className="rounded-lg border border-border/70 bg-muted/20 p-3 text-sm"
+                  >
+                    <p className="font-medium text-foreground">{line.drug_name}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {formatMaybeDate(line.start_date)} - {formatMaybeDate(line.end_date)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-2">
+          <Card className="bg-background">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">前回処方内容</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!previousIntake ? (
+                <p className="text-sm text-muted-foreground">前回処方はありません。</p>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    処方日 {formatMaybeDate(previousIntake.prescribed_date)} /{' '}
+                    {sourceTypeLabel[previousIntake.source_type] ?? previousIntake.source_type}
+                  </p>
+                  {previousIntake.lines.map((line) => (
+                    <div
+                      key={line.id}
+                      className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm"
+                    >
+                      <p className="font-medium text-foreground">{line.drug_name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {line.dose} / {line.frequency} / {line.days}日
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        服用 {formatMaybeDate(line.start_date)} - {formatMaybeDate(line.end_date)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-background">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">処方内容の変更</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {medicationChanges.length === 0 ? (
+                <p className="text-sm text-muted-foreground">前回処方との差分はありません。</p>
+              ) : (
+                <div className="space-y-2">
+                  {medicationChanges.map((change) => (
+                    <div
+                      key={`${change.drug_name}-${change.change_type}`}
+                      className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-medium text-foreground">{change.drug_name}</p>
+                        <Badge variant="outline">{changeTypeLabel[change.change_type]}</Badge>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {change.previous ? `${change.previous} → ` : ''}
+                        {change.current ?? '中止'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {dateWarnings.length > 0 && (
+          <div className="space-y-2">
+            {dateWarnings.map((warning) => (
+              <div
+                key={warning.lineId}
+                className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+              >
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                <p>
+                  {warning.type === 'gap'
+                    ? `${warning.drugName}: 前回終了 ${warning.prevEndDate} → 今回開始 ${warning.currentStartDate}（${warning.gapDays}日間のギャップ）`
+                    : `${warning.drugName}: 前回終了 ${warning.prevEndDate} → 今回開始 ${warning.currentStartDate}（${Math.abs(warning.gapDays)}日間の重複）`}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <JahisSupplementalRecordsCard
+          records={supplementalRecords}
+          description="QRコード由来の手帳メモ、残薬確認、患者記入、かかりつけ薬剤師情報です。調剤前の確認に使用します。"
+          gridClassName="grid gap-3 md:grid-cols-2"
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
 type DispenseFormProps = {
   taskId: string;
 };
@@ -270,6 +518,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
   });
 
   const intake = task?.cycle.prescription_intakes[0];
+  const previousIntake = task?.cycle.prescription_intakes[1] ?? null;
   const existingResultByLineId = toLineIdMap(task?.results ?? []);
   const stockGuidanceByLineId = toLineIdMap(task?.stock_guidance ?? []);
   const openInquiries = task?.cycle.inquiries ?? [];
@@ -500,7 +749,6 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
   const isPrefillMode =
     usePrefill && task.prefill?.isPrefillAvailable === true && task.results.length === 0;
   const prefillLines: DispensePrefillLine[] = task.prefill?.lines ?? [];
-  const prefillDateWarnings: DateContinuityWarning[] = task.prefill?.dateWarnings ?? [];
   const allChecked =
     prefillLines.length > 0 &&
     prefillLines.every((line) => line.changeMarker === 'removed' || checkedLines.has(line.lineId));
@@ -600,6 +848,12 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
           </CardHeader>
         </Card>
 
+        <DispensingInformationPanel
+          intake={intake}
+          previousIntake={previousIntake}
+          prefill={task.prefill}
+        />
+
         {originalCollectionCheck.required && (
           <Card
             className={
@@ -649,25 +903,6 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
           <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <p>処方データから調剤内容を自動生成しました。各行を確認して承認してください。</p>
         </div>
-
-        {/* Date warnings */}
-        {prefillDateWarnings.length > 0 && (
-          <div className="space-y-2">
-            {prefillDateWarnings.map((w) => (
-              <div
-                key={w.lineId}
-                className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-              >
-                <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                <p>
-                  {w.type === 'gap'
-                    ? `⚠ ${w.drugName}: 前回終了 ${w.prevEndDate} → 今回開始 ${w.currentStartDate}（${w.gapDays}日間のギャップ）`
-                    : `⚠ ${w.drugName}: 前回終了 ${w.prevEndDate} → 今回開始 ${w.currentStartDate}（${Math.abs(w.gapDays)}日間の重複）`}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
 
         {/* Prefill lines table */}
         <div className="space-y-3">
@@ -1044,6 +1279,12 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
           </CardContent>
         )}
       </Card>
+
+      <DispensingInformationPanel
+        intake={intake}
+        previousIntake={previousIntake}
+        prefill={task.prefill}
+      />
 
       {/* Prescription lines with dispense result inputs */}
       <div className="space-y-4">

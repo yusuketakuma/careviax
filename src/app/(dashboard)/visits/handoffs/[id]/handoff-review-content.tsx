@@ -48,6 +48,8 @@ export function HandoffReviewContent({ visitRecordId }: { visitRecordId: string 
             </p>
           </div>
         }
+        mainWorkflowSteps={['visits']}
+        mainWorkflowDescription="申し送り確認も訪問工程の派生画面として扱い、主業務フロー上の位置を揃えています。"
         className="mb-0"
       >
         <PageShortcutLinks links={getVisitHandoffShortcutLinks(visitRecordId)} />

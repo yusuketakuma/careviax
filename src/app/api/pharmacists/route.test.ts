@@ -160,6 +160,33 @@ describe('/api/pharmacists GET', () => {
     });
   });
 
+  it('returns schedule switcher fields used by the dashboard', async () => {
+    visitScheduleGroupByMock.mockResolvedValueOnce([
+      {
+        pharmacist_id: 'user_1',
+        _count: {
+          _all: 7,
+        },
+      },
+    ]);
+
+    const response = await GET(createGetRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        expect.objectContaining({
+          id: 'user_1',
+          name: '停止 ユーザー',
+          site_id: 'site_1',
+          site_name: '本店',
+          monthly_visit_count: 7,
+        }),
+      ],
+    });
+  });
+
   it('dedupes collaborator rows by user id', async () => {
     membershipFindManyMock.mockResolvedValueOnce([
       {

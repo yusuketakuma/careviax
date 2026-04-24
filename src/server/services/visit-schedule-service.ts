@@ -10,6 +10,7 @@ import {
   evaluateVisitWorkflowGate,
   formatVisitWorkflowGateIssues,
 } from '@/server/services/management-plans';
+import { validateScheduleTimeStringsFitShift } from '@/server/services/visit-schedule-shift';
 import type { z } from 'zod';
 import type { createVisitScheduleSchema } from '@/lib/validations/visit-schedule';
 
@@ -107,11 +108,34 @@ export async function createSchedule(
     ...rest
   } = data;
   void _notes;
+  const scheduledDate = new Date(scheduled_date);
+  const shift = await prisma.pharmacistShift.findFirst({
+    where: {
+      org_id: orgId,
+      user_id: rest.pharmacist_id,
+      date: scheduledDate,
+    },
+    select: {
+      site_id: true,
+      available: true,
+      available_from: true,
+      available_to: true,
+    },
+  });
+  const shiftValidationError = validateScheduleTimeStringsFitShift(
+    shift,
+    time_window_start,
+    time_window_end,
+  );
+  if (shiftValidationError) {
+    return validationError(shiftValidationError);
+  }
+  const effectiveSiteId = site_id ?? shift?.site_id ?? null;
 
   const refResult = await validateOrgReferences(orgId, {
     case_id: rest.case_id,
     pharmacist_id: rest.pharmacist_id,
-    ...(site_id ? { site_id } : {}),
+    ...(effectiveSiteId ? { site_id: effectiveSiteId } : {}),
   });
   if (!refResult.ok) return refResult.response;
 
@@ -151,7 +175,7 @@ export async function createSchedule(
     return tx.visitSchedule.create({
       data: {
         org_id: orgId,
-        site_id: site_id ?? null,
+        site_id: effectiveSiteId,
         priority: priority ?? 'normal',
         facility_unit_id: facilityUnitId,
         assignment_mode:
@@ -159,7 +183,7 @@ export async function createSchedule(
           careCase.primary_pharmacist_id === rest.pharmacist_id
             ? 'primary'
             : 'fallback',
-        scheduled_date: new Date(scheduled_date),
+        scheduled_date: scheduledDate,
         ...(time_window_start
           ? { time_window_start: new Date(`1970-01-01T${time_window_start}`) }
           : {}),
@@ -168,6 +192,22 @@ export async function createSchedule(
           : {}),
         confirmed_at: new Date(),
         confirmed_by: userId,
+        route_order:
+          ((await tx.visitSchedule.findFirst({
+            where: {
+              org_id: orgId,
+              pharmacist_id: rest.pharmacist_id,
+              scheduled_date: scheduledDate,
+              schedule_status: {
+                not: 'cancelled',
+              },
+              route_order: {
+                not: null,
+              },
+            },
+            orderBy: { route_order: 'desc' },
+            select: { route_order: true },
+          }))?.route_order ?? 0) + 1,
         ...rest,
       },
     });

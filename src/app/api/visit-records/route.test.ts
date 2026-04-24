@@ -6,16 +6,20 @@ const {
   getRequestAuthContextMock,
   membershipFindFirstMock,
   patientFindFirstMock,
+  queryRawMock,
   processHandoffExtractionMock,
   withOrgContextMock,
   visitScheduleFindFirstMock,
   careCaseFindFirstMock,
+  visitRecordFindManyMock,
   visitRecordCreateMock,
   visitRecordFindFirstMock,
   visitScheduleUpdateMock,
   consentRecordFindFirstMock,
   medicationCycleFindFirstMock,
   medicationCycleUpdateMock,
+  medicationCycleUpdateManyMock,
+  cycleTransitionLogCreateMock,
   workflowExceptionFindFirstMock,
   workflowExceptionCreateMock,
   medicationIssueFindFirstMock,
@@ -38,16 +42,20 @@ const {
   getRequestAuthContextMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
+  queryRawMock: vi.fn(),
   processHandoffExtractionMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   visitScheduleFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
+  visitRecordFindManyMock: vi.fn(),
   visitRecordCreateMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
   visitScheduleUpdateMock: vi.fn(),
   consentRecordFindFirstMock: vi.fn(),
   medicationCycleFindFirstMock: vi.fn(),
   medicationCycleUpdateMock: vi.fn(),
+  medicationCycleUpdateManyMock: vi.fn(),
+  cycleTransitionLogCreateMock: vi.fn(),
   workflowExceptionFindFirstMock: vi.fn(),
   workflowExceptionCreateMock: vi.fn(),
   medicationIssueFindFirstMock: vi.fn(),
@@ -76,6 +84,10 @@ vi.mock('@/lib/db/client', () => ({
     membership: {
       findFirst: membershipFindFirstMock,
     },
+    visitRecord: {
+      findMany: visitRecordFindManyMock,
+    },
+    $queryRaw: queryRawMock,
   },
 }));
 
@@ -99,7 +111,7 @@ vi.mock('@/server/services/visit-handoff', () => ({
   processHandoffExtraction: processHandoffExtractionMock,
 }));
 
-import { POST } from './route';
+import { GET, POST } from './route';
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
   return {
@@ -110,6 +122,270 @@ function createRequest(body: unknown, headers?: Record<string, string>) {
     json: async () => body,
   } as unknown as NextRequest;
 }
+
+function createGetRequest(url = 'http://localhost/api/visit-records') {
+  return {
+    url,
+    method: 'GET',
+    headers: {
+      get: (key: string) => (key === 'x-org-id' ? 'org_1' : null),
+    },
+  } as unknown as NextRequest;
+}
+
+describe('/api/visit-records GET', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    queryRawMock.mockReset();
+    authMock.mockResolvedValue({ user: { id: 'user_1', orgId: 'org_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    visitRecordFindManyMock.mockResolvedValue([
+      {
+        id: 'visit_1',
+        schedule_id: 'schedule_1',
+        patient_id: 'patient_1',
+        pharmacist_id: 'pharmacist_1',
+        visit_date: new Date('2026-04-20T10:00:00.000Z'),
+        outcome_status: 'completed',
+        soap_subjective: '眠気なし',
+        soap_objective: null,
+        soap_assessment: null,
+        soap_plan: null,
+        receipt_person_name: null,
+        receipt_person_relation: null,
+        receipt_at: null,
+        next_visit_suggestion_date: null,
+        version: 1,
+        created_at: new Date('2026-04-20T09:00:00.000Z'),
+        updated_at: new Date('2026-04-20T10:00:00.000Z'),
+        schedule: {
+          visit_type: 'regular',
+          scheduled_date: new Date('2026-04-20T00:00:00.000Z'),
+          case_: {
+            patient: {
+              id: 'patient_1',
+              name: '山田太郎',
+              name_kana: 'ヤマダタロウ',
+            },
+          },
+        },
+      },
+    ]);
+    queryRawMock.mockResolvedValueOnce([
+      {
+        patient_id: 'patient_1',
+        id: 'intake_1',
+        prescribed_date: new Date('2026-04-18T00:00:00.000Z'),
+        prescriber_name: '佐藤医師',
+        prescription_count: BigInt(1),
+        drug_names: ['アムロジピン錠5mg'],
+      },
+    ]);
+    queryRawMock.mockResolvedValueOnce([
+      {
+        record_id: 'visit_1',
+        visit_count: BigInt(2),
+        previous_visit_id: 'visit_prev',
+        previous_visit_date: new Date('2026-04-01T10:00:00.000Z'),
+        previous_outcome_status: 'completed_with_issue',
+        previous_next_visit_suggestion_date: new Date('2026-04-20T00:00:00.000Z'),
+      },
+    ]);
+  });
+
+  it('returns patient context and history summaries so visit pages can check patient-level past records', async () => {
+    queryRawMock.mockReset();
+    visitRecordFindManyMock.mockResolvedValue([
+      {
+        id: 'visit_2',
+        schedule_id: 'schedule_2',
+        patient_id: 'patient_1',
+        pharmacist_id: 'pharmacist_1',
+        visit_date: new Date('2026-04-22T10:00:00.000Z'),
+        outcome_status: 'completed',
+        soap_subjective: null,
+        soap_objective: null,
+        soap_assessment: null,
+        soap_plan: null,
+        receipt_person_name: null,
+        receipt_person_relation: null,
+        receipt_at: null,
+        next_visit_suggestion_date: null,
+        version: 1,
+        created_at: new Date('2026-04-22T10:30:00.000Z'),
+        updated_at: new Date('2026-04-22T10:30:00.000Z'),
+        schedule: null,
+      },
+      {
+        id: 'visit_1',
+        schedule_id: 'schedule_1',
+        patient_id: 'patient_1',
+        pharmacist_id: 'pharmacist_1',
+        visit_date: new Date('2026-04-20T10:00:00.000Z'),
+        outcome_status: 'completed',
+        soap_subjective: '眠気なし',
+        soap_objective: null,
+        soap_assessment: null,
+        soap_plan: null,
+        receipt_person_name: null,
+        receipt_person_relation: null,
+        receipt_at: null,
+        next_visit_suggestion_date: null,
+        version: 1,
+        created_at: new Date('2026-04-20T09:00:00.000Z'),
+        updated_at: new Date('2026-04-20T10:00:00.000Z'),
+        schedule: {
+          visit_type: 'regular',
+          scheduled_date: new Date('2026-04-20T00:00:00.000Z'),
+          case_: {
+            patient: {
+              id: 'patient_1',
+              name: '山田太郎',
+              name_kana: 'ヤマダタロウ',
+            },
+          },
+        },
+      },
+    ]);
+    queryRawMock.mockResolvedValueOnce([
+      {
+        patient_id: 'patient_1',
+        id: 'intake_1',
+        prescribed_date: new Date('2026-04-18T00:00:00.000Z'),
+        prescriber_name: '佐藤医師',
+        prescription_count: BigInt(1),
+        drug_names: ['アムロジピン錠5mg'],
+      },
+    ]);
+    queryRawMock.mockResolvedValueOnce([
+      {
+        record_id: 'visit_2',
+        visit_count: BigInt(2),
+        previous_visit_id: 'visit_1',
+        previous_visit_date: new Date('2026-04-20T10:00:00.000Z'),
+        previous_outcome_status: 'completed',
+        previous_next_visit_suggestion_date: null,
+      },
+    ]);
+
+    const response = await GET(
+      createGetRequest('http://localhost/api/visit-records?include_history_summary=true&limit=1'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(visitRecordFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
+        select: expect.objectContaining({
+          schedule: {
+            select: expect.objectContaining({
+              case_: {
+                select: {
+                  patient: {
+                    select: {
+                      id: true,
+                      name: true,
+                      name_kana: true,
+                    },
+                  },
+                },
+              },
+            }),
+          },
+        }),
+      }),
+    );
+    expect(queryRawMock).toHaveBeenCalledTimes(2);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        {
+          id: 'visit_2',
+          patient_id: 'patient_1',
+          patient_history_summary: {
+            prescription_count: 1,
+            visit_count: 2,
+            latest_prescription: {
+              id: 'intake_1',
+              prescriber_name: '佐藤医師',
+              drug_names: ['アムロジピン錠5mg'],
+            },
+            previous_visit: {
+              id: 'visit_1',
+              outcome_status: 'completed',
+            },
+          },
+        },
+      ],
+      hasMore: true,
+      nextCursor: expect.any(String),
+    });
+  });
+
+  it('uses keyset cursor conditions after the first visit page', async () => {
+    const cursor = Buffer.from(
+      JSON.stringify({
+        visit_date: '2026-04-20T10:00:00.000Z',
+        created_at: '2026-04-20T09:00:00.000Z',
+        id: 'visit_1',
+      }),
+      'utf8',
+    ).toString('base64url');
+
+    const response = await GET(
+      createGetRequest(`http://localhost/api/visit-records?limit=20&cursor=${cursor}`),
+    );
+
+    expect(response.status).toBe(200);
+    const findManyArgs = visitRecordFindManyMock.mock.calls[0]?.[0];
+    expect(findManyArgs).not.toHaveProperty('cursor');
+    expect(findManyArgs).not.toHaveProperty('skip');
+    expect(findManyArgs).toEqual(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            { visit_date: { lt: new Date('2026-04-20T10:00:00.000Z') } },
+            {
+              visit_date: new Date('2026-04-20T10:00:00.000Z'),
+              created_at: { lt: new Date('2026-04-20T09:00:00.000Z') },
+            },
+            {
+              visit_date: new Date('2026-04-20T10:00:00.000Z'),
+              created_at: new Date('2026-04-20T09:00:00.000Z'),
+              id: { lt: 'visit_1' },
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
+  it('ignores legacy visit id cursors instead of id cursor paging', async () => {
+    const response = await GET(
+      createGetRequest('http://localhost/api/visit-records?cursor=visit_1'),
+    );
+
+    expect(response.status).toBe(200);
+    const findManyArgs = visitRecordFindManyMock.mock.calls[0]?.[0];
+    expect(findManyArgs).not.toHaveProperty('cursor');
+    expect(findManyArgs).not.toHaveProperty('skip');
+    expect(findManyArgs.where).not.toHaveProperty('OR');
+  });
+
+  it('skips patient history summary queries unless explicitly requested', async () => {
+    const response = await GET(createGetRequest());
+
+    expect(response.status).toBe(200);
+    expect(queryRawMock).not.toHaveBeenCalled();
+    expect(visitRecordFindManyMock).toHaveBeenCalledTimes(1);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        {
+          patient_history_summary: null,
+        },
+      ],
+    });
+  });
+});
 
 describe('/api/visit-records POST', () => {
   beforeEach(() => {
@@ -164,8 +440,12 @@ describe('/api/visit-records POST', () => {
     medicationCycleFindFirstMock.mockResolvedValue({
       id: 'cycle_1',
       overall_status: 'visit_ready',
+      version: 1,
+      patient_id: 'patient_1',
     });
     medicationCycleUpdateMock.mockResolvedValue({ id: 'cycle_1' });
+    medicationCycleUpdateManyMock.mockResolvedValue({ count: 1 });
+    cycleTransitionLogCreateMock.mockResolvedValue({ id: 'transition_1' });
     workflowExceptionFindFirstMock.mockResolvedValue(null);
     workflowExceptionCreateMock.mockResolvedValue({ id: 'exception_1' });
     medicationIssueFindFirstMock.mockResolvedValue(null);
@@ -207,6 +487,10 @@ describe('/api/visit-records POST', () => {
         medicationCycle: {
           findFirst: medicationCycleFindFirstMock,
           update: medicationCycleUpdateMock,
+          updateMany: medicationCycleUpdateManyMock,
+        },
+        cycleTransitionLog: {
+          create: cycleTransitionLogCreateMock,
         },
         workflowException: {
           findFirst: workflowExceptionFindFirstMock,
@@ -233,7 +517,7 @@ describe('/api/visit-records POST', () => {
           upsert: taskUpsertMock,
           create: taskUpsertMock,
         },
-      })
+      }),
     );
   });
 
@@ -251,8 +535,8 @@ describe('/api/visit-records POST', () => {
           outcome_status: 'completed',
           soap_subjective: '服薬状況問題なし',
         },
-        { 'x-org-id': 'org_1' }
-      )
+        { 'x-org-id': 'org_1' },
+      ),
     );
 
     if (!response) throw new Error('response is required');
@@ -274,8 +558,8 @@ describe('/api/visit-records POST', () => {
           outcome_status: 'postponed',
           postpone_reason: '発熱のため延期',
         },
-        { 'x-org-id': 'org_1' }
-      )
+        { 'x-org-id': 'org_1' },
+      ),
     );
 
     if (!response) throw new Error('response is required');
@@ -316,8 +600,8 @@ describe('/api/visit-records POST', () => {
           outcome_status: 'completed',
           soap_subjective: '服薬状況問題なし',
         },
-        { 'x-org-id': 'org_1' }
-      )
+        { 'x-org-id': 'org_1' },
+      ),
     );
 
     if (!response) throw new Error('response is required');
@@ -327,7 +611,7 @@ describe('/api/visit-records POST', () => {
         data: expect.objectContaining({
           next_visit_suggestion_date: new Date('2026-04-01T00:00:00.000Z'),
         }),
-      })
+      }),
     );
     await expect(response.json()).resolves.toMatchObject({
       suggestedSchedule: {
@@ -336,6 +620,40 @@ describe('/api/visit-records POST', () => {
         interval_days: 6,
       },
     });
+  });
+
+  it('advances the medication cycle to visit completed through transition logging', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          soap_subjective: '服薬状況問題なし',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(medicationCycleUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'cycle_1', version: 1 }),
+        data: expect.objectContaining({ overall_status: 'visit_completed' }),
+      }),
+    );
+    expect(cycleTransitionLogCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          cycle_id: 'cycle_1',
+          from_status: 'visit_ready',
+          to_status: 'visit_completed',
+          note: '訪問記録作成に伴う訪問完了',
+        }),
+      }),
+    );
   });
 
   it('creates tracing follow-up work for reduction targets and raises an exception for prohibited reductions', async () => {
@@ -364,8 +682,8 @@ describe('/api/visit-records POST', () => {
             },
           ],
         },
-        { 'x-org-id': 'org_1' }
-      )
+        { 'x-org-id': 'org_1' },
+      ),
     );
 
     if (!response) throw new Error('response is required');
@@ -404,14 +722,14 @@ describe('/api/visit-records POST', () => {
         create: expect.objectContaining({
           task_type: 'tracing_report_followup',
         }),
-      })
+      }),
     );
     expect(taskUpsertMock).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
           task_type: 'residual_reduction_review',
         }),
-      })
+      }),
     );
   });
 
@@ -456,8 +774,8 @@ describe('/api/visit-records POST', () => {
           receipt_person_name: '長男 山田',
           receipt_at: '2026-03-26T10:30',
         },
-        { 'x-org-id': 'org_1' }
-      )
+        { 'x-org-id': 'org_1' },
+      ),
     );
 
     if (!response) throw new Error('response is required');
@@ -502,8 +820,8 @@ describe('/api/visit-records POST', () => {
             plan: { intervention_checks: [] },
           },
         },
-        { 'x-org-id': 'org_1' }
-      )
+        { 'x-org-id': 'org_1' },
+      ),
     );
 
     if (!response) throw new Error('response is required');
@@ -519,7 +837,7 @@ describe('/api/visit-records POST', () => {
           userId: 'user_1',
           orgId: 'org_1',
         }),
-      })
+      }),
     );
   });
 });

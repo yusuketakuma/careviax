@@ -11,7 +11,14 @@
  *   Record 201: 201,<rp>,<drug_name>,<dose>,<unit>,<code_type>,<drug_code>,<creator>,<generic_name>,<generic_code_type>,<generic_code>
  *   Record 281: 281,<rp>,<supplement>,<creator>
  *   Record 301: 301,<rp>,<usage_name>,<quantity>,<unit>,<form_code>,<usage_code_type>,<usage_code>,<creator>
+ *   Record 3:   3,<otc_drug_name>,<start_date>,<end_date>,<creator>,<sequence>,<jan_code>
+ *   Record 31:  31,<otc_sequence>,<ingredient_name>,<code_type>,<ingredient_code>,<creator>
+ *   Record 4:   4,<memo>,<input_date>,<creator>
+ *   Record 411: 411,<content>,<info_type>,<creator>
+ *   Record 421: 421,<residual_content>,<creator>
  *   Record 401: 401,<content>,<creator>
+ *   Record 601: 601,<patient_note>,<input_date>
+ *   Record 701: 701,<pharmacist_name>,<pharmacy_name>,<contact>,<start_date>,<end_date>,<creator>
  *   Record 911: 911,<data_id_14digits>,<split_count_3digits>,<seq_number_3digits>
  */
 
@@ -94,3 +101,17 @@ export const MULTI_QR_PART2 = `JAHISTC08,1
 export const ERA_DATE_QR = `JAHISTC08,1
 1,元号テスト,1,S330303,,,,,,, ゲンゴウテスト
 5,20260401,1`;
+
+// JAHIS Ver.2.6 補足レコード付きQR
+export const SUPPLEMENTAL_RECORDS_QR = `JAHISTC08,1
+1,補足患者,1,19500315,,,,,,, ホソクカンジャ
+5,20260401,1
+3,バファリンA,20260401,20260403,2,1,4987107618160
+31,1,アスピリン,2,1143001,2
+4,市販薬服用中は胃部不快感に注意,R080401,2
+411,嚥下困難のため錠剤は粉砕して投与する。,31,1
+421,アムロジピンが10錠残薬。症状改善による自己判断で服用中断。,1
+601,飲み始めてから昼に眠くなるようになった。,R080401
+701,工業会 次郎,工業会薬局 駅前店,03-3506-8010,R080401,,1
+201,1,アムロジピン錠5mg,5,mg,2,612170709,1,,,
+301,1,1日1回朝食後服用,14,日分,1,,,1`;

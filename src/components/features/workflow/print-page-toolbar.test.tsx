@@ -15,6 +15,7 @@ describe('PrintPageToolbar', () => {
         backLabel="報告書詳細へ戻る"
         title="報告書 印刷ビュー"
         description="A4 印刷用"
+        mainWorkflowSteps={['reports']}
         shortcuts={[
           { href: '/reports', label: '報告書一覧' },
           { href: '/external', label: '外部連携' },
@@ -26,5 +27,6 @@ describe('PrintPageToolbar', () => {
     expect(screen.getByRole('heading', { name: '報告書 印刷ビュー' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '印刷' })).toBeTruthy();
     expect(screen.getByRole('link', { name: '報告書一覧' }).getAttribute('href')).toBe('/reports');
+    expect(screen.getByTestId('main-workflow-compact-nav')).toBeTruthy();
   });
 });

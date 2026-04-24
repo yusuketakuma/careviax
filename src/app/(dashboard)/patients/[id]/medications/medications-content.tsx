@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
+import { HelpPopover } from '@/components/ui/help-popover';
 import {
   Dialog,
   DialogContent,
@@ -938,12 +939,12 @@ export function MedicationsContent({
               {medicationStats.map((item) => (
                 <Card key={item.label} className="border-slate-200 shadow-sm">
                   <CardHeader className="pb-2">
-                    <CardDescription>{item.label}</CardDescription>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-muted-foreground">{item.label}</p>
+                      <HelpPopover title={item.label} description={item.description} />
+                    </div>
                     <CardTitle className="text-2xl">{item.value}</CardTitle>
                   </CardHeader>
-                  <CardContent className="pt-0 text-xs text-muted-foreground">
-                    {item.description}
-                  </CardContent>
                 </Card>
               ))}
             </div>

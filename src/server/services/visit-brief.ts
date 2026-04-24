@@ -11,6 +11,7 @@ import { listCommunicationQueue } from '@/server/services/communication-queue';
 import { generateVisitBriefAiSummary } from '@/server/services/visit-brief-ai';
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
 import { SET_METHOD_LABELS } from '@/lib/prescription/set-methods';
+import { readJahisSupplementalDetails } from '@/lib/pharmacy/jahis-supplemental-records-view';
 import type {
   VisitBrief,
   VisitBriefAiSummary,
@@ -24,6 +25,7 @@ import type {
   VisitBriefFacilityContext,
   VisitBriefMedicationChange,
   VisitBriefMedicationItem,
+  VisitBriefJahisSupplementalRecord,
   VisitBriefRuleSummary,
   VisitBriefSeverity,
   VisitBriefUnresolvedItem,
@@ -63,6 +65,16 @@ const OPEN_SELF_REPORT_STATUSES = ['submitted', 'triaged', 'converted_to_task'] 
 const OPEN_REQUEST_STATUSES = ['draft', 'sent', 'received', 'in_progress', 'escalated'] as const;
 const OPEN_ISSUE_STATUSES = ['open', 'in_progress'] as const;
 
+type JahisSupplementalRecordForBrief = {
+  id: string;
+  record_type: string;
+  record_label: string;
+  summary: string | null;
+  payload: unknown;
+  raw_line: string;
+  created_at: Date;
+};
+
 const DISPENSING_METHOD_LABELS: Record<string, string> = {
   standard: '通常',
   unit_dose: '一包化',
@@ -81,6 +93,53 @@ function timeToHHMM(value: Date | null | undefined): string | null {
   const h = String(value.getHours()).padStart(2, '0');
   const m = String(value.getMinutes()).padStart(2, '0');
   return `${h}:${m}`;
+}
+
+async function listJahisSupplementalRecordsForBrief(
+  db: DbClient,
+  args: { orgId: string; patientId: string; limit?: number },
+): Promise<JahisSupplementalRecordForBrief[]> {
+  const client = (
+    db as unknown as {
+      jahisSupplementalRecord?: {
+        findMany?: (args: Record<string, unknown>) => Promise<JahisSupplementalRecordForBrief[]>;
+      };
+    }
+  ).jahisSupplementalRecord;
+
+  if (!client?.findMany) return [];
+
+  return client.findMany({
+    where: {
+      org_id: args.orgId,
+      patient_id: args.patientId,
+    },
+    orderBy: [{ created_at: 'desc' }, { line_number: 'asc' }],
+    take: args.limit ?? 6,
+    select: {
+      id: true,
+      record_type: true,
+      record_label: true,
+      summary: true,
+      payload: true,
+      raw_line: true,
+      created_at: true,
+    },
+  });
+}
+
+function normalizeJahisSupplementalRecordsForBrief(
+  records: JahisSupplementalRecordForBrief[],
+): VisitBriefJahisSupplementalRecord[] {
+  return records.map((record) => ({
+    id: record.id,
+    record_type: record.record_type,
+    record_label: record.record_label,
+    summary: record.summary,
+    details: readJahisSupplementalDetails(record.payload),
+    raw_line: record.raw_line,
+    created_at: record.created_at.toISOString(),
+  }));
 }
 
 function severityFromPriority(priority: string | null | undefined): VisitBriefSeverity {
@@ -574,6 +633,7 @@ function buildMustCheckToday(args: {
   deliveryItems: VisitBriefDeliveryItem[];
   dosageFormSupport: VisitBriefDosageFormCandidate[];
   communicationItems: VisitBriefCommunicationItem[];
+  jahisSupplementalRecords: VisitBriefJahisSupplementalRecord[];
   unresolvedItems: VisitBriefUnresolvedItem[];
   previousVisitPlan: string | null;
 }): string[] {
@@ -599,6 +659,20 @@ function buildMustCheckToday(args: {
   }
   for (const item of args.communicationItems.slice(0, 2)) {
     items.add(item.title);
+  }
+  for (const record of args.jahisSupplementalRecords.slice(0, 3)) {
+    const summary = record.summary ?? record.raw_line;
+    if (record.record_type === '421') {
+      items.add(`JAHIS残薬確認: ${summary}`);
+      continue;
+    }
+    if (record.record_type === '4' || record.record_type === '601') {
+      items.add(`${record.record_label}: ${summary}`);
+      continue;
+    }
+    if (record.record_type === '701') {
+      items.add('JAHISかかりつけ薬剤師情報の確認');
+    }
   }
   for (const item of args.unresolvedItems.slice(0, 2)) {
     items.add(item.title);
@@ -681,6 +755,7 @@ function sourceRefs(args: {
   deliveryItems: VisitBriefDeliveryItem[];
   dosageFormSupport: VisitBriefDosageFormCandidate[];
   communicationItems: VisitBriefCommunicationItem[];
+  jahisSupplementalRecords: VisitBriefJahisSupplementalRecord[];
   unresolvedItems: VisitBriefUnresolvedItem[];
 }) {
   const refs = new Set<string>();
@@ -689,6 +764,7 @@ function sourceRefs(args: {
   if (args.deliveryItems.length > 0) refs.add('送達・共有ログ');
   if (args.dosageFormSupport.length > 0) refs.add('自己申告・薬学的課題');
   if (args.communicationItems.length > 0) refs.add('他職種/家族からの更新');
+  if (args.jahisSupplementalRecords.length > 0) refs.add('JAHIS補足情報');
   if (args.unresolvedItems.length > 0) refs.add('未解決タスク・課題');
   return Array.from(refs);
 }
@@ -699,6 +775,7 @@ function buildRuleSummary(args: {
   deliveryItems: VisitBriefDeliveryItem[];
   dosageFormSupport: VisitBriefDosageFormCandidate[];
   communicationItems: VisitBriefCommunicationItem[];
+  jahisSupplementalRecords: VisitBriefJahisSupplementalRecord[];
   unresolvedItems: VisitBriefUnresolvedItem[];
   mustCheckToday: string[];
 }): VisitBriefRuleSummary {
@@ -764,6 +841,7 @@ async function buildAiSummary(args: {
   deliveryItems: VisitBriefDeliveryItem[];
   dosageFormSupport: VisitBriefDosageFormCandidate[];
   communicationItems: VisitBriefCommunicationItem[];
+  jahisSupplementalRecords: VisitBriefJahisSupplementalRecord[];
   unresolvedItems: VisitBriefUnresolvedItem[];
   mustCheckToday: string[];
 }): Promise<VisitBriefAiSummary> {
@@ -778,9 +856,12 @@ async function buildAiSummary(args: {
       .slice(0, 5)
       .map((item) => `${item.drug_name} / ${item.change_type} / ${item.current}`),
     dispensing: args.dispensingItems.slice(0, 5).map((item) => item.note),
-    multidisciplinary: args.communicationItems
-      .slice(0, 5)
-      .map((item) => `${item.title} / ${item.summary}`),
+    multidisciplinary: [
+      ...args.communicationItems.slice(0, 5).map((item) => `${item.title} / ${item.summary}`),
+      ...args.jahisSupplementalRecords
+        .slice(0, 3)
+        .map((item) => `${item.record_label} / ${item.summary ?? item.raw_line}`),
+    ],
     unresolved: args.unresolvedItems.slice(0, 5).map((item) => `${item.title} / ${item.summary}`),
     mustCheckToday: args.mustCheckToday,
     fallbackHeadline,
@@ -823,6 +904,7 @@ export async function getPatientVisitBrief(
     activeCase,
     recentConferenceNotes,
     facilityResidence,
+    jahisSupplementalRows,
   ] = await Promise.all([
     db.patient.findFirst({
       where: {
@@ -1123,6 +1205,10 @@ export async function getPatientVisitBrief(
           },
         })
       : Promise.resolve(null),
+    listJahisSupplementalRecordsForBrief(db, {
+      orgId: args.orgId,
+      patientId: args.patientId,
+    }),
   ]);
 
   if (!patient) {
@@ -1241,6 +1327,7 @@ export async function getPatientVisitBrief(
     communicationRequests,
     contactLogs,
   });
+  const jahisSupplementalRecords = normalizeJahisSupplementalRecordsForBrief(jahisSupplementalRows);
   const unresolvedInquiries = inquiries.map((item) => ({
     ...item,
     proposal_origin: (item.proposal_origin === 'pre_issuance' ? 'pre_issuance' : 'post_inquiry') as
@@ -1259,6 +1346,7 @@ export async function getPatientVisitBrief(
     deliveryItems,
     dosageFormSupport,
     communicationItems,
+    jahisSupplementalRecords,
     unresolvedItems,
     previousVisitPlan: previousVisit?.soap_plan ?? null,
   });
@@ -1268,6 +1356,7 @@ export async function getPatientVisitBrief(
     deliveryItems,
     dosageFormSupport,
     communicationItems,
+    jahisSupplementalRecords,
     unresolvedItems,
     mustCheckToday,
   });
@@ -1279,6 +1368,7 @@ export async function getPatientVisitBrief(
     deliveryItems,
     dosageFormSupport,
     communicationItems,
+    jahisSupplementalRecords,
     unresolvedItems,
     mustCheckToday,
   });
@@ -1340,6 +1430,7 @@ export async function getPatientVisitBrief(
     delivery_status: deliveryItems,
     dosage_form_support: dosageFormSupport,
     multidisciplinary_updates: communicationItems,
+    jahis_supplemental_records: jahisSupplementalRecords,
     unresolved_items: unresolvedItems,
     must_check_today: mustCheckToday,
     rule_summary: ruleSummary,

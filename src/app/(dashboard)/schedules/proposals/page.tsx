@@ -43,6 +43,8 @@ export default async function ScheduleProposalsPage({ searchParams }: SchedulePr
           </div>
         }
         shortcuts={getScheduleProposalShortcutLinks()}
+        mainWorkflowSteps={['schedules']}
+        mainWorkflowDescription="訪問候補の調整画面でも、スケジュール登録工程の一部として現在地を上部で示します。"
         className="mb-0"
       />
 

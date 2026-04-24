@@ -251,7 +251,7 @@ export function AppShell({ children }: AppShellProps) {
             onOpenChange={setSidebarOpen}
           >
             <SheetContent side="left" className="w-48 p-0">
-              <Sidebar className="border-r-0" />
+              <Sidebar className="border-r-0" closeOnNavigate />
             </SheetContent>
           </Sheet>
         </div>

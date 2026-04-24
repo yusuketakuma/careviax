@@ -1,16 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const {
-  withAuthMock,
-  withOrgContextMock,
-} = vi.hoisted(() => ({
+const { withAuthMock, withOrgContextMock } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
     (
       handler: (
         req: NextRequest & { orgId: string; userId: string },
-        ctx: { params: Promise<{ id: string }> }
-      ) => Promise<Response>
+        ctx: { params: Promise<{ id: string }> },
+      ) => Promise<Response>,
     ) => {
       return (req: NextRequest, ctx: { params: Promise<{ id: string }> }) =>
         handler(
@@ -19,9 +16,9 @@ const {
             orgId: 'org_1',
             userId: 'user_1',
           } as NextRequest & { orgId: string; userId: string },
-          ctx
+          ctx,
         );
-    }
+    },
   ),
   withOrgContextMock: vi.fn(),
 }));
@@ -60,7 +57,7 @@ describe('/api/qr-scan-drafts/[id] GET', () => {
         qrScanDraft: {
           findFirst: vi.fn().mockResolvedValue(mockDraft),
         },
-      })
+      }),
     );
 
     const response = await GET(createRequest(), DRAFT_PARAMS);
@@ -77,7 +74,7 @@ describe('/api/qr-scan-drafts/[id] GET', () => {
         qrScanDraft: {
           findFirst: vi.fn().mockResolvedValue(null),
         },
-      })
+      }),
     );
 
     const response = await GET(createRequest(), DRAFT_PARAMS);
@@ -87,14 +84,16 @@ describe('/api/qr-scan-drafts/[id] GET', () => {
   });
 
   it('queries with the correct org_id scope', async () => {
-    const findFirstSpy = vi.fn().mockResolvedValue({ id: 'draft_1', org_id: 'org_1', status: 'pending' });
+    const findFirstSpy = vi
+      .fn()
+      .mockResolvedValue({ id: 'draft_1', org_id: 'org_1', status: 'pending' });
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         qrScanDraft: {
           findFirst: findFirstSpy,
         },
-      })
+      }),
     );
 
     await GET(createRequest(), DRAFT_PARAMS);
@@ -102,7 +101,17 @@ describe('/api/qr-scan-drafts/[id] GET', () => {
     expect(findFirstSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ id: 'draft_1', org_id: 'org_1' }),
-      })
+        include: expect.objectContaining({
+          jahis_supplemental_records: expect.objectContaining({
+            select: expect.objectContaining({
+              record_type: true,
+              record_label: true,
+              summary: true,
+              payload: true,
+            }),
+          }),
+        }),
+      }),
     );
   });
 });
@@ -129,6 +138,9 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
         qrScanDraft: {
           update: vi.fn().mockResolvedValue(updatedDraft),
         },
+        jahisSupplementalRecord: {
+          deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
       });
     });
 
@@ -146,7 +158,7 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
         qrScanDraft: {
           findFirst: vi.fn().mockResolvedValue(null),
         },
-      })
+      }),
     );
 
     const response = await DELETE(createRequest(), DRAFT_PARAMS);
@@ -157,6 +169,7 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
 
   it('updates with discarded status targeting correct draft id', async () => {
     const updateSpy = vi.fn().mockResolvedValue({ id: 'draft_1', status: 'discarded' });
+    const deleteSupplementalSpy = vi.fn().mockResolvedValue({ count: 1 });
     let callCount = 0;
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) => {
@@ -170,6 +183,7 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
       }
       return callback({
         qrScanDraft: { update: updateSpy },
+        jahisSupplementalRecord: { deleteMany: deleteSupplementalSpy },
       });
     });
 
@@ -179,7 +193,14 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
       expect.objectContaining({
         where: { id: 'draft_1' },
         data: { status: 'discarded' },
-      })
+      }),
     );
+    expect(deleteSupplementalSpy).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        qr_draft_id: 'draft_1',
+        prescription_intake_id: null,
+      },
+    });
   });
 });

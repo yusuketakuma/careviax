@@ -8,6 +8,7 @@ import {
   LockKeyhole,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { HelpPopover } from '@/components/ui/help-popover';
 import { cn } from '@/lib/utils';
 
 type ErrorStateVariant =
@@ -170,17 +171,20 @@ export function ErrorState({
       </div>
 
       <div className="space-y-2">
-        <h1
-          className={cn(
-            'font-semibold text-foreground',
-            size === 'page' ? 'text-2xl' : 'text-lg'
-          )}
-        >
-          {title ?? meta.title}
-        </h1>
-        <p className="max-w-md text-sm text-muted-foreground">
-          {description ?? meta.description}
-        </p>
+        <div className="flex items-center justify-center gap-2">
+          <h1
+            className={cn(
+              'font-semibold text-foreground',
+              size === 'page' ? 'text-2xl' : 'text-lg'
+            )}
+          >
+            {title ?? meta.title}
+          </h1>
+          <HelpPopover
+            title={title ?? meta.title}
+            description={description ?? meta.description}
+          />
+        </div>
         {detail ? <div className="text-xs text-muted-foreground">{detail}</div> : null}
       </div>
 

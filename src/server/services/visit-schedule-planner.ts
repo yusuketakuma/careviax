@@ -596,6 +596,9 @@ export async function generateVisitScheduleProposalDrafts(
   if (careCase.backup_pharmacist_id) {
     preferenceNotes.push('副担当薬剤師を優先考慮');
   }
+  if (params.preferredPharmacistId) {
+    preferenceNotes.push('希望担当薬剤師を優先考慮');
+  }
   const intakeJson = (careCase.required_visit_support as Record<string, unknown> | null)
     ?.home_visit_intake as Record<string, unknown> | null;
   const specialProcedures = Array.isArray(intakeJson?.special_medical_procedures)
@@ -662,7 +665,6 @@ export async function generateVisitScheduleProposalDrafts(
         gte: planningStart,
         lte: planningEnd,
       },
-      ...(params.preferredPharmacistId ? { user_id: params.preferredPharmacistId } : {}),
     },
     include: {
       user: {
@@ -981,6 +983,8 @@ export async function generateVisitScheduleProposalDrafts(
             : careRelationship === 'backup'
               ? -12
               : 0;
+        const preferredPharmacistBonus =
+          params.preferredPharmacistId === shift.user_id ? -8 : 0;
         const datePenalty = differenceInCalendarDays(shift.date, planningStart) * 10;
         const priorityBonus =
           params.priority === 'emergency'
@@ -1044,7 +1048,8 @@ export async function generateVisitScheduleProposalDrafts(
           scoreBreakdown.slackPenalty +
           scoreBreakdown.lockPenalty +
           scoreBreakdown.cadencePenalty +
-          priorityBonus;
+          priorityBonus +
+          preferredPharmacistBonus;
 
         return {
           kind: 'accepted' as const,

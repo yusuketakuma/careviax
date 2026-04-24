@@ -34,6 +34,8 @@ export default async function DispenseTaskPage({
           { href: `/dispensing/${taskId}/confirm`, label: '確認画面' },
           { href: '/auditing', label: '鑑査一覧' },
         ]}
+        mainWorkflowSteps={['dispensing']}
+        mainWorkflowDescription="調剤入力の詳細画面でも、前後の監査工程まで含めた位置関係を上で確認できます。"
         className="mb-4"
       />
 

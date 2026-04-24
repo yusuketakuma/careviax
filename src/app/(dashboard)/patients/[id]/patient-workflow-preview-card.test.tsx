@@ -117,6 +117,7 @@ describe('PatientWorkflowPreviewCard', () => {
     expect(screen.getByText('報告先マトリクス')).toBeTruthy();
     expect(screen.getByText('連携優先順位プレビュー')).toBeTruthy();
     expect(screen.getByText('医師向け報告')).toBeTruthy();
+    expect(screen.getByText('患者情報')).toBeTruthy();
     expect(screen.getByText(/佐藤医院/)).toBeTruthy();
     expect(screen.getByText('患者・家族への事前連絡を優先します。')).toBeTruthy();
   });

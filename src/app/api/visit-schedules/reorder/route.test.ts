@@ -7,6 +7,7 @@ const {
   scheduleFindManyMock,
   scheduleUpdateMock,
   membershipFindManyMock,
+  pharmacistShiftFindManyMock,
   auditLogCreateMock,
 } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
@@ -25,6 +26,7 @@ const {
   scheduleFindManyMock: vi.fn(),
   scheduleUpdateMock: vi.fn(),
   membershipFindManyMock: vi.fn(),
+  pharmacistShiftFindManyMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
 }));
 
@@ -47,12 +49,14 @@ function createRequest(body: unknown) {
 describe('/api/visit-schedules/reorder PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    scheduleFindManyMock.mockResolvedValue([
+    const schedules = [
       {
         id: 'schedule_1',
         case_id: 'case_1',
         pharmacist_id: 'pharmacist_1',
         scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+        time_window_start: new Date('1970-01-01T09:00:00'),
+        time_window_end: new Date('1970-01-01T10:00:00'),
         confirmed_at: null,
       },
       {
@@ -60,10 +64,35 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         case_id: 'case_1',
         pharmacist_id: 'pharmacist_1',
         scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+        time_window_start: new Date('1970-01-01T10:00:00'),
+        time_window_end: new Date('1970-01-01T11:00:00'),
         confirmed_at: null,
       },
-    ]);
+      {
+        id: 'schedule_3',
+        case_id: 'case_2',
+        pharmacist_id: 'pharmacist_2',
+        scheduled_date: new Date('2026-04-10T00:00:00.000Z'),
+        time_window_start: new Date('1970-01-01T09:00:00'),
+        time_window_end: new Date('1970-01-01T10:00:00'),
+        confirmed_at: null,
+      },
+    ];
+    scheduleFindManyMock.mockImplementation(({ where }: { where: { id?: { in?: string[] } } }) => {
+      const ids = where.id?.in ?? schedules.map((schedule) => schedule.id);
+      return Promise.resolve(schedules.filter((schedule) => ids.includes(schedule.id)));
+    });
     membershipFindManyMock.mockResolvedValue([{ user_id: 'pharmacist_2' }]);
+    pharmacistShiftFindManyMock.mockResolvedValue([
+      {
+        site_id: 'site_2',
+        user_id: 'pharmacist_2',
+        date: new Date('2026-04-10T00:00:00.000Z'),
+        available: true,
+        available_from: new Date('1970-01-01T09:00:00'),
+        available_to: new Date('1970-01-01T18:00:00'),
+      },
+    ]);
     scheduleUpdateMock.mockResolvedValue({});
     auditLogCreateMock.mockResolvedValue({});
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -75,11 +104,54 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         membership: {
           findMany: membershipFindManyMock,
         },
+        pharmacistShift: {
+          findMany: pharmacistShiftFindManyMock,
+        },
         auditLog: {
           create: auditLogCreateMock,
         },
       })
     );
+  });
+
+  it('checks duplicate route orders by resolved date and pharmacist cells', async () => {
+    const response = (await PATCH(
+      createRequest({
+        updates: [
+          {
+            schedule_id: 'schedule_1',
+            route_order: 1,
+          },
+          {
+            schedule_id: 'schedule_3',
+            route_order: 1,
+          },
+        ],
+      })
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(scheduleUpdateMock).toHaveBeenCalledTimes(2);
+
+    const duplicateResponse = (await PATCH(
+      createRequest({
+        updates: [
+          {
+            schedule_id: 'schedule_1',
+            route_order: 1,
+          },
+          {
+            schedule_id: 'schedule_2',
+            route_order: 1,
+          },
+        ],
+      })
+    ))!;
+
+    expect(duplicateResponse.status).toBe(400);
+    await expect(duplicateResponse.json()).resolves.toMatchObject({
+      message: '同一セル内で route_order は重複できません',
+    });
   });
 
   it('updates multiple schedules in one batch', async () => {
@@ -107,9 +179,53 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         data: expect.objectContaining({
           route_order: 1,
           pharmacist_id: 'pharmacist_2',
+          site_id: 'site_2',
         }),
       })
     );
+  });
+
+  it('rejects moving a schedule outside the target pharmacist shift', async () => {
+    scheduleFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        pharmacist_id: 'pharmacist_1',
+        scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+        time_window_start: new Date('1970-01-01T09:00:00'),
+        time_window_end: new Date('1970-01-01T10:00:00'),
+        confirmed_at: null,
+      },
+    ]);
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      {
+        site_id: 'site_2',
+        user_id: 'pharmacist_2',
+        date: new Date('2026-04-10T00:00:00.000Z'),
+        available: true,
+        available_from: new Date('1970-01-01T10:30:00'),
+        available_to: new Date('1970-01-01T18:00:00'),
+      },
+    ]);
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [
+          {
+            schedule_id: 'schedule_1',
+            route_order: 1,
+            scheduled_date: '2026-04-10',
+            pharmacist_id: 'pharmacist_2',
+          },
+        ],
+      })
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '訪問開始時刻が薬剤師シフトの開始前です',
+    });
+    expect(scheduleUpdateMock).not.toHaveBeenCalled();
   });
 
   it('rejects moving a confirmed schedule to another day or pharmacist', async () => {
@@ -119,6 +235,8 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         case_id: 'case_1',
         pharmacist_id: 'pharmacist_1',
         scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
         confirmed_at: new Date('2026-04-08T12:00:00.000Z'),
       },
     ]);

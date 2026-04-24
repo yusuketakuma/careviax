@@ -16,12 +16,12 @@ export default function AdminDashboardPage() {
       <AdminPageHeader
         eyebrow="Admin Overview"
         title="管理者ダッシュボード"
-        description="月間進捗、記録滞留、報告送達、例外残件を一画面で確認します。"
+        description="月間進捗、記録滞留、報告送達、例外残件、設定・マスター整備を一画面で確認します。"
         supportingContent={
           <div className="space-y-1">
             <p className="text-sm font-medium text-foreground">確認順序</p>
             <p className="text-sm text-muted-foreground">
-              月間進捗、残件、例外、運用品質を上から確認し、必要な管理画面へ進みます。
+              月間進捗、残件、例外、設定・マスター整備、運用品質を上から確認し、必要な管理画面へ進みます。
             </p>
           </div>
         }

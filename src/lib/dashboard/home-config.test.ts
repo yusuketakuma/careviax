@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DASHBOARD_PIPELINE_STEPS,
   DASHBOARD_HEADER_SHORTCUTS,
   DASHBOARD_ADMIN_LINKS,
   DASHBOARD_COORDINATION_LINKS,
@@ -17,6 +18,18 @@ describe('DASHBOARD_WORKFLOW_LINKS', () => {
       expect.objectContaining({
         href: '/medication-sets',
         title: 'セット管理',
+      }),
+    );
+  });
+
+  it('keeps set and set-audit as separate workflow entries', () => {
+    expect(DASHBOARD_WORKFLOW_LINKS.map((item) => item.key)).toEqual(
+      expect.arrayContaining(['medication_sets', 'set_audit']),
+    );
+    expect(DASHBOARD_WORKFLOW_LINKS.find((item) => item.key === 'set_audit')).toEqual(
+      expect.objectContaining({
+        href: '/medication-sets',
+        title: 'セット監査',
       }),
     );
   });
@@ -83,6 +96,15 @@ describe('dashboard home config', () => {
   it('routes synthetic medication-set queue items to the correct tabs', () => {
     expect(DASHBOARD_TASK_TYPE_TO_TAB.medication_set_queue).toBe('medication_set');
     expect(DASHBOARD_TASK_TYPE_TO_TAB.set_audit_queue).toBe('set_audit');
+  });
+
+  it('labels visit planning as schedule registration in the pipeline', () => {
+    expect(DASHBOARD_PIPELINE_STEPS.find((item) => item.key === 'visit_planning')).toEqual(
+      expect.objectContaining({ label: 'スケジュール' }),
+    );
+    expect(DASHBOARD_PIPELINE_STEPS.find((item) => item.key === 'reporting')).toEqual(
+      expect.objectContaining({ label: '報告書' }),
+    );
   });
 
   it('provides fallback actions for medication-set tabs', () => {

@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { Proposal, VisitSchedule } from '@/app/(dashboard)/schedules/day-view.shared';
 import {
+  buildHomeScheduleStaffOptions,
+  buildHomeScheduleStaffSummaries,
   buildProposalBoardHref,
+  buildProposalPatientHref,
   buildScheduleBoardHref,
+  buildSchedulePatientHref,
   buildHomeScheduleMetrics,
   countProposalsByReason,
   countSchedulesByReason,
@@ -186,18 +190,69 @@ describe('home-schedule-board helpers', () => {
     });
   });
 
-  it('filters schedules by pharmacist scope', () => {
+  it('filters schedules by display scope', () => {
     const schedules = [
       buildSchedule({ id: 'mine', pharmacist_id: 'pharmacist_1' }),
       buildSchedule({ id: 'other', pharmacist_id: 'pharmacist_2' }),
     ];
 
-    expect(filterSchedulesByScope(schedules, 'all', 'pharmacist_1').map((item) => item.id)).toEqual([
+    expect(filterSchedulesByScope(schedules, 'pharmacy', 'pharmacist_1').map((item) => item.id)).toEqual([
       'mine',
       'other',
     ]);
     expect(filterSchedulesByScope(schedules, 'mine', 'pharmacist_1').map((item) => item.id)).toEqual([
       'mine',
+    ]);
+    expect(
+      filterSchedulesByScope(schedules, 'user', 'pharmacist_1', 'pharmacist_2').map((item) => item.id),
+    ).toEqual(['other']);
+    expect(filterSchedulesByScope(schedules, 'mine', null).map((item) => item.id)).toEqual([]);
+  });
+
+  it('builds staff options and workload summaries for the home schedule switcher', () => {
+    const schedules = [
+      buildSchedule({ id: 'mine', pharmacist_id: 'pharmacist_1' }),
+      buildSchedule({ id: 'gap', pharmacist_id: 'pharmacist_1', time_window_end: null }),
+      buildSchedule({
+        id: 'other',
+        pharmacist_id: 'pharmacist_2',
+        schedule_status: 'in_progress',
+        preparation: {
+          id: 'prep_1',
+          prepared_at: '2026-04-10T08:00:00.000Z',
+          medication_changes_reviewed: true,
+          carry_items_confirmed: true,
+          previous_issues_reviewed: true,
+          route_confirmed: true,
+          offline_synced: true,
+          checklist: {},
+        },
+      }),
+    ];
+
+    expect(
+      buildHomeScheduleStaffOptions(schedules, [
+        { id: 'pharmacist_1', name: '薬剤師A', siteName: '本店' },
+      ]).map((staff) => staff.id).sort(),
+    ).toEqual(['pharmacist_1', 'pharmacist_2']);
+
+    expect(
+      buildHomeScheduleStaffSummaries(schedules, [
+        { id: 'pharmacist_1', name: '薬剤師A', siteName: '本店' },
+        { id: 'pharmacist_2', name: '薬剤師B', siteName: '支店' },
+      ]),
+    ).toMatchObject([
+      {
+        id: 'pharmacist_1',
+        totalVisits: 2,
+        preparationPending: 2,
+        timingGaps: 1,
+      },
+      {
+        id: 'pharmacist_2',
+        totalVisits: 1,
+        inProgress: 1,
+      },
     ]);
   });
 
@@ -294,6 +349,7 @@ describe('home-schedule-board helpers', () => {
     expect(buildScheduleBoardHref(buildSchedule())).toBe(
       '/schedules?date=2026-04-10&tab=confirmed&schedule=schedule_1#schedule-schedule_1',
     );
+    expect(buildSchedulePatientHref(buildSchedule())).toBe('/patients/patient_1?tab=visits');
     expect(resolveSchedulePrimaryAction(buildSchedule({ schedule_status: 'ready' }))).toEqual({
       href: '/visits/schedule_1/record',
       label: '出発確認',
@@ -363,5 +419,9 @@ describe('home-schedule-board helpers', () => {
         'timing_gap',
       ),
     ).toBe(2);
+  });
+
+  it('builds patient detail links for proposal follow-up continuity', () => {
+    expect(buildProposalPatientHref(buildProposal())).toBe('/patients/patient_1?tab=visits');
   });
 });

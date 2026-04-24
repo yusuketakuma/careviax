@@ -34,7 +34,9 @@ describe('computeOptimizedVisitRoute (heuristic path)', () => {
 
     expect(result.status).toBe('unavailable');
     expect(result.note).toBe('missing_geocode');
-    expect((result as unknown as { missingGeocodeWaypointIds: string[] }).missingGeocodeWaypointIds).toEqual(['sched_2']);
+    expect(
+      (result as unknown as { missingGeocodeWaypointIds: string[] }).missingGeocodeWaypointIds,
+    ).toEqual(['sched_2']);
     expect(result.stopSummaries).toHaveLength(0);
   });
 
@@ -52,7 +54,7 @@ describe('computeOptimizedVisitRoute (heuristic path)', () => {
 
     expect(result.status).toBe('unavailable');
     expect(result.note).toBe('missing_geocode');
-    const diag = (result as unknown as { missingGeocodeWaypointIds: string[] });
+    const diag = result as unknown as { missingGeocodeWaypointIds: string[] };
     expect(diag.missingGeocodeWaypointIds).toContain('sched_a');
     expect(diag.missingGeocodeWaypointIds).toContain('sched_b');
   });
@@ -97,7 +99,7 @@ describe('computeOptimizedVisitRoute (heuristic path)', () => {
         // sched_1 is at lat 35.5 (far), sched_2 is at lat 35.05 (close)
         const durationMinutes = Math.abs(to.lat - 35.0) * 600;
         return { durationMinutes, distanceKm: durationMinutes / 60 };
-      }
+      },
     );
 
     const result = await computeOptimizedVisitRoute({
@@ -114,5 +116,43 @@ describe('computeOptimizedVisitRoute (heuristic path)', () => {
     expect(result.orderedScheduleIds[0]).toBe('sched_2');
     expect(result.orderedScheduleIds[1]).toBe('sched_1');
     expect(result.stopSummaries).toHaveLength(2);
+  });
+
+  it('uses patient address travel time with visit priority correction', async () => {
+    createRoadTravelEstimatorMock.mockReturnValue(
+      async (_from: unknown, to: { lat: number; lng: number }) => {
+        if (to.lat === 35.04) {
+          return { durationMinutes: 5, distanceKm: 1 };
+        }
+        return { durationMinutes: 35, distanceKm: 7 };
+      },
+    );
+
+    const result = await computeOptimizedVisitRoute({
+      origin,
+      travelMode,
+      waypoints: [
+        {
+          scheduleId: 'normal_near',
+          patientName: '近い通常患者',
+          address: '住所A',
+          lat: 35.04,
+          lng: 139.0,
+          priority: 'normal',
+        },
+        {
+          scheduleId: 'emergency_far',
+          patientName: '遠い緊急患者',
+          address: '住所B',
+          lat: 35.5,
+          lng: 139.0,
+          priority: 'emergency',
+        },
+      ],
+    });
+
+    expect(result.status).toBe('ok');
+    expect(result.note).toBe('優先度補正を含むヒューリスティック順序を表示しています');
+    expect(result.orderedScheduleIds).toEqual(['emergency_far', 'normal_near']);
   });
 });

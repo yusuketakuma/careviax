@@ -481,6 +481,8 @@ export default function ReportPrintPage() {
         backLabel="報告書詳細へ戻る"
         title="報告書 印刷ビュー"
         description="A4印刷に最適化したレイアウトです。印刷前に内容を確認してください。"
+        mainWorkflowSteps={['reports']}
+        mainWorkflowDescription="印刷ビューでも、報告書工程の終点として現在地を固定表示します。"
         shortcuts={getReportPrintShortcutLinks(reportId)}
       />
 

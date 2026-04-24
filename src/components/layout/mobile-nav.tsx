@@ -2,35 +2,11 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Calendar, Car, Home, Menu, Users } from 'lucide-react';
+import { Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/lib/stores/ui-store';
-
-interface BottomNavItem {
-  label: string;
-  href: string;
-  icon: React.ElementType;
-  activePrefixes?: string[];
-  excludePrefixes?: string[];
-  badge?: number;
-}
-
-const bottomNavItems: BottomNavItem[] = [
-  { label: 'ホーム', href: '/dashboard', icon: Home },
-  {
-    label: '本日の訪問',
-    href: '/visits',
-    icon: Car,
-    activePrefixes: ['/visits', '/my-day'],
-    excludePrefixes: ['/visits/handoffs'],
-  },
-  { label: '患者', href: '/patients', icon: Users },
-  { label: 'スケジュール', href: '/schedules', icon: Calendar },
-];
-
-function matchesPathPrefix(pathname: string, prefix: string) {
-  return pathname === prefix || pathname.startsWith(`${prefix}/`);
-}
+import { MOBILE_BOTTOM_NAV_ITEMS } from './navigation-config';
+import { isLayoutNavItemActive } from './navigation-utils';
 
 export function MobileNav() {
   const pathname = usePathname();
@@ -42,18 +18,9 @@ export function MobileNav() {
       aria-label="モバイルナビゲーション"
     >
       <ul className="flex h-16 items-stretch" role="list">
-        {bottomNavItems.map((item) => {
+        {MOBILE_BOTTOM_NAV_ITEMS.map((item) => {
           const Icon = item.icon;
-          const activePrefixes = item.activePrefixes ?? [item.href];
-          const isExcluded =
-            item.excludePrefixes?.some((prefix) => matchesPathPrefix(pathname, prefix)) ?? false;
-          const isActive =
-            !isExcluded &&
-            activePrefixes.some((prefix) =>
-              prefix === '/dashboard'
-                ? pathname === '/dashboard'
-                : matchesPathPrefix(pathname, prefix)
-            );
+          const isActive = isLayoutNavItemActive(pathname, item);
 
           return (
             <li key={item.href} className="flex flex-1">

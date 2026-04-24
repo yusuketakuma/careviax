@@ -51,6 +51,7 @@ import { cn } from '@/lib/utils';
 import { useReplaceSearchParams } from '@/lib/navigation/use-synced-search-params';
 import { applyVisitScheduleProposalRouteUpdates } from '@/app/(dashboard)/schedules/visit-route-client';
 import { useRouteOrderDraft } from '@/app/(dashboard)/schedules/route-order-draft';
+import { ProposalHumanDecisionFlow } from '../proposal-human-decision-flow';
 import { mergeScheduleProposalSearchParams } from './proposal-query-state';
 import { buildDashboardDiagnosticActions } from './schedule-proposal-diagnostic-actions';
 import {
@@ -1417,6 +1418,8 @@ export function ScheduleProposalsContent({
 
                   <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_18rem]">
                     <div className="space-y-3">
+                      <ProposalHumanDecisionFlow proposal={proposal} compact />
+
                       <div className="flex flex-wrap gap-2">
                         {splitProposalReason(proposal.proposal_reason ?? '').map((reason) => (
                           <span
@@ -1608,6 +1611,8 @@ export function ScheduleProposalsContent({
                   ) : null}
                 </CardContent>
               </Card>
+
+              <ProposalHumanDecisionFlow proposal={detail} />
 
               <Card>
                 <CardHeader className="pb-3">

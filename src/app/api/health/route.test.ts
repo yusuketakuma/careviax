@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { queryRawMock, runBackupMonitorChecksMock } = vi.hoisted(() => ({
+const { getAuthContextMock, queryRawMock, runBackupMonitorChecksMock } = vi.hoisted(() => ({
+  getAuthContextMock: vi.fn(),
   queryRawMock: vi.fn(),
   runBackupMonitorChecksMock: vi.fn(),
+}));
+
+vi.mock('@/lib/auth/context', () => ({
+  getAuthContext: getAuthContextMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -20,18 +25,21 @@ import { GET } from './route';
 describe('/api/health GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getAuthContextMock.mockResolvedValue(null);
   });
 
-  it('returns ok when database and backup checks are healthy', async () => {
+  it('returns only sanitized check statuses for unauthenticated callers', async () => {
     queryRawMock.mockResolvedValue([{ '?column?': 1 }]);
     runBackupMonitorChecksMock.mockResolvedValue({
       overall: 'ok',
       checks: {
-        rdsSnapshot: { status: 'ok', message: 'fresh' },
+        rdsSnapshot: { status: 'ok', message: 'fresh', details: { snapshotId: 'snap-1' } },
       },
     });
 
-    const response = await GET();
+    const response = await GET({
+      headers: { get: vi.fn() },
+    } as never);
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       status: 'ok',
@@ -42,7 +50,12 @@ describe('/api/health GET', () => {
     });
   });
 
-  it('returns degraded when backup monitoring reports a warning', async () => {
+  it('returns detailed checks for authenticated admins', async () => {
+    getAuthContextMock.mockResolvedValue({
+      userId: 'user_1',
+      orgId: 'org_1',
+      role: 'admin',
+    });
     queryRawMock.mockResolvedValue([{ '?column?': 1 }]);
     runBackupMonitorChecksMock.mockResolvedValue({
       overall: 'warning',
@@ -51,7 +64,9 @@ describe('/api/health GET', () => {
       },
     });
 
-    const response = await GET();
+    const response = await GET({
+      headers: { get: vi.fn() },
+    } as never);
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       status: 'degraded',
@@ -68,7 +83,9 @@ describe('/api/health GET', () => {
       checks: {},
     });
 
-    const response = await GET();
+    const response = await GET({
+      headers: { get: vi.fn() },
+    } as never);
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({
       status: 'down',

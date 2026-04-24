@@ -22,6 +22,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { HomeCareFeatureBoard } from '@/components/home-care/home-care-feature-board';
+import { WorkflowIntegrationMap } from '@/components/features/workflow/workflow-integration-map';
+import { MainWorkflowRoute } from '@/components/features/workflow/main-workflow-route';
 import { StagnationIndicator } from '@/components/features/workflow/stagnation-indicator';
 import { cn } from '@/lib/utils';
 import type { HomeLinkContext, WorkflowFocus } from '@/lib/dashboard/home-link-builders';
@@ -201,6 +203,26 @@ export function WorkflowDashboardView({
           <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
         </Alert>
       ) : null}
+
+      <WorkflowSection testId="workflow-main-route">
+        <div className="space-y-1">
+          <h2 className="text-base font-semibold text-foreground">主業務フロー</h2>
+          <p className="text-sm text-muted-foreground">
+            処方登録から報告書までの本流を先に確認し、そのうえで下段の滞留や例外を工程単位で追えるようにしています。
+          </p>
+        </div>
+        <MainWorkflowRoute
+          eyebrow="処方から報告まで"
+          summary="主業務は 8 工程を固定順で表示し、今どの工程を確認しているかを画面上部で揃えています。"
+          detail="この画面では本流を先に見たあと、コントロールセンター、連絡キュー、疑義照会ワークベンチで滞留や例外を掘り下げます。"
+          footer="カードを押すと各工程の実務画面へ移動できます。工程別の件数や例外対応はこの下のセクションで続けて確認できます。"
+          dataTestId="workflow-main-workflow-route"
+        />
+      </WorkflowSection>
+
+      <WorkflowSection testId="workflow-integration-checks">
+        <WorkflowIntegrationMap />
+      </WorkflowSection>
 
       <WorkflowSection active={initialFocus === 'control_center'} testId="workflow-control-center">
         <div className="space-y-1">

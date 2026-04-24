@@ -35,6 +35,8 @@ export default async function PatientPrescriptionsPage({
             </div>
           }
           shortcuts={getPatientPrescriptionShortcutLinks(id)}
+          mainWorkflowSteps={['prescriptions']}
+          mainWorkflowDescription="患者単位の処方履歴でも、主業務フロー上は処方登録工程に属することを揃えて示します。"
           className="mb-6"
         />
 

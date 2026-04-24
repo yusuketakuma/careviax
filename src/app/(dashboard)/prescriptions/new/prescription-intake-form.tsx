@@ -436,6 +436,8 @@ export function PrescriptionIntakeForm() {
     inquiryToPhysician,
     inquiryContent,
     inquiryDueDate,
+    proposalOrigin,
+    residualAdjustment,
   ]);
 
   // Fetch patients for search
@@ -608,6 +610,7 @@ export function PrescriptionIntakeForm() {
         body: JSON.stringify({
           case_id: selectedCaseId,
           patient_id: selectedPatientId,
+          qr_draft_id: initialQrDraftId || undefined,
           source_type: sourceType,
           prescribed_date: prescribedDate,
           prescriber_name: prescriberName || undefined,

@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { HelpPopover } from '@/components/ui/help-popover';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -381,9 +382,9 @@ export function HandoffBoard({
 
 function SectionIntro({ title, description }: { title: string; description: string }) {
   return (
-    <div className="space-y-1">
+    <div className="flex items-center gap-2">
       <h2 className="text-base font-semibold text-foreground">{title}</h2>
-      <p className="text-sm text-muted-foreground">{description}</p>
+      <HelpPopover title={title} description={description} />
     </div>
   );
 }

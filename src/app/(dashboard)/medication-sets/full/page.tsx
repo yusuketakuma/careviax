@@ -39,6 +39,8 @@ export default async function MedicationSetFullPage({ searchParams }: Medication
           </div>
         }
         shortcuts={getMedicationSetFullShortcutLinks(planId)}
+        mainWorkflowSteps={['medication_sets', 'set_audit']}
+        mainWorkflowDescription="計画詳細画面では、セット作成とセット監査の両工程にまたがる確認面であることを上で示します。"
         className="mb-6"
       />
 

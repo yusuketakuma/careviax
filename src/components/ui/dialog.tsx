@@ -5,6 +5,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { HelpPopover } from "@/components/ui/help-popover"
 import { XIcon } from "lucide-react"
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
@@ -132,17 +133,22 @@ function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
 
 function DialogDescription({
   className,
+  children,
+  helpTitle = "説明",
   ...props
-}: DialogPrimitive.Description.Props) {
+}: DialogPrimitive.Description.Props & { helpTitle?: string }) {
   return (
     <DialogPrimitive.Description
       data-slot="dialog-description"
-      className={cn(
-        "text-sm text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
-        className
-      )}
+      className={cn("inline-flex items-center", className)}
       {...props}
-    />
+    >
+      <HelpPopover
+        title={helpTitle}
+        description={<span className="text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground">{children}</span>}
+        buttonLabel={`${helpTitle}を表示`}
+      />
+    </DialogPrimitive.Description>
   )
 }
 

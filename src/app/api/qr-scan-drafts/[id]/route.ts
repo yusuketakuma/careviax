@@ -11,6 +11,20 @@ export const GET = withAuth(
     const draft = await withOrgContext(req.orgId, async (tx) => {
       return tx.qrScanDraft.findFirst({
         where: { id, org_id: req.orgId },
+        include: {
+          jahis_supplemental_records: {
+            orderBy: [{ line_number: 'asc' }, { created_at: 'asc' }],
+            select: {
+              id: true,
+              record_type: true,
+              record_label: true,
+              line_number: true,
+              summary: true,
+              payload: true,
+              raw_line: true,
+            },
+          },
+        },
       });
     });
 
@@ -23,7 +37,7 @@ export const GET = withAuth(
   {
     permission: 'canVisit',
     message: 'QRスキャン下書きの閲覧権限がありません',
-  }
+  },
 );
 
 // ── DELETE: discard a draft (set status to 'discarded') ──
@@ -44,10 +58,20 @@ export const DELETE = withAuth(
     }
 
     const draft = await withOrgContext(req.orgId, async (tx) => {
-      return tx.qrScanDraft.update({
+      const updated = await tx.qrScanDraft.update({
         where: { id },
         data: { status: 'discarded' },
       });
+
+      await tx.jahisSupplementalRecord.deleteMany({
+        where: {
+          org_id: req.orgId,
+          qr_draft_id: id,
+          prescription_intake_id: null,
+        },
+      });
+
+      return updated;
     });
 
     return success(draft);
@@ -55,5 +79,5 @@ export const DELETE = withAuth(
   {
     permission: 'canVisit',
     message: 'QRスキャン下書きの操作権限がありません',
-  }
+  },
 );

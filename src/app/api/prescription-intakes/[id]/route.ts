@@ -35,6 +35,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           fax: true,
         },
       },
+      jahis_supplemental_records: {
+        orderBy: [{ line_number: 'asc' }, { created_at: 'asc' }],
+        select: {
+          id: true,
+          record_type: true,
+          record_label: true,
+          line_number: true,
+          summary: true,
+          payload: true,
+          raw_line: true,
+        },
+      },
       cycle: {
         select: {
           id: true,

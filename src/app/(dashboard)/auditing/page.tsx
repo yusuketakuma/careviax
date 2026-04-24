@@ -25,6 +25,7 @@ export default function AuditingPage() {
             </p>
           </div>
         }
+        mainWorkflowSteps={['auditing']}
         childrenLabel="関連導線"
       >
         <PageShortcutLinks

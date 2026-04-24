@@ -32,9 +32,37 @@ const SOURCE_LABELS: Record<ImportSource, string> = {
 
 const FREE_SOURCES: ImportSource[] = ['ssk', 'mhlw_price', 'mhlw_generic'];
 
-type FreshnessLevel = 'fresh' | 'aging' | 'stale' | 'never';
+export type DrugMasterImportFreshnessLevel = 'fresh' | 'aging' | 'stale' | 'never';
 
-function assessFreshness(daysSinceImport: number | null, threshold: number): FreshnessLevel {
+export type DrugMasterImportStatusResponse = {
+  sources: Array<{
+    source: ImportSource;
+    label: string;
+    is_free: boolean;
+    threshold_days: number;
+    last_success: {
+      imported_at: string;
+      record_count: number;
+      days_ago: number | null;
+    } | null;
+    last_failure: {
+      imported_at: string;
+      error: string | null;
+    } | null;
+    freshness: DrugMasterImportFreshnessLevel;
+  }>;
+  totals: {
+    drug_master_count: number;
+    hot_code_coverage: number;
+    package_insert_count: number;
+    interaction_count: number;
+    active_alert_rule_count: number;
+    generic_mapping_count: number;
+  };
+  checked_at: string;
+};
+
+function assessFreshness(daysSinceImport: number | null, threshold: number): DrugMasterImportFreshnessLevel {
   if (daysSinceImport === null) return 'never';
   if (daysSinceImport <= threshold * 0.5) return 'fresh';
   if (daysSinceImport <= threshold) return 'aging';
@@ -115,5 +143,5 @@ export async function GET(req: NextRequest) {
       generic_mapping_count: genericMappingCount,
     },
     checked_at: now.toISOString(),
-  }) as NextResponse;
+  } satisfies DrugMasterImportStatusResponse) as NextResponse;
 }

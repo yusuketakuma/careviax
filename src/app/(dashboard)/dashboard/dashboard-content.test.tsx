@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { DashboardContent } from './dashboard-content';
@@ -51,7 +51,13 @@ describe('DashboardContent', () => {
     expect(screen.getByText('業務導線')).toBeTruthy();
     expect(screen.getByText('患者確認')).toBeTruthy();
     expect(screen.getByText('職種ごとの初動')).toBeTruthy();
-    expect(screen.getByText('主要フロー入口')).toBeTruthy();
+    expect(screen.getByText('主業務フロー')).toBeTruthy();
+    expect(
+      screen.queryByText(
+        '薬剤師、事務スタッフ、全員共通の入口を分け、誰が最初に何を確認するかを揃えて判断できるようにしています。',
+      ),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '職種ごとの初動の説明' }));
     expect(
       screen.getByText(
         '薬剤師、事務スタッフ、全員共通の入口を分け、誰が最初に何を確認するかを揃えて判断できるようにしています。',

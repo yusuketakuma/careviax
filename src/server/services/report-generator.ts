@@ -37,7 +37,7 @@ export async function generateReportsFromVisit(
   // ─── 2. Schedule → Case 取得 ───────────────────────────────────────────────
   const schedule = await prisma.visitSchedule.findUnique({
     where: { id: visitRecord.schedule_id },
-    select: { case_id: true, org_id: true },
+    select: { case_id: true, cycle_id: true, org_id: true },
   });
 
   // required_visit_support は schedule 確定後に取得（case_id が必要）
@@ -68,7 +68,9 @@ export async function generateReportsFromVisit(
       select: { id: true, name: true, birth_date: true, gender: true },
     }),
     prisma.medicationCycle.findFirst({
-      where: { case_id: caseId, org_id: orgId },
+      where: schedule.cycle_id
+        ? { id: schedule.cycle_id, org_id: orgId }
+        : { case_id: caseId, org_id: orgId },
       orderBy: { created_at: 'desc' },
       select: { id: true },
     }),
@@ -229,6 +231,14 @@ export async function generateReportsFromVisit(
         site_config_revision_code:
           typeof calculationContext?.site_config_revision_code === 'string'
             ? calculationContext.site_config_revision_code
+            : null,
+        jahis_supplemental_record_count:
+          typeof calculationContext?.jahis_supplemental_record_count === 'number'
+            ? calculationContext.jahis_supplemental_record_count
+            : null,
+        jahis_residual_confirmation_count:
+          typeof calculationContext?.jahis_residual_confirmation_count === 'number'
+            ? calculationContext.jahis_residual_confirmation_count
             : null,
       }
     : null;

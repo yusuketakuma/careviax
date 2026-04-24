@@ -25,6 +25,8 @@ export default function MedicationSetsPage() {
             </p>
           </div>
         }
+        mainWorkflowSteps={['medication_sets', 'set_audit']}
+        mainWorkflowDescription="この画面はセット計画とセット監査の両工程をまとめて扱うため、4 と 5 を同時に強調しています。"
         childrenLabel="関連導線"
       >
         <PageShortcutLinks

@@ -1,5 +1,6 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
+import { CollaborationWorkflowPanel } from '@/components/features/workflow/collaboration-workflow-panel';
 import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { Loading } from '@/components/ui/loading';
@@ -46,6 +47,10 @@ export default async function CommunicationRequestsPage({
           ]}
         />
       </WorkflowPageHeader>
+      <CollaborationWorkflowPanel
+        focus="requests"
+        description="依頼・照会を処方確認、調剤監査、報告書フォローへ戻すための連携ハブとして整理しています。"
+      />
 
       <Suspense fallback={<Loading />}>
         <CommunicationRequestsContent

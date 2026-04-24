@@ -30,6 +30,8 @@ export default async function AuditDetailPage({ params }: { params: Promise<{ ta
           { href: `/dispensing/${taskId}`, label: '調剤入力' },
           { href: '/workflow', label: 'ワークフロー' },
         ]}
+        mainWorkflowSteps={['auditing']}
+        mainWorkflowDescription="監査詳細でも、調剤の次にある承認工程として今どこを見ているかを固定表示します。"
         className="mb-4"
       />
 

@@ -1,5 +1,6 @@
 import * as React from "react"
 
+import { HelpPopover } from "@/components/ui/help-popover"
 import { cn } from "@/lib/utils"
 
 function Card({
@@ -46,13 +47,24 @@ function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
+function CardDescription({
+  className,
+  children,
+  helpTitle = "説明",
+  ...props
+}: React.ComponentProps<"div"> & { helpTitle?: string }) {
   return (
     <div
       data-slot="card-description"
-      className={cn("text-sm text-muted-foreground", className)}
+      className={cn("inline-flex items-center", className)}
       {...props}
-    />
+    >
+      <HelpPopover
+        title={helpTitle}
+        description={<span className="text-muted-foreground">{children}</span>}
+        buttonLabel={`${helpTitle}を表示`}
+      />
+    </div>
   )
 }
 

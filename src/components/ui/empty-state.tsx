@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { HelpPopover } from '@/components/ui/help-popover';
 import { cn } from '@/lib/utils';
 
 interface EmptyStateProps {
@@ -35,11 +36,9 @@ export function EmptyState({
           <Icon className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
         </div>
       )}
-      <div className="space-y-1">
+      <div className="flex items-center gap-2">
         <p className="text-sm font-medium text-foreground">{title}</p>
-        {description && (
-          <p className="text-sm text-muted-foreground">{description}</p>
-        )}
+        {description ? <HelpPopover title={title} description={description} /> : null}
       </div>
       {action &&
         (action.href ? (

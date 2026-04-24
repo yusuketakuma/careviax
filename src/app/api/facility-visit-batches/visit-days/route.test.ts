@@ -82,7 +82,7 @@ describe('/api/facility-visit-batches/visit-days POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
-      message: '同一施設の訪問予定のみをまとめて更新できます',
+      message: '同一訪問先グループの訪問予定のみをまとめて更新できます',
       details: {
         facilities: ['facility_a', 'facility_b'],
       },

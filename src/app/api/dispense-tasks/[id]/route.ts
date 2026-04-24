@@ -279,6 +279,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
                 is_generic_name_prescription: true,
                 packaging_instructions: true,
                 notes: true,
+                start_date: true,
+                end_date: true,
               },
             },
           },
@@ -337,7 +339,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             },
             prescription_intakes: {
               orderBy: { created_at: 'desc' },
-              take: 1,
+              take: 2,
               select: {
                 id: true,
                 source_type: true,
@@ -346,6 +348,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
                 prescriber_institution: true,
                 original_document_url: true,
                 original_collected_at: true,
+                jahis_supplemental_records: {
+                  orderBy: [{ line_number: 'asc' }, { created_at: 'asc' }],
+                  select: {
+                    id: true,
+                    record_type: true,
+                    record_label: true,
+                    line_number: true,
+                    summary: true,
+                    payload: true,
+                    raw_line: true,
+                  },
+                },
                 lines: {
                   orderBy: { line_number: 'asc' },
                   select: {
@@ -363,6 +377,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
                     is_generic_name_prescription: true,
                     packaging_instructions: true,
                     notes: true,
+                    start_date: true,
+                    end_date: true,
                   },
                 },
               },

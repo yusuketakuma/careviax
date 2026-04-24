@@ -4,13 +4,13 @@ import { CheckCircle2, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { PhysicianReportContent, CareManagerReportContent } from '@/types/care-report-content';
 
-type CheckItem = {
+export type ReportComplianceCheckItem = {
   key: string;
   label: string;
   passed: boolean;
 };
 
-function derivePhysicianChecks(content: PhysicianReportContent): CheckItem[] {
+function derivePhysicianChecks(content: PhysicianReportContent): ReportComplianceCheckItem[] {
   return [
     {
       key: 'prescriptions',
@@ -56,7 +56,7 @@ function derivePhysicianChecks(content: PhysicianReportContent): CheckItem[] {
   ];
 }
 
-function deriveCareManagerChecks(content: CareManagerReportContent): CheckItem[] {
+function deriveCareManagerChecks(content: CareManagerReportContent): ReportComplianceCheckItem[] {
   return [
     {
       key: 'medication_summary',
@@ -106,11 +106,7 @@ type Props = {
 };
 
 export function ComplianceChecklist({ reportType, content, warnings = [] }: Props) {
-  const checks =
-    reportType === 'physician_report'
-      ? derivePhysicianChecks(content as PhysicianReportContent)
-      : deriveCareManagerChecks(content as CareManagerReportContent);
-
+  const checks = deriveReportComplianceChecks(reportType, content);
   const passedCount = checks.filter((c) => c.passed).length;
   const totalCount = checks.length;
   const allPassed = passedCount === totalCount && warnings.length === 0;
@@ -176,5 +172,16 @@ export function ComplianceChecklist({ reportType, content, warnings = [] }: Prop
         )}
       </CardContent>
     </Card>
+  );
+}
+
+export function deriveReportComplianceChecks(
+  reportType: string,
+  content: PhysicianReportContent | CareManagerReportContent,
+): ReportComplianceCheckItem[] {
+  return (
+    reportType === 'physician_report'
+      ? derivePhysicianChecks(content as PhysicianReportContent)
+      : deriveCareManagerChecks(content as CareManagerReportContent)
   );
 }

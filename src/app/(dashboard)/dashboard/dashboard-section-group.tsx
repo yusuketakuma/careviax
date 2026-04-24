@@ -1,3 +1,4 @@
+import { HelpPopover } from '@/components/ui/help-popover';
 import { cn } from '@/lib/utils';
 
 type DashboardSectionGroupProps = {
@@ -68,10 +69,12 @@ export function DashboardSectionGroup({
           </p>
         ) : null}
         <div className={cn('space-y-1', eyebrow ? 'mt-2' : null)}>
-          <h2 id={id} className="text-lg font-semibold text-foreground">
-            {title}
-          </h2>
-          <p className="max-w-3xl text-sm text-muted-foreground">{description}</p>
+          <div className="flex items-center gap-2">
+            <h2 id={id} className="text-lg font-semibold text-foreground">
+              {title}
+            </h2>
+            <HelpPopover title={title} description={description} />
+          </div>
         </div>
       </div>
       <div className={cn('px-5 py-5 sm:px-6 sm:py-6', contentClassName)}>{children}</div>

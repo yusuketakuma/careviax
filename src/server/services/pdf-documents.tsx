@@ -838,6 +838,20 @@ function renderCareReportContent(report: CareReportRecord) {
                       ? billingContext.site_config_status
                       : '—',
                 },
+                {
+                  label: 'JAHIS補足',
+                  value:
+                    typeof billingContext.jahis_supplemental_record_count === 'number'
+                      ? `${billingContext.jahis_supplemental_record_count}件`
+                      : '—',
+                },
+                {
+                  label: 'JAHIS残薬確認',
+                  value:
+                    typeof billingContext.jahis_residual_confirmation_count === 'number'
+                      ? `${billingContext.jahis_residual_confirmation_count}件`
+                      : '—',
+                },
               ]}
             />
           </Section>
@@ -939,6 +953,20 @@ function renderCareReportContent(report: CareReportRecord) {
                   value:
                     typeof billingContext.site_config_status === 'string'
                       ? billingContext.site_config_status
+                      : '—',
+                },
+                {
+                  label: 'JAHIS補足',
+                  value:
+                    typeof billingContext.jahis_supplemental_record_count === 'number'
+                      ? `${billingContext.jahis_supplemental_record_count}件`
+                      : '—',
+                },
+                {
+                  label: 'JAHIS残薬確認',
+                  value:
+                    typeof billingContext.jahis_residual_confirmation_count === 'number'
+                      ? `${billingContext.jahis_residual_confirmation_count}件`
                       : '—',
                 },
               ]}

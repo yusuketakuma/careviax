@@ -1,8 +1,11 @@
-import { deriveFacilityLabel } from '@/lib/utils/facility';
+import { deriveVisitPlaceGroup } from '@/lib/utils/facility';
 
 type Residence = {
+  facility_id?: string | null;
+  facility_unit_id?: string | null;
   building_id?: string | null;
   address?: string | null;
+  unit_name?: string | null;
 };
 
 type ScheduleForEnrichment = {
@@ -59,20 +62,20 @@ export function enrichSchedulesWithHints<T extends ScheduleForEnrichment>(
     }
 
     const residence = schedule.case_.patient.residences[0];
-    const facilityLabel = deriveFacilityLabel(residence ?? null);
-    if (!facilityLabel) continue;
+    const visitPlaceGroup = deriveVisitPlaceGroup(residence ?? null);
+    if (!visitPlaceGroup) continue;
     const facilityKey = [
       schedule.scheduled_date.toISOString().slice(0, 10),
       schedule.pharmacist_id,
       schedule.site?.id ?? 'site:none',
-      facilityLabel,
+      visitPlaceGroup.key,
     ].join(':');
     const existingFacilityGroup = facilityGroups.get(facilityKey);
     if (existingFacilityGroup) {
       existingFacilityGroup.patientNames.push(schedule.case_.patient.name);
     } else {
       facilityGroups.set(facilityKey, {
-        label: facilityLabel,
+        label: visitPlaceGroup.label,
         patientNames: [schedule.case_.patient.name],
       });
     }
@@ -81,13 +84,13 @@ export function enrichSchedulesWithHints<T extends ScheduleForEnrichment>(
   return schedules.map((schedule) => {
     const workloadKey = `${schedule.pharmacist_id}:${schedule.scheduled_date.toISOString().slice(0, 10)}`;
     const residence = schedule.case_.patient.residences[0];
-    const facilityLabel = deriveFacilityLabel(residence ?? null);
-    const facilityKey = facilityLabel
+    const visitPlaceGroup = deriveVisitPlaceGroup(residence ?? null);
+    const facilityKey = visitPlaceGroup
       ? [
           schedule.scheduled_date.toISOString().slice(0, 10),
           schedule.pharmacist_id,
           schedule.site?.id ?? 'site:none',
-          facilityLabel,
+          visitPlaceGroup.key,
         ].join(':')
       : null;
     const facilityGroup = facilityKey ? facilityGroups.get(facilityKey) : null;

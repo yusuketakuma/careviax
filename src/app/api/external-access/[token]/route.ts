@@ -5,10 +5,12 @@ import {
   markExternalAccessViewed,
   validateExternalAccessGrant,
 } from '@/server/services/external-access';
-import { createRateLimiter } from '@/lib/api/rate-limit';
+import { checkAuthRateLimit } from '@/lib/api/rate-limit';
 import { getClientIp } from '@/lib/api/request-ip';
-
-const otpRateLimiter = createRateLimiter({ windowMs: 60_000, maxRequests: 5 });
+import {
+  createExternalAccessOtpRateLimitIdentifier,
+  EXTERNAL_ACCESS_OTP_RATE_LIMIT_PATH,
+} from '../shared';
 
 /**
  * Public endpoint — no authentication required.
@@ -19,9 +21,13 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
+  const { token } = await params;
   const ip = getClientIp(req) ?? 'unknown';
-  const rl = await otpRateLimiter(`otp-verify:${ip}`);
-  if (!rl.allowed) {
+  const rateLimit = await checkAuthRateLimit(
+    createExternalAccessOtpRateLimitIdentifier(token, ip),
+    EXTERNAL_ACCESS_OTP_RATE_LIMIT_PATH,
+  );
+  if (!rateLimit.allowed) {
     return error(
       'RATE_LIMIT_EXCEEDED',
       'リクエストが多すぎます。しばらく待ってから再試行してください。',
@@ -29,7 +35,6 @@ export async function GET(
     );
   }
 
-  const { token } = await params;
   // OTP is transmitted via header to avoid leaking it in server logs / browser history.
   const otpParam = req.headers.get('x-otp');
   const validation = await validateExternalAccessGrant(token, otpParam);

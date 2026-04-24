@@ -284,6 +284,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         ...buildProposal({
           id: 'proposal_2',
           proposed_pharmacist_id: 'pharmacist_2',
+          priority: 'emergency',
           route_distance_score: 3.5,
           proposed_date: new Date('2026-03-28T00:00:00.000Z'),
           case_: {
@@ -312,7 +313,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       {
         id: 'schedule_1',
         visit_type: 'regular',
-        priority: 'normal',
+        priority: 'urgent',
         schedule_status: 'planned',
         route_order: 1,
         scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
@@ -346,6 +347,15 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(computeOptimizedVisitRouteMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        waypoints: expect.arrayContaining([
+          expect.objectContaining({ scheduleId: 'schedule_1', priority: 'urgent' }),
+          expect.objectContaining({ scheduleId: 'proposal:proposal_1', priority: 'normal' }),
+          expect.objectContaining({ scheduleId: 'proposal:proposal_2', priority: 'emergency' }),
+        ]),
+      }),
+    );
     await expect(response.json()).resolves.toMatchObject({
       data: expect.objectContaining({
         id: 'proposal_1',

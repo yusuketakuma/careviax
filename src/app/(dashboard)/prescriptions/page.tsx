@@ -29,6 +29,7 @@ export default function PrescriptionsPage() {
             </p>
           </div>
         }
+        mainWorkflowSteps={['prescriptions']}
         childrenLabel="関連導線"
       >
         <PageShortcutLinks
@@ -39,7 +40,7 @@ export default function PrescriptionsPage() {
           ]}
         />
       </WorkflowPageHeader>
-      <PrescriptionsWorkspace className="h-[calc(100vh-21rem)] min-h-[40rem]" />
+      <PrescriptionsWorkspace className="h-[calc(100vh-28rem)] min-h-[34rem]" />
     </PageScaffold>
   );
 }

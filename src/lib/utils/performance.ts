@@ -188,7 +188,7 @@ export function getPerformanceSnapshot(options?: {
   };
 }
 
-export async function withRoutePerformance<T extends NextResponse | Response | undefined>(
+export async function withRoutePerformance<T extends NextResponse | Response>(
   req: NextRequest,
   handler: () => Promise<T>
 ): Promise<T> {
@@ -211,7 +211,7 @@ export async function withRoutePerformance<T extends NextResponse | Response | u
     recordRoutePerformance({
       route,
       method,
-      status: response?.status ?? 204,
+      status: response.status,
       durationMs: Date.now() - startedAt,
     });
     return response;

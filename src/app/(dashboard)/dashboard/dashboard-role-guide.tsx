@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { HelpPopover } from '@/components/ui/help-popover';
 import {
   DASHBOARD_COORDINATION_LINKS,
   DASHBOARD_WORKBENCH_LINKS,
@@ -180,8 +181,8 @@ function RoleGuideCard({
               <Icon className="size-4 text-foreground" aria-hidden="true" />
             </div>
             <h3 className="text-base font-semibold text-foreground">{guide.title}</h3>
+            <HelpPopover title={guide.title} description={guide.description} />
           </div>
-          <p className="text-sm leading-6 text-muted-foreground">{guide.description}</p>
         </div>
 
         <div className="rounded-xl border border-border/70 bg-background/80 p-3">

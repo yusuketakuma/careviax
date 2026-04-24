@@ -311,7 +311,6 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     caseId: parsed.data.case_id,
     visitType: resolvedVisitType,
     targetDate: parsed.data.start_date ? new Date(parsed.data.start_date) : new Date(),
-    pharmacistId: parsed.data.preferred_pharmacist_id,
     prescriptionCategory: resolvedVisitType === 'emergency' ? 'emergency' : 'regular',
     specialCapEligible: parsed.data.special_cap_eligible,
   });

@@ -45,7 +45,7 @@ export function VisitBriefCard({
 }) {
   const orgId = useOrgId();
   const [summaryMode, setSummaryMode] = useState<'compare' | 'ai' | 'rule'>(
-    brief.ai_summary.provider === 'openai' && !brief.ai_summary.is_fallback ? 'compare' : 'rule'
+    brief.ai_summary.provider === 'openai' && !brief.ai_summary.is_fallback ? 'compare' : 'rule',
   );
   const [feedbackState, setFeedbackState] = useState<{
     ai?: 'helpful' | 'needs_review';
@@ -56,6 +56,7 @@ export function VisitBriefCard({
   const deliveryItems = brief.delivery_status.slice(0, compact ? 3 : 4);
   const dosageSupport = brief.dosage_form_support.slice(0, compact ? 3 : 4);
   const communicationItems = brief.multidisciplinary_updates.slice(0, compact ? 3 : 4);
+  const jahisRecords = brief.jahis_supplemental_records.slice(0, compact ? 3 : 4);
   const unresolvedItems = brief.unresolved_items.slice(0, compact ? 3 : 4);
   const feedbackMutation = useMutation({
     mutationFn: async ({
@@ -81,8 +82,7 @@ export function VisitBriefCard({
           summary_kind: summaryKind,
           rating,
           provider: summaryKind === 'ai' ? brief.ai_summary.provider : 'rule',
-          requested_provider:
-            summaryKind === 'ai' ? brief.ai_summary.requested_provider : 'rule',
+          requested_provider: summaryKind === 'ai' ? brief.ai_summary.requested_provider : 'rule',
           model: summaryKind === 'ai' ? brief.ai_summary.model : null,
           is_fallback: summaryKind === 'ai' ? brief.ai_summary.is_fallback : false,
         }),
@@ -166,9 +166,7 @@ export function VisitBriefCard({
                   : '24h集計なし',
               ]}
               feedbackValue={feedbackState.ai}
-              onFeedback={(rating) =>
-                feedbackMutation.mutate({ summaryKind: 'ai', rating })
-              }
+              onFeedback={(rating) => feedbackMutation.mutate({ summaryKind: 'ai', rating })}
             />
             <SummaryPanel
               kind="rule"
@@ -177,11 +175,12 @@ export function VisitBriefCard({
               bullets={brief.rule_summary.bullets}
               sourceRefs={brief.rule_summary.source_refs}
               generatedAt={brief.rule_summary.generated_at}
-              metadata={['rule_based_projection', `id ${brief.rule_summary.generation_id.slice(0, 8)}`]}
+              metadata={[
+                'rule_based_projection',
+                `id ${brief.rule_summary.generation_id.slice(0, 8)}`,
+              ]}
               feedbackValue={feedbackState.rule}
-              onFeedback={(rating) =>
-                feedbackMutation.mutate({ summaryKind: 'rule', rating })
-              }
+              onFeedback={(rating) => feedbackMutation.mutate({ summaryKind: 'rule', rating })}
             />
           </div>
         ) : summaryMode === 'ai' ? (
@@ -212,7 +211,10 @@ export function VisitBriefCard({
             bullets={brief.rule_summary.bullets}
             sourceRefs={brief.rule_summary.source_refs}
             generatedAt={brief.rule_summary.generated_at}
-            metadata={['rule_based_projection', `id ${brief.rule_summary.generation_id.slice(0, 8)}`]}
+            metadata={[
+              'rule_based_projection',
+              `id ${brief.rule_summary.generation_id.slice(0, 8)}`,
+            ]}
             feedbackValue={feedbackState.rule}
             onFeedback={(rating) => feedbackMutation.mutate({ summaryKind: 'rule', rating })}
           />
@@ -235,9 +237,7 @@ export function VisitBriefCard({
                 </Badge>
                 <Badge
                   variant={
-                    brief.conference_summary.pending_action_items > 0
-                      ? 'secondary'
-                      : 'outline'
+                    brief.conference_summary.pending_action_items > 0 ? 'secondary' : 'outline'
                   }
                 >
                   未転記アクション {brief.conference_summary.pending_action_items}
@@ -268,7 +268,10 @@ export function VisitBriefCard({
             ) : (
               <ul className="space-y-1.5 text-sm">
                 {brief.must_check_today.slice(0, compact ? 4 : 6).map((item) => (
-                  <li key={item} className="rounded-lg border border-border/70 bg-background px-3 py-2">
+                  <li
+                    key={item}
+                    className="rounded-lg border border-border/70 bg-background px-3 py-2"
+                  >
                     {item}
                   </li>
                 ))}
@@ -282,7 +285,10 @@ export function VisitBriefCard({
             ) : (
               <ul className="space-y-2">
                 {medicationChanges.map((item) => (
-                  <li key={`${item.drug_name}:${item.change_type}`} className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm">
+                  <li
+                    key={`${item.drug_name}:${item.change_type}`}
+                    className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm"
+                  >
                     <p className="font-medium text-foreground">{item.drug_name}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {item.previous ? `${item.previous} → ` : ''}
@@ -300,7 +306,10 @@ export function VisitBriefCard({
             ) : (
               <ul className="space-y-2">
                 {dispensingItems.map((item) => (
-                  <li key={`${item.drug_name}:${item.note}`} className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm">
+                  <li
+                    key={`${item.drug_name}:${item.note}`}
+                    className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm"
+                  >
                     <p className="font-medium text-foreground">{item.drug_name}</p>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.note}</p>
                   </li>
@@ -315,7 +324,10 @@ export function VisitBriefCard({
             ) : (
               <ul className="space-y-2">
                 {deliveryItems.map((item) => (
-                  <li key={`${item.title}:${item.occurred_at ?? 'none'}`} className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm">
+                  <li
+                    key={`${item.title}:${item.occurred_at ?? 'none'}`}
+                    className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm"
+                  >
                     <div className="flex items-start justify-between gap-2">
                       <p className="font-medium text-foreground">{item.title}</p>
                       <Badge variant={item.status_bucket === 'failed' ? 'destructive' : 'outline'}>
@@ -335,7 +347,10 @@ export function VisitBriefCard({
             ) : (
               <ul className="space-y-2">
                 {dosageSupport.map((item) => (
-                  <li key={`${item.category}:${item.drug_name ?? 'none'}`} className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm">
+                  <li
+                    key={`${item.category}:${item.drug_name ?? 'none'}`}
+                    className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm"
+                  >
                     <div className="flex items-start justify-between gap-2">
                       <p className="font-medium text-foreground">
                         {item.drug_name ?? '対象薬未特定'}
@@ -358,14 +373,45 @@ export function VisitBriefCard({
             ) : (
               <ul className="space-y-2">
                 {communicationItems.map((item) => (
-                  <li key={`${item.source_type}:${item.title}:${item.occurred_at ?? 'none'}`} className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm">
+                  <li
+                    key={`${item.source_type}:${item.title}:${item.occurred_at ?? 'none'}`}
+                    className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm"
+                  >
                     <div className="flex items-start justify-between gap-2">
                       <p className="font-medium text-foreground">{item.title}</p>
-                      <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-medium', severityClass(item.severity))}>
+                      <span
+                        className={cn(
+                          'rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                          severityClass(item.severity),
+                        )}
+                      >
                         {item.severity}
                       </span>
                     </div>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.summary}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+
+          <Section title="JAHIS補足情報" icon={FileStack}>
+            {jahisRecords.length === 0 ? (
+              <p className="text-xs text-muted-foreground">QR由来の補足情報はありません。</p>
+            ) : (
+              <ul className="space-y-2">
+                {jahisRecords.map((item) => (
+                  <li
+                    key={`${item.record_type}:${item.id}`}
+                    className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-medium text-foreground">{item.record_label}</p>
+                      <Badge variant="outline">{item.record_type}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      {item.summary ?? item.raw_line}
+                    </p>
                   </li>
                 ))}
               </ul>
@@ -378,10 +424,18 @@ export function VisitBriefCard({
             <p className="text-xs font-medium text-muted-foreground">未解決事項</p>
             <div className="grid gap-2 lg:grid-cols-2">
               {unresolvedItems.map((item) => (
-                <div key={`${item.source_type}:${item.title}`} className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm">
+                <div
+                  key={`${item.source_type}:${item.title}`}
+                  className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm"
+                >
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-medium text-foreground">{item.title}</p>
-                    <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-medium', severityClass(item.severity))}>
+                    <span
+                      className={cn(
+                        'rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                        severityClass(item.severity),
+                      )}
+                    >
                       {item.severity}
                     </span>
                   </div>
@@ -441,7 +495,7 @@ function SummaryPanel({
     <div
       className={cn(
         'rounded-xl border p-4',
-        kind === 'ai' ? 'border-sky-200 bg-sky-50/70' : 'border-slate-200 bg-slate-50/80'
+        kind === 'ai' ? 'border-sky-200 bg-sky-50/70' : 'border-slate-200 bg-slate-50/80',
       )}
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -473,7 +527,9 @@ function SummaryPanel({
         ))}
       </div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] text-slate-700/80">生成 {generatedAt.slice(0, 16).replace('T', ' ')}</p>
+        <p className="text-[11px] text-slate-700/80">
+          生成 {generatedAt.slice(0, 16).replace('T', ' ')}
+        </p>
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"

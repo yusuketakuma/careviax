@@ -18,6 +18,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
+import { HelpPopover } from '@/components/ui/help-popover';
 import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
@@ -223,9 +224,12 @@ function FocusSnapshotCard({
       ].join(' ')}
     >
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          {title}
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {title}
+          </p>
+          <HelpPopover title={title} description={description} />
+        </div>
         <Icon
           className={[
             'size-4',
@@ -249,18 +253,6 @@ function FocusSnapshotCard({
         ].join(' ')}
       >
         {value}
-      </p>
-      <p
-        className={[
-          'mt-1 text-xs leading-5',
-          tone === 'urgent'
-            ? 'text-red-700/80'
-            : tone === 'highlight'
-              ? 'text-primary/80'
-              : 'text-muted-foreground',
-        ].join(' ')}
-      >
-        {description}
       </p>
     </div>
   );

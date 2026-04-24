@@ -23,7 +23,7 @@ export async function PATCH(
     permission: 'canAdmin',
     message: '薬剤師認定情報の更新権限がありません',
   });
-  if ('response' in authResult && authResult.response) return authResult.response;
+  if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
   const { id } = await params;
@@ -110,7 +110,7 @@ export async function DELETE(
     permission: 'canAdmin',
     message: '薬剤師認定情報の更新権限がありません',
   });
-  if ('response' in authResult && authResult.response) return authResult.response;
+  if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
   const { id } = await params;

@@ -6,10 +6,22 @@ import {
   LOCAL_FALLBACK_AUTH_URL,
 } from '../secret';
 
+function setNodeEnv(value: string | undefined) {
+  const env = process.env as Record<string, string | undefined>;
+  if (value === undefined) {
+    delete env.NODE_ENV;
+    return;
+  }
+  env.NODE_ENV = value;
+}
+
 describe('getAuthSecret', () => {
   const originalEnv = {
+    allowLocalAuthFallback: process.env.ALLOW_LOCAL_AUTH_FALLBACK,
     authSecret: process.env.AUTH_SECRET,
     awsExecutionEnv: process.env.AWS_EXECUTION_ENV,
+    nodeEnv: process.env.NODE_ENV,
+    playwright: process.env.PLAYWRIGHT,
     nextAuthUrl: process.env.NEXTAUTH_URL,
     nextPublicAppUrl: process.env.NEXT_PUBLIC_APP_URL,
     nextAuthSecret: process.env.NEXTAUTH_SECRET,
@@ -17,8 +29,11 @@ describe('getAuthSecret', () => {
   };
 
   afterEach(() => {
+    process.env.ALLOW_LOCAL_AUTH_FALLBACK = originalEnv.allowLocalAuthFallback;
     process.env.AUTH_SECRET = originalEnv.authSecret;
     process.env.AWS_EXECUTION_ENV = originalEnv.awsExecutionEnv;
+    setNodeEnv(originalEnv.nodeEnv);
+    process.env.PLAYWRIGHT = originalEnv.playwright;
     process.env.NEXTAUTH_URL = originalEnv.nextAuthUrl;
     process.env.NEXT_PUBLIC_APP_URL = originalEnv.nextPublicAppUrl;
     process.env.NEXTAUTH_SECRET = originalEnv.nextAuthSecret;
@@ -35,16 +50,19 @@ describe('getAuthSecret', () => {
   it('falls back to the local secret outside hosted runtimes', () => {
     delete process.env.NEXTAUTH_SECRET;
     delete process.env.AUTH_SECRET;
+    setNodeEnv('development');
     delete process.env.VERCEL;
     delete process.env.AWS_EXECUTION_ENV;
 
     expect(getAuthSecret()).toBe(LOCAL_FALLBACK_AUTH_SECRET);
   });
 
-  it('returns undefined in hosted runtimes without an explicit secret', () => {
+  it('returns undefined in production without an explicit secret', () => {
     delete process.env.NEXTAUTH_SECRET;
     delete process.env.AUTH_SECRET;
-    process.env.VERCEL = '1';
+    setNodeEnv('production');
+    delete process.env.VERCEL;
+    delete process.env.AWS_EXECUTION_ENV;
 
     expect(getAuthSecret()).toBeUndefined();
   });
@@ -61,9 +79,16 @@ describe('getAuthBaseUrl', () => {
   it('falls back to the local app URL outside hosted runtimes', () => {
     delete process.env.NEXTAUTH_URL;
     delete process.env.NEXT_PUBLIC_APP_URL;
-    delete process.env.VERCEL;
-    delete process.env.AWS_EXECUTION_ENV;
+    setNodeEnv('development');
 
     expect(getAuthBaseUrl()).toBe(LOCAL_FALLBACK_AUTH_URL);
+  });
+
+  it('returns undefined in production without an explicit URL', () => {
+    delete process.env.NEXTAUTH_URL;
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    setNodeEnv('production');
+
+    expect(getAuthBaseUrl()).toBeUndefined();
   });
 });

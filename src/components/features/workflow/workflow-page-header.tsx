@@ -1,6 +1,11 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { HelpPopover } from '@/components/ui/help-popover';
 import { cn } from '@/lib/utils';
+import {
+  MainWorkflowCompactNav,
+  type MainWorkflowStepKey,
+} from './main-workflow-route';
 
 type WorkflowPageHeaderAction = {
   href: string;
@@ -16,6 +21,8 @@ type WorkflowPageHeaderProps = {
   supportingContent?: ReactNode;
   childrenLabel?: string;
   children?: ReactNode;
+  mainWorkflowSteps?: MainWorkflowStepKey[];
+  mainWorkflowDescription?: string;
   className?: string;
 };
 
@@ -27,6 +34,8 @@ export function WorkflowPageHeader({
   supportingContent,
   childrenLabel,
   children,
+  mainWorkflowSteps,
+  mainWorkflowDescription,
   className,
 }: WorkflowPageHeaderProps) {
   const effectiveChildrenLabel = children ? (childrenLabel ?? '関連導線') : undefined;
@@ -40,10 +49,12 @@ export function WorkflowPageHeader({
             </p>
           ) : null}
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[2rem]">
-              {title}
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[2rem]">
+                {title}
+              </h1>
+              <HelpPopover title={title} description={description} />
+            </div>
           </div>
           {supportingContent ? (
             <div className="rounded-2xl border border-border/70 bg-background/80 px-4 py-3 shadow-sm">
@@ -72,6 +83,15 @@ export function WorkflowPageHeader({
           ) : null}
           <div className="flex flex-wrap items-center justify-start gap-2">{children}</div>
         </div>
+      ) : null}
+      {mainWorkflowSteps && mainWorkflowSteps.length > 0 ? (
+        <MainWorkflowCompactNav
+          currentSteps={mainWorkflowSteps}
+          description={
+            mainWorkflowDescription ??
+            'この画面が主業務フローのどこにあるかを固定表示し、前後工程を見失わないようにしています。'
+          }
+        />
       ) : null}
     </div>
   );

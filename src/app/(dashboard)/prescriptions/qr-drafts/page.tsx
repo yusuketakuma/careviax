@@ -256,6 +256,8 @@ export default function QrDraftsPage() {
             </p>
           </div>
         }
+        mainWorkflowSteps={['prescriptions']}
+        mainWorkflowDescription="QR 下書き一覧は処方登録工程の前段支援として扱い、受付確定へ戻る位置関係を固定表示します。"
       >
         <PageShortcutLinks
           links={[

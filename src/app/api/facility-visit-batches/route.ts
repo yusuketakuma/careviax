@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
@@ -44,12 +45,13 @@ function buildFacilityLabel(schedule: {
         facility_id: string | null;
         building_id: string | null;
         address: string;
+        unit_name: string | null;
       }>;
     };
   };
 }) {
   const residence = schedule.case_.patient.residences[0] ?? null;
-  return residence?.facility_id ?? residence?.building_id ?? residence?.address ?? null;
+  return deriveFacilityLabel(residence);
 }
 
 function compareUnitName(

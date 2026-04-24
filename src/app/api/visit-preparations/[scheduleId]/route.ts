@@ -1,12 +1,15 @@
 import { NextRequest } from 'next/server';
-import { deriveFacilityLabel } from '@/lib/utils/facility';
+import { deriveFacilityLabel, deriveVisitPlaceGroup } from '@/lib/utils/facility';
 import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { upsertVisitPreparationSchema } from '@/lib/validations/visit-preparation';
-import { buildChecklistFromTemplate, mergeChecklistWithTemplate } from '@/lib/visits/checklist-template';
+import {
+  buildChecklistFromTemplate,
+  mergeChecklistWithTemplate,
+} from '@/lib/visits/checklist-template';
 import {
   describeOperationalTask,
   upsertOperationalTask,
@@ -34,7 +37,7 @@ function lineIdentity(line: IntakeLineSummary) {
 
 function summarizePrescriptionChanges(
   currentLines: IntakeLineSummary[],
-  previousLines: IntakeLineSummary[]
+  previousLines: IntakeLineSummary[],
 ) {
   const previousByKey = new Map(previousLines.map((line) => [lineIdentity(line), line]));
   const currentKeys = new Set<string>();
@@ -83,7 +86,7 @@ function buildPreparationTaskKey(scheduleId: string) {
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ scheduleId: string }> }
+  { params }: { params: Promise<{ scheduleId: string }> },
 ) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
@@ -223,8 +226,7 @@ export async function GET(
     billingEvidence,
     recentPrescriptionIntakes,
     firstVisitDoc,
-  ] =
-    await Promise.all([
+  ] = await Promise.all([
     prisma.visitRecord.findFirst({
       where: {
         org_id: ctx.orgId,
@@ -281,10 +283,7 @@ export async function GET(
     prisma.visitScheduleContactLog.findMany({
       where: {
         org_id: ctx.orgId,
-        OR: [
-          { schedule_id: schedule.id },
-          { case_id: schedule.case_id },
-        ],
+        OR: [{ schedule_id: schedule.id }, { case_id: schedule.case_id }],
       },
       orderBy: [{ called_at: 'desc' }],
       take: 4,
@@ -383,8 +382,7 @@ export async function GET(
     emergency_contact_set: (patient.contacts?.length ?? 0) > 0,
     first_visit_doc_delivered: firstVisitDoc?.delivered_at != null,
     management_plan_approved: (caseData.management_plans?.length ?? 0) > 0,
-    primary_physician_set:
-      caseData.care_team_links?.some((l) => l.role === 'physician') ?? false,
+    primary_physician_set: caseData.care_team_links?.some((l) => l.role === 'physician') ?? false,
   };
 
   // HVI-01C: build intake_context from home_visit_intake JSON and scheduling_preference
@@ -397,7 +395,7 @@ export async function GET(
     first_visit_preferred_date:
       schedulingPref?.first_visit_preferred_date instanceof Date
         ? schedulingPref.first_visit_preferred_date.toISOString().split('T')[0]
-        : (schedulingPref?.first_visit_preferred_date as string | null | undefined) ?? null,
+        : ((schedulingPref?.first_visit_preferred_date as string | null | undefined) ?? null),
     first_visit_time_slot: schedulingPref?.first_visit_time_slot ?? null,
     first_visit_time_note: schedulingPref?.first_visit_time_note ?? null,
     parking_available: schedulingPref?.parking_available ?? null,
@@ -422,11 +420,9 @@ export async function GET(
 
   const sameFacilitySchedules = sameDaySchedules.filter((item) => {
     const residence = item.case_.patient.residences[0] ?? null;
-    if (!primaryResidence || !residence) return false;
-    if (primaryResidence.building_id && residence.building_id) {
-      return primaryResidence.building_id === residence.building_id;
-    }
-    return primaryResidence.address === residence.address;
+    const primaryGroup = deriveVisitPlaceGroup(primaryResidence ?? null);
+    const targetGroup = deriveVisitPlaceGroup(residence ?? null);
+    return Boolean(primaryGroup && targetGroup && primaryGroup.key === targetGroup.key);
   });
 
   const readinessBlockers = [
@@ -487,9 +483,7 @@ export async function GET(
         handoff: {
           assignment_mode: schedule.assignment_mode,
           summary: [
-            ...(schedule.assignment_mode === 'fallback'
-              ? ['代替担当での訪問です']
-              : []),
+            ...(schedule.assignment_mode === 'fallback' ? ['代替担当での訪問です'] : []),
             ...(schedule.escalation_reason ? [schedule.escalation_reason] : []),
             ...(schedule.override_request?.status === 'pending'
               ? [`変更承認待ち: ${schedule.override_request.reason}`]
@@ -535,9 +529,9 @@ export async function GET(
             schedule.case_.patient.name,
             ...sameFacilitySchedules.map((item) => item.case_.patient.name),
           ],
-          route_orders: [
-            ...sameDaySchedules.map((item) => item.route_order),
-          ].filter((value): value is number => typeof value === 'number'),
+          route_orders: [...sameDaySchedules.map((item) => item.route_order)].filter(
+            (value): value is number => typeof value === 'number',
+          ),
         },
         workload: {
           same_day_visit_count: sameDaySchedules.length + 1,
@@ -548,11 +542,12 @@ export async function GET(
             evidence_id: item.id,
             visit_record_id: item.visit_record_id,
             ...blocker,
-          }))
+          })),
         ),
         prescription_changes: prescriptionChanges,
         home_care_feature_highlights:
           selectScheduleHomeCareFeatureHighlights(homeCareFeatureSummary),
+        jahis_supplemental_records: visitBrief.jahis_supplemental_records,
         visit_brief: visitBrief,
         onboarding_readiness,
         intake_context,
@@ -570,7 +565,7 @@ export async function GET(
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: Promise<{ scheduleId: string }> }
+  { params }: { params: Promise<{ scheduleId: string }> },
 ) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',

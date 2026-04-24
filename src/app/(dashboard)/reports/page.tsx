@@ -41,6 +41,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
             </p>
           </div>
         }
+        mainWorkflowSteps={['reports']}
         childrenLabel="関連導線"
       >
         <PageShortcutLinks links={getReportsOverviewShortcutLinks()} />

@@ -10,6 +10,9 @@ const {
   notificationCreateMock,
   dispatchNotificationEventMock,
   taskFindManyMock,
+  qrScanDraftFindManyMock,
+  qrScanDraftUpdateManyMock,
+  jahisSupplementalRecordDeleteManyMock,
   upsertOperationalTaskMock,
   withOrgContextMock,
   runJobMock,
@@ -23,6 +26,9 @@ const {
   notificationCreateMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   taskFindManyMock: vi.fn(),
+  qrScanDraftFindManyMock: vi.fn(),
+  qrScanDraftUpdateManyMock: vi.fn(),
+  jahisSupplementalRecordDeleteManyMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   runJobMock: vi.fn(async (_jobType: string, fn: () => Promise<unknown>) => fn()),
@@ -54,6 +60,13 @@ vi.mock('@/lib/db', () => ({
     task: {
       findMany: taskFindManyMock,
       updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
+    qrScanDraft: {
+      findMany: qrScanDraftFindManyMock,
+      updateMany: qrScanDraftUpdateManyMock,
+    },
+    jahisSupplementalRecord: {
+      deleteMany: jahisSupplementalRecordDeleteManyMock,
     },
   },
 }));
@@ -93,6 +106,7 @@ import {
   checkCallbackFollowups,
   checkConferenceMeetingReminders,
   checkInitialHomeVisitAssessmentBacklog,
+  cleanupAbandonedQrDrafts,
 } from './daily';
 import { checkPrescriptionOriginalRetention } from './daily-prescription-original-retention';
 
@@ -114,7 +128,7 @@ describe('checkPrescriptionOriginalRetention', () => {
         task: {
           updateMany: vi.fn().mockResolvedValue({ count: 0 }),
         },
-      })
+      }),
     );
   });
 
@@ -156,32 +170,30 @@ describe('checkPrescriptionOriginalRetention', () => {
           case_id: 'case_1',
           patient_id: 'patient_1',
         },
-      })
+      }),
     );
   });
 
   it('creates overdue fax original follow-up tasks and notifications', async () => {
-    prescriptionIntakeFindManyMock
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        {
-          id: 'intake_fax_1',
-          org_id: 'org_1',
-          source_type: 'fax',
-          created_at: new Date('2026-03-24T09:00:00.000Z'),
-          original_collected_at: null,
-          cycle: {
+    prescriptionIntakeFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        id: 'intake_fax_1',
+        org_id: 'org_1',
+        source_type: 'fax',
+        created_at: new Date('2026-03-24T09:00:00.000Z'),
+        original_collected_at: null,
+        cycle: {
+          patient_id: 'patient_1',
+          case_: {
             patient_id: 'patient_1',
-            case_: {
-              patient_id: 'patient_1',
-              primary_pharmacist_id: 'pharmacist_1',
-              patient: {
-                name: '山田 太郎',
-              },
+            primary_pharmacist_id: 'pharmacist_1',
+            patient: {
+              name: '山田 太郎',
             },
           },
         },
-      ]);
+      },
+    ]);
 
     const result = await checkPrescriptionOriginalRetention();
 
@@ -200,14 +212,12 @@ describe('checkPrescriptionOriginalRetention', () => {
           patient_name: '山田 太郎',
           action_href: '/patients/patient_1/prescriptions',
         }),
-      })
+      }),
     );
   });
 
   it('clears stale fax follow-up tasks when nothing is overdue', async () => {
-    prescriptionIntakeFindManyMock
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+    prescriptionIntakeFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     taskFindManyMock.mockResolvedValue([
       {
         org_id: 'org_1',
@@ -222,7 +232,7 @@ describe('checkPrescriptionOriginalRetention', () => {
         task: {
           updateMany: updateManyMock,
         },
-      })
+      }),
     );
 
     const result = await checkPrescriptionOriginalRetention();
@@ -236,7 +246,7 @@ describe('checkPrescriptionOriginalRetention', () => {
         data: expect.objectContaining({
           status: 'completed',
         }),
-      })
+      }),
     );
   });
 
@@ -273,7 +283,7 @@ describe('checkPrescriptionOriginalRetention', () => {
         relatedEntityType: 'visit_schedule',
         relatedEntityId: 'schedule_1',
         dedupeKey: 'initial-home-visit-assessment:schedule_1',
-      })
+      }),
     );
     expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
       expect.anything(),
@@ -281,8 +291,56 @@ describe('checkPrescriptionOriginalRetention', () => {
         orgId: 'org_1',
         eventType: 'billing_initial_assessment_due',
         explicitUserIds: ['pharmacist_1'],
-      })
+      }),
     );
+  });
+});
+
+describe('cleanupAbandonedQrDrafts', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-21T12:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('discards stale QR drafts and removes unconfirmed supplemental records', async () => {
+    qrScanDraftFindManyMock.mockResolvedValue([{ id: 'draft_1' }, { id: 'draft_2' }]);
+    qrScanDraftUpdateManyMock.mockResolvedValue({ count: 2 });
+    jahisSupplementalRecordDeleteManyMock.mockResolvedValue({ count: 3 });
+
+    const result = await cleanupAbandonedQrDrafts();
+
+    expect(result).toEqual({ processedCount: 2 });
+    expect(qrScanDraftFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: 'pending' }),
+        select: { id: true },
+      }),
+    );
+    expect(qrScanDraftUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: { in: ['draft_1', 'draft_2'] } },
+      data: { status: 'discarded' },
+    });
+    expect(jahisSupplementalRecordDeleteManyMock).toHaveBeenCalledWith({
+      where: {
+        qr_draft_id: { in: ['draft_1', 'draft_2'] },
+        prescription_intake_id: null,
+      },
+    });
+  });
+
+  it('does not update or delete when no stale QR drafts exist', async () => {
+    qrScanDraftFindManyMock.mockResolvedValue([]);
+
+    const result = await cleanupAbandonedQrDrafts();
+
+    expect(result).toEqual({ processedCount: 0 });
+    expect(qrScanDraftUpdateManyMock).not.toHaveBeenCalled();
+    expect(jahisSupplementalRecordDeleteManyMock).not.toHaveBeenCalled();
   });
 });
 
@@ -332,7 +390,7 @@ describe('checkConferenceMeetingReminders', () => {
         eventType: 'conference_next_meeting_due',
         explicitUserIds: ['pharmacist_1'],
         dedupeKey: 'conference-next-meeting:note_service_1:2026-03-31',
-      })
+      }),
     );
   });
 });

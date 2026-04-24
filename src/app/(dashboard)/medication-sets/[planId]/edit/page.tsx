@@ -26,6 +26,8 @@ export default async function SetPlanEditPage({ params }: { params: Promise<{ pl
           </div>
         }
         shortcuts={getSetPlanEditShortcutLinks(planId)}
+        mainWorkflowSteps={['medication_sets']}
+        mainWorkflowDescription="セット計画の編集画面では、次に続くセット監査まで見据えた現在地を表示しています。"
         className="mb-4"
       />
 

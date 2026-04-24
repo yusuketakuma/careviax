@@ -2,17 +2,41 @@ import { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import { success, notFound } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
+import { decodeKeysetCursor, encodeKeysetCursor } from '@/lib/api/keyset-cursor';
 import { prisma } from '@/lib/db/client';
+import type { Prisma } from '@prisma/client';
+
+const PATIENT_PRESCRIPTION_CURSOR_KEYS = ['prescribed_date', 'created_at'] as const;
+
+function buildKeysetWhere(
+  cursor: ReturnType<typeof decodeKeysetCursor<(typeof PATIENT_PRESCRIPTION_CURSOR_KEYS)[number]>>,
+): Prisma.PrescriptionIntakeWhereInput | null {
+  if (!cursor) return null;
+
+  return {
+    OR: [
+      { prescribed_date: { lt: cursor.prescribed_date } },
+      {
+        prescribed_date: cursor.prescribed_date,
+        created_at: { lt: cursor.created_at },
+      },
+      {
+        prescribed_date: cursor.prescribed_date,
+        created_at: cursor.created_at,
+        id: { lt: cursor.id },
+      },
+    ],
+  };
+}
 
 export const GET = withAuthContext(
-  async (
-    req: NextRequest,
-    ctx,
-    { params }: { params: Promise<{ id: string }> }
-  ) => {
+  async (req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
     const { id: patientId } = await params;
     const { searchParams } = new URL(req.url);
-    const { limit, offset } = parsePaginationParams(searchParams);
+    const { cursor, limit } = parsePaginationParams(searchParams);
+    const keysetWhere = buildKeysetWhere(
+      decodeKeysetCursor(PATIENT_PRESCRIPTION_CURSOR_KEYS, cursor),
+    );
 
     const patient = await prisma.patient.findFirst({
       where: { id: patientId, org_id: ctx.orgId },
@@ -24,9 +48,9 @@ export const GET = withAuthContext(
       where: {
         org_id: ctx.orgId,
         cycle: { patient_id: patientId },
+        ...(keysetWhere ?? {}),
       },
-      orderBy: { prescribed_date: 'desc' },
-      skip: offset,
+      orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
       take: limit + 1,
       select: {
         id: true,
@@ -75,12 +99,15 @@ export const GET = withAuthContext(
 
     const hasMore = intakes.length > limit;
     const data = hasMore ? intakes.slice(0, limit) : intakes;
+    const nextCursor = hasMore ? data[data.length - 1] : null;
 
     return success({
       patient,
       data,
       hasMore,
-      nextCursor: hasMore ? String(offset + limit) : undefined,
+      nextCursor: nextCursor
+        ? encodeKeysetCursor(PATIENT_PRESCRIPTION_CURSOR_KEYS, nextCursor)
+        : undefined,
     });
-  }
+  },
 );

@@ -10,6 +10,8 @@ export type WorkflowPhaseKey =
   | 'dispensing'
   | 'auditing'
   | 'medication_sets'
+  | 'set_audit'
+  | 'schedules'
   | 'visits'
   | 'reports';
 
@@ -71,11 +73,16 @@ export function buildWorkflowPhaseAccess(
   const proposals = workbench.filter((item) => item.item_type === 'proposal');
   const dispensing = workbench.filter((item) => item.action_href.startsWith('/dispensing'));
   const auditing = workbench.filter((item) => item.action_href.startsWith('/auditing'));
-  const medicationSets = workbench.filter((item) => item.action_href.startsWith('/medication-sets'));
+  const medicationSets = workbench.filter(
+    (item) =>
+      item.action_href.startsWith('/medication-sets') &&
+      !item.action_href.startsWith('/medication-sets/audit')
+  );
+  const setAudits = workbench.filter((item) => item.action_href.startsWith('/medication-sets/audit'));
+  const schedules = workbench.filter((item) => item.action_href.startsWith('/schedules'));
   const visits = workbench.filter(
     (item) =>
       item.item_type === 'visit' ||
-      item.action_href.startsWith('/schedules') ||
       item.action_href.startsWith('/visits')
   );
   const reports = workbench.filter((item) => item.action_href.startsWith('/reports'));
@@ -86,13 +93,19 @@ export function buildWorkflowPhaseAccess(
   const prescriptionCount = intakeLinkageCount + refillUpcomingCount;
   const medicationSetPreparationCount = payload.cycle_status_counts.setting ?? 0;
   const medicationSetAuditCount = payload.cycle_status_counts.set_audited ?? 0;
-  const medicationSetCycleCount = medicationSetPreparationCount + medicationSetAuditCount;
-  const medicationSetPendingCount = Math.max(medicationSets.length, medicationSetCycleCount);
+  const medicationSetPendingCount = Math.max(medicationSets.length, medicationSetPreparationCount);
+  const setAuditPendingCount = Math.max(setAudits.length, medicationSetAuditCount);
+  const schedulePendingCount = Math.max(
+    schedules.length,
+    payload.operations_queue.visit_demands + payload.operations_queue.intake_linkages
+  );
 
   const proposalNext = proposals[0];
   const dispensingNext = dispensing[0];
   const auditingNext = auditing[0];
   const medicationSetsNext = medicationSets[0];
+  const setAuditsNext = setAudits[0];
+  const schedulesNext = schedules[0];
   const visitsNext = visits[0];
   const reportsNext = reports[0];
 
@@ -153,7 +166,7 @@ export function buildWorkflowPhaseAccess(
       pending_count: medicationSetPendingCount,
       summary:
         medicationSetPendingCount > 0
-          ? buildMedicationSetSummary(medicationSetPreparationCount, medicationSetAuditCount)
+          ? buildMedicationSetSummary(medicationSetPreparationCount, 0)
           : 'セット関連の滞留はありません',
       tone: medicationSetPendingCount > 0 ? 'warning' : 'default',
       next_action: medicationSetsNext
@@ -161,17 +174,46 @@ export function buildWorkflowPhaseAccess(
         : medicationSetPendingCount > 0
           ? {
               href: '/medication-sets',
-              label:
-                medicationSetAuditCount > 0 ? 'セット監査を確認' : 'セット管理を開く',
+              label: 'セット管理を開く',
             }
+          : null,
+    },
+    set_audit: {
+      preview_items: setAuditsNext ? [previewFromWorkbenchItem(setAuditsNext)] : [],
+      label: 'セット監査',
+      href: '/medication-sets',
+      pending_count: setAuditPendingCount,
+      summary:
+        setAuditPendingCount > 0 ? `セット監査 ${setAuditPendingCount}件` : 'セット監査待ちはありません',
+      tone: setAuditPendingCount > 0 ? 'warning' : 'default',
+      next_action: setAuditsNext
+        ? { href: setAuditsNext.action_href, label: setAuditsNext.action_label }
+        : setAuditPendingCount > 0
+          ? { href: '/medication-sets', label: 'セット監査を確認' }
+          : null,
+    },
+    schedules: {
+      preview_items: schedulesNext ? [previewFromWorkbenchItem(schedulesNext)] : [],
+      label: 'スケジュール登録',
+      href: '/schedules',
+      pending_count: schedulePendingCount,
+      summary:
+        schedulePendingCount > 0
+          ? `訪問候補・受付導線 ${schedulePendingCount}件`
+          : 'スケジュール登録待ちはありません',
+      tone: schedulePendingCount > 0 ? 'warning' : 'default',
+      next_action: schedulesNext
+        ? { href: schedulesNext.action_href, label: schedulesNext.action_label }
+        : schedulePendingCount > 0
+          ? { href: '/schedules', label: 'スケジュール登録を開く' }
           : null,
     },
     visits: {
       preview_items: visitsNext ? [previewFromWorkbenchItem(visitsNext)] : [],
-      label: '訪問管理',
-      href: '/schedules',
+      label: '訪問時',
+      href: '/visits',
       pending_count: visits.length,
-      summary: visits.length > 0 ? `訪問関連 ${visits.length}件` : '訪問関連の滞留はありません',
+      summary: visits.length > 0 ? `訪問時対応 ${visits.length}件` : '訪問時対応の滞留はありません',
       tone: payload.visit_operations.overdue > 0 ? 'danger' : visits.length > 0 ? 'warning' : 'default',
       next_action: visitsNext ? { href: visitsNext.action_href, label: visitsNext.action_label } : null,
     },

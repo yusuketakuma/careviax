@@ -27,6 +27,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { OUTCOME_LABELS, OUTCOME_VARIANTS } from '@/lib/constants/visit';
 import type { VisitGeoLog } from '@/lib/visit-location';
+import {
+  VisitReportReadinessPanel,
+  type VisitReportReadinessItem,
+} from '@/components/features/visits/visit-report-readiness-panel';
+import {
+  PatientCareTeamSourcePanel,
+  type PatientCareTeamSourceContact,
+} from '@/components/features/visits/patient-care-team-source-panel';
 
 type ResidualMedication = {
   id: string;
@@ -83,6 +91,14 @@ type VisitRecordFull = {
     time_window_start: string | null;
     time_window_end: string | null;
   } | null;
+};
+
+type VisitPreparationSnapshot = {
+  data: {
+    pack: {
+      care_team: PatientCareTeamSourceContact[];
+    };
+  };
 };
 
 const relationLabel: Record<string, string> = {
@@ -297,6 +313,17 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     },
     enabled: !!orgId && !!recordId,
   });
+  const { data: visitPreparationSnapshot, isLoading: visitPreparationLoading } = useQuery<VisitPreparationSnapshot>({
+    queryKey: ['visit-preparation-care-team', record?.schedule?.id, orgId],
+    queryFn: async () => {
+      const res = await fetch(`/api/visit-preparations/${record?.schedule?.id}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('訪問準備情報の取得に失敗しました');
+      return res.json();
+    },
+    enabled: !!orgId && !!record?.schedule?.id,
+  });
 
   if (isBootstrappingOrg || isLoading) {
     return (
@@ -315,6 +342,89 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
   }
 
   const visitDateFormatted = format(parseISO(record.visit_date), 'yyyy年MM月dd日', { locale: ja });
+  const patientCareTeamContacts = visitPreparationSnapshot?.data.pack.care_team ?? [];
+  const visitDetailReadinessItems: VisitReportReadinessItem[] = [
+    {
+      key: 'soap',
+      label: 'SOAP本文',
+      description: 'S/O/A/P の本文が報告書生成の材料になります。',
+      done: Boolean(
+        record.soap_subjective?.trim() &&
+          record.soap_objective?.trim() &&
+          record.soap_assessment?.trim() &&
+          record.soap_plan?.trim(),
+      ),
+    },
+    {
+      key: 'collaboration',
+      label: '他職種へ送る論点',
+      description: '医師・ケアマネへ渡す提案や連絡事項が P に含まれているか確認します。',
+      done: Boolean(
+        record.soap_plan?.includes('医師') ||
+          record.soap_plan?.includes('ケアマネ') ||
+          record.soap_plan?.includes('報告') ||
+          record.soap_plan?.includes('連携'),
+      ),
+    },
+    {
+      key: 'residuals',
+      label: '残薬・減数調剤情報',
+      description: '残薬がある場合は報告書と疑義照会の根拠になります。',
+      done: Boolean((residuals?.length ?? 0) > 0),
+      required: false,
+    },
+    {
+      key: 'attachments',
+      label: '添付・現地証跡',
+      description: '写真、PDF、位置情報は薬局での報告書確認を補強します。',
+      done: Boolean(record.attachments.length > 0 || record.visit_geo_log?.start || record.visit_geo_log?.end),
+      required: false,
+    },
+  ];
+  const reportGenerationActions = (
+    <div className="relative" ref={menuRef}>
+      <Button
+        size="sm"
+        className="h-10 w-full gap-1 sm:h-8 sm:w-auto"
+        onClick={() => setShowReportMenu((v) => !v)}
+        disabled={generateReportMutation.isPending}
+        aria-haspopup="menu"
+        aria-expanded={showReportMenu}
+      >
+        <FileText className="size-3.5" aria-hidden="true" />
+        {generateReportMutation.isPending ? '生成中...' : '報告書生成'}
+      </Button>
+      {showReportMenu && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-border bg-popover shadow-md"
+        >
+          <button
+            role="menuitem"
+            className="w-full px-3 py-2.5 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-none"
+            onClick={() => handleGenerateReport('physician_report')}
+          >
+            医師向け報告書を作成
+          </button>
+          <button
+            role="menuitem"
+            className="w-full px-3 py-2.5 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-none"
+            onClick={() => handleGenerateReport('care_manager_report')}
+          >
+            ケアマネ向け情報提供書を作成
+          </button>
+          <div className="border-t border-border" />
+          <button
+            role="menuitem"
+            className="w-full px-3 py-2.5 text-left text-sm font-medium text-primary hover:bg-accent focus:bg-accent focus:outline-none"
+            onClick={() => handleGenerateReport()}
+          >
+            自動判定（保険種別に応じて生成）
+          </button>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="space-y-4">
@@ -356,49 +466,6 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
                 <FileDown className="size-3.5" aria-hidden="true" />
                 PDF出力
               </Link>
-
-              <div className="relative" ref={menuRef}>
-                <Button
-                  size="sm"
-                  className="h-10 w-full gap-1 sm:h-8 sm:w-auto"
-                  onClick={() => setShowReportMenu((v) => !v)}
-                  disabled={generateReportMutation.isPending}
-                  aria-haspopup="menu"
-                  aria-expanded={showReportMenu}
-                >
-                  <FileText className="size-3.5" aria-hidden="true" />
-                  {generateReportMutation.isPending ? '生成中...' : '報告書生成'}
-                </Button>
-                {showReportMenu && (
-                  <div
-                    role="menu"
-                    className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-border bg-popover shadow-md"
-                  >
-                    <button
-                      role="menuitem"
-                      className="w-full px-3 py-2.5 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-none"
-                      onClick={() => handleGenerateReport('physician_report')}
-                    >
-                      医師向け報告書を作成
-                    </button>
-                    <button
-                      role="menuitem"
-                      className="w-full px-3 py-2.5 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-none"
-                      onClick={() => handleGenerateReport('care_manager_report')}
-                    >
-                      ケアマネ向け情報提供書を作成
-                    </button>
-                    <div className="border-t border-border" />
-                    <button
-                      role="menuitem"
-                      className="w-full px-3 py-2.5 text-left text-sm font-medium text-primary hover:bg-accent focus:bg-accent focus:outline-none"
-                      onClick={() => handleGenerateReport()}
-                    >
-                      自動判定（保険種別に応じて生成）
-                    </button>
-                  </div>
-                )}
-              </div>
             </div>
           </div>
 
@@ -428,6 +495,16 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
           </div>
         </CardHeader>
       </Card>
+
+      <VisitReportReadinessPanel
+        mode="visit_detail"
+        items={visitDetailReadinessItems}
+        actions={reportGenerationActions}
+      />
+
+      {!visitPreparationLoading ? (
+        <PatientCareTeamSourcePanel contacts={patientCareTeamContacts} compact />
+      ) : null}
 
       {/* Reason fields */}
       {record.cancellation_reason && (

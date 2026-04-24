@@ -2,6 +2,10 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { createPrescriptionIntake } from '@/server/services/prescription-intake-service';
+import {
+  attachJahisSupplementalRecordsToIntake,
+  readJahisSupplementalRecords,
+} from '@/server/services/jahis-supplemental-records';
 import { getRealtimeAdapter } from '@/server/adapters/realtime';
 import { z } from 'zod';
 
@@ -28,7 +32,7 @@ const confirmQrDraftSchema = z.object({
         start_date: z.string().optional(),
         end_date: z.string().optional(),
         notes: z.string().optional(),
-      })
+      }),
     )
     .min(1),
   prescribed_date: z.string().min(1),
@@ -57,14 +61,20 @@ export const POST = withAuth(
       prescriber_name,
       prescriber_institution_id,
       prescriber_institution,
-    } =
-      parsed.data;
+    } = parsed.data;
 
     // Fetch draft and verify it belongs to this org and is pending
     const draft = await withOrgContext(req.orgId, async (tx) => {
       return tx.qrScanDraft.findFirst({
         where: { id, org_id: req.orgId },
-        select: { id: true, status: true, org_id: true, scanned_by: true },
+        select: {
+          id: true,
+          status: true,
+          org_id: true,
+          patient_id: true,
+          scanned_by: true,
+          parsed_data: true,
+        },
       });
     });
 
@@ -74,6 +84,12 @@ export const POST = withAuth(
 
     if (draft.status !== 'pending') {
       return validationError('このQRスキャン下書きはすでに処理済みです');
+    }
+
+    if (draft.patient_id && draft.patient_id !== patient_id) {
+      return validationError('QRスキャン下書きに紐付く患者と確定先患者が一致しません', {
+        patient_id: ['QRスキャン下書きに紐付く患者と確定先患者が一致しません'],
+      });
     }
 
     // Build intake input — data is fully validated by PC review UI
@@ -132,11 +148,23 @@ export const POST = withAuth(
       return validationError('処方受付の作成に失敗しました');
     }
 
+    const parsedData = draft.parsed_data as Record<string, unknown> | null;
+    const supplementalRecords = readJahisSupplementalRecords(parsedData?.supplementalRecords);
+
     // Update draft status to confirmed
     await withOrgContext(req.orgId, async (tx) => {
+      await attachJahisSupplementalRecordsToIntake(tx, {
+        orgId: req.orgId,
+        patientId: patient_id,
+        qrDraftId: id,
+        prescriptionIntakeId: result.intake.id,
+        fallbackRecords: supplementalRecords,
+      });
+
       return tx.qrScanDraft.update({
         where: { id },
         data: {
+          patient_id,
           status: 'confirmed',
           confirmed_intake_id: result.intake.id,
         },
@@ -174,15 +202,18 @@ export const POST = withAuth(
       // Realtime broadcast is best-effort
     }
 
-    return success({
-      intake: result.intake,
-      cycle: result.cycle,
-      medicationChanges: result.medicationChanges,
-      profileSyncResult: result.profileSyncResult,
-    }, 201);
+    return success(
+      {
+        intake: result.intake,
+        cycle: result.cycle,
+        medicationChanges: result.medicationChanges,
+        profileSyncResult: result.profileSyncResult,
+      },
+      201,
+    );
   },
   {
     permission: 'canVisit',
     message: '処方受付の作成権限がありません',
-  }
+  },
 );

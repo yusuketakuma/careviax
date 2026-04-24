@@ -3,6 +3,7 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+import { validateScheduleTimeDatesFitShift } from '@/server/services/visit-schedule-shift';
 
 const visitScheduleReorderSchema = z.object({
   updates: z
@@ -34,16 +35,6 @@ export const PATCH = withAuth(
       new Map(parsed.data.updates.map((item) => [item.schedule_id, item])).values()
     );
     const uniqueScheduleIds = dedupedUpdates.map((item) => item.schedule_id);
-    const duplicateRouteOrders = dedupedUpdates
-      .reduce((map, item) => {
-        const key = `${item.pharmacist_id ?? ''}:${item.scheduled_date ?? ''}:${item.route_order}`;
-        map.set(key, (map.get(key) ?? 0) + 1);
-        return map;
-      }, new Map<string, number>());
-
-    if (Array.from(duplicateRouteOrders.values()).some((count) => count > 1)) {
-      return validationError('同一セル内で route_order は重複できません');
-    }
 
     const result = await withOrgContext(req.orgId, async (tx) => {
       const schedules = await tx.visitSchedule.findMany({
@@ -56,6 +47,8 @@ export const PATCH = withAuth(
           case_id: true,
           pharmacist_id: true,
           scheduled_date: true,
+          time_window_start: true,
+          time_window_end: true,
           confirmed_at: true,
         },
       });
@@ -90,6 +83,20 @@ export const PATCH = withAuth(
       }
 
       const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
+      const duplicateRouteOrders = dedupedUpdates.reduce((map, item) => {
+        const schedule = scheduleById.get(item.schedule_id);
+        if (!schedule) return map;
+        const targetDate = item.scheduled_date ?? schedule.scheduled_date.toISOString().slice(0, 10);
+        const targetPharmacistId = item.pharmacist_id ?? schedule.pharmacist_id;
+        const key = `${targetPharmacistId}:${targetDate}:${item.route_order}`;
+        map.set(key, (map.get(key) ?? 0) + 1);
+        return map;
+      }, new Map<string, number>());
+
+      if (Array.from(duplicateRouteOrders.values()).some((count) => count > 1)) {
+        return { error: 'duplicate_route_order' as const };
+      }
+
       const confirmedDateMoves = dedupedUpdates.find((item) => {
         const schedule = scheduleById.get(item.schedule_id);
         if (!schedule?.confirmed_at) return false;
@@ -104,18 +111,94 @@ export const PATCH = withAuth(
         return { error: 'confirmed_move' as const };
       }
 
+      const moveTargets = dedupedUpdates
+        .map((item) => {
+          const schedule = scheduleById.get(item.schedule_id);
+          if (!schedule) return null;
+          const targetDate = item.scheduled_date ?? schedule.scheduled_date.toISOString().slice(0, 10);
+          const targetPharmacistId = item.pharmacist_id ?? schedule.pharmacist_id;
+          const isMove =
+            targetDate !== schedule.scheduled_date.toISOString().slice(0, 10) ||
+            targetPharmacistId !== schedule.pharmacist_id;
+          return isMove ? { schedule, targetDate, targetPharmacistId } : null;
+        })
+        .filter((item): item is NonNullable<typeof item> => Boolean(item));
+      const targetShiftKeys = Array.from(
+        new Set(moveTargets.map((item) => `${item.targetPharmacistId}:${item.targetDate}`))
+      );
+      const targetShifts =
+        targetShiftKeys.length === 0
+          ? []
+          : await tx.pharmacistShift.findMany({
+              where: {
+                org_id: req.orgId,
+                OR: targetShiftKeys.map((key) => {
+                  const [userId, date] = key.split(':');
+                  return {
+                    user_id: userId,
+                    date: new Date(date),
+                  };
+                }),
+              },
+              select: {
+                site_id: true,
+                user_id: true,
+                date: true,
+                available: true,
+                available_from: true,
+                available_to: true,
+              },
+            });
+      const shiftByTarget = new Map(
+        targetShifts.map((shift) => [
+          `${shift.user_id}:${shift.date.toISOString().slice(0, 10)}`,
+          shift,
+        ])
+      );
+      const shiftConflict = moveTargets.find((item) => {
+        const shift = shiftByTarget.get(`${item.targetPharmacistId}:${item.targetDate}`) ?? null;
+        return validateScheduleTimeDatesFitShift(
+          shift,
+          item.schedule.time_window_start,
+          item.schedule.time_window_end,
+        );
+      });
+      if (shiftConflict) {
+        const shift = shiftByTarget.get(
+          `${shiftConflict.targetPharmacistId}:${shiftConflict.targetDate}`
+        ) ?? null;
+        return {
+          error: 'shift_conflict' as const,
+          message:
+            validateScheduleTimeDatesFitShift(
+              shift,
+              shiftConflict.schedule.time_window_start,
+              shiftConflict.schedule.time_window_end,
+            ) ?? '移動先シフトと訪問予定の時間帯が一致しません',
+        };
+      }
+
       await Promise.all(
-        dedupedUpdates.map((item) =>
-          tx.visitSchedule.update({
+        dedupedUpdates.map((item) => {
+          const schedule = scheduleById.get(item.schedule_id);
+          const targetDate = item.scheduled_date ?? schedule?.scheduled_date.toISOString().slice(0, 10);
+          const targetPharmacistId = item.pharmacist_id ?? schedule?.pharmacist_id;
+          const targetShift =
+            targetDate && targetPharmacistId
+              ? shiftByTarget.get(`${targetPharmacistId}:${targetDate}`) ?? null
+              : null;
+
+          return tx.visitSchedule.update({
             where: { id: item.schedule_id },
             data: {
               route_order: item.route_order,
               ...(item.scheduled_date ? { scheduled_date: new Date(item.scheduled_date) } : {}),
               ...(item.pharmacist_id ? { pharmacist_id: item.pharmacist_id } : {}),
+              ...(targetShift ? { site_id: targetShift.site_id } : {}),
               version: { increment: 1 },
             },
-          })
-        )
+          });
+        })
       );
 
       await tx.auditLog.create({
@@ -151,6 +234,12 @@ export const PATCH = withAuth(
       }
       if (result.error === 'confirmed_move') {
         return validationError('電話確定済みの訪問予定は日付や担当を変更できません');
+      }
+      if (result.error === 'shift_conflict') {
+        return validationError(result.message);
+      }
+      if (result.error === 'duplicate_route_order') {
+        return validationError('同一セル内で route_order は重複できません');
       }
     }
 

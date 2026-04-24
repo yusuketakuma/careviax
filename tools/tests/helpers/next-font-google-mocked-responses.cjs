@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const path = require('node:path');
 
 const notoSansPath = path.join(process.cwd(), 'public', 'fonts', 'NotoSansJP-Regular.otf');

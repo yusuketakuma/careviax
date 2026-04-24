@@ -16,7 +16,7 @@ test.describe('dashboard page', () => {
     await waitForStableUi(page);
 
     // Dashboard header
-    await expect(page.getByRole('heading', { name: 'CareViaX — ダッシュボード', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'CareViaX ホーム', level: 1 })).toBeVisible();
 
     // Main content area should have meaningful content
     const main = page.locator('main');
@@ -54,12 +54,12 @@ test.describe('sidebar navigation', () => {
     // Main workflow items
     await expect(sidebar.getByRole('link', { name: 'ホーム' })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: '患者' })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: '処方受付' })).toBeVisible();
+    await expect(sidebar.getByRole('link', { name: '処方登録' })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: 'スケジュール' })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: '調剤' })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: '鑑査' })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: '訪問' })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: '報告' })).toBeVisible();
+    await expect(sidebar.getByRole('link', { name: '調剤監査' })).toBeVisible();
+    await expect(sidebar.getByRole('link', { name: '訪問時' })).toBeVisible();
+    await expect(sidebar.getByRole('link', { name: '報告書' })).toBeVisible();
 
     expect(errors).toEqual([]);
   });
@@ -192,7 +192,7 @@ test.describe('breadcrumb navigation', () => {
       breadcrumb.getByRole('link', { name: 'ホームへ' }).click(),
     ]);
 
-    await expect(page.getByRole('heading', { name: 'CareViaX — ダッシュボード', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'CareViaX ホーム', level: 1 })).toBeVisible();
     expect(errors).toEqual([]);
   });
 });

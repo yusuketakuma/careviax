@@ -68,7 +68,7 @@ export default async function DashboardPage() {
                   {dashboardFocusSummary(viewer.focusRole)}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  緊急対応、今日の予定、薬剤師と事務スタッフの担当入口、工程ごとの滞留をこの順で確認します。
+                  緊急対応、今日の予定、職種ごとの初動を確認したあと、処方登録から報告書までの 8 工程を固定順で追えるようにしています。
                 </p>
               </div>
 
@@ -93,7 +93,7 @@ export default async function DashboardPage() {
                     確認順
                   </div>
                   <p className="mt-2 text-sm font-semibold text-foreground">
-                    緊急対応 → 予定 → 導線
+                    緊急対応 → 予定 → 8工程
                   </p>
                 </div>
               </div>

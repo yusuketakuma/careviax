@@ -14,7 +14,7 @@ export async function GET(
     permission: 'canVisit',
     message: '患者配薬設定の閲覧権限がありません',
   });
-  if ('response' in authResult && authResult.response) return authResult.response;
+  if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
   const { id } = await params;
@@ -57,7 +57,7 @@ export async function PUT(
     permission: 'canVisit',
     message: '患者配薬設定の更新権限がありません',
   });
-  if ('response' in authResult && authResult.response) return authResult.response;
+  if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
   const body = await req.json().catch(() => null);
