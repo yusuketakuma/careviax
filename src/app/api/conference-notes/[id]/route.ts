@@ -79,7 +79,9 @@ export const PATCH = withAuthContext<{ id: string }>(
           : undefined),
       metadata:
         parsed.data.metadata ??
-        (existing.metadata && typeof existing.metadata === 'object' && !Array.isArray(existing.metadata)
+        (existing.metadata &&
+        typeof existing.metadata === 'object' &&
+        !Array.isArray(existing.metadata)
           ? existing.metadata
           : undefined),
       billing_eligible: parsed.data.billing_eligible ?? existing.billing_eligible,
@@ -87,13 +89,11 @@ export const PATCH = withAuthContext<{ id: string }>(
       follow_up_date:
         parsed.data.follow_up_date ??
         (existing.follow_up_date ? existing.follow_up_date.toISOString() : undefined),
-      follow_up_completed:
-        parsed.data.follow_up_completed ?? existing.follow_up_completed,
+      follow_up_completed: parsed.data.follow_up_completed ?? existing.follow_up_completed,
       participants:
         parsed.data.participants ??
         (Array.isArray(existing.participants) ? existing.participants : []),
-      conference_date:
-        parsed.data.conference_date ?? existing.conference_date.toISOString(),
+      conference_date: parsed.data.conference_date ?? existing.conference_date.toISOString(),
       action_items:
         parsed.data.action_items ??
         (Array.isArray(existing.action_items) ? existing.action_items : undefined),
@@ -111,29 +111,29 @@ export const PATCH = withAuthContext<{ id: string }>(
 
     const normalizedContent = buildConferenceContent(
       mergedValidation.data.content,
-      mergedValidation.data.structured_content
+      mergedValidation.data.structured_content,
     );
     const normalizedMetadata = buildConferenceMetadata(
       resolvedNoteType,
-      mergedValidation.data.metadata
+      mergedValidation.data.metadata,
     );
     const normalizedStructuredContent = normalizeConferenceStructuredContent(
       resolvedNoteType,
-      mergedValidation.data.structured_content
+      mergedValidation.data.structured_content,
     );
     const existingMetadataExtras =
-      existing.metadata && typeof existing.metadata === 'object' && !Array.isArray(existing.metadata)
+      existing.metadata &&
+      typeof existing.metadata === 'object' &&
+      !Array.isArray(existing.metadata)
         ? Object.fromEntries(
             Object.entries(existing.metadata as Record<string, unknown>).filter(
               ([key]) =>
-                key !== 'billing' &&
-                key !== 'visit_brief' &&
-                key !== 'generated_report_id'
-            )
+                key !== 'billing' && key !== 'visit_brief' && key !== 'generated_report_id',
+            ),
           )
         : null;
 
-    const { note: updated, sync } = await withOrgContext(ctx.orgId, async (tx) => {
+    const result = await withOrgContext(ctx.orgId, async (tx) => {
       const careCase = mergedValidation.data.case_id
         ? await tx.careCase.findFirst({
             where: {
@@ -145,9 +145,24 @@ export const PATCH = withAuthContext<{ id: string }>(
             },
           })
         : null;
-      const resolvedPatientId =
+      if (mergedValidation.data.case_id && !careCase) {
+        return { error: validationError('ケースが見つかりません') };
+      }
+      const requestedPatientId =
         mergedValidation.data.patient_id ??
+        (mergedValidation.data.metadata?.visit_brief?.patient_id?.trim()
+          ? mergedValidation.data.metadata.visit_brief.patient_id.trim()
+          : null);
+      if (
+        careCase?.patient_id &&
+        requestedPatientId &&
+        requestedPatientId !== careCase.patient_id
+      ) {
+        return { error: validationError('ケースと患者が一致していません') };
+      }
+      const resolvedPatientId =
         careCase?.patient_id ??
+        mergedValidation.data.patient_id ??
         (mergedValidation.data.metadata?.visit_brief?.patient_id?.trim()
           ? mergedValidation.data.metadata.visit_brief.patient_id.trim()
           : null);
@@ -173,9 +188,7 @@ export const PATCH = withAuthContext<{ id: string }>(
           metadataBilling?.link_status === 'candidate' ||
           metadataBilling?.link_status === 'linked');
       const resolvedBillingCode =
-        mergedValidation.data.billing_code?.trim() ||
-        metadataBilling?.code?.trim() ||
-        null;
+        mergedValidation.data.billing_code?.trim() || metadataBilling?.code?.trim() || null;
       const saved = await tx.conferenceNote.update({
         where: { id },
         data: {
@@ -214,18 +227,19 @@ export const PATCH = withAuthContext<{ id: string }>(
         mode: 'update',
       });
     });
+    if ('error' in result) return result.error;
 
     return success({
       data: {
-        ...updated,
-        conference_type: updated.note_type,
-        generated_report_id: updated.generated_report_id,
+        ...result.note,
+        conference_type: result.note.note_type,
+        generated_report_id: result.note.generated_report_id,
       },
-      sync,
+      sync: result.sync,
     });
   },
   {
     permission: 'canReport',
     message: 'カンファレンス記録の更新権限がありません',
-  }
+  },
 );

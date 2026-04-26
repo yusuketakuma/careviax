@@ -223,6 +223,8 @@ export type BillingEvidenceContext = {
   enteralRequired?: boolean;
   /** 介護認定区分 — intake.care_level から自動判定 */
   careLevelCategory?: 'care_required' | 'support_required' | null;
+  /** 在宅移行初期管理料の対象 */
+  initialTransitionEligible?: boolean;
   /** 複数名薬剤管理指導訪問料の対象 */
   multiStaffVisitEligible?: boolean;
   /** 訪問薬剤管理医師同時指導料の対象 */

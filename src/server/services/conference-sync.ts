@@ -1,4 +1,8 @@
 import { Prisma } from '@prisma/client';
+import {
+  buildConferenceReportDisclosureContent,
+  type ConferenceReportType,
+} from '@/lib/conferences/conference-report-disclosure';
 
 type TransactionClient = Prisma.TransactionClient;
 
@@ -28,6 +32,7 @@ type Participant = {
 type NoteInput = {
   id: string;
   case_id: string | null;
+  patient_id?: string | null;
   note_type: string;
   title: string;
   content?: string;
@@ -92,10 +97,7 @@ const NOTE_TYPE_LABEL: Record<string, string> = {
 /** Parse participants from note.participants field (JSON array [{name, role}]). */
 function parseParticipants(raw: unknown): Participant[] {
   if (!Array.isArray(raw)) return [];
-  return raw.filter(
-    (item): item is Participant =>
-      typeof item === 'object' && item !== null
-  );
+  return raw.filter((item): item is Participant => typeof item === 'object' && item !== null);
 }
 
 export interface ConferenceSyncResult {
@@ -148,7 +150,7 @@ function buildReportContentExtras(
     | 'nurse_share'
     | 'family_share'
     | 'internal_record',
-  sections: StructuredSection[]
+  sections: StructuredSection[],
 ) {
   switch (noteType) {
     case 'pre_discharge':
@@ -189,11 +191,17 @@ function buildReportContentExtras(
       return {
         incident_report: {
           summary: findSectionBody(sections, ['incident_summary', 'emergency_context']),
-          root_cause: findSectionBody(sections, ['root_cause']),
+          ...(reportType === 'internal_record'
+            ? { root_cause: findSectionBody(sections, ['root_cause']) }
+            : {}),
           immediate_actions: parseSectionLines(
-            findSectionBody(sections, ['immediate_actions', 'urgent_actions'])
+            findSectionBody(sections, ['immediate_actions', 'urgent_actions']),
           ),
-          risk_mitigation: parseSectionLines(findSectionBody(sections, ['risk_mitigation'])),
+          ...(reportType === 'internal_record'
+            ? {
+                risk_mitigation: parseSectionLines(findSectionBody(sections, ['risk_mitigation'])),
+              }
+            : {}),
         },
       };
     default:
@@ -208,9 +216,7 @@ function parseDateFromSectionBody(body?: string) {
   const exactDateMatch = normalized.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
   if (exactDateMatch) {
     const [, year, month, day] = exactDateMatch;
-    const parsed = new Date(
-      Date.UTC(Number(year), Number(month) - 1, Number(day), 12, 0, 0, 0)
-    );
+    const parsed = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 12, 0, 0, 0));
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
@@ -231,7 +237,7 @@ export class ConferenceSyncService {
     tx: TransactionClient,
     orgId: string,
     userId: string,
-    note: NoteInput
+    note: NoteInput,
   ): Promise<ConferenceSyncResult> {
     return this.syncOnSave(tx, orgId, userId, note);
   }
@@ -240,7 +246,7 @@ export class ConferenceSyncService {
     tx: TransactionClient,
     orgId: string,
     userId: string,
-    note: NoteInput
+    note: NoteInput,
   ): Promise<ConferenceSyncResult> {
     return this.syncOnSave(tx, orgId, userId, note);
   }
@@ -249,7 +255,7 @@ export class ConferenceSyncService {
     tx: TransactionClient,
     orgId: string,
     userId: string,
-    note: NoteInput
+    note: NoteInput,
   ): Promise<ConferenceSyncResult> {
     const result: ConferenceSyncResult = {
       tasks_created: 0,
@@ -257,14 +263,14 @@ export class ConferenceSyncService {
     };
 
     // Pre-fetch careCase once so sub-methods don't each query independently.
-    let patientId: string | null = null;
+    let patientId: string | null = note.patient_id ?? null;
     let primaryPharmacistId: string | null = null;
     if (note.case_id) {
       const careCase = await tx.careCase.findFirst({
         where: { id: note.case_id, org_id: orgId },
         select: { patient_id: true, primary_pharmacist_id: true },
       });
-      patientId = careCase?.patient_id ?? null;
+      patientId = note.patient_id ?? careCase?.patient_id ?? null;
       primaryPharmacistId = careCase?.primary_pharmacist_id ?? null;
     }
 
@@ -294,7 +300,7 @@ export class ConferenceSyncService {
         orgId,
         userId,
         note,
-        patientId
+        patientId,
       );
     }
 
@@ -317,11 +323,9 @@ export class ConferenceSyncService {
   private static async convertActionItemsBatch(
     tx: TransactionClient,
     orgId: string,
-    note: NoteInput
+    note: NoteInput,
   ): Promise<number> {
-    const actionItems = Array.isArray(note.action_items)
-      ? (note.action_items as ActionItem[])
-      : [];
+    const actionItems = Array.isArray(note.action_items) ? (note.action_items as ActionItem[]) : [];
 
     if (actionItems.length === 0) return 0;
 
@@ -345,10 +349,7 @@ export class ConferenceSyncService {
       upsert?: (args: unknown) => Promise<unknown>;
     };
 
-    if (
-      typeof taskClient.findMany === 'function' &&
-      typeof taskClient.createMany === 'function'
-    ) {
+    if (typeof taskClient.findMany === 'function' && typeof taskClient.createMany === 'function') {
       const existingTasks = await taskClient.findMany({
         where: {
           related_entity_id: note.id,
@@ -357,13 +358,9 @@ export class ConferenceSyncService {
         },
         select: { dedupe_key: true },
       });
-      const existingDedupeKeys = new Set(
-        existingTasks.map((t) => t.dedupe_key).filter(Boolean)
-      );
+      const existingDedupeKeys = new Set(existingTasks.map((t) => t.dedupe_key).filter(Boolean));
 
-      const newItems = validItems.filter(
-        ({ dedupeKey }) => !existingDedupeKeys.has(dedupeKey)
-      );
+      const newItems = validItems.filter(({ dedupeKey }) => !existingDedupeKeys.has(dedupeKey));
 
       if (newItems.length > 0) {
         await taskClient.createMany({
@@ -444,7 +441,7 @@ export class ConferenceSyncService {
     tx: TransactionClient,
     orgId: string,
     note: NoteInput,
-    patientId: string | null
+    patientId: string | null,
   ): Promise<{ id: string } | null> {
     if (!note.case_id || !patientId) return null;
 
@@ -454,14 +451,8 @@ export class ConferenceSyncService {
 
     // Billing month is anchored to the conference_date if available,
     // otherwise falls back to the current month.
-    const referenceDate = note.conference_date
-      ? new Date(note.conference_date)
-      : new Date();
-    const billingMonth = new Date(
-      referenceDate.getFullYear(),
-      referenceDate.getMonth(),
-      1
-    );
+    const referenceDate = note.conference_date ? new Date(note.conference_date) : new Date();
+    const billingMonth = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 1);
 
     const participants = parseParticipants(note.participants);
     const sections = parseStructuredSections(note.structured_content);
@@ -475,7 +466,7 @@ export class ConferenceSyncService {
       noteType,
       note.participants,
       sections,
-      referenceDate
+      referenceDate,
     );
 
     const dedupeKey = [
@@ -566,7 +557,7 @@ export class ConferenceSyncService {
     noteType: SupportedBillingNoteType,
     participants: unknown,
     sections: StructuredSection[],
-    referenceDate: Date
+    referenceDate: Date,
   ): Promise<{
     claimableHint: boolean;
     missingConditions: string[];
@@ -585,10 +576,7 @@ export class ConferenceSyncService {
             consent_type: 'visit_medication_management',
             is_active: true,
             revoked_date: null,
-            OR: [
-              { expiry_date: null },
-              { expiry_date: { gte: referenceDate } },
-            ],
+            OR: [{ expiry_date: null }, { expiry_date: { gte: referenceDate } }],
           },
           select: { id: true },
         }),
@@ -598,10 +586,7 @@ export class ConferenceSyncService {
             case_id: caseId,
             status: 'approved',
             approved_at: { not: null },
-            OR: [
-              { next_review_date: null },
-              { next_review_date: { gte: referenceDate } },
-            ],
+            OR: [{ next_review_date: null }, { next_review_date: { gte: referenceDate } }],
           },
           select: { id: true },
         }),
@@ -661,7 +646,7 @@ export class ConferenceSyncService {
         notes.push(`請求根拠確認メモ: ${billingSection.body.trim()}`);
       } else {
         missing.push(
-          'billing_confirmation セクション（ターミナルケア管理料の算定根拠）が未記入です'
+          'billing_confirmation セクション（ターミナルケア管理料の算定根拠）が未記入です',
         );
       }
 
@@ -690,22 +675,20 @@ export class ConferenceSyncService {
     tx: TransactionClient,
     orgId: string,
     note: NoteInput,
-    primaryPharmacistId: string | null
+    primaryPharmacistId: string | null,
   ): Promise<{ id: string } | null> {
     if (!note.case_id || !primaryPharmacistId) return null;
 
     const sections = parseStructuredSections(note.structured_content);
     const visitPlanSection = findSection(sections, 'next_visit_plan');
     const targetDischargeDate = parseDateFromSectionBody(
-      findSection(sections, 'target_discharge_date')?.body
+      findSection(sections, 'target_discharge_date')?.body,
     );
     if (!visitPlanSection?.body && !targetDischargeDate) return null;
 
     // Prefer a discharge-anchored first-visit proposal when the note records
     // an explicit discharge date. Otherwise, keep the previous short-horizon default.
-    const proposedDate = targetDischargeDate
-      ? new Date(targetDischargeDate)
-      : new Date();
+    const proposedDate = targetDischargeDate ? new Date(targetDischargeDate) : new Date();
     proposedDate.setDate(proposedDate.getDate() + (targetDischargeDate ? 3 : 7));
     const proposedDateOnly = new Date(
       Date.UTC(
@@ -715,8 +698,8 @@ export class ConferenceSyncService {
         12,
         0,
         0,
-        0
-      )
+        0,
+      ),
     );
 
     const dedupeKey = `conference-visit-proposal:${note.id}`;
@@ -762,7 +745,7 @@ export class ConferenceSyncService {
     orgId: string,
     userId: string,
     note: NoteInput,
-    patientId: string | null
+    patientId: string | null,
   ): Promise<number> {
     if (!note.case_id || !patientId) return 0;
 
@@ -867,7 +850,7 @@ export class ConferenceSyncService {
         | 'internal_record'
       >;
       includeStructuredContent?: boolean;
-    }
+    },
   ): Promise<string[]> {
     const reportTypes = options?.reportTypes ?? REPORT_TYPE_MAP[note.note_type];
     if (process.env.DEBUG_SYNC === '1') {
@@ -888,10 +871,6 @@ export class ConferenceSyncService {
     const sections = includeStructuredContent
       ? parseStructuredSections(note.structured_content)
       : [];
-    const sectionText = sections
-      .filter((s) => s.body?.trim())
-      .map((s) => `### ${s.label}\n${s.body}`)
-      .join('\n\n');
     const noteContent = typeof note.content === 'string' ? note.content.trim() : '';
 
     const label = NOTE_TYPE_LABEL[note.note_type] ?? '会議';
@@ -909,16 +888,6 @@ export class ConferenceSyncService {
       createMany?: (args: unknown) => Promise<unknown>;
       findFirst?: (args: unknown) => Promise<{ id: string } | null>;
       create?: (args: unknown) => Promise<{ id: string }>;
-    };
-
-    const contentBase = {
-      conference_note_id: note.id,
-      note_type: note.note_type,
-      title: `${label} 報告書ドラフト — ${note.title}`,
-      body: includeStructuredContent ? sectionText || noteContent : noteContent,
-      sections: sections
-        .filter((s) => s.body?.trim())
-        .map((s) => ({ key: s.key, label: s.label, body: s.body ?? '' })),
     };
 
     if (
@@ -940,9 +909,7 @@ export class ConferenceSyncService {
       const existingTypeSet = new Set(existingDrafts.map((r) => r.report_type));
 
       const createdIds: string[] = existingDrafts.map((r) => r.id);
-      const newReportTypes = reportTypes.filter(
-        (rt) => !existingTypeSet.has(rt as ReportType)
-      );
+      const newReportTypes = reportTypes.filter((rt) => !existingTypeSet.has(rt as ReportType));
 
       if (newReportTypes.length > 0) {
         await careReportClient.createMany({
@@ -953,7 +920,16 @@ export class ConferenceSyncService {
             report_type: reportType as ReportType,
             status: 'draft' as const,
             content: {
-              ...contentBase,
+              ...buildConferenceReportDisclosureContent({
+                conferenceNoteId: note.id,
+                noteType: note.note_type,
+                noteTitle: note.title,
+                reportType: reportType as ConferenceReportType,
+                label,
+                sections,
+                noteContent,
+                includeStructuredContent,
+              }),
               ...buildReportContentExtras(note.note_type, reportType as ReportType, sections),
             } as Prisma.InputJsonValue,
             created_by: userId,
@@ -1018,7 +994,16 @@ export class ConferenceSyncService {
           report_type: reportType as ReportType,
           status: 'draft' as const,
           content: {
-            ...contentBase,
+            ...buildConferenceReportDisclosureContent({
+              conferenceNoteId: note.id,
+              noteType: note.note_type,
+              noteTitle: note.title,
+              reportType: reportType as ConferenceReportType,
+              label,
+              sections,
+              noteContent,
+              includeStructuredContent,
+            }),
             ...buildReportContentExtras(note.note_type, reportType as ReportType, sections),
           } as Prisma.InputJsonValue,
           created_by: userId,

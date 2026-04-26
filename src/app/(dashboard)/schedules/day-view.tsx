@@ -61,6 +61,8 @@ import {
   createFacilityVisitRecordHref,
   type FacilityVisitContext,
 } from '@/lib/visits/facility-visit-context';
+import { buildHomeVisit2026ReadinessItems } from '@/lib/visits/home-visit-2026-evidence';
+import { extractConferenceProposalOrigin } from '@/lib/visits/visit-workflow-projection';
 import {
   discardSyncQueueItem,
   overwriteVisitRecordConflict,
@@ -185,6 +187,20 @@ const FACILITY_VISIT_DAY_WEEKDAY_OPTIONS = [
 const GANTT_SLOT_MINUTES = 30;
 const GANTT_DEFAULT_START_MINUTES = 8 * 60;
 const GANTT_DEFAULT_END_MINUTES = 18 * 60;
+
+function getHomeVisit2026PreparationItems(pack: VisitPreparationPack) {
+  return buildHomeVisit2026ReadinessItems({
+    structuredSoap: null,
+    visitType: pack.visit.visit_type,
+    billingBlockers: pack.billing_blockers,
+    intakeInitialTransitionExpected: pack.intake_context.initial_transition_management_expected,
+  });
+}
+
+function conferenceContextLabel(noteType: 'pre_discharge' | 'service_manager') {
+  return noteType === 'pre_discharge' ? '退院前カンファ' : '担当者会議';
+}
+
 type ScheduleDayViewProps = {
   initialSelectedDate?: string;
   initialTab?: 'proposals' | 'confirmed';
@@ -2980,6 +2996,15 @@ export function ScheduleDayView({
 
                       <div className="space-y-2 text-sm">
                         <p className="font-medium text-foreground">提案理由</p>
+                        {(() => {
+                          const origin = extractConferenceProposalOrigin(proposal.proposal_reason);
+                          return origin ? (
+                            <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs text-sky-950">
+                              <p className="font-medium">{origin.label}</p>
+                              <p className="mt-1">{origin.description}</p>
+                            </div>
+                          ) : null;
+                        })()}
                         <div className="flex flex-wrap gap-2">
                           {splitTrace(proposal.proposal_reason).map((part) => (
                             <span
@@ -4480,6 +4505,97 @@ export function ScheduleDayView({
                   <OnboardingWarningBadges
                     readiness={preparationDetails.pack.onboarding_readiness}
                   />
+                )}
+
+                {(() => {
+                  const homeVisit2026Items = getHomeVisit2026PreparationItems(
+                    preparationDetails.pack,
+                  );
+                  const requiredItems = homeVisit2026Items.filter((item) => item.required);
+                  const requiredOpenItems = requiredItems.filter((item) => !item.done);
+
+                  return (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-3 text-xs text-emerald-950">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="font-medium">訪問薬剤管理の記録ポイント</p>
+                          <p className="mt-1 leading-5 text-emerald-900/80">
+                            {VISIT_TYPE_LABELS[preparationDetails.pack.visit.visit_type]}で残す
+                            薬学的管理、連携、加算要件の証跡です。
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="border-emerald-300 bg-white">
+                          訪問中に記録 {requiredOpenItems.length}件
+                        </Badge>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {requiredOpenItems.length === 0 ? (
+                          <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-medium text-emerald-800">
+                            記録ポイント確認済み
+                          </span>
+                        ) : (
+                          requiredOpenItems.slice(0, 8).map((item) => (
+                            <span
+                              key={item.key}
+                              className={cn(
+                                'rounded-full border bg-white px-2.5 py-1 text-[11px] font-medium',
+                                item.severity === 'urgent'
+                                  ? 'border-rose-200 text-rose-800'
+                                  : item.severity === 'high'
+                                    ? 'border-amber-200 text-amber-800'
+                                    : 'border-emerald-200 text-emerald-800',
+                              )}
+                            >
+                              {item.label}
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {preparationDetails.pack.conference_context.length > 0 && (
+                  <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-3 text-xs text-sky-950">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium">会議からの引き継ぎ</p>
+                        <p className="mt-1 leading-5 text-sky-900/80">
+                          退院前カンファ・担当者会議で決まった内容を訪問前に確認します。
+                        </p>
+                      </div>
+                      <Badge variant="outline" className="border-sky-300 bg-white">
+                        {preparationDetails.pack.conference_context.length}件
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                      {preparationDetails.pack.conference_context.slice(0, 2).map((note) => (
+                        <div
+                          key={note.id}
+                          className="rounded-lg border border-sky-200 bg-white px-3 py-2"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-sky-200 px-2 py-0.5 text-[11px] font-medium text-sky-900">
+                              {conferenceContextLabel(note.note_type)}
+                            </span>
+                            <span className="font-medium text-foreground">{note.title}</span>
+                          </div>
+                          {note.highlights.length > 0 ? (
+                            <ul className="mt-2 space-y-1 leading-5 text-sky-950">
+                              {note.highlights.slice(0, 3).map((highlight, index) => (
+                                <li key={`${note.id}-${index}`}>・{highlight}</li>
+                              ))}
+                            </ul>
+                          ) : null}
+                          {note.action_items.length > 0 ? (
+                            <p className="mt-2 leading-5 text-sky-900/80">
+                              合意事項: {note.action_items.slice(0, 2).join(' / ')}
+                            </p>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
 
                 {preparationDetails.pack.previous_visit && (

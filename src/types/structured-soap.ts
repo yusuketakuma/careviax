@@ -113,11 +113,50 @@ export type SoapPlan = {
   free_text?: string;
 };
 
+export type PhysicianSimultaneousVisitEvidence = {
+  performed?: boolean;
+  patient_consent?: boolean;
+  physician_name?: string;
+  physician_institution?: string;
+  medication_adjustment_discussed?: boolean;
+  discussion_summary?: string;
+  same_day_exclusion_checked?: boolean;
+};
+
+export type MultiStaffVisitEvidence = {
+  performed?: boolean;
+  patient_consent?: boolean;
+  physician_need_confirmed?: boolean;
+  safety_reason?: 'agitation' | 'aggression' | 'severe_anxiety' | 'self_harm_risk' | 'other';
+  companion_name?: string;
+  companion_role?: string;
+  necessity_summary?: string;
+};
+
+export type InitialTransitionManagementEvidence = {
+  target?: boolean;
+  pre_visit_environment_assessed?: boolean;
+  medication_risk_assessed?: boolean;
+  transition_support_summary?: string;
+};
+
+export type HomeVisit2026Evidence = {
+  medication_review_completed?: boolean;
+  residual_medication_checked?: boolean;
+  adverse_event_checked?: boolean;
+  polypharmacy_reviewed?: boolean;
+  after_hours_contact_confirmed?: boolean;
+  physician_simultaneous?: PhysicianSimultaneousVisitEvidence;
+  multi_staff_visit?: MultiStaffVisitEvidence;
+  initial_transition_management?: InitialTransitionManagementEvidence;
+};
+
 export type StructuredSoap = {
   subjective: SoapSubjective;
   objective: SoapObjective;
   assessment: SoapAssessment;
   plan: SoapPlan;
   residual_medications?: ResidualMedicationEntry[];
+  home_visit_2026?: HomeVisit2026Evidence;
   handoff?: HandoffData | null;
 };

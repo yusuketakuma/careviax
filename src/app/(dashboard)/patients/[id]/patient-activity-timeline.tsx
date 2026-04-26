@@ -8,6 +8,7 @@ import {
   Activity,
   ArrowUpRight,
   CalendarDays,
+  CircleDollarSign,
   ClipboardList,
   FileText,
   MessageSquareWarning,
@@ -18,13 +19,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -42,6 +37,8 @@ type TimelineEvent = {
     | 'delivery_record'
     | 'management_plan'
     | 'first_visit_document'
+    | 'conference_note'
+    | 'billing_candidate'
     | 'communication'
     | 'external_share';
   category: 'visit' | 'prescription' | 'document' | 'communication';
@@ -156,6 +153,16 @@ const EVENT_META: Record<
     icon: FileText,
     className: 'border-amber-200 bg-amber-50 text-amber-700',
   },
+  conference_note: {
+    label: '会議',
+    icon: MessageSquareWarning,
+    className: 'border-sky-200 bg-sky-50 text-sky-700',
+  },
+  billing_candidate: {
+    label: '算定',
+    icon: CircleDollarSign,
+    className: 'border-amber-200 bg-amber-50 text-amber-700',
+  },
   communication: {
     label: '連絡',
     icon: Phone,
@@ -223,13 +230,7 @@ function buildGroups(events: TimelineEvent[]) {
   return groups;
 }
 
-function TimelineEntry({
-  event,
-  isLast,
-}: {
-  event: TimelineEvent;
-  isLast: boolean;
-}) {
+function TimelineEntry({ event, isLast }: { event: TimelineEvent; isLast: boolean }) {
   const meta = EVENT_META[event.event_type];
   const Icon = meta.icon;
 
@@ -240,7 +241,7 @@ function TimelineEntry({
           <div
             className={cn(
               'flex size-8 items-center justify-center rounded-full border',
-              meta.className
+              meta.className,
             )}
             aria-hidden="true"
           >
@@ -343,7 +344,9 @@ export function PatientActivityTimeline({
               </CardDescription>
             </div>
             <Badge variant="outline">
-              {isFiltered ? `表示 ${filteredEvents.length} / 全 ${timelineEvents.length} 件` : `最新 ${timelineEvents.length} 件`}
+              {isFiltered
+                ? `表示 ${filteredEvents.length} / 全 ${timelineEvents.length} 件`
+                : `最新 ${timelineEvents.length} 件`}
             </Badge>
           </div>
 
@@ -375,14 +378,14 @@ export function PatientActivityTimeline({
                       'inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-sm transition-colors',
                       isActive
                         ? meta.className
-                        : 'border-border/70 bg-background text-muted-foreground hover:bg-muted/50'
+                        : 'border-border/70 bg-background text-muted-foreground hover:bg-muted/50',
                     )}
                   >
                     <span>{meta.label}</span>
                     <span
                       className={cn(
                         'rounded-full px-1.5 py-0.5 text-[11px]',
-                        isActive ? meta.countClassName : 'bg-muted text-muted-foreground'
+                        isActive ? meta.countClassName : 'bg-muted text-muted-foreground',
                       )}
                     >
                       {categoryCounts[key]}
@@ -441,10 +444,7 @@ export function PatientActivityTimeline({
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-2">
               {(['visit', 'prescription', 'document', 'communication'] as const).map((key) => (
-                <div
-                  key={key}
-                  className="rounded-xl border border-border/70 bg-muted/10 p-3"
-                >
+                <div key={key} className="rounded-xl border border-border/70 bg-muted/10 p-3">
                   <p className="text-xs text-muted-foreground">{CATEGORY_META[key].label}</p>
                   <p className="mt-1 text-lg font-semibold text-foreground">
                     {categoryCounts[key]}
@@ -483,10 +483,7 @@ export function PatientActivityTimeline({
               <p className="text-sm text-muted-foreground">患者起点の更新はありません。</p>
             ) : (
               recentSelfReports.map((item) => (
-                <div
-                  key={item.id}
-                  className="rounded-xl border border-border/70 bg-muted/10 p-3"
-                >
+                <div key={item.id} className="rounded-xl border border-border/70 bg-muted/10 p-3">
                   <p className="text-sm font-medium text-foreground">{item.subject}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {item.reported_by_name}

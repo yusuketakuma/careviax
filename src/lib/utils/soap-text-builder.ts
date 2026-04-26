@@ -1,5 +1,6 @@
 import type { StructuredSoap } from '@/types/structured-soap';
 import { getSoapLabel, ADHERENCE_LABELS } from '@/lib/constants/soap-options';
+import { summarizeHomeVisit2026Evidence } from '@/lib/visits/home-visit-2026-evidence';
 
 export function joinLabels(values: string[]): string {
   return values.map(getSoapLabel).join('、');
@@ -24,7 +25,8 @@ export function buildObjectiveText(o: StructuredSoap['objective']): string {
   if (o.vitals) {
     const v = o.vitals;
     const vParts: string[] = [];
-    if (v.systolic_bp != null && v.diastolic_bp != null) vParts.push(`BP ${v.systolic_bp}/${v.diastolic_bp}mmHg`);
+    if (v.systolic_bp != null && v.diastolic_bp != null)
+      vParts.push(`BP ${v.systolic_bp}/${v.diastolic_bp}mmHg`);
     if (v.pulse != null) vParts.push(`P ${v.pulse}/分`);
     if (v.temperature != null) vParts.push(`T ${v.temperature}℃`);
     if (v.spo2 != null) vParts.push(`SpO2 ${v.spo2}%`);
@@ -61,17 +63,24 @@ export function buildObjectiveText(o: StructuredSoap['objective']): string {
   if (o.functional_assessment) {
     const fa = o.functional_assessment;
     const faItems: string[] = [];
-    if (fa.sleep.length > 0 && !fa.sleep.includes('no_issues')) faItems.push(`睡眠: ${joinLabels(fa.sleep)}`);
-    if (fa.cognition.length > 0 && !fa.cognition.includes('no_issues')) faItems.push(`認知: ${joinLabels(fa.cognition)}`);
-    if (fa.diet_oral.length > 0 && !fa.diet_oral.includes('no_issues')) faItems.push(`食事口腔: ${joinLabels(fa.diet_oral)}`);
-    if (fa.mobility.length > 0 && !fa.mobility.includes('no_issues')) faItems.push(`歩行運動: ${joinLabels(fa.mobility)}`);
-    if (fa.excretion.length > 0 && !fa.excretion.includes('no_issues')) faItems.push(`排泄: ${joinLabels(fa.excretion)}`);
+    if (fa.sleep.length > 0 && !fa.sleep.includes('no_issues'))
+      faItems.push(`睡眠: ${joinLabels(fa.sleep)}`);
+    if (fa.cognition.length > 0 && !fa.cognition.includes('no_issues'))
+      faItems.push(`認知: ${joinLabels(fa.cognition)}`);
+    if (fa.diet_oral.length > 0 && !fa.diet_oral.includes('no_issues'))
+      faItems.push(`食事口腔: ${joinLabels(fa.diet_oral)}`);
+    if (fa.mobility.length > 0 && !fa.mobility.includes('no_issues'))
+      faItems.push(`歩行運動: ${joinLabels(fa.mobility)}`);
+    if (fa.excretion.length > 0 && !fa.excretion.includes('no_issues'))
+      faItems.push(`排泄: ${joinLabels(fa.excretion)}`);
     if (faItems.length > 0) parts.push(`【機能評価】${faItems.join('。')}`);
   }
 
   if (o.adverse_events) {
     if (o.adverse_events.has_events) {
-      parts.push(`薬物有害事象あり: ${joinLabels(o.adverse_events.events)}${o.adverse_events.details ? `（${o.adverse_events.details}）` : ''}`);
+      parts.push(
+        `薬物有害事象あり: ${joinLabels(o.adverse_events.events)}${o.adverse_events.details ? `（${o.adverse_events.details}）` : ''}`,
+      );
     } else {
       parts.push('薬物有害事象なし');
     }
@@ -113,10 +122,13 @@ export function buildPlanText(p: StructuredSoap['plan']): string {
 }
 
 export function buildAllSoapTexts(soap: StructuredSoap) {
+  const planText = buildPlanText(soap.plan);
+  const homeVisit2026Summary = summarizeHomeVisit2026Evidence(soap);
+
   return {
     soap_subjective: buildSubjectiveText(soap.subjective),
     soap_objective: buildObjectiveText(soap.objective),
     soap_assessment: buildAssessmentText(soap.assessment),
-    soap_plan: buildPlanText(soap.plan),
+    soap_plan: [planText, ...homeVisit2026Summary].filter(Boolean).join('。'),
   };
 }

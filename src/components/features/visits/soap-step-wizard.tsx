@@ -69,16 +69,16 @@ export function SoapStepWizard({
 }: SoapStepWizardProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const form = useFormContext();
+  const steps = STEPS;
 
   const visitDate =
     useWatch({ control: form.control, name: 'visit_date' }) ??
     new Date().toISOString().slice(0, 10);
   const receiptPersonRelation =
     useWatch({ control: form.control, name: 'receipt_person_relation' }) ?? '';
-  const receiptAt =
-    useWatch({ control: form.control, name: 'receipt_at' }) ?? `${visitDate}T00:00`;
+  const receiptAt = useWatch({ control: form.control, name: 'receipt_at' }) ?? `${visitDate}T00:00`;
 
-  const isLastStep = currentStep === STEPS.length - 1;
+  const isLastStep = currentStep === steps.length - 1;
 
   function handleNext() {
     if (!isLastStep) {
@@ -97,7 +97,7 @@ export function SoapStepWizard({
       if (!e.altKey) return;
       if (e.key === 'ArrowRight') {
         e.preventDefault();
-        setCurrentStep((prev) => Math.min(prev + 1, STEPS.length - 1));
+        setCurrentStep((prev) => Math.min(prev + 1, steps.length - 1));
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
         setCurrentStep((prev) => Math.max(prev - 1, 0));
@@ -105,24 +105,30 @@ export function SoapStepWizard({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [steps.length]);
 
-  const StepIcon = STEPS[currentStep].icon;
+  const StepIcon = steps[currentStep].icon;
 
   return (
     <div className="flex min-h-0 flex-col">
       {/* Step indicator */}
       <div className="mb-4 flex flex-col items-center gap-2">
-        <div className="flex items-center gap-3" role="progressbar" aria-valuenow={currentStep + 1} aria-valuemin={1} aria-valuemax={STEPS.length}>
-          {STEPS.map((step, index) => (
+        <div
+          className="flex items-center gap-3"
+          role="progressbar"
+          aria-valuenow={currentStep + 1}
+          aria-valuemin={1}
+          aria-valuemax={steps.length}
+        >
+          {steps.map((step, index) => (
             <div key={step.key} className="flex flex-col items-center gap-1">
               <div
                 className={`flex size-8 items-center justify-center rounded-full text-xs font-bold transition-all ${
                   index === currentStep
                     ? 'bg-blue-600 text-white ring-2 ring-blue-600/30'
                     : index < currentStep
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'bg-muted text-muted-foreground'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'bg-muted text-muted-foreground'
                 }`}
                 aria-label={`${step.key} ${step.label}${
                   index < currentStep ? '（完了）' : index === currentStep ? '（現在）' : ''
@@ -144,9 +150,9 @@ export function SoapStepWizard({
 
       {/* Step header */}
       <div className="mb-3 flex items-center gap-2">
-        <StepIcon className={`size-5 ${STEPS[currentStep].color}`} aria-hidden="true" />
+        <StepIcon className={`size-5 ${steps[currentStep].color}`} aria-hidden="true" />
         <h3 className="text-sm font-semibold">
-          {STEPS[currentStep].key} -- {STEPS[currentStep].label}
+          {steps[currentStep].key} -- {steps[currentStep].label}
         </h3>
       </div>
 
@@ -155,9 +161,7 @@ export function SoapStepWizard({
         {currentStep === 0 && (
           <div className="space-y-1.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <Label htmlFor="soap_subjective_mobile">
-                患者の訴え・服薬状況
-              </Label>
+              <Label htmlFor="soap_subjective_mobile">患者の訴え・服薬状況</Label>
               <SoapVoiceFieldToggle
                 field="soap_subjective"
                 activeField={voiceInput.activeField}
@@ -183,9 +187,7 @@ export function SoapStepWizard({
           <div className="space-y-4">
             <div className="space-y-1.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <Label htmlFor="soap_objective_mobile">
-                  観察・計測所見
-                </Label>
+                <Label htmlFor="soap_objective_mobile">観察・計測所見</Label>
                 <SoapVoiceFieldToggle
                   field="soap_objective"
                   activeField={voiceInput.activeField}
@@ -214,9 +216,7 @@ export function SoapStepWizard({
         {currentStep === 2 && (
           <div className="space-y-1.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <Label htmlFor="soap_assessment_mobile">
-                薬学的評価
-              </Label>
+              <Label htmlFor="soap_assessment_mobile">薬学的評価</Label>
               <SoapVoiceFieldToggle
                 field="soap_assessment"
                 activeField={voiceInput.activeField}
@@ -242,9 +242,7 @@ export function SoapStepWizard({
           <div className="space-y-4">
             <div className="space-y-1.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <Label htmlFor="soap_plan_mobile">
-                  介入内容・次回対応
-                </Label>
+                <Label htmlFor="soap_plan_mobile">介入内容・次回対応</Label>
                 <SoapVoiceFieldToggle
                   field="soap_plan"
                   activeField={voiceInput.activeField}
@@ -267,7 +265,10 @@ export function SoapStepWizard({
 
             {/* Next visit suggestion */}
             <div className="space-y-1.5">
-              <Label htmlFor="next_visit_suggestion_date_mobile" className="flex items-center gap-1.5">
+              <Label
+                htmlFor="next_visit_suggestion_date_mobile"
+                className="flex items-center gap-1.5"
+              >
                 <CalendarCheck className="size-3.5 text-muted-foreground" aria-hidden="true" />
                 次回提案日
               </Label>
@@ -277,9 +278,7 @@ export function SoapStepWizard({
                 {...form.register('next_visit_suggestion_date')}
               />
               {recurrenceRule && (
-                <p className="text-xs text-muted-foreground">
-                  定期ルール: {recurrenceRule}
-                </p>
+                <p className="text-xs text-muted-foreground">定期ルール: {recurrenceRule}</p>
               )}
             </div>
 
@@ -329,9 +328,7 @@ export function SoapStepWizard({
             </div>
 
             {attachmentsContent ? (
-              <div className="rounded-lg border border-border p-3">
-                {attachmentsContent}
-              </div>
+              <div className="rounded-lg border border-border p-3">{attachmentsContent}</div>
             ) : null}
           </div>
         )}
@@ -352,11 +349,7 @@ export function SoapStepWizard({
         )}
 
         {!isLastStep && (
-          <Button
-            type="button"
-            className="h-12 flex-1 gap-1"
-            onClick={handleNext}
-          >
+          <Button type="button" className="h-12 flex-1 gap-1" onClick={handleNext}>
             次へ
             <ChevronRight className="size-4" aria-hidden="true" />
           </Button>

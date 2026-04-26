@@ -66,6 +66,7 @@ const optionalDateParamSchema = z
   .optional();
 const careReportQuerySchema = z.object({
   patient_id: z.string().min(1).optional(),
+  visit_record_id: z.string().min(1).optional(),
   status: reportStatusSchema.optional(),
   report_type: reportTypeSchema.optional(),
   delivery_status: reportStatusSchema.optional(),
@@ -82,6 +83,57 @@ function normalizeOptionalSearchParam(value: string | null) {
   return value?.trim() || undefined;
 }
 
+async function validateCareReportSource(args: {
+  orgId: string;
+  patientId: string;
+  caseId?: string;
+  visitRecordId?: string;
+}): Promise<{ error: string } | { caseId?: string }> {
+  const patient = await prisma.patient.findFirst({
+    where: { id: args.patientId, org_id: args.orgId },
+    select: { id: true },
+  });
+  if (!patient) {
+    return { error: '患者が見つかりません' };
+  }
+
+  if (args.caseId) {
+    const careCase = await prisma.careCase.findFirst({
+      where: { id: args.caseId, org_id: args.orgId, patient_id: args.patientId },
+      select: { id: true },
+    });
+    if (!careCase) {
+      return { error: 'ケースが患者に紐付いていません' };
+    }
+  }
+
+  let resolvedCaseId = args.caseId;
+  if (args.visitRecordId) {
+    const visitRecord = await prisma.visitRecord.findFirst({
+      where: { id: args.visitRecordId, org_id: args.orgId, patient_id: args.patientId },
+      select: {
+        id: true,
+        schedule: {
+          select: {
+            case_id: true,
+          },
+        },
+      },
+    });
+
+    if (!visitRecord) {
+      return { error: '訪問記録が患者に紐付いていません' };
+    }
+
+    if (args.caseId && visitRecord.schedule.case_id !== args.caseId) {
+      return { error: '訪問記録が指定ケースに紐付いていません' };
+    }
+    resolvedCaseId = visitRecord.schedule.case_id;
+  }
+
+  return { caseId: resolvedCaseId };
+}
+
 export const GET = withAuth(
   async (req: AuthenticatedRequest) => {
     const { searchParams } = new URL(req.url);
@@ -89,6 +141,7 @@ export const GET = withAuth(
 
     const parsedQuery = careReportQuerySchema.safeParse({
       patient_id: searchParams.get('patient_id') ?? undefined,
+      visit_record_id: searchParams.get('visit_record_id') ?? undefined,
       status: searchParams.get('status') ?? undefined,
       report_type: searchParams.get('report_type') ?? undefined,
       delivery_status: searchParams.get('delivery_status') ?? undefined,
@@ -106,6 +159,7 @@ export const GET = withAuth(
 
     const {
       patient_id: patientId,
+      visit_record_id: visitRecordId,
       status,
       report_type: reportType,
       delivery_status: deliveryStatus,
@@ -153,6 +207,7 @@ export const GET = withAuth(
     const where: Prisma.CareReportWhereInput = {
       org_id: req.orgId,
       ...(patientId ? { patient_id: patientId } : {}),
+      ...(visitRecordId ? { visit_record_id: visitRecordId } : {}),
       ...(query ? { patient_id: { in: matchedPatientIds } } : {}),
       ...(status ? { status } : {}),
       ...(reportType ? { report_type: reportType } : {}),
@@ -320,12 +375,23 @@ export const POST = withAuth(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
+    const sourceValidation = await validateCareReportSource({
+      orgId: req.orgId,
+      patientId: parsed.data.patient_id,
+      caseId: parsed.data.case_id,
+      visitRecordId: parsed.data.visit_record_id,
+    });
+    if ('error' in sourceValidation) {
+      return validationError(sourceValidation.error);
+    }
+    const resolvedCaseId = sourceValidation.caseId;
+
     let enrichedContent = parsed.data.content as Record<string, unknown>;
     let recipientPrefill: { recipient_name?: string; recipient_organization?: string } | undefined;
 
-    if (parsed.data.case_id) {
+    if (resolvedCaseId) {
       const careCase = await prisma.careCase.findFirst({
-        where: { id: parsed.data.case_id, org_id: req.orgId },
+        where: { id: resolvedCaseId, org_id: req.orgId },
         select: { required_visit_support: true },
       });
 
@@ -354,7 +420,7 @@ export const POST = withAuth(
       (!recipientPrefill?.recipient_name || !recipientPrefill?.recipient_organization)
     ) {
       const suggestion = await findLatestPrescriberInstitutionSuggestion(prisma, req.orgId, {
-        caseId: parsed.data.case_id,
+        caseId: resolvedCaseId,
         patientId: parsed.data.patient_id,
       });
 
@@ -382,6 +448,7 @@ export const POST = withAuth(
           org_id: req.orgId,
           created_by: req.userId,
           ...parsed.data,
+          case_id: resolvedCaseId ?? null,
           content: enrichedContent as import('@prisma/client').Prisma.InputJsonValue,
         },
       });

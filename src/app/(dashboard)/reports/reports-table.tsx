@@ -266,11 +266,15 @@ function renderExpandedRow(row: Row<CareReport>) {
 type ReportsTableProps = {
   initialDeliveryStatus?: string | null;
   initialContext?: string | null;
+  initialPatientId?: string | null;
+  initialVisitRecordId?: string | null;
 };
 
 export function ReportsTable({
   initialDeliveryStatus,
   initialContext,
+  initialPatientId,
+  initialVisitRecordId,
 }: ReportsTableProps = {}) {
   const replaceReportsUrl = useSyncedSearchParams();
   const orgId = useOrgId();
@@ -280,6 +284,8 @@ export function ReportsTable({
     status: ALL_VALUE,
     reportType: ALL_VALUE,
     deliveryStatus: initialDeliveryStatus ?? ALL_VALUE,
+    patientId: initialPatientId?.trim() ?? '',
+    visitRecordId: initialVisitRecordId?.trim() ?? '',
     patient: '',
     recipient: '',
     keyword: '',
@@ -296,6 +302,8 @@ export function ReportsTable({
       status: 'status',
       reportType: 'report_type',
       deliveryStatus: 'delivery_status',
+      patientId: 'patient_id',
+      visitRecordId: 'visit_record_id',
       patient: 'q',
       recipient: 'recipient',
       keyword: 'keyword',
@@ -313,6 +321,8 @@ export function ReportsTable({
     if (filters.status !== ALL_VALUE) params.set('status', filters.status);
     if (filters.reportType !== ALL_VALUE) params.set('report_type', filters.reportType);
     if (filters.deliveryStatus !== ALL_VALUE) params.set('delivery_status', filters.deliveryStatus);
+    if (filters.patientId.trim()) params.set('patient_id', filters.patientId.trim());
+    if (filters.visitRecordId.trim()) params.set('visit_record_id', filters.visitRecordId.trim());
     if (filters.patient.trim()) params.set('q', filters.patient.trim());
     if (filters.recipient.trim()) params.set('recipient', filters.recipient.trim());
     if (filters.keyword.trim()) params.set('keyword', filters.keyword.trim());
@@ -342,6 +352,8 @@ export function ReportsTable({
     filters.status !== ALL_VALUE ? filters.status : '',
     filters.reportType !== ALL_VALUE ? filters.reportType : '',
     filters.deliveryStatus !== ALL_VALUE ? filters.deliveryStatus : '',
+    filters.patientId.trim(),
+    filters.visitRecordId.trim(),
     filters.patient.trim(),
     filters.recipient.trim(),
     filters.keyword.trim(),
@@ -356,6 +368,8 @@ export function ReportsTable({
       status: ALL_VALUE,
       reportType: ALL_VALUE,
       deliveryStatus: initialDeliveryStatus ?? ALL_VALUE,
+      patientId: initialPatientId?.trim() ?? '',
+      visitRecordId: initialVisitRecordId?.trim() ?? '',
       patient: '',
       recipient: '',
       keyword: '',
@@ -368,6 +382,8 @@ export function ReportsTable({
       status: null,
       report_type: null,
       delivery_status: initialDeliveryStatus ?? null,
+      patient_id: initialPatientId?.trim() || null,
+      visit_record_id: initialVisitRecordId?.trim() || null,
       q: null,
       recipient: null,
       keyword: null,
@@ -389,6 +405,16 @@ export function ReportsTable({
           data-testid="reports-table-context-banner"
         >
           ホーム起点の報告書フィルタを適用しています。
+        </div>
+      ) : null}
+      {initialPatientId || initialVisitRecordId ? (
+        <div
+          className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900"
+          data-testid="reports-linked-context-banner"
+        >
+          訪問・患者の文脈で報告書を絞り込んでいます。
+          {initialPatientId ? ` 患者ID: ${initialPatientId}` : ''}
+          {initialVisitRecordId ? ` / 訪問記録ID: ${initialVisitRecordId}` : ''}
         </div>
       ) : null}
       <section className="space-y-4 rounded-xl border border-border/70 bg-card/80 p-4">

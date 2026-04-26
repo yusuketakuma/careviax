@@ -1,5 +1,4 @@
 import { Metadata } from 'next';
-import { decodeFacilityVisitContext, FACILITY_VISIT_CONTEXT_PARAM } from '@/lib/visits/facility-visit-context';
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { VisitRecordForm } from './visit-record-form';
@@ -8,18 +7,8 @@ export const metadata: Metadata = {
   title: '訪問記録入力 — CareViaX',
 };
 
-export default async function VisitRecordPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ id: string }>;
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
-}) {
+export default async function VisitRecordPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const facilityVisitContext = decodeFacilityVisitContext(
-    resolvedSearchParams?.[FACILITY_VISIT_CONTEXT_PARAM],
-  );
 
   return (
     <PageScaffold>
@@ -45,7 +34,7 @@ export default async function VisitRecordPage({
         mainWorkflowDescription="訪問記録入力でも、次に報告書へ進む主業務フローの位置を見失わないようにしています。"
       />
 
-      <VisitRecordForm id={id} facilityVisitContext={facilityVisitContext} />
+      <VisitRecordForm id={id} facilityVisitContext={null} />
     </PageScaffold>
   );
 }

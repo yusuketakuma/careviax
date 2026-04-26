@@ -11,6 +11,7 @@ const {
   peerVisitScheduleFindManyMock,
   prescriptionIntakeFindManyMock,
   firstVisitDocumentFindFirstMock,
+  conferenceNoteFindManyMock,
   billingEvidenceBlockersMock,
   patientHomeCareFeatureSummaryMock,
   scheduleFeatureHighlightsMock,
@@ -25,6 +26,7 @@ const {
   peerVisitScheduleFindManyMock: vi.fn(),
   prescriptionIntakeFindManyMock: vi.fn(),
   firstVisitDocumentFindFirstMock: vi.fn(),
+  conferenceNoteFindManyMock: vi.fn(),
   billingEvidenceBlockersMock: vi.fn(),
   patientHomeCareFeatureSummaryMock: vi.fn(),
   scheduleFeatureHighlightsMock: vi.fn(),
@@ -58,6 +60,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     firstVisitDocument: {
       findFirst: firstVisitDocumentFindFirstMock,
+    },
+    conferenceNote: {
+      findMany: conferenceNoteFindManyMock,
     },
   },
 }));
@@ -100,6 +105,13 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
       schedule_status: 'planned',
       priority: 'normal',
       pharmacist_id: 'user_1',
+      facility_batch_id: 'batch_1',
+      facility_batch: {
+        notes: '感染対策で受付に声かけしてから入室',
+      },
+      route_order: 1,
+      medication_start_date: new Date('2026-03-27T00:00:00Z'),
+      medication_end_date: new Date('2026-04-09T00:00:00Z'),
       assignment_mode: 'fallback',
       escalation_reason: '担当薬剤師が不在',
       confirmed_at: new Date('2026-03-26T00:00:00Z'),
@@ -118,6 +130,10 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
         offline_synced: false,
         checklist: {},
       },
+      visit_record: {
+        id: 'record_current',
+        outcome_status: 'completed',
+      },
       override_request: {
         id: 'override_1',
         status: 'pending',
@@ -135,11 +151,24 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
           residences: [
             {
               address: '東京都港区1-1-1',
+              facility_id: 'facility_a',
+              facility_unit_id: 'unit_1',
               building_id: 'facility_a',
+              unit_name: '201',
             },
           ],
-          contacts: [{ id: 'contact_1', name: '山田 次郎', is_emergency_contact: true, relation: 'son', phone: '090-1234-5678' }],
-          consents: [{ id: 'consent_1', consent_type: 'visit_medication_management', is_active: true }],
+          contacts: [
+            {
+              id: 'contact_1',
+              name: '山田 次郎',
+              is_emergency_contact: true,
+              relation: 'son',
+              phone: '090-1234-5678',
+            },
+          ],
+          consents: [
+            { id: 'consent_1', consent_type: 'visit_medication_management', is_active: true },
+          ],
         },
         care_team_links: [
           {
@@ -189,13 +218,28 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
       {
         id: 'schedule_2',
         route_order: 2,
+        schedule_status: 'ready',
+        medication_start_date: new Date('2026-03-28T00:00:00Z'),
+        medication_end_date: new Date('2026-04-10T00:00:00Z'),
+        preparation: {
+          medication_changes_reviewed: true,
+          carry_items_confirmed: true,
+          previous_issues_reviewed: false,
+          route_confirmed: true,
+          offline_synced: true,
+        },
+        visit_record: null,
         case_: {
           patient: {
+            id: 'patient_2',
             name: '山田 花子',
             residences: [
               {
                 address: '東京都港区1-1-1',
+                facility_id: 'facility_a',
+                facility_unit_id: 'unit_1',
                 building_id: 'facility_a',
+                unit_name: '202',
               },
             ],
           },
@@ -214,6 +258,8 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
             dose: '1回1錠',
             frequency: '1日1回朝食後',
             days: 14,
+            start_date: new Date('2026-03-27T00:00:00Z'),
+            end_date: new Date('2026-04-09T00:00:00Z'),
           },
           {
             drug_name: 'ロキソプロフェン錠60mg',
@@ -221,6 +267,8 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
             dose: '1回2錠',
             frequency: '疼痛時',
             days: 7,
+            start_date: new Date('2026-03-27T00:00:00Z'),
+            end_date: new Date('2026-04-02T00:00:00Z'),
           },
         ],
       },
@@ -235,6 +283,8 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
             dose: '1回1錠',
             frequency: '疼痛時',
             days: 7,
+            start_date: new Date('2026-03-10T00:00:00Z'),
+            end_date: new Date('2026-03-16T00:00:00Z'),
           },
           {
             drug_name: 'マグミット錠330mg',
@@ -242,6 +292,8 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
             dose: '1回2錠',
             frequency: '1日3回毎食後',
             days: 14,
+            start_date: new Date('2026-03-10T00:00:00Z'),
+            end_date: new Date('2026-03-23T00:00:00Z'),
           },
         ],
       },
@@ -251,6 +303,23 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
       delivered_at: new Date('2026-03-20T10:00:00Z'),
       delivered_to: '山田 次郎',
     });
+    conferenceNoteFindManyMock.mockResolvedValue([
+      {
+        id: 'conf_pre_1',
+        note_type: 'pre_discharge',
+        title: '退院前カンファ',
+        conference_date: new Date('2026-03-24T00:00:00Z'),
+        participants: [{ name: '病院薬剤師', role: 'hospital_pharmacist' }],
+        structured_content: {
+          sections: [
+            { key: 'target_discharge_date', label: '退院予定日', body: '2026-03-27' },
+            { key: 'next_visit_plan', label: '初回訪問計画', body: '退院翌週に初回訪問' },
+          ],
+        },
+        metadata: { sync_summary: { visit_proposal_id: 'proposal_1' } },
+        action_items: [{ title: '退院時変更薬を確認する' }],
+      },
+    ]);
     billingEvidenceBlockersMock.mockResolvedValue([]);
     patientHomeCareFeatureSummaryMock.mockResolvedValue({
       totals: { blocked: 1, attention: 0, monitoring: 0, ready: 19 },
@@ -313,6 +382,15 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(peerVisitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          schedule_status: {
+            in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress', 'completed'],
+          },
+        }),
+      }),
+    );
     await expect(response.json()).resolves.toMatchObject({
       data: {
         preparation: {
@@ -325,20 +403,49 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
           handoff: {
             assignment_mode: 'fallback',
           },
-          readiness_blockers: expect.arrayContaining([
-            '薬歴・前回変更の確認',
-            '前回課題の確認',
-          ]),
+          readiness_blockers: expect.arrayContaining(['薬歴・前回変更の確認', '前回課題の確認']),
           facility_mode: {
             same_day_patient_count: 2,
-            same_day_patient_names: expect.arrayContaining([
-              '山田 太郎',
-              '山田 花子',
-            ]),
+            same_day_patient_names: expect.arrayContaining(['山田 太郎', '山田 花子']),
+          },
+          facility_parallel_context: {
+            batch_id: 'batch_1',
+            place_kind: 'facility',
+            common_notes: '感染対策で受付に声かけしてから入室',
+            site_name: '本店',
+            current_schedule_id: 'schedule_1',
+            patients: [
+              expect.objectContaining({
+                schedule_id: 'schedule_1',
+                patient_name: '山田 太郎',
+                unit_name: '201',
+                medication_start_date: '2026-03-27',
+                medication_end_date: '2026-04-09',
+                visit_record_id: 'record_current',
+                visit_outcome_status: 'completed',
+                preparation_blockers_count: 3,
+              }),
+              expect.objectContaining({
+                schedule_id: 'schedule_2',
+                patient_name: '山田 花子',
+                preparation_blockers_count: 1,
+              }),
+            ],
           },
           care_team: [
             expect.objectContaining({
               name: '佐藤 医師',
+            }),
+          ],
+          conference_context: [
+            expect.objectContaining({
+              note_type: 'pre_discharge',
+              title: '退院前カンファ',
+              highlights: expect.arrayContaining([
+                expect.stringContaining('退院予定'),
+                expect.stringContaining('初回訪問計画'),
+              ]),
+              action_items: expect.arrayContaining(['退院時変更薬を確認する']),
             }),
           ],
           home_care_feature_highlights: [
@@ -347,6 +454,15 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
               status: 'blocked',
             }),
           ],
+          previous_visit: expect.objectContaining({
+            summary: expect.stringContaining('残薬確認を強化する'),
+          }),
+          medication_period: {
+            schedule_start_date: '2026-03-27',
+            schedule_end_date: '2026-04-09',
+            prescription_start_date: '2026-03-27',
+            prescription_end_date: '2026-04-09',
+          },
           prescription_changes: {
             added: ['アムロジピンOD錠5mg'],
             changed: [
@@ -475,6 +591,162 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
             special_medical_procedures: ['narcotics', 'home_oxygen'],
             infection_isolation: 'contact',
             narcotics_base: true,
+          },
+        },
+      },
+    });
+  });
+
+  it('rejects users who are not assigned to the visit or case', async () => {
+    visitScheduleFindFirstMock.mockResolvedValueOnce({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      scheduled_date: new Date('2026-03-27T00:00:00Z'),
+      time_window_start: null,
+      time_window_end: null,
+      visit_type: 'regular',
+      schedule_status: 'planned',
+      priority: 'normal',
+      pharmacist_id: 'user_other',
+      facility_batch_id: null,
+      facility_batch: null,
+      route_order: null,
+      medication_start_date: null,
+      medication_end_date: null,
+      assignment_mode: 'primary',
+      escalation_reason: null,
+      confirmed_at: null,
+      site: null,
+      visit_record: null,
+      preparation: null,
+      override_request: null,
+      applied_override: null,
+      case_: {
+        id: 'case_1',
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+        required_visit_support: null,
+        patient: {
+          id: 'patient_1',
+          name: '山田 太郎',
+          residences: [],
+          contacts: [],
+          consents: [],
+          scheduling_preference: null,
+        },
+        care_team_links: [],
+        management_plans: [],
+      },
+    });
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expect(peerVisitScheduleFindManyMock).not.toHaveBeenCalled();
+    expect(patientHomeCareFeatureSummaryMock).not.toHaveBeenCalled();
+  });
+
+  it('builds the same grouped-visit context for same-home private visits', async () => {
+    visitScheduleFindFirstMock.mockResolvedValue({
+      id: 'home_schedule_1',
+      case_id: 'home_case_1',
+      scheduled_date: new Date('2026-03-27T00:00:00Z'),
+      time_window_start: null,
+      time_window_end: null,
+      visit_type: 'regular',
+      schedule_status: 'planned',
+      priority: 'normal',
+      pharmacist_id: 'user_1',
+      facility_batch_id: null,
+      facility_batch: null,
+      route_order: 1,
+      medication_start_date: null,
+      medication_end_date: null,
+      assignment_mode: 'primary',
+      escalation_reason: null,
+      confirmed_at: null,
+      site: null,
+      preparation: null,
+      override_request: null,
+      applied_override: null,
+      case_: {
+        id: 'home_case_1',
+        primary_pharmacist_id: 'user_1',
+        backup_pharmacist_id: null,
+        required_visit_support: null,
+        management_plans: [],
+        patient: {
+          id: 'home_patient_1',
+          name: '山田 太郎',
+          residences: [
+            {
+              address: '東京都港区個人宅1-1-1',
+              facility_id: null,
+              facility_unit_id: null,
+              building_id: '山田宅',
+              unit_name: null,
+            },
+          ],
+          contacts: [],
+          consents: [],
+          scheduling_preference: null,
+        },
+        care_team_links: [],
+      },
+    });
+    peerVisitScheduleFindManyMock.mockResolvedValue([
+      {
+        id: 'home_schedule_2',
+        route_order: 2,
+        schedule_status: 'planned',
+        medication_start_date: null,
+        medication_end_date: null,
+        preparation: null,
+        visit_record: null,
+        case_: {
+          patient: {
+            id: 'home_patient_2',
+            name: '山田 花子',
+            residences: [
+              {
+                address: '東京都港区個人宅1-1-1',
+                facility_id: null,
+                facility_unit_id: null,
+                building_id: '山田宅',
+                unit_name: null,
+              },
+            ],
+          },
+        },
+      },
+    ]);
+    prescriptionIntakeFindManyMock.mockResolvedValue([]);
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ scheduleId: 'home_schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        pack: {
+          facility_parallel_context: {
+            label: '山田宅',
+            place_kind: 'home_group',
+            patients: [
+              expect.objectContaining({
+                schedule_id: 'home_schedule_1',
+                patient_name: '山田 太郎',
+              }),
+              expect.objectContaining({
+                schedule_id: 'home_schedule_2',
+                patient_name: '山田 花子',
+              }),
+            ],
           },
         },
       },

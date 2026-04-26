@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound, forbiddenResponse } from '@/lib/api/response';
 import { upsertVisitPreparationSchema } from '@/lib/validations/visit-preparation';
 import {
   buildChecklistFromTemplate,
@@ -29,6 +29,81 @@ type IntakeLineSummary = {
   dose: string;
   frequency: string;
   days: number;
+  start_date: Date | null;
+  end_date: Date | null;
+};
+
+function canAccessVisitPreparation(
+  ctx: { userId: string; role: string },
+  schedule: {
+    pharmacist_id: string;
+    case_: {
+      primary_pharmacist_id: string | null;
+      backup_pharmacist_id: string | null;
+    };
+  },
+) {
+  if (ctx.role === 'owner' || ctx.role === 'admin') return true;
+  return (
+    schedule.pharmacist_id === ctx.userId ||
+    schedule.case_.primary_pharmacist_id === ctx.userId ||
+    schedule.case_.backup_pharmacist_id === ctx.userId
+  );
+}
+
+type FacilityParallelSchedule = {
+  id: string;
+  route_order: number | null;
+  schedule_status: string;
+  medication_start_date: Date | null;
+  medication_end_date: Date | null;
+  preparation: {
+    medication_changes_reviewed: boolean;
+    carry_items_confirmed: boolean;
+    previous_issues_reviewed: boolean;
+    route_confirmed: boolean;
+    offline_synced: boolean;
+  } | null;
+  visit_record: {
+    id: string;
+    outcome_status: string;
+  } | null;
+  case_: {
+    patient: {
+      id: string;
+      name: string;
+      residences: Array<{
+        address: string;
+        facility_id: string | null;
+        facility_unit_id: string | null;
+        building_id: string | null;
+        unit_name: string | null;
+      }>;
+    };
+  };
+};
+
+type ConferenceSectionSummary = {
+  key: string;
+  label?: string;
+  body?: string;
+};
+
+type ConferenceParticipantSummary = {
+  name?: string | null;
+  role?: string | null;
+};
+
+type ConferenceActionItemSummary = {
+  title?: string | null;
+};
+
+type ConferenceSyncSummary = {
+  billing_candidate_id?: string | null;
+  visit_proposal_id?: string | null;
+  report_draft_ids?: string[];
+  tasks_created?: number;
+  medication_issues_created?: number;
 };
 
 function lineIdentity(line: IntakeLineSummary) {
@@ -80,8 +155,119 @@ function summarizePrescriptionChanges(
   };
 }
 
+function toDateString(value: Date | null | undefined) {
+  return value ? value.toISOString().slice(0, 10) : null;
+}
+
+function countPreparationBlockers(preparation: FacilityParallelSchedule['preparation']) {
+  return [
+    !preparation?.medication_changes_reviewed,
+    !preparation?.carry_items_confirmed,
+    !preparation?.previous_issues_reviewed,
+    !preparation?.route_confirmed,
+    !preparation?.offline_synced,
+  ].filter(Boolean).length;
+}
+
+function buildPreviousVisitSummary(
+  previousVisit: {
+    visit_date: Date;
+    outcome_status: string;
+    soap_plan: string | null;
+    next_visit_suggestion_date: Date | null;
+  } | null,
+) {
+  if (!previousVisit) return null;
+  const parts = [
+    `前回 ${toDateString(previousVisit.visit_date) ?? ''}`,
+    `結果: ${previousVisit.outcome_status}`,
+    previousVisit.soap_plan ? `計画: ${previousVisit.soap_plan}` : null,
+    previousVisit.next_visit_suggestion_date
+      ? `次回提案: ${toDateString(previousVisit.next_visit_suggestion_date)}`
+      : null,
+  ].filter((value): value is string => Boolean(value));
+  return parts.join(' / ');
+}
+
 function buildPreparationTaskKey(scheduleId: string) {
   return `visit-preparation:${scheduleId}`;
+}
+
+function parseConferenceSections(value: Prisma.JsonValue | null): ConferenceSectionSummary[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !('sections' in value)) {
+    return [];
+  }
+
+  const sections = (value as { sections?: unknown }).sections;
+  if (!Array.isArray(sections)) return [];
+  return sections.filter(
+    (section): section is ConferenceSectionSummary =>
+      typeof section === 'object' && section !== null && 'key' in section,
+  );
+}
+
+function parseConferenceParticipants(value: Prisma.JsonValue): ConferenceParticipantSummary[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (participant): participant is ConferenceParticipantSummary =>
+      typeof participant === 'object' && participant !== null,
+  );
+}
+
+function parseConferenceActionItems(value: Prisma.JsonValue | null): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (typeof item === 'string') return item.trim();
+      if (typeof item === 'object' && item !== null) {
+        return ((item as ConferenceActionItemSummary).title ?? '').trim();
+      }
+      return '';
+    })
+    .filter((title) => title.length > 0);
+}
+
+function readConferenceSectionBody(sections: ConferenceSectionSummary[], keys: string[]) {
+  for (const key of keys) {
+    const body = sections.find((section) => section.key === key)?.body?.trim();
+    if (body) return body;
+  }
+  return null;
+}
+
+function parseConferenceSyncSummary(value: Prisma.JsonValue | null): ConferenceSyncSummary | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const sync = (value as { sync_summary?: unknown }).sync_summary;
+  if (!sync || typeof sync !== 'object' || Array.isArray(sync)) return null;
+  return sync as ConferenceSyncSummary;
+}
+
+function buildConferenceHighlights(
+  noteType: 'pre_discharge' | 'service_manager',
+  sections: ConferenceSectionSummary[],
+) {
+  const keys =
+    noteType === 'pre_discharge'
+      ? [
+          ['退院予定', ['target_discharge_date', 'discharge_plan', 'discharge_background']],
+          ['退院時薬剤変更', ['medication_changes_on_discharge', 'medication_summary']],
+          ['初回訪問計画', ['next_visit_plan']],
+          ['役割分担', ['team_roles', 'care_team_roles']],
+        ]
+      : [
+          ['ケアプラン変更', ['care_plan_changes', 'care_plan_update']],
+          ['訪問調整', ['visit_schedule_adjustment', 'service_adjustments']],
+          ['服薬レビュー', ['medication_review', 'medication_related_items']],
+          ['連携事項', ['coordination_items', 'agreed_actions']],
+        ];
+
+  return keys
+    .map(([label, sectionKeys]) => {
+      const body = readConferenceSectionBody(sections, sectionKeys as string[]);
+      if (!body) return null;
+      return `${label}: ${body.replace(/\s+/g, ' ').slice(0, 120)}`;
+    })
+    .filter((value): value is string => value !== null);
 }
 
 export async function GET(
@@ -107,9 +293,19 @@ export async function GET(
       scheduled_date: true,
       time_window_start: true,
       time_window_end: true,
+      visit_type: true,
       schedule_status: true,
       priority: true,
       pharmacist_id: true,
+      facility_batch_id: true,
+      facility_batch: {
+        select: {
+          notes: true,
+        },
+      },
+      route_order: true,
+      medication_start_date: true,
+      medication_end_date: true,
       assignment_mode: true,
       escalation_reason: true,
       confirmed_at: true,
@@ -118,6 +314,12 @@ export async function GET(
           id: true,
           name: true,
           address: true,
+        },
+      },
+      visit_record: {
+        select: {
+          id: true,
+          outcome_status: true,
         },
       },
       preparation: true,
@@ -158,7 +360,10 @@ export async function GET(
                 take: 1,
                 select: {
                   address: true,
+                  facility_id: true,
+                  facility_unit_id: true,
                   building_id: true,
+                  unit_name: true,
                 },
               },
               contacts: {
@@ -211,6 +416,11 @@ export async function GET(
     },
   });
   if (!schedule) return notFound('訪問予定が見つかりません');
+  if (!canAccessVisitPreparation(ctx, schedule)) {
+    return forbiddenResponse('この訪問予定の準備情報を閲覧する権限がありません');
+  }
+  const canAccessParallelVisitContext =
+    ctx.role === 'owner' || ctx.role === 'admin' || schedule.pharmacist_id === ctx.userId;
 
   const preparation = schedule.preparation;
   const primaryResidence = schedule.case_.patient.residences[0] ?? null;
@@ -226,6 +436,7 @@ export async function GET(
     billingEvidence,
     recentPrescriptionIntakes,
     firstVisitDoc,
+    recentConferenceNotes,
   ] = await Promise.all([
     prisma.visitRecord.findFirst({
       where: {
@@ -298,41 +509,65 @@ export async function GET(
         called_by: true,
       },
     }),
-    prisma.visitSchedule.findMany({
-      where: {
-        org_id: ctx.orgId,
-        scheduled_date: schedule.scheduled_date,
-        pharmacist_id: schedule.pharmacist_id,
-        id: {
-          not: schedule.id,
-        },
-        schedule_status: {
-          in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
-        },
-      },
-      orderBy: [{ time_window_start: 'asc' }],
-      select: {
-        id: true,
-        route_order: true,
-        case_: {
+    canAccessParallelVisitContext
+      ? prisma.visitSchedule.findMany({
+          where: {
+            org_id: ctx.orgId,
+            scheduled_date: schedule.scheduled_date,
+            pharmacist_id: schedule.pharmacist_id,
+            id: {
+              not: schedule.id,
+            },
+            schedule_status: {
+              in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress', 'completed'],
+            },
+          },
+          orderBy: [{ time_window_start: 'asc' }],
           select: {
-            patient: {
+            id: true,
+            route_order: true,
+            schedule_status: true,
+            medication_start_date: true,
+            medication_end_date: true,
+            preparation: {
               select: {
-                name: true,
-                residences: {
-                  where: { is_primary: true },
-                  take: 1,
+                medication_changes_reviewed: true,
+                carry_items_confirmed: true,
+                previous_issues_reviewed: true,
+                route_confirmed: true,
+                offline_synced: true,
+              },
+            },
+            visit_record: {
+              select: {
+                id: true,
+                outcome_status: true,
+              },
+            },
+            case_: {
+              select: {
+                patient: {
                   select: {
-                    address: true,
-                    building_id: true,
+                    id: true,
+                    name: true,
+                    residences: {
+                      where: { is_primary: true },
+                      take: 1,
+                      select: {
+                        address: true,
+                        facility_id: true,
+                        facility_unit_id: true,
+                        building_id: true,
+                        unit_name: true,
+                      },
+                    },
                   },
                 },
               },
             },
           },
-        },
-      },
-    }),
+        })
+      : Promise.resolve([]),
     listBillingEvidenceBlockers(prisma, {
       orgId: ctx.orgId,
       patientId: schedule.case_.patient.id,
@@ -359,6 +594,8 @@ export async function GET(
             dose: true,
             frequency: true,
             days: true,
+            start_date: true,
+            end_date: true,
           },
         },
       },
@@ -373,6 +610,27 @@ export async function GET(
         id: true,
         delivered_at: true,
         delivered_to: true,
+      },
+    }),
+    prisma.conferenceNote.findMany({
+      where: {
+        org_id: ctx.orgId,
+        note_type: {
+          in: ['pre_discharge', 'service_manager'],
+        },
+        OR: [{ case_id: schedule.case_id }, { patient_id: schedule.case_.patient.id }],
+      },
+      orderBy: [{ conference_date: 'desc' }, { updated_at: 'desc' }],
+      take: 4,
+      select: {
+        id: true,
+        note_type: true,
+        title: true,
+        conference_date: true,
+        participants: true,
+        structured_content: true,
+        metadata: true,
+        action_items: true,
       },
     }),
   ]);
@@ -416,6 +674,8 @@ export async function GET(
     infection_isolation: intakeData?.infection_isolation ?? null,
     residual_medication_status: intakeData?.residual_medication_status ?? null,
     medication_support_methods: intakeData?.medication_support_methods ?? [],
+    initial_transition_management_expected:
+      intakeData?.initial_transition_management_expected ?? null,
   };
 
   const sameFacilitySchedules = sameDaySchedules.filter((item) => {
@@ -460,6 +720,114 @@ export async function GET(
             removed: [],
           }
         : null;
+  const medicationPeriod = {
+    schedule_start_date: toDateString(schedule.medication_start_date),
+    schedule_end_date: toDateString(schedule.medication_end_date),
+    prescription_start_date:
+      latestIntake?.lines
+        .map((line) => line.start_date)
+        .filter((value): value is Date => value != null)
+        .sort((left, right) => left.getTime() - right.getTime())[0]
+        ?.toISOString()
+        .slice(0, 10) ?? null,
+    prescription_end_date:
+      latestIntake?.lines
+        .map((line) => line.end_date)
+        .filter((value): value is Date => value != null)
+        .sort((left, right) => right.getTime() - left.getTime())[0]
+        ?.toISOString()
+        .slice(0, 10) ?? null,
+  };
+  const currentFacilitySchedule: FacilityParallelSchedule = {
+    id: schedule.id,
+    route_order: schedule.route_order,
+    schedule_status: schedule.schedule_status,
+    medication_start_date: schedule.medication_start_date,
+    medication_end_date: schedule.medication_end_date,
+    preparation: schedule.preparation
+      ? {
+          medication_changes_reviewed: schedule.preparation.medication_changes_reviewed,
+          carry_items_confirmed: schedule.preparation.carry_items_confirmed,
+          previous_issues_reviewed: schedule.preparation.previous_issues_reviewed,
+          route_confirmed: schedule.preparation.route_confirmed,
+          offline_synced: schedule.preparation.offline_synced,
+        }
+      : null,
+    visit_record: schedule.visit_record,
+    case_: {
+      patient: {
+        id: schedule.case_.patient.id,
+        name: schedule.case_.patient.name,
+        residences: schedule.case_.patient.residences.map((residence) => ({
+          address: residence.address,
+          facility_id: residence.facility_id,
+          facility_unit_id: residence.facility_unit_id,
+          building_id: residence.building_id,
+          unit_name: residence.unit_name,
+        })),
+      },
+    },
+  };
+  const facilityParallelSchedules = [currentFacilitySchedule, ...sameFacilitySchedules].sort(
+    (left, right) => (left.route_order ?? 9999) - (right.route_order ?? 9999),
+  );
+  const facilityParallelContext =
+    facilityParallelSchedules.length > 1
+      ? {
+          batch_id: schedule.facility_batch_id,
+          label:
+            deriveVisitPlaceGroup(primaryResidence ?? null)?.label ??
+            deriveFacilityLabel(primaryResidence ?? null),
+          place_kind: deriveVisitPlaceGroup(primaryResidence ?? null)?.kind ?? null,
+          site_name: schedule.site?.name ?? null,
+          common_notes: schedule.facility_batch?.notes ?? null,
+          current_schedule_id: schedule.id,
+          patients: facilityParallelSchedules.map((item) => {
+            const residence = item.case_.patient.residences[0] ?? null;
+            return {
+              schedule_id: item.id,
+              patient_id: item.case_.patient.id,
+              patient_name: item.case_.patient.name,
+              unit_name: residence?.unit_name ?? null,
+              route_order: item.route_order,
+              schedule_status: item.schedule_status,
+              medication_start_date: toDateString(item.medication_start_date),
+              medication_end_date: toDateString(item.medication_end_date),
+              preparation_blockers_count: countPreparationBlockers(item.preparation),
+              visit_record_id: item.visit_record?.id ?? null,
+              visit_outcome_status: item.visit_record?.outcome_status ?? null,
+            };
+          }),
+        }
+      : null;
+  const conferenceContext = recentConferenceNotes.map((note) => {
+    const noteType = note.note_type as 'pre_discharge' | 'service_manager';
+    const sections = parseConferenceSections(note.structured_content);
+    const actionItemsFromSections = readConferenceSectionBody(sections, [
+      'agreed_actions',
+      'action_summary',
+    ])
+      ?.split('\n')
+      .map((line) => line.replace(/^[\s\-*・]+/, '').trim())
+      .filter((line) => line.length > 0);
+
+    return {
+      id: note.id,
+      note_type: noteType,
+      title: note.title,
+      conference_date: note.conference_date.toISOString(),
+      participants: parseConferenceParticipants(note.participants).map((participant) => ({
+        name: participant.name ?? null,
+        role: participant.role ?? null,
+      })),
+      highlights: buildConferenceHighlights(noteType, sections),
+      action_items: [
+        ...parseConferenceActionItems(note.action_items),
+        ...(actionItemsFromSections ?? []),
+      ].slice(0, 5),
+      sync_summary: parseConferenceSyncSummary(note.metadata),
+    };
+  });
 
   return success({
     data: {
@@ -475,6 +843,7 @@ export async function GET(
           scheduled_date: schedule.scheduled_date.toISOString(),
           time_window_start: schedule.time_window_start?.toISOString() ?? null,
           time_window_end: schedule.time_window_end?.toISOString() ?? null,
+          visit_type: schedule.visit_type,
           schedule_status: schedule.schedule_status,
           priority: schedule.priority,
           confirmed_at: schedule.confirmed_at?.toISOString() ?? null,
@@ -502,6 +871,7 @@ export async function GET(
               soap_plan: previousVisit.soap_plan,
               next_visit_suggestion_date:
                 previousVisit.next_visit_suggestion_date?.toISOString() ?? null,
+              summary: buildPreviousVisitSummary(previousVisit),
             }
           : null,
         open_tasks: openTasks.map((task) => {
@@ -533,10 +903,12 @@ export async function GET(
             (value): value is number => typeof value === 'number',
           ),
         },
+        facility_parallel_context: facilityParallelContext,
         workload: {
           same_day_visit_count: sameDaySchedules.length + 1,
         },
         care_team: schedule.case_.care_team_links,
+        conference_context: conferenceContext,
         billing_blockers: billingEvidence.flatMap((item) =>
           item.blockers.map((blocker) => ({
             evidence_id: item.id,
@@ -545,6 +917,7 @@ export async function GET(
           })),
         ),
         prescription_changes: prescriptionChanges,
+        medication_period: medicationPeriod,
         home_care_feature_highlights:
           selectScheduleHomeCareFeatureHighlights(homeCareFeatureSummary),
         jahis_supplemental_records: visitBrief.jahis_supplemental_records,
@@ -594,9 +967,18 @@ export async function PUT(
       schedule_status: true,
       scheduled_date: true,
       pharmacist_id: true,
+      case_: {
+        select: {
+          primary_pharmacist_id: true,
+          backup_pharmacist_id: true,
+        },
+      },
     },
   });
   if (!schedule) return notFound('訪問予定が見つかりません');
+  if (!canAccessVisitPreparation(ctx, schedule)) {
+    return forbiddenResponse('この訪問予定の準備情報を更新する権限がありません');
+  }
 
   const allChecklistComplete =
     parsed.data.medication_changes_reviewed &&

@@ -43,6 +43,7 @@ export const GET = withAuth(
     const { cursor, limit } = parsePaginationParams(searchParams);
 
     const billingMonth = searchParams.get('billing_month');
+    const patientId = searchParams.get('patient_id') ?? undefined;
     const status = searchParams.get('status') ?? undefined;
     const billingMonthDate = billingMonth ? new Date(billingMonth) : null;
     if (billingMonthDate && isNaN(billingMonthDate.getTime())) {
@@ -54,6 +55,7 @@ export const GET = withAuth(
         where: {
           org_id: req.orgId,
           ...(billingMonthDate ? { billing_month: billingMonthDate } : {}),
+          ...(patientId ? { patient_id: patientId } : {}),
           ...(status ? { status } : {}),
         },
         take: limit + 1,
@@ -64,12 +66,13 @@ export const GET = withAuth(
         ? await getBillingCandidateWorkbenchSummary(tx, {
             orgId: req.orgId,
             billingMonth: billingMonthDate,
+            patientId,
           })
         : null;
 
       const patientIds = [...new Set(candidates.map((c) => c.patient_id))];
       const patients = await tx.patient.findMany({
-        where: { id: { in: patientIds } },
+        where: { org_id: req.orgId, id: { in: patientIds } },
         select: { id: true, name: true },
       });
       const patientNameMap = new Map(patients.map((p) => [p.id, p.name]));

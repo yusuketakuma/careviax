@@ -60,7 +60,7 @@ const {
 
 vi.mock('@/lib/auth/middleware', () => ({
   withAuth: (
-    handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>
+    handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>,
   ) => {
     withAuthMock.mockImplementation(handler);
     return handler;
@@ -156,8 +156,8 @@ function buildTxMock() {
 describe('/api/conference-notes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    withOrgContextMock.mockImplementation(async (_orgId: string, callback: (tx: unknown) => unknown) =>
-      callback(buildTxMock())
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, callback: (tx: unknown) => unknown) => callback(buildTxMock()),
     );
 
     // default happy-path mocks
@@ -181,20 +181,22 @@ describe('/api/conference-notes', () => {
     });
     taskFindManyMock.mockResolvedValue([]);
     taskCreateManyMock.mockResolvedValue({ count: 2 });
-    conferenceNoteUpdateMock.mockImplementation(async (args?: { where?: { id?: string }; data?: { metadata?: unknown } }) => ({
-      id: args?.where?.id ?? 'note_updated',
-      case_id: 'case_1',
-      note_type: 'pre_discharge',
-      title: '退院前カンファレンス',
-      content: '退院背景: 来週火曜に退院予定',
-      structured_content: null,
-      metadata: args?.data?.metadata ?? null,
-      participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
-      conference_date: new Date('2026-03-28T01:00:00.000Z'),
-      action_items: [],
-      created_at: new Date('2026-03-28T02:00:00.000Z'),
-      updated_at: new Date('2026-03-28T02:00:00.000Z'),
-    }));
+    conferenceNoteUpdateMock.mockImplementation(
+      async (args?: { where?: { id?: string }; data?: { metadata?: unknown } }) => ({
+        id: args?.where?.id ?? 'note_updated',
+        case_id: 'case_1',
+        note_type: 'pre_discharge',
+        title: '退院前カンファレンス',
+        content: '退院背景: 来週火曜に退院予定',
+        structured_content: null,
+        metadata: args?.data?.metadata ?? null,
+        participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
+        conference_date: new Date('2026-03-28T01:00:00.000Z'),
+        action_items: [],
+        created_at: new Date('2026-03-28T02:00:00.000Z'),
+        updated_at: new Date('2026-03-28T02:00:00.000Z'),
+      }),
+    );
     billingCandidateUpsertMock.mockResolvedValue({ id: 'billing_new' });
     visitScheduleProposalFindFirstMock.mockResolvedValue(null);
     visitScheduleProposalCreateMock.mockResolvedValue({ id: 'proposal_new' });
@@ -224,7 +226,7 @@ describe('/api/conference-notes', () => {
           return [{ id: 'report_new', report_type: args.where.report_type.in[0] }];
         }
         return [];
-      }
+      },
     );
     careReportCreateManyMock.mockResolvedValue({ count: 1 });
     medicationIssueFindManyMock.mockResolvedValue([]);
@@ -295,7 +297,7 @@ describe('/api/conference-notes', () => {
     const response = await GET(
       createRequest({
         url: 'http://localhost/api/conference-notes?limit=20',
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -352,23 +354,21 @@ describe('/api/conference-notes', () => {
         updated_at: new Date('2026-03-29T02:00:00.000Z'),
       },
     ]);
-    careCaseFindManyMock
-      .mockResolvedValueOnce([{ id: 'case_service_1' }])
-      .mockResolvedValueOnce([
-        {
-          id: 'case_service_1',
-          patient_id: 'patient_1',
-          patient: {
-            name: '山田 太郎',
-            residences: [{ facility_id: 'facility_1' }],
-          },
+    careCaseFindManyMock.mockResolvedValueOnce([{ id: 'case_service_1' }]).mockResolvedValueOnce([
+      {
+        id: 'case_service_1',
+        patient_id: 'patient_1',
+        patient: {
+          name: '山田 太郎',
+          residences: [{ facility_id: 'facility_1' }],
         },
-      ]);
+      },
+    ]);
 
     const response = await GET(
       createRequest({
         url: 'http://localhost/api/conference-notes?conference_type=service_manager&facility_id=facility_1&billing_eligible=true',
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -388,7 +388,7 @@ describe('/api/conference-notes', () => {
             }),
           ]),
         }),
-      })
+      }),
     );
     await expect(response.json()).resolves.toMatchObject({
       data: [
@@ -452,7 +452,7 @@ describe('/api/conference-notes', () => {
           follow_up_completed: false,
           conference_date: '2026-03-28T01:00:00.000Z',
         },
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -464,8 +464,7 @@ describe('/api/conference-notes', () => {
         facility_id: 'facility_1',
         note_type: 'pre_discharge',
         title: '退院前カンファ',
-        content:
-          '退院背景: 来週火曜に退院予定\n退院後の役割分担: 初回訪問は薬局が担当',
+        content: '退院背景: 来週火曜に退院予定\n退院後の役割分担: 初回訪問は薬局が担当',
         structured_content: expect.objectContaining({
           template: 'pre_discharge',
           sections: expect.arrayContaining([
@@ -507,7 +506,34 @@ describe('/api/conference-notes', () => {
           participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
           conference_date: '2026-03-28T01:00:00.000Z',
         },
-      })
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(conferenceNoteCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects conference note creation when case and patient do not match', async () => {
+    const response = await POST(
+      createRequest({
+        method: 'POST',
+        body: {
+          conference_type: 'pre_discharge',
+          case_id: 'case_1',
+          patient_id: 'patient_other',
+          title: '退院前カンファ',
+          structured_content: {
+            sections: [
+              { key: 'discharge_background', label: '退院背景', body: '週内退院予定' },
+              { key: 'medication_changes_on_discharge', label: '退院時変更薬', body: 'ARB増量' },
+              { key: 'risk_assessment', label: 'リスク評価', body: '服薬忘れあり' },
+            ],
+          },
+          participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
+          conference_date: '2026-03-28T01:00:00.000Z',
+        },
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -530,7 +556,7 @@ describe('/api/conference-notes', () => {
           participants: [{ name: '佐藤CM', role: 'care_manager', attended: true }],
           conference_date: '2026-03-28T01:00:00.000Z',
         },
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -554,7 +580,11 @@ describe('/api/conference-notes', () => {
             label: '退院時薬剤変更',
             body: '退院後は夕食後へ変更\n頓服の使用方法を再説明',
           },
-          { key: 'risk_assessment', label: 'リスク評価', body: '転倒リスクあり\n服薬アドヒアランス低下' },
+          {
+            key: 'risk_assessment',
+            label: 'リスク評価',
+            body: '転倒リスクあり\n服薬アドヒアランス低下',
+          },
           { key: 'next_visit_plan', label: '次回訪問計画', body: '退院翌週に初回訪問予定' },
           { key: 'team_roles', label: '役割分担', body: '薬局担当: 服薬確認' },
         ],
@@ -585,7 +615,11 @@ describe('/api/conference-notes', () => {
               label: '退院時薬剤変更',
               body: '退院後は夕食後へ変更\n頓服の使用方法を再説明',
             },
-            { key: 'risk_assessment', label: 'リスク評価', body: '転倒リスクあり\n服薬アドヒアランス低下' },
+            {
+              key: 'risk_assessment',
+              label: 'リスク評価',
+              body: '転倒リスクあり\n服薬アドヒアランス低下',
+            },
             { key: 'next_visit_plan', label: '次回訪問計画', body: '退院翌週に初回訪問予定' },
           ],
         },
@@ -599,7 +633,7 @@ describe('/api/conference-notes', () => {
 
     it('creates tasks from action_items on POST pre_discharge', async () => {
       const response = await POST(
-        createRequest({ method: 'POST', body: preDischargeSectionsBody })
+        createRequest({ method: 'POST', body: preDischargeSectionsBody }),
       );
 
       if (!response) throw new Error('response is required');
@@ -620,13 +654,13 @@ describe('/api/conference-notes', () => {
               dedupe_key: 'conference-action-item:note_pre1:1',
             }),
           ]),
-        })
+        }),
       );
     });
 
     it('creates BillingCandidate with 600 points on POST pre_discharge', async () => {
       const response = await POST(
-        createRequest({ method: 'POST', body: preDischargeSectionsBody })
+        createRequest({ method: 'POST', body: preDischargeSectionsBody }),
       );
 
       if (!response) throw new Error('response is required');
@@ -638,8 +672,7 @@ describe('/api/conference-notes', () => {
           where: {
             org_id_dedupe_key: {
               org_id: 'org_1',
-              dedupe_key:
-                'conference-billing:org_1:patient_1:B011-6:2026-02-28:note_pre1',
+              dedupe_key: 'conference-billing:org_1:patient_1:B011-6:2026-02-28:note_pre1',
             },
           },
           create: expect.objectContaining({
@@ -650,13 +683,13 @@ describe('/api/conference-notes', () => {
             points: 600,
             status: 'candidate',
           }),
-        })
+        }),
       );
     });
 
     it('creates VisitScheduleProposal when next_visit_plan section exists on POST pre_discharge', async () => {
       const response = await POST(
-        createRequest({ method: 'POST', body: preDischargeSectionsBody })
+        createRequest({ method: 'POST', body: preDischargeSectionsBody }),
       );
 
       if (!response) throw new Error('response is required');
@@ -675,14 +708,16 @@ describe('/api/conference-notes', () => {
             proposed_date: expect.any(Date),
             proposal_reason: 'conference-visit-proposal:note_pre1',
           }),
-        })
+        }),
       );
       expect(
         (
           visitScheduleProposalCreateMock.mock.calls[0]?.[0] as {
             data?: { proposed_date?: Date };
           }
-        ).data?.proposed_date?.toISOString().slice(0, 10)
+        ).data?.proposed_date
+          ?.toISOString()
+          .slice(0, 10),
       ).toBe('2026-04-02');
     });
 
@@ -696,9 +731,7 @@ describe('/api/conference-notes', () => {
         participants: [],
         structured_content: {
           template: 'pre_discharge',
-          sections: [
-            { key: 'discharge_background', label: '退院背景', body: '退院予定' },
-          ],
+          sections: [{ key: 'discharge_background', label: '退院背景', body: '退院予定' }],
         },
         metadata: null,
         action_items: null,
@@ -712,14 +745,12 @@ describe('/api/conference-notes', () => {
             case_id: 'case_1',
             title: '退院前カンファ（訪問計画なし）',
             structured_content: {
-              sections: [
-                { key: 'discharge_background', label: '退院背景', body: '退院予定' },
-              ],
+              sections: [{ key: 'discharge_background', label: '退院背景', body: '退院予定' }],
             },
             participants: [],
             conference_date: '2026-03-28T01:00:00.000Z',
           },
-        })
+        }),
       );
 
       if (!response) throw new Error('response is required');
@@ -729,7 +760,7 @@ describe('/api/conference-notes', () => {
 
     it('creates CareReport draft with report_type physician_report on POST pre_discharge', async () => {
       const response = await POST(
-        createRequest({ method: 'POST', body: preDischargeSectionsBody })
+        createRequest({ method: 'POST', body: preDischargeSectionsBody }),
       );
 
       if (!response) throw new Error('response is required');
@@ -755,13 +786,13 @@ describe('/api/conference-notes', () => {
               }),
             }),
           ]),
-        })
+        }),
       );
     });
 
     it('creates discharge medication issues and a management plan review task on POST pre_discharge', async () => {
       const response = await POST(
-        createRequest({ method: 'POST', body: preDischargeSectionsBody })
+        createRequest({ method: 'POST', body: preDischargeSectionsBody }),
       );
 
       if (!response) throw new Error('response is required');
@@ -776,7 +807,7 @@ describe('/api/conference-notes', () => {
               title: '頓服の使用方法を再説明',
             }),
           ]),
-        })
+        }),
       );
       expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
         expect.anything(),
@@ -784,7 +815,7 @@ describe('/api/conference-notes', () => {
           orgId: 'org_1',
           taskType: 'management_plan_review',
           dedupeKey: 'conference-management-plan-review:note_pre1',
-        })
+        }),
       );
       expect(patientSchedulePreferenceUpsertMock).toHaveBeenCalledWith({
         where: {
@@ -805,7 +836,7 @@ describe('/api/conference-notes', () => {
 
     it('exposes sync result in the response body', async () => {
       const response = await POST(
-        createRequest({ method: 'POST', body: preDischargeSectionsBody })
+        createRequest({ method: 'POST', body: preDischargeSectionsBody }),
       );
 
       if (!response) throw new Error('response is required');
@@ -913,7 +944,7 @@ describe('/api/conference-notes', () => {
             participants: [{ name: '佐藤CM', role: 'care_manager', attended: true }],
             conference_date: '2026-03-28T01:00:00.000Z',
           },
-        })
+        }),
       );
 
       if (!response) throw new Error('response is required');
@@ -925,7 +956,7 @@ describe('/api/conference-notes', () => {
             billing_name: '服薬情報等提供料2 ハ',
             points: 20,
           }),
-        })
+        }),
       );
       expect(careReportCreateManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -938,7 +969,7 @@ describe('/api/conference-notes', () => {
               }),
             }),
           ]),
-        })
+        }),
       );
       expect(medicationIssueCreateManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -946,14 +977,14 @@ describe('/api/conference-notes', () => {
             expect.objectContaining({ title: '飲み忘れが増えている' }),
             expect.objectContaining({ title: '一包化の再調整が必要' }),
           ]),
-        })
+        }),
       );
       expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
           taskType: 'conference_action_item',
           title: '担当者会議アクション: 訪問回数変更を反映',
-        })
+        }),
       );
       expect(visitScheduleProposalCreateMock).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -961,7 +992,7 @@ describe('/api/conference-notes', () => {
             proposal_reason: 'conference-recurrence-proposal:note_service_1',
             suggested_recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
           }),
-        })
+        }),
       );
       await expect(response.json()).resolves.toMatchObject({
         sync: expect.objectContaining({
@@ -1015,7 +1046,7 @@ describe('/api/conference-notes', () => {
             participants: [{ name: '佐藤CM', role: 'care_manager', attended: true }],
             conference_date: '2026-03-28T01:00:00.000Z',
           },
-        })
+        }),
       );
 
       if (!response) throw new Error('response is required');
@@ -1104,7 +1135,7 @@ describe('/api/conference-notes', () => {
             participants: [{ name: '田中薬剤師', role: '薬剤師' }],
             conference_date: '2026-03-25T01:00:00.000Z',
           },
-        })
+        }),
       );
 
       if (!response) throw new Error('response is required');
@@ -1116,8 +1147,7 @@ describe('/api/conference-notes', () => {
           where: {
             org_id_dedupe_key: {
               org_id: 'org_1',
-              dedupe_key:
-                'conference-billing:org_1:patient_1:C013:2026-02-28:note_death1',
+              dedupe_key: 'conference-billing:org_1:patient_1:C013:2026-02-28:note_death1',
             },
           },
           create: expect.objectContaining({
@@ -1128,7 +1158,7 @@ describe('/api/conference-notes', () => {
             points: 2500,
             status: 'candidate',
           }),
-        })
+        }),
       );
     });
 
@@ -1152,7 +1182,7 @@ describe('/api/conference-notes', () => {
             participants: [{ name: '田中薬剤師', role: '薬剤師' }],
             conference_date: '2026-03-25T01:00:00.000Z',
           },
-        })
+        }),
       );
 
       if (!response) throw new Error('response is required');
@@ -1174,7 +1204,7 @@ describe('/api/conference-notes', () => {
               }),
             }),
           ]),
-        })
+        }),
       );
     });
 
@@ -1194,7 +1224,7 @@ describe('/api/conference-notes', () => {
             participants: [],
             conference_date: '2026-03-25T01:00:00.000Z',
           },
-        })
+        }),
       );
 
       if (!response) throw new Error('response is required');
@@ -1228,7 +1258,7 @@ describe('/api/conference-notes', () => {
             participants: [],
             conference_date: '2026-03-25T01:00:00.000Z',
           },
-        })
+        }),
       );
 
       if (!response) throw new Error('response is required');
@@ -1238,14 +1268,14 @@ describe('/api/conference-notes', () => {
         expect.objectContaining({
           taskType: 'conference_case_status_review',
           dedupeKey: 'conference-case-termination:note_death1',
-        })
+        }),
       );
       expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
           taskType: 'conference_quality_improvement',
           title: '改善アクション: 看取り後説明フローを見直す',
-        })
+        }),
       );
     });
 
@@ -1300,7 +1330,7 @@ describe('/api/conference-notes', () => {
             participants: [{ name: '田中薬剤師', role: '薬剤師' }],
             conference_date: '2026-03-25T01:00:00.000Z',
           },
-        })
+        }),
       );
 
       if (!response) throw new Error('response is required');
@@ -1319,7 +1349,7 @@ describe('/api/conference-notes', () => {
               status: 'resolved',
             }),
           ]),
-        })
+        }),
       );
     });
   });
@@ -1370,7 +1400,7 @@ describe('/api/conference-notes', () => {
             participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
             conference_date: '2026-03-29T01:00:00.000Z',
           },
-        })
+        }),
       );
 
       if (!response) throw new Error('response is required');
@@ -1393,7 +1423,7 @@ describe('/api/conference-notes', () => {
               title: 'ポリファーマシー対応が必要',
             }),
           ]),
-        })
+        }),
       );
     });
 
@@ -1417,7 +1447,7 @@ describe('/api/conference-notes', () => {
             participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
             conference_date: '2026-03-29T01:00:00.000Z',
           },
-        })
+        }),
       );
 
       if (!response) throw new Error('response is required');
@@ -1437,7 +1467,7 @@ describe('/api/conference-notes', () => {
               }),
             }),
           ]),
-        })
+        }),
       );
     });
 
@@ -1486,7 +1516,7 @@ describe('/api/conference-notes', () => {
             participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
             conference_date: '2026-03-29T01:00:00.000Z',
           },
-        })
+        }),
       );
 
       if (!response) throw new Error('response is required');
@@ -1550,7 +1580,7 @@ describe('/api/conference-notes', () => {
             participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
             conference_date: '2026-03-29T01:00:00.000Z',
           },
-        })
+        }),
       );
 
       if (!response) throw new Error('response is required');
@@ -1600,7 +1630,7 @@ describe('/api/conference-notes', () => {
             participants: [],
             conference_date: '2026-03-29T01:00:00.000Z',
           },
-        })
+        }),
       );
 
       if (!response) throw new Error('response is required');
@@ -1617,14 +1647,12 @@ describe('/api/conference-notes', () => {
             case_id: 'case_1',
             title: '薬剤師間カンファレンス',
             structured_content: {
-              sections: [
-                { key: 'medication_issues', label: '薬学的課題', body: '課題あり' },
-              ],
+              sections: [{ key: 'medication_issues', label: '薬学的課題', body: '課題あり' }],
             },
             participants: [],
             conference_date: '2026-03-29T01:00:00.000Z',
           },
-        })
+        }),
       );
 
       if (!response) throw new Error('response is required');
@@ -1703,7 +1731,7 @@ describe('/api/conference-notes', () => {
             participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
             conference_date: '2026-03-30T01:00:00.000Z',
           },
-        })
+        }),
       );
 
       if (!response) throw new Error('response is required');
@@ -1716,7 +1744,7 @@ describe('/api/conference-notes', () => {
               priority: 'high',
             }),
           ]),
-        })
+        }),
       );
       expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
         expect.anything(),
@@ -1724,7 +1752,7 @@ describe('/api/conference-notes', () => {
           taskType: 'conference_immediate_action',
           title: '即時対応: 主治医へ即時連絡',
           priority: 'urgent',
-        })
+        }),
       );
       expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
         expect.anything(),
@@ -1732,7 +1760,7 @@ describe('/api/conference-notes', () => {
           taskType: 'conference_risk_mitigation',
           title: '再発防止: 服薬セット方法を再評価',
           priority: 'high',
-        })
+        }),
       );
       await expect(response.json()).resolves.toMatchObject({
         sync: expect.objectContaining({
@@ -1777,7 +1805,7 @@ describe('/api/conference-notes', () => {
             participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
             conference_date: '2026-03-30T01:00:00.000Z',
           },
-        })
+        }),
       );
 
       if (!response) throw new Error('response is required');
@@ -1788,19 +1816,37 @@ describe('/api/conference-notes', () => {
             expect.objectContaining({
               report_type: 'physician_report',
               content: expect.objectContaining({
+                sections: [],
+                disclosure_scope: expect.objectContaining({
+                  audience: 'physician_report',
+                  sanitized: true,
+                  included_section_keys: expect.arrayContaining([
+                    'immediate_actions',
+                    'incident_summary',
+                  ]),
+                  excluded_section_keys: expect.arrayContaining(['risk_mitigation', 'root_cause']),
+                }),
                 incident_report: expect.objectContaining({
                   summary: '内服忘れにより症状悪化',
-                  root_cause: '服薬カレンダーの運用が崩れていた',
                   immediate_actions: ['主治医へ即時連絡', '当日夕方に再訪'],
-                  risk_mitigation: ['服薬セット方法を再評価'],
                 }),
               }),
             }),
             expect.objectContaining({
               report_type: 'internal_record',
+              content: expect.objectContaining({
+                disclosure_scope: expect.objectContaining({
+                  audience: 'internal',
+                  sanitized: false,
+                }),
+                incident_report: expect.objectContaining({
+                  root_cause: '服薬カレンダーの運用が崩れていた',
+                  risk_mitigation: ['服薬セット方法を再評価'],
+                }),
+              }),
             }),
           ]),
-        })
+        }),
       );
     });
   });
@@ -1845,7 +1891,7 @@ describe('/api/conference-notes', () => {
           participants: [],
           conference_date: '2026-03-28T01:00:00.000Z',
         },
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');

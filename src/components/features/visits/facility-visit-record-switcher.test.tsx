@@ -22,10 +22,31 @@ vi.mock('next/link', () => ({
 const context = {
   label: '青空ホーム',
   siteName: '中央薬局',
+  placeKind: 'facility' as const,
+  commonNotes: '受付で入館証を受け取る',
   patients: [
-    { scheduleId: 'schedule_1', patientName: '田中太郎', unitName: '201', routeOrder: 1 },
-    { scheduleId: 'schedule_2', patientName: '佐藤花子', unitName: '203', routeOrder: 2 },
-    { scheduleId: 'schedule_3', patientName: '鈴木一郎', unitName: null, routeOrder: 3 },
+    {
+      scheduleId: 'schedule_1',
+      patientName: '田中太郎',
+      unitName: '201',
+      routeOrder: 1,
+      visitRecordId: 'record_1',
+      preparationBlockersCount: 0,
+    },
+    {
+      scheduleId: 'schedule_2',
+      patientName: '佐藤花子',
+      unitName: '203',
+      routeOrder: 2,
+      preparationBlockersCount: 1,
+    },
+    {
+      scheduleId: 'schedule_3',
+      patientName: '鈴木一郎',
+      unitName: null,
+      routeOrder: 3,
+      preparationBlockersCount: 0,
+    },
   ],
 };
 
@@ -34,13 +55,16 @@ describe('FacilityVisitRecordSwitcher', () => {
     render(<FacilityVisitRecordSwitcher currentScheduleId="schedule_2" context={context} />);
 
     expect(screen.getByText('青空ホーム')).toBeTruthy();
+    expect(screen.getByText('記録済み 1/3')).toBeTruthy();
+    expect(screen.getAllByText('準備不足 1').length).toBeGreaterThan(0);
+    expect(screen.getByText('受付で入館証を受け取る')).toBeTruthy();
     expect(screen.getByText('佐藤花子')).toBeTruthy();
-    expect(screen.getByRole('link', { name: /前: 田中太郎/ }).getAttribute('href')).toContain(
-      '/visits/schedule_1/record?',
-    );
-    expect(screen.getByRole('link', { name: /次: 鈴木一郎/ }).getAttribute('href')).toContain(
-      '/visits/schedule_3/record?',
-    );
+    const previousHref = screen.getByRole('link', { name: /前: 田中太郎/ }).getAttribute('href');
+    const nextHref = screen.getByRole('link', { name: /次: 鈴木一郎/ }).getAttribute('href');
+    expect(previousHref).toBe('/visits/schedule_1/record');
+    expect(nextHref).toBe('/visits/schedule_3/record');
+    expect(previousHref).not.toContain('facility_visit_context');
+    expect(nextHref).not.toContain('facility_visit_context');
   });
 
   it('supports swipe navigation by triggering the next patient link', () => {
@@ -54,6 +78,17 @@ describe('FacilityVisitRecordSwitcher', () => {
     fireEvent.touchEnd(switcher, { changedTouches: [{ clientX: 80, clientY: 86 }] });
 
     expect(clickSpy).toHaveBeenCalled();
+  });
+
+  it('uses a visit-place label for the switcher landmark', () => {
+    render(
+      <FacilityVisitRecordSwitcher
+        currentScheduleId="schedule_2"
+        context={{ ...context, placeKind: 'home_group', label: '山田宅' }}
+      />,
+    );
+
+    expect(screen.getByLabelText('同一個人宅訪問の患者切替')).toBeTruthy();
   });
 
   it('does not show stale context when the current schedule is not included', () => {

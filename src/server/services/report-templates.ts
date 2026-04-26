@@ -3,17 +3,17 @@
 // 厚労省「在宅患者訪問薬剤管理指導ガイド」薬学的評価シート7項目準拠
 
 import type { StructuredSoap } from '@/types/structured-soap';
-import type { PhysicianReportContent, CareManagerReportContent, BaselineContext } from '@/types/care-report-content';
+import type {
+  PhysicianReportContent,
+  CareManagerReportContent,
+  BaselineContext,
+} from '@/types/care-report-content';
 import type { HomeVisitIntake } from '@/lib/patient/home-visit-intake';
-import {
-  getSoapLabel,
-  ADHERENCE_LABELS,
-} from '@/lib/constants/soap-options';
-import {
-  buildAssessmentText,
-  buildPlanText,
-  joinLabels,
-} from '@/lib/utils/soap-text-builder';
+import { getSoapLabel, ADHERENCE_LABELS } from '@/lib/constants/soap-options';
+import { buildAssessmentText, buildPlanText, joinLabels } from '@/lib/utils/soap-text-builder';
+import { summarizeHomeVisit2026Evidence } from '@/lib/visits/home-visit-2026-evidence';
+import type { VisitWorkflowConferenceContext } from '@/lib/visits/visit-workflow-projection';
+import { buildExternalConferenceReportLines } from '@/lib/conferences/conference-report-disclosure';
 
 // ─── 共通ヘルパー ──────────────────────────────────────────────────────────────
 
@@ -22,7 +22,9 @@ function formatDate(date: Date | string): string {
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
-function buildLabValuesText(labValues: StructuredSoap['objective']['lab_values']): string | undefined {
+function buildLabValuesText(
+  labValues: StructuredSoap['objective']['lab_values'],
+): string | undefined {
   if (!labValues) return undefined;
   const parts: string[] = [];
   if (labValues.hba1c != null) parts.push(`HbA1c ${labValues.hba1c}%`);
@@ -183,6 +185,7 @@ export type PhysicianReportContext = {
   pharmacistName: string;
   /** intake から抽出したベースライン情報（オプション） */
   intake?: HomeVisitIntake;
+  conferenceContext?: VisitWorkflowConferenceContext[];
 };
 
 // ─── BuildCareManagerReport の入力型 ─────────────────────────────────────────
@@ -215,6 +218,7 @@ export type CareManagerReportContext = {
   pharmacistName: string;
   /** intake から抽出したベースライン情報（オプション） */
   intake?: HomeVisitIntake;
+  conferenceContext?: VisitWorkflowConferenceContext[];
 };
 
 // ─── intake → BaselineContext 変換 ───────────────────────────────────────────
@@ -241,9 +245,20 @@ function buildBaselineContext(intake: HomeVisitIntake): BaselineContext {
 // ─── 医師向け報告書ビルダー ───────────────────────────────────────────────────
 
 export function buildPhysicianReport(ctx: PhysicianReportContext): PhysicianReportContent {
-  const { patient, visitRecord, structuredSoap, prescriptionLines, residualMedications, pharmacistName, intake } = ctx;
+  const {
+    patient,
+    visitRecord,
+    structuredSoap,
+    prescriptionLines,
+    residualMedications,
+    pharmacistName,
+    intake,
+    conferenceContext = [],
+  } = ctx;
   const { subjective, objective, assessment, plan } = structuredSoap;
   const prescriber = ctx.prescriber;
+  const homeVisit2026Summary = summarizeHomeVisit2026Evidence(structuredSoap);
+  const conferenceLines = buildExternalConferenceReportLines(conferenceContext, 'physician_report');
 
   const warnings: string[] = [];
 
@@ -255,18 +270,24 @@ export function buildPhysicianReport(ctx: PhysicianReportContext): PhysicianRepo
     warnings.push('服薬状況が未入力です。算定要件を満たすには服薬状況の記録が必要です。');
   }
   if (objective.adverse_events == null) {
-    warnings.push('有害事象の確認が未記録です。算定要件を満たすには有害事象チェックの入力が必要です。');
+    warnings.push(
+      '有害事象の確認が未記録です。算定要件を満たすには有害事象チェックの入力が必要です。',
+    );
   }
   if (
     assessment.problem_checks.length === 0 ||
     (assessment.free_text == null && plan.free_text == null && plan.prescription_proposal == null)
   ) {
-    warnings.push('薬学的介入内容が未記録です。算定要件を満たすには薬学的評価・介入の記録が必要です。');
+    warnings.push(
+      '薬学的介入内容が未記録です。算定要件を満たすには薬学的評価・介入の記録が必要です。',
+    );
   }
 
   // 服薬管理サマリー
-  const adherenceLabel = ADHERENCE_LABELS[objective.adherence_score]?.label ?? `${objective.adherence_score}/5`;
-  const complianceSummary = `服薬状況: ${getSoapLabel(objective.medication_status)}。アドヒアランス: ${adherenceLabel}(${objective.adherence_score}/5)。${subjective.free_text ?? ''}`.trim();
+  const adherenceLabel =
+    ADHERENCE_LABELS[objective.adherence_score]?.label ?? `${objective.adherence_score}/5`;
+  const complianceSummary =
+    `服薬状況: ${getSoapLabel(objective.medication_status)}。アドヒアランス: ${adherenceLabel}(${objective.adherence_score}/5)。${subjective.free_text ?? ''}`.trim();
 
   // 機能評価
   const fa = objective.functional_assessment;
@@ -323,7 +344,13 @@ export function buildPhysicianReport(ctx: PhysicianReportContext): PhysicianRepo
     assessment: buildAssessmentText(assessment),
     plan: buildPlanText(plan),
     prescription_proposals: plan.prescription_proposal ?? undefined,
-    physician_communication: plan.physician_report_items ?? '',
+    physician_communication: [
+      plan.physician_report_items,
+      ...homeVisit2026Summary,
+      ...conferenceLines,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join('\n'),
     warnings,
     baseline_context: intake ? buildBaselineContext(intake) : undefined,
   };
@@ -332,8 +359,23 @@ export function buildPhysicianReport(ctx: PhysicianReportContext): PhysicianRepo
 // ─── ケアマネ向け情報提供書ビルダー ──────────────────────────────────────────
 
 export function buildCareManagerReport(ctx: CareManagerReportContext): CareManagerReportContent {
-  const { patient, visitRecord, structuredSoap, prescriptionLines, residualMedications, careManager, pharmacistName, intake } = ctx;
+  const {
+    patient,
+    visitRecord,
+    structuredSoap,
+    prescriptionLines,
+    residualMedications,
+    careManager,
+    pharmacistName,
+    intake,
+    conferenceContext = [],
+  } = ctx;
   const { objective, plan } = structuredSoap;
+  const homeVisit2026Summary = summarizeHomeVisit2026Evidence(structuredSoap);
+  const conferenceLines = buildExternalConferenceReportLines(
+    conferenceContext,
+    'care_manager_report',
+  );
 
   const warnings: string[] = [];
 
@@ -342,7 +384,8 @@ export function buildCareManagerReport(ctx: CareManagerReportContext): CareManag
   }
 
   // 服薬管理サマリー
-  const adherenceLabel = ADHERENCE_LABELS[objective.adherence_score]?.label ?? `${objective.adherence_score}/5`;
+  const adherenceLabel =
+    ADHERENCE_LABELS[objective.adherence_score]?.label ?? `${objective.adherence_score}/5`;
   const complianceSummary = `${getSoapLabel(objective.medication_status)}（アドヒアランス: ${adherenceLabel}）`;
 
   // 機能的影響テキスト（問題ありの項目のみ生活機能影響として変換）
@@ -385,6 +428,8 @@ export function buildCareManagerReport(ctx: CareManagerReportContext): CareManag
   if (plan.free_text) {
     followupItems.push(plan.free_text);
   }
+  followupItems.push(...homeVisit2026Summary);
+  followupItems.push(...conferenceLines);
 
   return {
     patient: {

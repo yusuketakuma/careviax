@@ -55,8 +55,7 @@ describe('FacilityPatientSwipeRail', () => {
     expect(screen.getByText('同一訪問先の患者をスワイプで切替')).toBeTruthy();
     const recordLinks = screen.getAllByRole('link', { name: /この患者を記録/ });
     expect(recordLinks).toHaveLength(4);
-    expect(recordLinks[0]?.getAttribute('href')).toContain('/visits/schedule_1/record?');
-    expect(recordLinks[0]?.getAttribute('href')).toContain('facility_visit_context=');
+    expect(recordLinks[0]?.getAttribute('href')).toBe('/visits/schedule_1/record');
     expect(screen.getByRole('button', { name: '全グループ' })).toBeTruthy();
     expect(screen.getByText('田中太郎')).toBeTruthy();
     expect(screen.getByText('佐藤花子')).toBeTruthy();

@@ -9,7 +9,19 @@ export const metadata: Metadata = {
   title: '月次請求候補 — CareViaX',
 };
 
-export default function BillingCandidatesPage() {
+type BillingCandidatesPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+function readFirstSearchParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export default async function BillingCandidatesPage({ searchParams }: BillingCandidatesPageProps) {
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const initialBillingMonth = readFirstSearchParam(resolvedSearchParams.billing_month);
+  const initialPatientId = readFirstSearchParam(resolvedSearchParams.patient_id);
+
   return (
     <PageScaffold>
       <WorkflowPageIntro
@@ -34,7 +46,10 @@ export default function BillingCandidatesPage() {
       />
 
       <Suspense fallback={<Loading />}>
-        <BillingCandidatesContent />
+        <BillingCandidatesContent
+          initialBillingMonth={initialBillingMonth}
+          initialPatientId={initialPatientId}
+        />
       </Suspense>
     </PageScaffold>
   );

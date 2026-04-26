@@ -7,8 +7,50 @@ import { withOrgContext } from '@/lib/db/rls';
 import type { StructuredSoap } from '@/types/structured-soap';
 import { buildPhysicianReport, buildCareManagerReport } from './report-templates';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
+import type { VisitWorkflowConferenceContext } from '@/lib/visits/visit-workflow-projection';
+import { buildReportableConferenceHighlightsFromStructuredContent } from '@/lib/conferences/conference-report-disclosure';
 
 type ReportType = 'physician_report' | 'care_manager_report';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readTextArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+}
+
+function readConferenceHighlights(
+  noteType: VisitWorkflowConferenceContext['note_type'],
+  structuredContent: unknown,
+): string[] {
+  const reportableHighlights = buildReportableConferenceHighlightsFromStructuredContent({
+    noteType,
+    structuredContent,
+  });
+  if (reportableHighlights.length > 0) return reportableHighlights;
+  if (!isRecord(structuredContent)) return [];
+  return [
+    ...readTextArray(structuredContent.key_decisions),
+    ...readTextArray(structuredContent.medication_issues),
+    ...readTextArray(structuredContent.care_plan_changes),
+  ].slice(0, 6);
+}
+
+function readConferenceActionItems(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (typeof item === 'string') return item;
+      if (!isRecord(item)) return null;
+      if (typeof item.title === 'string') return item.title;
+      if (typeof item.description === 'string') return item.description;
+      if (typeof item.content === 'string') return item.content;
+      return null;
+    })
+    .filter((item): item is string => Boolean(item?.trim()));
+}
 
 export async function generateReportsFromVisit(
   orgId: string,
@@ -52,6 +94,23 @@ export async function generateReportsFromVisit(
   }
 
   const caseId = schedule.case_id;
+  const conferenceNoteClient = (
+    prisma as unknown as {
+      conferenceNote?: {
+        findMany?: (args: Record<string, unknown>) => Promise<
+          Array<{
+            id: string;
+            note_type: string;
+            title: string;
+            conference_date: Date;
+            structured_content: unknown;
+            metadata: unknown;
+            action_items: unknown;
+          }>
+        >;
+      };
+    }
+  ).conferenceNote;
 
   // ─── 3-7. 独立クエリを並列実行 ────────────────────────────────────────────
   const [
@@ -62,6 +121,7 @@ export async function generateReportsFromVisit(
     pharmacistUser,
     billingEvidence,
     careCase,
+    recentConferenceNotes,
   ] = await Promise.all([
     prisma.patient.findFirst({
       where: { id: visitRecord.patient_id, org_id: orgId },
@@ -107,6 +167,26 @@ export async function generateReportsFromVisit(
       where: { id: caseId, org_id: orgId },
       select: { required_visit_support: true },
     }),
+    conferenceNoteClient?.findMany
+      ? conferenceNoteClient.findMany({
+          where: {
+            org_id: orgId,
+            OR: [{ patient_id: visitRecord.patient_id }, { case_id: caseId }],
+            note_type: { in: ['pre_discharge', 'service_manager'] },
+          },
+          orderBy: [{ conference_date: 'desc' }],
+          take: 4,
+          select: {
+            id: true,
+            note_type: true,
+            title: true,
+            conference_date: true,
+            structured_content: true,
+            metadata: true,
+            action_items: true,
+          },
+        })
+      : Promise.resolve([]),
   ]);
 
   if (!patient) {
@@ -172,6 +252,17 @@ export async function generateReportsFromVisit(
   const careManager = careTeamCareManager ??
     careManagerFromIntake ?? { name: 'ケアマネジャー', organization_name: null };
   const pharmacistName = pharmacistUser?.name ?? '担当薬剤師';
+  const conferenceContext: VisitWorkflowConferenceContext[] = recentConferenceNotes.map((note) => ({
+    id: note.id,
+    note_type: note.note_type as VisitWorkflowConferenceContext['note_type'],
+    title: note.title,
+    conference_date: note.conference_date.toISOString(),
+    highlights: readConferenceHighlights(
+      note.note_type as VisitWorkflowConferenceContext['note_type'],
+      note.structured_content,
+    ),
+    action_items: readConferenceActionItems(note.action_items),
+  }));
 
   // ─── 保険種別で報告書タイプを判定 ──────────────────────────────────────────
   let typesToGenerate: ReportType[];
@@ -265,6 +356,7 @@ export async function generateReportsFromVisit(
           prescriber: { name: prescriber.name, organization_name: prescriber.organization_name },
           pharmacistName,
           intake,
+          conferenceContext,
         }) as unknown as Record<string, unknown>),
         billing_context: billingContext,
       });
@@ -279,6 +371,7 @@ export async function generateReportsFromVisit(
           careManager: { name: careManager.name, organization_name: careManager.organization_name },
           pharmacistName,
           intake,
+          conferenceContext,
         }) as unknown as Record<string, unknown>),
         billing_context: billingContext,
       });

@@ -11,6 +11,8 @@ import {
   HOME_CARE_BILLING_RULESET_VERSION,
 } from '../home-care-billing-ssot';
 import { resolveBillingRuntimeContext } from '../billing-runtime-context';
+import { getHomeVisit2026BillingEligibility } from '@/lib/visits/home-visit-2026-evidence';
+import type { StructuredSoap } from '@/types/structured-soap';
 
 export type Tx = Prisma.TransactionClient | typeof prisma;
 
@@ -1100,6 +1102,11 @@ export async function upsertBillingEvidenceForVisit(
     specialProcedures.includes('tube_feeding') ||
     (Array.isArray(intakeJson?.medication_support_methods) &&
       (intakeJson.medication_support_methods as string[]).includes('tube'));
+  const structuredSoap =
+    isRecord(visitRecord.structured_soap) && !Array.isArray(visitRecord.structured_soap)
+      ? (visitRecord.structured_soap as Partial<StructuredSoap>)
+      : null;
+  const homeVisit2026Eligibility = getHomeVisit2026BillingEligibility(structuredSoap);
 
   // 特別上限対象 (末期悪性腫瘍 OR 麻薬注射 OR 中心静脈栄養)
   const terminalPainRequired = specialProcedures.includes('terminal_pain');
@@ -1169,6 +1176,9 @@ export async function upsertBillingEvidenceForVisit(
     centralVenousRequired,
     enteralRequired,
     careLevelCategory,
+    initialTransitionEligible: homeVisit2026Eligibility.initialTransitionEligible,
+    multiStaffVisitEligible: homeVisit2026Eligibility.multiStaffVisitEligible,
+    physicianSimultaneousEligible: homeVisit2026Eligibility.physicianSimultaneousEligible,
   });
 
   // ── 薬局情報から体制加算を判定 ──
@@ -1329,6 +1339,9 @@ export async function upsertBillingEvidenceForVisit(
     central_venous_required: centralVenousRequired,
     enteral_required: enteralRequired,
     care_level_category: careLevelCategory,
+    initial_transition_eligible: homeVisit2026Eligibility.initialTransitionEligible,
+    multi_staff_visit_eligible: homeVisit2026Eligibility.multiStaffVisitEligible,
+    physician_simultaneous_eligible: homeVisit2026Eligibility.physicianSimultaneousEligible,
     jahis_supplemental_record_count: jahisSupplementalRecords.length,
     jahis_supplemental_record_types: Array.from(
       new Set(jahisSupplementalRecords.map((record) => record.record_type)),
@@ -1451,7 +1464,7 @@ export async function upsertBillingEvidenceForVisit(
 
 export async function getBillingCandidateWorkbenchSummary(
   tx: Tx,
-  args: { orgId: string; billingMonth: Date },
+  args: { orgId: string; billingMonth: Date; patientId?: string },
 ) {
   const billingMonth = startOfMonth(args.billingMonth);
   const [candidates, blockedEvidences] = await Promise.all([
@@ -1459,6 +1472,7 @@ export async function getBillingCandidateWorkbenchSummary(
       where: {
         org_id: args.orgId,
         billing_month: billingMonth,
+        ...(args.patientId ? { patient_id: args.patientId } : {}),
       },
       select: {
         status: true,
@@ -1471,6 +1485,7 @@ export async function getBillingCandidateWorkbenchSummary(
       where: {
         org_id: args.orgId,
         billing_month: billingMonth,
+        ...(args.patientId ? { patient_id: args.patientId } : {}),
         claimable: false,
       },
       select: {

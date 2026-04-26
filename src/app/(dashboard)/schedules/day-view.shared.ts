@@ -1,5 +1,6 @@
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import type { HomeVisit2026BillingBlocker } from '@/lib/visits/home-visit-2026-evidence';
 import type { HomeCareFeatureState } from '@/types/home-care';
 import type { VisitBrief } from '@/types/visit-brief';
 
@@ -232,6 +233,7 @@ export type VisitPreparationPack = {
     scheduled_date: string;
     time_window_start: string | null;
     time_window_end: string | null;
+    visit_type: VisitType;
     schedule_status: ScheduleStatus;
     priority: VisitPriority;
     confirmed_at: string | null;
@@ -252,6 +254,7 @@ export type VisitPreparationPack = {
     outcome_status: string;
     soap_plan: string | null;
     next_visit_suggestion_date: string | null;
+    summary?: string | null;
   } | null;
   open_tasks: Array<{
     id: string;
@@ -279,6 +282,27 @@ export type VisitPreparationPack = {
     same_day_patient_names: string[];
     route_orders: number[];
   };
+  facility_parallel_context: {
+    batch_id: string | null;
+    label: string | null;
+    place_kind: 'facility' | 'home_group' | 'address' | null;
+    site_name: string | null;
+    common_notes: string | null;
+    current_schedule_id: string;
+    patients: Array<{
+      schedule_id: string;
+      patient_id: string;
+      patient_name: string;
+      unit_name: string | null;
+      route_order: number | null;
+      schedule_status: string;
+      medication_start_date: string | null;
+      medication_end_date: string | null;
+      preparation_blockers_count: number;
+      visit_record_id: string | null;
+      visit_outcome_status: string | null;
+    }>;
+  } | null;
   workload: {
     same_day_visit_count: number;
   };
@@ -289,21 +313,33 @@ export type VisitPreparationPack = {
     organization_name: string | null;
     phone: string | null;
   }>;
-  billing_blockers: Array<{
-    evidence_id: string;
-    visit_record_id: string;
-    key:
-      | 'missing_visit_consent'
-      | 'missing_management_plan'
-      | 'management_plan_review_overdue'
-      | 'initial_home_visit_assessment_missing'
-      | 'report_delivery_incomplete'
-      | 'outcome_not_claimable';
-    reason: string;
-    action_href: string;
-    action_label: string;
-    severity: 'urgent' | 'high' | 'normal';
+  conference_context: Array<{
+    id: string;
+    note_type: 'pre_discharge' | 'service_manager';
+    title: string;
+    conference_date: string;
+    participants: Array<{
+      name: string | null;
+      role: string | null;
+    }>;
+    highlights: string[];
+    action_items: string[];
+    sync_summary?: {
+      billing_candidate_id?: string | null;
+      visit_proposal_id?: string | null;
+      report_draft_ids?: string[];
+      tasks_created?: number;
+      medication_issues_created?: number;
+    } | null;
   }>;
+  billing_blockers: Array<
+    HomeVisit2026BillingBlocker & {
+      evidence_id: string;
+      visit_record_id: string;
+      action_href: string;
+      action_label: string;
+    }
+  >;
   prescription_changes: {
     current_prescribed_date: string;
     previous_prescribed_date: string | null;
@@ -315,6 +351,12 @@ export type VisitPreparationPack = {
     }>;
     removed: string[];
   } | null;
+  medication_period: {
+    schedule_start_date: string | null;
+    schedule_end_date: string | null;
+    prescription_start_date: string | null;
+    prescription_end_date: string | null;
+  };
   home_care_feature_highlights: HomeCareFeatureState[];
   visit_brief: VisitBrief;
   onboarding_readiness: {
@@ -324,6 +366,9 @@ export type VisitPreparationPack = {
     management_plan_approved: boolean;
     primary_physician_set: boolean;
   } | null;
+  intake_context: {
+    initial_transition_management_expected: boolean | null;
+  };
   emergency_contacts: Array<{
     id: string;
     name: string;

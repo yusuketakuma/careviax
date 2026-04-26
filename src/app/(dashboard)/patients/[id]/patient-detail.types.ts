@@ -291,6 +291,8 @@ export type PatientTimelineEvent = {
     | 'delivery_record'
     | 'management_plan'
     | 'first_visit_document'
+    | 'conference_note'
+    | 'billing_candidate'
     | 'communication'
     | 'external_share';
   category: 'visit' | 'prescription' | 'document' | 'communication';

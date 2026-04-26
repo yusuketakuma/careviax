@@ -184,6 +184,54 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
     );
   });
 
+  it('passes completed 2026 home-visit evidence flags to billing candidate derivation', async () => {
+    const tx = makeTx();
+    tx.visitRecord.findFirst = vi.fn().mockResolvedValue(
+      makeVisitRecord({
+        structured_soap: {
+          home_visit_2026: {
+            physician_simultaneous: {
+              performed: true,
+              patient_consent: true,
+              physician_name: '山田医師',
+              medication_adjustment_discussed: true,
+              discussion_summary: '残薬調整を協議',
+              same_day_exclusion_checked: true,
+            },
+            multi_staff_visit: {
+              performed: true,
+              patient_consent: true,
+              physician_need_confirmed: true,
+              safety_reason: 'agitation',
+              companion_name: '佐藤薬剤師',
+              necessity_summary: '興奮が強く単独訪問では安全確保が難しい',
+            },
+            initial_transition_management: {
+              target: true,
+              pre_visit_environment_assessed: true,
+              medication_risk_assessed: true,
+              transition_support_summary: '退院直後の生活環境と服薬支援者を確認',
+            },
+          },
+        },
+      }),
+    );
+
+    await upsertBillingEvidenceForVisit(tx as never, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_1',
+    });
+
+    expect(buildBillingCandidateSpecsMock).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        initialTransitionEligible: true,
+        multiStaffVisitEligible: true,
+        physicianSimultaneousEligible: true,
+      }),
+    );
+  });
+
   // ── 2. Missing visit consent → blocker ──
   it('sets claimable=false with missing_visit_consent blocker', async () => {
     findActiveVisitConsentMock.mockResolvedValue(null);

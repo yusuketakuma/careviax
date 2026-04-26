@@ -55,6 +55,8 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
         <ReportsTable
           initialDeliveryStatus={initialState.initialDeliveryStatus}
           initialContext={initialState.initialContext}
+          initialPatientId={initialState.initialPatientId}
+          initialVisitRecordId={initialState.initialVisitRecordId}
         />
       </Suspense>
       <Suspense fallback={<Loading />}>

@@ -214,6 +214,8 @@ export async function buildBillingCandidateSpecs(
       conditions.requires_pediatric_special_eligibility !== true || context.pediatricAge === true;
     const enteralMatch =
       conditions.requires_enteral_feeding !== true || context.enteralRequired === true;
+    const initialTransitionMatch =
+      conditions.requires_initial_transition !== true || context.initialTransitionEligible === true;
     const specialCapMatch =
       conditions.special_cap_eligible !== true || context.specialCapEligible === true;
     const multiStaffVisitMatch =
@@ -230,6 +232,7 @@ export async function buildBillingCandidateSpecs(
       infantMatch &&
       pediatricMatch &&
       enteralMatch &&
+      initialTransitionMatch &&
       specialCapMatch &&
       multiStaffVisitMatch &&
       physicianSimultaneousMatch &&

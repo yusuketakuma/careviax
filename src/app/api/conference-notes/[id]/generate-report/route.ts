@@ -26,17 +26,18 @@ export const POST = withAuthContext<{ id: string }>(
       select: {
         id: true,
         case_id: true,
+        patient_id: true,
         note_type: true,
         title: true,
         content: true,
-      conference_date: true,
-      participants: true,
-      structured_content: true,
-      metadata: true,
-      generated_report_id: true,
-      action_items: true,
-    },
-  });
+        conference_date: true,
+        participants: true,
+        structured_content: true,
+        metadata: true,
+        generated_report_id: true,
+        action_items: true,
+      },
+    });
 
     if (!note) {
       return notFound('カンファレンス記録が見つかりません');
@@ -53,10 +54,7 @@ export const POST = withAuthContext<{ id: string }>(
               ? ['physician_report', 'internal_record']
               : ['internal_record'];
 
-    if (
-      parsed.data.report_type &&
-      !defaultReportTypes.includes(parsed.data.report_type)
-    ) {
+    if (parsed.data.report_type && !defaultReportTypes.includes(parsed.data.report_type)) {
       return validationError('この会議種別では指定された報告書種別を生成できません');
     }
 
@@ -78,13 +76,11 @@ export const POST = withAuthContext<{ id: string }>(
         ctx.orgId,
         ctx.userId,
         note,
-        careCase?.patient_id ?? null,
+        note.patient_id ?? careCase?.patient_id ?? null,
         {
-          ...(parsed.data.report_type
-            ? { reportTypes: [parsed.data.report_type] }
-            : {}),
+          ...(parsed.data.report_type ? { reportTypes: [parsed.data.report_type] } : {}),
           includeStructuredContent: parsed.data.include_structured_content,
-        }
+        },
       );
 
       const queuedRecipients: Array<{
@@ -100,7 +96,7 @@ export const POST = withAuthContext<{ id: string }>(
           (participant) =>
             participant.is_report_recipient &&
             ((participant.email && participant.email.length > 0) ||
-              (participant.fax && participant.fax.length > 0))
+              (participant.fax && participant.fax.length > 0)),
         );
 
         if (recipients.length > 0) {
@@ -108,15 +104,13 @@ export const POST = withAuthContext<{ id: string }>(
             recipients.map((recipient) => ({
               org_id: ctx.orgId,
               report_id: reportId,
-              channel:
-                recipient.email && recipient.email.length > 0 ? 'email' : 'fax',
+              channel: recipient.email && recipient.email.length > 0 ? 'email' : 'fax',
               recipient_name: recipient.name,
               recipient_contact:
-                (recipient.email && recipient.email.length > 0
-                  ? recipient.email
-                  : recipient.fax) ?? '',
+                (recipient.email && recipient.email.length > 0 ? recipient.email : recipient.fax) ??
+                '',
               status: 'draft' as const,
-            }))
+            })),
           );
 
           const deliveryRecordClient = tx.deliveryRecord as {
@@ -145,19 +139,14 @@ export const POST = withAuthContext<{ id: string }>(
               : [];
           const existingKeys = new Set(
             existingDrafts.map(
-              (item) => `${item.report_id}:${item.channel}:${item.recipient_contact}`
-            )
+              (item) => `${item.report_id}:${item.channel}:${item.recipient_contact}`,
+            ),
           );
           const newDraftRows = draftRows.filter(
             (item) =>
-              !existingKeys.has(
-                `${item.report_id}:${item.channel}:${item.recipient_contact}`
-              )
+              !existingKeys.has(`${item.report_id}:${item.channel}:${item.recipient_contact}`),
           );
-          if (
-            newDraftRows.length > 0 &&
-            typeof deliveryRecordClient.createMany === 'function'
-          ) {
+          if (newDraftRows.length > 0 && typeof deliveryRecordClient.createMany === 'function') {
             await deliveryRecordClient.createMany({
               data: newDraftRows,
             });
@@ -167,7 +156,7 @@ export const POST = withAuthContext<{ id: string }>(
               report_id: item.report_id,
               name: item.recipient_name,
               channel: item.channel as 'email' | 'fax',
-            }))
+            })),
           );
         }
       }
@@ -192,5 +181,5 @@ export const POST = withAuthContext<{ id: string }>(
   {
     permission: 'canReport',
     message: '報告書生成の権限がありません',
-  }
+  },
 );

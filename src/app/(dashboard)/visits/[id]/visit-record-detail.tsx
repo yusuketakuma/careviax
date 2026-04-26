@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
@@ -19,6 +19,9 @@ import {
   FileImage,
   Paperclip,
   MapPin,
+  ArrowUpRight,
+  ReceiptText,
+  UsersRound,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +38,16 @@ import {
   PatientCareTeamSourcePanel,
   type PatientCareTeamSourceContact,
 } from '@/components/features/visits/patient-care-team-source-panel';
+import {
+  buildHomeVisit2026ReadinessItems,
+  type HomeVisit2026BillingBlocker,
+} from '@/lib/visits/home-visit-2026-evidence';
+import type { VisitConferenceContext } from '@/components/features/visits/visit-medication-management-section';
+import type { StructuredSoap } from '@/types/structured-soap';
+import {
+  buildPostVisitWorkflowActions,
+  type VisitWorkflowAction,
+} from '@/lib/visits/visit-workflow-projection';
 
 type ResidualMedication = {
   id: string;
@@ -58,6 +71,7 @@ type VisitRecordFull = {
   soap_objective: string | null;
   soap_assessment: string | null;
   soap_plan: string | null;
+  structured_soap: StructuredSoap | null;
   receipt_person_name: string | null;
   receipt_person_relation: string | null;
   receipt_at: string | null;
@@ -97,8 +111,35 @@ type VisitPreparationSnapshot = {
   data: {
     pack: {
       care_team: PatientCareTeamSourceContact[];
+      billing_blockers: HomeVisit2026BillingBlocker[];
+      conference_context?: VisitConferenceContext[];
+      intake_context?: {
+        initial_transition_management_expected?: boolean | null;
+      };
     };
   };
+};
+
+type CareReportSummary = {
+  id: string;
+  report_type: string;
+  status: string;
+  latest_delivery_status?: string | null;
+  latest_delivery_recipient_name?: string | null;
+};
+
+type CareReportsResponse = {
+  data?: CareReportSummary[];
+};
+
+type BillingCandidateSummary = {
+  id: string;
+  patient_id: string;
+  status: string;
+};
+
+type BillingCandidatesResponse = {
+  data?: BillingCandidateSummary[];
 };
 
 const relationLabel: Record<string, string> = {
@@ -165,6 +206,17 @@ function formatTimeWindow(value: string | null) {
   }
 }
 
+function formatBillingMonth(value: string | null | undefined) {
+  if (!value) return null;
+
+  try {
+    const date = parseISO(value);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
+  } catch {
+    return null;
+  }
+}
+
 function formatGeoCoordinate(value: number) {
   return value.toFixed(5);
 }
@@ -203,10 +255,111 @@ function GeoLocationCard({
   );
 }
 
+const postVisitStatusLabel: Record<VisitWorkflowAction['status'], string> = {
+  ready: '進行可',
+  needs_review: '要確認',
+  waiting: '未入力',
+  blocked: 'ブロック',
+};
+
+const postVisitStatusClassName: Record<VisitWorkflowAction['status'], string> = {
+  ready: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+  needs_review: 'border-amber-200 bg-amber-50 text-amber-800',
+  waiting: 'border-slate-200 bg-slate-50 text-slate-700',
+  blocked: 'border-red-200 bg-red-50 text-red-800',
+};
+
+function PostVisitWorkflowPanel({
+  actions,
+  renderActionButton,
+}: {
+  actions: VisitWorkflowAction[];
+  renderActionButton: (
+    action: VisitWorkflowAction,
+    button: VisitWorkflowAction['primary_action'],
+  ) => React.ReactNode;
+}) {
+  const primaryActions = actions.filter((action) => action.placement === 'primary');
+  const secondaryActions = actions.filter((action) => action.placement !== 'primary');
+
+  const renderAction = (action: VisitWorkflowAction) => (
+    <article
+      key={action.key}
+      className="flex min-h-[190px] flex-col rounded-lg border border-border/70 bg-muted/10 p-3"
+    >
+      <div className="space-y-2">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="text-sm font-semibold text-foreground">{action.title}</h3>
+          <Badge
+            variant="outline"
+            className={`shrink-0 text-[11px] ${postVisitStatusClassName[action.status]}`}
+          >
+            {postVisitStatusLabel[action.status]}
+          </Badge>
+        </div>
+        <p className="text-xs leading-5 text-muted-foreground">{action.description}</p>
+      </div>
+
+      {action.details && action.details.length > 0 ? (
+        <dl className="mt-3 grid grid-cols-2 gap-2">
+          {action.details.slice(0, 2).map((detail) => (
+            <div
+              key={`${action.key}-${detail.label}`}
+              className="rounded-md bg-background px-2 py-1"
+            >
+              <dt className="text-[10px] text-muted-foreground">{detail.label}</dt>
+              <dd className="mt-0.5 truncate text-xs font-medium text-foreground">
+                {detail.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+
+      {action.evidence.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {action.evidence.slice(0, 3).map((item) => (
+            <span
+              key={`${action.key}-${item}`}
+              className="rounded-full bg-background px-2 py-0.5 text-[11px] text-muted-foreground"
+            >
+              {item}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="mt-auto flex flex-col gap-2 pt-3">
+        {renderActionButton(action, action.primary_action)}
+        {action.secondary_action ? renderActionButton(action, action.secondary_action) : null}
+      </div>
+    </article>
+  );
+
+  return (
+    <Card>
+      <CardHeader className="space-y-1 pb-3">
+        <CardTitle className="text-base">訪問後ワークフロー</CardTitle>
+        <p className="text-sm leading-6 text-muted-foreground">
+          訪問記録から、報告・算定・次回訪問を直接起こし、送付や算定確定は専用画面で確認します。
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid gap-3 lg:grid-cols-3">{primaryActions.map(renderAction)}</div>
+        <div className="grid gap-3 md:grid-cols-2">{secondaryActions.map(renderAction)}</div>
+        <div className="rounded-lg border border-border/70 bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
+          この画面では送付・算定確定・除外は行いません。薬剤師が確認画面で判断できる状態までを整えます。
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function VisitRecordDetail({ recordId }: { recordId: string }) {
   const orgId = useOrgId();
   const isBootstrappingOrg = !orgId;
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [showReportMenu, setShowReportMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -239,6 +392,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     onSuccess: (result) => {
       toast.success('報告書を生成しました');
       setShowReportMenu(false);
+      queryClient.invalidateQueries({ queryKey: ['care-reports-by-visit', recordId, orgId] });
       const firstId = result.data?.[0]?.id;
       if (firstId) router.push(`/reports/${firstId}`);
     },
@@ -299,6 +453,61 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     },
     enabled: !!orgId && !!recordId,
   });
+  const billingMonth = formatBillingMonth(record?.visit_date);
+
+  const { data: careReportsResponse } = useQuery<CareReportsResponse>({
+    queryKey: ['care-reports-by-visit', recordId, orgId],
+    queryFn: async () => {
+      const res = await fetch(`/api/care-reports?visit_record_id=${recordId}&limit=10`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('報告書の取得に失敗しました');
+      return res.json();
+    },
+    enabled: !!orgId && !!recordId,
+  });
+
+  const { data: billingCandidatesResponse } = useQuery<BillingCandidatesResponse>({
+    queryKey: ['billing-candidates-by-visit', orgId, record?.patient_id, billingMonth],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (billingMonth) params.set('billing_month', billingMonth);
+      if (record?.patient_id) params.set('patient_id', record.patient_id);
+      params.set('limit', '20');
+      const res = await fetch(`/api/billing-candidates?${params.toString()}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('請求候補の取得に失敗しました');
+      return res.json();
+    },
+    enabled: !!orgId && !!record?.patient_id && !!billingMonth,
+  });
+
+  const generateBillingCandidatesMutation = useMutation({
+    mutationFn: async () => {
+      if (!billingMonth) throw new Error('対象月を判定できません');
+      const res = await fetch('/api/billing-candidates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify({ billing_month: billingMonth }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(json?.message ?? '請求候補の生成に失敗しました');
+      }
+      return json;
+    },
+    onSuccess: () => {
+      toast.success('請求候補を生成しました');
+      queryClient.invalidateQueries({
+        queryKey: ['billing-candidates-by-visit', orgId, record?.patient_id, billingMonth],
+      });
+      queryClient.invalidateQueries({ queryKey: ['billing-candidates'] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
 
   // Residual medications query
   const { data: residuals } = useQuery<ResidualMedication[]>({
@@ -313,17 +522,18 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     },
     enabled: !!orgId && !!recordId,
   });
-  const { data: visitPreparationSnapshot, isLoading: visitPreparationLoading } = useQuery<VisitPreparationSnapshot>({
-    queryKey: ['visit-preparation-care-team', record?.schedule?.id, orgId],
-    queryFn: async () => {
-      const res = await fetch(`/api/visit-preparations/${record?.schedule?.id}`, {
-        headers: { 'x-org-id': orgId },
-      });
-      if (!res.ok) throw new Error('訪問準備情報の取得に失敗しました');
-      return res.json();
-    },
-    enabled: !!orgId && !!record?.schedule?.id,
-  });
+  const { data: visitPreparationSnapshot, isLoading: visitPreparationLoading } =
+    useQuery<VisitPreparationSnapshot>({
+      queryKey: ['visit-preparation-care-team', record?.schedule?.id, orgId],
+      queryFn: async () => {
+        const res = await fetch(`/api/visit-preparations/${record?.schedule?.id}`, {
+          headers: { 'x-org-id': orgId },
+        });
+        if (!res.ok) throw new Error('訪問準備情報の取得に失敗しました');
+        return res.json();
+      },
+      enabled: !!orgId && !!record?.schedule?.id,
+    });
 
   if (isBootstrappingOrg || isLoading) {
     return (
@@ -342,29 +552,45 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
   }
 
   const visitDateFormatted = format(parseISO(record.visit_date), 'yyyy年MM月dd日', { locale: ja });
-  const patientCareTeamContacts = visitPreparationSnapshot?.data.pack.care_team ?? [];
+  const visitPreparationPack = visitPreparationSnapshot?.data.pack;
+  const patientCareTeamContacts = visitPreparationPack?.care_team ?? [];
+  const homeVisit2026ReadinessItems = buildHomeVisit2026ReadinessItems({
+    structuredSoap: record.structured_soap,
+    visitType: record.schedule?.visit_type,
+    residualMedicationCount: residuals?.length ?? 0,
+    billingBlockers: visitPreparationPack?.billing_blockers ?? [],
+    intakeInitialTransitionExpected:
+      visitPreparationPack?.intake_context?.initial_transition_management_expected ?? null,
+  });
+  const requiredHomeVisit2026Items = homeVisit2026ReadinessItems.filter((item) => item.required);
+  const completedHomeVisit2026Count = requiredHomeVisit2026Items.filter((item) => item.done).length;
+  const missingHomeVisit2026Items = requiredHomeVisit2026Items.filter((item) => !item.done);
+  const careReports = careReportsResponse?.data ?? [];
+  const billingCandidates = billingCandidatesResponse?.data ?? [];
+  const soapComplete = Boolean(
+    record.soap_subjective?.trim() &&
+    record.soap_objective?.trim() &&
+    record.soap_assessment?.trim() &&
+    record.soap_plan?.trim(),
+  );
+  const collaborationMentioned = Boolean(
+    record.soap_plan?.includes('医師') ||
+    record.soap_plan?.includes('ケアマネ') ||
+    record.soap_plan?.includes('報告') ||
+    record.soap_plan?.includes('連携'),
+  );
   const visitDetailReadinessItems: VisitReportReadinessItem[] = [
     {
       key: 'soap',
       label: 'SOAP本文',
       description: 'S/O/A/P の本文が報告書生成の材料になります。',
-      done: Boolean(
-        record.soap_subjective?.trim() &&
-          record.soap_objective?.trim() &&
-          record.soap_assessment?.trim() &&
-          record.soap_plan?.trim(),
-      ),
+      done: soapComplete,
     },
     {
       key: 'collaboration',
       label: '他職種へ送る論点',
       description: '医師・ケアマネへ渡す提案や連絡事項が P に含まれているか確認します。',
-      done: Boolean(
-        record.soap_plan?.includes('医師') ||
-          record.soap_plan?.includes('ケアマネ') ||
-          record.soap_plan?.includes('報告') ||
-          record.soap_plan?.includes('連携'),
-      ),
+      done: collaborationMentioned,
     },
     {
       key: 'residuals',
@@ -377,10 +603,43 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       key: 'attachments',
       label: '添付・現地証跡',
       description: '写真、PDF、位置情報は薬局での報告書確認を補強します。',
-      done: Boolean(record.attachments.length > 0 || record.visit_geo_log?.start || record.visit_geo_log?.end),
+      done: Boolean(
+        record.attachments.length > 0 || record.visit_geo_log?.start || record.visit_geo_log?.end,
+      ),
       required: false,
     },
+    {
+      key: 'medication_management',
+      label: '訪問薬剤管理の確認',
+      description:
+        missingHomeVisit2026Items.length === 0
+          ? '服薬状況、残薬、副作用、連携、該当時の加算根拠が揃っています。'
+          : `不足: ${missingHomeVisit2026Items
+              .slice(0, 4)
+              .map((item) => item.label)
+              .join(' / ')}`,
+      done: completedHomeVisit2026Count === requiredHomeVisit2026Items.length,
+      required: true,
+    },
   ];
+  const postVisitWorkflowActions = buildPostVisitWorkflowActions({
+    recordId,
+    scheduleId: record.schedule_id,
+    patientId: record.patient_id,
+    soapComplete,
+    collaborationMentioned,
+    medicationManagementComplete: completedHomeVisit2026Count === requiredHomeVisit2026Items.length,
+    missingMedicationManagementLabels: missingHomeVisit2026Items.map((item) => item.label),
+    billingBlockerCount: visitPreparationPack?.billing_blockers.length ?? 0,
+    billingBlockers: visitPreparationPack?.billing_blockers ?? [],
+    billingCandidateCount: billingCandidates.length,
+    billingMonth,
+    careTeamContactCount: patientCareTeamContacts.length,
+    hasNextVisitSuggestion: Boolean(record.next_visit_suggestion_date),
+    nextVisitSuggestionDate: record.next_visit_suggestion_date,
+    reports: careReports,
+    conferenceContext: visitPreparationPack?.conference_context,
+  });
   const reportGenerationActions = (
     <div className="relative" ref={menuRef}>
       <Button
@@ -425,6 +684,95 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       )}
     </div>
   );
+
+  function createNextVisitFromSuggestion() {
+    const currentRecord = record;
+    if (!currentRecord?.schedule || !currentRecord.next_visit_suggestion_date) return;
+
+    createNextVisitMutation.mutate({
+      case_id: currentRecord.schedule.case_id,
+      site_id: currentRecord.schedule.site_id ?? undefined,
+      visit_type: currentRecord.schedule.visit_type,
+      scheduled_date: currentRecord.next_visit_suggestion_date,
+      pharmacist_id: currentRecord.schedule.pharmacist_id,
+      time_window_start: formatTimeWindow(currentRecord.schedule.time_window_start) ?? undefined,
+      time_window_end: formatTimeWindow(currentRecord.schedule.time_window_end) ?? undefined,
+      recurrence_rule: currentRecord.schedule.recurrence_rule ?? undefined,
+    });
+  }
+
+  function renderWorkflowActionButton(
+    action: VisitWorkflowAction,
+    button: VisitWorkflowAction['primary_action'],
+  ) {
+    const variant = button.variant ?? (action.placement === 'primary' ? 'default' : 'outline');
+    const className = 'min-h-9 w-full justify-center gap-1';
+
+    if (button.operation === 'generate_report') {
+      return reportGenerationActions;
+    }
+
+    if (button.operation === 'generate_billing_candidates') {
+      return (
+        <Button
+          size="sm"
+          variant={variant}
+          className={className}
+          disabled={!billingMonth || generateBillingCandidatesMutation.isPending}
+          onClick={() => generateBillingCandidatesMutation.mutate()}
+        >
+          <ReceiptText className="size-3.5" aria-hidden="true" />
+          {generateBillingCandidatesMutation.isPending ? '生成中...' : button.label}
+        </Button>
+      );
+    }
+
+    if (button.operation === 'create_next_visit') {
+      return (
+        <Button
+          size="sm"
+          variant={variant}
+          className={className}
+          disabled={
+            !record?.schedule ||
+            !record?.next_visit_suggestion_date ||
+            createNextVisitMutation.isPending
+          }
+          onClick={createNextVisitFromSuggestion}
+        >
+          <CalendarCheck className="size-3.5" aria-hidden="true" />
+          {createNextVisitMutation.isPending ? '作成中...' : button.label}
+        </Button>
+      );
+    }
+
+    if (!button.href) return null;
+
+    const Icon =
+      button.operation === 'open_report' || button.operation === 'edit_visit_record'
+        ? FileText
+        : button.operation === 'review_share' || button.operation === 'open_conference'
+          ? UsersRound
+          : button.operation === 'open_billing_candidates' ||
+              button.operation === 'review_billing_blockers'
+            ? ReceiptText
+            : ArrowUpRight;
+
+    return (
+      <Link
+        href={button.href}
+        className={buttonVariants({
+          variant,
+          size: 'sm',
+          className,
+        })}
+      >
+        <Icon className="size-3.5" aria-hidden="true" />
+        {button.label}
+        <ArrowUpRight className="size-3.5" aria-hidden="true" />
+      </Link>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -496,10 +844,11 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
         </CardHeader>
       </Card>
 
-      <VisitReportReadinessPanel
-        mode="visit_detail"
-        items={visitDetailReadinessItems}
-        actions={reportGenerationActions}
+      <VisitReportReadinessPanel mode="visit_detail" items={visitDetailReadinessItems} />
+
+      <PostVisitWorkflowPanel
+        actions={postVisitWorkflowActions}
+        renderActionButton={renderWorkflowActionButton}
       />
 
       {!visitPreparationLoading ? (
@@ -613,56 +962,6 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
             <p className="mt-3 text-xs text-muted-foreground">
               権限状態: {record.visit_geo_log.permission}
             </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Next visit suggestion */}
-      {record.next_visit_suggestion_date && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <CalendarCheck className="size-4 text-muted-foreground" aria-hidden="true" />
-              次回訪問提案
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm font-medium">
-              {format(parseISO(record.next_visit_suggestion_date), 'yyyy年MM月dd日', {
-                locale: ja,
-              })}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                className="gap-1"
-                disabled={!record.schedule || createNextVisitMutation.isPending}
-                onClick={() => {
-                  if (!record.schedule || !record.next_visit_suggestion_date) return;
-
-                  createNextVisitMutation.mutate({
-                    case_id: record.schedule.case_id,
-                    site_id: record.schedule.site_id ?? undefined,
-                    visit_type: record.schedule.visit_type,
-                    scheduled_date: record.next_visit_suggestion_date,
-                    pharmacist_id: record.schedule.pharmacist_id,
-                    time_window_start:
-                      formatTimeWindow(record.schedule.time_window_start) ?? undefined,
-                    time_window_end: formatTimeWindow(record.schedule.time_window_end) ?? undefined,
-                    recurrence_rule: record.schedule.recurrence_rule ?? undefined,
-                  });
-                }}
-              >
-                <CalendarCheck className="size-3.5" aria-hidden="true" />
-                {createNextVisitMutation.isPending ? '作成中...' : '提案日で予定作成'}
-              </Button>
-              <Link
-                href="/schedules"
-                className={buttonVariants({ variant: 'outline', size: 'sm' })}
-              >
-                手動調整
-              </Link>
-            </div>
           </CardContent>
         </Card>
       )}

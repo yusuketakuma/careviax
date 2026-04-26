@@ -679,7 +679,10 @@ describe('/api/patients/[id]', () => {
 
   it('syncs normalized insurance, intake JSON, and schedule preference fields on PATCH', async () => {
     // existing active insurance has a different number → triggers close+create
-    patientInsuranceFindFirstMock.mockResolvedValue({ id: 'insurance_current_1', number: 'OLD_NUM' });
+    patientInsuranceFindFirstMock.mockResolvedValue({
+      id: 'insurance_current_1',
+      number: 'OLD_NUM',
+    });
 
     const response = await PATCH(
       createRequest(
@@ -822,7 +825,10 @@ describe('/api/patients/[id]', () => {
 
   it('does not close or recreate insurance when submitted number is identical to existing', async () => {
     // idempotence: same number → no close, no create
-    patientInsuranceFindFirstMock.mockResolvedValue({ id: 'insurance_current_1', number: '1234567890' });
+    patientInsuranceFindFirstMock.mockResolvedValue({
+      id: 'insurance_current_1',
+      number: '1234567890',
+    });
 
     const response = await PATCH(
       createRequest(
@@ -1041,6 +1047,104 @@ describe('/api/patients/[id]', () => {
         expect.objectContaining({
           event_type: 'visit_record',
           href: '/visits/record_1',
+        }),
+      ]),
+    });
+  });
+
+  it('links scheduled visit timeline events to record detail when a record exists', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '患者A',
+      cases: [{ id: 'case_1' }],
+    });
+    visitScheduleFindManyMock.mockResolvedValue([
+      {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        visit_type: 'regular',
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        schedule_status: 'completed',
+        priority: 'normal',
+        pharmacist_id: 'user_1',
+        assignment_mode: 'primary',
+        confirmed_at: new Date('2026-03-28T08:00:00.000Z'),
+        route_order: 1,
+        created_at: new Date('2026-03-27T08:00:00.000Z'),
+        updated_at: new Date('2026-03-28T08:00:00.000Z'),
+        visit_record: {
+          id: 'record_1',
+          outcome_status: 'completed',
+          visit_date: new Date('2026-03-28T09:00:00.000Z'),
+          next_visit_suggestion_date: null,
+          created_at: new Date('2026-03-28T09:10:00.000Z'),
+        },
+      },
+    ]);
+
+    const response = await GET(
+      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+
+    await expect(response.json()).resolves.toMatchObject({
+      timeline_events: expect.arrayContaining([
+        expect.objectContaining({
+          event_type: 'visit_schedule',
+          href: '/visits/record_1',
+          action_label: '訪問記録を開く',
+        }),
+      ]),
+    });
+  });
+
+  it('links scheduled visit timeline events without a record to the record input page', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '患者A',
+      cases: [{ id: 'case_1' }],
+    });
+    visitScheduleFindManyMock.mockResolvedValue([
+      {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        visit_type: 'regular',
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        schedule_status: 'ready',
+        priority: 'normal',
+        pharmacist_id: 'user_1',
+        assignment_mode: 'primary',
+        confirmed_at: null,
+        route_order: 1,
+        created_at: new Date('2026-03-27T08:00:00.000Z'),
+        updated_at: new Date('2026-03-28T08:00:00.000Z'),
+        visit_record: null,
+      },
+    ]);
+
+    const response = await GET(
+      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+
+    await expect(response.json()).resolves.toMatchObject({
+      timeline_events: expect.arrayContaining([
+        expect.objectContaining({
+          event_type: 'visit_schedule',
+          href: '/visits/schedule_1/record',
+          action_label: '訪問記録を入力',
         }),
       ]),
     });

@@ -5,6 +5,7 @@ const {
   withOrgContextMock,
   visitRecordFindManyMock,
   billingCandidateFindManyMock,
+  patientFindManyMock,
   workbenchSummaryMock,
   upsertBillingEvidenceForVisitMock,
   generateBillingCandidatesForMonthMock,
@@ -12,6 +13,7 @@ const {
   withOrgContextMock: vi.fn(),
   visitRecordFindManyMock: vi.fn(),
   billingCandidateFindManyMock: vi.fn(),
+  patientFindManyMock: vi.fn(),
   workbenchSummaryMock: vi.fn(),
   upsertBillingEvidenceForVisitMock: vi.fn(),
   generateBillingCandidatesForMonthMock: vi.fn(),
@@ -55,6 +57,7 @@ describe('/api/billing-candidates', () => {
     billingCandidateFindManyMock.mockResolvedValue([
       {
         id: 'candidate_1',
+        patient_id: 'patient_1',
         status: 'confirmed',
         source_snapshot: {
           billing_close: {
@@ -65,9 +68,14 @@ describe('/api/billing-candidates', () => {
       },
       {
         id: 'candidate_2',
+        patient_id: 'patient_2',
         status: 'candidate',
         source_snapshot: null,
       },
+    ]);
+    patientFindManyMock.mockResolvedValue([
+      { id: 'patient_1', name: '佐藤 花子' },
+      { id: 'patient_2', name: '鈴木 一郎' },
     ]);
     workbenchSummaryMock.mockResolvedValue({
       total: 2,
@@ -85,25 +93,66 @@ describe('/api/billing-candidates', () => {
       { status: 'candidate' },
       { status: 'excluded' },
     ]);
-    withOrgContextMock.mockImplementation(async (_orgId, callback) => callback({
-      billingCandidate: {
-        findMany: billingCandidateFindManyMock,
-      },
-      patient: {
-        findMany: vi.fn().mockResolvedValue([]),
-      },
-    }));
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        billingCandidate: {
+          findMany: billingCandidateFindManyMock,
+        },
+        patient: {
+          findMany: patientFindManyMock,
+        },
+      }),
+    );
   });
 
   it('returns billing candidate workbench summary for the selected month', async () => {
+    billingCandidateFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'candidate_1',
+        patient_id: 'patient_1',
+        status: 'confirmed',
+        source_snapshot: {
+          billing_close: {
+            review_state: 'reviewed',
+            resolution_state: 'confirmed',
+          },
+        },
+      },
+    ]);
+    patientFindManyMock.mockResolvedValueOnce([{ id: 'patient_1', name: '佐藤 花子' }]);
+
     const response = await GET({
       orgId: 'org_1',
-      url: 'http://localhost/api/billing-candidates?billing_month=2026-03-01&limit=10',
+      url: 'http://localhost/api/billing-candidates?billing_month=2026-03-01&patient_id=patient_1&limit=10',
     } as unknown as NextRequest & { orgId: string });
 
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(200);
+    expect(billingCandidateFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          billing_month: new Date('2026-03-01'),
+          patient_id: 'patient_1',
+        }),
+      }),
+    );
+    expect(workbenchSummaryMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        orgId: 'org_1',
+        billingMonth: new Date('2026-03-01'),
+        patientId: 'patient_1',
+      }),
+    );
+    expect(patientFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: { in: ['patient_1'] },
+      },
+      select: { id: true, name: true },
+    });
     await expect(resolvedResponse.json()).resolves.toMatchObject({
       summary: {
         total: 2,
@@ -114,14 +163,11 @@ describe('/api/billing-candidates', () => {
       data: [
         {
           status: 'confirmed',
+          patient_name: '佐藤 花子',
           workflow_state: {
             review_state: 'reviewed',
             resolution_state: 'confirmed',
           },
-        },
-        {
-          status: 'candidate',
-          workflow_state: null,
         },
       ],
     });
@@ -142,9 +188,10 @@ describe('/api/billing-candidates', () => {
         },
       }),
       {
-      orgId: 'org_1',
-      billingMonth: new Date(2026, 2, 1),
-    });
+        orgId: 'org_1',
+        billingMonth: new Date(2026, 2, 1),
+      },
+    );
     await expect(resolvedResponse.json()).resolves.toMatchObject({
       generated: 3,
       confirmed: 1,

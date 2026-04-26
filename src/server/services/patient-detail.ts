@@ -36,6 +36,7 @@ import {
   getInquiryPresentationBadges,
   getInquiryPrimaryDetail,
 } from '@/lib/inquiries/presentation';
+import { getConferenceTypeLabel } from '@/lib/visits/visit-workflow-projection';
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
 
@@ -723,6 +724,8 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
     dispenseResults,
     managementPlans,
     firstVisitDocuments,
+    conferenceNotes,
+    billingCandidates,
   ] = await Promise.all([
     caseIds.length === 0
       ? Promise.resolve([])
@@ -1000,6 +1003,45 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
             created_at: true,
           },
         }),
+    caseIds.length === 0
+      ? Promise.resolve([])
+      : db.conferenceNote.findMany({
+          where: {
+            org_id: args.orgId,
+            OR: [{ patient_id: args.patientId }, { case_id: { in: caseIds } }],
+            note_type: { in: ['pre_discharge', 'service_manager'] },
+          },
+          orderBy: [{ conference_date: 'desc' }],
+          take: 8,
+          select: {
+            id: true,
+            note_type: true,
+            title: true,
+            conference_date: true,
+            follow_up_date: true,
+            follow_up_completed: true,
+            generated_report_id: true,
+            action_items: true,
+          },
+        }),
+    db.billingCandidate.findMany({
+      where: {
+        org_id: args.orgId,
+        patient_id: args.patientId,
+      },
+      orderBy: [{ updated_at: 'desc' }],
+      take: 8,
+      select: {
+        id: true,
+        billing_month: true,
+        billing_code: true,
+        billing_name: true,
+        points: true,
+        status: true,
+        exclusion_reason: true,
+        updated_at: true,
+      },
+    }),
   ]);
 
   const actorNameMap = await batchResolveNames(
@@ -1037,8 +1079,8 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
             : null,
           item.visit_record ? '訪問記録あり' : null,
         ]).join(' / ') || null,
-      href: `/visits/${item.id}`,
-      action_label: '訪問予定を開く',
+      href: item.visit_record ? `/visits/${item.visit_record.id}` : `/visits/${item.id}/record`,
+      action_label: item.visit_record ? '訪問記録を開く' : '訪問記録を入力',
       status: item.schedule_status,
       status_label: SCHEDULE_STATUS_LABELS[item.schedule_status] ?? item.schedule_status,
       actor_name: actorNameMap.get(item.pharmacist_id) ?? null,
@@ -1059,7 +1101,7 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
           item.postpone_reason,
           item.cancellation_reason,
         ]).join(' / ') || null,
-      href: item.schedule_id ? `/visits/${item.schedule_id}/record` : `/visits/${item.id}`,
+      href: `/visits/${item.id}`,
       action_label: '訪問記録を開く',
       status: item.outcome_status,
       status_label: VISIT_OUTCOME_LABELS[item.outcome_status] ?? item.outcome_status,
@@ -1236,6 +1278,64 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
         metadata: [],
       };
     }),
+    ...conferenceNotes.map((item) => {
+      const actionItemCount = Array.isArray(item.action_items) ? item.action_items.length : 0;
+      return {
+        id: `conference_note:${item.id}`,
+        event_type: 'conference_note' as const,
+        category: 'communication' as const,
+        occurred_at: item.conference_date,
+        title: `${getConferenceTypeLabel(item.note_type)}を記録`,
+        summary:
+          compactTimelineValues([
+            item.title,
+            actionItemCount > 0 ? `合意事項 ${actionItemCount}件` : null,
+            item.generated_report_id ? '報告ドラフトあり' : null,
+          ]).join(' / ') || null,
+        href: `/conferences?patient_id=${args.patientId}`,
+        action_label: '会議を開く',
+        status: item.follow_up_completed ? 'completed' : 'open',
+        status_label: item.follow_up_completed ? 'フォロー完了' : 'フォロー中',
+        actor_name: null,
+        metadata: compactTimelineValues([
+          item.follow_up_date ? `フォロー期限 ${formatTimelineDate(item.follow_up_date)}` : null,
+        ]),
+      };
+    }),
+    ...billingCandidates.map((item) => ({
+      id: `billing_candidate:${item.id}`,
+      event_type: 'billing_candidate' as const,
+      category: 'document' as const,
+      occurred_at: item.updated_at,
+      title: '算定候補を更新',
+      summary:
+        compactTimelineValues([
+          item.billing_name,
+          item.points != null ? `${item.points}点` : null,
+          item.exclusion_reason,
+        ]).join(' / ') || null,
+      href: `/billing/candidates?${new URLSearchParams({
+        billing_month: format(item.billing_month, 'yyyy-MM-01'),
+        patient_id: args.patientId,
+      }).toString()}`,
+      action_label: '算定候補を開く',
+      status: item.status,
+      status_label:
+        item.status === 'candidate'
+          ? '候補'
+          : item.status === 'confirmed'
+            ? '確定'
+            : item.status === 'excluded'
+              ? '除外'
+              : item.status === 'exported'
+                ? '締め済み'
+                : item.status,
+      actor_name: null,
+      metadata: compactTimelineValues([
+        item.billing_code,
+        `算定月 ${formatTimelineDate(item.billing_month)}`,
+      ]),
+    })),
     ...communicationEvents
       .filter((item) => item.direction !== 'incoming')
       .map((item) => ({
@@ -1404,9 +1504,7 @@ export async function getPatientReadinessData(db: DbClient, args: DetailArgs) {
   const hasCareManager = careTeamRoles.has('care_manager');
   const primaryResidence = patient.residences[0] ?? null;
   const hasPrimaryResidence = Boolean(
-    primaryResidence?.address ||
-      primaryResidence?.facility_id ||
-      primaryResidence?.building_id,
+    primaryResidence?.address || primaryResidence?.facility_id || primaryResidence?.building_id,
   );
   const hasInsurance =
     Boolean(patient.medical_insurance_number || patient.care_insurance_number) ||
@@ -1417,14 +1515,14 @@ export async function getPatientReadinessData(db: DbClient, args: DetailArgs) {
     );
   const hasVisitPreferences = Boolean(
     hasJsonArrayItems(patient.scheduling_preference?.preferred_weekdays) ||
-      patient.scheduling_preference?.preferred_time_from ||
-      patient.scheduling_preference?.preferred_time_to ||
-      patient.scheduling_preference?.facility_time_from ||
-      patient.scheduling_preference?.facility_time_to ||
-      patient.scheduling_preference?.visit_buffer_minutes != null ||
-      patient.scheduling_preference?.preferred_contact_name ||
-      patient.scheduling_preference?.preferred_contact_phone ||
-      patient.scheduling_preference?.visit_before_contact_required != null,
+    patient.scheduling_preference?.preferred_time_from ||
+    patient.scheduling_preference?.preferred_time_to ||
+    patient.scheduling_preference?.facility_time_from ||
+    patient.scheduling_preference?.facility_time_to ||
+    patient.scheduling_preference?.visit_buffer_minutes != null ||
+    patient.scheduling_preference?.preferred_contact_name ||
+    patient.scheduling_preference?.preferred_contact_phone ||
+    patient.scheduling_preference?.visit_before_contact_required != null,
   );
 
   const items = [

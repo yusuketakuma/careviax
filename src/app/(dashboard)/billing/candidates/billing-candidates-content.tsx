@@ -52,6 +52,7 @@ type BillingCandidate = {
     site_config_status?: string;
     source_type?: string;
     source_entity_id?: string;
+    conference_note_id?: string;
     billing_fee_type?: string;
     duplicate_interaction_fee_type?: string;
     billing_assignment?: {
@@ -121,6 +122,11 @@ type BillingCandidatesResponse = {
   hasMore: boolean;
   nextCursor?: string;
   summary: BillingCandidateSummary;
+};
+
+type BillingCandidatesContentProps = {
+  initialBillingMonth?: string | null;
+  initialPatientId?: string | null;
 };
 
 // --- Constants ---
@@ -227,24 +233,64 @@ function candidateWorkflow(candidate: BillingCandidate) {
   return candidate.workflow_state ?? candidate.source_snapshot?.billing_close ?? null;
 }
 
+function candidateEvidenceSummary(candidate: BillingCandidate) {
+  const source = candidate.source_snapshot;
+  const lines: string[] = [];
+
+  if (source?.source_type === 'conference_note' || source?.conference_note_id) {
+    lines.push('会議記録由来');
+  }
+  if (source?.source_note) {
+    lines.push(source.source_note);
+  }
+  if (source?.ruleset_version) {
+    lines.push(`ルール ${source.ruleset_version}`);
+  }
+  if (source?.validation_layers?.evidence?.message) {
+    lines.push(source.validation_layers.evidence.message);
+  }
+  if (source?.validation_layers?.rule_engine?.message) {
+    lines.push(source.validation_layers.rule_engine.message);
+  }
+  if (candidate.calculation_breakdown?.derived_points != null) {
+    lines.push(`算出 ${candidate.calculation_breakdown.derived_points}点`);
+  }
+
+  return lines.length > 0 ? lines : ['候補生成時の根拠を確認してください'];
+}
+
+function parseInitialBillingMonth(value: string | null | undefined) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return new Date(parsed.getFullYear(), parsed.getMonth(), 1);
+}
+
 // --- Main ---
 
-export function BillingCandidatesContent() {
+export function BillingCandidatesContent({
+  initialBillingMonth,
+  initialPatientId,
+}: BillingCandidatesContentProps) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [isExporting, setIsExporting] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(() => {
+    const initialMonth = parseInitialBillingMonth(initialBillingMonth);
+    if (initialMonth) return initialMonth;
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
+  const patientIdFilter = initialPatientId?.trim() || null;
 
   const billingMonthStr = format(currentMonth, 'yyyy-MM-dd');
   const billingMonthLabel = format(currentMonth, 'yyyy年M月', { locale: ja });
 
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
-    queryKey: ['billing-candidates', orgId, billingMonthStr],
+    queryKey: ['billing-candidates', orgId, billingMonthStr, patientIdFilter],
     queryFn: async ({ pageParam }) => {
       const params = new URLSearchParams({ billing_month: billingMonthStr, limit: '50' });
+      if (patientIdFilter) params.set('patient_id', patientIdFilter);
       if (pageParam) params.set('cursor', pageParam);
       const res = await fetch(`/api/billing-candidates?${params}`, {
         headers: { 'x-org-id': orgId },
@@ -279,7 +325,7 @@ export function BillingCandidatesContent() {
     onSuccess: async (result) => {
       toast.success(result.message);
       await queryClient.invalidateQueries({
-        queryKey: ['billing-candidates', orgId, billingMonthStr],
+        queryKey: ['billing-candidates', orgId, billingMonthStr, patientIdFilter],
       });
       await queryClient.invalidateQueries({ queryKey: ['billing-stats', orgId] });
     },
@@ -307,7 +353,7 @@ export function BillingCandidatesContent() {
     onSuccess: async () => {
       toast.success('請求候補を更新しました');
       await queryClient.invalidateQueries({
-        queryKey: ['billing-candidates', orgId, billingMonthStr],
+        queryKey: ['billing-candidates', orgId, billingMonthStr, patientIdFilter],
       });
       await queryClient.invalidateQueries({ queryKey: ['billing-stats', orgId] });
     },
@@ -335,7 +381,7 @@ export function BillingCandidatesContent() {
     onSuccess: async (result) => {
       toast.success(result.message);
       await queryClient.invalidateQueries({
-        queryKey: ['billing-candidates', orgId, billingMonthStr],
+        queryKey: ['billing-candidates', orgId, billingMonthStr, patientIdFilter],
       });
       await queryClient.invalidateQueries({ queryKey: ['billing-stats', orgId] });
     },
@@ -411,11 +457,17 @@ export function BillingCandidatesContent() {
               {row.original.source_snapshot?.selection_mode === 'manual' ? '要件確認' : '自動'}
             </p>
             <p className="text-muted-foreground">
-              改定 {row.original.effective_revision_code ?? row.original.source_snapshot?.revision_code ?? '—'}
+              改定{' '}
+              {row.original.effective_revision_code ??
+                row.original.source_snapshot?.revision_code ??
+                '—'}
             </p>
-            {row.original.site_config_status ?? row.original.source_snapshot?.site_config_status ? (
+            {(row.original.site_config_status ??
+            row.original.source_snapshot?.site_config_status) ? (
               <p className="text-muted-foreground">
-                設定 {row.original.site_config_status ?? row.original.source_snapshot?.site_config_status}
+                設定{' '}
+                {row.original.site_config_status ??
+                  row.original.source_snapshot?.site_config_status}
               </p>
             ) : null}
           </div>
@@ -468,9 +520,9 @@ export function BillingCandidatesContent() {
       },
       {
         accessorKey: 'exclusion_reason',
-        header: '除外理由',
+        header: '根拠 / 除外理由',
         meta: {
-          label: '除外理由',
+          label: '根拠 / 除外理由',
           tabletHidden: true,
           mobileHidden: true,
           exportValue: (candidate: BillingCandidate) =>
@@ -479,9 +531,13 @@ export function BillingCandidatesContent() {
         cell: ({ row }) => (
           <div className="space-y-1 text-xs text-muted-foreground">
             <span>{row.original.exclusion_reason ?? '—'}</span>
-            {row.original.source_snapshot?.source_note && (
-              <p>{row.original.source_snapshot.source_note}</p>
-            )}
+            <div className="space-y-0.5">
+              {candidateEvidenceSummary(row.original)
+                .slice(0, 3)
+                .map((line) => (
+                  <p key={`${row.original.id}-${line}`}>{line}</p>
+                ))}
+            </div>
           </div>
         ),
       },
@@ -558,12 +614,11 @@ export function BillingCandidatesContent() {
 
     setIsExporting(true);
     try {
-      const response = await fetch(
-        `/api/billing-candidates/export?billing_month=${billingMonthStr}`,
-        {
-          headers: { 'x-org-id': orgId },
-        },
-      );
+      const params = new URLSearchParams({ billing_month: billingMonthStr });
+      if (patientIdFilter) params.set('patient_id', patientIdFilter);
+      const response = await fetch(`/api/billing-candidates/export?${params.toString()}`, {
+        headers: { 'x-org-id': orgId },
+      });
 
       if (!response.ok) {
         const error = await response.json().catch(() => null);
@@ -597,6 +652,16 @@ export function BillingCandidatesContent() {
 
   return (
     <div className="space-y-4">
+      {patientIdFilter ? (
+        <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          <p className="font-medium">患者で絞り込み中</p>
+          <p className="mt-1 text-xs">
+            患者ID {patientIdFilter} の候補だけを表示しています。月次締めは全体確認が必要なため、
+            請求ダッシュボードから実行してください。
+          </p>
+        </div>
+      ) : null}
+
       <div className="grid gap-3 md:grid-cols-4">
         <Card size="sm">
           <CardHeader className="pb-2">
@@ -693,7 +758,9 @@ export function BillingCandidatesContent() {
             size="sm"
             variant="outline"
             onClick={() => closeMutation.mutate()}
-            disabled={closeMutation.isPending || closeBlocked > 0 || closeReady === 0}
+            disabled={
+              closeMutation.isPending || closeBlocked > 0 || closeReady === 0 || !!patientIdFilter
+            }
           >
             {closeMutation.isPending ? '締め処理中...' : '月次締め'}
           </Button>
@@ -802,14 +869,18 @@ export function BillingCandidatesContent() {
                     改定 / 薬局設定
                   </p>
                   <p>
-                    {candidate.effective_revision_code ?? candidate.source_snapshot?.revision_code ?? '—'}
+                    {candidate.effective_revision_code ??
+                      candidate.source_snapshot?.revision_code ??
+                      '—'}
                     {(candidate.site_config_revision_code ??
-                      candidate.source_snapshot?.site_config_revision_code)
+                    candidate.source_snapshot?.site_config_revision_code)
                       ? ` / 設定 ${candidate.site_config_revision_code ?? candidate.source_snapshot?.site_config_revision_code}`
                       : ''}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {candidate.site_config_status ?? candidate.source_snapshot?.site_config_status ?? '—'}
+                    {candidate.site_config_status ??
+                      candidate.source_snapshot?.site_config_status ??
+                      '—'}
                   </p>
                 </div>
               </div>
