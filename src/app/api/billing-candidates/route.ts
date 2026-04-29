@@ -8,6 +8,7 @@ import {
   generateBillingCandidatesForMonth,
   upsertBillingEvidenceForVisit,
 } from '@/server/services/billing-evidence';
+import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from './billing-month';
 
 function readWorkflowState(sourceSnapshot: unknown) {
   if (
@@ -45,16 +46,16 @@ export const GET = withAuth(
     const billingMonth = searchParams.get('billing_month');
     const patientId = searchParams.get('patient_id') ?? undefined;
     const status = searchParams.get('status') ?? undefined;
-    const billingMonthDate = billingMonth ? new Date(billingMonth) : null;
-    if (billingMonthDate && isNaN(billingMonthDate.getTime())) {
-      return validationError('billing_month の形式が不正です（YYYY-MM-DD）');
+    const parsedBillingMonth = billingMonth === null ? null : parseStrictBillingMonth(billingMonth);
+    if (billingMonth !== null && !parsedBillingMonth) {
+      return validationError(BILLING_MONTH_FORMAT_MESSAGE);
     }
 
     const result = await withOrgContext(req.orgId, async (tx) => {
       const candidates = await tx.billingCandidate.findMany({
         where: {
           org_id: req.orgId,
-          ...(billingMonthDate ? { billing_month: billingMonthDate } : {}),
+          ...(parsedBillingMonth ? { billing_month: parsedBillingMonth.start } : {}),
           ...(patientId ? { patient_id: patientId } : {}),
           ...(status ? { status } : {}),
         },
@@ -62,10 +63,10 @@ export const GET = withAuth(
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }],
       });
-      const summary = billingMonthDate
+      const summary = parsedBillingMonth
         ? await getBillingCandidateWorkbenchSummary(tx, {
             orgId: req.orgId,
-            billingMonth: billingMonthDate,
+            billingMonth: parsedBillingMonth.start,
             patientId,
           })
         : null;
@@ -99,7 +100,7 @@ export const GET = withAuth(
     return success({ data, hasMore, nextCursor, summary: result.summary });
   },
   {
-    permission: 'canReport',
+    permission: 'canManageBilling',
     message: '請求候補の閲覧権限がありません',
   },
 );
@@ -109,31 +110,20 @@ export const POST = withAuth(
     const body = await req.json().catch(() => null);
     if (!body) return validationError('リクエストボディが不正です');
 
-    const { billing_month } = body as { billing_month?: string };
+    const { billing_month } = body as { billing_month?: unknown };
     if (!billing_month) return validationError('billing_month は必須です');
 
-    const targetMonth = new Date(billing_month);
-    if (isNaN(targetMonth.getTime())) {
-      return validationError('billing_month の形式が不正です（YYYY-MM-DD）');
+    const billingMonth = parseStrictBillingMonth(billing_month);
+    if (!billingMonth) {
+      return validationError(BILLING_MONTH_FORMAT_MESSAGE);
     }
-
-    const monthStart = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), 1);
-    const monthEnd = new Date(
-      targetMonth.getFullYear(),
-      targetMonth.getMonth() + 1,
-      0,
-      23,
-      59,
-      59,
-      999,
-    );
 
     const visitRecords = await prisma.visitRecord.findMany({
       where: {
         org_id: req.orgId,
         visit_date: {
-          gte: monthStart,
-          lte: monthEnd,
+          gte: billingMonth.start,
+          lt: billingMonth.nextStart,
         },
       },
       select: {
@@ -151,7 +141,7 @@ export const POST = withAuth(
 
       const candidates = await generateBillingCandidatesForMonth(tx, {
         orgId: req.orgId,
-        billingMonth: monthStart,
+        billingMonth: billingMonth.start,
       });
 
       return {
@@ -163,12 +153,12 @@ export const POST = withAuth(
     });
 
     return success({
-      message: `${billing_month} の請求候補を生成しました`,
+      message: `${billingMonth.canonical} の請求候補を生成しました`,
       ...created,
     });
   },
   {
-    permission: 'canReport',
+    permission: 'canManageBilling',
     message: '請求候補の作成権限がありません',
   },
 );

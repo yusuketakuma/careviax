@@ -76,7 +76,9 @@ type ExternalPayload = {
 
 const SCOPE_DISPLAY_NAMES: Record<string, string> = {
   allergy_info: 'アレルギー情報',
+  medication_list: '服薬一覧',
   medication_profiles: '服薬一覧',
+  visit_schedule: '訪問予定',
   visit_schedules: '訪問予定',
   care_reports: '訪問報告書',
   self_report_history: '自己申告履歴',
@@ -120,15 +122,9 @@ const GENDER_LABELS: Record<string, string> = {
   unknown: '不明',
 };
 
-export function SharedViewerContent({
-  token,
-  initialOtp,
-}: {
-  token: string;
-  initialOtp: string;
-}) {
-  const [otpInput, setOtpInput] = useState(initialOtp);
-  const [activeOtp, setActiveOtp] = useState(initialOtp);
+export function SharedViewerContent({ token }: { token: string }) {
+  const [otpInput, setOtpInput] = useState('');
+  const [activeOtp, setActiveOtp] = useState('');
   const [reporterName, setReporterName] = useState('');
   const [relation, setRelation] = useState('');
   const [category, setCategory] = useState(SELF_REPORT_CATEGORIES[0] ?? 'その他');
@@ -272,7 +268,11 @@ export function SharedViewerContent({
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">性別</p>
-                    <p>{data.patient.gender ? (GENDER_LABELS[data.patient.gender] ?? data.patient.gender) : '未登録'}</p>
+                    <p>
+                      {data.patient.gender
+                        ? (GENDER_LABELS[data.patient.gender] ?? data.patient.gender)
+                        : '未登録'}
+                    </p>
                   </div>
                 </div>
                 {data.allergy_info ? (
@@ -299,7 +299,8 @@ export function SharedViewerContent({
                     ))}
                 </div>
                 <div className="text-muted-foreground">
-                  有効期限: {format(new Date(data.expires_at), 'yyyy年M月d日 HH:mm', { locale: ja })}
+                  有効期限:{' '}
+                  {format(new Date(data.expires_at), 'yyyy年M月d日 HH:mm', { locale: ja })}
                 </div>
               </CardContent>
             </Card>
@@ -330,7 +331,10 @@ export function SharedViewerContent({
                   ))}
                   {data.shared_summary.next_visit_date ? (
                     <Badge variant="outline" className="border-sky-300 bg-white/80 text-sky-900">
-                      次回訪問 {format(new Date(data.shared_summary.next_visit_date), 'M月d日(E)', { locale: ja })}
+                      次回訪問{' '}
+                      {format(new Date(data.shared_summary.next_visit_date), 'M月d日(E)', {
+                        locale: ja,
+                      })}
                     </Badge>
                   ) : null}
                 </div>
@@ -348,16 +352,24 @@ export function SharedViewerContent({
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 {data.self_report_history?.map((report) => (
-                  <div key={report.id} className="rounded-lg border border-border/70 bg-background px-3 py-3">
+                  <div
+                    key={report.id}
+                    className="rounded-lg border border-border/70 bg-background px-3 py-3"
+                  >
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <p className="font-medium text-foreground">{report.subject}</p>
                         <p className="text-xs text-muted-foreground">
                           {report.reported_by_name}
-                          {report.relation ? ` (${RELATION_LABELS[report.relation] ?? report.relation})` : ''} / {report.category}
+                          {report.relation
+                            ? ` (${RELATION_LABELS[report.relation] ?? report.relation})`
+                            : ''}{' '}
+                          / {report.category}
                         </p>
                       </div>
-                      <Badge variant="outline">{SELF_REPORT_STATUS_LABELS[report.status] ?? report.status}</Badge>
+                      <Badge variant="outline">
+                        {SELF_REPORT_STATUS_LABELS[report.status] ?? report.status}
+                      </Badge>
                     </div>
                     <p className="mt-2 whitespace-pre-line text-xs leading-5 text-muted-foreground">
                       {report.content}
@@ -419,9 +431,7 @@ export function SharedViewerContent({
                         <p className="font-medium">
                           {format(new Date(item.scheduled_date), 'yyyy年M月d日(E)', { locale: ja })}
                         </p>
-                        <p className="text-muted-foreground">
-                          状態: {item.schedule_status}
-                        </p>
+                        <p className="text-muted-foreground">状態: {item.schedule_status}</p>
                       </div>
                     ))
                   )}
@@ -445,7 +455,8 @@ export function SharedViewerContent({
                       <div key={item.id} className="rounded-lg border border-slate-200 p-3 text-sm">
                         <p className="font-medium">{item.report_type}</p>
                         <p className="text-muted-foreground">
-                          {format(new Date(item.created_at), 'yyyy年M月d日', { locale: ja })} / {item.status}
+                          {format(new Date(item.created_at), 'yyyy年M月d日', { locale: ja })} /{' '}
+                          {item.status}
                         </p>
                       </div>
                     ))

@@ -1,7 +1,9 @@
 import { createHash, timingSafeEqual } from 'crypto';
 import bcrypt from 'bcryptjs';
+import type { MemberRole } from '@prisma/client';
 import { startOfDay } from 'date-fns';
 import { decode, encode } from 'next-auth/jwt';
+import { hasPermission, type PermissionKey } from '@/lib/auth/permissions';
 import { prisma } from '@/lib/db/client';
 
 type ExternalGrantRecord = {
@@ -11,8 +13,121 @@ type ExternalGrantRecord = {
   otp_hash: string | null;
   expires_at: Date;
   revoked_at: Date | null;
-  scope: unknown;
+  scope: ExternalAccessScope;
 };
+
+export const EXTERNAL_ACCESS_SCOPE_KEYS = [
+  'allergy_info',
+  'medication_list',
+  'visit_schedule',
+  'care_reports',
+  'self_report_history',
+] as const;
+
+export type ExternalAccessScopeKey = (typeof EXTERNAL_ACCESS_SCOPE_KEYS)[number];
+export type ExternalAccessScope = Partial<Record<ExternalAccessScopeKey, boolean>>;
+
+type ExternalAccessScopeCheckResult =
+  | {
+      ok: true;
+      scope: ExternalAccessScope;
+    }
+  | {
+      ok: false;
+      kind: 'validation' | 'permission';
+      message: string;
+      details?: unknown;
+    };
+
+const EXTERNAL_ACCESS_SCOPE_KEY_SET = new Set<string>(EXTERNAL_ACCESS_SCOPE_KEYS);
+
+const SENSITIVE_SCOPE_PERMISSIONS = {
+  allergy_info: 'canVisit',
+  medication_list: 'canVisit',
+  care_reports: 'canSendCareReport',
+  self_report_history: 'canSendCareReport',
+  visit_schedule: 'canVisit',
+} satisfies Partial<Record<ExternalAccessScopeKey, PermissionKey>>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export function normalizeExternalAccessScope(scope: unknown): ExternalAccessScopeCheckResult {
+  if (!isRecord(scope)) {
+    return {
+      ok: false,
+      kind: 'validation',
+      message: '共有範囲が不正です',
+      details: { scope: ['共有範囲はオブジェクトで指定してください'] },
+    };
+  }
+
+  const normalized: ExternalAccessScope = {};
+  const unknownKeys: string[] = [];
+  const invalidKeys: string[] = [];
+
+  for (const [key, value] of Object.entries(scope)) {
+    if (!EXTERNAL_ACCESS_SCOPE_KEY_SET.has(key)) {
+      unknownKeys.push(key);
+      continue;
+    }
+
+    if (typeof value !== 'boolean') {
+      invalidKeys.push(key);
+      continue;
+    }
+
+    normalized[key as ExternalAccessScopeKey] = value;
+  }
+
+  if (unknownKeys.length > 0 || invalidKeys.length > 0) {
+    return {
+      ok: false,
+      kind: 'validation',
+      message: '共有範囲が不正です',
+      details: {
+        ...(unknownKeys.length > 0 ? { unknown_scope_keys: unknownKeys } : {}),
+        ...(invalidKeys.length > 0 ? { invalid_scope_keys: invalidKeys } : {}),
+      },
+    };
+  }
+
+  if (!Object.values(normalized).some((enabled) => enabled === true)) {
+    return {
+      ok: false,
+      kind: 'validation',
+      message: '共有範囲を1つ以上指定してください',
+      details: { scope: ['共有する情報を1つ以上選択してください'] },
+    };
+  }
+
+  return { ok: true, scope: normalized };
+}
+
+export function validateExternalAccessScopeForRole(
+  scope: unknown,
+  role: MemberRole,
+): ExternalAccessScopeCheckResult {
+  const normalized = normalizeExternalAccessScope(scope);
+  if (!normalized.ok) return normalized;
+
+  const deniedScopes = Object.entries(SENSITIVE_SCOPE_PERMISSIONS)
+    .filter(([scopeKey]) => normalized.scope[scopeKey as ExternalAccessScopeKey] === true)
+    .filter(([, permission]) => !hasPermission(role, permission))
+    .map(([scopeKey]) => scopeKey);
+
+  if (deniedScopes.length > 0) {
+    return {
+      ok: false,
+      kind: 'permission',
+      message: 'この共有範囲を発行する権限がありません',
+      details: { denied_scope_keys: deniedScopes },
+    };
+  }
+
+  return normalized;
+}
 
 export type ExternalAccessValidationResult =
   | {
@@ -83,7 +198,7 @@ function getExternalAccessSecret() {
 }
 
 function isExternalAccessTokenPayload(
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
 ): payload is Record<string, unknown> & ExternalAccessTokenPayload {
   return (
     payload.purpose === 'external_access_grant' &&
@@ -134,7 +249,7 @@ async function decodeExternalAccessToken(token: string) {
 
 export async function validateExternalAccessGrant(
   token: string,
-  otp: string | null | undefined
+  otp: string | null | undefined,
 ): Promise<ExternalAccessValidationResult> {
   if (!token || token.length < 8) {
     return {
@@ -181,26 +296,41 @@ export async function validateExternalAccessGrant(
     };
   }
 
-  if (grant.otp_hash) {
-    if (!otp) {
-      return {
-        ok: false,
-        kind: 'validation',
-        message: 'OTPが必要です',
-      };
-    }
-
-    const isValid = await verifyExternalAccessOtp(otp, grant.otp_hash);
-    if (!isValid) {
-      return {
-        ok: false,
-        kind: 'validation',
-        message: 'OTPが正しくありません',
-      };
-    }
+  const scopeResult = normalizeExternalAccessScope(grant.scope);
+  if (!scopeResult.ok) {
+    return {
+      ok: false,
+      kind: 'validation',
+      message: scopeResult.message,
+    };
   }
 
-  return { ok: true, grant };
+  if (!grant.otp_hash) {
+    return {
+      ok: false,
+      kind: 'validation',
+      message: 'OTPが必要です',
+    };
+  }
+
+  if (!otp) {
+    return {
+      ok: false,
+      kind: 'validation',
+      message: 'OTPが必要です',
+    };
+  }
+
+  const isValid = await verifyExternalAccessOtp(otp, grant.otp_hash);
+  if (!isValid) {
+    return {
+      ok: false,
+      kind: 'validation',
+      message: 'OTPが正しくありません',
+    };
+  }
+
+  return { ok: true, grant: { ...grant, scope: scopeResult.scope } };
 }
 
 export async function markExternalAccessViewed(grantId: string) {
@@ -261,8 +391,7 @@ function buildExternalSharedSummary(args: {
   ].filter((value): value is string => Boolean(value));
 
   return {
-    headline:
-      headlineParts.join(' / ') || `${args.patientName}さんの共有情報を確認できます。`,
+    headline: headlineParts.join(' / ') || `${args.patientName}さんの共有情報を確認できます。`,
     bullets,
     key_medications: medicationNames,
     next_visit_date: nextVisitDate?.toISOString() ?? null,
@@ -270,7 +399,9 @@ function buildExternalSharedSummary(args: {
 }
 
 export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
-  const scope = ((grant.scope ?? {}) as Record<string, boolean>) ?? {};
+  const scopeResult = normalizeExternalAccessScope(grant.scope);
+  if (!scopeResult.ok) return null;
+  const scope = scopeResult.scope;
 
   const patient = await prisma.patient.findFirst({
     where: { id: grant.patient_id, org_id: grant.org_id },
@@ -289,7 +420,7 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
 
   const allergyInfoValue =
     scope.allergy_info === true
-      ? (patient as Record<string, unknown>).allergy_info ?? null
+      ? ((patient as Record<string, unknown>).allergy_info ?? null)
       : null;
   const allergyInfo =
     allergyInfoValue == null

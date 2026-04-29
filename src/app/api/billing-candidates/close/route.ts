@@ -4,10 +4,11 @@ import { withOrgContext } from '@/lib/db/rls';
 import { error, success, validationError } from '@/lib/api/response';
 import { closeBillingCandidatesForMonth } from '@/server/services/billing-evidence';
 import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
+import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from '../billing-month';
 
 export async function POST(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canReport',
+    permission: 'canManageBilling',
     message: '請求月次締めの権限がありません',
   });
   if ('response' in authResult) return authResult.response;
@@ -16,20 +17,20 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body) return validationError('リクエストボディが不正です');
 
-  const billingMonth = (body as { billing_month?: string }).billing_month;
+  const billingMonth = (body as { billing_month?: unknown }).billing_month;
   if (!billingMonth) return validationError('billing_month は必須です');
 
-  const billingMonthDate = new Date(billingMonth);
-  if (Number.isNaN(billingMonthDate.getTime())) {
-    return validationError('billing_month の形式が不正です（YYYY-MM-DD）');
+  const parsedBillingMonth = parseStrictBillingMonth(billingMonth);
+  if (!parsedBillingMonth) {
+    return validationError(BILLING_MONTH_FORMAT_MESSAGE);
   }
 
   const result = await withOrgContext(ctx.orgId, (tx) =>
     closeBillingCandidatesForMonth(tx, {
       orgId: ctx.orgId,
-      billingMonth: billingMonthDate,
+      billingMonth: parsedBillingMonth.start,
       actorId: ctx.userId,
-    })
+    }),
   );
 
   if (result.blocked) {
@@ -40,17 +41,17 @@ export async function POST(req: NextRequest) {
       {
         summary: result.summary,
         blockingCount: result.blockingCount,
-      }
+      },
     );
   }
 
   await notifyWebhookEventForOrg(ctx.orgId, 'billing.exported', {
-    billingMonth: billingMonthDate.toISOString(),
+    billingMonth: parsedBillingMonth.start.toISOString(),
     exportedCount: result.exported_count,
   });
 
   return success({
-    message: `${billingMonth} を月次締めしました`,
+    message: `${parsedBillingMonth.canonical} を月次締めしました`,
     exported_count: result.exported_count,
     summary: result.summary,
   });

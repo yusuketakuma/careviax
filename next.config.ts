@@ -17,7 +17,7 @@ const withSerwist = withSerwistInit({
   swSrc: 'src/app/sw.ts',
   swDest: 'public/sw.js',
   disable: process.env.NODE_ENV !== 'production',
-  cacheOnNavigation: true,
+  cacheOnNavigation: false,
   reloadOnOnline: false,
 });
 
@@ -28,7 +28,9 @@ const sentryConfig = {
   sourcemaps: {
     disable: process.env.NODE_ENV !== 'production',
   },
-  reactComponentAnnotation: { enabled: true },
+  webpack: {
+    reactComponentAnnotation: { enabled: true },
+  },
 };
 
 export default withSentryConfig(withSerwist(nextConfig), sentryConfig);

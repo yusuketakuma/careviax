@@ -43,7 +43,7 @@ function createRequest(body: unknown) {
   return {
     json: async () => body,
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
     },
   } as unknown as NextRequest;
 }
@@ -85,6 +85,10 @@ describe('/api/patients/medications/bulk-export POST', () => {
       orgId: 'org_1',
       requestedBy: 'user_1',
       patientIds: ['patient_1', 'patient_2'],
+      accessContext: {
+        userId: 'user_1',
+        role: 'admin',
+      },
     });
     expect(drainMedicationHistoryBulkExportQueueMock).toHaveBeenCalledWith({
       orgId: 'org_1',

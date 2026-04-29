@@ -66,7 +66,7 @@ function createRequest(url: string, body?: unknown) {
     url,
     method: body === undefined ? 'GET' : 'POST',
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
     },
     nextUrl: new URL(url),
     json: vi.fn().mockResolvedValue(body),
@@ -114,6 +114,7 @@ describe('/api/visit-schedules', () => {
     careCaseFindFirstMock.mockResolvedValue({
       patient_id: 'patient_1',
       primary_pharmacist_id: 'user_2',
+      backup_pharmacist_id: 'user_1',
     });
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
     evaluateVisitWorkflowGateMock.mockResolvedValue({ ok: true, issues: [] });
@@ -133,7 +134,7 @@ describe('/api/visit-schedules', () => {
 
   it('lists visit schedules with workload and facility hints', async () => {
     const response = (await GET(
-      createRequest('http://localhost/api/visit-schedules?patient_id=patient_1')
+      createRequest('http://localhost/api/visit-schedules?patient_id=patient_1'),
     ))!;
 
     expect(response.status).toBe(200);
@@ -169,7 +170,7 @@ describe('/api/visit-schedules', () => {
 
   it('supports the active schedule scope filter', async () => {
     const response = (await GET(
-      createRequest('http://localhost/api/visit-schedules?status_scope=active')
+      createRequest('http://localhost/api/visit-schedules?status_scope=active'),
     ))!;
 
     expect(response.status).toBe(200);
@@ -179,6 +180,32 @@ describe('/api/visit-schedules', () => {
           schedule_status: {
             in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
           },
+          AND: [
+            {
+              OR: [
+                { pharmacist_id: 'user_1' },
+                { case_: { primary_pharmacist_id: 'user_1' } },
+                { case_: { backup_pharmacist_id: 'user_1' } },
+              ],
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
+  it('does not add assignment filters for admin schedule listing', async () => {
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = (await GET(
+      createRequest('http://localhost/api/visit-schedules?status_scope=active'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.not.objectContaining({
+          AND: expect.anything(),
         }),
       }),
     );
@@ -194,7 +221,7 @@ describe('/api/visit-schedules', () => {
         pharmacist_id: 'user_2',
         time_window_start: '09:00',
         time_window_end: '10:00',
-      })
+      }),
     ))!;
 
     expect(response.status).toBe(201);
@@ -250,6 +277,56 @@ describe('/api/visit-schedules', () => {
     });
   });
 
+  it('rejects visit schedule creation for an unassigned non-admin user', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce({
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'primary_user',
+      backup_pharmacist_id: 'backup_user',
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        site_id: 'site_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'other_user',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('allows admin visit schedule creation even when not assigned to the case', async () => {
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    careCaseFindFirstMock.mockResolvedValueOnce({
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'primary_user',
+      backup_pharmacist_id: 'backup_user',
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        site_id: 'site_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'other_user',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(visitScheduleCreateMock).toHaveBeenCalled();
+  });
+
   it('rejects schedules outside an explicit pharmacist shift window', async () => {
     pharmacistShiftFindFirstMock.mockResolvedValueOnce({
       site_id: 'shift_site_1',
@@ -284,7 +361,7 @@ describe('/api/visit-schedules', () => {
         scheduled_date: '2026-03-31',
         pharmacist_id: 'user_2',
         notes: '玄関前で連絡',
-      })
+      }),
     ))!;
 
     expect(response.status).toBe(400);

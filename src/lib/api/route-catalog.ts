@@ -1,7 +1,9 @@
+import type { PermissionKey } from '@/lib/auth/permissions';
+
 export type RouteCatalogEntry = {
   path: string;
   methods: string[];
-  permission: string;
+  permission: PermissionKey | 'authenticated' | 'purpose-based' | 'canAdmin|apiKey';
   description: string;
   area:
     | 'patients'
@@ -134,7 +136,7 @@ export const routeCatalog: RouteCatalogEntry[] = [
   {
     path: '/api/care-reports/:id/send',
     methods: ['POST'],
-    permission: 'canReport',
+    permission: 'canSendCareReport',
     description: '報告書送付',
     area: 'reports',
   },

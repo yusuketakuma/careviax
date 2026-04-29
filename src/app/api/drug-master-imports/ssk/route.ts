@@ -4,9 +4,20 @@ import { withAuthContext, isAdmin } from '@/lib/auth/context';
 import { forbidden, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { importSskDrugMaster } from '@/server/services/drug-master-import/ssk';
+import {
+  SSK_IMPORT_URL_POLICY,
+  importSourceUrlValidationMessage,
+  isAllowedImportSourceUrl,
+} from '@/server/services/drug-master-import/shared';
 
 const requestSchema = z.object({
-  zipUrl: z.string().url().optional(),
+  zipUrl: z
+    .string()
+    .url()
+    .refine((url) => isAllowedImportSourceUrl(url, SSK_IMPORT_URL_POLICY), {
+      message: importSourceUrlValidationMessage(),
+    })
+    .optional(),
   limit: z.number().int().positive().max(5000).optional(),
 });
 
@@ -33,6 +44,6 @@ export const POST = withAuthContext(async (req: NextRequest, authCtx) => {
         zipUrl: result.zipUrl,
       },
     },
-    201
+    201,
   );
 });

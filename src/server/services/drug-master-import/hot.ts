@@ -1,19 +1,26 @@
-import { unzipSync } from 'fflate';
 import {
   decodeTextBuffer,
   DrugMasterImportDbClient,
   FetchLike,
+  HOT_IMPORT_URL_POLICY,
+  ZipExpansionLimits,
   fetchBytes,
   isZipBuffer,
   normalizeCell,
-  resolveAbsoluteUrl,
+  resolveImportSourceUrl,
   splitDelimitedLine,
+  unzipWithLimits,
   withImportLog,
 } from './shared';
 import { readWorkbookRows } from './excel';
 
 export const MEDIS_MASTER_INDEX_PAGE_URL =
   'https://www.medis.or.jp/4_hyojyun/medis-master/riyou/index.html';
+const HOT_ZIP_EXPANSION_LIMITS: ZipExpansionLimits = {
+  maxEntries: 20,
+  maxEntryBytes: 128 * 1024 * 1024,
+  maxTotalBytes: 128 * 1024 * 1024,
+};
 
 type ParsedHotRecord = {
   hot_code: string;
@@ -25,17 +32,18 @@ type ParsedHotRecord = {
 type ImportHotMasterOptions = {
   fileUrl?: string;
   fetchImpl?: FetchLike;
+  zipLimits?: Partial<ZipExpansionLimits>;
 };
 
 function resolveConfiguredHotUrl(fileUrl?: string) {
   const configured = fileUrl ?? process.env.HOT_MASTER_URL;
   if (!configured) {
     throw new Error(
-      'HOTコードマスタ URL が未設定です。HOT_MASTER_URL か fileUrl を指定してください'
+      'HOTコードマスタ URL が未設定です。HOT_MASTER_URL か fileUrl を指定してください',
     );
   }
 
-  return resolveAbsoluteUrl(configured, MEDIS_MASTER_INDEX_PAGE_URL);
+  return resolveImportSourceUrl(configured, MEDIS_MASTER_INDEX_PAGE_URL, HOT_IMPORT_URL_POLICY);
 }
 
 function normalizeHeader(value: string | null) {
@@ -60,7 +68,9 @@ function parseTextRows(buffer: Buffer) {
 
 function parseHotRows(rows: Array<Array<string | null>>) {
   const headerRow = rows.find((row) =>
-    row.some((cell) => /hot|薬価基準収載|販売名|医薬品名/i.test(normalizeHeader(normalizeCell(cell))))
+    row.some((cell) =>
+      /hot|薬価基準収載|販売名|医薬品名/i.test(normalizeHeader(normalizeCell(cell))),
+    ),
   );
   if (!headerRow) {
     throw new Error('HOTコードマスタのヘッダー行を解決できませんでした');
@@ -76,7 +86,11 @@ function parseHotRows(rows: Array<Array<string | null>>) {
   });
 
   const hotCodeIndex = detectHeaderIndex(headerMap, [/hot.*code/, /hotコード/, /^hot13$/, /^hot$/]);
-  const yjCodeIndex = detectHeaderIndex(headerMap, [/yj/, /薬価基準収載医薬品コード/, /個別医薬品コード/]);
+  const yjCodeIndex = detectHeaderIndex(headerMap, [
+    /yj/,
+    /薬価基準収載医薬品コード/,
+    /個別医薬品コード/,
+  ]);
   const drugNameIndex = detectHeaderIndex(headerMap, [/販売名/, /品名/, /医薬品名/]);
   const manufacturerIndex = detectHeaderIndex(headerMap, [/メーカー/, /製造販売業者/, /製造元/]);
 
@@ -100,9 +114,27 @@ function parseHotRows(rows: Array<Array<string | null>>) {
   return records;
 }
 
+function resolveHotZipLimits(overrides?: Partial<ZipExpansionLimits>) {
+  return {
+    ...HOT_ZIP_EXPANSION_LIMITS,
+    ...overrides,
+  };
+}
+
+function unzipHotMasterArchive(buffer: Uint8Array, overrides?: Partial<ZipExpansionLimits>) {
+  return unzipWithLimits(buffer, {
+    sourceLabel: 'HOTコードマスタ',
+    limits: resolveHotZipLimits(overrides),
+    filter: (entryName) => /\.(csv|txt|tsv)$/i.test(entryName),
+  });
+}
+
 export async function parseHotMasterFile(options: ImportHotMasterOptions = {}) {
   const fileUrl = resolveConfiguredHotUrl(options.fileUrl);
-  const buffer = await fetchBytes(fileUrl, options.fetchImpl ?? fetch);
+  const buffer = await fetchBytes(fileUrl, {
+    fetchImpl: options.fetchImpl ?? fetch,
+    policy: HOT_IMPORT_URL_POLICY,
+  });
 
   let rows: Array<Array<string | null>>;
   if (/\.(csv|txt|tsv)$/i.test(fileUrl)) {
@@ -115,10 +147,8 @@ export async function parseHotMasterFile(options: ImportHotMasterOptions = {}) {
         throw error;
       }
       if (isZipBuffer(buffer)) {
-        const entries = unzipSync(new Uint8Array(buffer));
-        const entry = Object.entries(entries).find(([name]) =>
-          /\.(csv|txt|tsv)$/i.test(name)
-        );
+        const entries = unzipHotMasterArchive(new Uint8Array(buffer), options.zipLimits);
+        const entry = Object.entries(entries).find(([name]) => /\.(csv|txt|tsv)$/i.test(name));
         if (!entry) {
           throw new Error('HOTコードマスタ ZIP 内に CSV/TXT が見つかりませんでした');
         }
@@ -137,7 +167,7 @@ export async function parseHotMasterFile(options: ImportHotMasterOptions = {}) {
 
 export async function importHotMaster(
   db: DrugMasterImportDbClient,
-  options: ImportHotMasterOptions = {}
+  options: ImportHotMasterOptions = {},
 ) {
   return withImportLog(db, 'hot', async () => {
     const parsed = await parseHotMasterFile(options);

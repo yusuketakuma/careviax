@@ -5,6 +5,9 @@ const {
   requireAuthContextMock,
   withOrgContextMock,
   careReportFindFirstMock,
+  visitRecordFindFirstMock,
+  visitScheduleFindFirstMock,
+  careCaseFindFirstMock,
   sendCareReportEmailMock,
   upsertBillingEvidenceForVisitMock,
   resolveOperationalTasksMock,
@@ -15,6 +18,9 @@ const {
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
+  visitRecordFindFirstMock: vi.fn(),
+  visitScheduleFindFirstMock: vi.fn(),
+  careCaseFindFirstMock: vi.fn(),
   sendCareReportEmailMock: vi.fn(),
   upsertBillingEvidenceForVisitMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
@@ -61,6 +67,15 @@ vi.mock('@/lib/db/client', () => ({
     careReport: {
       findFirst: careReportFindFirstMock,
     },
+    visitRecord: {
+      findFirst: visitRecordFindFirstMock,
+    },
+    visitSchedule: {
+      findFirst: visitScheduleFindFirstMock,
+    },
+    careCase: {
+      findFirst: careCaseFindFirstMock,
+    },
   },
 }));
 
@@ -85,7 +100,7 @@ import { POST } from './route';
 function createRequest(body: unknown) {
   return {
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
     },
     json: vi.fn().mockResolvedValue(body),
   } as unknown as NextRequest;
@@ -110,6 +125,20 @@ describe('/api/care-reports/[id]/send POST', () => {
       content: {},
       report_type: 'physician_report',
       pdf_url: 'https://example.com/report.pdf',
+    });
+    visitRecordFindFirstMock.mockResolvedValue({
+      schedule: {
+        pharmacist_id: 'user_1',
+        case_: {
+          primary_pharmacist_id: null,
+          backup_pharmacist_id: null,
+        },
+      },
+    });
+    visitScheduleFindFirstMock.mockResolvedValue({ id: 'schedule_1' });
+    careCaseFindFirstMock.mockResolvedValue({
+      primary_pharmacist_id: 'user_1',
+      backup_pharmacist_id: null,
     });
     sendCareReportEmailMock.mockResolvedValue({
       messageId: 'ses-message-1',
@@ -145,11 +174,15 @@ describe('/api/care-reports/[id]/send POST', () => {
         recipient_name: '山田 太郎',
         recipient_contact: '03-1234-5678',
       }),
-      { params: Promise.resolve({ id: 'report_1' }) }
+      { params: Promise.resolve({ id: 'report_1' }) },
     );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(Object), {
+      permission: 'canSendCareReport',
+      message: '報告書送信の権限がありません',
+    });
     expect(sendCareReportEmailMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
@@ -163,7 +196,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         recipient_name: '山田 太郎',
         recipient_contact: 'doctor@example.com',
       }),
-      { params: Promise.resolve({ id: 'report_1' }) }
+      { params: Promise.resolve({ id: 'report_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -181,7 +214,7 @@ describe('/api/care-reports/[id]/send POST', () => {
           channel: 'email',
           status: 'sent',
         }),
-      })
+      }),
     );
     expect(communicationEventCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -190,7 +223,7 @@ describe('/api/care-reports/[id]/send POST', () => {
           channel: 'email',
           counterpart_name: '山田 太郎',
         }),
-      })
+      }),
     );
     expect(learnContactProfileFromCommunicationMock).toHaveBeenCalledWith(txMock, {
       orgId: 'org_1',
@@ -200,6 +233,47 @@ describe('/api/care-reports/[id]/send POST', () => {
       occurredAt: expect.any(Date),
       markSuccess: true,
     });
+  });
+
+  it('returns 403 before sending email when a non-admin caller cannot access the report assignment', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        userId: 'user_1',
+        orgId: 'org_1',
+        role: 'pharmacist',
+      },
+    });
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'draft',
+      visit_record_id: null,
+      content: {},
+      report_type: 'physician_report',
+      pdf_url: 'https://example.com/report.pdf',
+    });
+    careCaseFindFirstMock.mockResolvedValue({
+      primary_pharmacist_id: 'primary_user',
+      backup_pharmacist_id: 'backup_user',
+    });
+
+    const response = await POST(
+      createRequest({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+    });
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
   });
 
   it('advances the medication cycle to reported through transition logging when all visit reports are delivered', async () => {
@@ -235,7 +309,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         recipient_name: '山田 太郎',
         recipient_contact: 'doctor@example.com',
       }),
-      { params: Promise.resolve({ id: 'report_1' }) }
+      { params: Promise.resolve({ id: 'report_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -267,7 +341,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         recipient_name: '山田 太郎',
         recipient_contact: 'doctor@example.com',
       }),
-      { params: Promise.resolve({ id: 'report_1' }) }
+      { params: Promise.resolve({ id: 'report_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -279,7 +353,7 @@ describe('/api/care-reports/[id]/send POST', () => {
           status: 'failed',
           failure_reason: 'SES unavailable',
         }),
-      })
+      }),
     );
     expect(txMock.careReport.update).toHaveBeenCalledWith({
       where: { id: 'report_1' },
@@ -300,7 +374,7 @@ describe('/api/care-reports/[id]/send POST', () => {
           channel: 'email',
           counterpart_name: '山田 太郎',
         }),
-      })
+      }),
     );
     await expect(response.json()).resolves.toMatchObject({
       code: 'EXTERNAL_EMAIL_SEND_FAILED',
@@ -325,7 +399,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         recipient_name: '担当ケアマネ',
         recipient_contact: '03-1234-5678',
       }),
-      { params: Promise.resolve({ id: 'report_1' }) }
+      { params: Promise.resolve({ id: 'report_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -337,7 +411,7 @@ describe('/api/care-reports/[id]/send POST', () => {
           channel: 'fax',
           subject: 'care_manager_report',
         }),
-      })
+      }),
     );
   });
 
@@ -359,7 +433,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         recipient_name: '施設連携先',
         recipient_contact: '03-0000-0000',
       }),
-      { params: Promise.resolve({ id: 'report_1' }) }
+      { params: Promise.resolve({ id: 'report_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -384,10 +458,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       case_id: 'case_1',
       conference_date: new Date('2026-03-18T10:00:00.000Z'),
     });
-    txMock.visitRecord.findMany.mockResolvedValue([
-      { id: 'visit_1' },
-      { id: 'visit_2' },
-    ]);
+    txMock.visitRecord.findMany.mockResolvedValue([{ id: 'visit_1' }, { id: 'visit_2' }]);
 
     const response = await POST(
       createRequest({
@@ -395,7 +466,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         recipient_name: '主治医',
         recipient_contact: '03-1234-5678',
       }),
-      { params: Promise.resolve({ id: 'report_1' }) }
+      { params: Promise.resolve({ id: 'report_1' }) },
     );
 
     if (!response) throw new Error('response is required');

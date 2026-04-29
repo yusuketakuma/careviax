@@ -4,9 +4,20 @@ import { forbidden, success, validationError } from '@/lib/api/response';
 import { isAdmin, withAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { importPmdaPackageInserts } from '@/server/services/drug-master-import/pmda';
+import {
+  PMDA_IMPORT_URL_POLICY,
+  importSourceUrlValidationMessage,
+  isAllowedImportSourceUrl,
+} from '@/server/services/drug-master-import/shared';
 
 const requestSchema = z.object({
-  zipUrl: z.string().url().optional(),
+  zipUrl: z
+    .string()
+    .url()
+    .refine((url) => isAllowedImportSourceUrl(url, PMDA_IMPORT_URL_POLICY), {
+      message: importSourceUrlValidationMessage(),
+    })
+    .optional(),
   mode: z.enum(['full', 'delta']).default('full'),
 });
 
@@ -32,6 +43,6 @@ export const POST = withAuthContext(async (req: NextRequest, authCtx) => {
         mode: result.mode,
       },
     },
-    201
+    201,
   );
 });

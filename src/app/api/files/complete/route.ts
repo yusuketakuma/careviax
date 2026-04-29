@@ -2,10 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { error, success, validationError } from '@/lib/api/response';
-import {
-  completeUploadedFile,
-  FileStorageError,
-} from '@/server/services/file-storage';
+import { completeUploadedFile, FileStorageError } from '@/server/services/file-storage';
 
 const completeUploadSchema = z.object({
   file_id: z.string().uuid('file_id の形式が不正です'),
@@ -30,6 +27,10 @@ export async function POST(req: NextRequest) {
       orgId: ctx.orgId,
       fileId: parsed.data.file_id,
       uploadedBy: ctx.userId,
+      accessContext: {
+        userId: ctx.userId,
+        role: ctx.role,
+      },
       etag: parsed.data.etag,
     });
 

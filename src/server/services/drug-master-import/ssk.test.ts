@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { zipSync } from 'fflate';
-import {
-  parseSskDrugMasterZip,
-  resolveLatestSskDrugMasterZipUrl,
-} from './ssk';
+import { parseSskDrugMasterZip, resolveLatestSskDrugMasterZipUrl } from './ssk';
 
 function toZipBlob(bytes: Uint8Array) {
   const copy = Uint8Array.from(bytes);
@@ -40,7 +37,21 @@ describe('resolveLatestSskDrugMasterZipUrl', () => {
     `;
 
     expect(resolveLatestSskDrugMasterZipUrl(html)).toBe(
-      'https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_04.files/y_ALL20260319.zip'
+      'https://www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_04.files/y_ALL20260319.zip',
+    );
+  });
+
+  it('rejects credential-bearing ZIP links before they can become job dedupe keys', () => {
+    const html = `
+      <table>
+        <tr>
+          <td><a href="https://importer:secret@www.ssk.or.jp/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_04.files/y_ALL20260319.zip">全件ファイル(ZIP:795KB)</a></td>
+        </tr>
+      </table>
+    `;
+
+    expect(() => resolveLatestSskDrugMasterZipUrl(html)).toThrow(
+      '認証情報を含む取込URLは指定できません',
     );
   });
 });
@@ -98,7 +109,7 @@ describe('parseSskDrugMasterZip', () => {
       });
 
     const parsed = await parseSskDrugMasterZip({
-      zipUrl: 'https://example.com/y_ALL_test.zip',
+      zipUrl: 'https://www.ssk.or.jp/y_ALL_test.zip',
       fetchImpl,
     });
 
@@ -152,13 +163,13 @@ describe('parseSskDrugMasterZip', () => {
       });
 
     const parsed = await parseSskDrugMasterZip({
-      zipUrl: 'https://example.com/y_ALL_test.zip',
+      zipUrl: 'https://www.ssk.or.jp/y_ALL_test.zip',
       fetchImpl,
     });
 
     expect(parsed.records).toHaveLength(1);
     expect(parsed.records[0]?.transitional_expiry_date?.toISOString()).toBe(
-      '2027-03-31T00:00:00.000Z'
+      '2027-03-31T00:00:00.000Z',
     );
   });
 
@@ -201,12 +212,40 @@ describe('parseSskDrugMasterZip', () => {
       });
 
     const parsed = await parseSskDrugMasterZip({
-      zipUrl: 'https://example.com/y_ALL_test.zip',
+      zipUrl: 'https://www.ssk.or.jp/y_ALL_test.zip',
       fetchImpl,
     });
 
     expect(parsed.records).toHaveLength(2);
     expect(parsed.records[0]?.max_administration_days).toBe(14);
     expect(parsed.records[1]?.max_administration_days).toBeNull();
+  });
+
+  it('rejects ZIP entries that exceed the configured expansion byte limit', async () => {
+    const csv = buildRow({
+      2: '123456789',
+      4: 'DRUG-A',
+      31: '123456789012',
+      34: 'DRUG-A',
+    });
+    const zipped = zipSync({
+      'y_ALL_test.csv': Buffer.from(csv, 'utf8'),
+    });
+
+    await expect(
+      parseSskDrugMasterZip({
+        zipUrl: 'https://www.ssk.or.jp/y_ALL_test.zip',
+        zipLimits: {
+          maxEntries: 5,
+          maxEntryBytes: 16,
+          maxTotalBytes: 32,
+        },
+        fetchImpl: async () =>
+          new Response(toZipBlob(zipped), {
+            status: 200,
+            headers: { 'content-type': 'application/zip' },
+          }),
+      }),
+    ).rejects.toThrow(/ZIP展開サイズが上限/);
   });
 });

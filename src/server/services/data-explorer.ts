@@ -7,18 +7,171 @@ import {
 import { withOrgContext } from '@/lib/db/rls';
 
 const READ_ONLY_FIELDS = new Set(['id', 'org_id', 'created_at', 'updated_at']);
+const READ_ONLY_RELATION_ID_PATTERN = /(?:^|_)id$/;
+const READ_ONLY_MODEL_PATTERNS = [/AuditLog$/, /History$/, /Job$/, /Log$/] as const;
+const NON_EDITABLE_MODEL_FIELDS: Record<string, ReadonlySet<string>> = {
+  Membership: new Set([
+    'user_id',
+    'site_id',
+    'role',
+    'can_dispense',
+    'can_audit_dispense',
+    'can_set',
+    'can_audit_set',
+    'is_active',
+  ]),
+  User: new Set([
+    'cognito_sub',
+    'cognito_username',
+    'email',
+    'can_accept_emergency',
+    'is_active',
+    'account_status',
+    'invited_at',
+    'invited_by',
+    'last_invited_at',
+    'activated_at',
+    'deactivated_at',
+    'deactivation_reason',
+    'session_version',
+  ]),
+};
+const DENIED_FIELD_PATTERNS = [
+  /(^|_)secret($|_)/i,
+  /(^|_)token($|_)/i,
+  /(^|_)hash($|_)/i,
+  /^cognito_/i,
+  /^session_version$/i,
+  /^account_status$/i,
+  /^email$/i,
+  /^endpoint$/i,
+  /^p256dh$/i,
+  /^auth$/i,
+] as const;
 const SEARCH_CANDIDATE_FIELDS = [
   'name',
+  'name_kana',
   'title',
   'subject',
   'drug_name',
+  'drug_name_kana',
+  'generic_name',
+  'actual_drug_name',
   'key',
   'code',
-  'email',
+  'drug_code',
+  'actual_drug_code',
+  'billing_name',
+  'billing_code',
+  'receipt_code',
+  'hot_code',
+  'jan_code',
   'recipient_name',
+  'counterpart_name',
+  'responder_name',
+  'granted_to_name',
+  'reported_by_name',
+  'partner_name',
+  'author_name',
+  'contact_name',
+  'receipt_person_name',
+  'organization_name',
+  'institution_code',
   'template_key',
   'certification_number',
   'yj_code',
+] as const;
+const SEARCH_COUNT_EXACT_LIMIT = 1000;
+
+const DATA_EXPLORER_MODEL_ALLOWLIST = [
+  'NotificationRule',
+  'BillingRule',
+  'BillingCandidate',
+  'BillingEvidence',
+  'Notification',
+  'AuditLog',
+  'Template',
+  'DocumentDeliveryRule',
+  'UatFeedback',
+  'SourceOfTruthMatrix',
+  'WebhookRegistration',
+  'CommunicationEvent',
+  'CommunicationRequest',
+  'CommunicationResponse',
+  'CareReport',
+  'DeliveryRecord',
+  'ConferenceNote',
+  'EscalationRule',
+  'TracingReport',
+  'PatientSelfReport',
+  'CommunityActivity',
+  'TaskComment',
+  'HandoffBoard',
+  'DrugMaster',
+  'DrugPackageInsert',
+  'DrugInteraction',
+  'DrugAlertRule',
+  'PharmacyDrugStock',
+  'GenericDrugMapping',
+  'DrugMasterImportLog',
+  'MedicationProfile',
+  'ResidualMedication',
+  'MedicationIssue',
+  'Intervention',
+  'Task',
+  'FirstVisitDocument',
+  'PackagingMethodMaster',
+  'Organization',
+  'PharmacySite',
+  'ServiceArea',
+  'PharmacySiteInsuranceConfig',
+  'User',
+  'Membership',
+  'FacilityStandardRegistration',
+  'PharmacistCredential',
+  'PharmacistShift',
+  'PharmacistShiftTemplate',
+  'BusinessHoliday',
+  'Facility',
+  'FacilityUnit',
+  'FacilityContact',
+  'ExternalProfessional',
+  'PrescriberInstitution',
+  'Patient',
+  'Residence',
+  'CareCase',
+  'ContactParty',
+  'CareTeamLink',
+  'PatientCondition',
+  'ConsentRecord',
+  'ManagementPlan',
+  'PatientSchedulePreference',
+  'PatientPackagingProfile',
+  'PatientInsurance',
+  'PatientLabObservation',
+  'MedicationCycle',
+  'CycleTransitionLog',
+  'PrescriptionIntake',
+  'PrescriptionLine',
+  'InquiryRecord',
+  'DispenseTask',
+  'DispenseResult',
+  'DispenseAudit',
+  'DispensingDecision',
+  'SetPlan',
+  'SetBatch',
+  'SetAudit',
+  'SetBatchChangeLog',
+  'WorkflowException',
+  'QrScanDraft',
+  'JahisSupplementalRecord',
+  'VisitSchedule',
+  'FacilityVisitBatch',
+  'VisitRecord',
+  'VisitPreparation',
+  'VisitScheduleProposal',
+  'VisitScheduleContactLog',
+  'VisitScheduleOverride',
 ] as const;
 
 export type DataExplorerField = {
@@ -39,6 +192,7 @@ export type DataExplorerModelSummary = {
   scalarFieldCount: number;
   editableFieldCount: number;
   searchableField: string | null;
+  searchableFields: string[];
 };
 
 export type DataExplorerTableRows = {
@@ -48,6 +202,8 @@ export type DataExplorerTableRows = {
   coverageLabel: string;
   columns: DataExplorerField[];
   totalCount: number;
+  totalCountIsExact: boolean;
+  hasMore: boolean;
   limit: number;
   offset: number;
   rows: Array<Record<string, unknown>>;
@@ -59,12 +215,47 @@ type TableMeta = {
   fields: DataExplorerField[];
   editableFieldNames: Set<string>;
   searchableField: string | null;
+  searchableFields: string[];
   hasUpdatedAt: boolean;
+  scope: 'org_id' | 'organization' | 'global';
 };
 
+function isDeniedField(fieldName: string) {
+  return DENIED_FIELD_PATTERNS.some((pattern) => pattern.test(fieldName));
+}
+
+function isReadOnlyModel(modelName: string) {
+  return READ_ONLY_MODEL_PATTERNS.some((pattern) => pattern.test(modelName));
+}
+
+function isNonEditableModelField(modelName: string, fieldName: string) {
+  if (READ_ONLY_RELATION_ID_PATTERN.test(fieldName)) {
+    return true;
+  }
+  if (modelName === 'Membership' && fieldName.startsWith('can_')) {
+    return true;
+  }
+  return NON_EDITABLE_MODEL_FIELDS[modelName]?.has(fieldName) ?? false;
+}
+
+function resolveTableScope(modelName: string, fieldNameSet: Set<string>): TableMeta['scope'] {
+  if (modelName === 'Organization') return 'organization';
+  if (fieldNameSet.has('org_id')) return 'org_id';
+  return 'global';
+}
+
 const tableMetaByName = new Map<string, TableMeta>(
-  Prisma.dmmf.datamodel.models.map((model) => {
-    const fields = model.fields
+  DATA_EXPLORER_MODEL_ALLOWLIST.map((modelName) => {
+    const model = Prisma.dmmf.datamodel.models.find((candidate) => candidate.name === modelName);
+    if (!model) {
+      throw new Error(`Data explorer allowlist references unknown Prisma model: ${modelName}`);
+    }
+
+    const scalarFields = model.fields.filter((field) => field.kind !== 'object');
+    const allFieldNameSet = new Set(scalarFields.map((field) => field.dbName ?? field.name));
+    const scope = resolveTableScope(model.name, allFieldNameSet);
+    const fields = scalarFields
+      .filter((field) => !isDeniedField(field.dbName ?? field.name))
       .filter((field) => field.kind !== 'object')
       .map((field) => ({
         name: field.dbName ?? field.name,
@@ -72,27 +263,38 @@ const tableMetaByName = new Map<string, TableMeta>(
         kind: field.kind,
         isList: field.isList,
         isRequired: field.isRequired,
-        isEditable: field.kind === 'scalar' && !READ_ONLY_FIELDS.has(field.dbName ?? field.name),
+        isEditable:
+          !isReadOnlyModel(model.name) &&
+          scope !== 'global' &&
+          field.kind === 'scalar' &&
+          !READ_ONLY_FIELDS.has(field.dbName ?? field.name) &&
+          !isNonEditableModelField(model.name, field.dbName ?? field.name),
       }));
 
     const fieldNameSet = new Set(fields.map((field) => field.name));
-    const searchableField =
-      SEARCH_CANDIDATE_FIELDS.find((field) => fieldNameSet.has(field)) ?? null;
+    const fieldByName = new Map(fields.map((field) => [field.name, field]));
+    const searchableFields = SEARCH_CANDIDATE_FIELDS.filter((fieldName) => {
+      const field = fieldByName.get(fieldName);
+      return field?.kind === 'scalar' && field.type === 'String' && !field.isList;
+    });
+    const searchableField = searchableFields[0] ?? null;
 
     return [
-      model.name,
+      model.dbName ?? model.name,
       {
         modelName: model.name,
         tableName: model.dbName ?? model.name,
         fields,
         editableFieldNames: new Set(
-          fields.filter((field) => field.isEditable).map((field) => field.name)
+          fields.filter((field) => field.isEditable).map((field) => field.name),
         ),
         searchableField,
+        searchableFields,
         hasUpdatedAt: fieldNameSet.has('updated_at'),
+        scope,
       } satisfies TableMeta,
     ] as const;
-  })
+  }),
 );
 
 function getTableMeta(tableName: string): TableMeta {
@@ -109,6 +311,56 @@ function quoteIdentifier(value: string) {
 
 function escapeLiteral(value: string) {
   return `'${value.replace(/'/g, "''")}'`;
+}
+
+function buildRowJsonExpression(meta: TableMeta, alias = 't') {
+  const pairs = meta.fields.flatMap((field) => [
+    escapeLiteral(field.name),
+    `${alias}.${quoteIdentifier(field.name)}`,
+  ]);
+  return `jsonb_build_object(${pairs.join(', ')})`;
+}
+
+function buildScopeCondition(meta: TableMeta, placeholder: string, alias = 't') {
+  if (meta.scope === 'org_id') {
+    return `${alias}.${quoteIdentifier('org_id')} = ${placeholder}`;
+  }
+  if (meta.scope === 'organization') {
+    return `${alias}.${quoteIdentifier('id')} = ${placeholder}`;
+  }
+  return null;
+}
+
+function buildSearchCondition(meta: TableMeta, placeholder: string, alias = 't') {
+  if (meta.searchableFields.length === 0) return null;
+  return `(${meta.searchableFields
+    .map((fieldName) => `${alias}.${quoteIdentifier(fieldName)} ILIKE ${placeholder}`)
+    .join(' OR ')})`;
+}
+
+function addScopeCondition(
+  conditions: string[],
+  params: unknown[],
+  meta: TableMeta,
+  orgId: string,
+) {
+  params.push(orgId);
+  const condition = buildScopeCondition(meta, `$${params.length}`);
+  if (!condition) {
+    params.pop();
+    return;
+  }
+  conditions.push(condition);
+}
+
+function sanitizeRow(meta: TableMeta, row: Record<string, unknown>) {
+  const safeRow: Record<string, unknown> = {};
+  for (const field of meta.fields) {
+    if (Object.hasOwn(row, field.name)) {
+      safeRow[field.name] = row[field.name];
+    }
+  }
+  return safeRow;
 }
 
 function resolveOrderClause(meta: TableMeta) {
@@ -130,23 +382,25 @@ function normalizeOffset(offset: number) {
 
 type CountRow = { table_name: string; row_count: bigint | number | string };
 type JsonRow = { row: Record<string, unknown> | null };
+type RowCount = { row_count: bigint | number | string };
 
 export async function listDataExplorerModels(orgId: string): Promise<DataExplorerModelSummary[]> {
   const tables = Array.from(tableMetaByName.values());
   const unionQuery = tables
-    .map(
-      (meta) =>
-        `SELECT ${escapeLiteral(meta.tableName)} AS table_name, COUNT(*)::bigint AS row_count FROM ${quoteIdentifier(meta.tableName)}`
-    )
+    .map((meta) => {
+      const scopeCondition = buildScopeCondition(meta, '$1');
+      return `SELECT ${escapeLiteral(meta.tableName)} AS table_name, COUNT(*)::bigint AS row_count FROM ${quoteIdentifier(meta.tableName)} AS t${
+        scopeCondition ? ` WHERE ${scopeCondition}` : ''
+      }`;
+    })
     .join(' UNION ALL ');
+  const usesOrgParam = tables.some((meta) => meta.scope !== 'global');
 
   const counts = await withOrgContext(orgId, (tx) =>
-    tx.$queryRawUnsafe<CountRow[]>(unionQuery)
+    tx.$queryRawUnsafe<CountRow[]>(unionQuery, ...(usesOrgParam ? [orgId] : [])),
   );
 
-  const countMap = new Map(
-    counts.map((row) => [row.table_name, Number(row.row_count)])
-  );
+  const countMap = new Map(counts.map((row) => [row.table_name, Number(row.row_count)]));
 
   return tables
     .map((meta) => ({
@@ -158,6 +412,7 @@ export async function listDataExplorerModels(orgId: string): Promise<DataExplore
       scalarFieldCount: meta.fields.length,
       editableFieldCount: meta.fields.filter((field) => field.isEditable).length,
       searchableField: meta.searchableField,
+      searchableFields: meta.searchableFields,
     }))
     .sort((left, right) => {
       if (left.rowCount !== right.rowCount) return right.rowCount - left.rowCount;
@@ -172,39 +427,88 @@ export async function listDataExplorerRows(
     limit?: number;
     offset?: number;
     search?: string;
-  }
+  },
 ): Promise<DataExplorerTableRows> {
   const meta = getTableMeta(tableName);
   const limit = normalizeLimit(options?.limit ?? 25);
   const offset = normalizeOffset(options?.offset ?? 0);
   const search = options?.search?.trim() ?? '';
   const orderClause = resolveOrderClause(meta);
-  const whereClause = search ? 'WHERE to_jsonb(t)::text ILIKE $1' : '';
+  const rowJsonExpression = buildRowJsonExpression(meta);
 
-  const countQuery = `
-    SELECT COUNT(*)::bigint AS row_count
-    FROM ${quoteIdentifier(meta.tableName)} AS t
-    ${whereClause}
-  `;
+  if (search && meta.searchableFields.length === 0) {
+    return {
+      modelName: meta.modelName,
+      tableName: meta.tableName,
+      coverageCategory: getCoverageCategory(meta.modelName),
+      coverageLabel: getCoverageLabel(meta.modelName),
+      columns: meta.fields,
+      totalCount: 0,
+      totalCountIsExact: true,
+      hasMore: false,
+      limit,
+      offset,
+      rows: [],
+    };
+  }
+
+  const conditions: string[] = [];
+  const baseParams: unknown[] = [];
+  addScopeCondition(conditions, baseParams, meta, orgId);
+  if (search) {
+    baseParams.push(`%${search}%`);
+    const searchCondition = buildSearchCondition(meta, `$${baseParams.length}`);
+    if (searchCondition) {
+      conditions.push(searchCondition);
+    }
+  }
+  const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const limitParam = baseParams.length + 1;
+  const offsetParam = baseParams.length + 2;
+
+  const countQuery = search
+    ? `
+      SELECT COUNT(*)::bigint AS row_count
+      FROM (
+        SELECT 1
+        FROM ${quoteIdentifier(meta.tableName)} AS t
+        ${whereClause}
+        LIMIT $${baseParams.length + 1}
+      ) AS bounded_count
+    `
+    : `
+      SELECT COUNT(*)::bigint AS row_count
+      FROM ${quoteIdentifier(meta.tableName)} AS t
+      ${whereClause}
+    `;
 
   const rowsQuery = `
-    SELECT to_jsonb(t) AS row
+    SELECT ${rowJsonExpression} AS row
     FROM ${quoteIdentifier(meta.tableName)} AS t
     ${whereClause}
     ORDER BY ${orderClause}
-    LIMIT $${search ? 2 : 1}
-    OFFSET $${search ? 3 : 2}
+    LIMIT $${limitParam}
+    OFFSET $${offsetParam}
   `;
 
-  const params = search ? [`%${search}%`, limit, offset] : [limit, offset];
+  const rowLimit = search ? limit + 1 : limit;
+  const countParams = search ? [...baseParams, SEARCH_COUNT_EXACT_LIMIT + 1] : baseParams;
+  const rowParams = [...baseParams, rowLimit, offset];
 
   const [countRows, rows] = await withOrgContext(orgId, async (tx) => {
     const [countResult, rowResult] = await Promise.all([
-      tx.$queryRawUnsafe<Array<{ row_count: bigint | number | string }>>(countQuery, ...(search ? [`%${search}%`] : [])),
-      tx.$queryRawUnsafe<JsonRow[]>(rowsQuery, ...params),
+      tx.$queryRawUnsafe<RowCount[]>(countQuery, ...countParams),
+      tx.$queryRawUnsafe<JsonRow[]>(rowsQuery, ...rowParams),
     ]);
     return [countResult, rowResult] as const;
   });
+  const rawTotalCount = Number(countRows[0]?.row_count ?? 0);
+  const totalCountIsExact = !search || rawTotalCount <= SEARCH_COUNT_EXACT_LIMIT;
+  const totalCount = search && !totalCountIsExact ? SEARCH_COUNT_EXACT_LIMIT : rawTotalCount;
+  const sanitizedRows = rows.flatMap((entry) => (entry.row ? [sanitizeRow(meta, entry.row)] : []));
+  const hasMore = search
+    ? sanitizedRows.length > limit
+    : offset + sanitizedRows.length < totalCount;
 
   return {
     modelName: meta.modelName,
@@ -212,10 +516,12 @@ export async function listDataExplorerRows(
     coverageCategory: getCoverageCategory(meta.modelName),
     coverageLabel: getCoverageLabel(meta.modelName),
     columns: meta.fields,
-    totalCount: Number(countRows[0]?.row_count ?? 0),
+    totalCount,
+    totalCountIsExact,
+    hasMore,
     limit,
     offset,
-    rows: rows.flatMap((entry) => (entry.row ? [entry.row] : [])),
+    rows: sanitizedRows.slice(0, limit),
   };
 }
 
@@ -223,7 +529,7 @@ export async function updateDataExplorerRow(
   orgId: string,
   tableName: string,
   rowId: string,
-  patch: Record<string, unknown>
+  patch: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const meta = getTableMeta(tableName);
   const editableKeys = Object.keys(patch).filter((key) => meta.editableFieldNames.has(key));
@@ -232,23 +538,27 @@ export async function updateDataExplorerRow(
     throw new Error('No editable fields were provided');
   }
 
+  const sanitizedPatch = Object.fromEntries(editableKeys.map((key) => [key, patch[key]]));
   const quotedColumns = editableKeys.map((column) => quoteIdentifier(column)).join(', ');
+  const conditions = [`t.${quoteIdentifier('id')} = $2`];
+  const params: unknown[] = [JSON.stringify(sanitizedPatch), rowId];
+  addScopeCondition(conditions, params, meta, orgId);
   const updateQuery = `
     UPDATE ${quoteIdentifier(meta.tableName)} AS t
     SET (${quotedColumns}) = (
       SELECT ${quotedColumns}
       FROM jsonb_populate_record(
         NULL::${quoteIdentifier(meta.tableName)},
-        to_jsonb(t) || $1::jsonb
+        $1::jsonb
       )
     )
     ${meta.hasUpdatedAt ? ', "updated_at" = NOW()' : ''}
-    WHERE "id" = $2
-    RETURNING to_jsonb(t) AS row
+    WHERE ${conditions.join(' AND ')}
+    RETURNING ${buildRowJsonExpression(meta)} AS row
   `;
 
   const rows = await withOrgContext(orgId, (tx) =>
-    tx.$queryRawUnsafe<JsonRow[]>(updateQuery, JSON.stringify(patch), rowId)
+    tx.$queryRawUnsafe<JsonRow[]>(updateQuery, ...params),
   );
 
   const row = rows[0]?.row;
@@ -256,5 +566,5 @@ export async function updateDataExplorerRow(
     throw new Error('Row not found');
   }
 
-  return row;
+  return sanitizeRow(meta, row);
 }

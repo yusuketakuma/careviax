@@ -1,11 +1,25 @@
 import { Prisma, PrismaClient } from '@prisma/client';
-import { unzipSync } from 'fflate';
+import {
+  FetchLike,
+  SSK_IMPORT_URL_POLICY,
+  ZipExpansionLimits,
+  fetchBytes,
+  fetchText,
+  normalizeImportSourceUrl,
+  resolveImportSourceUrl,
+  unzipWithLimits,
+} from './shared';
 
 export const SSK_DRUG_MASTER_PAGE_URL =
   'https://www.ssk.or.jp/smph/seikyushiharai/tensuhyo/kihonmasta/kihonmasta_04.html';
 
 const SSK_TOTAL_COLUMNS = 42;
 const UPSERT_CHUNK_SIZE = 200;
+const SSK_ZIP_EXPANSION_LIMITS: ZipExpansionLimits = {
+  maxEntries: 20,
+  maxEntryBytes: 128 * 1024 * 1024,
+  maxTotalBytes: 128 * 1024 * 1024,
+};
 
 const SSK_DOSAGE_FORM_MAP: Record<string, string> = {
   '1': '内用薬',
@@ -48,7 +62,8 @@ export type ParsedSskDrugMasterFile = {
 export type ImportSskDrugMasterOptions = {
   zipUrl?: string;
   limit?: number;
-  fetchImpl?: typeof fetch;
+  fetchImpl?: FetchLike;
+  zipLimits?: Partial<ZipExpansionLimits>;
 };
 
 function normalizeCell(value: string | undefined) {
@@ -171,7 +186,7 @@ function mapSskRowToDrugMaster(row: string[]): ParsedSskDrugMasterRecord | null 
 
 function shouldReplaceRecord(
   current: ParsedSskDrugMasterRecord,
-  candidate: ParsedSskDrugMasterRecord
+  candidate: ParsedSskDrugMasterRecord,
 ) {
   const currentSelection = current.drug_name.includes('（選）');
   const candidateSelection = candidate.drug_name.includes('（選）');
@@ -188,67 +203,78 @@ function shouldReplaceRecord(
 }
 
 export function resolveLatestSskDrugMasterZipUrl(html: string, pageUrl = SSK_DRUG_MASTER_PAGE_URL) {
-  const match = html.match(
-    /<a\s+href="([^"]+\.zip)"[^>]*>\s*全件ファイル\(ZIP:[^<]+<\/a>/i
-  );
+  const match = html.match(/<a\s+href="([^"]+\.zip)"[^>]*>\s*全件ファイル\(ZIP:[^<]+<\/a>/i);
 
   if (!match) {
     throw new Error('SSK医薬品全件マスターのZIPリンクを解決できませんでした');
   }
 
-  return new URL(match[1], pageUrl).toString();
+  return resolveImportSourceUrl(match[1], pageUrl, SSK_IMPORT_URL_POLICY);
+}
+
+function resolveSskZipLimits(overrides?: Partial<ZipExpansionLimits>) {
+  return {
+    ...SSK_ZIP_EXPANSION_LIMITS,
+    ...overrides,
+  };
+}
+
+function unzipSskDrugMasterArchive(buffer: Uint8Array, overrides?: Partial<ZipExpansionLimits>) {
+  return unzipWithLimits(buffer, {
+    sourceLabel: 'SSK医薬品マスター',
+    limits: resolveSskZipLimits(overrides),
+    filter: (entryName) => entryName.toLowerCase().endsWith('.csv'),
+  });
 }
 
 export async function fetchLatestSskDrugMasterZip(
-  fetchImpl: typeof fetch = fetch,
-  pageUrl = SSK_DRUG_MASTER_PAGE_URL
+  fetchImpl: FetchLike = fetch,
+  pageUrl = SSK_DRUG_MASTER_PAGE_URL,
+  zipLimits?: Partial<ZipExpansionLimits>,
 ) {
-  const pageResponse = await fetchImpl(pageUrl, {
-    headers: { accept: 'text/html,application/xhtml+xml' },
+  const html = await fetchText(pageUrl, {
+    fetchImpl,
+    policy: SSK_IMPORT_URL_POLICY,
   });
-  if (!pageResponse.ok) {
-    throw new Error(`SSKページの取得に失敗しました: ${pageResponse.status}`);
-  }
-
-  const html = await pageResponse.text();
   const zipUrl = resolveLatestSskDrugMasterZipUrl(html, pageUrl);
 
-  const zipResponse = await fetchImpl(zipUrl);
-  if (!zipResponse.ok) {
-    throw new Error(`SSK ZIPの取得に失敗しました: ${zipResponse.status}`);
-  }
-
-  const zipBytes = new Uint8Array(await zipResponse.arrayBuffer());
+  const zipBytes = new Uint8Array(
+    await fetchBytes(zipUrl, {
+      fetchImpl,
+      policy: SSK_IMPORT_URL_POLICY,
+    }),
+  );
   return {
     zipUrl,
-    entries: unzipSync(zipBytes),
+    entries: unzipSskDrugMasterArchive(zipBytes, zipLimits),
   };
 }
 
 export async function parseSskDrugMasterZip(
-  options: Pick<ImportSskDrugMasterOptions, 'zipUrl' | 'limit' | 'fetchImpl'> = {}
+  options: Pick<ImportSskDrugMasterOptions, 'zipUrl' | 'limit' | 'fetchImpl' | 'zipLimits'> = {},
 ): Promise<ParsedSskDrugMasterFile> {
   const fetchImpl = options.fetchImpl ?? fetch;
+  const explicitZipUrl = options.zipUrl
+    ? normalizeImportSourceUrl(options.zipUrl, SSK_IMPORT_URL_POLICY)
+    : null;
 
-  const zipPayload = options.zipUrl
+  const zipPayload = explicitZipUrl
     ? {
-        zipUrl: options.zipUrl,
-        entries: unzipSync(
+        zipUrl: explicitZipUrl,
+        entries: unzipSskDrugMasterArchive(
           new Uint8Array(
-            await (async () => {
-              const response = await fetchImpl(options.zipUrl!);
-              if (!response.ok) {
-                throw new Error(`SSK ZIPの取得に失敗しました: ${response.status}`);
-              }
-              return response.arrayBuffer();
-            })()
-          )
+            await fetchBytes(explicitZipUrl, {
+              fetchImpl,
+              policy: SSK_IMPORT_URL_POLICY,
+            }),
+          ),
+          options.zipLimits,
         ),
       }
-    : await fetchLatestSskDrugMasterZip(fetchImpl);
+    : await fetchLatestSskDrugMasterZip(fetchImpl, SSK_DRUG_MASTER_PAGE_URL, options.zipLimits);
 
   const entry = Object.entries(zipPayload.entries).find(([name]) =>
-    name.toLowerCase().endsWith('.csv')
+    name.toLowerCase().endsWith('.csv'),
   );
 
   if (!entry) {
@@ -319,14 +345,14 @@ async function upsertDrugMasterChunk(db: ImportDbClient, records: ParsedSskDrugM
           max_administration_days: record.max_administration_days,
           transitional_expiry_date: record.transitional_expiry_date,
         },
-      })
-    )
+      }),
+    ),
   );
 }
 
 export async function importSskDrugMaster(
   db: ImportDbClient,
-  options: ImportSskDrugMasterOptions = {}
+  options: ImportSskDrugMasterOptions = {},
 ) {
   const log = await db.drugMasterImportLog.create({
     data: {
@@ -340,10 +366,7 @@ export async function importSskDrugMaster(
     const parsed = await parseSskDrugMasterZip(options);
 
     for (let index = 0; index < parsed.records.length; index += UPSERT_CHUNK_SIZE) {
-      await upsertDrugMasterChunk(
-        db,
-        parsed.records.slice(index, index + UPSERT_CHUNK_SIZE)
-      );
+      await upsertDrugMasterChunk(db, parsed.records.slice(index, index + UPSERT_CHUNK_SIZE));
     }
 
     const completedLog = await db.drugMasterImportLog.update({

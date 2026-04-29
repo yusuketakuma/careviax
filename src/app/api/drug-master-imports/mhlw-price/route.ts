@@ -4,9 +4,20 @@ import { forbidden, success, validationError } from '@/lib/api/response';
 import { isAdmin, withAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { importMhlwPriceList } from '@/server/services/drug-master-import/mhlw';
+import {
+  MHLW_IMPORT_URL_POLICY,
+  importSourceUrlValidationMessage,
+  isAllowedImportSourceUrl,
+} from '@/server/services/drug-master-import/shared';
 
 const requestSchema = z.object({
-  workbookUrl: z.string().url().optional(),
+  workbookUrl: z
+    .string()
+    .url()
+    .refine((url) => isAllowedImportSourceUrl(url, MHLW_IMPORT_URL_POLICY), {
+      message: importSourceUrlValidationMessage(),
+    })
+    .optional(),
 });
 
 export const POST = withAuthContext(async (req: NextRequest, authCtx) => {
@@ -30,6 +41,6 @@ export const POST = withAuthContext(async (req: NextRequest, authCtx) => {
         workbookUrl: result.workbookUrl,
       },
     },
-    201
+    201,
   );
 });

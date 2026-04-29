@@ -1,9 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { zipSync } from 'fflate';
-import {
-  importPmdaPackageInserts,
-  parsePmdaPackageInsertArchive,
-} from './pmda';
+import { importPmdaPackageInserts, parsePmdaPackageInsertArchive } from './pmda';
 
 function toZipBlob(bytes: Uint8Array) {
   const copy = Uint8Array.from(bytes);
@@ -56,7 +53,7 @@ describe('parsePmdaPackageInsertArchive', () => {
     });
 
     const parsed = await parsePmdaPackageInsertArchive({
-      zipUrl: 'https://example.com/pmda.zip',
+      zipUrl: 'https://www.pmda.go.jp/pmda.zip',
       fetchImpl: async () =>
         new Response(toZipBlob(zipped), {
           status: 200,
@@ -79,8 +76,31 @@ describe('parsePmdaPackageInsertArchive', () => {
           counterpart_yj_codes: ['987654321098'],
           mechanism: '代謝阻害',
         }),
-      ])
+      ]),
     );
+  });
+
+  it('rejects ZIP archives that exceed the configured entry count limit', async () => {
+    const zipped = zipSync({
+      'sample-a.xml': Buffer.from(sampleXml, 'utf8'),
+      'sample-b.xml': Buffer.from(sampleXml, 'utf8'),
+    });
+
+    await expect(
+      parsePmdaPackageInsertArchive({
+        zipUrl: 'https://www.pmda.go.jp/pmda.zip',
+        zipLimits: {
+          maxEntries: 1,
+          maxEntryBytes: 1024 * 1024,
+          maxTotalBytes: 2 * 1024 * 1024,
+        },
+        fetchImpl: async () =>
+          new Response(toZipBlob(zipped), {
+            status: 200,
+            headers: { 'content-type': 'application/zip' },
+          }),
+      }),
+    ).rejects.toThrow(/エントリ数が上限/);
   });
 });
 
@@ -139,7 +159,7 @@ describe('importPmdaPackageInserts', () => {
     });
 
     const result = await importPmdaPackageInserts(db as never, {
-      zipUrl: 'https://example.com/pmda.zip',
+      zipUrl: 'https://www.pmda.go.jp/pmda.zip',
       fetchImpl: async () =>
         new Response(toZipBlob(zipped), {
           status: 200,
@@ -161,7 +181,7 @@ describe('importPmdaPackageInserts', () => {
           source: 'pmda_xml',
           severity: 'contraindicated',
         }),
-      })
+      }),
     );
   });
 });

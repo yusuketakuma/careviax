@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
-    drugMaster: { findFirst: vi.fn() },
-    pharmacyDrugStock: { findFirst: vi.fn() },
+    drugMaster: { findFirst: vi.fn(), findMany: vi.fn() },
+    pharmacyDrugStock: { findFirst: vi.fn(), findMany: vi.fn() },
     prescriberInstitution: { findFirst: vi.fn(), create: vi.fn() },
   },
 }));
@@ -15,11 +15,33 @@ vi.mock('@/lib/db/client', () => ({
 import { mapJahisToIntake } from '../qr-intake-mapper';
 import type { JahisQRData } from '../jahis-qr';
 
+type DrugMasterFindManyArgs = {
+  where?: {
+    id?: { in?: string[] };
+    OR?: Array<Record<string, unknown>>;
+  };
+  select?: Record<string, boolean>;
+};
+
+type PharmacyDrugStockFindManyArgs = {
+  where?: {
+    org_id?: string;
+    site_id?: string;
+    drug_master_id?: string | { in?: string[] };
+    is_stocked?: boolean;
+  };
+};
+
 // ── Shared helpers ──
 
 function makeQrData(overrides: Partial<JahisQRData> = {}): JahisQRData {
   return {
-    patient: { name: '山田太郎', nameKana: 'ヤマダタロウ', gender: 'male', birthDate: '1950-03-15' },
+    patient: {
+      name: '山田太郎',
+      nameKana: 'ヤマダタロウ',
+      gender: 'male',
+      birthDate: '1950-03-15',
+    },
     medications: [],
     prescribingInstitution: {
       name: 'テスト医院',
@@ -42,7 +64,9 @@ function makeQrData(overrides: Partial<JahisQRData> = {}): JahisQRData {
   };
 }
 
-function makeMed(overrides: Partial<import('../jahis-qr').JahisMedication>): import('../jahis-qr').JahisMedication {
+function makeMed(
+  overrides: Partial<import('../jahis-qr').JahisMedication>,
+): import('../jahis-qr').JahisMedication {
   return {
     drugName: '不明薬剤',
     supplements: [],
@@ -100,6 +124,52 @@ const mockInstitution = {
 describe('mapJahisToIntake', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    prismaMock.drugMaster.findMany.mockImplementation(async (args: DrugMasterFindManyArgs = {}) => {
+      const idBatch = args.where?.id?.in;
+
+      if (idBatch) {
+        const rows = [];
+        for (const id of idBatch) {
+          const match = await prismaMock.drugMaster.findFirst({
+            where: { id },
+            select: args.select,
+          });
+          if (match) rows.push(match);
+        }
+        return rows;
+      }
+
+      const match = await prismaMock.drugMaster.findFirst(args);
+      return match ? [match] : [];
+    });
+    prismaMock.pharmacyDrugStock.findMany.mockImplementation(
+      async (args: PharmacyDrugStockFindManyArgs = {}) => {
+        const drugMasterIdFilter = args.where?.drug_master_id;
+        const drugMasterIds =
+          typeof drugMasterIdFilter === 'object' && drugMasterIdFilter !== null
+            ? (drugMasterIdFilter.in ?? [])
+            : drugMasterIdFilter
+              ? [drugMasterIdFilter]
+              : [];
+
+        if (drugMasterIds.length === 0) {
+          const match = await prismaMock.pharmacyDrugStock.findFirst(args);
+          return match ? [match] : [];
+        }
+
+        const rows = [];
+        for (const drugMasterId of drugMasterIds) {
+          const match = await prismaMock.pharmacyDrugStock.findFirst({
+            where: {
+              ...args.where,
+              drug_master_id: drugMasterId,
+            },
+          });
+          if (match) rows.push(match);
+        }
+        return rows;
+      },
+    );
     // Default: institution found by code
     prismaMock.prescriberInstitution.findFirst.mockResolvedValue(mockInstitution);
   });
@@ -145,7 +215,7 @@ describe('mapJahisToIntake', () => {
       expect(prismaMock.prescriberInstitution.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { org_id: 'org_1', institution_code: '1234567' },
-        })
+        }),
       );
       expect(result.prescriberInstitutionId).toBe('inst_1');
       expect(result.prescriberInstitution).toBe('テスト医院');
@@ -155,7 +225,7 @@ describe('mapJahisToIntake', () => {
     it('falls back to name lookup when not found by code', async () => {
       // Code lookup misses, name lookup hits
       prismaMock.prescriberInstitution.findFirst
-        .mockResolvedValueOnce(null)       // by code: miss
+        .mockResolvedValueOnce(null) // by code: miss
         .mockResolvedValueOnce(mockInstitution); // by name: hit
 
       const qrData = makeQrData({ medications: [] });
@@ -183,7 +253,7 @@ describe('mapJahisToIntake', () => {
             name: 'テスト医院',
             institution_code: '1234567',
           }),
-        })
+        }),
       );
       expect(result.prescriberInstitutionId).toBe('inst_new');
       expect(result.isNewInstitution).toBe(true);
@@ -219,7 +289,7 @@ describe('mapJahisToIntake', () => {
       expect(prismaMock.prescriberInstitution.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ name: '医療機関 (9999999)' }),
-        })
+        }),
       );
       expect(result.prescriberInstitutionId).toBe('inst_new');
       expect(result.isNewInstitution).toBe(true);
@@ -247,8 +317,12 @@ describe('mapJahisToIntake', () => {
 
       await mapJahisToIntake(qrData, baseInput);
 
-      expect(prismaMock.drugMaster.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { yj_code: '123456789012' } })
+      expect(prismaMock.drugMaster.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: expect.arrayContaining([{ yj_code: '123456789012' }]),
+          }),
+        }),
       );
     });
 
@@ -296,7 +370,7 @@ describe('mapJahisToIntake', () => {
           field: 'dosage_form',
           value: '錠',
           source: 'drug_master',
-        })
+        }),
       );
     });
   });
@@ -320,8 +394,12 @@ describe('mapJahisToIntake', () => {
 
       await mapJahisToIntake(qrData, baseInput);
 
-      expect(prismaMock.drugMaster.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { receipt_code: '123456789' } })
+      expect(prismaMock.drugMaster.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: expect.arrayContaining([{ receipt_code: '123456789' }]),
+          }),
+        }),
       );
     });
   });
@@ -339,8 +417,12 @@ describe('mapJahisToIntake', () => {
 
       await mapJahisToIntake(qrData, baseInput);
 
-      expect(prismaMock.drugMaster.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { receipt_code: '123456789' } })
+      expect(prismaMock.drugMaster.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: expect.arrayContaining([{ receipt_code: '123456789' }]),
+          }),
+        }),
       );
     });
 
@@ -356,8 +438,12 @@ describe('mapJahisToIntake', () => {
 
       await mapJahisToIntake(qrData, baseInput);
 
-      expect(prismaMock.drugMaster.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { yj_code: '123456789012' } })
+      expect(prismaMock.drugMaster.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: expect.arrayContaining([{ yj_code: '123456789012' }]),
+          }),
+        }),
       );
     });
 
@@ -373,8 +459,12 @@ describe('mapJahisToIntake', () => {
 
       await mapJahisToIntake(qrData, baseInput);
 
-      expect(prismaMock.drugMaster.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { hot_code: '1234567890123' } })
+      expect(prismaMock.drugMaster.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: expect.arrayContaining([{ hot_code: '1234567890123' }]),
+          }),
+        }),
       );
     });
 
@@ -390,10 +480,15 @@ describe('mapJahisToIntake', () => {
 
       await mapJahisToIntake(qrData, baseInput);
 
-      expect(prismaMock.drugMaster.findFirst).toHaveBeenCalledWith(
+      expect(prismaMock.drugMaster.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { OR: [{ yj_code: '123456789012' }, { receipt_code: '123456789012' }] },
-        })
+          where: expect.objectContaining({
+            OR: expect.arrayContaining([
+              { yj_code: '123456789012' },
+              { receipt_code: '123456789012' },
+            ]),
+          }),
+        }),
       );
     });
 
@@ -410,9 +505,101 @@ describe('mapJahisToIntake', () => {
       await mapJahisToIntake(qrData, baseInput);
 
       // drugCodeType=1 means "no code" → should fall through to length-heuristic (12-digit = yj_code)
-      expect(prismaMock.drugMaster.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { yj_code: '123456789012' } })
+      expect(prismaMock.drugMaster.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: expect.arrayContaining([{ yj_code: '123456789012' }]),
+          }),
+        }),
       );
+    });
+
+    it('batches DrugMaster and formulary lookups for multiple medication lines', async () => {
+      const drugA = {
+        ...mockDrugMaster,
+        id: 'drug_a',
+        yj_code: '111111111111',
+        receipt_code: '111111111',
+        drug_name: '薬A',
+      };
+      const drugB = {
+        ...mockDrugMasterGeneric,
+        id: 'drug_b',
+        yj_code: '222222222222',
+        receipt_code: '222222222',
+        drug_name: '薬B',
+      };
+      prismaMock.drugMaster.findMany.mockResolvedValueOnce([drugA, drugB]);
+      prismaMock.pharmacyDrugStock.findMany.mockResolvedValueOnce([]);
+
+      const qrData = makeQrData({
+        medications: [
+          makeMed({ drugCode: '111111111111', drugName: '薬A' }),
+          makeMed({ drugCode: '222222222222', drugName: '薬B' }),
+        ],
+      });
+
+      const result = await mapJahisToIntake(qrData, baseInput);
+
+      expect(result.lines.map((line) => line.drug_code)).toEqual(['111111111111', '222222222222']);
+      expect(prismaMock.drugMaster.findMany).toHaveBeenCalledTimes(1);
+      expect(prismaMock.drugMaster.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: expect.arrayContaining([{ yj_code: '111111111111' }, { yj_code: '222222222222' }]),
+          }),
+        }),
+      );
+      expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenCalledTimes(1);
+      expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            org_id: 'org_1',
+            site_id: 'site_1',
+            drug_master_id: { in: ['drug_a', 'drug_b'] },
+            is_stocked: true,
+          },
+        }),
+      );
+      expect(prismaMock.drugMaster.findFirst).not.toHaveBeenCalled();
+      expect(prismaMock.pharmacyDrugStock.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('preserves drugCodeType precedence when batched candidates include lower-priority matches', async () => {
+      const receiptCandidate = {
+        ...mockDrugMaster,
+        id: 'receipt_candidate',
+        yj_code: '000000000000',
+        receipt_code: '123456789012',
+        drug_name: 'Receipt Candidate',
+        dosage_form: '散',
+        is_generic: false,
+      };
+      const yjCandidate = {
+        ...mockDrugMaster,
+        id: 'yj_candidate',
+        yj_code: '123456789012',
+        receipt_code: '999999999',
+        drug_name: 'YJ Candidate',
+        dosage_form: '錠',
+        is_generic: true,
+      };
+      prismaMock.drugMaster.findMany.mockResolvedValueOnce([receiptCandidate, yjCandidate]);
+      prismaMock.pharmacyDrugStock.findMany.mockResolvedValueOnce([]);
+
+      const qrData = makeQrData({
+        medications: [
+          makeMed({ drugCode: '123456789012', drugCodeType: 4, drugName: 'YJ Candidate' }),
+        ],
+      });
+
+      const result = await mapJahisToIntake(qrData, baseInput);
+
+      expect(result.lines[0]).toMatchObject({
+        drug_code: '123456789012',
+        dosage_form: '錠',
+        is_generic: true,
+      });
     });
   });
 
@@ -429,10 +616,12 @@ describe('mapJahisToIntake', () => {
 
       await mapJahisToIntake(qrData, baseInput);
 
-      expect(prismaMock.drugMaster.findFirst).toHaveBeenCalledWith(
+      expect(prismaMock.drugMaster.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { drug_name: { contains: 'アムロジピン錠5mg' } },
-        })
+          where: expect.objectContaining({
+            OR: expect.arrayContaining([{ drug_name: { contains: 'アムロジピン錠5mg' } }]),
+          }),
+        }),
       );
     });
 
@@ -441,7 +630,9 @@ describe('mapJahisToIntake', () => {
       prismaMock.pharmacyDrugStock.findFirst.mockResolvedValueOnce(null);
 
       const qrData = makeQrData({
-        medications: [makeMed({ drugCode: undefined, drugName: '不明薬剤', dose: '1', unit: '錠' })],
+        medications: [
+          makeMed({ drugCode: undefined, drugName: '不明薬剤', dose: '1', unit: '錠' }),
+        ],
       });
 
       const result = await mapJahisToIntake(qrData, baseInput);
@@ -461,7 +652,9 @@ describe('mapJahisToIntake', () => {
         .mockResolvedValueOnce(null); // name fallback miss
 
       const qrData = makeQrData({
-        medications: [makeMed({ drugCode: 'BADCODE', drugName: '存在しない薬剤', dose: '1', unit: '錠' })],
+        medications: [
+          makeMed({ drugCode: 'BADCODE', drugName: '存在しない薬剤', dose: '1', unit: '錠' }),
+        ],
       });
 
       const result = await mapJahisToIntake(qrData, baseInput);
@@ -477,12 +670,19 @@ describe('mapJahisToIntake', () => {
   describe('PharmacyDrugStock formulary matching', () => {
     it('marks drug as in-formulary when stock record exists', async () => {
       prismaMock.drugMaster.findFirst
-        .mockResolvedValueOnce(mockDrugMaster)  // main lookup
+        .mockResolvedValueOnce(mockDrugMaster) // main lookup
         .mockResolvedValueOnce(mockDrugMasterGeneric); // preferred generic lookup
       prismaMock.pharmacyDrugStock.findFirst.mockResolvedValueOnce(mockStock);
 
       const qrData = makeQrData({
-        medications: [makeMed({ drugCode: '123456789012', drugName: 'アムロジピン錠5mg', dose: '5', unit: 'mg' })],
+        medications: [
+          makeMed({
+            drugCode: '123456789012',
+            drugName: 'アムロジピン錠5mg',
+            dose: '5',
+            unit: 'mg',
+          }),
+        ],
       });
 
       const result = await mapJahisToIntake(qrData, baseInput);
@@ -501,7 +701,14 @@ describe('mapJahisToIntake', () => {
       prismaMock.pharmacyDrugStock.findFirst.mockResolvedValueOnce(null);
 
       const qrData = makeQrData({
-        medications: [makeMed({ drugCode: '123456789012', drugName: 'アムロジピン錠5mg', dose: '5', unit: 'mg' })],
+        medications: [
+          makeMed({
+            drugCode: '123456789012',
+            drugName: 'アムロジピン錠5mg',
+            dose: '5',
+            unit: 'mg',
+          }),
+        ],
       });
 
       const result = await mapJahisToIntake(qrData, baseInput);
@@ -541,14 +748,15 @@ describe('mapJahisToIntake', () => {
 
       await mapJahisToIntake(qrData, baseInput);
 
-      expect(prismaMock.pharmacyDrugStock.findFirst).toHaveBeenCalledWith(
+      expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
+            org_id: 'org_1',
             site_id: 'site_1',
-            drug_master_id: 'drug_1',
+            drug_master_id: { in: ['drug_1'] },
             is_stocked: true,
           },
-        })
+        }),
       );
     });
 
@@ -587,7 +795,14 @@ describe('mapJahisToIntake', () => {
       prismaMock.pharmacyDrugStock.findFirst.mockResolvedValueOnce(null);
 
       const qrData = makeQrData({
-        medications: [makeMed({ drugCode: '123456789012', drugName: 'アムロジピン錠5mg', dose: '5', unit: 'mg' })],
+        medications: [
+          makeMed({
+            drugCode: '123456789012',
+            drugName: 'アムロジピン錠5mg',
+            dose: '5',
+            unit: 'mg',
+          }),
+        ],
       });
 
       const result = await mapJahisToIntake(qrData, baseInput);
@@ -600,7 +815,13 @@ describe('mapJahisToIntake', () => {
 
       const qrData = makeQrData({
         medications: [
-          makeMed({ drugCode: '123456789012', drugName: 'アムロジピン錠5mg', dose: '5', unit: 'mg', daysOrTimes: '14日分' }),
+          makeMed({
+            drugCode: '123456789012',
+            drugName: 'アムロジピン錠5mg',
+            dose: '5',
+            unit: 'mg',
+            daysOrTimes: '14日分',
+          }),
         ],
       });
 
@@ -614,7 +835,13 @@ describe('mapJahisToIntake', () => {
 
       const qrData = makeQrData({
         medications: [
-          makeMed({ drugCode: '123456789012', drugName: 'アムロジピン錠5mg', dose: '5', unit: 'mg', daysOrTimes: '頓服' }),
+          makeMed({
+            drugCode: '123456789012',
+            drugName: 'アムロジピン錠5mg',
+            dose: '5',
+            unit: 'mg',
+            daysOrTimes: '頓服',
+          }),
         ],
       });
 
@@ -640,7 +867,13 @@ describe('mapJahisToIntake', () => {
 
       const qrData = makeQrData({
         medications: [
-          makeMed({ drugCode: '123456789012', drugName: 'アムロジピン錠5mg', dose: '5', unit: 'mg', dispensedQuantity: '70' }),
+          makeMed({
+            drugCode: '123456789012',
+            drugName: 'アムロジピン錠5mg',
+            dose: '5',
+            unit: 'mg',
+            dispensedQuantity: '70',
+          }),
         ],
       });
 
@@ -665,9 +898,7 @@ describe('mapJahisToIntake', () => {
 
   describe('auto-completion tracking', () => {
     it('tracks autoCompletedFields for dosage_form per line', async () => {
-      prismaMock.drugMaster.findFirst
-        .mockResolvedValueOnce(mockDrugMaster)
-        .mockResolvedValueOnce(mockDrugMasterGeneric);
+      prismaMock.drugMaster.findMany.mockResolvedValueOnce([mockDrugMaster, mockDrugMasterGeneric]);
       prismaMock.pharmacyDrugStock.findFirst.mockResolvedValue(null);
 
       const qrData = makeQrData({

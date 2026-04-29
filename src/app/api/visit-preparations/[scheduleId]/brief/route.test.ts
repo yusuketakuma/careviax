@@ -4,10 +4,12 @@ import type { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   visitScheduleFindFirstMock,
+  canAccessVisitScheduleAssignmentMock,
   scheduleVisitBriefMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   visitScheduleFindFirstMock: vi.fn(),
+  canAccessVisitScheduleAssignmentMock: vi.fn(),
   scheduleVisitBriefMock: vi.fn(),
 }));
 
@@ -21,6 +23,10 @@ vi.mock('@/lib/db/client', () => ({
       findFirst: visitScheduleFindFirstMock,
     },
   },
+}));
+
+vi.mock('@/lib/auth/visit-schedule-access', () => ({
+  canAccessVisitScheduleAssignment: canAccessVisitScheduleAssignmentMock,
 }));
 
 vi.mock('@/server/services/visit-brief', () => ({
@@ -49,10 +55,14 @@ describe('/api/visit-preparations/[scheduleId]/brief', () => {
     });
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
+      pharmacist_id: 'user_1',
       case_: {
         patient_id: 'patient_1',
+        primary_pharmacist_id: 'user_1',
+        backup_pharmacist_id: null,
       },
     });
+    canAccessVisitScheduleAssignmentMock.mockReturnValue(true);
     scheduleVisitBriefMock.mockResolvedValue({
       patient: { id: 'patient_1', name: '患者A' },
       context: 'schedule',
@@ -85,9 +95,12 @@ describe('/api/visit-preparations/[scheduleId]/brief', () => {
       where: { id: 'schedule_1', org_id: 'org_1' },
       select: {
         id: true,
+        pharmacist_id: true,
         case_: {
           select: {
             patient_id: true,
+            primary_pharmacist_id: true,
+            backup_pharmacist_id: true,
           },
         },
       },
@@ -102,5 +115,16 @@ describe('/api/visit-preparations/[scheduleId]/brief', () => {
         context: 'schedule',
       },
     });
+  });
+
+  it('returns forbidden when the schedule is outside the assignment scope', async () => {
+    canAccessVisitScheduleAssignmentMock.mockReturnValue(false);
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    expect(scheduleVisitBriefMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(403);
   });
 });

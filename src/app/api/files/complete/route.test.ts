@@ -55,6 +55,10 @@ describe('/api/files/complete', () => {
       orgId: 'org_1',
       fileId: '11111111-1111-4111-8111-111111111111',
       uploadedBy: 'user_1',
+      accessContext: {
+        userId: 'user_1',
+        role: 'pharmacist',
+      },
       etag: 'etag-1',
     });
   });

@@ -65,7 +65,7 @@ describe('/api/billing-candidates/[id] PATCH', () => {
         auditLog: {
           create: auditLogCreateMock,
         },
-      })
+      }),
     );
   });
 
@@ -76,6 +76,10 @@ describe('/api/billing-candidates/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(Object), {
+      permission: 'canManageBilling',
+      message: '請求候補の更新権限がありません',
+    });
     expect(reviewBillingCandidateMock).toHaveBeenCalledWith(
       {
         billingCandidate: { findFirst: findFirstMock },
@@ -87,7 +91,7 @@ describe('/api/billing-candidates/[id] PATCH', () => {
         action: 'confirm',
         note: null,
         actorId: 'user_1',
-      }
+      },
     );
     expect(auditLogCreateMock).toHaveBeenCalledOnce();
     await expect(response.json()).resolves.toMatchObject({
@@ -110,5 +114,43 @@ describe('/api/billing-candidates/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+  });
+
+  it('rejects an invalid review action before transaction or audit work', async () => {
+    const response = await PATCH(createRequest({ action: 'delete' }), {
+      params: Promise.resolve({ id: 'candidate_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(findFirstMock).not.toHaveBeenCalled();
+    expect(reviewBillingCandidateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns not found without audit work when the candidate is missing', async () => {
+    findFirstMock.mockResolvedValueOnce(null);
+
+    const response = await PATCH(createRequest({ action: 'confirm' }), {
+      params: Promise.resolve({ id: 'missing_candidate' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expect(reviewBillingCandidateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('does not write an audit record when the review service throws', async () => {
+    reviewBillingCandidateMock.mockRejectedValueOnce(new Error('review service failed'));
+
+    await expect(
+      PATCH(createRequest({ action: 'confirm' }), {
+        params: Promise.resolve({ id: 'candidate_1' }),
+      }),
+    ).rejects.toThrow('review service failed');
+
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 });

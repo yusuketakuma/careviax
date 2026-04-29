@@ -457,20 +457,25 @@ test.describe('billing: candidates page', () => {
     await page.goto('/billing/candidates');
     await waitForStableUi(page);
 
-    // Should have a generate / create candidates action somewhere
-    const generateBtn = page.getByRole('button', {
+    // Should have a generate / create candidates action somewhere, or a usable filter form.
+    const generateButton = page.getByRole('button', {
       name: /生成|候補生成|作成|Generate/i,
     });
-    const hasGenerateBtn = await generateBtn.isVisible().catch(() => false);
+    const hasGenerateButton = await generateButton.isVisible().catch(() => false);
 
-    // Also acceptable: the page shows filter controls that trigger generation
+    const hasExportButton = await page
+      .getByRole('button', {
+        name: /CSV|出力|エクスポート|Export/i,
+      })
+      .isVisible()
+      .catch(() => false);
     const hasFilterControls = await page
-      .locator('form, [role="form"]')
+      .locator('form input, form select, form button, [role="form"] input, [role="form"] button')
       .first()
       .isVisible()
       .catch(() => false);
 
-    expect(hasGenerateBtn || hasFilterControls || true).toBe(true); // page loads is minimum
+    expect(hasGenerateButton || hasExportButton || hasFilterControls).toBe(true);
 
     expect(errors).toEqual([]);
   });

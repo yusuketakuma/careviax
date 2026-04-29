@@ -11,7 +11,7 @@ describe('parseHotMasterFile', () => {
     ].join('\n');
 
     const parsed = await parseHotMasterFile({
-      fileUrl: 'https://example.com/hot.csv',
+      fileUrl: 'https://www.medis.or.jp/hot.csv',
       fetchImpl: async () =>
         new Response(new Blob([Buffer.from(csv, 'utf8')]), {
           status: 200,
@@ -38,13 +38,12 @@ describe('parseHotMasterFile', () => {
     });
 
     const parsed = await parseHotMasterFile({
-      fileUrl: 'https://example.com/hot.xlsx',
+      fileUrl: 'https://www.medis.or.jp/hot.xlsx',
       fetchImpl: async () =>
         new Response(new Blob([workbook]), {
           status: 200,
           headers: {
-            'content-type':
-              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           },
         }),
     });
@@ -69,7 +68,7 @@ describe('parseHotMasterFile', () => {
     });
 
     const parsed = await parseHotMasterFile({
-      fileUrl: 'https://example.com/hot.zip',
+      fileUrl: 'https://www.medis.or.jp/hot.zip',
       fetchImpl: async () =>
         new Response(new Blob([Buffer.from(zip)]), {
           status: 200,
@@ -87,19 +86,41 @@ describe('parseHotMasterFile', () => {
     ]);
   });
 
+  it('rejects ZIP archives that exceed the configured entry count limit', async () => {
+    const zip = zipSync({
+      'hot-a.csv': new TextEncoder().encode('HOTコード,YJコード\n1,2'),
+      'hot-b.csv': new TextEncoder().encode('HOTコード,YJコード\n3,4'),
+    });
+
+    await expect(
+      parseHotMasterFile({
+        fileUrl: 'https://www.medis.or.jp/hot.zip',
+        zipLimits: {
+          maxEntries: 1,
+          maxEntryBytes: 1024,
+          maxTotalBytes: 2048,
+        },
+        fetchImpl: async () =>
+          new Response(new Blob([Buffer.from(zip)]), {
+            status: 200,
+            headers: { 'content-type': 'application/zip' },
+          }),
+      }),
+    ).rejects.toThrow(/エントリ数が上限/);
+  });
+
   it('surfaces workbook parsing failures for .xlsx files', async () => {
     await expect(
       parseHotMasterFile({
-        fileUrl: 'https://example.com/broken.xlsx',
+        fileUrl: 'https://www.medis.or.jp/broken.xlsx',
         fetchImpl: async () =>
           new Response(new Blob([Buffer.from('not-an-xlsx', 'utf8')]), {
             status: 200,
             headers: {
-              'content-type':
-                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+              'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             },
           }),
-      })
+      }),
     ).rejects.toThrow();
   });
 });
@@ -133,7 +154,7 @@ describe('importHotMaster', () => {
     ].join('\n');
 
     const result = await importHotMaster(db as never, {
-      fileUrl: 'https://example.com/hot.csv',
+      fileUrl: 'https://www.medis.or.jp/hot.csv',
       fetchImpl: async () =>
         new Response(new Blob([Buffer.from(csv, 'utf8')]), {
           status: 200,
@@ -148,7 +169,7 @@ describe('importHotMaster', () => {
         update: expect.objectContaining({
           hot_code: '1234567890123',
         }),
-      })
+      }),
     );
   });
 });

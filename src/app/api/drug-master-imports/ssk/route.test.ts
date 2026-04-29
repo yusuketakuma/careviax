@@ -7,8 +7,7 @@ const { importSskDrugMasterMock } = vi.hoisted(() => ({
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => unknown) => {
-    return (req: NextRequest) =>
-      handler(req, { orgId: 'org_1', userId: 'user_1', role: 'admin' });
+    return (req: NextRequest) => handler(req, { orgId: 'org_1', userId: 'user_1', role: 'admin' });
   },
   isAdmin: (role: string) => role === 'admin',
 }));
@@ -30,22 +29,45 @@ describe('/api/drug-master-imports/ssk', () => {
       log: { id: 'log_1', status: 'success' },
       importedCount: 120,
       entryName: 'master.csv',
-      zipUrl: 'https://example.com/ssk.zip',
+      zipUrl: 'https://www.ssk.or.jp/ssk.zip',
     });
   });
 
   it('imports the SSK master and returns the import summary', async () => {
-    const response = (await POST({
-      json: async () => ({
-        zipUrl: 'https://example.com/ssk.zip',
-        limit: 100,
-      }),
-    } as NextRequest, { params: Promise.resolve({}) }))!;
+    const response = (await POST(
+      {
+        json: async () => ({
+          zipUrl: 'https://www.ssk.or.jp/ssk.zip',
+          limit: 100,
+        }),
+      } as NextRequest,
+      { params: Promise.resolve({}) },
+    ))!;
 
     expect(response.status).toBe(201);
-    expect(importSskDrugMasterMock).toHaveBeenCalledWith({}, {
-      zipUrl: 'https://example.com/ssk.zip',
-      limit: 100,
-    });
+    expect(importSskDrugMasterMock).toHaveBeenCalledWith(
+      {},
+      {
+        zipUrl: 'https://www.ssk.or.jp/ssk.zip',
+        limit: 100,
+      },
+    );
+  });
+
+  it('rejects credential-bearing ZIP URLs without echoing credentials', async () => {
+    const response = (await POST(
+      {
+        json: async () => ({
+          zipUrl: 'https://importer:secret@www.ssk.or.jp/ssk.zip',
+          limit: 100,
+        }),
+      } as NextRequest,
+      { params: Promise.resolve({}) },
+    ))!;
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(importSskDrugMasterMock).not.toHaveBeenCalled();
+    expect(JSON.stringify(payload)).not.toMatch(/importer|secret/);
   });
 });

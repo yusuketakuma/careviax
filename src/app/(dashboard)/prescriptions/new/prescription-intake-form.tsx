@@ -21,6 +21,7 @@ import {
 import { toast } from 'sonner';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { usePrescriptionDraft } from '@/lib/hooks/use-prescription-draft';
+import { isOfflineEncryptionUnavailableError } from '@/lib/offline/crypto';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { PatientMcsSummarySection } from '@/components/patient-mcs/patient-mcs-summary-section';
 import { Badge } from '@/components/ui/badge';
@@ -371,8 +372,25 @@ export function PrescriptionIntakeForm() {
   const { loadDraft, saveDraft, clearDraft } = usePrescriptionDraft(orgId);
   const [draftHydrated, setDraftHydrated] = useState(false);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftSaveFailureNotifiedRef = useRef(false);
   const isDirty = selectedPatientId !== '' || lines.some((l) => l.drug_name.trim() !== '');
   const allowNavigation = useUnsavedChangesGuard({ enabled: isDirty });
+
+  const notifyDraftSaveFailure = useCallback((draftError: unknown) => {
+    if (draftSaveFailureNotifiedRef.current) return;
+    draftSaveFailureNotifiedRef.current = true;
+
+    if (isOfflineEncryptionUnavailableError(draftError)) {
+      toast.error(
+        'オフライン下書きの暗号化キーを確認できないため、処方受付は端末に保存していません。再ログイン後に保存してください。',
+      );
+      return;
+    }
+
+    toast.error(
+      draftError instanceof Error ? draftError.message : '処方受付の下書き保存に失敗しました',
+    );
+  }, []);
 
   // Load draft on mount
   useEffect(() => {
@@ -417,13 +435,18 @@ export function PrescriptionIntakeForm() {
           proposalOrigin,
           residualAdjustment,
         },
-      });
+      })
+        .then(() => {
+          draftSaveFailureNotifiedRef.current = false;
+        })
+        .catch(notifyDraftSaveFailure);
     }, 30_000);
     return () => {
       if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     };
   }, [
     draftHydrated,
+    notifyDraftSaveFailure,
     orgId,
     saveDraft,
     patientSearch,

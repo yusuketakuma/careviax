@@ -1,9 +1,5 @@
 import { expect, test } from '@playwright/test';
-import {
-  attachLocalSession,
-  createInstrumentedPage,
-  waitForStableUi,
-} from './helpers/local-auth';
+import { attachLocalSession, createInstrumentedPage, waitForStableUi } from './helpers/local-auth';
 
 test.describe('patient list and navigation flow', () => {
   test.beforeEach(async ({ context }) => {
@@ -71,7 +67,11 @@ test.describe('patient list and navigation flow', () => {
     await waitForStableUi(page);
 
     // Use specific selector for patient detail links (not other action links)
-    const firstPatientLink = page.locator('tbody tr').first().locator('a[href^="/patients/"]').first();
+    const firstPatientLink = page
+      .locator('tbody tr')
+      .first()
+      .locator('a[href^="/patients/"]')
+      .first();
     const href = await firstPatientLink.getAttribute('href');
     expect(href).toBeTruthy();
 
@@ -95,7 +95,11 @@ test.describe('patient list and navigation flow', () => {
     await waitForStableUi(page);
 
     // Navigate to first patient detail
-    const firstPatientLink = page.locator('tbody tr').first().locator('a[href^="/patients/"]').first();
+    const firstPatientLink = page
+      .locator('tbody tr')
+      .first()
+      .locator('a[href^="/patients/"]')
+      .first();
     const href = await firstPatientLink.getAttribute('href');
     await firstPatientLink.click();
     await expect(page).toHaveURL(new RegExp(`${href}$`));
@@ -179,13 +183,12 @@ test.describe('patient list filters', () => {
     const searchInput = page.getByLabel('患者検索');
     await searchInput.fill('ZZZZNONEXISTENT');
 
-    // Wait for debounced API refetch (500ms debounce + network)
-    await page.waitForTimeout(1000);
-    await waitForStableUi(page);
-
     // Should show no rows or an empty/no-results state
-    const rowsAfter = await page.locator('table tbody tr').count();
-    expect(rowsAfter).toBeLessThanOrEqual(rowsBefore);
+    await expect
+      .poll(async () => page.locator('table tbody tr').count(), {
+        message: 'patient search should settle after debounce/refetch',
+      })
+      .toBeLessThanOrEqual(rowsBefore);
 
     expect(errors).toEqual([]);
   });
@@ -203,9 +206,11 @@ test.describe('patient list filters', () => {
     await page.getByRole('option', { name: '安定' }).click();
 
     // Wait for API response with the filter
-    await page.waitForResponse((res) =>
-      res.url().includes('/api/patients') && res.url().includes('risk_level'),
-    ).catch(() => null);
+    await page
+      .waitForResponse(
+        (res) => res.url().includes('/api/patients') && res.url().includes('risk_level'),
+      )
+      .catch(() => null);
     await waitForStableUi(page);
 
     // Table should still render (may have fewer rows)
@@ -251,14 +256,22 @@ test.describe('patient detail page', () => {
     await waitForStableUi(page);
 
     // Navigate to first patient detail
-    const firstPatientLink = page.locator('tbody tr').first().locator('a[href^="/patients/"]').first();
+    const firstPatientLink = page
+      .locator('tbody tr')
+      .first()
+      .locator('a[href^="/patients/"]')
+      .first();
     await firstPatientLink.click();
     await waitForStableUi(page);
     await expect(page.getByRole('heading', { name: '患者詳細' })).toBeVisible();
 
     // The gender field in patient master card should display Japanese label via a Select component
     // Previously it was a plain <Input> showing raw "male"/"female"/"other"
-    const genderTrigger = page.locator('text=性別').first().locator('..').locator('button[role="combobox"]');
+    const genderTrigger = page
+      .locator('text=性別')
+      .first()
+      .locator('..')
+      .locator('button[role="combobox"]');
     await expect(genderTrigger).toBeVisible();
     const genderText = await genderTrigger.textContent();
 
@@ -277,22 +290,37 @@ test.describe('patient detail page', () => {
     await waitForStableUi(page);
 
     // Navigate to first patient detail
-    const firstPatientLink = page.locator('tbody tr').first().locator('a[href^="/patients/"]').first();
+    const firstPatientLink = page
+      .locator('tbody tr')
+      .first()
+      .locator('a[href^="/patients/"]')
+      .first();
     await firstPatientLink.click();
     await waitForStableUi(page);
 
     // The patient master card is the first card with a "保存" button on the detail page
     // Locate "氏名" input (first input in master card) to confirm we're in the right card
-    const nameInput = page.locator('label:text("氏名") + input, label:text("氏名") ~ input').first();
+    const nameInput = page
+      .locator('label:text("氏名") + input, label:text("氏名") ~ input')
+      .first();
     if (!(await nameInput.isVisible().catch(() => false))) {
       // The Label component wraps text without htmlFor, so use parent container
-      await expect(page.locator('label').filter({ hasText: /^氏名$/ }).first()).toBeVisible();
+      await expect(
+        page
+          .locator('label')
+          .filter({ hasText: /^氏名$/ })
+          .first(),
+      ).toBeVisible();
     }
 
     // Phone is a few fields below - find by position relative to the name input
     // The phone field is the 5th field in the master card (after name, kana, date, gender-select)
     // Find it by nearby label text
-    const phoneLabelParent = page.locator('div').filter({ has: page.locator('label:text("電話番号")') }).filter({ has: page.locator('input') }).first();
+    const phoneLabelParent = page
+      .locator('div')
+      .filter({ has: page.locator('label:text("電話番号")') })
+      .filter({ has: page.locator('input') })
+      .first();
     const phoneField = phoneLabelParent.locator('input').first();
     await expect(phoneField).toBeVisible();
     const originalPhone = await phoneField.inputValue();
@@ -305,8 +333,8 @@ test.describe('patient detail page', () => {
     await page.getByRole('button', { name: '保存' }).first().click();
 
     // Wait for save response
-    await page.waitForResponse((res) =>
-      res.url().includes('/api/patients/') && res.request().method() === 'PATCH'
+    await page.waitForResponse(
+      (res) => res.url().includes('/api/patients/') && res.request().method() === 'PATCH',
     );
 
     // Success toast should appear
@@ -315,14 +343,18 @@ test.describe('patient detail page', () => {
     // Reload and verify persistence
     await page.reload();
     await waitForStableUi(page);
-    const reloadedPhoneParent = page.locator('div').filter({ has: page.locator('label:text("電話番号")') }).filter({ has: page.locator('input') }).first();
+    const reloadedPhoneParent = page
+      .locator('div')
+      .filter({ has: page.locator('label:text("電話番号")') })
+      .filter({ has: page.locator('input') })
+      .first();
     await expect(reloadedPhoneParent.locator('input').first()).toHaveValue(testPhone);
 
     // Restore original value
     await reloadedPhoneParent.locator('input').first().fill(originalPhone);
     await page.getByRole('button', { name: '保存' }).first().click();
-    await page.waitForResponse((res) =>
-      res.url().includes('/api/patients/') && res.request().method() === 'PATCH'
+    await page.waitForResponse(
+      (res) => res.url().includes('/api/patients/') && res.request().method() === 'PATCH',
     );
 
     expect(errors).toEqual([]);
@@ -351,14 +383,20 @@ test.describe('patient detail tabs', () => {
     await waitForStableUi(page);
 
     // Navigate to first patient
-    const firstPatientLink = page.locator('tbody tr').first().locator('a[href^="/patients/"]').first();
+    const firstPatientLink = page
+      .locator('tbody tr')
+      .first()
+      .locator('a[href^="/patients/"]')
+      .first();
     await firstPatientLink.click();
     await waitForStableUi(page);
 
     // All 8 tab triggers should be present (use full label+description to avoid sidebar matches)
     for (const tab of TAB_LABELS) {
       await expect(
-        page.getByRole('button', { name: new RegExp(`${tab.label}\\s+${tab.description.slice(0, 6)}`) }),
+        page.getByRole('button', {
+          name: new RegExp(`${tab.label}\\s+${tab.description.slice(0, 6)}`),
+        }),
       ).toBeVisible();
     }
 
@@ -370,7 +408,11 @@ test.describe('patient detail tabs', () => {
     await page.goto('/patients');
     await waitForStableUi(page);
 
-    const firstPatientLink = page.locator('tbody tr').first().locator('a[href^="/patients/"]').first();
+    const firstPatientLink = page
+      .locator('tbody tr')
+      .first()
+      .locator('a[href^="/patients/"]')
+      .first();
     await firstPatientLink.click();
     await waitForStableUi(page);
 
@@ -380,11 +422,15 @@ test.describe('patient detail tabs', () => {
     // Click each tab and verify content changes without errors
     for (const tab of TAB_LABELS.slice(1)) {
       // Click the tab trigger using full name pattern
-      const tabButton = page.getByRole('button', { name: new RegExp(`${tab.label}\\s+${tab.description.slice(0, 6)}`) });
+      const tabButton = page.getByRole('button', {
+        name: new RegExp(`${tab.label}\\s+${tab.description.slice(0, 6)}`),
+      });
       await tabButton.click();
 
       // The tab description should appear in the paragraph below tab header
-      await expect(page.locator('p').filter({ hasText: tab.description })).toBeVisible({ timeout: 5000 });
+      await expect(page.locator('p').filter({ hasText: tab.description })).toBeVisible({
+        timeout: 5000,
+      });
     }
 
     // Switch back to first tab
@@ -400,7 +446,11 @@ test.describe('patient detail tabs', () => {
     await page.goto('/patients');
     await waitForStableUi(page);
 
-    const firstPatientLink = page.locator('tbody tr').first().locator('a[href^="/patients/"]').first();
+    const firstPatientLink = page
+      .locator('tbody tr')
+      .first()
+      .locator('a[href^="/patients/"]')
+      .first();
     await firstPatientLink.click();
     await waitForStableUi(page);
 
@@ -443,9 +493,7 @@ test.describe('patient creation form', () => {
     expect(errors).toEqual([]);
   });
 
-  test('empty form submission shows validation errors for required fields', async ({
-    context,
-  }) => {
+  test('empty form submission shows validation errors for required fields', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await page.goto('/patients/new');
     await waitForStableUi(page);
@@ -468,9 +516,7 @@ test.describe('patient creation form', () => {
     expect(relevantErrors).toEqual([]);
   });
 
-  test('navigating from patient list to new patient form via header link', async ({
-    context,
-  }) => {
+  test('navigating from patient list to new patient form via header link', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await page.goto('/patients');
     await waitForStableUi(page);

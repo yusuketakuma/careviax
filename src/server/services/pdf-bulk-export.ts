@@ -2,6 +2,13 @@ import { Prisma } from '@prisma/client';
 import { zipSync } from 'fflate';
 import { z } from 'zod';
 import { prisma } from '@/lib/db/client';
+import { hasPermission } from '@/lib/auth/permissions';
+import {
+  buildVisitScheduleAssignmentWhere,
+  canAccessVisitScheduleAssignment,
+  canBypassVisitScheduleAssignmentAccess,
+  type VisitScheduleAccessContext,
+} from '@/lib/auth/visit-schedule-access';
 import { buildMedicationHistoryPdf } from '@/server/services/pdf-documents';
 import { storeGeneratedFile } from '@/server/services/file-storage';
 
@@ -22,6 +29,7 @@ type QueueMedicationHistoryBulkExportArgs = {
   orgId: string;
   requestedBy: string;
   patientIds: string[];
+  accessContext: VisitScheduleAccessContext;
 };
 
 type MedicationHistoryBulkExportResult = {
@@ -44,7 +52,11 @@ type PdfRenderResult =
 
 export class MedicationHistoryBulkExportError extends Error {
   constructor(
-    readonly code: 'WORKFLOW_CONFLICT' | 'VALIDATION_ERROR' | 'WORKFLOW_NOT_FOUND',
+    readonly code:
+      | 'WORKFLOW_CONFLICT'
+      | 'VALIDATION_ERROR'
+      | 'WORKFLOW_NOT_FOUND'
+      | 'AUTHORIZATION_ERROR',
     message: string,
     readonly status: number,
   ) {
@@ -54,9 +66,7 @@ export class MedicationHistoryBulkExportError extends Error {
 }
 
 function uniqueStrings(values: string[]) {
-  return Array.from(
-    new Set(values.map((value) => value.trim()).filter(Boolean)),
-  );
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
 function formatTimestampForFileName(date = new Date()) {
@@ -83,8 +93,7 @@ async function withSerializableRetry<TValue>(
       });
     } catch (cause) {
       const isRetryableConflict =
-        cause instanceof Prisma.PrismaClientKnownRequestError &&
-        cause.code === 'P2034';
+        cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
 
       if (!isRetryableConflict || attempt === SERIALIZABLE_RETRY_LIMIT - 1) {
         throw cause;
@@ -111,11 +120,149 @@ async function mapWithConcurrency<TValue, TResult>(
     }
   }
 
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, values.length) }, () => worker()),
-  );
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, () => worker()));
 
   return results;
+}
+
+type BulkExportAccessDb = Pick<Prisma.TransactionClient, 'careCase' | 'patient' | 'visitSchedule'>;
+
+async function assertPatientsExist(args: {
+  db: BulkExportAccessDb;
+  orgId: string;
+  patientIds: string[];
+}) {
+  const existingPatientCount = await args.db.patient.count({
+    where: {
+      org_id: args.orgId,
+      id: {
+        in: args.patientIds,
+      },
+    },
+  });
+
+  if (existingPatientCount !== args.patientIds.length) {
+    throw new MedicationHistoryBulkExportError(
+      'WORKFLOW_NOT_FOUND',
+      '指定された患者の一部が見つかりません',
+      404,
+    );
+  }
+}
+
+async function assertBulkExportPatientAccess(args: {
+  db: BulkExportAccessDb;
+  orgId: string;
+  patientIds: string[];
+  accessContext: VisitScheduleAccessContext;
+}) {
+  if (canBypassVisitScheduleAssignmentAccess(args.accessContext)) {
+    return;
+  }
+
+  const scheduleAssignmentWhere = buildVisitScheduleAssignmentWhere(args.accessContext);
+  const accessiblePatientIds = new Set<string>();
+
+  if (scheduleAssignmentWhere) {
+    const accessibleSchedules = await args.db.visitSchedule.findMany({
+      where: {
+        org_id: args.orgId,
+        case_: {
+          patient_id: {
+            in: args.patientIds,
+          },
+        },
+        AND: [scheduleAssignmentWhere],
+      },
+      select: {
+        case_: {
+          select: {
+            patient_id: true,
+          },
+        },
+      },
+    });
+
+    for (const schedule of accessibleSchedules) {
+      accessiblePatientIds.add(schedule.case_.patient_id);
+    }
+  }
+
+  const unresolvedPatientIds = args.patientIds.filter(
+    (patientId) => !accessiblePatientIds.has(patientId),
+  );
+
+  if (unresolvedPatientIds.length > 0) {
+    const accessibleCases = await args.db.careCase.findMany({
+      where: {
+        org_id: args.orgId,
+        patient_id: {
+          in: unresolvedPatientIds,
+        },
+        OR: [
+          { primary_pharmacist_id: args.accessContext.userId },
+          { backup_pharmacist_id: args.accessContext.userId },
+        ],
+      },
+      select: {
+        patient_id: true,
+        primary_pharmacist_id: true,
+        backup_pharmacist_id: true,
+      },
+    });
+
+    for (const careCase of accessibleCases) {
+      if (
+        canAccessVisitScheduleAssignment(args.accessContext, {
+          pharmacist_id: null,
+          case_: careCase,
+        })
+      ) {
+        accessiblePatientIds.add(careCase.patient_id);
+      }
+    }
+  }
+
+  const forbiddenPatientIds = args.patientIds.filter(
+    (patientId) => !accessiblePatientIds.has(patientId),
+  );
+
+  if (forbiddenPatientIds.length > 0) {
+    throw new MedicationHistoryBulkExportError(
+      'AUTHORIZATION_ERROR',
+      '一括出力対象にアクセス権限のない患者が含まれています',
+      403,
+    );
+  }
+}
+
+async function getRequesterAccessContext(args: {
+  orgId: string;
+  requestedBy: string;
+}): Promise<VisitScheduleAccessContext> {
+  const membership = await prisma.membership.findFirst({
+    where: {
+      org_id: args.orgId,
+      user_id: args.requestedBy,
+      is_active: true,
+    },
+    select: {
+      role: true,
+    },
+  });
+
+  if (!membership || !hasPermission(membership.role, 'canVisit')) {
+    throw new MedicationHistoryBulkExportError(
+      'AUTHORIZATION_ERROR',
+      '薬歴 PDF 一括出力の実行権限がありません',
+      403,
+    );
+  }
+
+  return {
+    userId: args.requestedBy,
+    role: membership.role,
+  };
 }
 
 async function notifyBulkExportReady(args: {
@@ -245,9 +392,18 @@ async function buildMedicationHistoryArchive(
   return { zipEntries, errors };
 }
 
-export async function queueMedicationHistoryBulkExport(
-  args: QueueMedicationHistoryBulkExportArgs,
-) {
+export async function queueMedicationHistoryBulkExport(args: QueueMedicationHistoryBulkExportArgs) {
+  if (
+    args.requestedBy !== args.accessContext.userId ||
+    !hasPermission(args.accessContext.role, 'canVisit')
+  ) {
+    throw new MedicationHistoryBulkExportError(
+      'AUTHORIZATION_ERROR',
+      '薬歴 PDF 一括出力の実行権限がありません',
+      403,
+    );
+  }
+
   const normalizedPatientIds = uniqueStrings(args.patientIds);
   if (normalizedPatientIds.length === 0) {
     throw new MedicationHistoryBulkExportError(
@@ -284,22 +440,17 @@ export async function queueMedicationHistoryBulkExport(
       );
     }
 
-    const existingPatientCount = await tx.patient.count({
-      where: {
-        org_id: args.orgId,
-        id: {
-          in: normalizedPatientIds,
-        },
-      },
+    await assertPatientsExist({
+      db: tx,
+      orgId: args.orgId,
+      patientIds: normalizedPatientIds,
     });
-
-    if (existingPatientCount !== normalizedPatientIds.length) {
-      throw new MedicationHistoryBulkExportError(
-        'WORKFLOW_NOT_FOUND',
-        '指定された患者の一部が見つかりません',
-        404,
-      );
-    }
+    await assertBulkExportPatientAccess({
+      db: tx,
+      orgId: args.orgId,
+      patientIds: normalizedPatientIds,
+      accessContext: args.accessContext,
+    });
 
     const job = await tx.integrationJob.create({
       data: {
@@ -416,30 +567,25 @@ export async function runMedicationHistoryBulkExportJob(
         retry_count: { increment: 1 },
       },
     });
-    throw new MedicationHistoryBulkExportError(
-      'VALIDATION_ERROR',
-      message,
-      400,
-    );
+    throw new MedicationHistoryBulkExportError('VALIDATION_ERROR', message, 400);
   }
 
   try {
-    const existingPatientCount = await prisma.patient.count({
-      where: {
-        org_id: job.org_id,
-        id: {
-          in: parsedInput.data.patientIds,
-        },
-      },
+    const accessContext = await getRequesterAccessContext({
+      orgId: job.org_id,
+      requestedBy: parsedInput.data.requestedBy,
     });
-
-    if (existingPatientCount !== parsedInput.data.patientIds.length) {
-      throw new MedicationHistoryBulkExportError(
-        'WORKFLOW_NOT_FOUND',
-        '一括出力対象の患者が見つかりません',
-        404,
-      );
-    }
+    await assertPatientsExist({
+      db: prisma,
+      orgId: job.org_id,
+      patientIds: parsedInput.data.patientIds,
+    });
+    await assertBulkExportPatientAccess({
+      db: prisma,
+      orgId: job.org_id,
+      patientIds: parsedInput.data.patientIds,
+      accessContext,
+    });
 
     const { zipEntries, errors } = await buildMedicationHistoryArchive(
       job.org_id,
@@ -503,10 +649,7 @@ export async function runMedicationHistoryBulkExportJob(
       errors,
     };
   } catch (cause) {
-    const message =
-      cause instanceof Error
-        ? cause.message
-        : '薬歴 PDF ZIP の生成に失敗しました';
+    const message = cause instanceof Error ? cause.message : '薬歴 PDF ZIP の生成に失敗しました';
 
     await prisma.integrationJob.update({
       where: { id: job.id },
@@ -529,9 +672,7 @@ export async function runMedicationHistoryBulkExportJob(
   }
 }
 
-export async function drainMedicationHistoryBulkExportQueue(
-  args?: { orgId?: string },
-) {
+export async function drainMedicationHistoryBulkExportQueue(args?: { orgId?: string }) {
   let processedCount = 0;
   const errors: string[] = [];
 

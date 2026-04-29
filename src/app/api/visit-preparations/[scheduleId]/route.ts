@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { deriveFacilityLabel, deriveVisitPlaceGroup } from '@/lib/utils/facility';
 import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
+import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, forbiddenResponse } from '@/lib/api/response';
@@ -32,24 +33,6 @@ type IntakeLineSummary = {
   start_date: Date | null;
   end_date: Date | null;
 };
-
-function canAccessVisitPreparation(
-  ctx: { userId: string; role: string },
-  schedule: {
-    pharmacist_id: string;
-    case_: {
-      primary_pharmacist_id: string | null;
-      backup_pharmacist_id: string | null;
-    };
-  },
-) {
-  if (ctx.role === 'owner' || ctx.role === 'admin') return true;
-  return (
-    schedule.pharmacist_id === ctx.userId ||
-    schedule.case_.primary_pharmacist_id === ctx.userId ||
-    schedule.case_.backup_pharmacist_id === ctx.userId
-  );
-}
 
 type FacilityParallelSchedule = {
   id: string;
@@ -416,7 +399,7 @@ export async function GET(
     },
   });
   if (!schedule) return notFound('訪問予定が見つかりません');
-  if (!canAccessVisitPreparation(ctx, schedule)) {
+  if (!canAccessVisitScheduleAssignment(ctx, schedule)) {
     return forbiddenResponse('この訪問予定の準備情報を閲覧する権限がありません');
   }
   const canAccessParallelVisitContext =
@@ -976,7 +959,7 @@ export async function PUT(
     },
   });
   if (!schedule) return notFound('訪問予定が見つかりません');
-  if (!canAccessVisitPreparation(ctx, schedule)) {
+  if (!canAccessVisitScheduleAssignment(ctx, schedule)) {
     return forbiddenResponse('この訪問予定の準備情報を更新する権限がありません');
   }
 

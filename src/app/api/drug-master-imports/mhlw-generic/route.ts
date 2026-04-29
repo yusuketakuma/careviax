@@ -7,10 +7,21 @@ import {
   importGenericNameMappings,
   importMhlwGenericFlags,
 } from '@/server/services/drug-master-import/mhlw';
+import {
+  MHLW_IMPORT_URL_POLICY,
+  importSourceUrlValidationMessage,
+  isAllowedImportSourceUrl,
+} from '@/server/services/drug-master-import/shared';
 
 const requestSchema = z.object({
   mode: z.enum(['flags', 'mappings', 'all']).default('all'),
-  workbookUrl: z.string().url().optional(),
+  workbookUrl: z
+    .string()
+    .url()
+    .refine((url) => isAllowedImportSourceUrl(url, MHLW_IMPORT_URL_POLICY), {
+      message: importSourceUrlValidationMessage(),
+    })
+    .optional(),
 });
 
 export const POST = withAuthContext(async (req: NextRequest, authCtx) => {
@@ -63,6 +74,6 @@ export const POST = withAuthContext(async (req: NextRequest, authCtx) => {
           : null,
       },
     },
-    201
+    201,
   );
 });

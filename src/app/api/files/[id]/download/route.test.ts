@@ -28,7 +28,7 @@ import { GET } from './route';
 function createRequest() {
   return {
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
     },
   } as unknown as NextRequest;
 }
@@ -61,9 +61,9 @@ describe('/api/files/[id]/download GET', () => {
     expect(createPresignedDownloadMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       fileId: 'file_1',
-      permissions: {
-        canVisit: true,
-        canReport: true,
+      accessContext: {
+        userId: 'user_1',
+        role: 'admin',
       },
     });
   });

@@ -38,6 +38,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Dependency audit
+        run: pnpm audit --audit-level moderate
+
       - name: Lint
         run: pnpm lint
 
@@ -131,7 +134,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: ci
-    environment: production   # ← requires reviewer approval
+    environment: production # ← requires reviewer approval
     timeout-minutes: 10
 
     steps:

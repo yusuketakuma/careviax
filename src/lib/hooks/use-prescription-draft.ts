@@ -4,7 +4,7 @@
 
 import { useCallback } from 'react';
 import { offlineDb } from '@/lib/stores/offline-db';
-import { decryptOfflinePayload, encryptOfflinePayload } from '@/lib/offline/crypto';
+import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
 
 export type PrescriptionDraftSnapshot = {
   patientSelection: {
@@ -75,7 +75,10 @@ export function usePrescriptionDraft(orgId: string) {
   const saveDraft = useCallback(
     async (snapshot: PrescriptionDraftSnapshot): Promise<void> => {
       if (!orgId) return;
-      const payload = await encryptOfflinePayload(JSON.stringify(snapshot));
+      const payload = await encryptOfflinePayloadRequired(
+        JSON.stringify(snapshot),
+        'prescription draft payload',
+      );
       const existing = await offlineDb.prescriptionDrafts.where('orgId').equals(orgId).first();
 
       if (existing?.id !== undefined) {

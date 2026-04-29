@@ -19,8 +19,18 @@ const {
   generateBillingCandidatesForMonthMock: vi.fn(),
 }));
 
+type AuthenticatedRouteHandler = ((req: NextRequest & { orgId: string }) => Promise<Response>) & {
+  authOptions?: {
+    permission?: string;
+    message?: string;
+  };
+};
+
 vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: NextRequest & { orgId: string }) => Promise<Response>) => handler,
+  withAuth: (
+    handler: (req: NextRequest & { orgId: string }) => Promise<Response>,
+    options?: AuthenticatedRouteHandler['authOptions'],
+  ) => Object.assign(handler, { authOptions: options }),
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -105,6 +115,17 @@ describe('/api/billing-candidates', () => {
     );
   });
 
+  it('requires billing management permission for candidate read and generation', () => {
+    expect((GET as AuthenticatedRouteHandler).authOptions).toMatchObject({
+      permission: 'canManageBilling',
+      message: '請求候補の閲覧権限がありません',
+    });
+    expect((POST as AuthenticatedRouteHandler).authOptions).toMatchObject({
+      permission: 'canManageBilling',
+      message: '請求候補の作成権限がありません',
+    });
+  });
+
   it('returns billing candidate workbench summary for the selected month', async () => {
     billingCandidateFindManyMock.mockResolvedValueOnce([
       {
@@ -133,7 +154,7 @@ describe('/api/billing-candidates', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           org_id: 'org_1',
-          billing_month: new Date('2026-03-01'),
+          billing_month: new Date('2026-03-01T00:00:00.000Z'),
           patient_id: 'patient_1',
         }),
       }),
@@ -142,7 +163,7 @@ describe('/api/billing-candidates', () => {
       expect.any(Object),
       expect.objectContaining({
         orgId: 'org_1',
-        billingMonth: new Date('2026-03-01'),
+        billingMonth: new Date('2026-03-01T00:00:00.000Z'),
         patientId: 'patient_1',
       }),
     );
@@ -173,13 +194,46 @@ describe('/api/billing-candidates', () => {
     });
   });
 
+  it.each([
+    ['empty query value', ''],
+    ['incomplete month', '2026-03'],
+    ['non-month-start date', '2026-03-02'],
+    ['invalid calendar date', '2026-02-30'],
+    ['out-of-range month', '2026-13-01'],
+    ['timezone timestamp', '2026-03-01T00:00:00.000Z'],
+  ])('rejects %s billing_month on read before org context', async (_caseName, billingMonth) => {
+    const response = await GET({
+      orgId: 'org_1',
+      url: `http://localhost/api/billing-candidates?billing_month=${encodeURIComponent(
+        billingMonth,
+      )}`,
+    } as unknown as NextRequest & { orgId: string });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
+    expect(workbenchSummaryMock).not.toHaveBeenCalled();
+  });
+
   it('generates candidate summary using billing evidence service', async () => {
     const response = await POST(createRequest({ billing_month: '2026-03-01' }));
 
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(200);
-    expect(visitRecordFindManyMock).toHaveBeenCalledOnce();
+    expect(visitRecordFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        visit_date: {
+          gte: new Date('2026-03-01T00:00:00.000Z'),
+          lt: new Date('2026-04-01T00:00:00.000Z'),
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
     expect(upsertBillingEvidenceForVisitMock).toHaveBeenCalledTimes(2);
     expect(generateBillingCandidatesForMonthMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -189,7 +243,7 @@ describe('/api/billing-candidates', () => {
       }),
       {
         orgId: 'org_1',
-        billingMonth: new Date(2026, 2, 1),
+        billingMonth: new Date('2026-03-01T00:00:00.000Z'),
       },
     );
     await expect(resolvedResponse.json()).resolves.toMatchObject({
@@ -198,5 +252,25 @@ describe('/api/billing-candidates', () => {
       review_required: 1,
       excluded: 1,
     });
+  });
+
+  it.each([
+    ['missing', {}],
+    ['empty', { billing_month: '' }],
+    ['non-string', { billing_month: 123 }],
+    ['incomplete month', { billing_month: '2026-03' }],
+    ['non-month-start date', { billing_month: '2026-03-02' }],
+    ['invalid calendar date', { billing_month: '2026-02-30' }],
+    ['out-of-range month', { billing_month: '2026-13-01' }],
+    ['timezone timestamp', { billing_month: '2026-03-01T00:00:00+09:00' }],
+  ])('rejects %s billing_month on generation before database work', async (_caseName, body) => {
+    const response = await POST(createRequest(body));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(visitRecordFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(upsertBillingEvidenceForVisitMock).not.toHaveBeenCalled();
+    expect(generateBillingCandidatesForMonthMock).not.toHaveBeenCalled();
   });
 });

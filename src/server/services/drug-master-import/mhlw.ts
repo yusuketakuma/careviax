@@ -2,12 +2,14 @@ import { Prisma } from '@prisma/client';
 import {
   DrugMasterImportDbClient,
   FetchLike,
+  MHLW_IMPORT_URL_POLICY,
   fetchBytes,
   fetchText,
   normalizeCell,
+  normalizeImportSourceUrl,
   parseDate,
   parseDecimal,
-  resolveAbsoluteUrl,
+  resolveImportSourceUrl,
   withImportLog,
 } from './shared';
 import { loadWorkbook, readWorkbookRowsFromWorkbook } from './excel';
@@ -74,7 +76,9 @@ async function loadPriceWorkbookRows(buffer: Buffer) {
     }
   }
 
-  throw new Error("Excel ワークシート内に '薬価基準収載医薬品コード' ヘッダーが見つかりませんでした");
+  throw new Error(
+    "Excel ワークシート内に '薬価基準収載医薬品コード' ヘッダーが見つかりませんでした",
+  );
 }
 
 function indexHeaderMap(headerRow: Array<string | null>) {
@@ -96,35 +100,47 @@ function readCell(row: Array<string | null>, headerMap: Map<string, number>, hea
 
 export function resolveLatestMhlwPriceWorkbookUrl(
   html: string,
-  pageUrl = MHLW_MASTER_INDEX_PAGE_URL
+  pageUrl = MHLW_MASTER_INDEX_PAGE_URL,
 ) {
   const match = html.match(/href="([^"]+tp\d{8}-01_01\.xlsx)"/i);
   if (!match) {
     throw new Error('最新の薬価基準収載品目 Excel を解決できませんでした');
   }
-  return resolveAbsoluteUrl(match[1], pageUrl);
+  return resolveImportSourceUrl(match[1], pageUrl, MHLW_IMPORT_URL_POLICY);
 }
 
 export function resolveLatestGenericNameWorkbookUrl(
   html: string,
-  pageUrl = MHLW_MASTER_INDEX_PAGE_URL
+  pageUrl = MHLW_MASTER_INDEX_PAGE_URL,
 ) {
   const match = html.match(/href="([^"]+ippanmeishohoumaster_\d+\.xlsx)"/i);
   if (!match) {
     throw new Error('最新の一般名処方マスタ Excel を解決できませんでした');
   }
-  return resolveAbsoluteUrl(match[1], pageUrl);
+  return resolveImportSourceUrl(match[1], pageUrl, MHLW_IMPORT_URL_POLICY);
 }
 
 export async function parseMhlwPriceWorkbook(
-  options: { workbookUrl?: string; fetchImpl?: FetchLike } = {}
+  options: { workbookUrl?: string; fetchImpl?: FetchLike } = {},
 ) {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const workbookUrl =
+  const workbookUrl = normalizeImportSourceUrl(
     options.workbookUrl ??
-    resolveLatestMhlwPriceWorkbookUrl(await fetchText(MHLW_MASTER_INDEX_PAGE_URL, fetchImpl));
+      resolveLatestMhlwPriceWorkbookUrl(
+        await fetchText(MHLW_MASTER_INDEX_PAGE_URL, {
+          fetchImpl,
+          policy: MHLW_IMPORT_URL_POLICY,
+        }),
+      ),
+    MHLW_IMPORT_URL_POLICY,
+  );
 
-  const rows = await loadPriceWorkbookRows(await fetchBytes(workbookUrl, fetchImpl));
+  const rows = await loadPriceWorkbookRows(
+    await fetchBytes(workbookUrl, {
+      fetchImpl,
+      policy: MHLW_IMPORT_URL_POLICY,
+    }),
+  );
   const headerIndex = findHeaderIndex(rows, '薬価基準収載医薬品コード');
   const headerMap = indexHeaderMap(rows[headerIndex]);
   const records: ParsedMhlwPriceRecord[] = [];
@@ -161,7 +177,7 @@ export async function parseMhlwPriceWorkbook(
 async function upsertPriceChunk(
   db: DrugMasterImportDbClient,
   records: ParsedMhlwPriceRecord[],
-  mode: 'price' | 'generic'
+  mode: 'price' | 'generic',
 ) {
   await Promise.all(
     records.map((record) =>
@@ -190,14 +206,14 @@ async function upsertPriceChunk(
             : {
                 is_generic: record.is_generic,
               },
-      })
-    )
+      }),
+    ),
   );
 }
 
 export async function importMhlwPriceList(
   db: DrugMasterImportDbClient,
-  options: { workbookUrl?: string; fetchImpl?: FetchLike } = {}
+  options: { workbookUrl?: string; fetchImpl?: FetchLike } = {},
 ) {
   return withImportLog(db, 'mhlw_price', async () => {
     const parsed = await parseMhlwPriceWorkbook(options);
@@ -217,7 +233,7 @@ export async function importMhlwPriceList(
 
 export async function importMhlwGenericFlags(
   db: DrugMasterImportDbClient,
-  options: { workbookUrl?: string; fetchImpl?: FetchLike } = {}
+  options: { workbookUrl?: string; fetchImpl?: FetchLike } = {},
 ) {
   return withImportLog(db, 'mhlw_generic', async () => {
     const parsed = await parseMhlwPriceWorkbook(options);
@@ -236,13 +252,23 @@ export async function importMhlwGenericFlags(
 }
 
 export async function parseGenericNameWorkbook(
-  options: { workbookUrl?: string; fetchImpl?: FetchLike } = {}
+  options: { workbookUrl?: string; fetchImpl?: FetchLike } = {},
 ) {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const workbookUrl =
+  const workbookUrl = normalizeImportSourceUrl(
     options.workbookUrl ??
-    resolveLatestGenericNameWorkbookUrl(await fetchText(MHLW_MASTER_INDEX_PAGE_URL, fetchImpl));
-  const buffer = await fetchBytes(workbookUrl, fetchImpl);
+      resolveLatestGenericNameWorkbookUrl(
+        await fetchText(MHLW_MASTER_INDEX_PAGE_URL, {
+          fetchImpl,
+          policy: MHLW_IMPORT_URL_POLICY,
+        }),
+      ),
+    MHLW_IMPORT_URL_POLICY,
+  );
+  const buffer = await fetchBytes(workbookUrl, {
+    fetchImpl,
+    policy: MHLW_IMPORT_URL_POLICY,
+  });
   const workbook = await loadWorkbook(buffer);
   const masterRows = readWorkbookRowsFromWorkbook(workbook, '一般名処方マスタ（R8.4.1版） 全体');
   const exceptionRows = readWorkbookRowsFromWorkbook(workbook, '例外コード品目対照表');
@@ -296,7 +322,7 @@ export async function parseGenericNameWorkbook(
 
 export async function importGenericNameMappings(
   db: DrugMasterImportDbClient,
-  options: { workbookUrl?: string; fetchImpl?: FetchLike } = {}
+  options: { workbookUrl?: string; fetchImpl?: FetchLike } = {},
 ) {
   return withImportLog(db, 'mhlw_generic', async () => {
     const parsed = await parseGenericNameWorkbook(options);
@@ -339,7 +365,9 @@ export async function importGenericNameMappings(
         ...current.brand_candidates,
         ...nextCandidates,
       ]);
-      current.exception_codes = [...new Set([...current.exception_codes, ...entry.exception_codes])];
+      current.exception_codes = [
+        ...new Set([...current.exception_codes, ...entry.exception_codes]),
+      ];
       current.lowest_price = current.lowest_price ?? entry.lowest_price;
     }
 
@@ -377,7 +405,7 @@ export async function importGenericNameMappings(
 }
 
 function dedupeBrandCandidates(
-  candidates: ParsedGenericNameEntry['brand_candidates']
+  candidates: ParsedGenericNameEntry['brand_candidates'],
 ): ParsedGenericNameEntry['brand_candidates'] {
   const seen = new Set<string>();
   const deduped: ParsedGenericNameEntry['brand_candidates'] = [];

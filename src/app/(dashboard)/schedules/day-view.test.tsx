@@ -18,7 +18,10 @@ const visitBriefCacheWhereMock = vi.hoisted(() =>
     equals: vi.fn(() =>
       field === 'scheduledDate'
         ? { toArray: visitBriefCacheToArrayMock }
-        : { delete: visitBriefCacheDeleteMock },
+        : {
+            and: vi.fn(() => ({ delete: visitBriefCacheDeleteMock })),
+            delete: visitBriefCacheDeleteMock,
+          },
     ),
   })),
 );

@@ -36,6 +36,10 @@ export async function POST(req: NextRequest) {
       orgId: authResult.ctx.orgId,
       requestedBy: authResult.ctx.userId,
       patientIds: parsed.data.patient_ids,
+      accessContext: {
+        userId: authResult.ctx.userId,
+        role: authResult.ctx.role,
+      },
     });
 
     if (data.startedImmediately) {
@@ -67,10 +71,6 @@ export async function POST(req: NextRequest) {
       return error(cause.code, cause.message, cause.status);
     }
 
-    return error(
-      'EXTERNAL_PDF_RENDER_FAILED',
-      '薬歴 PDF 一括出力のキュー登録に失敗しました',
-      500,
-    );
+    return error('EXTERNAL_PDF_RENDER_FAILED', '薬歴 PDF 一括出力のキュー登録に失敗しました', 500);
   }
 }

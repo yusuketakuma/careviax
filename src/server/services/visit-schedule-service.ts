@@ -1,10 +1,15 @@
 import type { PrismaClient } from '@prisma/client';
 import { buildSort } from '@/lib/api/search';
+import {
+  canAccessVisitScheduleAssignment,
+  buildVisitScheduleAssignmentWhere,
+  type VisitScheduleAccessContext,
+} from '@/lib/auth/visit-schedule-access';
 import { withOrgContext } from '@/lib/db/rls';
 import { SCHEDULE_LIST_INCLUDE } from '@/lib/db/schedule-includes';
 import { ACTIVE_VISIT_SCHEDULE_STATUSES } from '@/lib/constants/visit';
 import { validateOrgReferences } from '@/lib/api/org-reference';
-import { validationError } from '@/lib/api/response';
+import { forbiddenResponse, validationError } from '@/lib/api/response';
 import { enrichSchedulesWithHints } from '@/server/services/schedule-enrichment';
 import {
   evaluateVisitWorkflowGate,
@@ -32,7 +37,8 @@ export type ListSchedulesFilters = {
 export async function listSchedules(
   prisma: PrismaClient,
   orgId: string,
-  filters: ListSchedulesFilters
+  filters: ListSchedulesFilters,
+  accessContext?: VisitScheduleAccessContext,
 ) {
   const cursor = filters.cursor;
   const limit = filters.limit ?? 50;
@@ -40,45 +46,41 @@ export async function listSchedules(
     filters.sort,
     filters.order,
     ['scheduled_date', 'time_window_start', 'priority', 'created_at'],
-    'scheduled_date'
+    'scheduled_date',
   );
 
+  const assignmentWhere = accessContext ? buildVisitScheduleAssignmentWhere(accessContext) : null;
+  const where = {
+    org_id: orgId,
+    ...(filters.date_from || filters.date_to
+      ? {
+          scheduled_date: {
+            ...(filters.date_from ? { gte: new Date(filters.date_from) } : {}),
+            ...(filters.date_to ? { lte: new Date(filters.date_to) } : {}),
+          },
+        }
+      : {}),
+    ...(filters.status_scope === 'active'
+      ? {
+          schedule_status: {
+            in: [...ACTIVE_VISIT_SCHEDULE_STATUSES],
+          },
+        }
+      : {}),
+    ...(filters.pharmacist_id ? { pharmacist_id: filters.pharmacist_id } : {}),
+    ...(filters.case_id ? { case_id: filters.case_id } : {}),
+    ...(filters.patient_id ? { case_: { patient_id: filters.patient_id } } : {}),
+    ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+  };
+
   const schedules = await prisma.visitSchedule.findMany({
-    where: {
-      org_id: orgId,
-      ...(filters.date_from || filters.date_to
-        ? {
-            scheduled_date: {
-              ...(filters.date_from ? { gte: new Date(filters.date_from) } : {}),
-              ...(filters.date_to ? { lte: new Date(filters.date_to) } : {}),
-            },
-          }
-        : {}),
-      ...(filters.status_scope === 'active'
-        ? {
-            schedule_status: {
-              in: [...ACTIVE_VISIT_SCHEDULE_STATUSES],
-            },
-          }
-        : {}),
-      ...(filters.pharmacist_id ? { pharmacist_id: filters.pharmacist_id } : {}),
-      ...(filters.case_id ? { case_id: filters.case_id } : {}),
-      ...(filters.patient_id ? { case_: { patient_id: filters.patient_id } } : {}),
-    },
+    where,
     take: limit + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     orderBy:
       filters.sort === 'time_window_start'
-        ? [
-            primarySort ?? { time_window_start: 'asc' },
-            { scheduled_date: 'asc' },
-            { id: 'asc' },
-          ]
-        : [
-            primarySort ?? { scheduled_date: 'asc' },
-            { time_window_start: 'asc' },
-            { id: 'asc' },
-          ],
+        ? [primarySort ?? { time_window_start: 'asc' }, { scheduled_date: 'asc' }, { id: 'asc' }]
+        : [primarySort ?? { scheduled_date: 'asc' }, { time_window_start: 'asc' }, { id: 'asc' }],
     include: SCHEDULE_LIST_INCLUDE,
   });
 
@@ -96,7 +98,8 @@ export async function createSchedule(
   prisma: PrismaClient,
   orgId: string,
   userId: string,
-  data: CreateScheduleData
+  data: CreateScheduleData,
+  accessContext: VisitScheduleAccessContext,
 ) {
   const {
     site_id,
@@ -144,6 +147,7 @@ export async function createSchedule(
     select: {
       patient_id: true,
       primary_pharmacist_id: true,
+      backup_pharmacist_id: true,
       patient: {
         select: {
           residences: {
@@ -157,6 +161,14 @@ export async function createSchedule(
   });
   if (!careCase) {
     return validationError('ケースが見つかりません');
+  }
+  if (
+    !canAccessVisitScheduleAssignment(accessContext, {
+      pharmacist_id: rest.pharmacist_id,
+      case_: careCase,
+    })
+  ) {
+    return forbiddenResponse('このケースまたは担当薬剤師で訪問予定を作成する権限がありません');
   }
 
   const gate = await evaluateVisitWorkflowGate(prisma, {
@@ -179,35 +191,34 @@ export async function createSchedule(
         priority: priority ?? 'normal',
         facility_unit_id: facilityUnitId,
         assignment_mode:
-          careCase?.primary_pharmacist_id &&
-          careCase.primary_pharmacist_id === rest.pharmacist_id
+          careCase?.primary_pharmacist_id && careCase.primary_pharmacist_id === rest.pharmacist_id
             ? 'primary'
             : 'fallback',
         scheduled_date: scheduledDate,
         ...(time_window_start
           ? { time_window_start: new Date(`1970-01-01T${time_window_start}`) }
           : {}),
-        ...(time_window_end
-          ? { time_window_end: new Date(`1970-01-01T${time_window_end}`) }
-          : {}),
+        ...(time_window_end ? { time_window_end: new Date(`1970-01-01T${time_window_end}`) } : {}),
         confirmed_at: new Date(),
         confirmed_by: userId,
         route_order:
-          ((await tx.visitSchedule.findFirst({
-            where: {
-              org_id: orgId,
-              pharmacist_id: rest.pharmacist_id,
-              scheduled_date: scheduledDate,
-              schedule_status: {
-                not: 'cancelled',
+          ((
+            await tx.visitSchedule.findFirst({
+              where: {
+                org_id: orgId,
+                pharmacist_id: rest.pharmacist_id,
+                scheduled_date: scheduledDate,
+                schedule_status: {
+                  not: 'cancelled',
+                },
+                route_order: {
+                  not: null,
+                },
               },
-              route_order: {
-                not: null,
-              },
-            },
-            orderBy: { route_order: 'desc' },
-            select: { route_order: true },
-          }))?.route_order ?? 0) + 1,
+              orderBy: { route_order: 'desc' },
+              select: { route_order: true },
+            })
+          )?.route_order ?? 0) + 1,
         ...rest,
       },
     });

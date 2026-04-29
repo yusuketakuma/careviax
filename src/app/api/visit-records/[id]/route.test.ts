@@ -63,7 +63,7 @@ import { GET, PATCH } from './route';
 function createRequest(body?: unknown) {
   return {
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
     },
     json: vi.fn().mockResolvedValue(body),
   } as unknown as NextRequest;
@@ -94,10 +94,20 @@ describe('/api/visit-records/[id]', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitRecord: {
-          findFirst: vi.fn().mockResolvedValue({ id: 'visit_1', version: 1 }),
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'visit_1',
+            version: 1,
+            schedule: {
+              pharmacist_id: 'user_1',
+              case_: {
+                primary_pharmacist_id: 'user_primary',
+                backup_pharmacist_id: null,
+              },
+            },
+          }),
           update: visitRecordUpdateMock,
         },
-      })
+      }),
     );
   });
 
@@ -134,7 +144,21 @@ describe('/api/visit-records/[id]', () => {
           kind: 'photo',
         },
       ],
-      schedule: null,
+      schedule: {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        site_id: null,
+        pharmacist_id: 'user_1',
+        visit_type: 'home_visit',
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        recurrence_rule: null,
+        time_window_start: null,
+        time_window_end: null,
+        case_: {
+          primary_pharmacist_id: 'user_primary',
+          backup_pharmacist_id: null,
+        },
+      },
     });
 
     const response = await GET(createRequest(), {
@@ -155,6 +179,92 @@ describe('/api/visit-records/[id]', () => {
         },
       ],
     });
+  });
+
+  it('returns 403 when a pharmacist reads another schedule assignment visit record', async () => {
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'visit_1',
+      org_id: 'org_1',
+      schedule_id: 'schedule_1',
+      patient_id: 'patient_1',
+      pharmacist_id: 'user_other',
+      visit_date: new Date('2026-03-28T00:00:00.000Z').toISOString(),
+      outcome_status: 'completed',
+      soap_subjective: null,
+      soap_objective: null,
+      soap_assessment: null,
+      soap_plan: null,
+      receipt_person_name: null,
+      receipt_person_relation: null,
+      receipt_at: null,
+      next_visit_suggestion_date: null,
+      cancellation_reason: null,
+      postpone_reason: null,
+      revisit_reason: null,
+      version: 1,
+      created_at: new Date('2026-03-28T00:00:00.000Z').toISOString(),
+      updated_at: new Date('2026-03-28T00:00:00.000Z').toISOString(),
+      attachments: [],
+      schedule: {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        site_id: null,
+        pharmacist_id: 'user_other',
+        visit_type: 'home_visit',
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        recurrence_rule: null,
+        time_window_start: null,
+        time_window_end: null,
+        case_: {
+          primary_pharmacist_id: 'user_primary',
+          backup_pharmacist_id: null,
+        },
+      },
+    });
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'visit_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expect(auditLogFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 before attachment validation when a pharmacist patches another schedule assignment visit record', async () => {
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        visitRecord: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'visit_1',
+            version: 1,
+            schedule: {
+              pharmacist_id: 'user_other',
+              case_: {
+                primary_pharmacist_id: 'user_primary',
+                backup_pharmacist_id: null,
+              },
+            },
+          }),
+          update: visitRecordUpdateMock,
+        },
+      }),
+    );
+
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        attachments: [{ file_id: '11111111-1111-4111-8111-111111111111' }],
+      }),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expect(getStoredFileRecordMock).not.toHaveBeenCalled();
+    expect(visitRecordUpdateMock).not.toHaveBeenCalled();
   });
 
   it('stores validated attachment metadata on PATCH', async () => {
@@ -186,7 +296,7 @@ describe('/api/visit-records/[id]', () => {
       }),
       {
         params: Promise.resolve({ id: 'visit_1' }),
-      }
+      },
     );
 
     if (!response) throw new Error('response is required');
@@ -204,8 +314,26 @@ describe('/api/visit-records/[id]', () => {
           ],
           version: { increment: 1 },
         }),
-      })
+      }),
     );
+  });
+
+  it('rejects schedule and patient reassignment on PATCH before updating', async () => {
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        schedule_id: 'schedule_other',
+        patient_id: 'patient_other',
+      }),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitRecordUpdateMock).not.toHaveBeenCalled();
   });
 
   it('includes baseline_context with care_level, adl_level, dementia_level from intake data', async () => {
@@ -312,7 +440,7 @@ describe('/api/visit-records/[id]', () => {
       }),
       {
         params: Promise.resolve({ id: 'visit_1' }),
-      }
+      },
     );
 
     if (!response) throw new Error('response is required');

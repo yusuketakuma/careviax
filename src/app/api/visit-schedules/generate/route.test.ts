@@ -9,16 +9,21 @@ const {
   pharmacistShiftFindFirstMock,
   visitScheduleCreateMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn((
-    handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>
-  ) => {
-    return (req: NextRequest) =>
-      handler({
-        ...req,
-        orgId: 'org_1',
-        userId: 'user_1',
-      } as NextRequest & { orgId: string; userId: string });
-  }),
+  withAuthMock: vi.fn(
+    (
+      handler: (
+        req: NextRequest & { orgId: string; userId: string; role: string },
+      ) => Promise<Response>,
+    ) => {
+      return (req: NextRequest) =>
+        handler({
+          ...req,
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+        } as NextRequest & { orgId: string; userId: string; role: string });
+    },
+  ),
   withOrgContextMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   pharmacistShiftFindFirstMock: vi.fn(),
@@ -55,6 +60,7 @@ function createRequest(body: unknown) {
 function buildCareCase(overrides?: Record<string, unknown>) {
   return {
     primary_pharmacist_id: 'pharmacist_1',
+    backup_pharmacist_id: 'user_1',
     patient: {
       scheduling_preference: {
         preferred_weekdays: [2],
@@ -83,7 +89,7 @@ describe('/api/visit-schedules/generate POST', () => {
         visitSchedule: {
           create: visitScheduleCreateMock,
         },
-      })
+      }),
     );
   });
 
@@ -98,7 +104,7 @@ describe('/api/visit-schedules/generate POST', () => {
         end_date: '2026-04-30',
         time_window_start: '09:00',
         time_window_end: '12:00',
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -126,7 +132,7 @@ describe('/api/visit-schedules/generate POST', () => {
             facility_time_to: null,
           },
         },
-      })
+      }),
     );
 
     const response = await POST(
@@ -138,7 +144,7 @@ describe('/api/visit-schedules/generate POST', () => {
         insurance_type: 'medical',
         start_date: '2026-03-30',
         end_date: '2026-04-05',
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -146,6 +152,42 @@ describe('/api/visit-schedules/generate POST', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '週次訪問回数の上限を超えています（医療保険: 週1回まで）',
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects generation for an unassigned non-admin user', async () => {
+    careCaseFindFirstMock.mockResolvedValue(
+      buildCareCase({
+        primary_pharmacist_id: 'primary_user',
+        backup_pharmacist_id: 'backup_user',
+        patient: {
+          scheduling_preference: {
+            preferred_weekdays: [2],
+            preferred_time_from: null,
+            preferred_time_to: null,
+            facility_time_from: null,
+            facility_time_to: null,
+          },
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'other_user',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-07',
+        end_date: '2026-04-07',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
     });
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
   });
@@ -162,7 +204,7 @@ describe('/api/visit-schedules/generate POST', () => {
             facility_time_to: new Date('1970-01-01T14:00:00'),
           },
         },
-      })
+      }),
     );
 
     const response = await POST(
@@ -173,7 +215,7 @@ describe('/api/visit-schedules/generate POST', () => {
         recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
         start_date: '2026-04-07',
         end_date: '2026-04-07',
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');

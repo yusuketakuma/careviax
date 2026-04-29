@@ -7,6 +7,7 @@
  */
 
 import { prisma } from '@/lib/db/client';
+import type { DrugMaster, PharmacyDrugStock, Prisma } from '@prisma/client';
 import type { JahisQRData, JahisMedication } from './jahis-qr';
 import { parseDaysOrTimes } from './jahis-qr';
 import {
@@ -88,6 +89,15 @@ export interface QrToIntakeResult {
   formularyStatus: FormularyMatch[];
 }
 
+const DRUG_MASTER_LOOKUP_BATCH_SIZE = 50;
+const FORMULARY_LOOKUP_BATCH_SIZE = 100;
+
+interface DrugLookupContext {
+  drugMasterByLine: Array<DrugMaster | null>;
+  stockByDrugMasterId: Map<string, PharmacyDrugStock>;
+  preferredGenericNameById: Map<string, string>;
+}
+
 // ── Main Function ──
 
 export async function mapJahisToIntake(
@@ -98,15 +108,20 @@ export async function mapJahisToIntake(
   const unmatchedDrugs: UnmatchedDrug[] = [];
   const formularyStatus: FormularyMatch[] = [];
   const lines: QrIntakeLineInput[] = [];
+  const drugLookupContext = await buildDrugLookupContext(
+    qrData.medications,
+    input.orgId,
+    input.siteId,
+  );
 
   for (let i = 0; i < qrData.medications.length; i++) {
     const med = qrData.medications[i];
-    const { line, autoCompleted, unmatched, formulary } = await mapMedicationLine(
+    const { line, autoCompleted, unmatched, formulary } = mapMedicationLine(
       med,
       i,
-      input.siteId,
       qrData.dispensingDate ?? null,
       qrData.remarks,
+      drugLookupContext,
     );
     lines.push({ ...line, line_number: i + 1 });
     autoCompletedFields.push(...autoCompleted);
@@ -125,7 +140,8 @@ export async function mapJahisToIntake(
     lines,
     prescribedDate: qrData.dispensingDate ?? null,
     prescriberName: qrData.prescribingDoctor ?? null,
-    prescriberInstitution: institution.prescriberInstitutionName ?? qrData.prescribingInstitution.name ?? null,
+    prescriberInstitution:
+      institution.prescriberInstitutionName ?? qrData.prescribingInstitution.name ?? null,
     prescriberInstitutionCode: qrData.prescribingInstitution.institutionCode ?? null,
     prescriberInstitutionId: institution.prescriberInstitutionId,
     isNewInstitution: institution.isNewlyRegistered,
@@ -147,7 +163,11 @@ async function resolveOrCreatePrescriberInstitution(
   institutionCode: string | undefined,
 ): Promise<InstitutionResolution> {
   if (!institutionName && !institutionCode) {
-    return { prescriberInstitutionId: null, prescriberInstitutionName: null, isNewlyRegistered: false };
+    return {
+      prescriberInstitutionId: null,
+      prescriberInstitutionName: null,
+      isNewlyRegistered: false,
+    };
   }
 
   // 1. Search by institution_code (most reliable)
@@ -156,7 +176,11 @@ async function resolveOrCreatePrescriberInstitution(
       where: { org_id: orgId, institution_code: institutionCode },
     });
     if (byCode) {
-      return { prescriberInstitutionId: byCode.id, prescriberInstitutionName: byCode.name, isNewlyRegistered: false };
+      return {
+        prescriberInstitutionId: byCode.id,
+        prescriberInstitutionName: byCode.name,
+        isNewlyRegistered: false,
+      };
     }
   }
 
@@ -166,7 +190,11 @@ async function resolveOrCreatePrescriberInstitution(
       where: { org_id: orgId, name: institutionName },
     });
     if (byName) {
-      return { prescriberInstitutionId: byName.id, prescriberInstitutionName: byName.name, isNewlyRegistered: false };
+      return {
+        prescriberInstitutionId: byName.id,
+        prescriberInstitutionName: byName.name,
+        isNewlyRegistered: false,
+      };
     }
   }
 
@@ -204,37 +232,289 @@ async function resolveOrCreatePrescriberInstitution(
 
 // ── Helpers ──
 
-async function mapMedicationLine(
+async function buildDrugLookupContext(
+  medications: JahisMedication[],
+  orgId: string,
+  siteId: string,
+): Promise<DrugLookupContext> {
+  if (medications.length === 0) {
+    return {
+      drugMasterByLine: [],
+      stockByDrugMasterId: new Map(),
+      preferredGenericNameById: new Map(),
+    };
+  }
+
+  const drugMasterCandidates = await fetchDrugMasterCandidates(medications);
+  const drugMasterByLine = medications.map((med) =>
+    lookupDrugMasterFromCandidates(
+      med.drugCode,
+      med.drugCodeType,
+      med.drugName,
+      drugMasterCandidates,
+    ),
+  );
+  const drugMasterIds = uniqueNonNullable(
+    drugMasterByLine.map((drugMaster) => drugMaster?.id ?? null),
+  );
+  const stocks = await fetchFormularyStocks(orgId, siteId, drugMasterIds);
+  const stockByDrugMasterId = new Map<string, PharmacyDrugStock>();
+
+  for (const stock of stocks) {
+    if (!stockByDrugMasterId.has(stock.drug_master_id)) {
+      stockByDrugMasterId.set(stock.drug_master_id, stock);
+    }
+  }
+
+  const preferredGenericIds = uniqueNonNullable(stocks.map((stock) => stock.preferred_generic_id));
+  const preferredGenericNameById = await fetchPreferredGenericNames(preferredGenericIds);
+
+  return {
+    drugMasterByLine,
+    stockByDrugMasterId,
+    preferredGenericNameById,
+  };
+}
+
+async function fetchDrugMasterCandidates(medications: JahisMedication[]) {
+  const whereClauses = buildDrugMasterWhereClauses(medications);
+
+  if (whereClauses.length === 0) {
+    return [];
+  }
+
+  const candidatesById = new Map<string, DrugMaster>();
+
+  for (const batch of chunk(whereClauses, DRUG_MASTER_LOOKUP_BATCH_SIZE)) {
+    const rows = await prisma.drugMaster.findMany({
+      where: { OR: batch },
+    });
+
+    for (const row of rows) {
+      if (!candidatesById.has(row.id)) {
+        candidatesById.set(row.id, row);
+      }
+    }
+  }
+
+  return Array.from(candidatesById.values());
+}
+
+function buildDrugMasterWhereClauses(medications: JahisMedication[]) {
+  const whereClauses: Prisma.DrugMasterWhereInput[] = [];
+  const seen = new Set<string>();
+
+  for (const med of medications) {
+    const cleanedCode = med.drugCode?.replace(/\s/g, '') ?? null;
+
+    if (cleanedCode && med.drugCodeType && med.drugCodeType !== 1) {
+      switch (med.drugCodeType) {
+        case 2:
+          addCodeLookup(whereClauses, seen, 'receipt_code', cleanedCode);
+          break;
+        case 4:
+          addCodeLookup(whereClauses, seen, 'yj_code', cleanedCode);
+          break;
+        case 6:
+          addCodeLookup(whereClauses, seen, 'hot_code', cleanedCode);
+          break;
+        case 3:
+          addCodeLookup(whereClauses, seen, 'yj_code', cleanedCode);
+          addCodeLookup(whereClauses, seen, 'receipt_code', cleanedCode);
+          break;
+      }
+    }
+
+    if (cleanedCode) {
+      addCodeLookup(whereClauses, seen, 'yj_code', cleanedCode);
+      addCodeLookup(whereClauses, seen, 'receipt_code', cleanedCode);
+    }
+
+    if (med.drugName && med.drugName !== '不明') {
+      const key = `drug_name:${med.drugName}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        whereClauses.push({ drug_name: { contains: med.drugName } });
+      }
+    }
+  }
+
+  return whereClauses;
+}
+
+function addCodeLookup(
+  whereClauses: Prisma.DrugMasterWhereInput[],
+  seen: Set<string>,
+  field: 'yj_code' | 'receipt_code' | 'hot_code',
+  value: string,
+) {
+  const key = `${field}:${value}`;
+  if (seen.has(key)) return;
+
+  seen.add(key);
+  whereClauses.push({ [field]: value } as Prisma.DrugMasterWhereInput);
+}
+
+async function fetchFormularyStocks(orgId: string, siteId: string, drugMasterIds: string[]) {
+  if (drugMasterIds.length === 0) {
+    return [];
+  }
+
+  const stocks: PharmacyDrugStock[] = [];
+
+  for (const batch of chunk(drugMasterIds, FORMULARY_LOOKUP_BATCH_SIZE)) {
+    stocks.push(
+      ...(await prisma.pharmacyDrugStock.findMany({
+        where: {
+          org_id: orgId,
+          site_id: siteId,
+          drug_master_id: { in: batch },
+          is_stocked: true,
+        },
+      })),
+    );
+  }
+
+  return stocks;
+}
+
+async function fetchPreferredGenericNames(preferredGenericIds: string[]) {
+  const preferredGenericNameById = new Map<string, string>();
+
+  if (preferredGenericIds.length === 0) {
+    return preferredGenericNameById;
+  }
+
+  for (const batch of chunk(preferredGenericIds, DRUG_MASTER_LOOKUP_BATCH_SIZE)) {
+    const rows = await prisma.drugMaster.findMany({
+      where: { id: { in: batch } },
+      select: { id: true, drug_name: true },
+    });
+
+    for (const row of rows) {
+      preferredGenericNameById.set(row.id, row.drug_name);
+    }
+  }
+
+  return preferredGenericNameById;
+}
+
+function chunk<T>(values: T[], size: number): T[][] {
+  const batches: T[][] = [];
+
+  for (let i = 0; i < values.length; i += size) {
+    batches.push(values.slice(i, i + size));
+  }
+
+  return batches;
+}
+
+function uniqueNonNullable(values: Array<string | null | undefined>) {
+  return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
+}
+
+function lookupDrugMasterFromCandidates(
+  drugCode: string | undefined,
+  drugCodeType: number | undefined,
+  drugName: string,
+  candidates: DrugMaster[],
+) {
+  if (drugCode && drugCodeType && drugCodeType !== 1) {
+    const cleaned = drugCode.replace(/\s/g, '');
+
+    switch (drugCodeType) {
+      case 2: {
+        const match = findFirstCandidate(
+          candidates,
+          (candidate) => candidate.receipt_code === cleaned,
+        );
+        if (match) return match;
+        break;
+      }
+      case 4: {
+        const match = findFirstCandidate(candidates, (candidate) => candidate.yj_code === cleaned);
+        if (match) return match;
+        break;
+      }
+      case 6: {
+        const match = findFirstCandidate(candidates, (candidate) => candidate.hot_code === cleaned);
+        if (match) return match;
+        break;
+      }
+      case 3: {
+        const match = findFirstCandidate(
+          candidates,
+          (candidate) => candidate.yj_code === cleaned || candidate.receipt_code === cleaned,
+        );
+        if (match) return match;
+        break;
+      }
+    }
+  }
+
+  if (drugCode) {
+    const cleaned = drugCode.replace(/\s/g, '');
+    if (cleaned.length === 12) {
+      const match = findFirstCandidate(candidates, (candidate) => candidate.yj_code === cleaned);
+      if (match) return match;
+    }
+    if (cleaned.length === 9) {
+      const match = findFirstCandidate(
+        candidates,
+        (candidate) => candidate.receipt_code === cleaned,
+      );
+      if (match) return match;
+    }
+
+    const match = findFirstCandidate(
+      candidates,
+      (candidate) => candidate.yj_code === cleaned || candidate.receipt_code === cleaned,
+    );
+    if (match) return match;
+  }
+
+  if (drugName && drugName !== '不明') {
+    return findFirstCandidate(candidates, (candidate) => candidate.drug_name.includes(drugName));
+  }
+
+  return null;
+}
+
+function findFirstCandidate(
+  candidates: DrugMaster[],
+  predicate: (candidate: DrugMaster) => boolean,
+) {
+  return candidates.find(predicate) ?? null;
+}
+
+function mapMedicationLine(
   med: JahisMedication,
   index: number,
-  siteId: string,
   prescribedDate: string | null,
   qrRemarks: string[],
-): Promise<{
+  drugLookupContext: DrugLookupContext,
+): {
   line: Omit<QrIntakeLineInput, 'line_number'>;
   autoCompleted: AutoCompletedField[];
   unmatched: UnmatchedDrug | null;
   formulary: FormularyMatch;
-}> {
+} {
   const autoCompleted: AutoCompletedField[] = [];
   let unmatched: UnmatchedDrug | null = null;
 
   // Parse days/times — prefer usageQuantity+usageUnit (record 301), fall back to daysOrTimes
-  const daysOrTimesRaw = med.usageQuantity && med.usageUnit
-    ? `${med.usageQuantity}${med.usageUnit}`
-    : (med.daysOrTimes ?? null);
+  const daysOrTimesRaw =
+    med.usageQuantity && med.usageUnit
+      ? `${med.usageQuantity}${med.usageUnit}`
+      : (med.daysOrTimes ?? null);
   const daysOrTimes = daysOrTimesRaw ? parseDaysOrTimes(daysOrTimesRaw) : null;
   const days = daysOrTimes?.days ?? null;
 
   // Build dose string
-  const dose = med.dose
-    ? med.unit
-      ? `${med.dose}${med.unit}`
-      : med.dose
-    : '';
+  const dose = med.dose ? (med.unit ? `${med.dose}${med.unit}` : med.dose) : '';
 
   // DrugMaster lookup (drugCodeType-aware)
-  const drugMaster = await lookupDrugMaster(med.drugCode, med.drugCodeType, med.drugName);
+  const drugMaster = drugLookupContext.drugMasterByLine[index] ?? null;
 
   let dosageForm: string | null = null;
   let isGeneric = false;
@@ -276,25 +556,15 @@ async function mapMedicationLine(
   let stockQty: number | null = null;
 
   if (drugMaster) {
-    const stock = await prisma.pharmacyDrugStock.findFirst({
-      where: {
-        site_id: siteId,
-        drug_master_id: drugMaster.id,
-        is_stocked: true,
-      },
-    });
+    const stock = drugLookupContext.stockByDrugMasterId.get(drugMaster.id) ?? null;
     if (stock) {
       inFormulary = true;
       preferredGenericId = stock.preferred_generic_id;
       stockQty = stock.stock_qty;
 
-      // Look up preferred generic name
       if (stock.preferred_generic_id) {
-        const generic = await prisma.drugMaster.findFirst({
-          where: { id: stock.preferred_generic_id },
-          select: { drug_name: true },
-        });
-        preferredGenericName = generic?.drug_name ?? null;
+        preferredGenericName =
+          drugLookupContext.preferredGenericNameById.get(stock.preferred_generic_id) ?? null;
       }
     }
   }
@@ -313,13 +583,14 @@ async function mapMedicationLine(
     new Set(
       [...med.supplements, ...med.usageNotes, ...qrRemarks]
         .map((value) => value.trim())
-        .filter((value) => value.length > 0)
-    )
+        .filter((value) => value.length > 0),
+    ),
   );
   const noteText = detailNotes.length > 0 ? detailNotes.join(' / ') : null;
-  const packagingText = detailNotes
-    .filter((value) => /一包|粉砕|別包|別袋|分包|PTP|ヒート|冷所|麻薬|ラベル/i.test(value))
-    .join(' / ') || null;
+  const packagingText =
+    detailNotes
+      .filter((value) => /一包|粉砕|別包|別袋|分包|PTP|ヒート|冷所|麻薬|ラベル/i.test(value))
+      .join(' / ') || null;
   const parsedPackaging = parsePackagingMethod(packagingText);
   const route = inferRoute({
     dosageForm: drugMaster?.dosage_form ?? null,
@@ -390,81 +661,4 @@ function inferRoute(args: {
   }
 
   return 'internal';
-}
-
-/**
- * DrugMaster lookup strategy (drugCodeType-aware):
- * - drugCodeType 2 → レセ電算コード (receipt_code)
- * - drugCodeType 3 → 厚労省コード (try yj_code + receipt_code)
- * - drugCodeType 4 → YJコード (yj_code)
- * - drugCodeType 6 → HOTコード (hot_code)
- * - no drugCodeType → length-based heuristic (12桁=YJ, 9桁=レセ電)
- * - fallback: drugName 部分一致（確度低）
- */
-async function lookupDrugMaster(
-  drugCode: string | undefined,
-  drugCodeType: number | undefined,
-  drugName: string,
-) {
-  if (drugCode && drugCodeType && drugCodeType !== 1) {
-    const cleaned = drugCode.replace(/\s/g, '');
-
-    switch (drugCodeType) {
-      case 2: { // レセ電算コード
-        const match = await prisma.drugMaster.findFirst({
-          where: { receipt_code: cleaned },
-        });
-        if (match) return match;
-        break;
-      }
-      case 4: { // YJコード
-        const match = await prisma.drugMaster.findFirst({
-          where: { yj_code: cleaned },
-        });
-        if (match) return match;
-        break;
-      }
-      case 6: { // HOTコード
-        const match = await prisma.drugMaster.findFirst({
-          where: { hot_code: cleaned },
-        });
-        if (match) return match;
-        break;
-      }
-      case 3: { // 厚労省コード — try both YJ and receipt
-        const match = await prisma.drugMaster.findFirst({
-          where: { OR: [{ yj_code: cleaned }, { receipt_code: cleaned }] },
-        });
-        if (match) return match;
-        break;
-      }
-    }
-  }
-
-  // Fallback: try by code length (for QR without drugCodeType)
-  if (drugCode) {
-    const cleaned = drugCode.replace(/\s/g, '');
-    if (cleaned.length === 12) {
-      const match = await prisma.drugMaster.findFirst({ where: { yj_code: cleaned } });
-      if (match) return match;
-    }
-    if (cleaned.length === 9) {
-      const match = await prisma.drugMaster.findFirst({ where: { receipt_code: cleaned } });
-      if (match) return match;
-    }
-    // Try any code field for other lengths
-    const match = await prisma.drugMaster.findFirst({
-      where: { OR: [{ yj_code: cleaned }, { receipt_code: cleaned }] },
-    });
-    if (match) return match;
-  }
-
-  // Last resort: name match (low confidence)
-  if (drugName && drugName !== '不明') {
-    return prisma.drugMaster.findFirst({
-      where: { drug_name: { contains: drugName } },
-    });
-  }
-
-  return null;
 }

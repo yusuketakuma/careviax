@@ -8,6 +8,8 @@ type Permission = {
   canAuditSet: boolean;
   canVisit: boolean;
   canReport: boolean;
+  canSendCareReport: boolean;
+  canManageBilling: boolean;
   canViewDashboard: boolean;
   canAdmin: boolean;
 };
@@ -23,6 +25,8 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuditSet: true,
     canVisit: true,
     canReport: true,
+    canSendCareReport: true,
+    canManageBilling: true,
     canViewDashboard: true,
     canAdmin: true,
   },
@@ -33,6 +37,8 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuditSet: true,
     canVisit: true,
     canReport: true,
+    canSendCareReport: true,
+    canManageBilling: true,
     canViewDashboard: true,
     canAdmin: true,
   },
@@ -43,6 +49,8 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuditSet: true,
     canVisit: true,
     canReport: true,
+    canSendCareReport: true,
+    canManageBilling: true,
     canViewDashboard: true,
     canAdmin: false,
   },
@@ -53,6 +61,8 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuditSet: false,
     canVisit: true,
     canReport: true,
+    canSendCareReport: false,
+    canManageBilling: false,
     canViewDashboard: true,
     canAdmin: false,
   },
@@ -63,6 +73,8 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuditSet: false,
     canVisit: false,
     canReport: true,
+    canSendCareReport: false,
+    canManageBilling: false,
     canViewDashboard: true,
     canAdmin: false,
   },
@@ -73,6 +85,8 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuditSet: false,
     canVisit: false,
     canReport: false,
+    canSendCareReport: false,
+    canManageBilling: false,
     canViewDashboard: false,
     canAdmin: false,
   },
@@ -83,6 +97,8 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuditSet: false,
     canVisit: false,
     canReport: false,
+    canSendCareReport: false,
+    canManageBilling: false,
     canViewDashboard: false,
     canAdmin: false,
   },
@@ -95,7 +111,7 @@ export function hasPermission(role: MemberRole, permission: PermissionKey): bool
 export function forbiddenIfMissingPermission(
   role: MemberRole,
   permission: PermissionKey,
-  message = '権限がありません'
+  message = '権限がありません',
 ) {
   return hasPermission(role, permission) ? null : forbidden(message);
 }

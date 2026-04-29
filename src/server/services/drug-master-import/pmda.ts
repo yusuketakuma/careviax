@@ -1,14 +1,17 @@
 import { InteractionSeverity, InteractionSource } from '@prisma/client';
 import { XMLParser } from 'fast-xml-parser';
-import { unzipSync } from 'fflate';
 import {
   decodeTextBuffer,
   DrugMasterImportDbClient,
   FetchLike,
+  PMDA_IMPORT_URL_POLICY,
+  ZipExpansionLimits,
   fetchBytes,
   isZipBuffer,
   normalizeCell,
+  normalizeImportSourceUrl,
   parseDate,
+  unzipWithLimits,
   withImportLog,
 } from './shared';
 
@@ -23,6 +26,7 @@ export type ImportPmdaPackageInsertOptions = {
   zipUrl?: string;
   mode?: 'full' | 'delta';
   fetchImpl?: FetchLike;
+  zipLimits?: Partial<ZipExpansionLimits>;
 };
 
 type ParsedPmdaInteractionCandidate = {
@@ -50,25 +54,50 @@ type ParsedPmdaPackageInsertRecord = {
 
 const PMDA_FULL_URL_ENV = 'PMDA_PACKAGE_INSERT_FULL_URL';
 const PMDA_DELTA_URL_ENV = 'PMDA_PACKAGE_INSERT_DELTA_URL';
+const PMDA_ZIP_EXPANSION_LIMITS: ZipExpansionLimits = {
+  maxEntries: 80_000,
+  maxEntryBytes: 8 * 1024 * 1024,
+  maxTotalBytes: 1024 * 1024 * 1024,
+};
 
 function resolvePmdaArchiveUrl(options: ImportPmdaPackageInsertOptions) {
-  if (options.zipUrl) return options.zipUrl;
+  if (options.zipUrl) {
+    return normalizeImportSourceUrl(options.zipUrl, PMDA_IMPORT_URL_POLICY);
+  }
 
   const envKey = options.mode === 'delta' ? PMDA_DELTA_URL_ENV : PMDA_FULL_URL_ENV;
   const configured = process.env[envKey];
   if (!configured) {
     throw new Error(
-      `PMDA 添付文書 ZIP URL が未設定です。${envKey} または zipUrl を指定してください`
+      `PMDA 添付文書 ZIP URL が未設定です。${envKey} または zipUrl を指定してください`,
     );
   }
-  return configured;
+  return normalizeImportSourceUrl(configured, PMDA_IMPORT_URL_POLICY);
+}
+
+function resolvePmdaZipLimits(overrides?: Partial<ZipExpansionLimits>) {
+  return {
+    ...PMDA_ZIP_EXPANSION_LIMITS,
+    ...overrides,
+  };
+}
+
+function unzipPmdaPackageInsertArchive(
+  buffer: Uint8Array,
+  overrides?: Partial<ZipExpansionLimits>,
+) {
+  return unzipWithLimits(buffer, {
+    sourceLabel: 'PMDA添付文書',
+    limits: resolvePmdaZipLimits(overrides),
+    filter: (entryName) => entryName.toLowerCase().endsWith('.xml'),
+  });
 }
 
 function walkNode(
   node: unknown,
   visit: (value: unknown, key: string | null, path: string[]) => void,
   path: string[] = [],
-  key: string | null = null
+  key: string | null = null,
 ) {
   visit(node, key, path);
 
@@ -160,7 +189,7 @@ function summarizeSection(node: unknown, limit = 25) {
 
 function extractInteractionCandidates(
   node: unknown,
-  severity: InteractionSeverity
+  severity: InteractionSeverity,
 ): ParsedPmdaInteractionCandidate[] {
   const candidates: ParsedPmdaInteractionCandidate[] = [];
 
@@ -221,19 +250,17 @@ function parsePmdaXmlDocument(xmlText: string): ParsedPmdaPackageInsertRecord {
   const dosageSections = collectSectionsByTitle(xml, [/用法及び用量/, /用法用量/]);
 
   return {
-    yj_code:
-      firstMatchingText(xml, [/薬価基準収載医薬品コード/, /YJ/i, /drug.?code/i]) ??
-      null,
-    drug_name:
-      firstMatchingText(xml, [/販売名/, /品名/, /医薬品名/, /drug.?name/i]) ?? null,
-    document_version:
-      firstMatchingText(xml, [/版/, /version/i, /文書番号/, /document/i]) ?? null,
+    yj_code: firstMatchingText(xml, [/薬価基準収載医薬品コード/, /YJ/i, /drug.?code/i]) ?? null,
+    drug_name: firstMatchingText(xml, [/販売名/, /品名/, /医薬品名/, /drug.?name/i]) ?? null,
+    document_version: firstMatchingText(xml, [/版/, /version/i, /文書番号/, /document/i]) ?? null,
     revised_at:
       parseDate(firstMatchingText(xml, [/改訂年月/, /改訂日/, /作成又は改訂年月日/])) ?? null,
-    contraindications: contraindicationSections.flatMap((section) => summarizeSection(section.value)),
+    contraindications: contraindicationSections.flatMap((section) =>
+      summarizeSection(section.value),
+    ),
     interaction_summaries: {
       contraindicated: contraindicatedInteractionSections.flatMap((section) =>
-        summarizeSection(section.value)
+        summarizeSection(section.value),
       ),
       caution: cautionInteractionSections.flatMap((section) => summarizeSection(section.value)),
     },
@@ -241,25 +268,26 @@ function parsePmdaXmlDocument(xmlText: string): ParsedPmdaPackageInsertRecord {
     dosage_and_administration: dosageSections.flatMap((section) => summarizeSection(section.value)),
     interaction_candidates: [
       ...contraindicatedInteractionSections.flatMap((section) =>
-        extractInteractionCandidates(section.value, 'contraindicated')
+        extractInteractionCandidates(section.value, 'contraindicated'),
       ),
       ...cautionInteractionSections.flatMap((section) =>
-        extractInteractionCandidates(section.value, 'caution')
+        extractInteractionCandidates(section.value, 'caution'),
       ),
     ],
   };
 }
 
-export async function parsePmdaPackageInsertArchive(
-  options: ImportPmdaPackageInsertOptions = {}
-) {
+export async function parsePmdaPackageInsertArchive(options: ImportPmdaPackageInsertOptions = {}) {
   const fetchImpl = options.fetchImpl ?? fetch;
   const zipUrl = resolvePmdaArchiveUrl(options);
-  const buffer = await fetchBytes(zipUrl, fetchImpl);
+  const buffer = await fetchBytes(zipUrl, {
+    fetchImpl,
+    policy: PMDA_IMPORT_URL_POLICY,
+  });
   const records: ParsedPmdaPackageInsertRecord[] = [];
 
   if (isZipBuffer(buffer) && !zipUrl.toLowerCase().endsWith('.xml')) {
-    const entries = unzipSync(new Uint8Array(buffer));
+    const entries = unzipPmdaPackageInsertArchive(new Uint8Array(buffer), options.zipLimits);
     for (const [entryName, bytes] of Object.entries(entries)) {
       if (!/\.xml$/i.test(entryName)) continue;
       const xmlText = decodeTextBuffer(Buffer.from(bytes));
@@ -287,7 +315,7 @@ function matchCounterpartIds(
     yj_code: string;
     drug_name: string;
     generic_name: string | null;
-  }>
+  }>,
 ) {
   const matched = new Map<string, string>();
 
@@ -304,7 +332,7 @@ function matchCounterpartIds(
         item.drug_name === name ||
         item.drug_name.includes(name) ||
         item.generic_name === name ||
-        name.includes(item.drug_name)
+        name.includes(item.drug_name),
     );
     if (master) {
       matched.set(master.id, master.id);
@@ -316,7 +344,7 @@ function matchCounterpartIds(
 
 export async function importPmdaPackageInserts(
   db: DrugMasterImportDbClient,
-  options: ImportPmdaPackageInsertOptions = {}
+  options: ImportPmdaPackageInsertOptions = {},
 ) {
   return withImportLog(db, 'pmda', async () => {
     const parsed = await parsePmdaPackageInsertArchive(options);
@@ -333,14 +361,11 @@ export async function importPmdaPackageInserts(
 
     for (const record of parsed.records) {
       const primary =
-        (record.yj_code
-          ? masters.find((item) => item.yj_code === record.yj_code)
-          : null) ??
+        (record.yj_code ? masters.find((item) => item.yj_code === record.yj_code) : null) ??
         (record.drug_name
           ? masters.find(
               (item) =>
-                item.drug_name === record.drug_name ||
-                item.drug_name.includes(record.drug_name!)
+                item.drug_name === record.drug_name || item.drug_name.includes(record.drug_name!),
             )
           : null);
 
@@ -382,7 +407,7 @@ export async function importPmdaPackageInserts(
 
       for (const candidate of record.interaction_candidates) {
         const counterpartIds = matchCounterpartIds(candidate, masters).filter(
-          (id) => id !== primary.id
+          (id) => id !== primary.id,
         );
 
         for (const counterpartId of counterpartIds) {

@@ -7,9 +7,11 @@ const {
   qrScanDraftFindFirstMock,
   qrScanDraftCreateMock,
   patientFindFirstMock,
+  pharmacySiteFindFirstMock,
   jahisSupplementalRecordDeleteManyMock,
   jahisSupplementalRecordCreateManyMock,
   broadcastStatusUpdateMock,
+  isJahisQRMock,
   parseJahisQRSafeMock,
   mergeJahisQRPagesMock,
   detectMultiQRMock,
@@ -29,9 +31,11 @@ const {
   qrScanDraftFindFirstMock: vi.fn().mockResolvedValue(null),
   qrScanDraftCreateMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
+  pharmacySiteFindFirstMock: vi.fn(),
   jahisSupplementalRecordDeleteManyMock: vi.fn(),
   jahisSupplementalRecordCreateManyMock: vi.fn(),
   broadcastStatusUpdateMock: vi.fn(),
+  isJahisQRMock: vi.fn().mockReturnValue(true),
   parseJahisQRSafeMock: vi.fn(),
   mergeJahisQRPagesMock: vi.fn(),
   detectMultiQRMock: vi.fn().mockReturnValue(null),
@@ -54,6 +58,9 @@ vi.mock('@/lib/db/client', () => ({
     patient: {
       findFirst: patientFindFirstMock,
     },
+    pharmacySite: {
+      findFirst: pharmacySiteFindFirstMock,
+    },
   },
 }));
 
@@ -64,7 +71,7 @@ vi.mock('@/server/adapters/realtime', () => ({
 }));
 
 vi.mock('@/lib/pharmacy/jahis-qr', () => ({
-  isJahisQR: vi.fn().mockReturnValue(true),
+  isJahisQR: isJahisQRMock,
   parseJahisQRSafe: parseJahisQRSafeMock,
   mergeJahisQRPages: mergeJahisQRPagesMock,
   detectMultiQR: detectMultiQRMock,
@@ -86,6 +93,8 @@ describe('/api/qr-scan-drafts POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+    pharmacySiteFindFirstMock.mockResolvedValue({ id: 'site_1' });
+    isJahisQRMock.mockReturnValue(true);
     mergeJahisQRPagesMock.mockImplementation((pages: unknown[]) => pages[0]);
     parseJahisQRSafeMock.mockReturnValue({
       success: true,
@@ -271,5 +280,62 @@ describe('/api/qr-scan-drafts POST', () => {
     expect(response.status).toBe(400);
     expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
     expect(jahisSupplementalRecordCreateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects site_id outside the current org before QR parsing and stock mapping', async () => {
+    pharmacySiteFindFirstMock.mockResolvedValue(null);
+
+    const response = await POST(
+      createRequest({
+        qr_texts: ['JAHISTC08,1'],
+        site_id: 'site_other_org',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(pharmacySiteFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'site_other_org', org_id: 'org_1' },
+      select: { id: true },
+    });
+    expect(isJahisQRMock).not.toHaveBeenCalled();
+    expect(parseJahisQRSafeMock).not.toHaveBeenCalled();
+    expect(mapJahisToIntakeMock).not.toHaveBeenCalled();
+    expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
+    expect(jahisSupplementalRecordCreateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects oversized QR text before site lookup and draft creation', async () => {
+    const response = await POST(
+      createRequest({
+        qr_texts: [`JAHISTC08,1\n${'A'.repeat(8192)}`],
+        site_id: 'site_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(pharmacySiteFindFirstMock).not.toHaveBeenCalled();
+    expect(isJahisQRMock).not.toHaveBeenCalled();
+    expect(parseJahisQRSafeMock).not.toHaveBeenCalled();
+    expect(mapJahisToIntakeMock).not.toHaveBeenCalled();
+    expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects too many QR texts before site lookup and draft creation', async () => {
+    const response = await POST(
+      createRequest({
+        qr_texts: Array.from({ length: 17 }, () => 'JAHISTC08,1'),
+        site_id: 'site_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(pharmacySiteFindFirstMock).not.toHaveBeenCalled();
+    expect(isJahisQRMock).not.toHaveBeenCalled();
+    expect(parseJahisQRSafeMock).not.toHaveBeenCalled();
+    expect(mapJahisToIntakeMock).not.toHaveBeenCalled();
+    expect(qrScanDraftCreateMock).not.toHaveBeenCalled();
   });
 });

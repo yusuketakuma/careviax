@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import bcrypt from 'bcryptjs';
+import type { MemberRole } from '@prisma/client';
 
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
@@ -22,8 +23,114 @@ import {
   hashExternalAccessToken,
   issueExternalAccessToken,
   MissingExternalAccessSecretError,
+  normalizeExternalAccessScope,
+  validateExternalAccessScopeForRole,
   validateExternalAccessGrant,
 } from './external-access';
+
+describe('external access scope validation', () => {
+  it('rejects unknown scope keys', () => {
+    const result = normalizeExternalAccessScope({
+      medication_list: true,
+      clinical_notes: true,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      kind: 'validation',
+      message: '共有範囲が不正です',
+      details: { unknown_scope_keys: ['clinical_notes'] },
+    });
+  });
+
+  it('rejects non-boolean known scope values', () => {
+    const result = normalizeExternalAccessScope({
+      medication_list: 'yes',
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      kind: 'validation',
+      details: { invalid_scope_keys: ['medication_list'] },
+    });
+  });
+
+  it('requires visit permission for medication and allergy scopes', () => {
+    const clerkResult = validateExternalAccessScopeForRole(
+      {
+        medication_list: true,
+        allergy_info: true,
+      },
+      'clerk' as MemberRole,
+    );
+    const pharmacistResult = validateExternalAccessScopeForRole(
+      {
+        medication_list: true,
+        allergy_info: true,
+      },
+      'pharmacist' as MemberRole,
+    );
+
+    expect(clerkResult).toMatchObject({
+      ok: false,
+      kind: 'permission',
+      details: { denied_scope_keys: ['allergy_info', 'medication_list'] },
+    });
+    expect(pharmacistResult).toMatchObject({
+      ok: true,
+      scope: {
+        medication_list: true,
+        allergy_info: true,
+      },
+    });
+  });
+
+  it('requires send-report permission for report-bearing scopes', () => {
+    const clerkResult = validateExternalAccessScopeForRole(
+      {
+        care_reports: true,
+        self_report_history: true,
+      },
+      'clerk' as MemberRole,
+    );
+    const pharmacistResult = validateExternalAccessScopeForRole(
+      {
+        care_reports: true,
+        self_report_history: true,
+      },
+      'pharmacist' as MemberRole,
+    );
+
+    expect(clerkResult).toMatchObject({
+      ok: false,
+      kind: 'permission',
+      details: { denied_scope_keys: ['care_reports', 'self_report_history'] },
+    });
+    expect(pharmacistResult).toMatchObject({
+      ok: true,
+      scope: {
+        care_reports: true,
+        self_report_history: true,
+      },
+    });
+  });
+
+  it('requires visit permission for visit schedule scope', () => {
+    const result = validateExternalAccessScopeForRole(
+      {
+        medication_list: true,
+        visit_schedule: true,
+      },
+      'clerk' as MemberRole,
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      kind: 'permission',
+      details: { denied_scope_keys: ['medication_list', 'visit_schedule'] },
+    });
+  });
+});
 
 describe('buildExternalAccessPayload', () => {
   beforeEach(() => {
@@ -138,7 +245,7 @@ describe('buildExternalAccessPayload', () => {
         expect.stringContaining('直近の訪問予定'),
         expect.stringContaining('最新の共有報告'),
         'アレルギー情報を共有しています。',
-      ])
+      ]),
     );
   });
 });
@@ -225,6 +332,33 @@ describe('validateExternalAccessGrant', () => {
     });
   });
 
+  it('fails closed when a stored grant is missing an OTP hash', async () => {
+    const token = await issueExternalAccessToken({
+      grantId: 'grant_without_otp',
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      expiresHours: 72,
+    });
+
+    prismaMock.externalAccessGrant.findUnique.mockResolvedValue({
+      id: 'grant_without_otp',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      otp_hash: null,
+      expires_at: new Date('2026-04-01T00:00:00.000Z'),
+      revoked_at: null,
+      scope: { medication_list: true },
+    });
+
+    const result = await validateExternalAccessGrant(token, null);
+
+    expect(result).toMatchObject({
+      ok: false,
+      kind: 'validation',
+      message: 'OTPが必要です',
+    });
+  });
+
   it('rejects tokens whose signed payload does not match the stored grant', async () => {
     const token = await issueExternalAccessToken({
       grantId: 'grant_1',
@@ -251,6 +385,112 @@ describe('validateExternalAccessGrant', () => {
     });
   });
 
+  it('rejects expired grants', async () => {
+    const token = await issueExternalAccessToken({
+      grantId: 'grant_1',
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      expiresHours: 72,
+    });
+
+    prismaMock.externalAccessGrant.findUnique.mockResolvedValue({
+      id: 'grant_1',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      otp_hash: bcrypt.hashSync('123456', 4),
+      expires_at: new Date('2026-03-29T23:59:59.000Z'),
+      revoked_at: null,
+      scope: { medication_list: true },
+    });
+
+    const result = await validateExternalAccessGrant(token, '123456');
+
+    expect(result).toMatchObject({
+      ok: false,
+      kind: 'not_found',
+      message: '共有リンクが無効または期限切れです',
+    });
+  });
+
+  it('rejects revoked grants', async () => {
+    const token = await issueExternalAccessToken({
+      grantId: 'grant_1',
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      expiresHours: 72,
+    });
+
+    prismaMock.externalAccessGrant.findUnique.mockResolvedValue({
+      id: 'grant_1',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      otp_hash: bcrypt.hashSync('123456', 4),
+      expires_at: new Date('2026-04-01T00:00:00.000Z'),
+      revoked_at: new Date('2026-03-30T00:00:00.000Z'),
+      scope: { medication_list: true },
+    });
+
+    const result = await validateExternalAccessGrant(token, '123456');
+
+    expect(result).toMatchObject({
+      ok: false,
+      kind: 'not_found',
+      message: '共有リンクが無効または期限切れです',
+    });
+  });
+
+  it('rejects malformed legacy OTP hashes without throwing', async () => {
+    const token = await issueExternalAccessToken({
+      grantId: 'grant_1',
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      expiresHours: 72,
+    });
+
+    prismaMock.externalAccessGrant.findUnique.mockResolvedValue({
+      id: 'grant_1',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      otp_hash: 'abc123',
+      expires_at: new Date('2026-04-01T00:00:00.000Z'),
+      revoked_at: null,
+      scope: { medication_list: true },
+    });
+
+    await expect(validateExternalAccessGrant(token, '123456')).resolves.toMatchObject({
+      ok: false,
+      kind: 'validation',
+      message: 'OTPが正しくありません',
+    });
+  });
+
+  it('rejects grants whose stored scope contains unknown keys', async () => {
+    const token = await issueExternalAccessToken({
+      grantId: 'grant_1',
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      expiresHours: 72,
+    });
+
+    prismaMock.externalAccessGrant.findUnique.mockResolvedValue({
+      id: 'grant_1',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      otp_hash: null,
+      expires_at: new Date('2026-04-01T00:00:00.000Z'),
+      revoked_at: null,
+      scope: { medication_list: true, clinical_notes: true },
+    });
+
+    const result = await validateExternalAccessGrant(token, null);
+
+    expect(result).toMatchObject({
+      ok: false,
+      kind: 'validation',
+      message: '共有範囲が不正です',
+    });
+  });
+
   it('fails closed when no external access signing secret is configured', async () => {
     delete process.env.NEXTAUTH_SECRET;
     delete process.env.EXTERNAL_ACCESS_TOKEN_SECRET;
@@ -261,7 +501,7 @@ describe('validateExternalAccessGrant', () => {
         orgId: 'org_1',
         patientId: 'patient_1',
         expiresHours: 72,
-      })
+      }),
     ).rejects.toBeInstanceOf(MissingExternalAccessSecretError);
 
     const result = await validateExternalAccessGrant('forged-token', null);

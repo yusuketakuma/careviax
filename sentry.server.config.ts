@@ -1,4 +1,8 @@
 import * as Sentry from '@sentry/nextjs';
+import {
+  sanitizeSentryBreadcrumb,
+  sanitizeSentryEvent,
+} from './src/lib/observability/sentry-redaction';
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN ?? process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -10,22 +14,28 @@ Sentry.init({
   enabled: process.env.NODE_ENV === 'production',
 
   beforeSend(event) {
+    const sanitizedEvent = sanitizeSentryEvent(event);
+
     // Redact sensitive fields from server-side events
-    if (event.request?.cookies) {
-      event.request.cookies = {};
+    if (sanitizedEvent.request?.cookies) {
+      sanitizedEvent.request.cookies = {};
     }
-    if (event.request?.data) {
-      event.request.data = '[REDACTED]';
+    if (sanitizedEvent.request?.data) {
+      sanitizedEvent.request.data = '[REDACTED]';
     }
-    if (event.request?.headers) {
+    if (sanitizedEvent.request?.headers) {
       const allowed = ['content-type', 'x-request-id', 'x-trace-id', 'user-agent'];
       const headers: Record<string, string> = {};
       for (const key of allowed) {
-        const value = (event.request.headers as Record<string, string>)[key];
+        const value = (sanitizedEvent.request.headers as Record<string, string>)[key];
         if (value) headers[key] = value;
       }
-      event.request.headers = headers;
+      sanitizedEvent.request.headers = headers;
     }
-    return event;
+    return sanitizedEvent;
+  },
+
+  beforeBreadcrumb(breadcrumb) {
+    return sanitizeSentryBreadcrumb(breadcrumb);
   },
 });

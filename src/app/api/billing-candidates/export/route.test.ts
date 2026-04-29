@@ -20,8 +20,18 @@ const { withOrgContextMock, recordDataExportAuditMock, txMock } = vi.hoisted(() 
   },
 }));
 
+type AuthenticatedRouteHandler = ((req: NextRequest & { orgId: string }) => Promise<Response>) & {
+  authOptions?: {
+    permission?: string;
+    message?: string;
+  };
+};
+
 vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: NextRequest & { orgId: string }) => Promise<Response>) => handler,
+  withAuth: (
+    handler: (req: NextRequest & { orgId: string }) => Promise<Response>,
+    options?: AuthenticatedRouteHandler['authOptions'],
+  ) => Object.assign(handler, { authOptions: options }),
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -74,6 +84,13 @@ describe('/api/billing-candidates/export GET', () => {
       },
     ]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
+  });
+
+  it('requires billing management permission for CSV export', () => {
+    expect((GET as AuthenticatedRouteHandler).authOptions).toMatchObject({
+      permission: 'canManageBilling',
+      message: '請求候補のエクスポート権限がありません',
+    });
   });
 
   it('exports billing candidates with patient hierarchy and YJ codes', async () => {
@@ -174,6 +191,25 @@ describe('/api/billing-candidates/export GET', () => {
     const response = await GET({
       orgId: 'org_1',
       url: 'http://localhost/api/billing-candidates/export?billing_month=2026-13-01',
+    } as unknown as NextRequest & { orgId: string });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['empty query value', ''],
+    ['non-month-start date', '2026-03-02'],
+    ['invalid calendar date', '2026-02-30'],
+    ['timezone timestamp', '2026-03-01T00:00:00.000Z'],
+  ])('rejects %s billing_month before export side effects', async (_caseName, billingMonth) => {
+    const response = await GET({
+      orgId: 'org_1',
+      url: `http://localhost/api/billing-candidates/export?billing_month=${encodeURIComponent(
+        billingMonth,
+      )}`,
     } as unknown as NextRequest & { orgId: string });
 
     if (!response) throw new Error('response is required');

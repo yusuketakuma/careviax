@@ -22,7 +22,7 @@ vi.mock('./billing-evidence', () => ({
   listBillingEvidenceBlockers: listBillingEvidenceBlockersMock,
 }));
 
-import { getPatientVisitBrief } from './visit-brief';
+import { getPatientVisitBrief, getScheduleVisitBriefsForPatients } from './visit-brief';
 
 describe('getPatientVisitBrief', () => {
   beforeEach(() => {
@@ -275,8 +275,22 @@ describe('getPatientVisitBrief', () => {
       },
       drugMaster: {
         findMany: vi.fn().mockResolvedValue([
-          { yj_code: '123', drug_price: { toNumber: () => 12.5 }, is_generic: false, is_narcotic: false, is_psychotropic: false, therapeutic_category: '2171' },
-          { yj_code: '456', drug_price: { toNumber: () => 5.7 }, is_generic: true, is_narcotic: false, is_psychotropic: false, therapeutic_category: '2344' },
+          {
+            yj_code: '123',
+            drug_price: { toNumber: () => 12.5 },
+            is_generic: false,
+            is_narcotic: false,
+            is_psychotropic: false,
+            therapeutic_category: '2171',
+          },
+          {
+            yj_code: '456',
+            drug_price: { toNumber: () => 5.7 },
+            is_generic: true,
+            is_narcotic: false,
+            is_psychotropic: false,
+            therapeutic_category: '2344',
+          },
         ]),
       },
       drugPackageInsert: {
@@ -301,7 +315,7 @@ describe('getPatientVisitBrief', () => {
           drug_name: '睡眠薬A',
           change_type: 'removed',
         }),
-      ])
+      ]),
     );
     expect(result.dispensing_items).toEqual(
       expect.arrayContaining([
@@ -309,7 +323,7 @@ describe('getPatientVisitBrief', () => {
           drug_name: 'アムロジピン錠',
           dispensing_method: '一包化',
         }),
-      ])
+      ]),
     );
     expect(result.delivery_status).toEqual(
       expect.arrayContaining([
@@ -317,14 +331,14 @@ describe('getPatientVisitBrief', () => {
           title: 'care_report の送達',
           status_bucket: 'reply_waiting',
         }),
-      ])
+      ]),
     );
     expect(result.dosage_form_support).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           category: 'unit_dose',
         }),
-      ])
+      ]),
     );
     expect(result.multidisciplinary_updates).toEqual(
       expect.arrayContaining([
@@ -332,7 +346,7 @@ describe('getPatientVisitBrief', () => {
           source_type: 'self_report',
           counterpart: '家族A',
         }),
-      ])
+      ]),
     );
     expect(result.unresolved_items).toEqual(
       expect.arrayContaining([
@@ -344,24 +358,21 @@ describe('getPatientVisitBrief', () => {
           source_type: 'inquiry',
           title: '疑義照会 用量疑義',
         }),
-      ])
+      ]),
     );
     expect(result.must_check_today).toEqual(
-      expect.arrayContaining([
-        '直近の処方変更内容と残薬の整合',
-        '一包化の運用と服薬タイミング',
-      ])
+      expect.arrayContaining(['直近の処方変更内容と残薬の整合', '一包化の運用と服薬タイミング']),
     );
     expect(result.rule_summary).toEqual(
       expect.objectContaining({
         headline: '訪問前確認 が未解決です。',
-      })
+      }),
     );
     expect(generateVisitBriefAiSummaryMock).toHaveBeenCalledWith(
       expect.objectContaining({
         patientName: '患者A',
         context: 'patient',
-      })
+      }),
     );
     expect(listCommunicationQueueMock).toHaveBeenCalledWith(db, {
       orgId: 'org_1',
@@ -374,7 +385,143 @@ describe('getPatientVisitBrief', () => {
         recent_conferences: 1,
         pending_action_items: 1,
         last_conference_type: '退院前カンファレンス',
-      })
+      }),
     );
+  });
+});
+
+describe('getScheduleVisitBriefsForPatients', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    generateVisitBriefAiSummaryMock.mockResolvedValue({
+      provider: 'rule',
+      requested_provider: 'disabled',
+      is_fallback: true,
+      model: null,
+      fallback_reason: 'provider_unavailable',
+      headline: '要点なし',
+      bullets: [],
+      must_check_today: [],
+      source_refs: [],
+      generated_at: '2026-03-27T00:00:00.000Z',
+    });
+    listCommunicationQueueMock.mockResolvedValue({
+      summary: {
+        pending_count: 0,
+        overdue_count: 0,
+        self_reports: 0,
+        callback_followups: 0,
+        open_requests: 0,
+        delivery_backlog: 0,
+        expiring_external_shares: 0,
+        unconfirmed_count: 0,
+        reply_waiting_count: 0,
+        failed_count: 0,
+      },
+      items: [],
+      timeline: [],
+      emergency_drafts: [],
+    });
+    listBillingEvidenceBlockersMock.mockResolvedValue([]);
+  });
+
+  it('dedupes repeated patient ids before building schedule briefs', async () => {
+    const db = {
+      careCase: {
+        findMany: vi.fn().mockResolvedValue([]),
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+      patient: {
+        findFirst: vi.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve({ id: where.id, name: where.id === 'patient_1' ? '患者A' : '患者B' }),
+        ),
+      },
+      prescriptionIntake: { findMany: vi.fn().mockResolvedValue([]) },
+      medicationProfile: { findMany: vi.fn().mockResolvedValue([]) },
+      setPlan: { findFirst: vi.fn().mockResolvedValue(null) },
+      patientSelfReport: { findMany: vi.fn().mockResolvedValue([]) },
+      communicationEvent: { findMany: vi.fn().mockResolvedValue([]) },
+      communicationRequest: { findMany: vi.fn().mockResolvedValue([]) },
+      visitScheduleContactLog: { findMany: vi.fn().mockResolvedValue([]) },
+      task: { findMany: vi.fn().mockResolvedValue([]) },
+      medicationIssue: { findMany: vi.fn().mockResolvedValue([]) },
+      inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
+      visitRecord: { findFirst: vi.fn().mockResolvedValue(null) },
+      conferenceNote: { findMany: vi.fn().mockResolvedValue([]) },
+      residence: { findFirst: vi.fn().mockResolvedValue(null) },
+      drugPackageInsert: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+
+    const result = await getScheduleVisitBriefsForPatients(db as never, {
+      orgId: 'org_1',
+      patientIds: ['patient_1', 'patient_1', 'patient_2'],
+    });
+
+    expect(db.patient.findFirst).toHaveBeenCalledTimes(2);
+    expect([...result.keys()]).toEqual(['patient_1', 'patient_2']);
+    expect(result.get('patient_1')).toEqual(
+      expect.objectContaining({
+        patient: { id: 'patient_1', name: '患者A' },
+        context: 'schedule',
+      }),
+    );
+  });
+
+  it('bounds concurrent schedule brief builds to protect DB and AI providers', async () => {
+    const originalConcurrency = process.env.VISIT_BRIEF_BATCH_CONCURRENCY;
+    process.env.VISIT_BRIEF_BATCH_CONCURRENCY = '2';
+    let activePatientLookups = 0;
+    let maxActivePatientLookups = 0;
+    const db = {
+      careCase: {
+        findMany: vi.fn().mockResolvedValue([]),
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+      patient: {
+        findFirst: vi.fn(async ({ where }: { where: { id: string } }) => {
+          activePatientLookups += 1;
+          maxActivePatientLookups = Math.max(maxActivePatientLookups, activePatientLookups);
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          activePatientLookups -= 1;
+          return { id: where.id, name: where.id };
+        }),
+      },
+      prescriptionIntake: { findMany: vi.fn().mockResolvedValue([]) },
+      medicationProfile: { findMany: vi.fn().mockResolvedValue([]) },
+      setPlan: { findFirst: vi.fn().mockResolvedValue(null) },
+      patientSelfReport: { findMany: vi.fn().mockResolvedValue([]) },
+      communicationEvent: { findMany: vi.fn().mockResolvedValue([]) },
+      communicationRequest: { findMany: vi.fn().mockResolvedValue([]) },
+      visitScheduleContactLog: { findMany: vi.fn().mockResolvedValue([]) },
+      task: { findMany: vi.fn().mockResolvedValue([]) },
+      medicationIssue: { findMany: vi.fn().mockResolvedValue([]) },
+      inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
+      visitRecord: { findFirst: vi.fn().mockResolvedValue(null) },
+      conferenceNote: { findMany: vi.fn().mockResolvedValue([]) },
+      residence: { findFirst: vi.fn().mockResolvedValue(null) },
+      drugPackageInsert: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+
+    try {
+      const result = await getScheduleVisitBriefsForPatients(db as never, {
+        orgId: 'org_1',
+        patientIds: ['patient_1', 'patient_2', 'patient_3', 'patient_4', 'patient_5'],
+      });
+
+      expect(maxActivePatientLookups).toBeLessThanOrEqual(2);
+      expect([...result.keys()]).toEqual([
+        'patient_1',
+        'patient_2',
+        'patient_3',
+        'patient_4',
+        'patient_5',
+      ]);
+    } finally {
+      if (originalConcurrency === undefined) {
+        delete process.env.VISIT_BRIEF_BATCH_CONCURRENCY;
+      } else {
+        process.env.VISIT_BRIEF_BATCH_CONCURRENCY = originalConcurrency;
+      }
+    }
   });
 });

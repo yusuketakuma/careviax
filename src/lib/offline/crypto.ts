@@ -9,11 +9,32 @@ const IDB_KEY_RECORD_ID = 'offline-enc-key-v2';
 
 // Salt stored in localStorage (salt is not secret; only raw key bytes must be protected)
 const OFFLINE_SALT_STORAGE_KEY = 'careviax.offline.salt.v2';
+let cachedOfflineEncryptionKey: CryptoKey | null = null;
 
 // OWASP recommends 600,000 iterations for PBKDF2-SHA-256 (2023 guidance).
 // 100,000 is chosen here as a practical balance for browser performance on
 // low-end mobile devices used in home-visit scenarios.
 const PBKDF2_ITERATIONS = 100_000;
+
+export class OfflineEncryptionUnavailableError extends Error {
+  constructor(context: string) {
+    super(`${context} could not be encrypted for offline storage`);
+    this.name = 'OfflineEncryptionUnavailableError';
+  }
+}
+
+export function isEncryptedOfflinePayload(value: string | null | undefined): value is string {
+  return Boolean(value?.startsWith(OFFLINE_ENCRYPTION_PREFIX));
+}
+
+export function isOfflineEncryptionUnavailableError(
+  error: unknown,
+): error is OfflineEncryptionUnavailableError {
+  return (
+    error instanceof OfflineEncryptionUnavailableError ||
+    (error instanceof Error && error.name === 'OfflineEncryptionUnavailableError')
+  );
+}
 
 function getOfflineCryptoApi() {
   if (typeof window === 'undefined') return null;
@@ -53,8 +74,14 @@ async function putKeyInIndexedDB(key: CryptoKey): Promise<void> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
     tx.objectStore(IDB_STORE_NAME).put(key, IDB_KEY_RECORD_ID);
-    tx.oncomplete = () => { db.close(); resolve(); };
-    tx.onerror = () => { db.close(); reject(tx.error); };
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error);
+    };
   });
 }
 
@@ -63,8 +90,14 @@ async function getKeyFromIndexedDB(): Promise<CryptoKey | null> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(IDB_STORE_NAME, 'readonly');
     const req = tx.objectStore(IDB_STORE_NAME).get(IDB_KEY_RECORD_ID);
-    req.onsuccess = () => { db.close(); resolve((req.result as CryptoKey | undefined) ?? null); };
-    req.onerror = () => { db.close(); reject(req.error); };
+    req.onsuccess = () => {
+      db.close();
+      resolve((req.result as CryptoKey | undefined) ?? null);
+    };
+    req.onerror = () => {
+      db.close();
+      reject(req.error);
+    };
   });
 }
 
@@ -73,8 +106,14 @@ async function deleteKeyFromIndexedDB(): Promise<void> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
     tx.objectStore(IDB_STORE_NAME).delete(IDB_KEY_RECORD_ID);
-    tx.oncomplete = () => { db.close(); resolve(); };
-    tx.onerror = () => { db.close(); reject(tx.error); };
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error);
+    };
   });
 }
 
@@ -86,7 +125,12 @@ function getOrCreateSalt(cryptoApi: Crypto): Uint8Array {
   return salt;
 }
 
-async function deriveKeyFromUserId(userId: string, salt: Uint8Array, cryptoApi: Crypto, sessionSecret?: string): Promise<CryptoKey> {
+async function deriveKeyFromUserId(
+  userId: string,
+  salt: Uint8Array,
+  cryptoApi: Crypto,
+  sessionSecret?: string,
+): Promise<CryptoKey> {
   const enc = new TextEncoder();
   const normalizedSalt = Uint8Array.from(salt);
   // If a server-issued sessionSecret is provided, combine it with userId for
@@ -97,14 +141,14 @@ async function deriveKeyFromUserId(userId: string, salt: Uint8Array, cryptoApi: 
     enc.encode(keyInput),
     'PBKDF2',
     false,
-    ['deriveKey']
+    ['deriveKey'],
   );
   return cryptoApi.subtle.deriveKey(
     { name: 'PBKDF2', salt: normalizedSalt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
     keyMaterial,
     { name: 'AES-GCM', length: 256 },
     false, // extractable: false — raw key bytes cannot be exported via JS
-    ['encrypt', 'decrypt']
+    ['encrypt', 'decrypt'],
   );
 }
 
@@ -116,13 +160,17 @@ async function deriveKeyFromUserId(userId: string, salt: Uint8Array, cryptoApi: 
  * @param userId - Cognito user ID (required)
  * @param sessionSecret - Optional server-issued secret to increase key entropy
  */
-export async function initOfflineEncryptionKey(userId: string, sessionSecret?: string): Promise<void> {
+export async function initOfflineEncryptionKey(
+  userId: string,
+  sessionSecret?: string,
+): Promise<void> {
   const cryptoApi = getOfflineCryptoApi();
   if (!cryptoApi || typeof window === 'undefined') return;
   try {
     const salt = getOrCreateSalt(cryptoApi);
     const key = await deriveKeyFromUserId(userId, salt, cryptoApi, sessionSecret);
     await putKeyInIndexedDB(key);
+    cachedOfflineEncryptionKey = key;
   } catch {
     // Non-fatal: offline encryption degrades gracefully if init fails
   }
@@ -133,6 +181,7 @@ export async function initOfflineEncryptionKey(userId: string, sessionSecret?: s
  * Must be called on logout to ensure PHI cannot be decrypted without re-authentication.
  */
 export async function clearOfflineEncryptionKey(): Promise<void> {
+  cachedOfflineEncryptionKey = null;
   if (typeof window === 'undefined' || !window.indexedDB) return;
   try {
     await deleteKeyFromIndexedDB();
@@ -145,8 +194,10 @@ export async function clearOfflineEncryptionKey(): Promise<void> {
 async function getOfflineEncryptionKey(): Promise<CryptoKey | null> {
   const cryptoApi = getOfflineCryptoApi();
   if (!cryptoApi || typeof window === 'undefined') return null;
+  if (cachedOfflineEncryptionKey) return cachedOfflineEncryptionKey;
   try {
-    return await getKeyFromIndexedDB();
+    cachedOfflineEncryptionKey = await getKeyFromIndexedDB();
+    return cachedOfflineEncryptionKey;
   } catch {
     return null;
   }
@@ -169,6 +220,12 @@ export async function encryptOfflinePayload(value: string) {
   return `${OFFLINE_ENCRYPTION_PREFIX}${bytesToBase64(combined)}`;
 }
 
+export async function encryptOfflinePayloadRequired(value: string, context: string) {
+  const encrypted = await encryptOfflinePayload(value);
+  if (!encrypted || isEncryptedOfflinePayload(encrypted)) return encrypted;
+  throw new OfflineEncryptionUnavailableError(context);
+}
+
 export async function decryptOfflinePayload(value: string | null | undefined) {
   if (!value || !value.startsWith(OFFLINE_ENCRYPTION_PREFIX)) return value;
 
@@ -180,11 +237,7 @@ export async function decryptOfflinePayload(value: string | null | undefined) {
     const bytes = base64ToBytes(value.slice(OFFLINE_ENCRYPTION_PREFIX.length));
     const iv = bytes.slice(0, AES_GCM_IV_LENGTH);
     const ciphertext = bytes.slice(AES_GCM_IV_LENGTH);
-    const plaintext = await cryptoApi.subtle.decrypt(
-      { name: 'AES-GCM', iv },
-      key,
-      ciphertext
-    );
+    const plaintext = await cryptoApi.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
     return new TextDecoder().decode(plaintext);
   } catch {
     return null;

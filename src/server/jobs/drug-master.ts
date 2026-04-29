@@ -4,25 +4,24 @@ import {
   importMhlwGenericFlags,
   importMhlwPriceList,
 } from '@/server/services/drug-master-import/mhlw';
-import {
-  importPmdaPackageInserts,
-} from '@/server/services/drug-master-import/pmda';
+import { importPmdaPackageInserts } from '@/server/services/drug-master-import/pmda';
 import {
   importSskDrugMaster,
   resolveLatestSskDrugMasterZipUrl,
   SSK_DRUG_MASTER_PAGE_URL,
 } from '@/server/services/drug-master-import/ssk';
+import { SSK_IMPORT_URL_POLICY, fetchText } from '@/server/services/drug-master-import/shared';
 import type { ImportSource } from '@prisma/client';
 import { runJob } from './runner';
 
 // ── Freshness thresholds (days) ──
 
 const FRESHNESS_THRESHOLDS: Record<ImportSource, number> = {
-  ssk: 45,              // SSK: monthly → alert after 45 days
-  mhlw_price: 120,      // MHLW price: annual + mid-year → alert after 120 days
-  mhlw_generic: 120,    // MHLW generic: same cycle as price
-  hot: 60,              // HOT: monthly → alert after 60 days (disabled until licensed)
-  pmda: 14,             // PMDA: daily delta → alert after 14 days
+  ssk: 45, // SSK: monthly → alert after 45 days
+  mhlw_price: 120, // MHLW price: annual + mid-year → alert after 120 days
+  mhlw_generic: 120, // MHLW generic: same cycle as price
+  hot: 60, // HOT: monthly → alert after 60 days (disabled until licensed)
+  pmda: 14, // PMDA: daily delta → alert after 14 days
   manual_clinical: 365, // Manual: annual review
 };
 
@@ -30,14 +29,10 @@ const FRESHNESS_THRESHOLDS: Record<ImportSource, number> = {
 const FREE_SOURCES: ImportSource[] = ['ssk', 'mhlw_price', 'mhlw_generic'];
 
 async function resolveLatestZipUrl(fetchImpl: typeof fetch = fetch) {
-  const response = await fetchImpl(SSK_DRUG_MASTER_PAGE_URL, {
-    headers: { accept: 'text/html,application/xhtml+xml' },
+  const html = await fetchText(SSK_DRUG_MASTER_PAGE_URL, {
+    fetchImpl,
+    policy: SSK_IMPORT_URL_POLICY,
   });
-  if (!response.ok) {
-    throw new Error(`SSKページの取得に失敗しました: ${response.status}`);
-  }
-
-  const html = await response.text();
   return resolveLatestSskDrugMasterZipUrl(html, SSK_DRUG_MASTER_PAGE_URL);
 }
 
@@ -72,7 +67,7 @@ export async function refreshSskDrugMaster() {
       };
     },
     undefined,
-    latestZipUrl
+    latestZipUrl,
   );
 }
 
@@ -86,9 +81,7 @@ export async function refreshMhlwDrugReferences() {
 
     return {
       processedCount:
-        priceResult.importedCount +
-        genericFlagsResult.importedCount +
-        mappingResult.importedCount,
+        priceResult.importedCount + genericFlagsResult.importedCount + mappingResult.importedCount,
     };
   });
 }

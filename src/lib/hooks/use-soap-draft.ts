@@ -3,8 +3,8 @@
 // IndexedDB (Dexie) を使って structuredSoap と currentStep を永続化する。
 
 import { useCallback } from 'react';
-import { offlineDb } from '@/lib/stores/offline-db';
-import { decryptOfflinePayload, encryptOfflinePayload } from '@/lib/offline/crypto';
+import { offlineDb, type OfflineVisitDraft } from '@/lib/stores/offline-db';
+import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
 import type { StructuredSoap } from '@/types/structured-soap';
 import type { VisitGeoLog } from '@/lib/visit-location';
 
@@ -47,6 +47,22 @@ export type SoapDraftMetadata = {
   visitGeoLog?: VisitGeoLog | null;
 };
 
+type LegacyPlaintextSoapDraftFields = {
+  soapSubjective?: string;
+  soapObjective?: string;
+  soapAssessment?: string;
+  soapPlan?: string;
+};
+
+function purgeLegacyPlaintextSoapDraftFields(
+  draft: OfflineVisitDraft & LegacyPlaintextSoapDraftFields,
+) {
+  delete draft.soapSubjective;
+  delete draft.soapObjective;
+  delete draft.soapAssessment;
+  delete draft.soapPlan;
+}
+
 /**
  * 指定した scheduleId に対応するSOAPドラフトを読み書きするフック。
  *
@@ -59,10 +75,7 @@ export function useSoapDraft(scheduleId: string, patientId: string) {
    * ドラフトが存在しない、または structuredSoap が未設定なら null を返す。
    */
   const loadDraft = useCallback(async (): Promise<SoapDraftSnapshot | null> => {
-    const draft = await offlineDb.visitDrafts
-      .where('scheduleId')
-      .equals(scheduleId)
-      .first();
+    const draft = await offlineDb.visitDrafts.where('scheduleId').equals(scheduleId).first();
     if (!draft) return null;
 
     const structuredSoapPayload = await decryptOfflinePayload(draft?.structuredSoap);
@@ -86,9 +99,7 @@ export function useSoapDraft(scheduleId: string, patientId: string) {
       residualMedications: residualPayload
         ? (JSON.parse(residualPayload) as SoapDraftResidualMedication[])
         : [],
-      visitGeoLog: visitGeoLogPayload
-        ? (JSON.parse(visitGeoLogPayload) as VisitGeoLog)
-        : null,
+      visitGeoLog: visitGeoLogPayload ? (JSON.parse(visitGeoLogPayload) as VisitGeoLog) : null,
     };
   }, [scheduleId]);
 
@@ -96,31 +107,31 @@ export function useSoapDraft(scheduleId: string, patientId: string) {
    * ステップ変更のたびにドラフトを保存する。
    * 既存レコードがあれば更新、なければ新規追加する。
    */
-  const saveDraft = useCallback(async (
-    soap: StructuredSoap,
-    currentStep: number,
-    metadata: SoapDraftMetadata = {}
-  ): Promise<void> => {
-    const structuredSoap = await encryptOfflinePayload(JSON.stringify(soap));
-    const residualMedications = await encryptOfflinePayload(
-      JSON.stringify(metadata.residualMedications ?? [])
-    );
-    const visitGeoLog = metadata.visitGeoLog
-      ? await encryptOfflinePayload(JSON.stringify(metadata.visitGeoLog))
-      : undefined;
-    const existing = await offlineDb.visitDrafts
-      .where('scheduleId')
-      .equals(scheduleId)
-      .first();
+  const saveDraft = useCallback(
+    async (
+      soap: StructuredSoap,
+      currentStep: number,
+      metadata: SoapDraftMetadata = {},
+    ): Promise<void> => {
+      const structuredSoap = await encryptOfflinePayloadRequired(
+        JSON.stringify(soap),
+        'SOAP draft structuredSoap',
+      );
+      const residualMedications = await encryptOfflinePayloadRequired(
+        JSON.stringify(metadata.residualMedications ?? []),
+        'SOAP draft residualMedications',
+      );
+      const visitGeoLog = metadata.visitGeoLog
+        ? await encryptOfflinePayloadRequired(
+            JSON.stringify(metadata.visitGeoLog),
+            'SOAP draft visitGeoLog',
+          )
+        : undefined;
+      const existing = await offlineDb.visitDrafts.where('scheduleId').equals(scheduleId).first();
 
-    if (existing?.id !== undefined) {
-      await offlineDb.visitDrafts.update(existing.id, {
+      const draftPatch = {
         structuredSoap,
         currentStep,
-        soapSubjective: soap.subjective.free_text,
-        soapObjective: soap.objective.free_text,
-        soapAssessment: soap.assessment.free_text,
-        soapPlan: soap.plan.free_text,
         visitDate: metadata.visitDate,
         outcomeStatus: metadata.outcomeStatus,
         receiptPersonName: metadata.receiptPersonName,
@@ -133,35 +144,28 @@ export function useSoapDraft(scheduleId: string, patientId: string) {
         residualMedications,
         visitGeoLog,
         updatedAt: new Date(),
-      });
-    } else {
-      await offlineDb.visitDrafts.add({
-        scheduleId,
-        patientId,
-        pharmacistId: '', // sync 時に補完
-        soapSubjective: soap.subjective.free_text,
-        soapObjective: soap.objective.free_text,
-        soapAssessment: soap.assessment.free_text,
-        soapPlan: soap.plan.free_text,
-        visitDate: metadata.visitDate,
-        outcomeStatus: metadata.outcomeStatus,
-        receiptPersonName: metadata.receiptPersonName,
-        receiptPersonRelation: metadata.receiptPersonRelation,
-        receiptAt: metadata.receiptAt,
-        nextVisitSuggestionDate: metadata.nextVisitSuggestionDate,
-        cancellationReason: metadata.cancellationReason,
-        postponeReason: metadata.postponeReason,
-        revisitReason: metadata.revisitReason,
-        residualMedications,
-        visitGeoLog,
-        structuredSoap,
-        currentStep,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        synced: false,
-      });
-    }
-  }, [patientId, scheduleId]);
+      } satisfies Partial<OfflineVisitDraft>;
+
+      if (existing?.id !== undefined) {
+        await offlineDb.visitDrafts.update(existing.id, (draft) => {
+          Object.assign(draft, draftPatch);
+          purgeLegacyPlaintextSoapDraftFields(
+            draft as OfflineVisitDraft & LegacyPlaintextSoapDraftFields,
+          );
+        });
+      } else {
+        await offlineDb.visitDrafts.add({
+          scheduleId,
+          patientId,
+          pharmacistId: '', // sync 時に補完
+          ...draftPatch,
+          createdAt: new Date(),
+          synced: false,
+        });
+      }
+    },
+    [patientId, scheduleId],
+  );
 
   /**
    * 送信完了後にドラフトを削除する。

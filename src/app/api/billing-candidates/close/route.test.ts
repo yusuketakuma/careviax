@@ -50,9 +50,7 @@ describe('/api/billing-candidates/close POST', () => {
         role: 'admin',
       },
     });
-    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback({})
-    );
+    withOrgContextMock.mockImplementation(async (_orgId, callback) => callback({}));
   });
 
   it('closes the month when no review blockers remain', async () => {
@@ -76,6 +74,18 @@ describe('/api/billing-candidates/close POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(Object), {
+      permission: 'canManageBilling',
+      message: '請求月次締めの権限がありません',
+    });
+    expect(closeBillingCandidatesForMonthMock).toHaveBeenCalledWith(
+      {},
+      {
+        orgId: 'org_1',
+        billingMonth: new Date('2026-03-01T00:00:00.000Z'),
+        actorId: 'user_1',
+      },
+    );
     expect(notifyWebhookEventForOrgMock).toHaveBeenCalledWith('org_1', 'billing.exported', {
       billingMonth: '2026-03-01T00:00:00.000Z',
       exportedCount: 12,
@@ -109,6 +119,25 @@ describe('/api/billing-candidates/close POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['missing', {}],
+    ['empty', { billing_month: '' }],
+    ['non-string', { billing_month: 123 }],
+    ['incomplete date', { billing_month: '2026-03' }],
+    ['non-month-start date', { billing_month: '2026-03-02' }],
+    ['invalid calendar date', { billing_month: '2026-02-30' }],
+    ['out-of-range month', { billing_month: '2026-13-01' }],
+    ['timezone timestamp', { billing_month: '2026-03-01T00:00:00.000Z' }],
+  ])('rejects %s billing_month before transaction work', async (_caseName, body) => {
+    const response = await POST(createRequest(body));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(closeBillingCandidatesForMonthMock).not.toHaveBeenCalled();
     expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 });

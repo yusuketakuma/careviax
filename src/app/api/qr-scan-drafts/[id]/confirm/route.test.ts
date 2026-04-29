@@ -213,4 +213,92 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
     expect(response.status).toBe(400);
     expect(createPrescriptionIntakeMock).not.toHaveBeenCalled();
   });
+
+  it('does not confirm the draft when the target case does not belong to the patient', async () => {
+    createPrescriptionIntakeMock.mockResolvedValueOnce({
+      ok: false,
+      error: 'cycle_not_found',
+    });
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_other_patient',
+        prescribed_date: '2026-04-01',
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+      { params: Promise.resolve({ id: 'draft_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '指定されたサイクルが見つかりません',
+    });
+    expect(createPrescriptionIntakeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        patient_id: 'patient_1',
+        case_id: 'case_other_patient',
+        source_type: 'qr_scan',
+      }),
+      'org_1',
+      'user_1',
+      { skipStructuringCheck: true },
+    );
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
+    expect(jahisSupplementalRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('maps missing prescriber institution to 400 without confirming the draft', async () => {
+    createPrescriptionIntakeMock.mockResolvedValueOnce({
+      ok: false,
+      error: 'prescriber_institution_not_found',
+      message: '選択した医療機関が見つかりません',
+    });
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        prescribed_date: '2026-04-01',
+        prescriber_institution_id: 'institution_missing',
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+      { params: Promise.resolve({ id: 'draft_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '選択した医療機関が見つかりません',
+    });
+    expect(createPrescriptionIntakeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prescriber_institution_id: 'institution_missing',
+      }),
+      'org_1',
+      'user_1',
+      { skipStructuringCheck: true },
+    );
+    expect(withOrgContextMock).toHaveBeenCalledTimes(1);
+    expect(jahisSupplementalRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+  });
 });

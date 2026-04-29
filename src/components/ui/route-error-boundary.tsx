@@ -1,5 +1,6 @@
 'use client';
 
+import * as Sentry from '@sentry/nextjs';
 import { useEffect } from 'react';
 import { ErrorState } from '@/components/ui/error-state';
 
@@ -13,6 +14,10 @@ export function createRouteErrorBoundary(tag: string) {
   }) {
     useEffect(() => {
       console.error(`[${tag}]`, error);
+      Sentry.captureException(error, {
+        tags: { boundary: tag },
+        extra: { digest: error.digest },
+      });
     }, [error]);
 
     return (

@@ -5,6 +5,11 @@ const {
   settingUpsertMock,
   settingFindFirstMock,
   settingUpdateMock,
+  patientFindFirstMock,
+  visitScheduleFindFirstMock,
+  careCaseFindFirstMock,
+  visitRecordFindFirstMock,
+  careReportFindFirstMock,
   randomUuidMock,
   s3SendMock,
 } = vi.hoisted(() => ({
@@ -12,6 +17,11 @@ const {
   settingUpsertMock: vi.fn(),
   settingFindFirstMock: vi.fn(),
   settingUpdateMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
+  visitScheduleFindFirstMock: vi.fn(),
+  careCaseFindFirstMock: vi.fn(),
+  visitRecordFindFirstMock: vi.fn(),
+  careReportFindFirstMock: vi.fn(),
   randomUuidMock: vi.fn(),
   s3SendMock: vi.fn(),
 }));
@@ -60,6 +70,21 @@ vi.mock('@/lib/db/client', () => ({
       findFirst: settingFindFirstMock,
       update: settingUpdateMock,
     },
+    patient: {
+      findFirst: patientFindFirstMock,
+    },
+    visitSchedule: {
+      findFirst: visitScheduleFindFirstMock,
+    },
+    careCase: {
+      findFirst: careCaseFindFirstMock,
+    },
+    visitRecord: {
+      findFirst: visitRecordFindFirstMock,
+    },
+    careReport: {
+      findFirst: careReportFindFirstMock,
+    },
   },
 }));
 
@@ -69,6 +94,132 @@ import {
   createPresignedUpload,
   storeGeneratedFile,
 } from './file-storage';
+
+const assignedAccessContext = {
+  userId: 'user_1',
+  role: 'pharmacist' as const,
+};
+
+const unassignedAccessContext = {
+  userId: 'user_unassigned',
+  role: 'pharmacist' as const,
+};
+
+function buildStoredFileRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    version: 1,
+    id: 'file_1',
+    orgId: 'org_1',
+    purpose: 'visit-photo',
+    storageKey: 'visit-photos/org_1/visit_1/file_1-note.pdf',
+    originalName: 'note.pdf',
+    mimeType: 'application/pdf',
+    sizeBytes: 2048,
+    status: 'uploaded',
+    patientId: null,
+    visitRecordId: 'visit_1',
+    reportId: null,
+    jobId: null,
+    uploadedBy: null,
+    etag: null,
+    createdAt: '2026-03-28T00:00:00.000Z',
+    updatedAt: '2026-03-28T00:00:00.000Z',
+    completedAt: '2026-03-28T00:00:00.000Z',
+    downloadDisposition: 'inline',
+    ...overrides,
+  };
+}
+
+function mockStoredFile(overrides: Record<string, unknown> = {}) {
+  settingFindFirstMock.mockResolvedValue({
+    id: 'setting_1',
+    value: buildStoredFileRecord(overrides),
+  });
+}
+
+function mockVisitRecordAssignment(userId: string) {
+  visitRecordFindFirstMock.mockResolvedValue({
+    id: 'visit_1',
+    schedule: {
+      pharmacist_id: userId,
+      case_: {
+        primary_pharmacist_id: 'primary_user',
+        backup_pharmacist_id: null,
+      },
+    },
+  });
+}
+
+function mockReportLinkedToVisitRecord() {
+  careReportFindFirstMock.mockResolvedValue({
+    id: 'report_1',
+    patient_id: 'patient_1',
+    case_id: null,
+    visit_record_id: 'visit_1',
+  });
+}
+
+type AccessCase = {
+  purpose: 'visit-photo' | 'prescription' | 'report';
+  record: Record<string, unknown>;
+  authorize: () => void;
+  deny: () => void;
+};
+
+const fileAccessCases: AccessCase[] = [
+  {
+    purpose: 'visit-photo',
+    record: {
+      purpose: 'visit-photo',
+      visitRecordId: 'visit_1',
+      patientId: null,
+      reportId: null,
+      storageKey: 'visit-photos/org_1/visit_1/file_1-note.pdf',
+    },
+    authorize: () => mockVisitRecordAssignment('user_1'),
+    deny: () => mockVisitRecordAssignment('other_user'),
+  },
+  {
+    purpose: 'prescription',
+    record: {
+      purpose: 'prescription',
+      patientId: 'patient_1',
+      visitRecordId: null,
+      reportId: null,
+      storageKey: 'prescriptions/org_1/patient_1/file_1-prescription.pdf',
+      originalName: 'prescription.pdf',
+    },
+    authorize: () => {
+      patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+      visitScheduleFindFirstMock.mockResolvedValue({ id: 'schedule_1' });
+      careCaseFindFirstMock.mockResolvedValue(null);
+    },
+    deny: () => {
+      patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+      visitScheduleFindFirstMock.mockResolvedValue(null);
+      careCaseFindFirstMock.mockResolvedValue(null);
+    },
+  },
+  {
+    purpose: 'report',
+    record: {
+      purpose: 'report',
+      reportId: 'report_1',
+      patientId: null,
+      visitRecordId: null,
+      storageKey: 'reports/org_1/report_1/file_1-report.pdf',
+      originalName: 'report.pdf',
+    },
+    authorize: () => {
+      mockReportLinkedToVisitRecord();
+      mockVisitRecordAssignment('user_1');
+    },
+    deny: () => {
+      mockReportLinkedToVisitRecord();
+      mockVisitRecordAssignment('other_user');
+    },
+  },
+];
 
 describe('file-storage', () => {
   beforeEach(() => {
@@ -85,6 +236,16 @@ describe('file-storage', () => {
     settingUpsertMock.mockResolvedValue(undefined);
     settingFindFirstMock.mockResolvedValue(null);
     settingUpdateMock.mockResolvedValue(undefined);
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+    visitScheduleFindFirstMock.mockResolvedValue({ id: 'schedule_1' });
+    careCaseFindFirstMock.mockResolvedValue(null);
+    mockVisitRecordAssignment('user_1');
+    mockReportLinkedToVisitRecord();
+    s3SendMock.mockResolvedValue({
+      ETag: '"etag-123"',
+      ContentLength: 2048,
+      ContentType: 'application/pdf',
+    });
   });
 
   it('signs uploads with AES256 server-side encryption and returns the required header', async () => {
@@ -112,6 +273,58 @@ describe('file-storage', () => {
       'Content-Type': 'application/pdf',
       'x-amz-server-side-encryption': 'AES256',
     });
+  });
+
+  it('rejects unsupported MIME types before signing uploads or writing metadata', async () => {
+    await expect(
+      createPresignedUpload({
+        orgId: 'org_1',
+        purpose: 'prescription',
+        fileName: 'payload.svg',
+        mimeType: 'image/svg+xml',
+        sizeBytes: 1024,
+        patientId: 'patient_1',
+      }),
+    ).rejects.toMatchObject({
+      code: 'FILE_UPLOAD_INVALID_MIME',
+      status: 400,
+    });
+
+    expect(randomUuidMock).not.toHaveBeenCalled();
+    expect(getSignedUrlMock).not.toHaveBeenCalled();
+    expect(settingUpsertMock).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes path-like filenames before using them in storage keys and metadata', async () => {
+    const result = await createPresignedUpload({
+      orgId: 'org_1',
+      purpose: 'report',
+      fileName: '../../退避/clinical report?.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+      reportId: 'report_1',
+    });
+
+    const putObjectCommand = getSignedUrlMock.mock.calls[0]?.[1] as {
+      input: Record<string, unknown>;
+    };
+    expect(putObjectCommand.input.Key).toBe(
+      'reports/org_1/report_1/file-uuid-1-.._..____clinical_report_.pdf',
+    );
+    expect(putObjectCommand.input.Key).not.toContain('../');
+    expect(putObjectCommand.input.Key).not.toContain('clinical report');
+    expect(result.objectKey).toBe(
+      'reports/org_1/report_1/file-uuid-1-.._..____clinical_report_.pdf',
+    );
+    expect(settingUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          value: expect.objectContaining({
+            originalName: '.._..____clinical_report_.pdf',
+          }),
+        }),
+      }),
+    );
   });
 
   it('stores generated zip files under the bulk export path', async () => {
@@ -146,7 +359,7 @@ describe('file-storage', () => {
             uploadedBy: 'user_1',
           }),
         }),
-      })
+      }),
     );
     expect(result.storageKey).toBe('bulk-exports/org_1/job_1/file-uuid-1-medication-history.zip');
   });
@@ -240,6 +453,7 @@ describe('file-storage', () => {
         mimeType: 'application/zip',
         sizeBytes: 2048,
         status: 'uploaded',
+        uploadedBy: 'user_1',
         createdAt: '2026-03-28T00:00:00.000Z',
         updatedAt: '2026-03-28T00:00:00.000Z',
         completedAt: '2026-03-28T00:00:00.000Z',
@@ -250,10 +464,7 @@ describe('file-storage', () => {
     await createPresignedDownload({
       orgId: 'org_1',
       fileId: 'file_1',
-      permissions: {
-        canVisit: true,
-        canReport: false,
-      },
+      accessContext: assignedAccessContext,
     });
 
     const getObjectCommand = getSignedUrlMock.mock.calls[0]?.[1] as {
@@ -262,6 +473,76 @@ describe('file-storage', () => {
     expect(getObjectCommand.input).toMatchObject({
       ResponseContentDisposition: 'attachment; filename="medication-history.zip"',
     });
+  });
+
+  it('rejects bulk export downloads when the caller is not the requester', async () => {
+    settingFindFirstMock.mockResolvedValue({
+      id: 'setting_1',
+      value: {
+        version: 1,
+        id: 'file_1',
+        orgId: 'org_1',
+        purpose: 'bulk-export',
+        storageKey: 'bulk-exports/org_1/job_1/file_1-medication-history.zip',
+        originalName: 'medication-history.zip',
+        mimeType: 'application/zip',
+        sizeBytes: 2048,
+        status: 'uploaded',
+        uploadedBy: 'user_1',
+        createdAt: '2026-03-28T00:00:00.000Z',
+        updatedAt: '2026-03-28T00:00:00.000Z',
+        completedAt: '2026-03-28T00:00:00.000Z',
+        downloadDisposition: 'attachment',
+      },
+    });
+
+    await expect(
+      createPresignedDownload({
+        orgId: 'org_1',
+        fileId: 'file_1',
+        accessContext: {
+          userId: 'user_2',
+          role: 'pharmacist',
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 'FILE_DOWNLOAD_FORBIDDEN',
+      status: 403,
+    });
+    expect(getSignedUrlMock).not.toHaveBeenCalled();
+  });
+
+  it('allows admins to download bulk exports requested by another user', async () => {
+    settingFindFirstMock.mockResolvedValue({
+      id: 'setting_1',
+      value: {
+        version: 1,
+        id: 'file_1',
+        orgId: 'org_1',
+        purpose: 'bulk-export',
+        storageKey: 'bulk-exports/org_1/job_1/file_1-medication-history.zip',
+        originalName: 'medication-history.zip',
+        mimeType: 'application/zip',
+        sizeBytes: 2048,
+        status: 'uploaded',
+        uploadedBy: 'user_1',
+        createdAt: '2026-03-28T00:00:00.000Z',
+        updatedAt: '2026-03-28T00:00:00.000Z',
+        completedAt: '2026-03-28T00:00:00.000Z',
+        downloadDisposition: 'attachment',
+      },
+    });
+
+    const result = await createPresignedDownload({
+      orgId: 'org_1',
+      fileId: 'file_1',
+      accessContext: {
+        userId: 'admin_1',
+        role: 'admin',
+      },
+    });
+
+    expect(result.downloadUrl).toBe('https://example.com/upload');
   });
 
   it('rejects bulk export downloads when the caller lacks canVisit', async () => {
@@ -277,6 +558,7 @@ describe('file-storage', () => {
         mimeType: 'application/zip',
         sizeBytes: 2048,
         status: 'uploaded',
+        uploadedBy: 'user_1',
         createdAt: '2026-03-28T00:00:00.000Z',
         updatedAt: '2026-03-28T00:00:00.000Z',
         completedAt: '2026-03-28T00:00:00.000Z',
@@ -288,9 +570,9 @@ describe('file-storage', () => {
       createPresignedDownload({
         orgId: 'org_1',
         fileId: 'file_1',
-        permissions: {
-          canVisit: false,
-          canReport: true,
+        accessContext: {
+          userId: 'clerk_1',
+          role: 'clerk',
         },
       }),
     ).rejects.toMatchObject({
@@ -323,9 +605,9 @@ describe('file-storage', () => {
       createPresignedDownload({
         orgId: 'org_1',
         fileId: 'file_2',
-        permissions: {
-          canVisit: true,
-          canReport: false,
+        accessContext: {
+          userId: 'driver_1',
+          role: 'driver',
         },
       }),
     ).rejects.toMatchObject({
@@ -333,6 +615,111 @@ describe('file-storage', () => {
       status: 403,
     });
   });
+
+  it.each(fileAccessCases)(
+    'rejects completion for an unassigned pharmacist on $purpose files',
+    async ({ record, deny }) => {
+      mockStoredFile({
+        ...record,
+        status: 'pending_upload',
+        completedAt: null,
+      });
+      deny();
+
+      await expect(
+        completeUploadedFile({
+          orgId: 'org_1',
+          fileId: 'file_1',
+          uploadedBy: 'user_unassigned',
+          accessContext: unassignedAccessContext,
+        }),
+      ).rejects.toMatchObject({
+        code: 'FILE_COMPLETE_FORBIDDEN',
+        status: 403,
+      });
+      expect(s3SendMock).not.toHaveBeenCalled();
+      expect(settingUpdateMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(fileAccessCases)(
+    'allows completion for an authorized pharmacist on $purpose files',
+    async ({ record, authorize }) => {
+      mockStoredFile({
+        ...record,
+        status: 'pending_upload',
+        completedAt: null,
+      });
+      authorize();
+      s3SendMock.mockResolvedValueOnce({
+        ETag: '"etag-123"',
+        ContentLength: 2048,
+        ContentType: 'application/pdf',
+      });
+
+      const result = await completeUploadedFile({
+        orgId: 'org_1',
+        fileId: 'file_1',
+        uploadedBy: 'user_1',
+        accessContext: assignedAccessContext,
+      });
+
+      expect(result.status).toBe('uploaded');
+      expect(settingUpdateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            value: expect.objectContaining({
+              status: 'uploaded',
+              uploadedBy: 'user_1',
+            }),
+          },
+        }),
+      );
+    },
+  );
+
+  it.each(fileAccessCases)(
+    'rejects presigned downloads for an unassigned pharmacist on $purpose files',
+    async ({ record, deny }) => {
+      mockStoredFile({
+        ...record,
+        status: 'uploaded',
+      });
+      deny();
+
+      await expect(
+        createPresignedDownload({
+          orgId: 'org_1',
+          fileId: 'file_1',
+          accessContext: unassignedAccessContext,
+        }),
+      ).rejects.toMatchObject({
+        code: 'FILE_DOWNLOAD_FORBIDDEN',
+        status: 403,
+      });
+      expect(getSignedUrlMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(fileAccessCases)(
+    'allows presigned downloads for an authorized pharmacist on $purpose files',
+    async ({ record, authorize }) => {
+      mockStoredFile({
+        ...record,
+        status: 'uploaded',
+      });
+      authorize();
+
+      const result = await createPresignedDownload({
+        orgId: 'org_1',
+        fileId: 'file_1',
+        accessContext: assignedAccessContext,
+      });
+
+      expect(result.downloadUrl).toBe('https://example.com/upload');
+      expect(getSignedUrlMock).toHaveBeenCalledOnce();
+    },
+  );
 
   it('verifies the uploaded object exists before marking it uploaded', async () => {
     settingFindFirstMock.mockResolvedValue({
@@ -356,12 +743,17 @@ describe('file-storage', () => {
         downloadDisposition: 'inline',
       },
     });
-    s3SendMock.mockResolvedValueOnce({ ETag: '"etag-123"' });
+    s3SendMock.mockResolvedValueOnce({
+      ETag: '"etag-123"',
+      ContentLength: 2048,
+      ContentType: 'application/pdf',
+    });
 
     const result = await completeUploadedFile({
       orgId: 'org_1',
       fileId: 'file_1',
       uploadedBy: 'user_1',
+      accessContext: assignedAccessContext,
       etag: '"etag-123"',
     });
 
@@ -385,6 +777,99 @@ describe('file-storage', () => {
       }),
     );
     expect(result.etag).toBe('etag-123');
+  });
+
+  it('rejects completion when the uploaded object size does not match metadata', async () => {
+    mockStoredFile({
+      status: 'pending_upload',
+      completedAt: null,
+    });
+    s3SendMock.mockResolvedValueOnce({
+      ETag: '"etag-123"',
+      ContentLength: 1024,
+      ContentType: 'application/pdf',
+    });
+
+    await expect(
+      completeUploadedFile({
+        orgId: 'org_1',
+        fileId: 'file_1',
+        uploadedBy: 'user_1',
+        accessContext: assignedAccessContext,
+      }),
+    ).rejects.toMatchObject({
+      code: 'FILE_NOT_READY',
+      status: 409,
+    });
+    expect(settingUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects completion when the uploaded object Content-Type does not match metadata', async () => {
+    mockStoredFile({
+      status: 'pending_upload',
+      completedAt: null,
+    });
+    s3SendMock.mockResolvedValueOnce({
+      ETag: '"etag-123"',
+      ContentLength: 2048,
+      ContentType: 'image/png',
+    });
+
+    await expect(
+      completeUploadedFile({
+        orgId: 'org_1',
+        fileId: 'file_1',
+        uploadedBy: 'user_1',
+        accessContext: assignedAccessContext,
+      }),
+    ).rejects.toMatchObject({
+      code: 'FILE_NOT_READY',
+      status: 409,
+    });
+    expect(settingUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects completion when the caller-provided ETag does not match the uploaded object', async () => {
+    settingFindFirstMock.mockResolvedValue({
+      id: 'setting_1',
+      value: {
+        version: 1,
+        id: 'file_1',
+        orgId: 'org_1',
+        purpose: 'visit-photo',
+        storageKey: 'visit-photos/org_1/visit_1/file_1-note.pdf',
+        originalName: 'note.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 2048,
+        status: 'pending_upload',
+        visitRecordId: 'visit_1',
+        uploadedBy: null,
+        etag: null,
+        createdAt: '2026-03-28T00:00:00.000Z',
+        updatedAt: '2026-03-28T00:00:00.000Z',
+        completedAt: null,
+        downloadDisposition: 'inline',
+      },
+    });
+    s3SendMock.mockResolvedValueOnce({
+      ETag: '"remote-etag"',
+      ContentLength: 2048,
+      ContentType: 'application/pdf',
+    });
+
+    await expect(
+      completeUploadedFile({
+        orgId: 'org_1',
+        fileId: 'file_1',
+        uploadedBy: 'user_1',
+        accessContext: assignedAccessContext,
+        etag: '"client-etag"',
+      }),
+    ).rejects.toMatchObject({
+      code: 'FILE_NOT_READY',
+      status: 409,
+    });
+    expect(settingUpdateMock).not.toHaveBeenCalled();
   });
 
   it('rejects completion when the uploaded object does not exist in S3', async () => {
@@ -419,6 +904,7 @@ describe('file-storage', () => {
         orgId: 'org_1',
         fileId: 'file_1',
         uploadedBy: 'user_1',
+        accessContext: assignedAccessContext,
       }),
     ).rejects.toMatchObject({
       code: 'FILE_NOT_READY',

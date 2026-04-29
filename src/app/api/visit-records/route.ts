@@ -1,7 +1,7 @@
 import { addDays, differenceInCalendarDays } from 'date-fns';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
-import { conflict, success, validationError } from '@/lib/api/response';
+import { conflict, forbiddenResponse, success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { decodeKeysetCursor, encodeKeysetCursor } from '@/lib/api/keyset-cursor';
 import {
@@ -10,6 +10,10 @@ import {
 } from '@/lib/validations/visit-record';
 import { prisma } from '@/lib/db/client';
 import { getRequestAuthContext } from '@/lib/auth/request-context';
+import {
+  buildVisitRecordScheduleAssignmentWhere,
+  canAccessVisitScheduleAssignment,
+} from '@/lib/auth/visit-schedule-access';
 import { buildAllSoapTexts } from '@/lib/utils/soap-text-builder';
 import { transitionCycleStatus } from '@/lib/db/cycle-transition';
 import { getNextSimpleRruleOccurrence } from '@/lib/visits/rrule';
@@ -582,12 +586,14 @@ export const GET = withAuth(
     const dateFrom = searchParams.get('date_from') ?? undefined;
     const dateTo = searchParams.get('date_to') ?? undefined;
     const includeHistorySummary = searchParams.get('include_history_summary') === 'true';
+    const assignmentWhere = buildVisitRecordScheduleAssignmentWhere(req);
 
-    const where = {
+    const where: Prisma.VisitRecordWhereInput = {
       org_id: req.orgId,
       ...(patientId ? { patient_id: patientId } : {}),
       ...(pharmacistId ? { pharmacist_id: pharmacistId } : {}),
       ...(keysetWhere ?? {}),
+      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
       ...(dateFrom || dateTo
         ? {
             visit_date: {
@@ -712,10 +718,19 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
         time_window_end: true,
         medication_end_date: true,
         visit_deadline_date: true,
+        case_: {
+          select: {
+            primary_pharmacist_id: true,
+            backup_pharmacist_id: true,
+          },
+        },
       },
     });
     if (!schedule) {
       return { error: 'schedule_not_found' as const };
+    }
+    if (!canAccessVisitScheduleAssignment(req, schedule)) {
+      return { error: 'schedule_forbidden' as const };
     }
 
     const suggestedNextVisitDate = getNextVisitSuggestionDate({
@@ -1179,6 +1194,9 @@ export const POST = withAuth(
     if ('error' in result) {
       if (result.error === 'schedule_not_found') {
         return validationError('指定されたスケジュールが見つかりません');
+      }
+      if (result.error === 'schedule_forbidden') {
+        return forbiddenResponse('この訪問予定の記録を作成する権限がありません');
       }
       if (result.error === 'case_not_found') {
         return validationError('訪問予定に紐づくケースが見つかりません');

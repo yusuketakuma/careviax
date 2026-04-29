@@ -47,6 +47,8 @@ export const SCHEDULE_LIST_INCLUDE = {
   },
   case_: {
     select: {
+      primary_pharmacist_id: true,
+      backup_pharmacist_id: true,
       patient: {
         select: {
           id: true,
@@ -85,6 +87,8 @@ export const SCHEDULE_DETAIL_INCLUDE = {
   applied_override: true,
   case_: {
     select: {
+      primary_pharmacist_id: true,
+      backup_pharmacist_id: true,
       patient: {
         select: {
           id: true,

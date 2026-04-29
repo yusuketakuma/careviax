@@ -3,22 +3,13 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { recordDataExportAudit } from '@/server/services/export-audit';
+import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from '../billing-month';
 
 function csvCell(value: string | number | null | undefined) {
   if (value == null) return '';
   const raw = String(value);
   const safe = /^[=+\-@\t\r\n]/.test(raw) ? `'${raw}` : raw;
   return `"${safe.replace(/"/g, '""')}"`;
-}
-
-function parseBillingMonth(value: string | null) {
-  if (!value) return null;
-  const match = /^(\d{4})-(\d{2})-01$/.exec(value);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  if (month < 1 || month > 12) return null;
-  return new Date(Date.UTC(year, month - 1, 1));
 }
 
 function isSafeFilterId(value: string | null) {
@@ -31,9 +22,9 @@ export const GET = withAuth(
     const billingMonth = searchParams.get('billing_month');
     const patientId = searchParams.get('patient_id');
 
-    const billingMonthDate = parseBillingMonth(billingMonth);
-    if (billingMonth && !billingMonthDate) {
-      return validationError('billing_month は YYYY-MM-01 形式で指定してください');
+    const parsedBillingMonth = billingMonth === null ? null : parseStrictBillingMonth(billingMonth);
+    if (billingMonth !== null && !parsedBillingMonth) {
+      return validationError(BILLING_MONTH_FORMAT_MESSAGE);
     }
     if (!isSafeFilterId(patientId)) {
       return validationError('patient_id の形式が不正です');
@@ -43,7 +34,7 @@ export const GET = withAuth(
       const records = await tx.billingCandidate.findMany({
         where: {
           org_id: req.orgId,
-          ...(billingMonthDate ? { billing_month: billingMonthDate } : {}),
+          ...(parsedBillingMonth ? { billing_month: parsedBillingMonth.start } : {}),
           ...(patientId ? { patient_id: patientId } : {}),
           status: { in: ['confirmed', 'exported'] },
         },
@@ -163,7 +154,7 @@ export const GET = withAuth(
         format: 'csv',
         recordCount: candidates.length,
         filters: {
-          billing_month: billingMonth ?? null,
+          billing_month: parsedBillingMonth?.canonical ?? null,
           patient_id: patientId ?? null,
           statuses: ['confirmed', 'exported'],
         },
@@ -213,8 +204,8 @@ export const GET = withAuth(
     });
 
     const csv = [header, ...rows].join('\n');
-    const filename = billingMonth
-      ? `billing_${billingMonth.slice(0, 7)}.csv`
+    const filename = parsedBillingMonth
+      ? `billing_${parsedBillingMonth.canonical.slice(0, 7)}.csv`
       : 'billing_candidates.csv';
     const encodedFilename = encodeURIComponent(filename);
 
@@ -227,7 +218,7 @@ export const GET = withAuth(
     });
   },
   {
-    permission: 'canReport',
+    permission: 'canManageBilling',
     message: '請求候補のエクスポート権限がありません',
   },
 );

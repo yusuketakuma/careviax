@@ -4,12 +4,9 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { reviewBillingCandidate } from '@/server/services/billing-evidence';
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canReport',
+    permission: 'canManageBilling',
     message: '請求候補の更新権限がありません',
   });
   if ('response' in authResult) return authResult.response;
@@ -23,9 +20,10 @@ export async function PATCH(
     return validationError('action は confirm / exclude / reopen のいずれかを指定してください');
   }
 
-  const note = typeof (body as { note?: unknown }).note === 'string'
-    ? ((body as { note?: string }).note ?? null)
-    : null;
+  const note =
+    typeof (body as { note?: unknown }).note === 'string'
+      ? ((body as { note?: string }).note ?? null)
+      : null;
 
   const { id } = await params;
 

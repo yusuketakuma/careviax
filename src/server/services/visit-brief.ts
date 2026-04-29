@@ -1458,3 +1458,50 @@ export async function getScheduleVisitBrief(
     context: 'schedule',
   });
 }
+
+function getVisitBriefBatchConcurrency() {
+  const value = Number(process.env.VISIT_BRIEF_BATCH_CONCURRENCY ?? 4);
+  if (!Number.isFinite(value)) return 4;
+  return Math.min(Math.max(Math.trunc(value), 1), 8);
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>,
+) {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(items[index]);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
+  return results;
+}
+
+export async function getScheduleVisitBriefsForPatients(
+  db: DbClient,
+  args: Omit<BuildVisitBriefArgs, 'context' | 'patientId'> & { patientIds: string[] },
+): Promise<Map<string, VisitBrief>> {
+  const { patientIds, ...briefArgs } = args;
+  const uniquePatientIds = Array.from(new Set(patientIds.filter(Boolean)));
+  const entries = await mapWithConcurrency(
+    uniquePatientIds,
+    getVisitBriefBatchConcurrency(),
+    async (patientId) => {
+      const brief = await getScheduleVisitBrief(db, {
+        ...briefArgs,
+        patientId,
+      });
+      return [patientId, brief] as const;
+    },
+  );
+
+  return new Map(entries);
+}

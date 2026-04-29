@@ -16,8 +16,7 @@ function toWorkbookResponse(buffer: Buffer) {
   return new Response(new Blob([new Uint8Array(buffer)]), {
     status: 200,
     headers: {
-      'content-type':
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     },
   });
 }
@@ -31,7 +30,7 @@ describe('resolveLatestMhlwPriceWorkbookUrl', () => {
     `;
 
     expect(resolveLatestMhlwPriceWorkbookUrl(html)).toBe(
-      'https://www.mhlw.go.jp/topics/2026/04/xls/tp20260401-01_01.xlsx'
+      'https://www.mhlw.go.jp/topics/2026/04/xls/tp20260401-01_01.xlsx',
     );
   });
 });
@@ -45,7 +44,7 @@ describe('resolveLatestGenericNameWorkbookUrl', () => {
     `;
 
     expect(resolveLatestGenericNameWorkbookUrl(html)).toBe(
-      'https://www.mhlw.go.jp/seisakunitsuite/bunya/kenkou_iryou/iryouhoken/dl/ippanmeishohoumaster_260401.xlsx'
+      'https://www.mhlw.go.jp/seisakunitsuite/bunya/kenkou_iryou/iryouhoken/dl/ippanmeishohoumaster_260401.xlsx',
     );
   });
 });
@@ -53,7 +52,7 @@ describe('resolveLatestGenericNameWorkbookUrl', () => {
 describe('parseMhlwPriceWorkbook', () => {
   it('parses official-like price rows and generic indicators', async () => {
     const workbook = await workbookBlob({
-      'ＨＰ用': [
+      ＨＰ用: [
         [
           '区分',
           '薬価基準収載医薬品コード',
@@ -94,7 +93,7 @@ describe('parseMhlwPriceWorkbook', () => {
     });
 
     const parsed = await parseMhlwPriceWorkbook({
-      workbookUrl: 'https://example.com/price.xlsx',
+      workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/price.xlsx',
       fetchImpl: async () => toWorkbookResponse(workbook),
     });
 
@@ -112,27 +111,21 @@ describe('parseMhlwPriceWorkbook', () => {
       is_generic: true,
     });
     expect(parsed.records[1]?.transitional_expiry_date?.toISOString()).toBe(
-      '2027-03-31T00:00:00.000Z'
+      '2027-03-31T00:00:00.000Z',
     );
   });
 
   it('finds the price sheet even when it is not the first worksheet', async () => {
     const workbook = await workbookBlob({
       概要: [['このシートは無関係です']],
-      'ＨＰ用': [
-        [
-          '区分',
-          '薬価基準収載医薬品コード',
-          '品名',
-          'メーカー名',
-          '薬価',
-        ],
+      ＨＰ用: [
+        ['区分', '薬価基準収載医薬品コード', '品名', 'メーカー名', '薬価'],
         ['内用薬', '1124001F1022', 'ユーロジン１ｍｇ錠', 'Ｔ’ｓ製薬', '6.30'],
       ],
     });
 
     const parsed = await parseMhlwPriceWorkbook({
-      workbookUrl: 'https://example.com/price.xlsx',
+      workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/price.xlsx',
       fetchImpl: async () => toWorkbookResponse(workbook),
     });
 
@@ -212,9 +205,27 @@ describe('importGenericNameMappings', () => {
           null,
         ],
       ],
-      '例外コード品目対照表': [
+      例外コード品目対照表: [
         ['一般名処方マスタ（例外コード表）'],
-        [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, '令和8年4月1日適用'],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          '令和8年4月1日適用',
+        ],
         [
           '区分',
           '一般名コード',
@@ -257,7 +268,7 @@ describe('importGenericNameMappings', () => {
     });
 
     const result = await importGenericNameMappings(db as never, {
-      workbookUrl: 'https://example.com/generic.xlsx',
+      workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/generic.xlsx',
       fetchImpl: async () => toWorkbookResponse(workbook),
     });
 
@@ -285,9 +296,11 @@ describe('parseGenericNameWorkbook', () => {
 
     await expect(
       parseGenericNameWorkbook({
-        workbookUrl: 'https://example.com/generic.xlsx',
+        workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/generic.xlsx',
         fetchImpl: async () => toWorkbookResponse(workbook),
-      })
-    ).rejects.toThrow("Excel ワークシート '一般名処方マスタ（R8.4.1版） 全体' を解決できませんでした");
+      }),
+    ).rejects.toThrow(
+      "Excel ワークシート '一般名処方マスタ（R8.4.1版） 全体' を解決できませんでした",
+    );
   });
 });

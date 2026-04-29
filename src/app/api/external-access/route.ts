@@ -4,12 +4,13 @@ import bcrypt from 'bcryptjs';
 import { withAuthContext } from '@/lib/auth/context';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { withOrgContext } from '@/lib/db/rls';
-import { error, success, validationError } from '@/lib/api/response';
+import { error, forbidden, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { SmsNotificationAdapter } from '@/server/adapters/sms';
 import {
   issueExternalAccessToken,
   MissingExternalAccessSecretError,
+  validateExternalAccessScopeForRole,
 } from '@/server/services/external-access';
 import { z } from 'zod';
 
@@ -17,7 +18,7 @@ const createGrantSchema = z.object({
   patient_id: z.string().min(1),
   granted_to_name: z.string().min(1, '共有先氏名は必須です'),
   granted_to_contact: z.string().trim().optional().nullable(),
-  scope: z.record(z.string(), z.boolean()),
+  scope: z.unknown(),
   expires_hours: z.number().int().min(1).max(720).default(72),
 });
 
@@ -74,10 +75,7 @@ export const GET = withAuthContext(
                   name_kana: true,
                 },
               })
-            ).map((patient) => [
-              patient.id,
-              { name: patient.name, name_kana: patient.name_kana },
-            ])
+            ).map((patient) => [patient.id, { name: patient.name, name_kana: patient.name_kana }]),
           );
 
     const reportSummary = new Map<
@@ -134,9 +132,9 @@ export const GET = withAuthContext(
     });
   },
   {
-    permission: 'canReport',
+    permission: 'canSendCareReport',
     message: '外部共有の閲覧権限がありません',
-  }
+  },
 );
 
 export const POST = withAuthContext(
@@ -149,12 +147,19 @@ export const POST = withAuthContext(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const { patient_id, granted_to_name, granted_to_contact, scope, expires_hours } =
-      parsed.data;
+    const { patient_id, granted_to_name, granted_to_contact, expires_hours } = parsed.data;
+    const scopeResult = validateExternalAccessScopeForRole(parsed.data.scope, ctx.role);
+    if (!scopeResult.ok) {
+      if (scopeResult.kind === 'permission') {
+        return forbidden(scopeResult.message);
+      }
+
+      return validationError(scopeResult.message, scopeResult.details);
+    }
+
+    const scope = scopeResult.scope;
     const normalizedGrantedToContact =
-      granted_to_contact && granted_to_contact.trim().length > 0
-        ? granted_to_contact.trim()
-        : null;
+      granted_to_contact && granted_to_contact.trim().length > 0 ? granted_to_contact.trim() : null;
 
     const refResult = await validateOrgReferences(ctx.orgId, { patient_id });
     if (!refResult.ok) return refResult.response;
@@ -213,7 +218,7 @@ export const POST = withAuthContext(
         return error(
           'EXTERNAL_ACCESS_SECRET_MISSING',
           '外部共有リンクの署名設定が不足しています',
-          500
+          500,
         );
       }
       throw errorValue;
@@ -227,7 +232,7 @@ export const POST = withAuthContext(
         const smsAdapter = new SmsNotificationAdapter();
         await smsAdapter.sendSms(
           normalizedGrantedToContact,
-          `CareViaX共有OTP: ${rawOtp} 有効期限 ${expiresAt.toLocaleString('ja-JP')}`
+          `CareViaX共有OTP: ${rawOtp} 有効期限 ${expiresAt.toLocaleString('ja-JP')}`,
         );
         otpDelivery = 'sms';
         otpDeliveryDestination = maskPhoneNumber(normalizedGrantedToContact);
@@ -246,11 +251,11 @@ export const POST = withAuthContext(
           otp_delivery_destination: otpDeliveryDestination,
         },
       },
-      201
+      201,
     );
   },
   {
     permission: 'canReport',
     message: '外部共有の作成権限がありません',
-  }
+  },
 );

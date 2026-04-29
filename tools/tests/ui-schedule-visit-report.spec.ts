@@ -622,16 +622,23 @@ test.describe('reports page', () => {
 
     const searchInput = page.getByPlaceholder('患者名 / フリガナ');
     await searchInput.fill('ZZZNONEXISTENT');
-    await page.waitForTimeout(1000);
-    await waitForStableUi(page);
 
     // Should show empty or fewer results
-    const hasEmpty = await page
-      .getByText('報告書がありません')
-      .isVisible()
-      .catch(() => false);
-    const rows = await page.locator('table tbody tr').count();
-    expect(hasEmpty || rows === 0).toBe(true);
+    await expect
+      .poll(
+        async () => {
+          const hasEmpty = await page
+            .getByText('報告書がありません')
+            .isVisible()
+            .catch(() => false);
+          const rows = await page.locator('table tbody tr').count();
+          return hasEmpty || rows === 0;
+        },
+        {
+          message: 'report search should settle after debounce/refetch',
+        },
+      )
+      .toBe(true);
 
     expect(errors).toEqual([]);
   });

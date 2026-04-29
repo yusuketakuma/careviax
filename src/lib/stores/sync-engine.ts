@@ -1,6 +1,6 @@
 'use client';
 
-import { decryptOfflinePayload, encryptOfflinePayload } from '@/lib/offline/crypto';
+import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
 import { offlineDb, type OfflineSyncQueue } from './offline-db';
 
 const MAX_RETRIES = 3;
@@ -62,10 +62,7 @@ export async function processSyncQueue(config: SyncConfig): Promise<{
   failed: number;
 }> {
   const endpoints = { ...DEFAULT_ENDPOINTS, ...config.endpoints };
-  const pending = await offlineDb.syncQueue
-    .where('retryCount')
-    .below(MAX_RETRIES)
-    .toArray();
+  const pending = await offlineDb.syncQueue.where('retryCount').below(MAX_RETRIES).toArray();
 
   let synced = 0;
   let failed = 0;
@@ -94,27 +91,24 @@ export async function processSyncQueue(config: SyncConfig): Promise<{
         }
         synced++;
       } else if (res.status === 409) {
-        const body = (await res.json().catch(() => null)) as
-          | {
-              details?: {
-                existing_record?: VisitRecordConflictSnapshot['server'];
-              };
-            }
-          | null;
+        const body = (await res.json().catch(() => null)) as {
+          details?: {
+            existing_record?: VisitRecordConflictSnapshot['server'];
+          };
+        } | null;
         const parsedPayload =
-          parseJson<Record<string, unknown>>(
-            await decryptOfflinePayload(item.payload)
-          ) ?? {};
+          parseJson<Record<string, unknown>>(await decryptOfflinePayload(item.payload)) ?? {};
         // Keep the draft in queue so the user can resolve the conflict later.
         await offlineDb.syncQueue.update(item.id!, {
           retryCount: MAX_RETRIES,
           lastError: 'HTTP 409 conflict',
           conflict_state: 'server_conflict',
-          conflict_payload: await encryptOfflinePayload(
+          conflict_payload: await encryptOfflinePayloadRequired(
             JSON.stringify({
               local: parsedPayload,
               server: body?.details?.existing_record ?? null,
-            } satisfies VisitRecordConflictSnapshot)
+            } satisfies VisitRecordConflictSnapshot),
+            'sync queue conflict payload',
           ),
         });
         failed++;
@@ -144,11 +138,14 @@ export async function processSyncQueue(config: SyncConfig): Promise<{
  */
 export async function enqueueForSync(
   entityType: OfflineSyncQueue['entityType'],
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
 ): Promise<void> {
   await offlineDb.syncQueue.add({
     entityType,
-    payload: await encryptOfflinePayload(JSON.stringify(payload)),
+    payload: await encryptOfflinePayloadRequired(
+      JSON.stringify(payload),
+      `sync queue ${entityType} payload`,
+    ),
     scope_id:
       typeof payload.schedule_id === 'string'
         ? payload.schedule_id
@@ -172,13 +169,12 @@ export async function listSyncQueueItems(): Promise<SyncQueueItemSummary[]> {
   return Promise.all(
     items.map(async (item) => ({
       ...item,
-      payload:
-        parseJson<Record<string, unknown>>(await decryptOfflinePayload(item.payload)) ?? {},
+      payload: parseJson<Record<string, unknown>>(await decryptOfflinePayload(item.payload)) ?? {},
       conflict:
         parseJson<VisitRecordConflictSnapshot>(
-          await decryptOfflinePayload(item.conflict_payload)
+          await decryptOfflinePayload(item.conflict_payload),
         ) ?? null,
-    }))
+    })),
   );
 }
 
@@ -195,17 +191,21 @@ export async function registerVisitRecordConflict(args: {
 
   const data = {
     entityType: 'visit_record' as const,
-    payload: await encryptOfflinePayload(JSON.stringify(args.payload)),
+    payload: await encryptOfflinePayloadRequired(
+      JSON.stringify(args.payload),
+      'sync queue visit_record payload',
+    ),
     scope_id: args.scheduleId,
     createdAt: new Date(),
     retryCount: MAX_RETRIES,
     lastError: 'HTTP 409 conflict',
     conflict_state: 'server_conflict' as const,
-    conflict_payload: await encryptOfflinePayload(
+    conflict_payload: await encryptOfflinePayloadRequired(
       JSON.stringify({
         local: args.payload,
         server: args.server,
-      } satisfies VisitRecordConflictSnapshot)
+      } satisfies VisitRecordConflictSnapshot),
+      'sync queue conflict payload',
     ),
   };
 
@@ -229,7 +229,7 @@ export async function discardSyncQueueItem(itemId: number): Promise<void> {
 
 export async function overwriteVisitRecordConflict(
   config: SyncConfig,
-  itemId: number
+  itemId: number,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const item = await offlineDb.syncQueue.get(itemId);
   if (!item) return { ok: false, message: '競合対象が見つかりません' };
@@ -239,13 +239,13 @@ export async function overwriteVisitRecordConflict(
 
   const payload = parseJson<Record<string, unknown>>(await decryptOfflinePayload(item.payload));
   const conflict = parseJson<VisitRecordConflictSnapshot>(
-    await decryptOfflinePayload(item.conflict_payload)
+    await decryptOfflinePayload(item.conflict_payload),
   );
   if (!payload || !conflict?.server) {
     return { ok: false, message: '競合情報が不足しています' };
   }
 
-  const endpoint = (config.endpoints.visit_record ?? DEFAULT_ENDPOINTS.visit_record);
+  const endpoint = config.endpoints.visit_record ?? DEFAULT_ENDPOINTS.visit_record;
   const res = await fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -269,22 +269,21 @@ export async function overwriteVisitRecordConflict(
   }
 
   if (res.status === 409) {
-    const body = (await res.json().catch(() => null)) as
-      | {
-          details?: {
-            existing_record?: VisitRecordConflictSnapshot['server'];
-          };
-        }
-      | null;
+    const body = (await res.json().catch(() => null)) as {
+      details?: {
+        existing_record?: VisitRecordConflictSnapshot['server'];
+      };
+    } | null;
     await offlineDb.syncQueue.update(itemId, {
       retryCount: MAX_RETRIES,
       lastError: 'HTTP 409 conflict',
       conflict_state: 'server_conflict',
-      conflict_payload: await encryptOfflinePayload(
+      conflict_payload: await encryptOfflinePayloadRequired(
         JSON.stringify({
           local: payload,
           server: body?.details?.existing_record ?? conflict.server,
-        } satisfies VisitRecordConflictSnapshot)
+        } satisfies VisitRecordConflictSnapshot),
+        'sync queue conflict payload',
       ),
     });
     return { ok: false, message: 'サーバー側の記録が更新されました。差分を確認してください' };

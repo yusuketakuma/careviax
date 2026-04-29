@@ -2,8 +2,15 @@ import { NextRequest } from 'next/server';
 import { batchResolveNames } from '@/lib/utils/name-resolver';
 import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
+import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import {
+  success,
+  validationError,
+  notFound,
+  conflict,
+  forbiddenResponse,
+} from '@/lib/api/response';
 import {
   updateVisitRecordSchema,
   type VisitRecordAttachmentRefInput,
@@ -48,7 +55,7 @@ function parseStoredVisitRecordAttachments(value: unknown): VisitRecordAttachmen
 async function resolveVisitRecordAttachments(
   orgId: string,
   recordId: string,
-  attachments: VisitRecordAttachmentRefInput[]
+  attachments: VisitRecordAttachmentRefInput[],
 ) {
   const seen = new Set<string>();
   const resolved: VisitRecordAttachment[] = [];
@@ -77,10 +84,7 @@ async function resolveVisitRecordAttachments(
   return resolved;
 }
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問記録の閲覧権限がありません',
@@ -104,12 +108,21 @@ export async function GET(
           recurrence_rule: true,
           time_window_start: true,
           time_window_end: true,
+          case_: {
+            select: {
+              primary_pharmacist_id: true,
+              backup_pharmacist_id: true,
+            },
+          },
         },
       },
     },
   });
 
   if (!record) return notFound('訪問記録が見つかりません');
+  if (!canAccessVisitScheduleAssignment(ctx, record.schedule)) {
+    return forbiddenResponse('この訪問記録を閲覧する権限がありません');
+  }
 
   const caseId = record.schedule?.case_id ?? null;
   const patientId = record.patient_id;
@@ -138,13 +151,12 @@ export async function GET(
   ]);
 
   const userIds = Array.from(
-    new Set([record.pharmacist_id, latestAudit?.actor_id].filter(Boolean) as string[])
+    new Set([record.pharmacist_id, latestAudit?.actor_id].filter(Boolean) as string[]),
   );
   const userById = await batchResolveNames(prisma, ctx.orgId, userIds);
 
   const intakeData = getHomeVisitIntake(activeCase?.required_visit_support ?? null);
-  const visitBeforeContactRequired =
-    patientSchedulePref?.visit_before_contact_required ?? null;
+  const visitBeforeContactRequired = patientSchedulePref?.visit_before_contact_required ?? null;
   const baselineContext = buildBaselineContext(intakeData, visitBeforeContactRequired);
 
   return success({
@@ -160,10 +172,7 @@ export async function GET(
   });
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問記録の更新権限がありません',
@@ -175,6 +184,13 @@ export async function PATCH(
 
   const body = await req.json().catch(() => null);
   if (!body) return validationError('リクエストボディが不正です');
+  if (
+    typeof body === 'object' &&
+    !Array.isArray(body) &&
+    ('schedule_id' in body || 'patient_id' in body)
+  ) {
+    return validationError('訪問記録のスケジュールIDと患者IDは変更できません');
+  }
 
   const parsed = updateVisitRecordSchema.safeParse(body);
   if (!parsed.success) {
@@ -182,46 +198,73 @@ export async function PATCH(
   }
 
   const { version, next_visit_suggestion_date, visit_date, attachments, ...rest } = parsed.data;
-  let normalizedAttachments: VisitRecordAttachment[] | undefined;
+  const updated = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      // Optimistic lock: check version
+      const existing = await tx.visitRecord.findFirst({
+        where: { id, org_id: ctx.orgId },
+        select: {
+          id: true,
+          version: true,
+          schedule: {
+            select: {
+              pharmacist_id: true,
+              case_: {
+                select: {
+                  primary_pharmacist_id: true,
+                  backup_pharmacist_id: true,
+                },
+              },
+            },
+          },
+        },
+      });
+      if (!existing) return null;
+      if (!canAccessVisitScheduleAssignment(ctx, existing.schedule)) return 'forbidden' as const;
+      if (existing.version !== version) return 'conflict' as const;
 
-  if (attachments) {
-    try {
-      normalizedAttachments = await resolveVisitRecordAttachments(ctx.orgId, id, attachments);
-    } catch (cause) {
-      return validationError(
-        cause instanceof Error ? cause.message : '添付ファイル情報が不正です'
-      );
-    }
-  }
+      let normalizedAttachments: VisitRecordAttachment[] | undefined;
+      if (attachments) {
+        try {
+          normalizedAttachments = await resolveVisitRecordAttachments(ctx.orgId, id, attachments);
+        } catch (cause) {
+          return {
+            error: 'attachment_validation' as const,
+            message: cause instanceof Error ? cause.message : '添付ファイル情報が不正です',
+          };
+        }
+      }
 
-  const updated = await withOrgContext(ctx.orgId, async (tx) => {
-    // Optimistic lock: check version
-    const existing = await tx.visitRecord.findFirst({
-      where: { id, org_id: ctx.orgId },
-      select: { id: true, version: true },
-    });
-    if (!existing) return null;
-    if (existing.version !== version) return 'conflict' as const;
-
-    return tx.visitRecord.update({
-      where: { id },
-      data: {
-        ...rest,
-        ...(visit_date ? { visit_date: new Date(visit_date) } : {}),
-        ...(next_visit_suggestion_date
-          ? { next_visit_suggestion_date: new Date(next_visit_suggestion_date) }
-          : {}),
-        ...(normalizedAttachments
-          ? { attachments: normalizedAttachments as Prisma.InputJsonValue }
-          : {}),
-        version: { increment: 1 },
-      } as Prisma.VisitRecordUncheckedUpdateInput,
-    });
-  }, { requestContext: ctx });
+      return tx.visitRecord.update({
+        where: { id },
+        data: {
+          ...rest,
+          ...(visit_date ? { visit_date: new Date(visit_date) } : {}),
+          ...(next_visit_suggestion_date
+            ? { next_visit_suggestion_date: new Date(next_visit_suggestion_date) }
+            : {}),
+          ...(normalizedAttachments
+            ? { attachments: normalizedAttachments as Prisma.InputJsonValue }
+            : {}),
+          version: { increment: 1 },
+        } as Prisma.VisitRecordUncheckedUpdateInput,
+      });
+    },
+    { requestContext: ctx },
+  );
 
   if (!updated) return notFound('訪問記録が見つかりません');
+  if (updated === 'forbidden') {
+    return forbiddenResponse('この訪問記録を更新する権限がありません');
+  }
   if (updated === 'conflict') {
-    return conflict('他のユーザーによって更新されました。最新データを取得してから再試行してください');
+    return conflict(
+      '他のユーザーによって更新されました。最新データを取得してから再試行してください',
+    );
+  }
+  if ('error' in updated && updated.error === 'attachment_validation') {
+    return validationError(updated.message);
   }
 
   return success(updated);

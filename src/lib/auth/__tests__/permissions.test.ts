@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  forbiddenIfMissingPermission,
-  hasPermission,
-} from '../permissions';
+import { forbiddenIfMissingPermission, hasPermission } from '../permissions';
 
 describe('permissions', () => {
   it('matches the full workflow permission matrix for all seven roles', () => {
@@ -85,6 +82,18 @@ describe('permissions', () => {
     expect(hasPermission('clerk', 'canReport')).toBe(true);
   });
 
+  it('splits report creation, external report sending, and billing permissions', () => {
+    expect(hasPermission('clerk', 'canReport')).toBe(true);
+    expect(hasPermission('clerk', 'canManageBilling')).toBe(false);
+    expect(hasPermission('clerk', 'canSendCareReport')).toBe(false);
+    expect(hasPermission('pharmacist_trainee', 'canReport')).toBe(true);
+    expect(hasPermission('pharmacist_trainee', 'canManageBilling')).toBe(false);
+    expect(hasPermission('pharmacist_trainee', 'canSendCareReport')).toBe(false);
+    expect(hasPermission('pharmacist', 'canManageBilling')).toBe(true);
+    expect(hasPermission('pharmacist', 'canSendCareReport')).toBe(true);
+    expect(hasPermission('driver', 'canManageBilling')).toBe(false);
+  });
+
   it('grants dashboard permission to clerks and denies it to drivers', () => {
     expect(hasPermission('clerk', 'canViewDashboard')).toBe(true);
     expect(hasPermission('driver', 'canViewDashboard')).toBe(false);
@@ -95,21 +104,13 @@ describe('permissions', () => {
   });
 
   it('returns null when the role has the requested permission', () => {
-    const result = forbiddenIfMissingPermission(
-      'owner',
-      'canAdmin',
-      '管理者権限が必要です'
-    );
+    const result = forbiddenIfMissingPermission('owner', 'canAdmin', '管理者権限が必要です');
 
     expect(result).toBeNull();
   });
 
   it('returns a forbidden response when the role lacks the permission', async () => {
-    const result = forbiddenIfMissingPermission(
-      'driver',
-      'canVisit',
-      '訪問権限が必要です'
-    );
+    const result = forbiddenIfMissingPermission('driver', 'canVisit', '訪問権限が必要です');
 
     expect(result?.status).toBe(403);
     await expect(result?.json()).resolves.toEqual({

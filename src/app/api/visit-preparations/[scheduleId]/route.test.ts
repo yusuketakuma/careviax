@@ -16,6 +16,10 @@ const {
   patientHomeCareFeatureSummaryMock,
   scheduleFeatureHighlightsMock,
   scheduleVisitBriefMock,
+  visitPreparationUpsertMock,
+  withOrgContextMock,
+  upsertOperationalTaskMock,
+  resolveOperationalTasksMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -31,6 +35,10 @@ const {
   patientHomeCareFeatureSummaryMock: vi.fn(),
   scheduleFeatureHighlightsMock: vi.fn(),
   scheduleVisitBriefMock: vi.fn(),
+  visitPreparationUpsertMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+  upsertOperationalTaskMock: vi.fn(),
+  resolveOperationalTasksMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -67,6 +75,10 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
 vi.mock('@/server/services/home-care-ops', () => ({
   getPatientHomeCareFeatureSummary: patientHomeCareFeatureSummaryMock,
   selectScheduleHomeCareFeatureHighlights: scheduleFeatureHighlightsMock,
@@ -80,7 +92,16 @@ vi.mock('@/server/services/visit-brief', () => ({
   getScheduleVisitBrief: scheduleVisitBriefMock,
 }));
 
-import { GET } from './route';
+vi.mock('@/server/services/operational-tasks', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/server/services/operational-tasks')>();
+  return {
+    ...actual,
+    upsertOperationalTask: upsertOperationalTaskMock,
+    resolveOperationalTasks: resolveOperationalTasksMock,
+  };
+});
+
+import { GET, PUT } from './route';
 
 function createRequest(headers?: Record<string, string>) {
   return {
@@ -90,6 +111,29 @@ function createRequest(headers?: Record<string, string>) {
     },
   } as unknown as NextRequest;
 }
+
+function createPutRequest(
+  body: unknown,
+  headers: Record<string, string> = { 'x-org-id': 'org_1' },
+) {
+  return {
+    url: 'http://localhost/api/visit-preparations/schedule_1',
+    method: 'PUT',
+    headers: {
+      get: (key: string) => headers[key] ?? null,
+    },
+    json: vi.fn().mockResolvedValue(body),
+  } as unknown as NextRequest;
+}
+
+const completePreparationBody = {
+  checklist: {},
+  medication_changes_reviewed: true,
+  carry_items_confirmed: true,
+  previous_issues_reviewed: true,
+  route_confirmed: true,
+  offline_synced: true,
+};
 
 describe('/api/visit-preparations/[scheduleId] GET', () => {
   beforeEach(() => {
@@ -373,6 +417,27 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
         generated_at: '2026-03-27T00:00:00.000Z',
       },
     });
+    visitPreparationUpsertMock.mockResolvedValue({
+      id: 'prep_1',
+      schedule_id: 'schedule_1',
+      checklist: {},
+      medication_changes_reviewed: true,
+      carry_items_confirmed: true,
+      previous_issues_reviewed: true,
+      route_confirmed: true,
+      offline_synced: true,
+      prepared_by: 'user_1',
+      prepared_at: new Date('2026-03-27T00:00:00Z'),
+    });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        visitPreparation: {
+          upsert: visitPreparationUpsertMock,
+        },
+      }),
+    );
+    upsertOperationalTaskMock.mockResolvedValue({ id: 'task_1' });
+    resolveOperationalTasksMock.mockResolvedValue({ count: 1 });
   });
 
   it('returns preparation and pre-visit pack data', async () => {
@@ -749,6 +814,172 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
             ],
           },
         },
+      },
+    });
+  });
+});
+
+describe('/api/visit-preparations/[scheduleId] PUT', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    visitScheduleFindFirstMock.mockResolvedValue({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      schedule_status: 'planned',
+      scheduled_date: new Date('2026-03-27T00:00:00Z'),
+      pharmacist_id: 'user_1',
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+      },
+    });
+    visitPreparationUpsertMock.mockResolvedValue({
+      id: 'prep_1',
+      schedule_id: 'schedule_1',
+      checklist: {},
+      medication_changes_reviewed: true,
+      carry_items_confirmed: true,
+      previous_issues_reviewed: true,
+      route_confirmed: true,
+      offline_synced: true,
+      prepared_by: 'user_1',
+      prepared_at: new Date('2026-03-27T00:00:00Z'),
+    });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        visitPreparation: {
+          upsert: visitPreparationUpsertMock,
+        },
+      }),
+    );
+    upsertOperationalTaskMock.mockResolvedValue({ id: 'task_1' });
+    resolveOperationalTasksMock.mockResolvedValue({ count: 1 });
+  });
+
+  it('returns 403 and does not upsert for an unassigned pharmacist', async () => {
+    visitScheduleFindFirstMock.mockResolvedValueOnce({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      schedule_status: 'planned',
+      scheduled_date: new Date('2026-03-27T00:00:00Z'),
+      pharmacist_id: 'user_other',
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+      },
+    });
+
+    const response = await PUT(createPutRequest(completePreparationBody), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitPreparationUpsertMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
+  it('allows the backup pharmacist to mark previous issues as reviewed', async () => {
+    visitScheduleFindFirstMock.mockResolvedValueOnce({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      schedule_status: 'planned',
+      scheduled_date: new Date('2026-03-27T00:00:00Z'),
+      pharmacist_id: 'user_other',
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: 'user_1',
+      },
+    });
+
+    const response = await PUT(createPutRequest(completePreparationBody), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(visitPreparationUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { schedule_id: 'schedule_1' },
+        create: expect.objectContaining({
+          previous_issues_reviewed: true,
+          prepared_by: 'user_1',
+          prepared_at: expect.any(Date),
+        }),
+        update: expect.objectContaining({
+          previous_issues_reviewed: true,
+          prepared_by: 'user_1',
+          prepared_at: expect.any(Date),
+        }),
+      }),
+    );
+    expect(resolveOperationalTasksMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        dedupeKey: 'visit-preparation:schedule_1',
+        status: 'completed',
+      }),
+    );
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the readiness gate blocked when previous issues are not reviewed', async () => {
+    visitPreparationUpsertMock.mockResolvedValueOnce({
+      id: 'prep_1',
+      schedule_id: 'schedule_1',
+      checklist: {},
+      medication_changes_reviewed: true,
+      carry_items_confirmed: true,
+      previous_issues_reviewed: false,
+      route_confirmed: true,
+      offline_synced: true,
+      prepared_by: 'user_1',
+      prepared_at: null,
+    });
+
+    const response = await PUT(
+      createPutRequest({
+        ...completePreparationBody,
+        previous_issues_reviewed: false,
+      }),
+      {
+        params: Promise.resolve({ scheduleId: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(visitPreparationUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          previous_issues_reviewed: false,
+          prepared_at: null,
+        }),
+        update: expect.objectContaining({
+          previous_issues_reviewed: false,
+          prepared_at: null,
+        }),
+      }),
+    );
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'visit_preparation',
+        assignedTo: 'user_1',
+        dedupeKey: 'visit-preparation:schedule_1',
+      }),
+    );
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        previous_issues_reviewed: false,
+        prepared_at: null,
       },
     });
   });

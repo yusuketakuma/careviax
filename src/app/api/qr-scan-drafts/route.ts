@@ -19,8 +19,11 @@ import { addDays, subDays, parseISO } from 'date-fns';
 
 // ── Validation schema ──
 
+const MAX_QR_TEXT_COUNT = 16;
+const MAX_QR_TEXT_LENGTH = 8192;
+
 const createQrDraftSchema = z.object({
-  qr_texts: z.array(z.string().min(1)).min(1),
+  qr_texts: z.array(z.string().min(1).max(MAX_QR_TEXT_LENGTH)).min(1).max(MAX_QR_TEXT_COUNT),
   patient_id: z.string().optional(),
   site_id: z.string().min(1),
   session_id: z.string().optional(),
@@ -136,6 +139,16 @@ export const POST = withAuth(
           patient_id: ['指定された患者が見つかりません'],
         });
       }
+    }
+
+    const site = await prisma.pharmacySite.findFirst({
+      where: { id: site_id, org_id: req.orgId },
+      select: { id: true },
+    });
+    if (!site) {
+      return validationError('指定された店舗が見つかりません', {
+        site_id: ['指定された店舗が見つかりません'],
+      });
     }
 
     // Validate each QR text is a JAHIS QR code

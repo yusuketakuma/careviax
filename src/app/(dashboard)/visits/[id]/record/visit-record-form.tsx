@@ -26,6 +26,7 @@ import { useIsMobile } from '@/lib/hooks/use-media-query';
 import { useSpeechRecognition } from '@/lib/hooks/use-speech-recognition';
 import { useSoapDraft } from '@/lib/hooks/use-soap-draft';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
+import { isOfflineEncryptionUnavailableError } from '@/lib/offline/crypto';
 import {
   enqueueForSync,
   registerVisitRecordConflict,
@@ -312,6 +313,7 @@ export function VisitRecordForm({
   >('idle');
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoCapturedStartRef = useRef(false);
+  const draftSaveFailureNotifiedRef = useRef(false);
   const errorSummaryId = 'visit-record-form-error-summary';
   const isOffline = useOfflineStore((state) => state.isOffline);
   const pendingSyncCount = useOfflineStore((state) => state.pendingSyncCount);
@@ -382,6 +384,20 @@ export function VisitRecordForm({
     VISIT_RECORD_ALERT_TYPES.has(alert.type),
   );
   const { loadDraft, saveDraft, clearDraft } = useSoapDraft(id, schedule?.patient_id ?? '');
+
+  const notifyDraftSaveFailure = useCallback((error: unknown) => {
+    if (draftSaveFailureNotifiedRef.current) return;
+    draftSaveFailureNotifiedRef.current = true;
+
+    if (isOfflineEncryptionUnavailableError(error)) {
+      toast.error(
+        'オフライン下書きの暗号化キーを確認できないため、SOAP は端末に保存していません。再ログイン後に保存してください。',
+      );
+      return;
+    }
+
+    toast.error(error instanceof Error ? error.message : 'オフライン下書きの保存に失敗しました');
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -530,7 +546,11 @@ export function VisitRecordForm({
         buildStructuredSoap(watchedValues),
         0,
         buildDraftMetadata(watchedValues, visitGeoLog),
-      );
+      )
+        .then(() => {
+          draftSaveFailureNotifiedRef.current = false;
+        })
+        .catch(notifyDraftSaveFailure);
     }, 30_000);
 
     return () => {
@@ -538,7 +558,14 @@ export function VisitRecordForm({
         clearTimeout(autosaveTimerRef.current);
       }
     };
-  }, [draftHydrated, saveDraft, schedule?.patient_id, visitGeoLog, watchedValues]);
+  }, [
+    draftHydrated,
+    notifyDraftSaveFailure,
+    saveDraft,
+    schedule?.patient_id,
+    visitGeoLog,
+    watchedValues,
+  ]);
 
   const handleAddAttachments = useCallback((files: File[]) => {
     setSelectedAttachments((current) => {
@@ -922,7 +949,17 @@ export function VisitRecordForm({
         return;
       }
 
-      await saveDraft(buildStructuredSoap(values), 0, buildDraftMetadata(values, nextVisitGeoLog));
+      try {
+        await saveDraft(
+          buildStructuredSoap(values),
+          0,
+          buildDraftMetadata(values, nextVisitGeoLog),
+        );
+        draftSaveFailureNotifiedRef.current = false;
+      } catch (error) {
+        notifyDraftSaveFailure(error);
+        return;
+      }
       await enqueueForSync('visit_record', payload);
       await refreshSyncState();
       form.reset(values);
@@ -965,9 +1002,12 @@ export function VisitRecordForm({
       } = shortcutStateRef.current;
       if (e.key === 's') {
         e.preventDefault();
-        void saveDraft(buildStructuredSoap(vals), 0, buildDraftMetadata(vals, geoLog)).then(() =>
-          toast.info('下書きを保存しました'),
-        );
+        void saveDraft(buildStructuredSoap(vals), 0, buildDraftMetadata(vals, geoLog))
+          .then(() => {
+            draftSaveFailureNotifiedRef.current = false;
+            toast.info('下書きを保存しました');
+          })
+          .catch(notifyDraftSaveFailure);
       } else if (e.key === 'Enter') {
         e.preventDefault();
         void form.handleSubmit(submit, scrollToErrorSummary)();
@@ -975,7 +1015,7 @@ export function VisitRecordForm({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [form, saveDraft, scrollToErrorSummary]);
+  }, [form, notifyDraftSaveFailure, saveDraft, scrollToErrorSummary]);
 
   const attachmentsField = (
     <VisitAttachmentsField

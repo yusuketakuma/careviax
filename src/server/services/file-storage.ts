@@ -6,7 +6,13 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import type { MemberRole } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { hasPermission } from '@/lib/auth/permissions';
+import {
+  canAccessVisitScheduleAssignment,
+  canBypassVisitScheduleAssignmentAccess,
+} from '@/lib/auth/visit-schedule-access';
 
 const FILE_SETTING_PREFIX = 'file_asset:';
 const UPLOAD_EXPIRY_SECONDS = 60 * 5;
@@ -25,6 +31,13 @@ type AnyFilePurpose = FilePurpose | GeneratedFilePurpose;
 type StoredFileStatus = 'pending_upload' | 'uploaded';
 type DownloadDisposition = 'inline' | 'attachment';
 type SupportedServerSideEncryption = 'AES256' | 'aws:kms';
+
+type FileAccessContext = {
+  userId: string;
+  role: MemberRole;
+};
+
+type StoredFileAccessMode = 'complete' | 'download';
 
 export type StoredFileRecord = {
   version: 1;
@@ -72,16 +85,14 @@ type CompleteUploadArgs = {
   orgId: string;
   fileId: string;
   uploadedBy: string;
+  accessContext: FileAccessContext;
   etag?: string | null;
 };
 
 type CreatePresignedDownloadArgs = {
   orgId: string;
   fileId: string;
-  permissions: {
-    canVisit: boolean;
-    canReport: boolean;
-  };
+  accessContext: FileAccessContext;
 };
 
 type StoreGeneratedFileArgs = {
@@ -103,9 +114,10 @@ export class FileStorageError extends Error {
       | 'FILE_NOT_READY'
       | 'FILE_UPLOAD_INVALID_MIME'
       | 'FILE_UPLOAD_TOO_LARGE'
+      | 'FILE_COMPLETE_FORBIDDEN'
       | 'FILE_DOWNLOAD_FORBIDDEN',
     message: string,
-    readonly status: number
+    readonly status: number,
   ) {
     super(message);
     this.name = 'FileStorageError';
@@ -122,7 +134,7 @@ function getRequiredStorageConfig() {
     throw new FileStorageError(
       'FILE_STORAGE_NOT_CONFIGURED',
       'S3_BUCKET_NAME が設定されていません',
-      503
+      503,
     );
   }
 
@@ -141,12 +153,7 @@ function resolveKmsKeyId(purpose: AnyFilePurpose) {
         ? process.env.S3_KMS_KEY_ID_REPORT
         : undefined;
 
-  return (
-    explicitPurposeKey ??
-    process.env.S3_KMS_KEY_ID_PHI ??
-    process.env.S3_KMS_KEY_ID ??
-    null
-  );
+  return explicitPurposeKey ?? process.env.S3_KMS_KEY_ID_PHI ?? process.env.S3_KMS_KEY_ID ?? null;
 }
 
 function getS3EncryptionConfig(purpose: AnyFilePurpose) {
@@ -167,7 +174,7 @@ function getS3EncryptionConfig(purpose: AnyFilePurpose) {
     throw new FileStorageError(
       'FILE_STORAGE_NOT_CONFIGURED',
       'S3 KMS 暗号化に必要な KMS キー ID が設定されていません',
-      503
+      503,
     );
   }
 
@@ -233,30 +240,21 @@ function buildPrescriptionObjectLockRetention(purpose: FilePurpose) {
   };
 }
 
-function assertAllowedUpload(args: {
-  purpose: FilePurpose;
-  mimeType: string;
-  sizeBytes: number;
-}) {
+function assertAllowedUpload(args: { purpose: FilePurpose; mimeType: string; sizeBytes: number }) {
   const allowedMimeTypes =
     args.purpose === 'visit-photo' ? VISIT_ATTACHMENT_MIME_TYPES : DOCUMENT_MIME_TYPES;
 
   if (!allowedMimeTypes.has(args.mimeType)) {
-    throw new FileStorageError(
-      'FILE_UPLOAD_INVALID_MIME',
-      '許可されていない MIME タイプです',
-      400
-    );
+    throw new FileStorageError('FILE_UPLOAD_INVALID_MIME', '許可されていない MIME タイプです', 400);
   }
 
-  const maxBytes =
-    args.mimeType === 'application/pdf' ? DOCUMENT_MAX_BYTES : IMAGE_MAX_BYTES;
+  const maxBytes = args.mimeType === 'application/pdf' ? DOCUMENT_MAX_BYTES : IMAGE_MAX_BYTES;
 
   if (args.sizeBytes > maxBytes) {
     throw new FileStorageError(
       'FILE_UPLOAD_TOO_LARGE',
       `ファイルサイズが上限を超えています（上限 ${Math.floor(maxBytes / (1024 * 1024))}MB）`,
-      400
+      400,
     );
   }
 }
@@ -330,8 +328,7 @@ function parseStoredFileRecord(value: unknown): StoredFileRecord | null {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     completedAt: typeof record.completedAt === 'string' ? record.completedAt : null,
-    downloadDisposition:
-      record.downloadDisposition === 'attachment' ? 'attachment' : 'inline',
+    downloadDisposition: record.downloadDisposition === 'attachment' ? 'attachment' : 'inline',
   };
 }
 
@@ -353,33 +350,303 @@ async function readStoredFileRecord(orgId: string, fileId: string) {
     throw new FileStorageError(
       'FILE_METADATA_NOT_FOUND',
       'ファイルメタデータが見つかりません',
-      404
+      404,
     );
   }
 
   return { settingId: setting.id, record };
 }
 
-function assertDownloadAuthorized(
+function fileForbiddenCode(mode: StoredFileAccessMode) {
+  return mode === 'download' ? 'FILE_DOWNLOAD_FORBIDDEN' : 'FILE_COMPLETE_FORBIDDEN';
+}
+
+function throwFileAccessForbidden(mode: StoredFileAccessMode, message: string): never {
+  throw new FileStorageError(fileForbiddenCode(mode), message, 403);
+}
+
+function throwFileMetadataNotFound(message = 'ファイルに紐づく参照先が見つかりません'): never {
+  throw new FileStorageError('FILE_METADATA_NOT_FOUND', message, 404);
+}
+
+function assertRoleAuthorizedForStoredFile(
   record: StoredFileRecord,
-  permissions: CreatePresignedDownloadArgs['permissions'],
+  accessContext: FileAccessContext,
+  mode: StoredFileAccessMode,
 ) {
   if (record.purpose === 'report') {
-    if (!permissions.canReport) {
-      throw new FileStorageError(
-        'FILE_DOWNLOAD_FORBIDDEN',
-        '報告書ファイルのダウンロード権限がありません',
-        403,
-      );
+    if (!hasPermission(accessContext.role, 'canReport')) {
+      throwFileAccessForbidden(mode, '報告書ファイルへのアクセス権限がありません');
     }
     return;
   }
 
-  if (!permissions.canVisit) {
+  if (!hasPermission(accessContext.role, 'canVisit')) {
+    throwFileAccessForbidden(mode, '診療・訪問関連ファイルへのアクセス権限がありません');
+  }
+}
+
+async function assertVisitRecordFileAccess(args: {
+  orgId: string;
+  visitRecordId: string | null | undefined;
+  accessContext: FileAccessContext;
+  mode: StoredFileAccessMode;
+}) {
+  if (!args.visitRecordId) {
+    throwFileMetadataNotFound('ファイルに紐づく訪問記録が見つかりません');
+  }
+
+  const visitRecord = await prisma.visitRecord.findFirst({
+    where: {
+      id: args.visitRecordId,
+      org_id: args.orgId,
+    },
+    select: {
+      id: true,
+      schedule: {
+        select: {
+          pharmacist_id: true,
+          case_: {
+            select: {
+              primary_pharmacist_id: true,
+              backup_pharmacist_id: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!visitRecord) {
+    throwFileMetadataNotFound('ファイルに紐づく訪問記録が見つかりません');
+  }
+
+  if (!canAccessVisitScheduleAssignment(args.accessContext, visitRecord.schedule)) {
+    throwFileAccessForbidden(args.mode, 'この訪問記録に紐づくファイルへのアクセス権限がありません');
+  }
+}
+
+async function assertCareCaseFileAccess(args: {
+  orgId: string;
+  caseId: string | null | undefined;
+  accessContext: FileAccessContext;
+  mode: StoredFileAccessMode;
+}) {
+  if (!args.caseId) {
+    throwFileMetadataNotFound('ファイルに紐づくケースが見つかりません');
+  }
+
+  const careCase = await prisma.careCase.findFirst({
+    where: {
+      id: args.caseId,
+      org_id: args.orgId,
+    },
+    select: {
+      primary_pharmacist_id: true,
+      backup_pharmacist_id: true,
+    },
+  });
+
+  if (!careCase) {
+    throwFileMetadataNotFound('ファイルに紐づくケースが見つかりません');
+  }
+
+  if (
+    !canAccessVisitScheduleAssignment(args.accessContext, {
+      pharmacist_id: null,
+      case_: careCase,
+    })
+  ) {
+    throwFileAccessForbidden(args.mode, 'このケースに紐づくファイルへのアクセス権限がありません');
+  }
+}
+
+async function assertPatientFileAccess(args: {
+  orgId: string;
+  patientId: string | null | undefined;
+  accessContext: FileAccessContext;
+  mode: StoredFileAccessMode;
+}) {
+  if (!args.patientId) {
+    throwFileMetadataNotFound('ファイルに紐づく患者が見つかりません');
+  }
+
+  const patient = await prisma.patient.findFirst({
+    where: {
+      id: args.patientId,
+      org_id: args.orgId,
+    },
+    select: { id: true },
+  });
+
+  if (!patient) {
+    throwFileMetadataNotFound('ファイルに紐づく患者が見つかりません');
+  }
+
+  if (canBypassVisitScheduleAssignmentAccess(args.accessContext)) {
+    return;
+  }
+
+  const accessibleSchedule = await prisma.visitSchedule.findFirst({
+    where: {
+      org_id: args.orgId,
+      case_: {
+        patient_id: args.patientId,
+      },
+      OR: [
+        { pharmacist_id: args.accessContext.userId },
+        { case_: { primary_pharmacist_id: args.accessContext.userId } },
+        { case_: { backup_pharmacist_id: args.accessContext.userId } },
+      ],
+    },
+    select: { id: true },
+  });
+
+  if (accessibleSchedule) {
+    return;
+  }
+
+  const accessibleCase = await prisma.careCase.findFirst({
+    where: {
+      org_id: args.orgId,
+      patient_id: args.patientId,
+      OR: [
+        { primary_pharmacist_id: args.accessContext.userId },
+        { backup_pharmacist_id: args.accessContext.userId },
+      ],
+    },
+    select: { id: true },
+  });
+
+  if (!accessibleCase) {
+    throwFileAccessForbidden(args.mode, 'この患者に紐づくファイルへのアクセス権限がありません');
+  }
+}
+
+async function assertReportFileAccess(args: {
+  orgId: string;
+  reportId: string | null | undefined;
+  accessContext: FileAccessContext;
+  mode: StoredFileAccessMode;
+}) {
+  if (!args.reportId) {
+    throwFileMetadataNotFound('ファイルに紐づく報告書が見つかりません');
+  }
+
+  const report = await prisma.careReport.findFirst({
+    where: {
+      id: args.reportId,
+      org_id: args.orgId,
+    },
+    select: {
+      id: true,
+      patient_id: true,
+      case_id: true,
+      visit_record_id: true,
+    },
+  });
+
+  if (!report) {
+    throwFileMetadataNotFound('ファイルに紐づく報告書が見つかりません');
+  }
+
+  if (canBypassVisitScheduleAssignmentAccess(args.accessContext)) {
+    return;
+  }
+
+  if (report.visit_record_id) {
+    await assertVisitRecordFileAccess({
+      orgId: args.orgId,
+      visitRecordId: report.visit_record_id,
+      accessContext: args.accessContext,
+      mode: args.mode,
+    });
+    return;
+  }
+
+  if (report.case_id) {
+    await assertCareCaseFileAccess({
+      orgId: args.orgId,
+      caseId: report.case_id,
+      accessContext: args.accessContext,
+      mode: args.mode,
+    });
+    return;
+  }
+
+  await assertPatientFileAccess({
+    orgId: args.orgId,
+    patientId: report.patient_id,
+    accessContext: args.accessContext,
+    mode: args.mode,
+  });
+}
+
+async function assertStoredFileAccess(args: {
+  orgId: string;
+  record: StoredFileRecord;
+  accessContext: FileAccessContext;
+  mode: StoredFileAccessMode;
+}) {
+  assertRoleAuthorizedForStoredFile(args.record, args.accessContext, args.mode);
+
+  switch (args.record.purpose) {
+    case 'visit-photo':
+      await assertVisitRecordFileAccess({
+        orgId: args.orgId,
+        visitRecordId: args.record.visitRecordId,
+        accessContext: args.accessContext,
+        mode: args.mode,
+      });
+      return;
+    case 'prescription':
+      await assertPatientFileAccess({
+        orgId: args.orgId,
+        patientId: args.record.patientId,
+        accessContext: args.accessContext,
+        mode: args.mode,
+      });
+      return;
+    case 'report':
+      await assertReportFileAccess({
+        orgId: args.orgId,
+        reportId: args.record.reportId,
+        accessContext: args.accessContext,
+        mode: args.mode,
+      });
+      return;
+    case 'bulk-export':
+      if (
+        !canBypassVisitScheduleAssignmentAccess(args.accessContext) &&
+        args.record.uploadedBy !== args.accessContext.userId
+      ) {
+        throwFileAccessForbidden(args.mode, 'この一括出力ファイルへのアクセス権限がありません');
+      }
+      return;
+  }
+}
+
+function normalizeContentType(contentType: string | null | undefined) {
+  return contentType?.split(';', 1)[0]?.trim().toLowerCase() ?? null;
+}
+
+function assertUploadedObjectMatchesRecord(
+  response: { ContentLength?: number; ContentType?: string },
+  record: StoredFileRecord,
+) {
+  if (typeof response.ContentLength !== 'number' || response.ContentLength !== record.sizeBytes) {
     throw new FileStorageError(
-      'FILE_DOWNLOAD_FORBIDDEN',
-      '診療・訪問関連ファイルのダウンロード権限がありません',
-      403,
+      'FILE_NOT_READY',
+      'アップロード済みファイルのサイズ確認に失敗しました',
+      409,
+    );
+  }
+
+  if (normalizeContentType(response.ContentType) !== record.mimeType.toLowerCase()) {
+    throw new FileStorageError(
+      'FILE_NOT_READY',
+      'アップロード済みファイルの MIME タイプ確認に失敗しました',
+      409,
     );
   }
 }
@@ -416,7 +683,7 @@ export async function createPresignedUpload(args: CreatePresignedUploadArgs) {
           }
         : {}),
     }),
-    { expiresIn: UPLOAD_EXPIRY_SECONDS }
+    { expiresIn: UPLOAD_EXPIRY_SECONDS },
   );
 
   const record: StoredFileRecord = {
@@ -514,7 +781,7 @@ export async function storeGeneratedFile(args: StoreGeneratedFileArgs) {
       Body: args.buffer,
       ContentType: args.mimeType,
       ...encryption.commandInput,
-    })
+    }),
   );
 
   const record: StoredFileRecord = {
@@ -565,10 +832,12 @@ export async function completeUploadedFile({
   orgId,
   fileId,
   uploadedBy,
+  accessContext,
   etag,
 }: CompleteUploadArgs) {
   const { bucketName } = getRequiredStorageConfig();
   const { settingId, record } = await readStoredFileRecord(orgId, fileId);
+  await assertStoredFileAccess({ orgId, record, accessContext, mode: 'complete' });
   const requestedEtag = normalizeEtag(etag ?? record.etag ?? null);
 
   let uploadedEtag: string | null = requestedEtag;
@@ -582,6 +851,8 @@ export async function completeUploadedFile({
     );
 
     const remoteEtag = normalizeEtag(response.ETag);
+    assertUploadedObjectMatchesRecord(response, record);
+
     if (requestedEtag && remoteEtag && requestedEtag !== remoteEtag) {
       throw new FileStorageError(
         'FILE_NOT_READY',
@@ -631,20 +902,15 @@ export async function completeUploadedFile({
 export async function createPresignedDownload({
   orgId,
   fileId,
-  permissions,
+  accessContext,
 }: CreatePresignedDownloadArgs) {
   const { bucketName } = getRequiredStorageConfig();
   const { record } = await readStoredFileRecord(orgId, fileId);
+  await assertStoredFileAccess({ orgId, record, accessContext, mode: 'download' });
 
   if (record.status !== 'uploaded') {
-    throw new FileStorageError(
-      'FILE_NOT_READY',
-      'ファイルアップロードがまだ完了していません',
-      409
-    );
+    throw new FileStorageError('FILE_NOT_READY', 'ファイルアップロードがまだ完了していません', 409);
   }
-
-  assertDownloadAuthorized(record, permissions);
 
   const downloadUrl = await getSignedUrl(
     getClient(),
@@ -654,7 +920,7 @@ export async function createPresignedDownload({
       ResponseContentType: record.mimeType,
       ResponseContentDisposition: `${record.downloadDisposition ?? 'inline'}; filename="${record.originalName}"`,
     }),
-    { expiresIn: DOWNLOAD_EXPIRY_SECONDS }
+    { expiresIn: DOWNLOAD_EXPIRY_SECONDS },
   );
 
   return {

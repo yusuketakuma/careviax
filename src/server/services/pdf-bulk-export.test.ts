@@ -9,7 +9,10 @@ const {
   integrationJobFindUniqueMock,
   integrationJobFindFirstMock,
   integrationJobUpdateMock,
+  membershipFindFirstMock,
   patientCountMock,
+  visitScheduleFindManyMock,
+  careCaseFindManyMock,
   notificationUpsertMock,
   buildMedicationHistoryPdfMock,
   storeGeneratedFileMock,
@@ -21,7 +24,10 @@ const {
   integrationJobFindUniqueMock: vi.fn(),
   integrationJobFindFirstMock: vi.fn(),
   integrationJobUpdateMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
   patientCountMock: vi.fn(),
+  visitScheduleFindManyMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
   notificationUpsertMock: vi.fn(),
   buildMedicationHistoryPdfMock: vi.fn(),
   storeGeneratedFileMock: vi.fn(),
@@ -38,8 +44,17 @@ vi.mock('@/lib/db/client', () => ({
       findFirst: integrationJobFindFirstMock,
       update: integrationJobUpdateMock,
     },
+    membership: {
+      findFirst: membershipFindFirstMock,
+    },
     patient: {
       count: patientCountMock,
+    },
+    visitSchedule: {
+      findMany: visitScheduleFindManyMock,
+    },
+    careCase: {
+      findMany: careCaseFindManyMock,
     },
     notification: {
       upsert: notificationUpsertMock,
@@ -90,6 +105,9 @@ describe('pdf-bulk-export', () => {
       });
     storeGeneratedFileMock.mockResolvedValue({ id: 'file_1' });
     integrationJobUpdateMock.mockResolvedValue({});
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    visitScheduleFindManyMock.mockResolvedValue([]);
+    careCaseFindManyMock.mockResolvedValue([]);
     notificationUpsertMock.mockResolvedValue({});
     transactionMock.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) =>
       callback({
@@ -103,6 +121,12 @@ describe('pdf-bulk-export', () => {
         patient: {
           count: patientCountMock,
         },
+        visitSchedule: {
+          findMany: visitScheduleFindManyMock,
+        },
+        careCase: {
+          findMany: careCaseFindManyMock,
+        },
       }),
     );
   });
@@ -112,6 +136,10 @@ describe('pdf-bulk-export', () => {
       orgId: 'org_1',
       requestedBy: 'user_1',
       patientIds: ['patient_1', 'patient_2', 'patient_1'],
+      accessContext: {
+        userId: 'user_1',
+        role: 'admin',
+      },
     });
 
     expect(result).toMatchObject({
@@ -133,6 +161,84 @@ describe('pdf-bulk-export', () => {
         }),
       }),
     );
+  });
+
+  it('queues a non-admin bulk export when every patient is assigned or case-controlled', async () => {
+    visitScheduleFindManyMock.mockResolvedValue([{ case_: { patient_id: 'patient_1' } }]);
+    careCaseFindManyMock.mockResolvedValue([
+      {
+        patient_id: 'patient_2',
+        primary_pharmacist_id: 'user_1',
+        backup_pharmacist_id: null,
+      },
+    ]);
+
+    const result = await queueMedicationHistoryBulkExport({
+      orgId: 'org_1',
+      requestedBy: 'user_1',
+      patientIds: ['patient_1', 'patient_2'],
+      accessContext: {
+        userId: 'user_1',
+        role: 'pharmacist',
+      },
+    });
+
+    expect(result).toMatchObject({
+      jobId: 'job_1',
+      patientCount: 2,
+    });
+    expect(integrationJobCreateMock).toHaveBeenCalledOnce();
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          case_: {
+            patient_id: {
+              in: ['patient_1', 'patient_2'],
+            },
+          },
+        }),
+      }),
+    );
+  });
+
+  it('rejects non-admin bulk exports containing unassigned same-org patients', async () => {
+    visitScheduleFindManyMock.mockResolvedValue([{ case_: { patient_id: 'patient_1' } }]);
+    careCaseFindManyMock.mockResolvedValue([]);
+
+    await expect(
+      queueMedicationHistoryBulkExport({
+        orgId: 'org_1',
+        requestedBy: 'user_1',
+        patientIds: ['patient_1', 'patient_2'],
+        accessContext: {
+          userId: 'user_1',
+          role: 'pharmacist',
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 'AUTHORIZATION_ERROR',
+      status: 403,
+    });
+    expect(integrationJobCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects bulk export queue requests when the caller lacks visit permission', async () => {
+    await expect(
+      queueMedicationHistoryBulkExport({
+        orgId: 'org_1',
+        requestedBy: 'user_1',
+        patientIds: ['patient_1'],
+        accessContext: {
+          userId: 'user_1',
+          role: 'clerk',
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 'AUTHORIZATION_ERROR',
+      status: 403,
+    });
+    expect(integrationJobCountMock).not.toHaveBeenCalled();
   });
 
   it('renders PDFs, stores an attachment ZIP, and notifies the requester', async () => {

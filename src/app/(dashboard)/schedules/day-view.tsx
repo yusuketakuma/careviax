@@ -54,7 +54,7 @@ import {
   isOfflineCacheFresh,
   OFFLINE_CACHE_TTL_HOURS,
 } from '@/lib/offline/cache-policy';
-import { decryptOfflinePayload, encryptOfflinePayload } from '@/lib/offline/crypto';
+import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
 import { offlineDb } from '@/lib/stores/offline-db';
 import { useOfflineStore } from '@/lib/stores/offline-store';
 import {
@@ -296,6 +296,7 @@ export function ScheduleDayView({
     notes: '',
   });
   const [cachedVisitBriefs, setCachedVisitBriefs] = useState<CachedVisitBriefCard[]>([]);
+  const [cachedVisitBriefLoadedDate, setCachedVisitBriefLoadedDate] = useState<string | null>(null);
   const [cachedVisitBriefUpdatedAt, setCachedVisitBriefUpdatedAt] = useState<string | null>(null);
   const [mobileVisitSurface, setMobileVisitSurface] = useState<'list' | 'map'>('list');
   const [selectedRoutePharmacistId, setSelectedRoutePharmacistId] = useState('');
@@ -607,13 +608,17 @@ export function ScheduleDayView({
     };
   }, [orgId, refreshSyncState]);
 
-  const selectedDateSchedules = schedules
-    .filter((schedule) => toDateKey(schedule.scheduled_date) === selectedDate)
-    .sort((left, right) => {
-      const leftTime = left.time_window_start ?? '';
-      const rightTime = right.time_window_start ?? '';
-      return leftTime.localeCompare(rightTime);
-    });
+  const selectedDateSchedules = useMemo(
+    () =>
+      schedules
+        .filter((schedule) => toDateKey(schedule.scheduled_date) === selectedDate)
+        .sort((left, right) => {
+          const leftTime = left.time_window_start ?? '';
+          const rightTime = right.time_window_start ?? '';
+          return leftTime.localeCompare(rightTime);
+        }),
+    [schedules, selectedDate],
+  );
   const effectivePlannerCandidateCount =
     !plannerCandidateCountManual && billingPreviewData?.suggested_schedule_slot_count
       ? String(billingPreviewData.suggested_schedule_slot_count)
@@ -1136,6 +1141,7 @@ export function ScheduleDayView({
           null,
         );
         setCachedVisitBriefUpdatedAt(formatOfflineCacheUpdatedAt(latestUpdatedAt));
+        setCachedVisitBriefLoadedDate(selectedDate);
       });
 
     return () => {
@@ -1145,16 +1151,31 @@ export function ScheduleDayView({
 
   useEffect(() => {
     if (!orgId || selectedDateSchedules.length === 0) return;
+    if (cachedVisitBriefLoadedDate !== selectedDate) return;
+
+    const schedulesNeedingBriefs = selectedDateSchedules.filter(
+      (schedule) => !cachedVisitBriefByScheduleId.has(schedule.id),
+    );
+    if (schedulesNeedingBriefs.length === 0) return;
 
     let cancelled = false;
-    void Promise.all(
-      selectedDateSchedules.map(async (schedule) => {
-        const res = await fetch(`/api/visit-preparations/${schedule.id}/brief`, {
-          headers: { 'x-org-id': orgId },
-        });
-        if (!res.ok) return null;
-        const payload = (await res.json()) as {
-          data: {
+    void (async () => {
+      const res = await fetch('/api/visit-preparations/brief-batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          schedule_ids: schedulesNeedingBriefs.map((schedule) => schedule.id),
+        }),
+      });
+      if (!res.ok) return;
+
+      const payload = (await res.json()) as {
+        data: Record<
+          string,
+          {
             ai_summary: {
               headline: string;
               must_check_today: string[];
@@ -1163,55 +1184,90 @@ export function ScheduleDayView({
               provider: 'rule' | 'openai';
               is_fallback: boolean;
             };
+          }
+        >;
+      };
+      const items = await Promise.all(
+        schedulesNeedingBriefs.map(async (schedule): Promise<CachedVisitBriefCard | null> => {
+          const brief = payload.data[schedule.id];
+          if (!brief) return null;
+
+          return {
+            scheduleId: schedule.id,
+            patientId: schedule.case_.patient.id,
+            patientName: schedule.case_.patient.name,
+            scheduledDate: selectedDate,
+            timeWindowStart: schedule.time_window_start,
+            timeWindowEnd: schedule.time_window_end,
+            priority: schedule.priority,
+            facilityLabel:
+              schedule.facility_hint?.label ??
+              schedule.case_.patient.residences[0]?.address ??
+              null,
+            siteName: schedule.site?.name ?? null,
+            headline: brief.ai_summary.headline,
+            mustCheckToday: brief.ai_summary.must_check_today,
+            sourceRefs: brief.ai_summary.source_refs,
+            generatedAt: brief.ai_summary.generated_at,
+            provider: brief.ai_summary.provider,
+            isFallback: brief.ai_summary.is_fallback,
           };
-        };
-        const snapshot: CachedVisitBriefCard = {
-          scheduleId: schedule.id,
-          patientId: schedule.case_.patient.id,
-          patientName: schedule.case_.patient.name,
-          scheduledDate: selectedDate,
-          timeWindowStart: schedule.time_window_start,
-          timeWindowEnd: schedule.time_window_end,
-          priority: schedule.priority,
-          facilityLabel:
-            schedule.facility_hint?.label ?? schedule.case_.patient.residences[0]?.address ?? null,
-          siteName: schedule.site?.name ?? null,
-          headline: payload.data.ai_summary.headline,
-          mustCheckToday: payload.data.ai_summary.must_check_today,
-          sourceRefs: payload.data.ai_summary.source_refs,
-          generatedAt: payload.data.ai_summary.generated_at,
-          provider: payload.data.ai_summary.provider,
-          isFallback: payload.data.ai_summary.is_fallback,
-        };
-
-        await offlineDb.visitBriefCache.where('scheduleId').equals(schedule.id).delete();
-        await offlineDb.visitBriefCache.add({
-          scheduleId: schedule.id,
-          patientId: schedule.case_.patient.id,
-          scheduledDate: selectedDate,
-          payload: await encryptOfflinePayload(JSON.stringify(snapshot)),
-          updatedAt: new Date(),
-        });
-
-        return snapshot;
-      }),
-    ).then((items) => {
+        }),
+      );
       if (cancelled) return;
       const filtered = items.filter((item): item is CachedVisitBriefCard => Boolean(item));
       if (filtered.length > 0) {
-        setCachedVisitBriefs(
-          filtered.sort((left, right) =>
-            (left.timeWindowStart ?? '').localeCompare(right.timeWindowStart ?? ''),
-          ),
+        await Promise.all(
+          filtered.map(async (item) => {
+            await offlineDb.visitBriefCache
+              .where('scheduleId')
+              .equals(item.scheduleId)
+              .and((row) => row.scheduledDate === selectedDate)
+              .delete();
+            await offlineDb.visitBriefCache.add({
+              scheduleId: item.scheduleId,
+              patientId: item.patientId,
+              scheduledDate: selectedDate,
+              payload: await encryptOfflinePayloadRequired(
+                JSON.stringify(item),
+                'visit brief cache payload',
+              ),
+              updatedAt: new Date(),
+            });
+          }),
         );
+        if (cancelled) return;
+        setCachedVisitBriefs((previous) => {
+          const nextByScheduleId = new Map(
+            previous
+              .filter((item) => item.scheduledDate === selectedDate)
+              .map((item) => [item.scheduleId, item]),
+          );
+          for (const item of filtered) {
+            nextByScheduleId.set(item.scheduleId, item);
+          }
+          return Array.from(nextByScheduleId.values()).sort((left, right) =>
+            (left.timeWindowStart ?? '').localeCompare(right.timeWindowStart ?? ''),
+          );
+        });
         setCachedVisitBriefUpdatedAt(new Date().toISOString());
+      }
+    })().catch((error) => {
+      if (!cancelled) {
+        console.warn('[visit-brief-cache] Failed to refresh schedule brief cache', error);
       }
     });
 
     return () => {
       cancelled = true;
     };
-  }, [orgId, selectedDate, selectedDateSchedules]);
+  }, [
+    cachedVisitBriefByScheduleId,
+    cachedVisitBriefLoadedDate,
+    orgId,
+    selectedDate,
+    selectedDateSchedules,
+  ]);
 
   function openRescheduleDialog(schedule: VisitSchedule) {
     setRescheduleTarget(schedule);

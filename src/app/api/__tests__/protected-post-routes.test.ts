@@ -59,6 +59,7 @@ import { POST as businessHolidaysPost } from '../business-holidays/route';
 import { POST as cdsCheckPost } from '../cds/check/route';
 import { POST as pharmacistsPost } from '../pharmacists/route';
 import { POST as visitScheduleProposalsPost } from '../visit-schedule-proposals/route';
+import { POST as visitPreparationBriefBatchPost } from '../visit-preparations/brief-batch/route';
 import { POST as visitSchedulesReschedulePost } from '../visit-schedules/[id]/reschedule/route';
 
 type Handler = (req: NextRequest) => Promise<Response | undefined>;
@@ -104,6 +105,7 @@ const routes: RouteEntry[] = [
   { name: 'cds/check POST', handler: cdsCheckPost },
   { name: 'pharmacists POST', handler: pharmacistsPost },
   { name: 'visit-schedule-proposals POST', handler: visitScheduleProposalsPost },
+  { name: 'visit-preparations/brief-batch POST', handler: visitPreparationBriefBatchPost },
   {
     name: 'visit-schedules/[id]/reschedule POST',
     handler: (req) =>
@@ -140,7 +142,7 @@ describe('protected POST routes auth/body matrix', () => {
         auditLog: {
           create: vi.fn().mockResolvedValue({}),
         },
-      })
+      }),
     );
   });
 
@@ -148,9 +150,7 @@ describe('protected POST routes auth/body matrix', () => {
     it(`${route.name} returns 401 when unauthenticated`, async () => {
       authMock.mockResolvedValue(null);
 
-      const response = await route.handler(
-        createRequest({ 'x-org-id': 'org_1' }, {})
-      );
+      const response = await route.handler(createRequest({ 'x-org-id': 'org_1' }, {}));
 
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(401);
@@ -160,9 +160,7 @@ describe('protected POST routes auth/body matrix', () => {
       authMock.mockResolvedValue({ user: { id: 'user_1' } });
       membershipFindFirstMock.mockResolvedValue({ role: 'driver' });
 
-      const response = await route.handler(
-        createRequest({ 'x-org-id': 'org_1' }, {})
-      );
+      const response = await route.handler(createRequest({ 'x-org-id': 'org_1' }, {}));
 
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(403);
@@ -172,9 +170,7 @@ describe('protected POST routes auth/body matrix', () => {
       authMock.mockResolvedValue({ user: { id: 'user_1' } });
       membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 
-      const response = await route.handler(
-        createRequest({ 'x-org-id': 'org_1' }, {})
-      );
+      const response = await route.handler(createRequest({ 'x-org-id': 'org_1' }, {}));
 
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(400);
@@ -186,7 +182,7 @@ describe('protected POST routes auth/body matrix', () => {
         membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 
         const response = await route.handler(
-          createRequest({ 'x-org-id': 'org_1' }, route.successBody ?? {})
+          createRequest({ 'x-org-id': 'org_1' }, route.successBody ?? {}),
         );
 
         if (!response) throw new Error('response is required');

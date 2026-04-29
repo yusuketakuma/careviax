@@ -1,5 +1,12 @@
 import Dexie, { type Table } from 'dexie';
 
+type LegacyPlaintextSoapDraftFields = {
+  soapSubjective?: string;
+  soapObjective?: string;
+  soapAssessment?: string;
+  soapPlan?: string;
+};
+
 // Offline draft types
 export type OfflineVisitDraft = {
   id?: number;
@@ -7,10 +14,6 @@ export type OfflineVisitDraft = {
   patientId: string;
   pharmacistId: string;
   visitDate?: string;
-  soapSubjective?: string;
-  soapObjective?: string;
-  soapAssessment?: string;
-  soapPlan?: string;
   outcomeStatus?: string;
   receiptPersonName?: string;
   receiptPersonRelation?: string;
@@ -30,6 +33,15 @@ export type OfflineVisitDraft = {
   updatedAt: Date;
   synced: boolean;
 };
+
+function purgeLegacyPlaintextSoapDraftFields(
+  draft: OfflineVisitDraft & LegacyPlaintextSoapDraftFields,
+) {
+  delete draft.soapSubjective;
+  delete draft.soapObjective;
+  delete draft.soapAssessment;
+  delete draft.soapPlan;
+}
 
 export type OfflineResidualDraft = {
   id?: number;
@@ -126,6 +138,23 @@ class CareViaXOfflineDB extends Dexie {
       visitBriefCache: '++id, scheduleId, scheduledDate, patientId, updatedAt',
       prescriptionDrafts: '++id, orgId, updatedAt',
     });
+
+    this.version(6)
+      .stores({
+        visitDrafts: '++id, scheduleId, patientId, synced',
+        residualDrafts: '++id, patientId, synced',
+        syncQueue: '++id, entityType, scope_id, retryCount, createdAt, conflict_state',
+        visitBriefCache: '++id, scheduleId, scheduledDate, patientId, updatedAt',
+        prescriptionDrafts: '++id, orgId, updatedAt',
+      })
+      .upgrade((tx) =>
+        tx
+          .table('visitDrafts')
+          .toCollection()
+          .modify((draft: OfflineVisitDraft & LegacyPlaintextSoapDraftFields) => {
+            purgeLegacyPlaintextSoapDraftFields(draft);
+          }),
+      );
   }
 }
 

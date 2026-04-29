@@ -15,7 +15,7 @@ vi.mock('@/server/services/file-storage', () => ({
     constructor(
       readonly code: string,
       message: string,
-      readonly status: number
+      readonly status: number,
     ) {
       super(message);
     }
@@ -29,7 +29,7 @@ function createRequest(url = 'http://localhost/api/files/file_1/presigned-downlo
   return {
     url,
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
     },
   } as unknown as NextRequest;
 }
@@ -65,9 +65,9 @@ describe('/api/files/[id]/presigned-download GET', () => {
     expect(createPresignedDownloadMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       fileId: 'file_1',
-      permissions: {
-        canVisit: true,
-        canReport: true,
+      accessContext: {
+        userId: 'user_1',
+        role: 'admin',
       },
     });
     await expect(response.json()).resolves.toMatchObject({
@@ -82,7 +82,7 @@ describe('/api/files/[id]/presigned-download GET', () => {
       createRequest('http://localhost/api/files/file_1/presigned-download?download=1'),
       {
         params: Promise.resolve({ id: 'file_1' }),
-      }
+      },
     );
 
     if (!response) throw new Error('response is required');
