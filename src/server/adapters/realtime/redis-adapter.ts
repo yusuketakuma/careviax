@@ -1,4 +1,5 @@
 import Redis from 'ioredis';
+import { logger } from '@/lib/utils/logger';
 
 type RealtimeListener = (data: unknown) => void;
 
@@ -23,13 +24,23 @@ function getConnections(): { pub: Redis; sub: Redis } {
     sub.on('message', (channel: string, message: string) => {
       const listeners = channelListeners.get(channel);
       if (!listeners) return;
+      let data: unknown;
       try {
-        const data = JSON.parse(message);
-        for (const listener of listeners) {
-          listener(data);
-        }
+        data = JSON.parse(message);
       } catch {
         // Ignore malformed messages
+        return;
+      }
+      for (const listener of listeners) {
+        try {
+          listener(data);
+        } catch (err) {
+          // Isolate listener failures so one bad listener does not block others.
+          logger.warn('[realtime] listener threw', {
+            channel,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
     });
   }

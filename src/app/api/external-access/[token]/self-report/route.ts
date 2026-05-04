@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { success, notFound, validationError, error } from '@/lib/api/response';
 import { checkAuthRateLimit } from '@/lib/api/rate-limit';
 import { getClientIp } from '@/lib/api/request-ip';
-import { prisma } from '@/lib/db/client';
+import { withOrgContext } from '@/lib/db/rls';
 import { validateExternalAccessGrant } from '@/server/services/external-access';
 import { z } from 'zod';
 import {
@@ -62,7 +62,7 @@ export async function POST(
     return notFound(validation.message);
   }
 
-  const created = await prisma.$transaction(async (tx) => {
+  const created = await withOrgContext(validation.grant.org_id, async (tx) => {
     const report = await tx.patientSelfReport.create({
       data: {
         org_id: validation.grant.org_id,

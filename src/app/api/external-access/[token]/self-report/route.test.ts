@@ -1,16 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
+const VALID_ORG_ID = 'corgabcdefghijklmnopqrstu';
+
 const {
   checkAuthRateLimitMock,
   validateExternalAccessGrantMock,
-  transactionMock,
+  withOrgContextMock,
   patientSelfReportCreateMock,
   communicationEventCreateMock,
 } = vi.hoisted(() => ({
   checkAuthRateLimitMock: vi.fn(),
   validateExternalAccessGrantMock: vi.fn(),
-  transactionMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
   patientSelfReportCreateMock: vi.fn(),
   communicationEventCreateMock: vi.fn(),
 }));
@@ -19,10 +21,8 @@ vi.mock('@/lib/api/rate-limit', () => ({
   checkAuthRateLimit: checkAuthRateLimitMock,
 }));
 
-vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    $transaction: transactionMock,
-  },
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
 }));
 
 vi.mock('@/server/services/external-access', () => ({
@@ -51,7 +51,7 @@ describe('/api/external-access/[token]/self-report', () => {
       ok: true,
       grant: {
         id: 'grant_1',
-        org_id: 'org_1',
+        org_id: VALID_ORG_ID,
         patient_id: 'patient_1',
       },
     });
@@ -61,7 +61,7 @@ describe('/api/external-access/[token]/self-report', () => {
       status: 'triaged',
       created_at: new Date('2026-03-29T00:00:00.000Z'),
     });
-    transactionMock.mockImplementation(async (callback) =>
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         patientSelfReport: {
           create: patientSelfReportCreateMock,
@@ -92,6 +92,7 @@ describe('/api/external-access/[token]/self-report', () => {
 
     expect(response.status).toBe(201);
     expect(validateExternalAccessGrantMock).toHaveBeenCalledWith('token_1', '1234');
+    expect(withOrgContextMock).toHaveBeenCalledWith(VALID_ORG_ID, expect.any(Function));
     expect(patientSelfReportCreateMock).toHaveBeenCalled();
     expect(communicationEventCreateMock).toHaveBeenCalled();
   });

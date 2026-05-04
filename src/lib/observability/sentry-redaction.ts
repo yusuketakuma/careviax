@@ -1,7 +1,32 @@
 const REDACTED = '[REDACTED]';
 const REDACTED_PATH_SEGMENT = '[redacted]';
 const RELATIVE_URL_BASE = 'https://careviax.local';
-const SENSITIVE_KEYS = new Set(['otp', 'x-otp']);
+// Keys that always carry secret material. We avoid the bare key `token` because
+// the codebase also uses non-secret share / link tokens that are safe to log.
+const SENSITIVE_KEYS = new Set([
+  'otp',
+  'x-otp',
+  'authorization',
+  'cookie',
+  // `set-cookie` is a response header; included for breadcrumbs that capture responses.
+  'set-cookie',
+  'password',
+  'token_hash',
+  'otp_hash',
+  'auth_token',
+  'access_token',
+  'refresh_token',
+  'session_token',
+  'session_secret',
+  'jwt',
+  'recovery_code',
+  'recovery_codes',
+  'mynumber',
+  'mynumber_hash',
+  'insurance_number',
+  'api_key',
+  'x-api-key',
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {

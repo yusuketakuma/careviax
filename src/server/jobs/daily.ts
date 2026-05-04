@@ -3,6 +3,7 @@ import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { withOrgContext } from '@/lib/db/rls';
+import { logger } from '@/lib/utils/logger';
 import { runJob } from './runner';
 import { checkDrugMasterFreshness } from './drug-master';
 import {
@@ -1920,7 +1921,7 @@ export async function cleanupAbandonedQrDrafts() {
       },
     });
     if (result.count > 0) {
-      console.log(`[daily] Discarded ${result.count} abandoned QR scan drafts`);
+      logger.info('[daily] discarded abandoned QR scan drafts', { count: result.count });
     }
     return { processedCount: result.count };
   });
@@ -1928,7 +1929,7 @@ export async function cleanupAbandonedQrDrafts() {
 
 export async function runDailyOperations() {
   return runJob('daily', async () => {
-    const results = await Promise.all([
+    const settled = await Promise.allSettled([
       checkMedicationDeadlines(),
       checkRefillPrescriptions(),
       checkIntakeToVisitLinkage(),
@@ -1957,9 +1958,21 @@ export async function runDailyOperations() {
       checkDrugMasterFreshness(),
     ]);
 
-    return {
-      processedCount: results.reduce((total, result) => total + result.processedCount, 0),
-      errors: results.flatMap((result) => ('errors' in result ? (result.errors ?? []) : [])),
-    };
+    let processedCount = 0;
+    const errors: string[] = [];
+    for (const result of settled) {
+      if (result.status === 'fulfilled') {
+        processedCount += result.value.processedCount;
+        if ('errors' in result.value && result.value.errors) {
+          errors.push(...result.value.errors);
+        }
+      } else {
+        errors.push(
+          result.reason instanceof Error ? result.reason.message : String(result.reason),
+        );
+      }
+    }
+
+    return { processedCount, errors };
   });
 }

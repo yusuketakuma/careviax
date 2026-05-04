@@ -513,28 +513,27 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
 
   let selfReportHistory: Array<Record<string, unknown>> = [];
   if ((scope as Record<string, unknown>).self_report_history === true) {
-    selfReportHistory =
-      (await prisma.patientSelfReport?.findMany?.({
-        where: {
-          patient_id: grant.patient_id,
-          org_id: grant.org_id,
-        },
-        select: {
-          id: true,
-          reported_by_name: true,
-          relation: true,
-          category: true,
-          subject: true,
-          content: true,
-          requested_callback: true,
-          preferred_contact_time: true,
-          status: true,
-          created_at: true,
-          triaged_at: true,
-        },
-        orderBy: { created_at: 'desc' },
-        take: 8,
-      })) ?? [];
+    selfReportHistory = await prisma.patientSelfReport.findMany({
+      where: {
+        patient_id: grant.patient_id,
+        org_id: grant.org_id,
+      },
+      select: {
+        id: true,
+        reported_by_name: true,
+        relation: true,
+        category: true,
+        subject: true,
+        content: true,
+        requested_callback: true,
+        preferred_contact_time: true,
+        status: true,
+        created_at: true,
+        triaged_at: true,
+      },
+      orderBy: { created_at: 'desc' },
+      take: 8,
+    });
   }
 
   return {

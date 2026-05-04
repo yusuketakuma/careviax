@@ -29,6 +29,7 @@ const CSP_STATIC_TAIL = [
   "frame-ancestors 'none'",
   "form-action 'self'",
   "base-uri 'self'",
+  "object-src 'none'",
 ];
 
 const IS_DEV = process.env.NODE_ENV === 'development';

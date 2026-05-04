@@ -19,7 +19,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       },
     });
 
-    return NextResponse.redirect(data.downloadUrl);
+    const response = NextResponse.redirect(data.downloadUrl);
+    response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+    return response;
   } catch (cause) {
     if (cause instanceof FileStorageError) {
       return error(cause.code, cause.message, cause.status);

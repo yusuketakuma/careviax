@@ -3,6 +3,7 @@ import {
   buildConferenceReportDisclosureContent,
   type ConferenceReportType,
 } from '@/lib/conferences/conference-report-disclosure';
+import { logger } from '@/lib/utils/logger';
 
 type TransactionClient = Prisma.TransactionClient;
 
@@ -307,7 +308,7 @@ export class ConferenceSyncService {
     // 5. Generate CareReport draft(s) based on note_type
     const reportDraftIds = await this.generateReportDraft(tx, orgId, userId, note, patientId);
     if (process.env.DEBUG_SYNC === '1') {
-      console.log('[conference-sync]', {
+      logger.info('[conference-sync] generated report drafts', {
         noteId: note.id,
         draftCount: reportDraftIds.length,
         draftIds: reportDraftIds,
@@ -858,7 +859,7 @@ export class ConferenceSyncService {
   ): Promise<string[]> {
     const reportTypes = options?.reportTypes ?? REPORT_TYPE_MAP[note.note_type];
     if (process.env.DEBUG_SYNC === '1') {
-      console.log('[conference-sync.generate]', {
+      logger.info('[conference-sync.generate]', {
         noteType: note.note_type,
         reportTypes,
         patientId,
@@ -980,7 +981,7 @@ export class ConferenceSyncService {
           : null;
 
       if (process.env.DEBUG_SYNC === '1') {
-        console.log('[conference-sync.existingDraft]', {
+        logger.info('[conference-sync.existingDraft]', {
           reportType,
           existingDraftId: existingDraft?.id ?? null,
         });
@@ -1017,7 +1018,7 @@ export class ConferenceSyncService {
         },
       });
       if (process.env.DEBUG_SYNC === '1') {
-        console.log('[conference-sync.createdDraft]', {
+        logger.info('[conference-sync.createdDraft]', {
           reportType,
           createdDraftId: createdDraft.id,
           patientId,

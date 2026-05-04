@@ -1,8 +1,14 @@
 import * as Sentry from '@sentry/nextjs';
+import { sanitizeSentryValue } from '@/lib/observability/sentry-redaction';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 type LogContext = Record<string, unknown>;
+
+function redactCtx(ctx: LogContext | undefined): LogContext | undefined {
+  if (!ctx) return ctx;
+  return sanitizeSentryValue(ctx) as LogContext;
+}
 
 function buildEntry(level: LogLevel, message: string, ctx?: LogContext) {
   return {
@@ -38,7 +44,7 @@ export const logger = {
   warn(message: string, ctx?: LogContext) {
     log('warn', message, ctx);
     if (process.env.NODE_ENV === 'production') {
-      Sentry.captureMessage(message, { level: 'warning', extra: ctx });
+      Sentry.captureMessage(message, { level: 'warning', extra: redactCtx(ctx) });
     }
   },
 
@@ -54,9 +60,12 @@ export const logger = {
 
     if (process.env.NODE_ENV === 'production') {
       if (error instanceof Error) {
-        Sentry.captureException(error, { extra: ctx });
+        Sentry.captureException(error, { extra: redactCtx(ctx) });
       } else {
-        Sentry.captureMessage(message, { level: 'error', extra: { ...errorMeta, ...ctx } });
+        Sentry.captureMessage(message, {
+          level: 'error',
+          extra: redactCtx({ ...errorMeta, ...ctx }),
+        });
       }
     }
   },
