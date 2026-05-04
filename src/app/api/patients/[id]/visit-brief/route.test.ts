@@ -4,10 +4,12 @@ import type { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   patientFindFirstMock,
+  careCaseFindManyMock,
   patientVisitBriefMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
   patientVisitBriefMock: vi.fn(),
 }));
 
@@ -19,6 +21,9 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     patient: {
       findFirst: patientFindFirstMock,
+    },
+    careCase: {
+      findMany: careCaseFindManyMock,
     },
   },
 }));
@@ -48,6 +53,7 @@ describe('/api/patients/[id]/visit-brief', () => {
       },
     });
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1' }]);
     patientVisitBriefMock.mockResolvedValue({
       patient: { id: 'patient_1', name: '患者A' },
       context: 'patient',
@@ -77,13 +83,18 @@ describe('/api/patients/[id]/visit-brief', () => {
     });
 
     expect(patientFindFirstMock).toHaveBeenCalledWith({
-      where: { id: 'patient_1', org_id: 'org_1' },
+      where: expect.objectContaining({
+        id: 'patient_1',
+        org_id: 'org_1',
+        AND: expect.any(Array),
+      }),
       select: { id: true },
     });
     expect(patientVisitBriefMock).toHaveBeenCalledWith(expect.anything(), {
       orgId: 'org_1',
       patientId: 'patient_1',
       context: 'patient',
+      caseIds: ['case_1'],
     });
     if (!response) throw new Error('response is required');
     await expect(response.json()).resolves.toMatchObject({

@@ -4,11 +4,9 @@ import { forbidden, notFound, success, validationError } from '@/lib/api/respons
 import { prisma } from '@/lib/db/client';
 import { getPatientMcsOverview } from '@/server/services/patient-mcs';
 import { canViewSensitivePatientData } from '@/lib/patient/sensitive';
+import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: 'MCS 連携の閲覧権限がありません',
@@ -30,7 +28,10 @@ export async function GET(
     limit = parsedLimit;
   }
   const patient = await prisma.patient.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: applyPatientAssignmentWhere(
+      { id, org_id: ctx.orgId },
+      { userId: ctx.userId, role: ctx.role },
+    ),
     select: { id: true, name: true },
   });
   if (!patient) return notFound('患者が見つかりません');

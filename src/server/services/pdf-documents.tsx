@@ -11,6 +11,7 @@ import {
   renderToBuffer,
 } from '@react-pdf/renderer';
 import { prisma } from '@/lib/db/client';
+import { PdfNotFoundError } from './pdf-errors';
 import type {
   BaselineContext,
   CareManagerReportContent,
@@ -22,6 +23,14 @@ import {
   dementiaLabels,
   specialProcedureLabels,
 } from '@/lib/patient/home-visit-intake';
+import {
+  applyPatientAssignmentWhere,
+  buildCareCaseAssignmentWhere,
+  canBypassVisitScheduleAssignmentAccess,
+  buildVisitRecordScheduleAssignmentWhere,
+  type VisitScheduleAccessContext,
+} from '@/lib/auth/visit-schedule-access';
+import { canAccessCaseScopedPatientResource } from '@/server/services/patient-access';
 
 type PdfRenderResult = {
   buffer: Buffer;
@@ -459,7 +468,7 @@ function ensurePdfFontRegistered() {
 
   const fontPath = path.join(process.cwd(), 'public', 'fonts', 'NotoSansJP-Regular.otf');
   if (!fs.existsSync(fontPath)) {
-    throw new Error('PDF 用フォントが見つかりません');
+    throw new Error('PDF 用フォントを初期化できませんでした');
   }
 
   Font.register({
@@ -1488,12 +1497,18 @@ async function getPdfBranding(orgId: string) {
   };
 }
 
-async function getCareReportRecord(orgId: string, reportId: string): Promise<CareReportRecord> {
+async function getCareReportRecord(
+  orgId: string,
+  reportId: string,
+  accessContext?: VisitScheduleAccessContext,
+): Promise<CareReportRecord> {
   const report = await prisma.careReport.findFirst({
     where: { id: reportId, org_id: orgId },
     select: {
       id: true,
       patient_id: true,
+      case_id: true,
+      visit_record_id: true,
       report_type: true,
       status: true,
       content: true,
@@ -1503,7 +1518,47 @@ async function getCareReportRecord(orgId: string, reportId: string): Promise<Car
   });
 
   if (!report) {
-    throw new Error('報告書が見つかりません');
+    throw new PdfNotFoundError('careReport');
+  }
+
+  if (accessContext) {
+    const visitRecordWhere = report.visit_record_id
+      ? buildVisitRecordScheduleAssignmentWhere(accessContext)
+      : null;
+    const allowedByVisitRecord = report.visit_record_id
+      ? await prisma.visitRecord.findFirst({
+          where: {
+            id: report.visit_record_id,
+            org_id: orgId,
+            patient_id: report.patient_id,
+            ...(visitRecordWhere ? { AND: [visitRecordWhere] } : {}),
+            schedule: {
+              ...(report.case_id ? { case_id: report.case_id } : {}),
+              case_: {
+                patient_id: report.patient_id,
+              },
+            },
+          },
+          select: { id: true },
+        })
+      : null;
+
+    if (report.visit_record_id && !allowedByVisitRecord) {
+      throw new PdfNotFoundError('careReport');
+    }
+
+    if (
+      !report.visit_record_id &&
+      !(await canAccessCaseScopedPatientResource({
+        db: prisma,
+        orgId,
+        patientId: report.patient_id,
+        caseId: report.case_id,
+        accessContext,
+      }))
+    ) {
+      throw new PdfNotFoundError('careReport');
+    }
   }
 
   const patient = await prisma.patient.findFirst({
@@ -1517,7 +1572,7 @@ async function getCareReportRecord(orgId: string, reportId: string): Promise<Car
   });
 
   if (!patient) {
-    throw new Error('患者が見つかりません');
+    throw new PdfNotFoundError('patient');
   }
 
   return {
@@ -1530,9 +1585,15 @@ async function getCareReportRecord(orgId: string, reportId: string): Promise<Car
 async function getManagementPlanRecord(
   orgId: string,
   planId: string,
+  accessContext?: VisitScheduleAccessContext,
 ): Promise<ManagementPlanRecord> {
+  const caseAssignmentWhere = accessContext ? buildCareCaseAssignmentWhere(accessContext) : null;
   const plan = await prisma.managementPlan.findFirst({
-    where: { id: planId, org_id: orgId },
+    where: {
+      id: planId,
+      org_id: orgId,
+      ...(caseAssignmentWhere ? { case_: caseAssignmentWhere } : {}),
+    },
     select: {
       id: true,
       title: true,
@@ -1560,7 +1621,7 @@ async function getManagementPlanRecord(
   });
 
   if (!plan) {
-    throw new Error('管理計画書が見つかりません');
+    throw new PdfNotFoundError('managementPlan');
   }
 
   return {
@@ -1581,10 +1642,13 @@ async function getManagementPlanRecord(
 async function getMedicationHistoryRecord(
   orgId: string,
   patientId: string,
+  accessContext?: VisitScheduleAccessContext,
 ): Promise<MedicationHistoryRecord> {
   const [patient, medications] = await Promise.all([
     prisma.patient.findFirst({
-      where: { id: patientId, org_id: orgId },
+      where: accessContext
+        ? applyPatientAssignmentWhere({ id: patientId, org_id: orgId }, accessContext)
+        : { id: patientId, org_id: orgId },
       select: {
         id: true,
         name: true,
@@ -1609,7 +1673,7 @@ async function getMedicationHistoryRecord(
   ]);
 
   if (!patient) {
-    throw new Error('患者が見つかりません');
+    throw new PdfNotFoundError('patient');
   }
 
   return {
@@ -1621,7 +1685,12 @@ async function getMedicationHistoryRecord(
 async function getVisitRecordEntries(
   orgId: string,
   where: { id?: string; patientId?: string; dateFrom?: Date | null; dateTo?: Date | null },
+  accessContext?: VisitScheduleAccessContext,
 ): Promise<VisitRecordPdfEntry[]> {
+  const assignmentWhere = accessContext
+    ? buildVisitRecordScheduleAssignmentWhere(accessContext)
+    : null;
+
   const records = await prisma.visitRecord.findMany({
     where: {
       org_id: orgId,
@@ -1635,6 +1704,7 @@ async function getVisitRecordEntries(
             },
           }
         : {}),
+      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
     },
     orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }],
     select: {
@@ -1659,19 +1729,29 @@ async function getVisitRecordEntries(
       updated_at: true,
       schedule: {
         select: {
+          case_id: true,
           visit_type: true,
           scheduled_date: true,
+          case_: {
+            select: {
+              patient_id: true,
+            },
+          },
         },
       },
     },
   });
 
-  if (records.length === 0) {
-    throw new Error('訪問記録が見つかりません');
+  const scopedRecords = records.filter(
+    (record) => record.schedule.case_.patient_id === record.patient_id,
+  );
+
+  if (scopedRecords.length === 0) {
+    throw new PdfNotFoundError('visitRecord');
   }
 
-  const patientIds = Array.from(new Set(records.map((record) => record.patient_id)));
-  const recordIds = records.map((record) => record.id);
+  const patientIds = Array.from(new Set(scopedRecords.map((record) => record.patient_id)));
+  const recordIds = scopedRecords.map((record) => record.id);
 
   const [patients, residuals, auditLogs] = await Promise.all([
     prisma.patient.findMany({
@@ -1761,10 +1841,10 @@ async function getVisitRecordEntries(
     residualsByRecordId.set(residual.visit_record_id, bucket);
   }
 
-  return records.map((record) => {
+  return scopedRecords.map((record) => {
     const patient = patientById.get(record.patient_id);
     if (!patient) {
-      throw new Error('患者が見つかりません');
+      throw new PdfNotFoundError('patient');
     }
 
     const latestAudit = latestAuditByRecordId.get(record.id);
@@ -1800,11 +1880,15 @@ async function getVisitRecordEntries(
   });
 }
 
-async function getVisitRecordEntry(orgId: string, recordId: string): Promise<VisitRecordPdfEntry> {
-  const entries = await getVisitRecordEntries(orgId, { id: recordId });
+async function getVisitRecordEntry(
+  orgId: string,
+  recordId: string,
+  accessContext?: VisitScheduleAccessContext,
+): Promise<VisitRecordPdfEntry> {
+  const entries = await getVisitRecordEntries(orgId, { id: recordId }, accessContext);
   const entry = entries[0];
   if (!entry) {
-    throw new Error('訪問記録が見つかりません');
+    throw new PdfNotFoundError('visitRecord');
   }
   return entry;
 }
@@ -1814,10 +1898,13 @@ async function getPatientVisitRecordRecord(
   patientId: string,
   dateFrom?: Date | null,
   dateTo?: Date | null,
+  accessContext?: VisitScheduleAccessContext,
 ): Promise<PatientVisitRecordPdfRecord> {
   const [patient, records] = await Promise.all([
     prisma.patient.findFirst({
-      where: { id: patientId, org_id: orgId },
+      where: accessContext
+        ? applyPatientAssignmentWhere({ id: patientId, org_id: orgId }, accessContext)
+        : { id: patientId, org_id: orgId },
       select: {
         id: true,
         name: true,
@@ -1825,11 +1912,11 @@ async function getPatientVisitRecordRecord(
         gender: true,
       },
     }),
-    getVisitRecordEntries(orgId, { patientId, dateFrom, dateTo }),
+    getVisitRecordEntries(orgId, { patientId, dateFrom, dateTo }, accessContext),
   ]);
 
   if (!patient) {
-    throw new Error('患者が見つかりません');
+    throw new PdfNotFoundError('patient');
   }
 
   return {
@@ -1843,12 +1930,14 @@ async function getPatientVisitRecordRecord(
 async function getTracingReportRecord(
   orgId: string,
   reportId: string,
+  accessContext?: VisitScheduleAccessContext,
 ): Promise<TracingReportRecord> {
   const report = await prisma.tracingReport.findFirst({
     where: { id: reportId, org_id: orgId },
     select: {
       id: true,
       patient_id: true,
+      case_id: true,
       status: true,
       sent_to_physician: true,
       sent_at: true,
@@ -1858,6 +1947,9 @@ async function getTracingReportRecord(
       content: true,
       issue: {
         select: {
+          org_id: true,
+          patient_id: true,
+          case_id: true,
           title: true,
           description: true,
           priority: true,
@@ -1868,7 +1960,29 @@ async function getTracingReportRecord(
   });
 
   if (!report) {
-    throw new Error('トレーシングレポートが見つかりません');
+    throw new PdfNotFoundError('tracingReport');
+  }
+
+  if (
+    accessContext &&
+    !(await canAccessCaseScopedPatientResource({
+      db: prisma,
+      orgId,
+      patientId: report.patient_id,
+      caseId: report.case_id,
+      accessContext,
+    }))
+  ) {
+    throw new PdfNotFoundError('tracingReport');
+  }
+  if (
+    report.issue &&
+    (report.issue.org_id !== orgId ||
+      report.issue.patient_id !== report.patient_id ||
+      (report.issue.case_id && report.case_id && report.issue.case_id !== report.case_id) ||
+      (!report.case_id && report.issue.case_id))
+  ) {
+    throw new PdfNotFoundError('tracingReport');
   }
 
   const patient = await prisma.patient.findFirst({
@@ -1882,7 +1996,7 @@ async function getTracingReportRecord(
   });
 
   if (!patient) {
-    throw new Error('患者が見つかりません');
+    throw new PdfNotFoundError('patient');
   }
 
   return {
@@ -1895,12 +2009,14 @@ async function getTracingReportRecord(
 async function getConferenceNoteRecord(
   orgId: string,
   noteId: string,
+  accessContext?: VisitScheduleAccessContext,
 ): Promise<ConferenceNotePdfRecord> {
   const note = await prisma.conferenceNote.findFirst({
     where: { id: noteId, org_id: orgId },
     select: {
       id: true,
       case_id: true,
+      patient_id: true,
       note_type: true,
       title: true,
       content: true,
@@ -1913,12 +2029,37 @@ async function getConferenceNoteRecord(
   });
 
   if (!note) {
-    throw new Error('カンファレンス記録が見つかりません');
+    throw new PdfNotFoundError('conferenceNote');
+  }
+
+  if (
+    accessContext &&
+    !canBypassVisitScheduleAssignmentAccess(accessContext) &&
+    !note.case_id &&
+    !note.patient_id
+  ) {
+    throw new PdfNotFoundError('conferenceNote');
+  }
+
+  if (accessContext && note.patient_id) {
+    const patient = await prisma.patient.findFirst({
+      where: applyPatientAssignmentWhere({ id: note.patient_id, org_id: orgId }, accessContext),
+      select: { id: true },
+    });
+    if (!patient) {
+      throw new PdfNotFoundError('conferenceNote');
+    }
   }
 
   const careCase = note.case_id
     ? await prisma.careCase.findFirst({
-        where: { id: note.case_id, org_id: orgId },
+        where: {
+          id: note.case_id,
+          org_id: orgId,
+          ...(accessContext && buildCareCaseAssignmentWhere(accessContext)
+            ? { AND: [buildCareCaseAssignmentWhere(accessContext)!] }
+            : {}),
+        },
         select: {
           patient: {
             select: {
@@ -1944,6 +2085,10 @@ async function getConferenceNoteRecord(
       })
     : null;
 
+  if (note.case_id && !careCase) {
+    throw new PdfNotFoundError('conferenceNote');
+  }
+
   return {
     id: note.id,
     note_type: note.note_type,
@@ -1963,10 +2108,11 @@ async function getConferenceNoteRecord(
 export async function buildCareReportPdf(
   orgId: string,
   reportId: string,
+  accessContext?: VisitScheduleAccessContext,
 ): Promise<PdfRenderResult> {
   const [branding, report] = await Promise.all([
     getPdfBranding(orgId),
-    getCareReportRecord(orgId, reportId),
+    getCareReportRecord(orgId, reportId, accessContext),
   ]);
   const fileName = sanitizeFileName(`care-report-${report.patient.name}-${report.id}.pdf`);
 
@@ -1986,10 +2132,11 @@ export async function buildCareReportPdf(
 export async function buildConferenceNotePdf(
   orgId: string,
   noteId: string,
+  accessContext?: VisitScheduleAccessContext,
 ): Promise<PdfRenderResult> {
   const [branding, note] = await Promise.all([
     getPdfBranding(orgId),
-    getConferenceNoteRecord(orgId, noteId),
+    getConferenceNoteRecord(orgId, noteId, accessContext),
   ]);
   const subject = note.patient?.name ?? note.title;
   const fileName = sanitizeFileName(`conference-note-${subject}-${note.id}.pdf`);
@@ -2010,10 +2157,11 @@ export async function buildConferenceNotePdf(
 export async function buildManagementPlanPdf(
   orgId: string,
   planId: string,
+  accessContext?: VisitScheduleAccessContext,
 ): Promise<PdfRenderResult> {
   const [branding, plan] = await Promise.all([
     getPdfBranding(orgId),
-    getManagementPlanRecord(orgId, planId),
+    getManagementPlanRecord(orgId, planId, accessContext),
   ]);
   const fileName = sanitizeFileName(`management-plan-${plan.patient.name}-${plan.id}.pdf`);
 
@@ -2033,10 +2181,11 @@ export async function buildManagementPlanPdf(
 export async function buildMedicationHistoryPdf(
   orgId: string,
   patientId: string,
+  accessContext?: VisitScheduleAccessContext,
 ): Promise<PdfRenderResult> {
   const [branding, record] = await Promise.all([
     getPdfBranding(orgId),
-    getMedicationHistoryRecord(orgId, patientId),
+    getMedicationHistoryRecord(orgId, patientId, accessContext),
   ]);
   const fileName = sanitizeFileName(`medications-${record.patient.name}-${record.patient.id}.pdf`);
 
@@ -2056,10 +2205,11 @@ export async function buildMedicationHistoryPdf(
 export async function buildVisitRecordPdf(
   orgId: string,
   recordId: string,
+  accessContext?: VisitScheduleAccessContext,
 ): Promise<PdfRenderResult> {
   const [branding, record] = await Promise.all([
     getPdfBranding(orgId),
-    getVisitRecordEntry(orgId, recordId),
+    getVisitRecordEntry(orgId, recordId, accessContext),
   ]);
   const fileName = sanitizeFileName(
     `visit-record-${record.patient.name}-${formatDate(record.visit_date).replaceAll('/', '')}-${record.id}.pdf`,
@@ -2083,6 +2233,7 @@ export async function buildPatientVisitRecordsPdf(
   patientId: string,
   dateFrom?: string | null,
   dateTo?: string | null,
+  accessContext?: VisitScheduleAccessContext,
 ): Promise<PdfRenderResult> {
   const normalizedDateFrom =
     dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom) ? new Date(`${dateFrom}T00:00:00.000Z`) : null;
@@ -2091,7 +2242,13 @@ export async function buildPatientVisitRecordsPdf(
 
   const [branding, record] = await Promise.all([
     getPdfBranding(orgId),
-    getPatientVisitRecordRecord(orgId, patientId, normalizedDateFrom, normalizedDateTo),
+    getPatientVisitRecordRecord(
+      orgId,
+      patientId,
+      normalizedDateFrom,
+      normalizedDateTo,
+      accessContext,
+    ),
   ]);
   const fileName = sanitizeFileName(
     `visit-records-${record.patient.name}-${record.patient.id}${
@@ -2116,6 +2273,7 @@ export async function buildMedicationCalendarPdf(
   orgId: string,
   patientId: string,
   month?: string | null,
+  accessContext?: VisitScheduleAccessContext,
 ): Promise<PdfRenderResult> {
   const parsedMonth =
     month && /^\d{4}-\d{2}$/.test(month) ? new Date(`${month}-01T00:00:00.000Z`) : new Date();
@@ -2123,7 +2281,7 @@ export async function buildMedicationCalendarPdf(
 
   const [branding, record] = await Promise.all([
     getPdfBranding(orgId),
-    getMedicationHistoryRecord(orgId, patientId),
+    getMedicationHistoryRecord(orgId, patientId, accessContext),
   ]);
   const fileName = sanitizeFileName(
     `medication-calendar-${record.patient.name}-${currentMonth.getFullYear()}-${String(
@@ -2151,10 +2309,11 @@ export async function buildMedicationCalendarPdf(
 export async function buildTracingReportPdf(
   orgId: string,
   reportId: string,
+  accessContext?: VisitScheduleAccessContext,
 ): Promise<PdfRenderResult> {
   const [branding, report] = await Promise.all([
     getPdfBranding(orgId),
-    getTracingReportRecord(orgId, reportId),
+    getTracingReportRecord(orgId, reportId, accessContext),
   ]);
   const fileName = sanitizeFileName(`tracing-report-${report.patient.name}-${report.id}.pdf`);
 

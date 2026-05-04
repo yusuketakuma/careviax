@@ -58,12 +58,55 @@ type BuildVisitBriefArgs = {
   context: 'patient' | 'schedule';
   limit?: number;
   actorId?: string;
+  caseIds?: string[];
+};
+
+type ScheduleBriefRequest = Omit<BuildVisitBriefArgs, 'context' | 'patientId' | 'caseIds'> & {
+  scheduleId: string;
+  patientId: string;
+  caseId: string;
 };
 
 const OPEN_TASK_STATUSES = ['pending', 'in_progress'] as const;
 const OPEN_SELF_REPORT_STATUSES = ['submitted', 'triaged', 'converted_to_task'] as const;
 const OPEN_REQUEST_STATUSES = ['draft', 'sent', 'received', 'in_progress', 'escalated'] as const;
 const OPEN_ISSUE_STATUSES = ['open', 'in_progress'] as const;
+
+async function listVisitBriefBillingRefs(
+  db: DbClient,
+  args: BuildVisitBriefArgs,
+  caseIds: string[],
+) {
+  if (args.caseIds === undefined || caseIds.length === 0) {
+    return { visitRecordIds: undefined, cycleIds: undefined };
+  }
+
+  const [visitRecords, cycles] = await Promise.all([
+    db.visitRecord.findMany({
+      where: {
+        org_id: args.orgId,
+        patient_id: args.patientId,
+        schedule: {
+          case_id: { in: caseIds },
+        },
+      },
+      select: { id: true },
+    }),
+    db.medicationCycle.findMany({
+      where: {
+        org_id: args.orgId,
+        patient_id: args.patientId,
+        case_id: { in: caseIds },
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  return {
+    visitRecordIds: visitRecords.map((item) => item.id),
+    cycleIds: cycles.map((item) => item.id),
+  };
+}
 
 type JahisSupplementalRecordForBrief = {
   id: string;
@@ -874,7 +917,7 @@ export async function getPatientVisitBrief(
   db: DbClient,
   args: BuildVisitBriefArgs,
 ): Promise<VisitBrief> {
-  const caseIds = (
+  const patientCaseIds = (
     await db.careCase.findMany({
       where: {
         org_id: args.orgId,
@@ -883,6 +926,14 @@ export async function getPatientVisitBrief(
       select: { id: true },
     })
   ).map((item) => item.id);
+  const caseIds = args.caseIds ?? patientCaseIds;
+  const caseScope =
+    args.caseIds === undefined
+      ? undefined
+      : {
+          OR: [{ case_id: null }, ...(caseIds.length > 0 ? [{ case_id: { in: caseIds } }] : [])],
+        };
+  const billingRefs = await listVisitBriefBillingRefs(db, args, caseIds);
 
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -926,6 +977,7 @@ export async function getPatientVisitBrief(
         org_id: args.orgId,
         cycle: {
           patient_id: args.patientId,
+          ...(args.caseIds === undefined ? {} : { case_id: { in: caseIds } }),
         },
       },
       orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
@@ -973,6 +1025,7 @@ export async function getPatientVisitBrief(
         org_id: args.orgId,
         cycle: {
           patient_id: args.patientId,
+          ...(args.caseIds === undefined ? {} : { case_id: { in: caseIds } }),
         },
       },
       orderBy: [{ target_period_end: 'desc' }, { created_at: 'desc' }],
@@ -1014,6 +1067,7 @@ export async function getPatientVisitBrief(
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
+        ...(caseScope ? { AND: [caseScope] } : {}),
       },
       orderBy: [{ occurred_at: 'desc' }],
       take: 4,
@@ -1031,6 +1085,7 @@ export async function getPatientVisitBrief(
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
+        ...(caseScope ? { AND: [caseScope] } : {}),
         status: {
           in: [...OPEN_REQUEST_STATUSES],
         },
@@ -1050,6 +1105,7 @@ export async function getPatientVisitBrief(
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
+        ...(args.caseIds === undefined ? {} : { case_id: { in: caseIds } }),
       },
       orderBy: [{ called_at: 'desc' }],
       take: 3,
@@ -1096,6 +1152,7 @@ export async function getPatientVisitBrief(
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
+        ...(caseScope ? { AND: [caseScope] } : {}),
         status: {
           in: [...OPEN_ISSUE_STATUSES],
         },
@@ -1114,6 +1171,7 @@ export async function getPatientVisitBrief(
         org_id: args.orgId,
         cycle: {
           patient_id: args.patientId,
+          ...(args.caseIds === undefined ? {} : { case_id: { in: caseIds } }),
         },
         resolved_at: null,
       },
@@ -1130,12 +1188,21 @@ export async function getPatientVisitBrief(
     listBillingEvidenceBlockers(db, {
       orgId: args.orgId,
       patientId: args.patientId,
+      visitRecordIds: billingRefs.visitRecordIds,
+      cycleIds: billingRefs.cycleIds,
       limit: 2,
     }),
     db.visitRecord.findFirst({
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
+        ...(args.caseIds === undefined
+          ? {}
+          : {
+              schedule: {
+                case_id: { in: caseIds },
+              },
+            }),
       },
       orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }],
       select: {
@@ -1147,6 +1214,7 @@ export async function getPatientVisitBrief(
           where: {
             org_id: args.orgId,
             patient_id: args.patientId,
+            ...(args.caseIds === undefined ? {} : { id: { in: caseIds } }),
             status: { in: ['active', 'assessment'] },
           },
           orderBy: [{ start_date: 'desc' }, { created_at: 'desc' }],
@@ -1159,6 +1227,7 @@ export async function getPatientVisitBrief(
             where: {
               org_id: args.orgId,
               patient_id: args.patientId,
+              ...(args.caseIds === undefined ? {} : { id: { in: caseIds } }),
               status: { in: ['active', 'assessment'] },
             },
             orderBy: [{ start_date: 'desc' }, { created_at: 'desc' }],
@@ -1265,6 +1334,7 @@ export async function getPatientVisitBrief(
   const communicationQueue = await listCommunicationQueue(db, {
     orgId: args.orgId,
     patientId: args.patientId,
+    caseIds: args.caseIds,
     limit: 6,
   });
 
@@ -1500,6 +1570,28 @@ export async function getScheduleVisitBriefsForPatients(
         patientId,
       });
       return [patientId, brief] as const;
+    },
+  );
+
+  return new Map(entries);
+}
+
+export async function getScheduleVisitBriefsForSchedules(
+  db: DbClient,
+  args: { schedules: ScheduleBriefRequest[] },
+): Promise<Map<string, VisitBrief>> {
+  const entries = await mapWithConcurrency(
+    args.schedules,
+    getVisitBriefBatchConcurrency(),
+    async (schedule) => {
+      const brief = await getScheduleVisitBrief(db, {
+        orgId: schedule.orgId,
+        patientId: schedule.patientId,
+        caseIds: [schedule.caseId],
+        limit: schedule.limit,
+        actorId: schedule.actorId,
+      });
+      return [schedule.scheduleId, brief] as const;
     },
   );
 

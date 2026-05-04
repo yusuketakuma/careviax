@@ -10,8 +10,9 @@ import {
   EXTERNAL_ACCESS_OTP_RATE_LIMIT_PATH,
 } from '../../shared';
 
+// OTP is intentionally accepted only via the `x-otp` header to keep the secret
+// out of POST body request logs (Sentry breadcrumbs, WAF, Next.js logger).
 const createSelfReportSchema = z.object({
-  otp: z.string().trim().min(4).optional(),
   reported_by_name: z.string().trim().min(1, '報告者氏名は必須です'),
   relation: z.string().trim().max(100).optional(),
   category: z.string().trim().min(1, 'カテゴリは必須です').max(100),
@@ -50,7 +51,7 @@ export async function POST(
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const otp = parsed.data.otp ?? req.headers.get('x-otp') ?? undefined;
+  const otp = req.headers.get('x-otp') ?? undefined;
   const validation = await validateExternalAccessGrant(token, otp);
 
   if (!validation.ok) {

@@ -24,6 +24,7 @@ export async function GET(
     },
     select: {
       id: true,
+      case_id: true,
       pharmacist_id: true,
       case_: {
         select: {
@@ -43,6 +44,7 @@ export async function GET(
   const brief = await getScheduleVisitBrief(prisma, {
     orgId: ctx.orgId,
     patientId: schedule.case_.patient_id,
+    caseIds: [schedule.case_id],
   });
 
   return success({ data: brief });

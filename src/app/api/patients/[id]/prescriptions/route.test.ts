@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const { patientFindFirstMock, prescriptionIntakeFindManyMock } = vi.hoisted(() => ({
-  patientFindFirstMock: vi.fn(),
-  prescriptionIntakeFindManyMock: vi.fn(),
-}));
+const { patientFindFirstMock, careCaseFindManyMock, prescriptionIntakeFindManyMock } = vi.hoisted(
+  () => ({
+    patientFindFirstMock: vi.fn(),
+    careCaseFindManyMock: vi.fn(),
+    prescriptionIntakeFindManyMock: vi.fn(),
+  }),
+);
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (
@@ -24,6 +27,9 @@ vi.mock('@/lib/db/client', () => ({
     patient: {
       findFirst: patientFindFirstMock,
     },
+    careCase: {
+      findMany: careCaseFindManyMock,
+    },
     prescriptionIntake: {
       findMany: prescriptionIntakeFindManyMock,
     },
@@ -40,6 +46,7 @@ describe('/api/patients/[id]/prescriptions', () => {
       name: '山田 太郎',
       name_kana: 'ヤマダ タロウ',
     });
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1' }]);
     prescriptionIntakeFindManyMock.mockResolvedValue([
       { id: 'intake_1', cycle_id: 'cycle_1', lines: [] },
     ]);
@@ -75,6 +82,9 @@ describe('/api/patients/[id]/prescriptions', () => {
     expect(response.status).toBe(200);
     expect(prescriptionIntakeFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: expect.objectContaining({
+          cycle: { patient_id: 'patient_1', case_id: { in: ['case_1'] } },
+        }),
         orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
       }),
     );

@@ -248,17 +248,19 @@ export const GET = withAuth(
     const patientRows =
       matchingPatients.length > 0 && !patientId
         ? matchingPatients.filter((patient) => patientIds.includes(patient.id))
-        : await prisma.patient.findMany({
-            where: {
-              org_id: req.orgId,
-              id: { in: patientIds },
-            },
-            select: {
-              id: true,
-              name: true,
-              name_kana: true,
-            },
-          });
+        : patientIds.length === 0
+          ? []
+          : await prisma.patient.findMany({
+              where: {
+                org_id: req.orgId,
+                id: { in: patientIds },
+              },
+              select: {
+                id: true,
+                name: true,
+                name_kana: true,
+              },
+            });
     const patientNameById = new Map(patientRows.map((patient) => [patient.id, patient.name]));
 
     const enrichedData = reports.map((report) => {

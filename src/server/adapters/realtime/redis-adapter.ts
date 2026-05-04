@@ -9,7 +9,12 @@ let sub: Redis | null = null;
 const subscribedChannels = new Set<string>();
 
 function getConnections(): { pub: Redis; sub: Redis } {
-  const url = process.env.REDIS_URL!;
+  const url = process.env.REDIS_URL;
+  if (!url) {
+    throw new Error(
+      'REDIS_URL environment variable is not set; RealtimeAdapter cannot connect',
+    );
+  }
   if (!pub) {
     pub = new Redis(url, { lazyConnect: false, maxRetriesPerRequest: 3 });
   }

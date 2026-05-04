@@ -40,7 +40,9 @@ import { GET } from './route';
 describe('/api/tracing-reports/[id]/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({ ctx: { orgId: 'org_1', userId: 'user_1' } });
+    requireAuthContextMock.mockResolvedValue({
+      ctx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' },
+    });
     pdfResponseMock.mockReturnValue(new Response('pdf', { status: 200 }));
     recordDataExportAuditMock.mockResolvedValue(undefined);
   });
@@ -56,10 +58,30 @@ describe('/api/tracing-reports/[id]/pdf', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expect(buildTracingReportPdfMock).toHaveBeenCalledWith('org_1', 'report_1', {
+      userId: 'user_1',
+      role: 'pharmacist',
+    });
     expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), 'tracing-report.pdf');
     expect(recordDataExportAuditMock).toHaveBeenCalledWith(
       expect.any(Object),
-      expect.objectContaining({ targetType: 'tracing_report', format: 'pdf', targetId: 'report_1' }),
+      expect.objectContaining({
+        targetType: 'tracing_report',
+        format: 'pdf',
+        targetId: 'report_1',
+      }),
     );
+  });
+
+  it('returns 404 without rendering or audit when the tracing report is not accessible', async () => {
+    buildTracingReportPdfMock.mockRejectedValue(new Error('トレーシングレポートが見つかりません'));
+
+    const response = (await GET({} as NextRequest, {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(404);
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
 });

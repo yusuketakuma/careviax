@@ -108,4 +108,22 @@ describe('/api/patients/[id]/conditions PUT', () => {
       ],
     });
   });
+
+  it('returns 404 when patient is not assigned to the requesting user', async () => {
+    patientFindFirstMock.mockResolvedValue(null);
+
+    const response = await PUT(
+      createRequest(
+        { conditions: [] },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_unknown' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(deleteManyMock).not.toHaveBeenCalled();
+    expect(createManyMock).not.toHaveBeenCalled();
+  });
 });

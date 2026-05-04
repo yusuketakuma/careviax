@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import type { MemberRole } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { error, forbiddenResponse, success, validationError, notFound } from '@/lib/api/response';
@@ -47,6 +48,7 @@ const sendCareReportSchema = z
 async function canAccessCareReport(args: {
   orgId: string;
   userId: string;
+  role: MemberRole;
   report: {
     patient_id: string;
     case_id: string | null;
@@ -75,7 +77,7 @@ async function canAccessCareReport(args: {
     });
 
     return canAccessVisitScheduleAssignment(
-      { userId: args.userId, role: 'pharmacist' },
+      { userId: args.userId, role: args.role },
       visitRecord?.schedule,
     );
   }
@@ -93,7 +95,7 @@ async function canAccessCareReport(args: {
     });
 
     return canAccessVisitScheduleAssignment(
-      { userId: args.userId, role: 'pharmacist' },
+      { userId: args.userId, role: args.role },
       {
         pharmacist_id: null,
         case_: careCase,
@@ -166,6 +168,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     !(await canAccessCareReport({
       orgId: ctx.orgId,
       userId: ctx.userId,
+      role: ctx.role,
       report: existing,
     }))
   ) {

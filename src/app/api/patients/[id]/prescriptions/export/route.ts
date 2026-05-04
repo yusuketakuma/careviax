@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
-import { notFound } from '@/lib/api/response';
+import { forbiddenResponse, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { recordDataExportAudit } from '@/server/services/export-audit';
+import { listAccessiblePatientCaseIds } from '@/server/services/patient-access';
 
 const BOM = '\uFEFF';
 
@@ -29,24 +32,32 @@ function buildCsvRow(values: (string | null | undefined)[]): string {
  * 各処方の行は処方明細（lines）単位で展開する。
  */
 export const GET = withAuthContext(
-  async (
-    _req: NextRequest,
-    ctx,
-    { params }: { params: Promise<{ id: string }> }
-  ) => {
+  async (_req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
     const { id: patientId } = await params;
 
     const patient = await prisma.patient.findFirst({
-      where: { id: patientId, org_id: ctx.orgId },
+      where: applyPatientAssignmentWhere(
+        { id: patientId, org_id: ctx.orgId },
+        { userId: ctx.userId, role: ctx.role },
+      ),
       select: { id: true, name: true, name_kana: true },
     });
     if (!patient) return notFound('患者が見つかりません');
+    const caseIds = await listAccessiblePatientCaseIds({
+      db: prisma,
+      orgId: ctx.orgId,
+      patientId,
+      accessContext: { userId: ctx.userId, role: ctx.role },
+    });
+    if (caseIds.length === 0) {
+      return forbiddenResponse('割り当て済みのケースがないため処方履歴をエクスポートできません');
+    }
 
     const EXPORT_LIMIT = 10000;
     const intakes = await prisma.prescriptionIntake.findMany({
       where: {
         org_id: ctx.orgId,
-        cycle: { patient_id: patientId },
+        cycle: { patient_id: patientId, case_id: { in: caseIds } },
       },
       take: EXPORT_LIMIT,
       orderBy: { prescribed_date: 'desc' },
@@ -122,7 +133,7 @@ export const GET = withAuthContext(
             '',
             '',
             '',
-          ])
+          ]),
         );
       } else {
         for (const line of intake.lines) {
@@ -147,7 +158,7 @@ export const GET = withAuthContext(
               line.unit,
               line.is_generic ? '後発' : '先発',
               line.notes,
-            ])
+            ]),
           );
         }
       }
@@ -156,6 +167,21 @@ export const GET = withAuthContext(
     const csv = BOM + [header, ...rows].join('\r\n') + '\r\n';
     const filename = `prescriptions_${patient.name}_${new Date().toISOString().slice(0, 10)}.csv`;
     const truncated = intakes.length === EXPORT_LIMIT;
+
+    await recordDataExportAudit(prisma, {
+      orgId: ctx.orgId,
+      actorId: ctx.userId,
+      targetType: 'prescription_history',
+      targetId: patientId,
+      format: 'csv',
+      recordCount: rows.length,
+      filters: {
+        intake_count: intakes.length,
+        truncated,
+      },
+      ipAddress: ctx.ipAddress,
+      userAgent: ctx.userAgent,
+    });
 
     return new NextResponse(csv, {
       status: 200,
@@ -166,5 +192,9 @@ export const GET = withAuthContext(
         ...(truncated ? { 'X-Export-Truncated': 'true' } : {}),
       },
     });
-  }
+  },
+  {
+    permission: 'canVisit',
+    message: '患者処方履歴のエクスポート権限がありません',
+  },
 );

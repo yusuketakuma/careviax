@@ -5,12 +5,12 @@ const {
   requireAuthContextMock,
   visitScheduleFindManyMock,
   canAccessVisitScheduleAssignmentMock,
-  scheduleVisitBriefsForPatientsMock,
+  scheduleVisitBriefsForSchedulesMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   canAccessVisitScheduleAssignmentMock: vi.fn(),
-  scheduleVisitBriefsForPatientsMock: vi.fn(),
+  scheduleVisitBriefsForSchedulesMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -30,7 +30,7 @@ vi.mock('@/lib/auth/visit-schedule-access', () => ({
 }));
 
 vi.mock('@/server/services/visit-brief', () => ({
-  getScheduleVisitBriefsForPatients: scheduleVisitBriefsForPatientsMock,
+  getScheduleVisitBriefsForSchedules: scheduleVisitBriefsForSchedulesMock,
 }));
 
 import { POST } from './route';
@@ -79,6 +79,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
     visitScheduleFindManyMock.mockResolvedValue([
       {
         id: 'schedule_1',
+        case_id: 'case_1',
         pharmacist_id: 'user_1',
         case_: {
           patient_id: 'patient_1',
@@ -88,6 +89,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
       },
       {
         id: 'schedule_2',
+        case_id: 'case_2',
         pharmacist_id: 'user_1',
         case_: {
           patient_id: 'patient_1',
@@ -97,7 +99,12 @@ describe('/api/visit-preparations/brief-batch POST', () => {
       },
     ]);
     canAccessVisitScheduleAssignmentMock.mockReturnValue(true);
-    scheduleVisitBriefsForPatientsMock.mockResolvedValue(new Map([['patient_1', brief]]));
+    scheduleVisitBriefsForSchedulesMock.mockResolvedValue(
+      new Map([
+        ['schedule_1', brief],
+        ['schedule_2', brief],
+      ]),
+    );
   });
 
   it('returns schedule-keyed briefs while deduping schedule ids and patient brief generation', async () => {
@@ -117,6 +124,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
       },
       select: {
         id: true,
+        case_id: true,
         pharmacist_id: true,
         case_: {
           select: {
@@ -127,9 +135,21 @@ describe('/api/visit-preparations/brief-batch POST', () => {
         },
       },
     });
-    expect(scheduleVisitBriefsForPatientsMock).toHaveBeenCalledWith(expect.anything(), {
-      orgId: 'org_1',
-      patientIds: ['patient_1', 'patient_1'],
+    expect(scheduleVisitBriefsForSchedulesMock).toHaveBeenCalledWith(expect.anything(), {
+      schedules: [
+        {
+          scheduleId: 'schedule_1',
+          orgId: 'org_1',
+          patientId: 'patient_1',
+          caseId: 'case_1',
+        },
+        {
+          scheduleId: 'schedule_2',
+          orgId: 'org_1',
+          patientId: 'patient_1',
+          caseId: 'case_2',
+        },
+      ],
     });
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -153,7 +173,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
       ),
     );
 
-    expect(scheduleVisitBriefsForPatientsMock).not.toHaveBeenCalled();
+    expect(scheduleVisitBriefsForSchedulesMock).not.toHaveBeenCalled();
     expect(response.status).toBe(403);
   });
 
@@ -161,6 +181,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
     visitScheduleFindManyMock.mockResolvedValueOnce([
       {
         id: 'schedule_1',
+        case_id: 'case_1',
         pharmacist_id: 'user_1',
         case_: {
           patient_id: 'patient_1',
@@ -179,7 +200,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
       ),
     );
 
-    expect(scheduleVisitBriefsForPatientsMock).not.toHaveBeenCalled();
+    expect(scheduleVisitBriefsForSchedulesMock).not.toHaveBeenCalled();
     expect(response.status).toBe(404);
   });
 });

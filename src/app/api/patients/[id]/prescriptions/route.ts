@@ -5,6 +5,8 @@ import { parsePaginationParams } from '@/lib/api/pagination';
 import { decodeKeysetCursor, encodeKeysetCursor } from '@/lib/api/keyset-cursor';
 import { prisma } from '@/lib/db/client';
 import type { Prisma } from '@prisma/client';
+import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { listAccessiblePatientCaseIds } from '@/server/services/patient-access';
 
 const PATIENT_PRESCRIPTION_CURSOR_KEYS = ['prescribed_date', 'created_at'] as const;
 
@@ -39,15 +41,24 @@ export const GET = withAuthContext(
     );
 
     const patient = await prisma.patient.findFirst({
-      where: { id: patientId, org_id: ctx.orgId },
+      where: applyPatientAssignmentWhere(
+        { id: patientId, org_id: ctx.orgId },
+        { userId: ctx.userId, role: ctx.role },
+      ),
       select: { id: true, name: true, name_kana: true },
     });
     if (!patient) return notFound('患者が見つかりません');
+    const caseIds = await listAccessiblePatientCaseIds({
+      db: prisma,
+      orgId: ctx.orgId,
+      patientId,
+      accessContext: { userId: ctx.userId, role: ctx.role },
+    });
 
     const intakes = await prisma.prescriptionIntake.findMany({
       where: {
         org_id: ctx.orgId,
-        cycle: { patient_id: patientId },
+        cycle: { patient_id: patientId, case_id: { in: caseIds } },
         ...(keysetWhere ?? {}),
       },
       orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
@@ -109,5 +120,9 @@ export const GET = withAuthContext(
         ? encodeKeysetCursor(PATIENT_PRESCRIPTION_CURSOR_KEYS, nextCursor)
         : undefined,
     });
+  },
+  {
+    permission: 'canVisit',
+    message: '患者処方履歴の閲覧権限がありません',
   },
 );

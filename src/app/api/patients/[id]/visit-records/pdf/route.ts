@@ -8,10 +8,7 @@ import { buildPatientVisitRecordsPdf } from '@/server/services/pdf-documents';
 
 export const runtime = 'nodejs';
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問記録一覧 PDF の閲覧権限がありません',
@@ -27,6 +24,10 @@ export async function GET(
       id,
       url.searchParams.get('date_from'),
       url.searchParams.get('date_to'),
+      {
+        userId: authResult.ctx.userId,
+        role: authResult.ctx.role,
+      },
     );
     await recordDataExportAudit(prisma, {
       orgId: authResult.ctx.orgId,

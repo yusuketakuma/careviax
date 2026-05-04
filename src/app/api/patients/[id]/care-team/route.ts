@@ -4,10 +4,20 @@ import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { updatePatientCareTeamSchema } from '@/lib/validations/patient';
+import {
+  applyPatientAssignmentWhere,
+  buildCareCaseAssignmentWhere,
+} from '@/lib/auth/visit-schedule-access';
+import type { AuthContext } from '@/lib/auth/context';
 
-async function loadPatientCases(orgId: string, patientId: string) {
+async function loadPatientCases(ctx: AuthContext, patientId: string) {
+  const assignmentWhere = buildCareCaseAssignmentWhere(ctx);
   return prisma.careCase.findMany({
-    where: { org_id: orgId, patient_id: patientId },
+    where: {
+      org_id: ctx.orgId,
+      patient_id: patientId,
+      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+    },
     orderBy: [{ start_date: 'desc' }, { created_at: 'desc' }],
     select: {
       id: true,
@@ -21,17 +31,10 @@ async function loadPatientCases(orgId: string, patientId: string) {
 }
 
 function pickDefaultCaseId(cases: Array<{ id: string; status: string; created_at: Date }>) {
-  return (
-    cases.find((careCase) => careCase.status === 'active')?.id ??
-    cases[0]?.id ??
-    null
-  );
+  return cases.find((careCase) => careCase.status === 'active')?.id ?? cases[0]?.id ?? null;
 }
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者情報の閲覧権限がありません',
@@ -42,17 +45,19 @@ export async function GET(
   const { searchParams } = new URL(req.url);
 
   const patient = await prisma.patient.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: applyPatientAssignmentWhere(
+      { id, org_id: ctx.orgId },
+      { userId: ctx.userId, role: ctx.role },
+    ),
     select: { id: true },
   });
   if (!patient) return notFound('患者が見つかりません');
 
-  const cases = await loadPatientCases(ctx.orgId, id);
+  const cases = await loadPatientCases(ctx, id);
   const requestedCaseId = searchParams.get('case_id');
-  const caseId =
-    cases.some((careCase) => careCase.id === requestedCaseId)
-      ? requestedCaseId
-      : pickDefaultCaseId(cases);
+  const caseId = cases.some((careCase) => careCase.id === requestedCaseId)
+    ? requestedCaseId
+    : pickDefaultCaseId(cases);
 
   return success({
     case_id: caseId,
@@ -60,15 +65,11 @@ export async function GET(
       id: careCase.id,
       status: careCase.status,
     })),
-    data:
-      cases.find((careCase) => careCase.id === caseId)?.care_team_links ?? [],
+    data: cases.find((careCase) => careCase.id === caseId)?.care_team_links ?? [],
   });
 }
 
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者情報の更新権限がありません',
@@ -85,11 +86,13 @@ export async function PUT(
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
+  const caseAssignmentWhere = buildCareCaseAssignmentWhere(ctx);
   const careCase = await prisma.careCase.findFirst({
     where: {
       id: parsed.data.case_id,
       org_id: ctx.orgId,
       patient_id: id,
+      ...(caseAssignmentWhere ? { AND: [caseAssignmentWhere] } : {}),
     },
     select: { id: true },
   });

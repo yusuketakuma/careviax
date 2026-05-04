@@ -75,6 +75,35 @@ describe('/api/external-access/[token]/self-report', () => {
 
   it('creates a self report and communication event for valid external access', async () => {
     const response = await POST(
+      createSelfReportRequest(
+        'http://localhost/api/external-access/token_1/self-report',
+        {
+          reported_by_name: '家族A',
+          category: 'adherence',
+          subject: '飲み忘れ',
+          content: '夕食後を飲み忘れ',
+        },
+        '1234',
+      ),
+      {
+        params: Promise.resolve({ token: 'token_1' }),
+      },
+    );
+
+    expect(response.status).toBe(201);
+    expect(validateExternalAccessGrantMock).toHaveBeenCalledWith('token_1', '1234');
+    expect(patientSelfReportCreateMock).toHaveBeenCalled();
+    expect(communicationEventCreateMock).toHaveBeenCalled();
+  });
+
+  it('rejects OTP supplied in the request body (header-only design)', async () => {
+    validateExternalAccessGrantMock.mockResolvedValue({
+      ok: false,
+      kind: 'validation',
+      message: 'OTPが必要です',
+    });
+
+    const response = await POST(
       createSelfReportRequest('http://localhost/api/external-access/token_1/self-report', {
         otp: '1234',
         reported_by_name: '家族A',
@@ -87,10 +116,8 @@ describe('/api/external-access/[token]/self-report', () => {
       },
     );
 
-    expect(response.status).toBe(201);
-    expect(validateExternalAccessGrantMock).toHaveBeenCalledWith('token_1', '1234');
-    expect(patientSelfReportCreateMock).toHaveBeenCalled();
-    expect(communicationEventCreateMock).toHaveBeenCalled();
+    expect(response.status).toBe(400);
+    expect(validateExternalAccessGrantMock).toHaveBeenCalledWith('token_1', undefined);
   });
 
   it('does not accept OTP from the query string', async () => {

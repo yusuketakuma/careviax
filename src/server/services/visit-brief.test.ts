@@ -22,7 +22,11 @@ vi.mock('./billing-evidence', () => ({
   listBillingEvidenceBlockers: listBillingEvidenceBlockersMock,
 }));
 
-import { getPatientVisitBrief, getScheduleVisitBriefsForPatients } from './visit-brief';
+import {
+  getPatientVisitBrief,
+  getScheduleVisitBriefsForPatients,
+  getScheduleVisitBriefsForSchedules,
+} from './visit-brief';
 
 describe('getPatientVisitBrief', () => {
   beforeEach(() => {
@@ -269,9 +273,13 @@ describe('getPatientVisitBrief', () => {
         ]),
       },
       visitRecord: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'visit_record_1' }]),
         findFirst: vi.fn().mockResolvedValue({
           soap_plan: '残薬確認を継続する',
         }),
+      },
+      medicationCycle: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'cycle_1' }]),
       },
       drugMaster: {
         findMany: vi.fn().mockResolvedValue([
@@ -302,9 +310,64 @@ describe('getPatientVisitBrief', () => {
       orgId: 'org_1',
       patientId: 'patient_1',
       context: 'patient',
+      caseIds: ['case_1'],
     });
 
     expect(result.patient).toEqual({ id: 'patient_1', name: '患者A' });
+    expect(db.prescriptionIntake.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          cycle: expect.objectContaining({
+            case_id: { in: ['case_1'] },
+          }),
+        }),
+      }),
+    );
+    expect(db.setPlan.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          cycle: expect.objectContaining({
+            case_id: { in: ['case_1'] },
+          }),
+        }),
+      }),
+    );
+    expect(db.communicationRequest.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [{ OR: [{ case_id: null }, { case_id: { in: ['case_1'] } }] }],
+        }),
+      }),
+    );
+    expect(db.visitScheduleContactLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          case_id: { in: ['case_1'] },
+        }),
+      }),
+    );
+    expect(db.medicationIssue.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [{ OR: [{ case_id: null }, { case_id: { in: ['case_1'] } }] }],
+        }),
+      }),
+    );
+    expect(db.visitRecord.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          schedule: {
+            case_id: { in: ['case_1'] },
+          },
+        }),
+      }),
+    );
+    expect(listCommunicationQueueMock).toHaveBeenCalledWith(expect.anything(), {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      caseIds: ['case_1'],
+      limit: 6,
+    });
     expect(result.medication_changes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -377,7 +440,15 @@ describe('getPatientVisitBrief', () => {
     expect(listCommunicationQueueMock).toHaveBeenCalledWith(db, {
       orgId: 'org_1',
       patientId: 'patient_1',
+      caseIds: ['case_1'],
       limit: 6,
+    });
+    expect(listBillingEvidenceBlockersMock).toHaveBeenCalledWith(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      visitRecordIds: ['visit_record_1'],
+      cycleIds: ['cycle_1'],
+      limit: 2,
     });
     expect(result.ai_summary.headline).toBe('直近処方で 2 件の変更があります。');
     expect(result.conference_summary).toEqual(
@@ -447,6 +518,7 @@ describe('getScheduleVisitBriefsForPatients', () => {
       medicationIssue: { findMany: vi.fn().mockResolvedValue([]) },
       inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
       visitRecord: { findFirst: vi.fn().mockResolvedValue(null) },
+      medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
       conferenceNote: { findMany: vi.fn().mockResolvedValue([]) },
       residence: { findFirst: vi.fn().mockResolvedValue(null) },
       drugPackageInsert: { findMany: vi.fn().mockResolvedValue([]) },
@@ -497,6 +569,7 @@ describe('getScheduleVisitBriefsForPatients', () => {
       medicationIssue: { findMany: vi.fn().mockResolvedValue([]) },
       inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
       visitRecord: { findFirst: vi.fn().mockResolvedValue(null) },
+      medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
       conferenceNote: { findMany: vi.fn().mockResolvedValue([]) },
       residence: { findFirst: vi.fn().mockResolvedValue(null) },
       drugPackageInsert: { findMany: vi.fn().mockResolvedValue([]) },
@@ -523,5 +596,93 @@ describe('getScheduleVisitBriefsForPatients', () => {
         process.env.VISIT_BRIEF_BATCH_CONCURRENCY = originalConcurrency;
       }
     }
+  });
+});
+
+describe('getScheduleVisitBriefsForSchedules', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    generateVisitBriefAiSummaryMock.mockResolvedValue({
+      provider: 'rule',
+      requested_provider: 'disabled',
+      is_fallback: true,
+      model: null,
+      fallback_reason: 'provider_unavailable',
+      headline: '要点なし',
+      bullets: [],
+      must_check_today: [],
+      source_refs: [],
+      generated_at: '2026-03-27T00:00:00.000Z',
+    });
+    listCommunicationQueueMock.mockResolvedValue({
+      summary: {
+        pending_count: 0,
+        overdue_count: 0,
+        self_reports: 0,
+        callback_followups: 0,
+        open_requests: 0,
+        delivery_backlog: 0,
+        expiring_external_shares: 0,
+        unconfirmed_count: 0,
+        reply_waiting_count: 0,
+        failed_count: 0,
+      },
+      items: [],
+      timeline: [],
+      emergency_drafts: [],
+    });
+    listBillingEvidenceBlockersMock.mockResolvedValue([]);
+  });
+
+  it('builds schedule briefs with each schedule case scope', async () => {
+    const db = {
+      careCase: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'case_1' }, { id: 'case_2' }]),
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({ id: 'patient_1', name: '患者A' }),
+      },
+      prescriptionIntake: { findMany: vi.fn().mockResolvedValue([]) },
+      medicationProfile: { findMany: vi.fn().mockResolvedValue([]) },
+      setPlan: { findFirst: vi.fn().mockResolvedValue(null) },
+      patientSelfReport: { findMany: vi.fn().mockResolvedValue([]) },
+      communicationEvent: { findMany: vi.fn().mockResolvedValue([]) },
+      communicationRequest: { findMany: vi.fn().mockResolvedValue([]) },
+      visitScheduleContactLog: { findMany: vi.fn().mockResolvedValue([]) },
+      task: { findMany: vi.fn().mockResolvedValue([]) },
+      medicationIssue: { findMany: vi.fn().mockResolvedValue([]) },
+      inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
+      visitRecord: {
+        findMany: vi.fn().mockResolvedValue([]),
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+      medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
+      conferenceNote: { findMany: vi.fn().mockResolvedValue([]) },
+      residence: { findFirst: vi.fn().mockResolvedValue(null) },
+      drugPackageInsert: { findMany: vi.fn().mockResolvedValue([]) },
+      drugMaster: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+
+    const result = await getScheduleVisitBriefsForSchedules(db as never, {
+      schedules: [
+        { scheduleId: 'schedule_1', orgId: 'org_1', patientId: 'patient_1', caseId: 'case_1' },
+        { scheduleId: 'schedule_2', orgId: 'org_1', patientId: 'patient_1', caseId: 'case_2' },
+      ],
+    });
+
+    expect([...result.keys()]).toEqual(['schedule_1', 'schedule_2']);
+    expect(db.visitScheduleContactLog.findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({ case_id: { in: ['case_1'] } }),
+      }),
+    );
+    expect(db.visitScheduleContactLog.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({ case_id: { in: ['case_2'] } }),
+      }),
+    );
   });
 });

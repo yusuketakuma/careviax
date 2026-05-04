@@ -34,7 +34,18 @@ export async function fetchJson<T>(
   }
 
   const text = await response.text();
-  const data = text.length > 0 ? (JSON.parse(text) as T) : null;
+  let data: T | null = null;
+  if (text.length > 0) {
+    try {
+      data = JSON.parse(text) as T;
+    } catch (err) {
+      throw new HttpAdapterError(
+        `Response body is not valid JSON (HTTP ${response.status})`,
+        response.status,
+        err,
+      );
+    }
+  }
   return { status: response.status, data };
 }
 

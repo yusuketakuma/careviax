@@ -57,7 +57,7 @@ function createRequest(url: string) {
   return {
     url,
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
     },
   } as unknown as NextRequest;
 }
@@ -81,15 +81,21 @@ describe('PDF routes', () => {
       fileName: 'care-report.pdf',
     });
 
-    const response = await careReportPdfGet(createRequest('http://localhost/api/care-reports/report_1/pdf'), {
-      params: Promise.resolve({ id: 'report_1' }),
-    });
+    const response = await careReportPdfGet(
+      createRequest('http://localhost/api/care-reports/report_1/pdf'),
+      {
+        params: Promise.resolve({ id: 'report_1' }),
+      },
+    );
 
     expect(response).toBeDefined();
     if (!response) {
       throw new Error('Expected a response from care report pdf GET');
     }
-    expect(buildCareReportPdfMock).toHaveBeenCalledWith('org_1', 'report_1');
+    expect(buildCareReportPdfMock).toHaveBeenCalledWith('org_1', 'report_1', {
+      userId: 'user_1',
+      role: 'admin',
+    });
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('application/pdf');
     expect(response.headers.get('content-disposition')).toContain('care-report.pdf');
@@ -101,15 +107,21 @@ describe('PDF routes', () => {
       fileName: 'management-plan.pdf',
     });
 
-    const response = await managementPlanPdfGet(createRequest('http://localhost/api/management-plans/plan_1/pdf'), {
-      params: Promise.resolve({ id: 'plan_1' }),
-    });
+    const response = await managementPlanPdfGet(
+      createRequest('http://localhost/api/management-plans/plan_1/pdf'),
+      {
+        params: Promise.resolve({ id: 'plan_1' }),
+      },
+    );
 
     expect(response).toBeDefined();
     if (!response) {
       throw new Error('Expected a response from management plan pdf GET');
     }
-    expect(buildManagementPlanPdfMock).toHaveBeenCalledWith('org_1', 'plan_1');
+    expect(buildManagementPlanPdfMock).toHaveBeenCalledWith('org_1', 'plan_1', {
+      userId: 'user_1',
+      role: 'admin',
+    });
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('application/pdf');
   });
@@ -120,15 +132,21 @@ describe('PDF routes', () => {
       fileName: 'medications.pdf',
     });
 
-    const response = await medicationHistoryPdfGet(createRequest('http://localhost/api/patients/patient_1/medications/pdf'), {
-      params: Promise.resolve({ id: 'patient_1' }),
-    });
+    const response = await medicationHistoryPdfGet(
+      createRequest('http://localhost/api/patients/patient_1/medications/pdf'),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
 
     expect(response).toBeDefined();
     if (!response) {
       throw new Error('Expected a response from medication history pdf GET');
     }
-    expect(buildMedicationHistoryPdfMock).toHaveBeenCalledWith('org_1', 'patient_1');
+    expect(buildMedicationHistoryPdfMock).toHaveBeenCalledWith('org_1', 'patient_1', {
+      userId: 'user_1',
+      role: 'admin',
+    });
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('application/pdf');
   });
@@ -140,7 +158,9 @@ describe('PDF routes', () => {
     });
 
     const response = await medicationCalendarPdfGet(
-      createRequest('http://localhost/api/patients/patient_1/medication-calendar/pdf?month=2026-04'),
+      createRequest(
+        'http://localhost/api/patients/patient_1/medication-calendar/pdf?month=2026-04',
+      ),
       {
         params: Promise.resolve({ id: 'patient_1' }),
       },
@@ -150,7 +170,10 @@ describe('PDF routes', () => {
     if (!response) {
       throw new Error('Expected a response from medication calendar pdf GET');
     }
-    expect(buildMedicationCalendarPdfMock).toHaveBeenCalledWith('org_1', 'patient_1', '2026-04');
+    expect(buildMedicationCalendarPdfMock).toHaveBeenCalledWith('org_1', 'patient_1', '2026-04', {
+      userId: 'user_1',
+      role: 'admin',
+    });
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('application/pdf');
   });
@@ -161,15 +184,21 @@ describe('PDF routes', () => {
       fileName: 'tracing-report.pdf',
     });
 
-    const response = await tracingReportPdfGet(createRequest('http://localhost/api/tracing-reports/tracing_1/pdf'), {
-      params: Promise.resolve({ id: 'tracing_1' }),
-    });
+    const response = await tracingReportPdfGet(
+      createRequest('http://localhost/api/tracing-reports/tracing_1/pdf'),
+      {
+        params: Promise.resolve({ id: 'tracing_1' }),
+      },
+    );
 
     expect(response).toBeDefined();
     if (!response) {
       throw new Error('Expected a response from tracing report pdf GET');
     }
-    expect(buildTracingReportPdfMock).toHaveBeenCalledWith('org_1', 'tracing_1');
+    expect(buildTracingReportPdfMock).toHaveBeenCalledWith('org_1', 'tracing_1', {
+      userId: 'user_1',
+      role: 'admin',
+    });
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('application/pdf');
   });
@@ -180,15 +209,21 @@ describe('PDF routes', () => {
       fileName: 'visit-record.pdf',
     });
 
-    const response = await visitRecordPdfGet(createRequest('http://localhost/api/visit-records/visit_1/pdf'), {
-      params: Promise.resolve({ id: 'visit_1' }),
-    });
+    const response = await visitRecordPdfGet(
+      createRequest('http://localhost/api/visit-records/visit_1/pdf'),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
 
     expect(response).toBeDefined();
     if (!response) {
       throw new Error('Expected a response from visit record pdf GET');
     }
-    expect(buildVisitRecordPdfMock).toHaveBeenCalledWith('org_1', 'visit_1');
+    expect(buildVisitRecordPdfMock).toHaveBeenCalledWith('org_1', 'visit_1', {
+      userId: 'user_1',
+      role: 'admin',
+    });
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('application/pdf');
   });
@@ -200,7 +235,9 @@ describe('PDF routes', () => {
     });
 
     const response = await patientVisitRecordsPdfGet(
-      createRequest('http://localhost/api/patients/patient_1/visit-records/pdf?date_from=2026-03-01&date_to=2026-03-31'),
+      createRequest(
+        'http://localhost/api/patients/patient_1/visit-records/pdf?date_from=2026-03-01&date_to=2026-03-31',
+      ),
       {
         params: Promise.resolve({ id: 'patient_1' }),
       },
@@ -215,6 +252,10 @@ describe('PDF routes', () => {
       'patient_1',
       '2026-03-01',
       '2026-03-31',
+      {
+        userId: 'user_1',
+        role: 'admin',
+      },
     );
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('application/pdf');
@@ -223,9 +264,12 @@ describe('PDF routes', () => {
   it('maps pdf not found errors to 404', async () => {
     buildCareReportPdfMock.mockRejectedValue(new Error('報告書が見つかりません'));
 
-    const response = await careReportPdfGet(createRequest('http://localhost/api/care-reports/missing/pdf'), {
-      params: Promise.resolve({ id: 'missing' }),
-    });
+    const response = await careReportPdfGet(
+      createRequest('http://localhost/api/care-reports/missing/pdf'),
+      {
+        params: Promise.resolve({ id: 'missing' }),
+      },
+    );
 
     expect(response).toBeDefined();
     if (!response) {

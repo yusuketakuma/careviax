@@ -8,6 +8,8 @@ import {
   createEPrescriptionAdapter,
   EPrescriptionAdapterError,
 } from '@/server/adapters/e-prescription';
+import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { listAccessiblePatientCaseIds } from '@/server/services/patient-access';
 
 const fetchEPrescriptionSchema = z.object({
   prescription_id: z.string().min(1),
@@ -19,10 +21,7 @@ const fetchEPrescriptionSchema = z.object({
  * 電子処方箋管理サービスから処方箋を取得し、PrescriptionIntake として受付登録する。
  * JAHIS QR 以外の電子処方箋受付パス（処方箋IDを直接指定）。
  */
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '電子処方箋受付の権限がありません',
@@ -33,10 +32,26 @@ export async function POST(
   const { id: patientId } = await params;
 
   const patient = await prisma.patient.findFirst({
-    where: { id: patientId, org_id: ctx.orgId },
+    where: applyPatientAssignmentWhere(
+      { id: patientId, org_id: ctx.orgId },
+      { userId: ctx.userId, role: ctx.role },
+    ),
     select: { id: true, name: true },
   });
   if (!patient) return notFound('患者が見つかりません');
+  const caseIds = await listAccessiblePatientCaseIds({
+    db: prisma,
+    orgId: ctx.orgId,
+    patientId,
+    accessContext: { userId: ctx.userId, role: ctx.role },
+  });
+  if (caseIds.length === 0) {
+    return error(
+      'NO_ACCESSIBLE_CASE',
+      'この患者にアクセス可能なケースがありません。担当者割り当てを確認してください。',
+      422,
+    );
+  }
 
   const body = await req.json().catch(() => null);
   if (!body) return validationError('リクエストボディが不正です');
@@ -74,6 +89,7 @@ export async function POST(
       where: {
         org_id: ctx.orgId,
         patient_id: patientId,
+        case_id: { in: caseIds },
         overall_status: { notIn: ['dispensed', 'audited'] },
       },
       orderBy: { created_at: 'desc' },
@@ -84,7 +100,7 @@ export async function POST(
       return error(
         'NO_ACTIVE_CYCLE',
         'この患者にアクティブな服薬サイクルがありません。先にケースを開始してください。',
-        422
+        422,
       );
     }
 
@@ -93,9 +109,7 @@ export async function POST(
         org_id: ctx.orgId,
         cycle_id: cycle.id,
         source_type: 'e_prescription',
-        prescribed_date: ePrescription.issuedAt
-          ? new Date(ePrescription.issuedAt)
-          : new Date(),
+        prescribed_date: ePrescription.issuedAt ? new Date(ePrescription.issuedAt) : new Date(),
         prescriber_name: ePrescription.prescriberName ?? null,
         prescriber_institution: ePrescription.prescriberInstitution ?? null,
         prescription_expiry_date: ePrescription.expiresAt

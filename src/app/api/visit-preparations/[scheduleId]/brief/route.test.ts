@@ -55,6 +55,7 @@ describe('/api/visit-preparations/[scheduleId]/brief', () => {
     });
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
+      case_id: 'case_1',
       pharmacist_id: 'user_1',
       case_: {
         patient_id: 'patient_1',
@@ -95,6 +96,7 @@ describe('/api/visit-preparations/[scheduleId]/brief', () => {
       where: { id: 'schedule_1', org_id: 'org_1' },
       select: {
         id: true,
+        case_id: true,
         pharmacist_id: true,
         case_: {
           select: {
@@ -108,6 +110,7 @@ describe('/api/visit-preparations/[scheduleId]/brief', () => {
     expect(scheduleVisitBriefMock).toHaveBeenCalledWith(expect.anything(), {
       orgId: 'org_1',
       patientId: 'patient_1',
+      caseIds: ['case_1'],
     });
     if (!response) throw new Error('response is required');
     await expect(response.json()).resolves.toMatchObject({

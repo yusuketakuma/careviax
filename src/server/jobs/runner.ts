@@ -76,19 +76,32 @@ export async function runJob(
         continue;
       }
 
-      // All retries exhausted — mark as failed
-      await prisma.integrationJob.update({
-        where: { id: job.id },
-        data: {
-          status: 'failed',
-          error_log: `All ${MAX_RETRIES} retries exhausted. Last error: ${errorMessage}`,
-          completed_at: new Date(),
-          locked_at: null,
-          retry_count: attempt + 1,
-        },
-      });
+      // All retries exhausted — mark as failed.
+      // Wrap cleanup in its own try/catch so a transient DB error here cannot
+      // (a) leave the row stuck as 'running' silently while still throwing the
+      // wrong error upstream, nor (b) overwrite the original failure.
+      try {
+        await prisma.integrationJob.update({
+          where: { id: job.id },
+          data: {
+            status: 'failed',
+            error_log: `All ${MAX_RETRIES} retries exhausted. Last error: ${errorMessage}`,
+            completed_at: new Date(),
+            locked_at: null,
+            retry_count: attempt + 1,
+          },
+        });
+      } catch (cleanupError) {
+        const cleanupMsg =
+          cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+        console.error(
+          `[runner] CRITICAL: failed to mark job ${job.id} (${jobType}) as 'failed' after retries exhausted. ` +
+            `Row may remain 'running' and block future runs. Cleanup error: ${cleanupMsg}. Original error: ${errorMessage}`,
+        );
+        // Intentionally NOT overwriting lastError — caller must see the original failure.
+      }
 
-      // Notify admin users about the failure
+      // Notify admin users about the failure (already self-protected internally).
       await notifyAdminsOfJobFailure(jobType, errorMessage, orgId);
     }
   }

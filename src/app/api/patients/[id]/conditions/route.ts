@@ -4,19 +4,21 @@ import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { updatePatientConditionsSchema } from '@/lib/validations/patient';
+import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import type { AuthContext } from '@/lib/auth/context';
 
-async function assertPatient(orgId: string, id: string) {
+async function assertPatient(ctx: AuthContext, id: string) {
   const patient = await prisma.patient.findFirst({
-    where: { id, org_id: orgId },
+    where: applyPatientAssignmentWhere(
+      { id, org_id: ctx.orgId },
+      { userId: ctx.userId, role: ctx.role },
+    ),
     select: { id: true },
   });
   if (!patient) throw new Error('PATIENT_NOT_FOUND');
 }
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者情報の閲覧権限がありません',
@@ -26,7 +28,7 @@ export async function GET(
   const { id } = await params;
 
   try {
-    await assertPatient(ctx.orgId, id);
+    await assertPatient(ctx, id);
   } catch {
     return notFound('患者が見つかりません');
   }
@@ -42,10 +44,7 @@ export async function GET(
   return success({ data: conditions });
 }
 
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者情報の更新権限がありません',
@@ -63,7 +62,7 @@ export async function PUT(
   }
 
   try {
-    await assertPatient(ctx.orgId, id);
+    await assertPatient(ctx, id);
   } catch {
     return notFound('患者が見つかりません');
   }

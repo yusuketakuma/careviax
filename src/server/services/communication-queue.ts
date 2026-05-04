@@ -37,7 +37,11 @@ export type CommunicationTimelineItem = {
 export type CommunicationDraftSuggestion = {
   id: string;
   patient_id: string;
-  template_key: 'missing_emergency_contact' | 'emergency_physician' | 'emergency_nurse' | 'emergency_family';
+  template_key:
+    | 'missing_emergency_contact'
+    | 'emergency_physician'
+    | 'emergency_nurse'
+    | 'emergency_family';
   request_type: string;
   target_name: string | null;
   target_role: string;
@@ -172,7 +176,7 @@ function buildEmergencyDraft(args: {
 
 async function buildEmergencyDrafts(
   db: DbClient,
-  args: { orgId: string; patientId?: string }
+  args: { orgId: string; patientId?: string; caseIds?: string[] },
 ): Promise<CommunicationDraftSuggestion[]> {
   if (!args.patientId) return [];
 
@@ -201,6 +205,14 @@ async function buildEmergencyDrafts(
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
+        ...(args.caseIds === undefined
+          ? {}
+          : {
+              OR: [
+                { case_id: null },
+                ...(args.caseIds.length > 0 ? [{ case_id: { in: args.caseIds } }] : []),
+              ],
+            }),
         status: {
           in: ['open', 'in_progress'],
         },
@@ -235,9 +247,9 @@ async function buildEmergencyDrafts(
   const emergencyContacts = contacts.filter((contact) => contact.is_emergency_contact);
   const physician = contacts.find((contact) => contact.relation === 'physician') ?? null;
   const nurse = contacts.find((contact) => contact.relation === 'nurse') ?? null;
-  const family = emergencyContacts[0] ?? contacts.find((contact) =>
-    ['spouse', 'child', 'parent', 'sibling'].includes(contact.relation)
-  );
+  const family =
+    emergencyContacts[0] ??
+    contacts.find((contact) => ['spouse', 'child', 'parent', 'sibling'].includes(contact.relation));
 
   const summary = buildDraftSignalSummary({
     patientName: patient.name,
@@ -262,7 +274,7 @@ async function buildEmergencyDrafts(
         targetName: physician.name,
         targetRole: 'physician',
         summary,
-      })
+      }),
     );
   }
   if (nurse) {
@@ -275,7 +287,7 @@ async function buildEmergencyDrafts(
         targetName: nurse.name,
         targetRole: 'nurse',
         summary,
-      })
+      }),
     );
   }
   if (family) {
@@ -288,7 +300,7 @@ async function buildEmergencyDrafts(
         targetName: family.name,
         targetRole: 'family',
         summary,
-      })
+      }),
     );
   }
 
@@ -300,12 +312,22 @@ export async function listCommunicationQueue(
   args: {
     orgId: string;
     patientId?: string;
+    caseIds?: string[];
     limit?: number;
-  }
+  },
 ): Promise<CommunicationQueueOverview> {
   const now = new Date();
   const shareWindow = addDays(now, 7);
   const limit = Math.max(args.limit ?? 8, 1);
+  const caseScope =
+    args.caseIds === undefined
+      ? undefined
+      : {
+          OR: [
+            { case_id: null },
+            ...(args.caseIds.length > 0 ? [{ case_id: { in: args.caseIds } }] : []),
+          ],
+        };
 
   const [
     selfReports,
@@ -339,10 +361,19 @@ export async function listCommunicationQueue(
         created_at: true,
       },
     }),
-    db.visitScheduleContactLog.findMany({
+    // VisitScheduleContactLog.case_id is non-null. When the caller passed an
+    // explicit empty caseIds list (i.e. the user has access to no cases),
+    // skip the query — `case_id: { in: [] }` would silently return zero rows
+    // anyway, but the intent is clearer with an explicit fast-path.
+    args.caseIds !== undefined && args.caseIds.length === 0
+      ? Promise.resolve([])
+      : db.visitScheduleContactLog.findMany({
       where: {
         org_id: args.orgId,
         ...(args.patientId ? { patient_id: args.patientId } : {}),
+        // Outer fast-path already returned for empty caseIds; here caseIds is
+        // either undefined (no filter) or has at least one element.
+        ...(args.caseIds ? { case_id: { in: args.caseIds } } : {}),
         OR: [
           {
             callback_due_at: {
@@ -373,6 +404,7 @@ export async function listCommunicationQueue(
       where: {
         org_id: args.orgId,
         ...(args.patientId ? { patient_id: args.patientId } : {}),
+        ...(caseScope ? { AND: [caseScope] } : {}),
         status: {
           in: ['draft', 'sent', 'received', 'in_progress', 'responded', 'escalated', 'closed'],
         },
@@ -401,6 +433,7 @@ export async function listCommunicationQueue(
           ? {
               report: {
                 patient_id: args.patientId,
+                ...(caseScope ? { AND: [caseScope] } : {}),
               },
             }
           : {}),
@@ -448,6 +481,7 @@ export async function listCommunicationQueue(
       where: {
         org_id: args.orgId,
         ...(args.patientId ? { patient_id: args.patientId } : {}),
+        ...(caseScope ? { AND: [caseScope] } : {}),
         status: {
           in: ['sent', 'failed', 'response_waiting', 'confirmed'],
         },
@@ -467,6 +501,7 @@ export async function listCommunicationQueue(
       where: {
         org_id: args.orgId,
         ...(args.patientId ? { patient_id: args.patientId } : {}),
+        ...(caseScope ? { AND: [caseScope] } : {}),
         status: {
           in: ['sent', 'received', 'acknowledged'],
         },
@@ -502,8 +537,8 @@ export async function listCommunicationQueue(
           .map((item) => item.patient_id)
           .filter((value): value is string => Boolean(value)),
         ...tracingReports.map((item) => item.patient_id),
-      ].filter((value): value is string => Boolean(value))
-    )
+      ].filter((value): value is string => Boolean(value)),
+    ),
   );
 
   const patients =
@@ -522,10 +557,10 @@ export async function listCommunicationQueue(
   const patientNameById = new Map(patients.map((patient) => [patient.id, patient.name]));
 
   const actionableRequests = openRequests.filter((request) =>
-    ['draft', 'sent', 'received', 'in_progress', 'escalated'].includes(request.status)
+    ['draft', 'sent', 'received', 'in_progress', 'escalated'].includes(request.status),
   );
   const actionableDeliveries = deliveryRecords.filter((record) =>
-    ['draft', 'failed', 'response_waiting'].includes(record.status)
+    ['draft', 'failed', 'response_waiting'].includes(record.status),
   );
 
   const items: CommunicationQueueItem[] = [
@@ -552,8 +587,9 @@ export async function listCommunicationQueue(
         `${log.contact_name ?? '連絡先'}${log.contact_phone ? ` / ${log.contact_phone}` : ''}`,
       channel: 'phone',
       status: log.outcome,
-      priority:
-        (log.callback_due_at && log.callback_due_at <= now ? 'urgent' : 'high') as QueuePriority,
+      priority: (log.callback_due_at && log.callback_due_at <= now
+        ? 'urgent'
+        : 'high') as QueuePriority,
       patient_id: log.patient_id,
       patient_name: patientNameById.get(log.patient_id) ?? null,
       due_at: isoOrNull(log.callback_due_at ?? log.called_at),
@@ -567,11 +603,12 @@ export async function listCommunicationQueue(
       summary: `多職種連携 ${request.request_type}`,
       channel: 'collaboration',
       status: request.status,
-      priority:
-        (request.due_date && request.due_date <= now ? 'urgent' : 'normal') as QueuePriority,
+      priority: (request.due_date && request.due_date <= now
+        ? 'urgent'
+        : 'normal') as QueuePriority,
       patient_id: request.patient_id ?? null,
       patient_name:
-        request.patient_id != null ? patientNameById.get(request.patient_id) ?? null : null,
+        request.patient_id != null ? (patientNameById.get(request.patient_id) ?? null) : null,
       due_at: isoOrNull(request.due_date ?? request.requested_at),
       action_href: '/communications/requests',
       action_label: '依頼を確認',
@@ -580,15 +617,13 @@ export async function listCommunicationQueue(
       id: `delivery:${record.id}`,
       queue_type: 'delivery' as const,
       title: `${record.report.report_type} の送達確認`,
-      summary:
-        record.failure_reason ??
-        `${record.recipient_name} への送達状況: ${record.status}`,
+      summary: record.failure_reason ?? `${record.recipient_name} への送達状況: ${record.status}`,
       channel: record.channel,
       status: record.status,
       priority: (record.status === 'failed' ? 'urgent' : 'high') as QueuePriority,
       patient_id: record.report.patient_id,
       patient_name: record.report.patient_id
-        ? patientNameById.get(record.report.patient_id) ?? null
+        ? (patientNameById.get(record.report.patient_id) ?? null)
         : null,
       due_at: isoOrNull(record.sent_at ?? record.updated_at),
       action_href: '/reports',
@@ -601,8 +636,7 @@ export async function listCommunicationQueue(
       summary: `${grant.granted_to_name} への共有リンクが未閲覧のまま期限切れ間近です。`,
       channel: 'external_portal',
       status: 'expires_soon',
-      priority:
-        (grant.expires_at <= addDays(now, 2) ? 'high' : 'normal') as QueuePriority,
+      priority: (grant.expires_at <= addDays(now, 2) ? 'high' : 'normal') as QueuePriority,
       patient_id: grant.patient_id,
       patient_name: patientNameById.get(grant.patient_id) ?? null,
       due_at: grant.expires_at.toISOString(),
@@ -653,8 +687,7 @@ export async function listCommunicationQueue(
       patient_id: record.report.patient_id,
       title: `${record.report.report_type} の送達`,
       summary:
-        record.failure_reason ??
-        `${record.recipient_name} / ${record.channel} / ${record.status}`,
+        record.failure_reason ?? `${record.recipient_name} / ${record.channel} / ${record.status}`,
       status: record.status,
       occurred_at: record.confirmed_at ?? record.sent_at ?? record.updated_at,
       action_href: '/reports',
@@ -667,25 +700,26 @@ export async function listCommunicationQueue(
     .slice(0, limit)
     .map((item) => ({
       ...item,
-      patient_name: item.patient_id ? patientNameById.get(item.patient_id) ?? null : null,
+      patient_name: item.patient_id ? (patientNameById.get(item.patient_id) ?? null) : null,
       occurred_at: isoOrNull(item.occurred_at),
     }));
 
   const unconfirmedCount = deliveryRecords.filter((record) => record.status === 'draft').length;
-  const requestDraftCount = actionableRequests.filter((request) => request.status === 'draft').length;
+  const requestDraftCount = actionableRequests.filter(
+    (request) => request.status === 'draft',
+  ).length;
   const replyWaitingCount =
     deliveryRecords.filter((record) => record.status === 'response_waiting').length +
     actionableRequests.filter((request) =>
-      ['received', 'in_progress', 'escalated'].includes(request.status)
+      ['received', 'in_progress', 'escalated'].includes(request.status),
     ).length;
   const failedCount = deliveryRecords.filter((record) => record.status === 'failed').length;
 
   return {
     summary: {
       pending_count: items.length,
-      overdue_count: items.filter(
-        (item) => item.due_at != null && new Date(item.due_at) < now
-      ).length,
+      overdue_count: items.filter((item) => item.due_at != null && new Date(item.due_at) < now)
+        .length,
       self_reports: selfReports.length,
       callback_followups: callbackLogs.length,
       open_requests: actionableRequests.length,

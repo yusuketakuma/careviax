@@ -1104,24 +1104,27 @@ export async function checkConferenceMeetingReminders() {
       if (!isReminderWindow) continue;
 
       const careCase = careCaseById.get(note.case_id);
-      if (!careCase?.primary_pharmacist_id) continue;
+      const primaryPharmacistId = careCase?.primary_pharmacist_id;
+      if (!primaryPharmacistId) continue;
 
-      await dispatchNotificationEvent(prisma, {
-        orgId: note.org_id,
-        eventType: 'conference_next_meeting_due',
-        type: 'reminder',
-        title: '次回担当者会議の予定確認',
-        message: `${careCase.patient.name ?? '患者'} の担当者会議が ${formatDateKey(meetingDate)} に予定されています。`,
-        link: '/conferences',
-        explicitUserIds: [careCase.primary_pharmacist_id],
-        dedupeKey: `conference-next-meeting:${note.id}:${formatDateKey(meetingDate)}`,
-        metadata: {
-          conference_note_id: note.id,
-          case_id: note.case_id,
-          patient_id: careCase.patient_id,
-          next_meeting_date: formatDateKey(meetingDate),
-        } satisfies Prisma.InputJsonValue,
-      });
+      await withOrgContext(note.org_id, async (tx) =>
+        dispatchNotificationEvent(tx, {
+          orgId: note.org_id,
+          eventType: 'conference_next_meeting_due',
+          type: 'reminder',
+          title: '次回担当者会議の予定確認',
+          message: `${careCase.patient.name ?? '患者'} の担当者会議が ${formatDateKey(meetingDate)} に予定されています。`,
+          link: '/conferences',
+          explicitUserIds: [primaryPharmacistId],
+          dedupeKey: `conference-next-meeting:${note.id}:${formatDateKey(meetingDate)}`,
+          metadata: {
+            conference_note_id: note.id,
+            case_id: note.case_id,
+            patient_id: careCase.patient_id,
+            next_meeting_date: formatDateKey(meetingDate),
+          } satisfies Prisma.InputJsonValue,
+        }),
+      );
       processedCount++;
     }
 

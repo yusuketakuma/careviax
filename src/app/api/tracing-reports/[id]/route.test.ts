@@ -5,6 +5,7 @@ const {
   requireAuthContextMock,
   tracingReportFindFirstMock,
   tracingReportUpdateMock,
+  careCaseFindFirstMock,
   communicationRequestFindFirstMock,
   communicationRequestCreateMock,
   communicationRequestUpdateMock,
@@ -14,6 +15,7 @@ const {
   requireAuthContextMock: vi.fn(),
   tracingReportFindFirstMock: vi.fn(),
   tracingReportUpdateMock: vi.fn(),
+  careCaseFindFirstMock: vi.fn(),
   communicationRequestFindFirstMock: vi.fn(),
   communicationRequestCreateMock: vi.fn(),
   communicationRequestUpdateMock: vi.fn(),
@@ -30,6 +32,9 @@ vi.mock('@/lib/db/client', () => ({
     tracingReport: {
       findFirst: tracingReportFindFirstMock,
     },
+    careCase: {
+      findFirst: careCaseFindFirstMock,
+    },
   },
 }));
 
@@ -37,7 +42,7 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-import { PATCH } from './route';
+import { DELETE, PATCH } from './route';
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
   return {
@@ -81,6 +86,7 @@ describe('/api/tracing-reports/[id] PATCH', () => {
       created_at: new Date('2026-03-28T04:00:00.000Z'),
       updated_at: new Date('2026-03-28T05:00:00.000Z'),
     });
+    careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
     communicationRequestFindFirstMock.mockResolvedValue(null);
     communicationRequestCreateMock.mockResolvedValue({ id: 'request_1' });
     communicationRequestUpdateMock.mockResolvedValue({ id: 'request_1' });
@@ -97,17 +103,14 @@ describe('/api/tracing-reports/[id] PATCH', () => {
         communicationEvent: {
           create: communicationEventCreateMock,
         },
-      })
+      }),
     );
   });
 
   it('marks a draft tracing report as sent and creates a linked communication request', async () => {
     const response = await PATCH(
-      createRequest(
-        { status: 'sent', sent_to_physician: '在宅主治医' },
-        { 'x-org-id': 'org_1' }
-      ),
-      { params: Promise.resolve({ id: 'tracing_1' }) }
+      createRequest({ status: 'sent', sent_to_physician: '在宅主治医' }, { 'x-org-id': 'org_1' }),
+      { params: Promise.resolve({ id: 'tracing_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -137,8 +140,25 @@ describe('/api/tracing-reports/[id] PATCH', () => {
           counterpart_name: '在宅主治医',
           channel: 'other', // dynamic; defaults to 'other' when not specified in request body
         }),
-      })
+      }),
     );
+  });
+
+  it('does not update or create side effects when assignment access is denied', async () => {
+    careCaseFindFirstMock.mockResolvedValue(null);
+
+    const response = await PATCH(
+      createRequest({ status: 'sent', sent_to_physician: '在宅主治医' }, { 'x-org-id': 'org_1' }),
+      { params: Promise.resolve({ id: 'tracing_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
   });
 
   it('closes the linked communication request when a tracing report is acknowledged', async () => {
@@ -172,7 +192,7 @@ describe('/api/tracing-reports/[id] PATCH', () => {
 
     const response = await PATCH(
       createRequest({ status: 'acknowledged' }, { 'x-org-id': 'org_1' }),
-      { params: Promise.resolve({ id: 'tracing_1' }) }
+      { params: Promise.resolve({ id: 'tracing_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -185,5 +205,44 @@ describe('/api/tracing-reports/[id] PATCH', () => {
       },
     });
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('/api/tracing-reports/[id] DELETE', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      },
+    });
+    tracingReportFindFirstMock.mockResolvedValue({
+      id: 'tracing_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'draft',
+    });
+    careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        tracingReport: {
+          delete: vi.fn().mockResolvedValue({ id: 'tracing_1' }),
+        },
+      }),
+    );
+  });
+
+  it('does not delete when assignment access is denied', async () => {
+    careCaseFindFirstMock.mockResolvedValue(null);
+
+    const response = await DELETE(createRequest(null, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'tracing_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 });

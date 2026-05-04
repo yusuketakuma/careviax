@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const {
-  requireAuthContextMock,
-  patientFindManyMock,
-} = vi.hoisted(() => ({
-  requireAuthContextMock: vi.fn(),
-  patientFindManyMock: vi.fn(),
-}));
+const { requireAuthContextMock, patientFindManyMock, recordDataExportAuditMock } = vi.hoisted(
+  () => ({
+    requireAuthContextMock: vi.fn(),
+    patientFindManyMock: vi.fn(),
+    recordDataExportAuditMock: vi.fn(),
+  }),
+);
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
@@ -19,6 +19,10 @@ vi.mock('@/lib/db/client', () => ({
       findMany: patientFindManyMock,
     },
   },
+}));
+
+vi.mock('@/server/services/export-audit', () => ({
+  recordDataExportAudit: recordDataExportAuditMock,
 }));
 
 import { GET } from './route';
@@ -55,11 +59,12 @@ describe('/api/patients/export GET', () => {
         cases: [{ status: 'active' }],
       },
     ]);
+    recordDataExportAuditMock.mockResolvedValue(undefined);
   });
 
   it('selects the filtered case status when exporting with case_status', async () => {
     const response = await GET(
-      createRequest('http://localhost/api/patients/export?case_status=active')
+      createRequest('http://localhost/api/patients/export?case_status=active'),
     );
 
     if (!response) throw new Error('response is required');
@@ -67,21 +72,79 @@ describe('/api/patients/export GET', () => {
       expect.objectContaining({
         where: {
           org_id: 'org_1',
-          cases: { some: { status: 'active' } },
+          cases: {
+            some: {
+              AND: [
+                { status: 'active' },
+                {
+                  OR: [
+                    { primary_pharmacist_id: 'user_1' },
+                    { backup_pharmacist_id: 'user_1' },
+                    { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+                  ],
+                },
+              ],
+            },
+          },
         },
         include: expect.objectContaining({
           cases: {
-            where: { status: 'active' },
+            where: {
+              AND: [
+                { status: 'active' },
+                {
+                  OR: [
+                    { primary_pharmacist_id: 'user_1' },
+                    { backup_pharmacist_id: 'user_1' },
+                    { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+                  ],
+                },
+              ],
+            },
             orderBy: { created_at: 'desc' },
             select: { status: true },
             take: 1,
           },
         }),
-      })
+      }),
     );
 
     expect(response.status).toBe(200);
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        targetType: 'patient_list',
+        targetId: 'org_1',
+        format: 'csv',
+        recordCount: 1,
+        filters: expect.objectContaining({
+          case_status: 'active',
+          truncated: false,
+        }),
+      }),
+    );
     const csv = await response.text();
     expect(csv).toContain('active');
+  });
+
+  it('does not add assignment filtering for admin export', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'admin_1',
+        role: 'admin',
+      },
+    });
+
+    const response = await GET(createRequest('http://localhost/api/patients/export'));
+
+    expect(response.status).toBe(200);
+    expect(patientFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+        },
+      }),
+    );
   });
 });

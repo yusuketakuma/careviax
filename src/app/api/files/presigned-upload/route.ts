@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import type { MemberRole } from '@prisma/client';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { error, forbiddenResponse, success, validationError } from '@/lib/api/response';
@@ -74,7 +75,9 @@ async function canAccessPrescriptionPatient(args: {
   orgId: string;
   patientId: string;
   userId: string;
+  role: MemberRole;
 }) {
+  if (canBypassVisitScheduleAssignmentAccess({ role: args.role })) return true;
   const accessibleSchedule = await prisma.visitSchedule.findFirst({
     where: {
       org_id: args.orgId,
@@ -111,6 +114,7 @@ async function canAccessReportFile(args: {
     visit_record_id: string | null;
   };
   userId: string;
+  role: MemberRole;
 }) {
   if (args.report.visit_record_id) {
     const visitRecord = await prisma.visitRecord.findFirst({
@@ -134,7 +138,7 @@ async function canAccessReportFile(args: {
     });
 
     return canAccessVisitScheduleAssignment(
-      { userId: args.userId, role: 'pharmacist' },
+      { userId: args.userId, role: args.role },
       visitRecord?.schedule,
     );
   }
@@ -152,7 +156,7 @@ async function canAccessReportFile(args: {
     });
 
     return canAccessVisitScheduleAssignment(
-      { userId: args.userId, role: 'pharmacist' },
+      { userId: args.userId, role: args.role },
       {
         pharmacist_id: null,
         case_: careCase,
@@ -164,6 +168,7 @@ async function canAccessReportFile(args: {
     orgId: args.orgId,
     patientId: args.report.patient_id,
     userId: args.userId,
+    role: args.role,
   });
 }
 
@@ -208,6 +213,7 @@ export async function POST(req: NextRequest) {
         orgId: ctx.orgId,
         report,
         userId: ctx.userId,
+        role: ctx.role,
       }))
     ) {
       return forbiddenResponse('この報告書へのアップロード権限がありません');
@@ -242,6 +248,7 @@ export async function POST(req: NextRequest) {
         orgId: ctx.orgId,
         patientId,
         userId: ctx.userId,
+        role: ctx.role,
       }))
     ) {
       return forbiddenResponse('この患者への処方箋アップロード権限がありません');

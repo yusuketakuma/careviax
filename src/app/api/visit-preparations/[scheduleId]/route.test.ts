@@ -6,6 +6,8 @@ const {
   membershipFindFirstMock,
   visitScheduleFindFirstMock,
   visitRecordFindFirstMock,
+  visitRecordFindManyMock,
+  medicationCycleFindManyMock,
   taskFindManyMock,
   visitScheduleContactLogFindManyMock,
   peerVisitScheduleFindManyMock,
@@ -25,6 +27,8 @@ const {
   membershipFindFirstMock: vi.fn(),
   visitScheduleFindFirstMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
+  visitRecordFindManyMock: vi.fn(),
+  medicationCycleFindManyMock: vi.fn(),
   taskFindManyMock: vi.fn(),
   visitScheduleContactLogFindManyMock: vi.fn(),
   peerVisitScheduleFindManyMock: vi.fn(),
@@ -56,6 +60,10 @@ vi.mock('@/lib/db/client', () => ({
     },
     visitRecord: {
       findFirst: visitRecordFindFirstMock,
+      findMany: visitRecordFindManyMock,
+    },
+    medicationCycle: {
+      findMany: medicationCycleFindManyMock,
     },
     task: {
       findMany: taskFindManyMock,
@@ -232,6 +240,8 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
       soap_plan: '残薬確認を強化する',
       next_visit_suggestion_date: new Date('2026-04-03T00:00:00Z'),
     });
+    visitRecordFindManyMock.mockResolvedValue([{ id: 'record_1' }]);
+    medicationCycleFindManyMock.mockResolvedValue([{ id: 'cycle_1' }]);
     taskFindManyMock.mockResolvedValue([
       {
         id: 'task_1',
@@ -573,7 +583,32 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
     expect(scheduleVisitBriefMock).toHaveBeenCalledWith(expect.anything(), {
       orgId: 'org_1',
       patientId: 'patient_1',
+      caseIds: ['case_1'],
     });
+    expect(billingEvidenceBlockersMock).toHaveBeenCalledWith(expect.anything(), {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      visitRecordIds: ['record_1'],
+      cycleIds: ['cycle_1'],
+      limit: 4,
+    });
+    expect(prescriptionIntakeFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          cycle: expect.objectContaining({
+            patient_id: 'patient_1',
+            case_id: 'case_1',
+          }),
+        }),
+      }),
+    );
+    expect(conferenceNoteFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [{ case_id: 'case_1' }, { patient_id: 'patient_1', case_id: null }],
+        }),
+      }),
+    );
   });
 
   it('includes intake_context with structured scheduling preference and home_visit_intake fields', async () => {

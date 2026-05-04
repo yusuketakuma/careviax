@@ -11,6 +11,7 @@ export const GET = withAuthContext(
       orgId: ctx.orgId,
       patientId: id,
       role: ctx.role,
+      userId: ctx.userId,
     });
     if (!readiness) return notFound('患者が見つかりません');
 
@@ -19,5 +20,5 @@ export const GET = withAuthContext(
   {
     permission: 'canVisit',
     message: '患者情報の閲覧権限がありません',
-  }
+  },
 );

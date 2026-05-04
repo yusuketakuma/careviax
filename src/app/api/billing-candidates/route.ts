@@ -72,10 +72,13 @@ export const GET = withAuth(
         : null;
 
       const patientIds = [...new Set(candidates.map((c) => c.patient_id))];
-      const patients = await tx.patient.findMany({
-        where: { org_id: req.orgId, id: { in: patientIds } },
-        select: { id: true, name: true },
-      });
+      const patients =
+        patientIds.length === 0
+          ? []
+          : await tx.patient.findMany({
+              where: { org_id: req.orgId, id: { in: patientIds } },
+              select: { id: true, name: true },
+            });
       const patientNameMap = new Map(patients.map((p) => [p.id, p.name]));
 
       return { candidates, summary, patientNameMap };

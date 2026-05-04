@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import type { CaseStatus } from '@prisma/client';
+import {
+  applyPatientAssignmentWhere,
+  buildCareCaseAssignmentWhere,
+} from '@/lib/auth/visit-schedule-access';
+import { recordDataExportAudit } from '@/server/services/export-audit';
 
 const BOM = '\uFEFF';
 
@@ -52,11 +57,32 @@ export async function GET(req: NextRequest) {
       : undefined;
 
   const EXPORT_LIMIT = 10000;
-  const patients = await prisma.patient.findMany({
-    where: {
+  const patientWhere = applyPatientAssignmentWhere(
+    {
       org_id: ctx.orgId,
       ...(caseStatus ? { cases: { some: { status: caseStatus } } } : {}),
     },
+    {
+      userId: ctx.userId,
+      role: ctx.role,
+    },
+  );
+  const caseAssignmentWhere = buildCareCaseAssignmentWhere({
+    userId: ctx.userId,
+    role: ctx.role,
+  });
+  const exportedCaseWhere =
+    caseStatus || caseAssignmentWhere
+      ? {
+          AND: [
+            ...(caseStatus ? [{ status: caseStatus }] : []),
+            ...(caseAssignmentWhere ? [caseAssignmentWhere] : []),
+          ],
+        }
+      : undefined;
+
+  const patients = await prisma.patient.findMany({
+    where: patientWhere,
     take: EXPORT_LIMIT,
     orderBy: [{ name_kana: 'asc' }, { name: 'asc' }],
     include: {
@@ -66,7 +92,7 @@ export async function GET(req: NextRequest) {
         take: 1,
       },
       cases: {
-        ...(caseStatus ? { where: { status: caseStatus } } : {}),
+        ...(exportedCaseWhere ? { where: exportedCaseWhere } : {}),
         orderBy: { created_at: 'desc' },
         select: { status: true },
         take: 1,
@@ -108,6 +134,21 @@ export async function GET(req: NextRequest) {
 
   const csv = BOM + [header, ...rows].join('\r\n') + '\r\n';
   const truncated = patients.length === EXPORT_LIMIT;
+
+  await recordDataExportAudit(prisma, {
+    orgId: ctx.orgId,
+    actorId: ctx.userId,
+    targetType: 'patient_list',
+    targetId: ctx.orgId,
+    format: 'csv',
+    recordCount: rows.length,
+    filters: {
+      case_status: caseStatus ?? null,
+      truncated,
+    },
+    ipAddress: ctx.ipAddress,
+    userAgent: ctx.userAgent,
+  });
 
   return new NextResponse(csv, {
     status: 200,

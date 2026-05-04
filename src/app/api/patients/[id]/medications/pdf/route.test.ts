@@ -40,7 +40,9 @@ import { GET } from './route';
 describe('/api/patients/[id]/medications/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({ ctx: { orgId: 'org_1', userId: 'user_1' } });
+    requireAuthContextMock.mockResolvedValue({
+      ctx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' },
+    });
     pdfResponseMock.mockReturnValue(new Response('pdf', { status: 200 }));
     recordDataExportAuditMock.mockResolvedValue(undefined);
   });
@@ -56,10 +58,30 @@ describe('/api/patients/[id]/medications/pdf', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expect(buildMedicationHistoryPdfMock).toHaveBeenCalledWith('org_1', 'patient_1', {
+      userId: 'user_1',
+      role: 'pharmacist',
+    });
     expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), 'medications.pdf');
     expect(recordDataExportAuditMock).toHaveBeenCalledWith(
       expect.any(Object),
-      expect.objectContaining({ targetType: 'medication_history', format: 'pdf', targetId: 'patient_1' }),
+      expect.objectContaining({
+        targetType: 'medication_history',
+        format: 'pdf',
+        targetId: 'patient_1',
+      }),
     );
+  });
+
+  it('does not audit or render a pdf when the scoped patient lookup fails', async () => {
+    buildMedicationHistoryPdfMock.mockRejectedValue(new Error('患者が見つかりません'));
+
+    const response = (await GET({} as NextRequest, {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(404);
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
 });

@@ -20,6 +20,7 @@ const {
   medicationIssueFindManyMock,
   inquiryRecordFindManyMock,
   prescriptionIntakeFindManyMock,
+  medicationCycleFindManyMock,
   dispenseResultFindManyMock,
   managementPlanFindManyMock,
   userFindManyMock,
@@ -60,6 +61,7 @@ const {
   medicationIssueFindManyMock: vi.fn(),
   inquiryRecordFindManyMock: vi.fn(),
   prescriptionIntakeFindManyMock: vi.fn(),
+  medicationCycleFindManyMock: vi.fn(),
   dispenseResultFindManyMock: vi.fn(),
   managementPlanFindManyMock: vi.fn(),
   userFindManyMock: vi.fn(),
@@ -125,6 +127,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     prescriptionIntake: {
       findMany: prescriptionIntakeFindManyMock,
+    },
+    medicationCycle: {
+      findMany: medicationCycleFindManyMock,
     },
     dispenseResult: {
       findMany: dispenseResultFindManyMock,
@@ -241,6 +246,7 @@ describe('/api/patients/[id]', () => {
     medicationIssueFindManyMock.mockResolvedValue([]);
     inquiryRecordFindManyMock.mockResolvedValue([]);
     prescriptionIntakeFindManyMock.mockResolvedValue([]);
+    medicationCycleFindManyMock.mockResolvedValue([]);
     dispenseResultFindManyMock.mockResolvedValue([]);
     managementPlanFindManyMock.mockResolvedValue([]);
     userFindManyMock.mockResolvedValue([]);
@@ -380,7 +386,23 @@ describe('/api/patients/[id]', () => {
     );
 
     expect(patientFindFirstMock).toHaveBeenCalledWith({
-      where: { id: 'patient_1', org_id: 'corg1234567890123456789012' },
+      where: {
+        id: 'patient_1',
+        org_id: 'corg1234567890123456789012',
+        AND: [
+          {
+            cases: {
+              some: {
+                OR: [
+                  { primary_pharmacist_id: 'user_1' },
+                  { backup_pharmacist_id: 'user_1' },
+                  { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+                ],
+              },
+            },
+          },
+        ],
+      },
       include: expect.objectContaining({
         residences: true,
         contacts: true,
@@ -421,16 +443,38 @@ describe('/api/patients/[id]', () => {
     expect(patientRiskSummaryMock).toHaveBeenCalledWith(expect.anything(), {
       orgId: 'corg1234567890123456789012',
       patientId: 'patient_1',
+      caseIds: [],
     });
     expect(patientHomeCareFeatureSummaryMock).toHaveBeenCalledWith(expect.anything(), {
       orgId: 'corg1234567890123456789012',
       patientId: 'patient_1',
     });
+    expect(communicationQueueMock).toHaveBeenCalledWith(expect.anything(), {
+      orgId: 'corg1234567890123456789012',
+      patientId: 'patient_1',
+      caseIds: [],
+      limit: 6,
+    });
     expect(patientVisitBriefMock).toHaveBeenCalledWith(expect.anything(), {
       orgId: 'corg1234567890123456789012',
       patientId: 'patient_1',
       context: 'patient',
+      caseIds: [],
     });
+  });
+
+  it('does not load related PHI when the scoped patient lookup fails', async () => {
+    patientFindFirstMock.mockResolvedValue(null);
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    expect(response.status).toBe(404);
+    expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+    expect(careReportFindManyMock).not.toHaveBeenCalled();
+    expect(billingEvidenceFindManyMock).not.toHaveBeenCalled();
   });
 
   it('masks insurance and address details for external viewers in the response payload', async () => {
@@ -871,6 +915,11 @@ describe('/api/patients/[id]', () => {
   });
 
   it('includes inquiry history in patient timeline events', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '患者A',
+      cases: [{ id: 'case_1' }],
+    });
     inquiryRecordFindManyMock.mockResolvedValue([
       {
         id: 'inquiry_1',

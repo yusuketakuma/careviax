@@ -36,10 +36,13 @@ export async function GET(
   });
 
   const actorIds = [...new Set(logs.map((log) => log.actor_id))];
-  const users = await prisma.user.findMany({
-    where: { id: { in: actorIds } },
-    select: { id: true, name: true },
-  });
+  const users =
+    actorIds.length === 0
+      ? []
+      : await prisma.user.findMany({
+          where: { id: { in: actorIds } },
+          select: { id: true, name: true },
+        });
   const userMap = new Map(users.map((u) => [u.id, u.name]));
 
   const data = logs.map((log) => ({

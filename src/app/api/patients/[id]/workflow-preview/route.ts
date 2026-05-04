@@ -11,6 +11,7 @@ export const GET = withAuthContext(
       orgId: ctx.orgId,
       patientId: id,
       role: ctx.role,
+      userId: ctx.userId,
     });
     if (!preview) return notFound('患者が見つかりません');
 

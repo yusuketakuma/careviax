@@ -82,6 +82,7 @@ describe('patient detail slice routes', () => {
         orgId: 'org_1',
         patientId: 'patient_1',
         role: 'pharmacist',
+        userId: 'user_1',
       },
     );
     expect(response.status).toBe(200);

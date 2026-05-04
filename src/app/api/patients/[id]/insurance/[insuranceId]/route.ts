@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { z } from 'zod';
+import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 
 const updateInsuranceSchema = z.object({
   insurance_type: z.enum(['medical', 'care', 'public_subsidy']).optional(),
@@ -47,8 +48,22 @@ export async function PUT(
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
+  // Fold the patient-assignment access check into the resource query (single
+  // round-trip). buildCareCaseAssignmentWhere returns null for owner/admin so
+  // the relation filter is unset for privileged roles (bypass).
+  const caseAssignmentWherePut = buildCareCaseAssignmentWhere({
+    userId: ctx.userId,
+    role: ctx.role,
+  });
   const existing = await prisma.patientInsurance.findFirst({
-    where: { id: insuranceId, patient_id: id, org_id: ctx.orgId },
+    where: {
+      id: insuranceId,
+      patient_id: id,
+      org_id: ctx.orgId,
+      ...(caseAssignmentWherePut
+        ? { patient: { cases: { some: caseAssignmentWherePut } } }
+        : {}),
+    },
     select: { id: true },
   });
   if (!existing) return notFound('保険情報が見つかりません');
@@ -86,8 +101,19 @@ export async function DELETE(
 
   const { id, insuranceId } = await params;
 
+  const caseAssignmentWhereDelete = buildCareCaseAssignmentWhere({
+    userId: ctx.userId,
+    role: ctx.role,
+  });
   const existing = await prisma.patientInsurance.findFirst({
-    where: { id: insuranceId, patient_id: id, org_id: ctx.orgId },
+    where: {
+      id: insuranceId,
+      patient_id: id,
+      org_id: ctx.orgId,
+      ...(caseAssignmentWhereDelete
+        ? { patient: { cases: { some: caseAssignmentWhereDelete } } }
+        : {}),
+    },
     select: { id: true },
   });
   if (!existing) return notFound('保険情報が見つかりません');

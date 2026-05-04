@@ -176,7 +176,9 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
   it('PUT returns 400 when request body is not valid JSON', async () => {
     const response = await PUT(
       {
-        json: async () => { throw new Error('invalid json'); },
+        json: async () => {
+          throw new Error('invalid json');
+        },
       } as unknown as NextRequest,
       {
         params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),

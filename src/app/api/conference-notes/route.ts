@@ -125,28 +125,31 @@ export const GET = withAuth(
           records.map((note) => note.case_id).filter((value): value is string => Boolean(value)),
         ),
       );
-      const cases = await tx.careCase.findMany({
-        where: {
-          org_id: req.orgId,
-          id: {
-            in: caseIds,
-          },
-        },
-        select: {
-          id: true,
-          patient_id: true,
-          patient: {
-            select: {
-              name: true,
-              residences: {
-                select: {
-                  facility_id: true,
+      const cases =
+        caseIds.length === 0
+          ? []
+          : await tx.careCase.findMany({
+              where: {
+                org_id: req.orgId,
+                id: {
+                  in: caseIds,
                 },
               },
-            },
-          },
-        },
-      });
+              select: {
+                id: true,
+                patient_id: true,
+                patient: {
+                  select: {
+                    name: true,
+                    residences: {
+                      select: {
+                        facility_id: true,
+                      },
+                    },
+                  },
+                },
+              },
+            });
       const caseById = new Map(cases.map((item) => [item.id, item]));
 
       return records.map((note) => {

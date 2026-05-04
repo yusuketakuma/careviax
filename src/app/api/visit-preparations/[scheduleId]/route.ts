@@ -411,16 +411,105 @@ export async function GET(
   const caseData = schedule.case_;
   const patient = caseData.patient;
 
-  const [
-    previousVisit,
-    openTasks,
-    recentContactLogs,
-    sameDaySchedules,
-    billingEvidence,
-    recentPrescriptionIntakes,
-    firstVisitDoc,
-    recentConferenceNotes,
-  ] = await Promise.all([
+  const [scopedVisitRecords, scopedMedicationCycles] = await Promise.all([
+    prisma.visitRecord.findMany({
+      where: {
+        org_id: ctx.orgId,
+        patient_id: schedule.case_.patient.id,
+        schedule: {
+          case_id: schedule.case_id,
+        },
+      },
+      select: { id: true },
+    }),
+    prisma.medicationCycle.findMany({
+      where: {
+        org_id: ctx.orgId,
+        patient_id: schedule.case_.patient.id,
+        case_id: schedule.case_id,
+      },
+      select: { id: true },
+    }),
+  ]);
+  const scopedVisitRecordIds = scopedVisitRecords.map((item) => item.id);
+  const scopedCycleIds = scopedMedicationCycles.map((item) => item.id);
+
+  const [billingEvidence, recentPrescriptionIntakes, firstVisitDoc, recentConferenceNotes] =
+    await Promise.all([
+      listBillingEvidenceBlockers(prisma, {
+        orgId: ctx.orgId,
+        patientId: schedule.case_.patient.id,
+        visitRecordIds: scopedVisitRecordIds,
+        cycleIds: scopedCycleIds,
+        limit: 4,
+      }),
+      prisma.prescriptionIntake.findMany({
+        where: {
+          org_id: ctx.orgId,
+          cycle: {
+            patient_id: schedule.case_.patient.id,
+            case_id: schedule.case_id,
+          },
+        },
+        orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
+        take: 2,
+        select: {
+          id: true,
+          source_type: true,
+          prescribed_date: true,
+          lines: {
+            orderBy: { line_number: 'asc' },
+            select: {
+              drug_name: true,
+              drug_code: true,
+              dose: true,
+              frequency: true,
+              days: true,
+              start_date: true,
+              end_date: true,
+            },
+          },
+        },
+      }),
+      prisma.firstVisitDocument.findFirst({
+        where: {
+          org_id: ctx.orgId,
+          case_id: schedule.case_id,
+        },
+        orderBy: { created_at: 'desc' },
+        select: {
+          id: true,
+          delivered_at: true,
+          delivered_to: true,
+        },
+      }),
+      prisma.conferenceNote.findMany({
+        where: {
+          org_id: ctx.orgId,
+          note_type: {
+            in: ['pre_discharge', 'service_manager'],
+          },
+          OR: [
+            { case_id: schedule.case_id },
+            { patient_id: schedule.case_.patient.id, case_id: null },
+          ],
+        },
+        orderBy: [{ conference_date: 'desc' }, { updated_at: 'desc' }],
+        take: 4,
+        select: {
+          id: true,
+          note_type: true,
+          title: true,
+          conference_date: true,
+          participants: true,
+          structured_content: true,
+          metadata: true,
+          action_items: true,
+        },
+      }),
+    ]);
+
+  const [previousVisit, openTasks, recentContactLogs, sameDaySchedules] = await Promise.all([
     prisma.visitRecord.findFirst({
       where: {
         org_id: ctx.orgId,
@@ -551,71 +640,6 @@ export async function GET(
           },
         })
       : Promise.resolve([]),
-    listBillingEvidenceBlockers(prisma, {
-      orgId: ctx.orgId,
-      patientId: schedule.case_.patient.id,
-      limit: 4,
-    }),
-    prisma.prescriptionIntake.findMany({
-      where: {
-        org_id: ctx.orgId,
-        cycle: {
-          patient_id: schedule.case_.patient.id,
-        },
-      },
-      orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
-      take: 2,
-      select: {
-        id: true,
-        source_type: true,
-        prescribed_date: true,
-        lines: {
-          orderBy: { line_number: 'asc' },
-          select: {
-            drug_name: true,
-            drug_code: true,
-            dose: true,
-            frequency: true,
-            days: true,
-            start_date: true,
-            end_date: true,
-          },
-        },
-      },
-    }),
-    prisma.firstVisitDocument.findFirst({
-      where: {
-        org_id: ctx.orgId,
-        case_id: schedule.case_id,
-      },
-      orderBy: { created_at: 'desc' },
-      select: {
-        id: true,
-        delivered_at: true,
-        delivered_to: true,
-      },
-    }),
-    prisma.conferenceNote.findMany({
-      where: {
-        org_id: ctx.orgId,
-        note_type: {
-          in: ['pre_discharge', 'service_manager'],
-        },
-        OR: [{ case_id: schedule.case_id }, { patient_id: schedule.case_.patient.id }],
-      },
-      orderBy: [{ conference_date: 'desc' }, { updated_at: 'desc' }],
-      take: 4,
-      select: {
-        id: true,
-        note_type: true,
-        title: true,
-        conference_date: true,
-        participants: true,
-        structured_content: true,
-        metadata: true,
-        action_items: true,
-      },
-    }),
   ]);
 
   const onboarding_readiness = {
@@ -682,6 +706,7 @@ export async function GET(
   const visitBrief = await getScheduleVisitBrief(prisma, {
     orgId: ctx.orgId,
     patientId: schedule.case_.patient.id,
+    caseIds: [schedule.case_id],
   });
   const latestIntake = recentPrescriptionIntakes[0] ?? null;
   const previousIntake = recentPrescriptionIntakes[1] ?? null;

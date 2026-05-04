@@ -44,7 +44,7 @@ describe('/api/patients/[id]/packaging', () => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue({
       ctx: { orgId: 'org_1', userId: 'user_1', role: 'admin' },
-      rateLimit: { allowed: true, remaining: 10, resetAt: Date.now() + 1000 },
+      rateLimit: { allowed: true, remaining: 10, resetAt: Number.MAX_SAFE_INTEGER },
     });
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
   });

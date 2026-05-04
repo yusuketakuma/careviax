@@ -5,11 +5,9 @@ import { withOrgContext } from '@/lib/db/rls';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { buildPackagingInstructions } from '@/lib/prescription/packaging';
 import { patientPackagingProfileSchema } from '@/lib/validations/patient-packaging';
+import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者配薬設定の閲覧権限がありません',
@@ -19,7 +17,10 @@ export async function GET(
 
   const { id } = await params;
   const patient = await prisma.patient.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: applyPatientAssignmentWhere(
+      { id, org_id: ctx.orgId },
+      { userId: ctx.userId, role: ctx.role },
+    ),
     select: {
       id: true,
       packaging_profile: {
@@ -49,10 +50,7 @@ export async function GET(
   });
 }
 
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者配薬設定の更新権限がありません',
@@ -70,7 +68,10 @@ export async function PUT(
 
   const { id } = await params;
   const patient = await prisma.patient.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: applyPatientAssignmentWhere(
+      { id, org_id: ctx.orgId },
+      { userId: ctx.userId, role: ctx.role },
+    ),
     select: { id: true },
   });
   if (!patient) return notFound('患者が見つかりません');

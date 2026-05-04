@@ -40,7 +40,9 @@ import { GET } from './route';
 describe('/api/care-reports/[id]/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({ ctx: { orgId: 'org_1', userId: 'user_1' } });
+    requireAuthContextMock.mockResolvedValue({
+      ctx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' },
+    });
     pdfResponseMock.mockReturnValue(new Response('pdf', { status: 200 }));
     recordDataExportAuditMock.mockResolvedValue(undefined);
   });
@@ -56,6 +58,10 @@ describe('/api/care-reports/[id]/pdf', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expect(buildCareReportPdfMock).toHaveBeenCalledWith('org_1', 'report_1', {
+      userId: 'user_1',
+      role: 'pharmacist',
+    });
     expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), 'care-report.pdf');
     expect(recordDataExportAuditMock).toHaveBeenCalledWith(
       expect.any(Object),
@@ -71,5 +77,7 @@ describe('/api/care-reports/[id]/pdf', () => {
     }))!;
 
     expect(response.status).toBe(404);
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
 });

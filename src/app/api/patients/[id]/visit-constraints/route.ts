@@ -4,15 +4,13 @@ import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { upsertVisitConstraintsSchema } from '@/lib/validations/visit-constraints';
+import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 
 function toTimeValue(value?: string) {
   return value ? new Date(`1970-01-01T${value}`) : null;
 }
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問条件の閲覧権限がありません',
@@ -22,10 +20,10 @@ export async function GET(
 
   const { id } = await params;
   const patient = await prisma.patient.findFirst({
-    where: {
-      id,
-      org_id: ctx.orgId,
-    },
+    where: applyPatientAssignmentWhere(
+      { id, org_id: ctx.orgId },
+      { userId: ctx.userId, role: ctx.role },
+    ),
     select: {
       id: true,
       scheduling_preference: true,
@@ -45,10 +43,7 @@ export async function GET(
   });
 }
 
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問条件の更新権限がありません',
@@ -66,10 +61,10 @@ export async function PUT(
 
   const { id } = await params;
   const patient = await prisma.patient.findFirst({
-    where: {
-      id,
-      org_id: ctx.orgId,
-    },
+    where: applyPatientAssignmentWhere(
+      { id, org_id: ctx.orgId },
+      { userId: ctx.userId, role: ctx.role },
+    ),
     select: {
       id: true,
       residences: {
@@ -124,12 +119,8 @@ export async function PUT(
           id: patient.residences[0].id,
         },
         data: {
-          ...(parsed.data.residence_lat !== undefined
-            ? { lat: parsed.data.residence_lat }
-            : {}),
-          ...(parsed.data.residence_lng !== undefined
-            ? { lng: parsed.data.residence_lng }
-            : {}),
+          ...(parsed.data.residence_lat !== undefined ? { lat: parsed.data.residence_lat } : {}),
+          ...(parsed.data.residence_lng !== undefined ? { lng: parsed.data.residence_lng } : {}),
           ...(parsed.data.geocode_status !== undefined
             ? { geocode_status: parsed.data.geocode_status ?? null }
             : {}),

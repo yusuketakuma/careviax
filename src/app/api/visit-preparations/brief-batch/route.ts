@@ -4,7 +4,7 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
 import { forbiddenResponse, notFound, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
-import { getScheduleVisitBriefsForPatients } from '@/server/services/visit-brief';
+import { getScheduleVisitBriefsForSchedules } from '@/server/services/visit-brief';
 import type { VisitBrief } from '@/types/visit-brief';
 
 const briefBatchSchema = z.object({
@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
     },
     select: {
       id: true,
+      case_id: true,
       pharmacist_id: true,
       case_: {
         select: {
@@ -57,14 +58,18 @@ export async function POST(req: NextRequest) {
     return forbiddenResponse('この訪問予定の要約を閲覧する権限がありません');
   }
 
-  const briefsByPatientId = await getScheduleVisitBriefsForPatients(prisma, {
-    orgId: ctx.orgId,
-    patientIds: schedules.map((schedule) => schedule.case_.patient_id),
+  const briefsByScheduleId = await getScheduleVisitBriefsForSchedules(prisma, {
+    schedules: schedules.map((schedule) => ({
+      scheduleId: schedule.id,
+      orgId: ctx.orgId,
+      patientId: schedule.case_.patient_id,
+      caseId: schedule.case_id,
+    })),
   });
 
   const data: Record<string, VisitBrief> = {};
   for (const schedule of schedules) {
-    const brief = briefsByPatientId.get(schedule.case_.patient_id);
+    const brief = briefsByScheduleId.get(schedule.id);
     if (!brief) return notFound('患者が見つかりません');
     data[schedule.id] = brief;
   }

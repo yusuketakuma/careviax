@@ -5,6 +5,7 @@ const {
   withAuthMock,
   patientFindManyMock,
   patientCreateMock,
+  careCaseFindManyMock,
   facilityFindManyMock,
   userFindManyMock,
   firstVisitDocumentFindManyMock,
@@ -24,6 +25,7 @@ const {
   withAuthMock: vi.fn(),
   patientFindManyMock: vi.fn(),
   patientCreateMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
   facilityFindManyMock: vi.fn(),
   userFindManyMock: vi.fn(),
   firstVisitDocumentFindManyMock: vi.fn(),
@@ -57,6 +59,9 @@ vi.mock('@/lib/db/client', () => ({
     patient: {
       findMany: patientFindManyMock,
       create: patientCreateMock,
+    },
+    careCase: {
+      findMany: careCaseFindManyMock,
     },
     facility: {
       findMany: facilityFindManyMock,
@@ -139,6 +144,11 @@ describe('/api/patients GET', () => {
       }),
     );
     firstVisitDocumentFindManyMock.mockResolvedValue([{ case_id: 'case_1' }]);
+    careCaseFindManyMock.mockResolvedValue([
+      { id: 'case_1', patient_id: 'patient_1' },
+      { id: 'case_1b', patient_id: 'patient_1' },
+      { id: 'case_2', patient_id: 'patient_2' },
+    ]);
     patientFindManyMock.mockResolvedValue([
       {
         id: 'patient_1',
@@ -289,6 +299,19 @@ describe('/api/patients GET', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           org_id: 'org_1',
+          AND: [
+            {
+              cases: {
+                some: {
+                  OR: [
+                    { primary_pharmacist_id: 'user_1' },
+                    { backup_pharmacist_id: 'user_1' },
+                    { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+                  ],
+                },
+              },
+            },
+          ],
         }),
       }),
     );
@@ -297,9 +320,14 @@ describe('/api/patients GET', () => {
       expect.objectContaining({
         orgId: 'org_1',
         patientIds: ['patient_1', 'patient_2'],
+        caseIdsByPatient: {
+          patient_1: ['case_1', 'case_1b'],
+          patient_2: ['case_2'],
+        },
         includeStable: true,
       }),
     );
+    expect(String(queryRawMock.mock.calls[0]?.[0])).toContain('INNER JOIN "CareCase"');
 
     const payload = (await response.json()) as {
       data: Array<{

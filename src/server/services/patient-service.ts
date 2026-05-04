@@ -21,6 +21,11 @@ import { withOrgContext } from '@/lib/db/rls';
 import { createPatientSchema } from '@/lib/validations/patient';
 import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
 import type { z } from 'zod';
+import {
+  applyPatientAssignmentWhere,
+  buildCareCaseAssignmentWhere,
+  type VisitScheduleAccessContext,
+} from '@/lib/auth/visit-schedule-access';
 
 export type PatientListFilters = {
   q?: string;
@@ -47,7 +52,9 @@ export type PatientListFilters = {
     | 'missing_first_visit_doc';
 };
 
-function buildPatientSelect(referenceDate: Date) {
+function buildPatientSelect(referenceDate: Date, accessContext?: VisitScheduleAccessContext) {
+  const caseAssignmentWhere = accessContext ? buildCareCaseAssignmentWhere(accessContext) : null;
+
   return {
     id: true,
     name: true,
@@ -91,6 +98,7 @@ function buildPatientSelect(referenceDate: Date) {
       },
     },
     cases: {
+      ...(caseAssignmentWhere ? { where: caseAssignmentWhere } : {}),
       select: {
         id: true,
         status: true,
@@ -331,13 +339,33 @@ async function enrichPatientBatch(args: {
   orgId: string;
   role: MemberRole | string;
   patients: PatientRow[];
+  accessContext?: VisitScheduleAccessContext;
 }) {
-  const { prisma, orgId, role, patients } = args;
+  const { prisma, orgId, role, patients, accessContext } = args;
   if (patients.length === 0) {
     return [] as MappedPatientListItem[];
   }
 
   const patientIds = patients.map((patient) => patient.id);
+  const caseAssignmentWhere = accessContext ? buildCareCaseAssignmentWhere(accessContext) : null;
+  const assignedCareCases = await prisma.careCase.findMany({
+    where: {
+      org_id: orgId,
+      patient_id: { in: patientIds },
+      ...(caseAssignmentWhere ? { AND: [caseAssignmentWhere] } : {}),
+    },
+    select: {
+      id: true,
+      patient_id: true,
+    },
+  });
+  const assignedCaseIdsByPatient = Object.fromEntries(
+    patientIds.map((patientId) => [patientId, [] as string[]]),
+  );
+  for (const careCase of assignedCareCases) {
+    assignedCaseIdsByPatient[careCase.patient_id]?.push(careCase.id);
+  }
+  const assignedCaseIds = Array.from(new Set(assignedCareCases.map((careCase) => careCase.id)));
   const latestCaseIds = Array.from(
     new Set(
       patients
@@ -358,16 +386,26 @@ async function enrichPatientBatch(args: {
       listPatientRiskSummaries(prisma, {
         orgId,
         patientIds,
+        caseIdsByPatient: assignedCaseIdsByPatient,
         includeStable: true,
       }),
       batchResolveNames(prisma, orgId, primaryPharmacistIds),
-      prisma.$queryRaw<VisitRecord[]>`
-        SELECT DISTINCT ON (patient_id) id, patient_id, visit_date, outcome_status, created_at
-        FROM "VisitRecord"
-        WHERE org_id = ${orgId}
-          AND patient_id = ANY(${patientIds}::text[])
-        ORDER BY patient_id, visit_date DESC, created_at DESC
-      `,
+      assignedCaseIds.length === 0
+        ? Promise.resolve([])
+        : prisma.$queryRaw<VisitRecord[]>`
+            SELECT DISTINCT ON (vr.patient_id)
+              vr.id, vr.patient_id, vr.visit_date, vr.outcome_status, vr.created_at
+            FROM "VisitRecord" vr
+            INNER JOIN "VisitSchedule" vs ON vs.id = vr.schedule_id
+            INNER JOIN "CareCase" cc
+              ON cc.id = vs.case_id
+             AND cc.patient_id = vr.patient_id
+             AND cc.org_id = ${orgId}
+            WHERE vr.org_id = ${orgId}
+              AND vr.patient_id = ANY(${patientIds}::text[])
+              AND cc.id = ANY(${assignedCaseIds}::text[])
+            ORDER BY vr.patient_id, vr.visit_date DESC, vr.created_at DESC
+          `,
       latestCaseIds.length === 0
         ? Promise.resolve([])
         : prisma.$queryRaw<VisitSchedule[]>`
@@ -440,6 +478,7 @@ async function collectFilteredPatients(args: {
   referenceDate: Date;
   batchSize: number;
   startCursor?: string;
+  accessContext?: VisitScheduleAccessContext;
 }) {
   const filtered: MappedPatientListItem[] = [];
   let batchCursor = args.startCursor;
@@ -451,7 +490,7 @@ async function collectFilteredPatients(args: {
       orderBy: args.orderBy,
       take: args.batchSize + 1,
       ...(batchCursor ? { cursor: { id: batchCursor }, skip: 1 } : {}),
-      select: buildPatientSelect(args.referenceDate),
+      select: buildPatientSelect(args.referenceDate, args.accessContext),
     });
     if (rows.length === 0) {
       break;
@@ -466,6 +505,7 @@ async function collectFilteredPatients(args: {
       orgId: args.orgId,
       role: args.role,
       patients: pageRows,
+      accessContext: args.accessContext,
     });
 
     filtered.push(
@@ -481,10 +521,12 @@ export async function listPatients(
   orgId: string,
   role: MemberRole | string,
   filters: PatientListFilters,
+  accessContext?: VisitScheduleAccessContext,
 ) {
   const limit = filters.limit ?? 50;
   const referenceDate = new Date();
-  const where = buildDbWhere(orgId, filters);
+  const baseWhere = buildDbWhere(orgId, filters);
+  const where = accessContext ? applyPatientAssignmentWhere(baseWhere, accessContext) : baseWhere;
   const orderBy = buildPatientOrderBy(filters);
   const batchSize = Math.min(Math.max(limit * 3, 100), 250);
   const filtered = await collectFilteredPatients({
@@ -497,6 +539,7 @@ export async function listPatients(
     referenceDate,
     batchSize,
     startCursor: filters.cursor,
+    accessContext,
   });
   const summarySource = filters.cursor
     ? await collectFilteredPatients({
@@ -508,6 +551,7 @@ export async function listPatients(
         orderBy,
         referenceDate,
         batchSize,
+        accessContext,
       })
     : filtered;
   const summary = buildPatientListSummary(summarySource);

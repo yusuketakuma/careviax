@@ -8,10 +8,7 @@ import { buildConferenceNotePdf } from '@/server/services/pdf-documents';
 
 export const runtime = 'nodejs';
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canReport',
     message: 'カンファレンス記録 PDF の閲覧権限がありません',
@@ -21,7 +18,10 @@ export async function GET(
   const { id } = await params;
 
   try {
-    const rendered = await buildConferenceNotePdf(authResult.ctx.orgId, id);
+    const rendered = await buildConferenceNotePdf(authResult.ctx.orgId, id, {
+      userId: authResult.ctx.userId,
+      role: authResult.ctx.role,
+    });
     await recordDataExportAudit(prisma, {
       orgId: authResult.ctx.orgId,
       actorId: authResult.ctx.userId,

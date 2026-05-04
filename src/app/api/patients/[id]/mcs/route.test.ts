@@ -6,7 +6,7 @@ const { requireAuthContextMock, patientFindFirstMock, getPatientMcsOverviewMock 
     requireAuthContextMock: vi.fn(),
     patientFindFirstMock: vi.fn(),
     getPatientMcsOverviewMock: vi.fn(),
-  })
+  }),
 );
 
 vi.mock('@/lib/auth/context', () => ({
@@ -114,7 +114,11 @@ describe('/api/patients/[id]/mcs GET', () => {
 
     expect(response.status).toBe(200);
     expect(patientFindFirstMock).toHaveBeenCalledWith({
-      where: { id: 'patient_1', org_id: 'org_1' },
+      where: expect.objectContaining({
+        id: 'patient_1',
+        org_id: 'org_1',
+        AND: expect.any(Array),
+      }),
       select: { id: true, name: true },
     });
     expect(getPatientMcsOverviewMock).toHaveBeenCalledWith({
@@ -156,7 +160,7 @@ describe('/api/patients/[id]/mcs GET', () => {
       } as NextRequest,
       {
         params: Promise.resolve({ id: 'patient_1' }),
-      }
+      },
     );
     if (!response) {
       throw new Error('response was not returned');
@@ -194,7 +198,7 @@ describe('/api/patients/[id]/mcs GET', () => {
       } as NextRequest,
       {
         params: Promise.resolve({ id: 'patient_1' }),
-      }
+      },
     );
     if (!response) {
       throw new Error('response was not returned');

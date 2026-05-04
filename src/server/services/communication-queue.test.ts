@@ -97,9 +97,7 @@ describe('listCommunicationQueue', () => {
         created_at: new Date('2026-04-01T08:00:00Z'),
       },
     ]);
-    patientFindManyMock.mockResolvedValue([
-      { id: 'p-1', name: '田中太郎' },
-    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'p-1', name: '田中太郎' }]);
 
     const result = await listCommunicationQueue(makeDb(), {
       orgId: 'org-1',
@@ -127,9 +125,7 @@ describe('listCommunicationQueue', () => {
         requested_at: new Date('2026-04-01'),
       },
     ]);
-    patientFindManyMock.mockResolvedValue([
-      { id: 'p-1', name: '佐藤花子' },
-    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'p-1', name: '佐藤花子' }]);
 
     const result = await listCommunicationQueue(makeDb(), {
       orgId: 'org-1',
@@ -137,6 +133,76 @@ describe('listCommunicationQueue', () => {
 
     expect(result.summary.open_requests).toBe(1);
     expect(result.items.some((i) => i.queue_type === 'request')).toBe(true);
+  });
+
+  it('scopes case-backed communication records when caseIds are provided', async () => {
+    emptyDbMocks();
+    patientFindFirstMock.mockResolvedValue({
+      id: 'p-1',
+      name: '患者A',
+      contacts: [],
+    });
+
+    await listCommunicationQueue(makeDb(), {
+      orgId: 'org-1',
+      patientId: 'p-1',
+      caseIds: ['case-1'],
+      limit: 3,
+    });
+
+    const caseScope = {
+      OR: [{ case_id: null }, { case_id: { in: ['case-1'] } }],
+    };
+    expect(communicationRequestFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: 'p-1',
+          AND: [caseScope],
+        }),
+      }),
+    );
+    expect(contactLogFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: 'p-1',
+          case_id: { in: ['case-1'] },
+        }),
+      }),
+    );
+    expect(deliveryRecordFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          report: expect.objectContaining({
+            patient_id: 'p-1',
+            AND: [caseScope],
+          }),
+        }),
+      }),
+    );
+    expect(careReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: 'p-1',
+          AND: [caseScope],
+        }),
+      }),
+    );
+    expect(tracingReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: 'p-1',
+          AND: [caseScope],
+        }),
+      }),
+    );
+    expect(medicationIssueFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: 'p-1',
+          OR: [{ case_id: null }, { case_id: { in: ['case-1'] } }],
+        }),
+      }),
+    );
   });
 
   it('builds emergency drafts when patientId is provided and patient has contacts', async () => {
@@ -181,7 +247,7 @@ describe('listCommunicationQueue', () => {
     });
 
     const gapDraft = result.emergency_drafts.find(
-      (d) => d.template_key === 'missing_emergency_contact'
+      (d) => d.template_key === 'missing_emergency_contact',
     );
     expect(gapDraft).toBeDefined();
     expect(gapDraft!.title).toContain('緊急連絡先');
@@ -200,13 +266,13 @@ describe('listCommunicationQueue', () => {
         reported_by_name: '報告者',
         status: 'submitted',
         created_at: new Date(),
-      }))
+      })),
     );
     patientFindManyMock.mockResolvedValue(
       Array.from({ length: 5 }, (_, i) => ({
         id: `p-${i}`,
         name: `患者${i}`,
-      }))
+      })),
     );
 
     const result = await listCommunicationQueue(makeDb(), {

@@ -108,6 +108,25 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
     });
   });
 
+  it('returns 404 when patient is not found or not assigned', async () => {
+    patientFindFirstMock.mockResolvedValue(null);
+
+    const response = await POST(
+      createRequest({
+        source_url: 'https://www.medical-care.net/patients/2463520',
+      }),
+      {
+        params: Promise.resolve({ id: 'patient_unknown' }),
+      }
+    );
+    if (!response) {
+      throw new Error('response was not returned');
+    }
+
+    expect(response.status).toBe(404);
+    expect(syncPatientMcsTimelineMock).not.toHaveBeenCalled();
+  });
+
   it('rejects users without sensitive patient access', async () => {
     requireAuthContextMock.mockResolvedValue({
       ctx: { orgId: 'org_1', userId: 'user_1', role: 'clerk' },

@@ -5,7 +5,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { updatePatientSchema, type UpdatePatientInput } from '@/lib/validations/patient';
 import { prisma } from '@/lib/db/client';
-import { Prisma } from '@prisma/client';
+import { Prisma, type MemberRole } from '@prisma/client';
 import {
   assertFacilityReference,
   assertFacilityUnitReference,
@@ -35,6 +35,10 @@ import {
   VISIT_OUTCOME_LABELS,
 } from '@/lib/constants/status-labels';
 import { getHomeVisitIntake, type HomeVisitIntake } from '@/lib/patient/home-visit-intake';
+import {
+  applyPatientAssignmentWhere,
+  buildCareCaseAssignmentWhere,
+} from '@/lib/auth/visit-schedule-access';
 
 type FirstVisitDocumentContact = {
   id?: string;
@@ -140,6 +144,63 @@ const OPEN_CASE_STATUSES = ['referral_received', 'assessment', 'active', 'on_hol
 
 type PatientRequesterPatch = NonNullable<UpdatePatientInput['requester']>;
 type PatientIntakePatch = NonNullable<UpdatePatientInput['intake']>;
+
+function buildAssignedCareCaseWhere(ctx: {
+  userId: string;
+  role: MemberRole;
+}): Prisma.CareCaseWhereInput | undefined {
+  return buildCareCaseAssignmentWhere({ userId: ctx.userId, role: ctx.role }) ?? undefined;
+}
+
+function buildVisitRecordCaseScope(caseIds: string[]): Prisma.VisitRecordWhereInput {
+  return {
+    schedule: {
+      case_id: { in: caseIds },
+    },
+  };
+}
+
+function buildCareReportCaseScope(caseIds: string[]): Prisma.CareReportWhereInput {
+  return {
+    OR: [{ case_id: { in: caseIds } }, { case_id: null }],
+  };
+}
+
+function buildNullableCaseScope(caseIds: string[]) {
+  return {
+    OR: [{ case_id: null }, { case_id: { in: caseIds } }],
+  };
+}
+
+async function listBillingCaseRefs(args: { orgId: string; patientId: string; caseIds: string[] }) {
+  if (args.caseIds.length === 0) {
+    return { visitRecordIds: [] as string[], cycleIds: [] as string[] };
+  }
+
+  const [visitRecords, cycles] = await Promise.all([
+    prisma.visitRecord.findMany({
+      where: {
+        org_id: args.orgId,
+        patient_id: args.patientId,
+        ...buildVisitRecordCaseScope(args.caseIds),
+      },
+      select: { id: true },
+    }),
+    prisma.medicationCycle.findMany({
+      where: {
+        org_id: args.orgId,
+        patient_id: args.patientId,
+        case_id: { in: args.caseIds },
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  return {
+    visitRecordIds: visitRecords.map((item) => item.id),
+    cycleIds: cycles.map((item) => item.id),
+  };
+}
 
 function hasOwnKey<T extends object>(value: T, key: PropertyKey): boolean {
   return Object.prototype.hasOwnProperty.call(value, key);
@@ -548,12 +609,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const ctx = authResult.ctx;
 
   const { id } = await params;
+  const assignedCareCaseWhere = buildAssignedCareCaseWhere(ctx);
 
   const patient = await prisma.patient.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: applyPatientAssignmentWhere(
+      { id, org_id: ctx.orgId },
+      { userId: ctx.userId, role: ctx.role },
+    ),
     include: {
       residences: true,
       cases: {
+        ...(assignedCareCaseWhere ? { where: assignedCareCaseWhere } : {}),
         orderBy: { created_at: 'desc' },
         include: {
           care_team_links: true,
@@ -570,6 +636,24 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!patient) return notFound('患者が見つかりません');
 
   const caseIds = (patient.cases ?? []).map((item) => item.id);
+  const billingRefs = await listBillingCaseRefs({
+    orgId: ctx.orgId,
+    patientId: id,
+    caseIds,
+  });
+  const billingEvidenceScope =
+    billingRefs.visitRecordIds.length === 0 && billingRefs.cycleIds.length === 0
+      ? { id: { in: [] } }
+      : {
+          OR: [
+            { visit_record_id: { in: billingRefs.visitRecordIds } },
+            { cycle_id: { in: billingRefs.cycleIds } },
+          ],
+        };
+  const billingCandidateScope =
+    billingRefs.cycleIds.length === 0
+      ? { id: { in: [] } }
+      : { cycle_id: { in: billingRefs.cycleIds } };
   const currentMonthStart = new Date();
   currentMonthStart.setHours(0, 0, 0, 0);
   currentMonthStart.setDate(1);
@@ -673,6 +757,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           where: {
             org_id: ctx.orgId,
             patient_id: id,
+            ...buildVisitRecordCaseScope(caseIds),
           },
           orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }],
           take: 12,
@@ -693,6 +778,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       where: {
         org_id: ctx.orgId,
         patient_id: id,
+        ...buildCareReportCaseScope(caseIds),
       },
       orderBy: [{ created_at: 'desc' }],
       take: 8,
@@ -721,6 +807,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       where: {
         org_id: ctx.orgId,
         patient_id: id,
+        ...buildNullableCaseScope(caseIds),
       },
       orderBy: [{ occurred_at: 'desc' }],
       take: 8,
@@ -813,6 +900,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       where: {
         org_id: ctx.orgId,
         patient_id: id,
+        OR: [{ case_id: { in: caseIds } }, { case_id: null }],
         status: {
           in: ['open', 'in_progress'],
         },
@@ -829,109 +917,118 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         identified_at: true,
       },
     }),
-    prisma.inquiryRecord.findMany({
-      where: {
-        org_id: ctx.orgId,
-        cycle: {
-          patient_id: id,
-        },
-      },
-      orderBy: [{ resolved_at: 'desc' }, { inquired_at: 'desc' }, { created_at: 'desc' }],
-      take: 8,
-      select: {
-        id: true,
-        reason: true,
-        inquiry_to_physician: true,
-        inquiry_content: true,
-        result: true,
-        proposal_origin: true,
-        residual_adjustment: true,
-        change_detail: true,
-        inquired_at: true,
-        resolved_at: true,
-        created_at: true,
-        line: {
+    caseIds.length === 0
+      ? Promise.resolve([])
+      : prisma.inquiryRecord.findMany({
+          where: {
+            org_id: ctx.orgId,
+            cycle: {
+              patient_id: id,
+              case_id: { in: caseIds },
+            },
+          },
+          orderBy: [{ resolved_at: 'desc' }, { inquired_at: 'desc' }, { created_at: 'desc' }],
+          take: 8,
           select: {
-            intake: {
+            id: true,
+            reason: true,
+            inquiry_to_physician: true,
+            inquiry_content: true,
+            result: true,
+            proposal_origin: true,
+            residual_adjustment: true,
+            change_detail: true,
+            inquired_at: true,
+            resolved_at: true,
+            created_at: true,
+            line: {
               select: {
-                id: true,
+                intake: {
+                  select: {
+                    id: true,
+                  },
+                },
               },
             },
           },
-        },
-      },
-    }),
-    prisma.prescriptionIntake.findMany({
-      where: {
-        org_id: ctx.orgId,
-        cycle: {
-          patient_id: id,
-        },
-      },
-      orderBy: [{ created_at: 'desc' }],
-      take: 10,
-      select: {
-        id: true,
-        source_type: true,
-        prescribed_date: true,
-        prescriber_name: true,
-        prescriber_institution: true,
-        original_collected_by: true,
-        created_at: true,
-        cycle: {
-          select: {
-            overall_status: true,
-          },
-        },
-        lines: {
-          take: 3,
-          select: {
-            id: true,
-          },
-        },
-      },
-    }),
-    prisma.dispenseResult.findMany({
-      where: {
-        org_id: ctx.orgId,
-        line: {
-          intake: {
+        }),
+    caseIds.length === 0
+      ? Promise.resolve([])
+      : prisma.prescriptionIntake.findMany({
+          where: {
+            org_id: ctx.orgId,
             cycle: {
               patient_id: id,
+              case_id: { in: caseIds },
             },
           },
-        },
-      },
-      orderBy: [{ dispensed_at: 'desc' }],
-      take: 12,
-      select: {
-        id: true,
-        actual_drug_name: true,
-        actual_quantity: true,
-        actual_unit: true,
-        carry_type: true,
-        dispensed_by: true,
-        dispensed_at: true,
-        task: {
+          orderBy: [{ created_at: 'desc' }],
+          take: 10,
           select: {
+            id: true,
+            source_type: true,
+            prescribed_date: true,
+            prescriber_name: true,
+            prescriber_institution: true,
+            original_collected_by: true,
+            created_at: true,
             cycle: {
               select: {
                 overall_status: true,
               },
             },
-          },
-        },
-        line: {
-          select: {
-            intake: {
+            lines: {
+              take: 3,
               select: {
                 id: true,
               },
             },
           },
-        },
-      },
-    }),
+        }),
+    caseIds.length === 0
+      ? Promise.resolve([])
+      : prisma.dispenseResult.findMany({
+          where: {
+            org_id: ctx.orgId,
+            line: {
+              intake: {
+                cycle: {
+                  patient_id: id,
+                  case_id: { in: caseIds },
+                },
+              },
+            },
+          },
+          orderBy: [{ dispensed_at: 'desc' }],
+          take: 12,
+          select: {
+            id: true,
+            actual_drug_name: true,
+            actual_quantity: true,
+            actual_unit: true,
+            carry_type: true,
+            dispensed_by: true,
+            dispensed_at: true,
+            task: {
+              select: {
+                cycle: {
+                  select: {
+                    overall_status: true,
+                  },
+                },
+              },
+            },
+            line: {
+              select: {
+                intake: {
+                  select: {
+                    id: true,
+                  },
+                },
+              },
+            },
+          },
+        }),
     caseIds.length === 0
       ? Promise.resolve([])
       : prisma.managementPlan.findMany({
@@ -961,6 +1058,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       where: {
         org_id: ctx.orgId,
         patient_id: id,
+        ...billingEvidenceScope,
       },
       orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }],
       take: 6,
@@ -975,12 +1073,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     listBillingEvidenceBlockers(prisma, {
       orgId: ctx.orgId,
       patientId: id,
+      visitRecordIds: billingRefs.visitRecordIds,
+      cycleIds: billingRefs.cycleIds,
       limit: 6,
     }),
     prisma.billingCandidate.findMany({
       where: {
         org_id: ctx.orgId,
         patient_id: id,
+        ...billingCandidateScope,
       },
       orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }],
       take: 6,
@@ -997,16 +1098,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     listCommunicationQueue(prisma, {
       orgId: ctx.orgId,
       patientId: id,
+      caseIds,
       limit: 6,
     }),
     getPatientRiskSummary(prisma, {
       orgId: ctx.orgId,
       patientId: id,
+      caseIds,
     }),
     getPatientVisitBrief(prisma, {
       orgId: ctx.orgId,
       patientId: id,
       context: 'patient',
+      caseIds,
     }),
     caseIds.length === 0
       ? Promise.resolve([])
@@ -1424,7 +1528,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const existing = await prisma.patient.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: applyPatientAssignmentWhere(
+      { id, org_id: ctx.orgId },
+      { userId: ctx.userId, role: ctx.role },
+    ),
   });
   if (!existing) return notFound('患者が見つかりません');
 

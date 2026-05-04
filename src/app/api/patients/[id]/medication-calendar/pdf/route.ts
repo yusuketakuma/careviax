@@ -8,10 +8,7 @@ import { buildMedicationCalendarPdf } from '@/server/services/pdf-documents';
 
 export const runtime = 'nodejs';
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '服薬カレンダー PDF の閲覧権限がありません',
@@ -26,6 +23,10 @@ export async function GET(
       authResult.ctx.orgId,
       id,
       searchParams.get('month'),
+      {
+        userId: authResult.ctx.userId,
+        role: authResult.ctx.role,
+      },
     );
     await recordDataExportAudit(prisma, {
       orgId: authResult.ctx.orgId,
@@ -46,10 +47,6 @@ export async function GET(
       return notFound(cause.message);
     }
 
-    return error(
-      'EXTERNAL_PDF_RENDER_FAILED',
-      '服薬カレンダー PDF を生成できませんでした',
-      500,
-    );
+    return error('EXTERNAL_PDF_RENDER_FAILED', '服薬カレンダー PDF を生成できませんでした', 500);
   }
 }

@@ -44,6 +44,7 @@ describe('/api/management-plans/[id]/pdf', () => {
       ctx: {
         orgId: 'org_1',
         userId: 'user_1',
+        role: 'pharmacist',
       },
     });
     pdfResponseMock.mockReturnValue(
@@ -66,6 +67,10 @@ describe('/api/management-plans/[id]/pdf', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expect(buildManagementPlanPdfMock).toHaveBeenCalledWith('org_1', 'plan_1', {
+      userId: 'user_1',
+      role: 'pharmacist',
+    });
     expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), 'plan.pdf');
     expect(recordDataExportAuditMock).toHaveBeenCalledWith(
       expect.any(Object),
@@ -81,5 +86,7 @@ describe('/api/management-plans/[id]/pdf', () => {
     }))!;
 
     expect(response.status).toBe(404);
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
 });

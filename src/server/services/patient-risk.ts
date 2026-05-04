@@ -31,9 +31,10 @@ export async function listPatientRiskSummaries(
   args: {
     orgId: string;
     patientIds?: string[];
+    caseIdsByPatient?: Record<string, string[]>;
     limit?: number;
     includeStable?: boolean;
-  }
+  },
 ): Promise<PatientRiskSummary[]> {
   const now = new Date();
   const recentWindow = addDays(now, -30);
@@ -65,11 +66,29 @@ export async function listPatientRiskSummaries(
   if (patients.length === 0) return [];
 
   const patientIds = patients.map((patient) => patient.id);
+  const allowedCaseIds = args.caseIdsByPatient
+    ? Array.from(
+        new Set(
+          Object.values(args.caseIdsByPatient)
+            .flat()
+            .filter((caseId) => caseId.length > 0),
+        ),
+      )
+    : null;
+  const patientCaseScopes = args.caseIdsByPatient
+    ? Object.entries(args.caseIdsByPatient).flatMap(([patientId, caseIdsForPatient]) => [
+        { patient_id: patientId, case_id: null },
+        ...(caseIdsForPatient.length > 0
+          ? [{ patient_id: patientId, case_id: { in: caseIdsForPatient } }]
+          : []),
+      ])
+    : null;
   const cases = await db.careCase.findMany({
     where: {
       org_id: args.orgId,
       patient_id: { in: patientIds },
       status: { in: [...activeCaseStatuses] },
+      ...(allowedCaseIds ? { id: { in: allowedCaseIds } } : {}),
     },
     select: {
       id: true,
@@ -104,7 +123,7 @@ export async function listPatientRiskSummaries(
     db.medicationIssue.findMany({
       where: {
         org_id: args.orgId,
-        patient_id: { in: patientIds },
+        ...(patientCaseScopes ? { OR: patientCaseScopes } : { patient_id: { in: patientIds } }),
         status: {
           in: ['open', 'in_progress'],
         },
@@ -161,7 +180,7 @@ export async function listPatientRiskSummaries(
     db.careReport.findMany({
       where: {
         org_id: args.orgId,
-        patient_id: { in: patientIds },
+        ...(patientCaseScopes ? { OR: patientCaseScopes } : { patient_id: { in: patientIds } }),
         status: {
           in: ['draft', 'failed', 'response_waiting'],
         },
@@ -231,10 +250,7 @@ export async function listPatientRiskSummaries(
     taskMap.set(patientId, current);
   }
 
-  const scheduleMap = new Map<
-    string,
-    { disrupted: number; urgentUpcoming: number }
-  >();
+  const scheduleMap = new Map<string, { disrupted: number; urgentUpcoming: number }>();
   for (const schedule of schedules) {
     const patientId = caseIdToPatientId.get(schedule.case_id);
     if (!patientId) continue;
@@ -332,7 +348,10 @@ export async function listPatientRiskSummaries(
 
   return summaries
     .filter((item) => args.includeStable || item.score > 0)
-    .sort((left, right) => right.score - left.score || left.patient_name.localeCompare(right.patient_name, 'ja'))
+    .sort(
+      (left, right) =>
+        right.score - left.score || left.patient_name.localeCompare(right.patient_name, 'ja'),
+    )
     .slice(0, args.limit ?? summaries.length);
 }
 
@@ -341,11 +360,13 @@ export async function getPatientRiskSummary(
   args: {
     orgId: string;
     patientId: string;
-  }
+    caseIds?: string[];
+  },
 ): Promise<PatientRiskSummary | null> {
   const [summary] = await listPatientRiskSummaries(db, {
     orgId: args.orgId,
     patientIds: [args.patientId],
+    ...(args.caseIds ? { caseIdsByPatient: { [args.patientId]: args.caseIds } } : {}),
     limit: 1,
     includeStable: true,
   });

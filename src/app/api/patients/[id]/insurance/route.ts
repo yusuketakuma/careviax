@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { z } from 'zod';
+import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 
 const insuranceSchema = z.object({
   insurance_type: z.enum(['medical', 'care', 'public_subsidy']),
@@ -26,10 +27,7 @@ const insuranceSchema = z.object({
   notes: z.string().max(500).optional().nullable(),
 });
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者保険情報の閲覧権限がありません',
@@ -40,7 +38,10 @@ export async function GET(
   const { id } = await params;
 
   const patient = await prisma.patient.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: applyPatientAssignmentWhere(
+      { id, org_id: ctx.orgId },
+      { userId: ctx.userId, role: ctx.role },
+    ),
     select: { id: true },
   });
   if (!patient) return notFound('患者が見つかりません');
@@ -57,24 +58,19 @@ export async function GET(
     (ins) =>
       ins.is_active &&
       (!ins.valid_from || ins.valid_from <= today) &&
-      (!ins.valid_until || ins.valid_until >= today)
+      (!ins.valid_until || ins.valid_until >= today),
   );
   const upcoming = insurances.filter(
-    (ins) => ins.is_active && ins.valid_from && ins.valid_from > today
+    (ins) => ins.is_active && ins.valid_from && ins.valid_from > today,
   );
   const history = insurances.filter(
-    (ins) =>
-      !ins.is_active ||
-      (ins.valid_until && ins.valid_until < today)
+    (ins) => !ins.is_active || (ins.valid_until && ins.valid_until < today),
   );
 
   return success({ data: { current, upcoming, history, all: insurances } });
 }
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者保険情報の登録権限がありません',
@@ -93,7 +89,10 @@ export async function POST(
   }
 
   const patient = await prisma.patient.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: applyPatientAssignmentWhere(
+      { id, org_id: ctx.orgId },
+      { userId: ctx.userId, role: ctx.role },
+    ),
     select: { id: true },
   });
   if (!patient) return notFound('患者が見つかりません');
@@ -109,7 +108,7 @@ export async function POST(
         valid_from: valid_from ? new Date(valid_from) : null,
         valid_until: valid_until ? new Date(valid_until) : null,
       },
-    })
+    }),
   );
 
   return success({ data: created });

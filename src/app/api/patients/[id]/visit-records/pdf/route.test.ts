@@ -40,7 +40,9 @@ import { GET } from './route';
 describe('/api/patients/[id]/visit-records/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({ ctx: { orgId: 'org_1', userId: 'user_1' } });
+    requireAuthContextMock.mockResolvedValue({
+      ctx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' },
+    });
     pdfResponseMock.mockReturnValue(new Response('pdf', { status: 200 }));
     recordDataExportAuditMock.mockResolvedValue(undefined);
   });
@@ -51,11 +53,14 @@ describe('/api/patients/[id]/visit-records/pdf', () => {
       fileName: 'visit-records.pdf',
     });
 
-    const response = (await GET({
-      url: 'http://localhost/api/patients/patient_1/visit-records/pdf?date_from=2026-03-01&date_to=2026-03-31',
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'patient_1' }),
-    }))!;
+    const response = (await GET(
+      {
+        url: 'http://localhost/api/patients/patient_1/visit-records/pdf?date_from=2026-03-01&date_to=2026-03-31',
+      } as NextRequest,
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(200);
     expect(buildPatientVisitRecordsPdfMock).toHaveBeenCalledWith(
@@ -63,10 +68,35 @@ describe('/api/patients/[id]/visit-records/pdf', () => {
       'patient_1',
       '2026-03-01',
       '2026-03-31',
+      {
+        userId: 'user_1',
+        role: 'pharmacist',
+      },
     );
     expect(recordDataExportAuditMock).toHaveBeenCalledWith(
       expect.any(Object),
-      expect.objectContaining({ targetType: 'visit_record_list', format: 'pdf', targetId: 'patient_1' }),
+      expect.objectContaining({
+        targetType: 'visit_record_list',
+        format: 'pdf',
+        targetId: 'patient_1',
+      }),
     );
+  });
+
+  it('does not audit or render a pdf when the scoped patient lookup fails', async () => {
+    buildPatientVisitRecordsPdfMock.mockRejectedValue(new Error('患者が見つかりません'));
+
+    const response = (await GET(
+      {
+        url: 'http://localhost/api/patients/patient_1/visit-records/pdf?date_from=2026-03-01&date_to=2026-03-31',
+      } as NextRequest,
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(404);
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
 });

@@ -215,4 +215,42 @@ describe('/api/patients/[id]/care-team', () => {
       message: '他組織の他職種はケアチームに登録できません',
     });
   });
+
+  it('GET returns 404 when patient is not assigned to the requesting user', async () => {
+    patientFindFirstMock.mockResolvedValue(null);
+
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/patients/patient_unknown/care-team',
+        undefined,
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_unknown' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('PUT returns 404 when the requested case_id does not belong to an assigned case', async () => {
+    careCaseFindFirstMock.mockResolvedValue(null);
+
+    const response = await PUT(
+      createRequest(
+        'http://localhost/api/patients/patient_1/care-team',
+        {
+          case_id: 'case_unassigned',
+          links: [],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createManyMock).not.toHaveBeenCalled();
+  });
 });

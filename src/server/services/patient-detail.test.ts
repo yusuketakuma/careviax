@@ -4,7 +4,7 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {},
 }));
 
-import { getPatientReadinessData } from './patient-detail';
+import { getPatientReadinessData, getPatientTimelineData } from './patient-detail';
 
 function buildDb(overrides?: Partial<Record<string, unknown>>) {
   return {
@@ -53,6 +53,7 @@ describe('getPatientReadinessData', () => {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
+      userId: 'user_1',
     });
 
     expect(result).toEqual({
@@ -108,6 +109,7 @@ describe('getPatientReadinessData', () => {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
+      userId: 'user_1',
     });
 
     expect(result).toMatchObject({
@@ -164,7 +166,9 @@ describe('getPatientReadinessData', () => {
           phone: '03-0000-0000',
           medical_insurance_number: 'med_1',
           care_insurance_number: null,
-          residences: [{ address: '東京都千代田区1-1-1', facility_id: null, building_id: '山田家' }],
+          residences: [
+            { address: '東京都千代田区1-1-1', facility_id: null, building_id: '山田家' },
+          ],
           scheduling_preference: {
             preferred_weekdays: [1, 3],
             preferred_time_from: null,
@@ -182,11 +186,7 @@ describe('getPatientReadinessData', () => {
             {
               id: 'case_1',
               status: 'active',
-              care_team_links: [
-                { role: 'doctor' },
-                { role: 'visiting_nurse' },
-                { role: 'cm' },
-              ],
+              care_team_links: [{ role: 'doctor' }, { role: 'visiting_nurse' }, { role: 'cm' }],
             },
           ],
         }),
@@ -212,6 +212,7 @@ describe('getPatientReadinessData', () => {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
+      userId: 'user_1',
     });
 
     expect(result).toMatchObject({
@@ -220,5 +221,48 @@ describe('getPatientReadinessData', () => {
       completed_count: 11,
       total_count: 11,
     });
+  });
+});
+
+describe('getPatientTimelineData', () => {
+  it('scopes conference notes to patient-level notes or assigned cases', async () => {
+    const conferenceNoteFindManyMock = vi.fn().mockResolvedValue([]);
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      visitSchedule: { findMany: vi.fn().mockResolvedValue([]) },
+      visitRecord: { findMany: vi.fn().mockResolvedValue([]) },
+      careReport: { findMany: vi.fn().mockResolvedValue([]) },
+      communicationEvent: { findMany: vi.fn().mockResolvedValue([]) },
+      patientSelfReport: { findMany: vi.fn().mockResolvedValue([]) },
+      externalAccessGrant: { findMany: vi.fn().mockResolvedValue([]) },
+      inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
+      prescriptionIntake: { findMany: vi.fn().mockResolvedValue([]) },
+      dispenseResult: { findMany: vi.fn().mockResolvedValue([]) },
+      managementPlan: { findMany: vi.fn().mockResolvedValue([]) },
+      firstVisitDocument: { findMany: vi.fn().mockResolvedValue([]) },
+      conferenceNote: { findMany: conferenceNoteFindManyMock },
+      billingCandidate: { findMany: vi.fn().mockResolvedValue([]) },
+      medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
+    });
+
+    await getPatientTimelineData(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(conferenceNoteFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [{ patient_id: 'patient_1', case_id: null }, { case_id: { in: ['case_1'] } }],
+        }),
+      }),
+    );
   });
 });

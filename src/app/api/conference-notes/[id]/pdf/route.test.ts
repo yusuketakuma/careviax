@@ -44,6 +44,7 @@ describe('/api/conference-notes/[id]/pdf', () => {
       ctx: {
         orgId: 'org_1',
         userId: 'user_1',
+        role: 'pharmacist',
       },
     });
     pdfResponseMock.mockReturnValue(
@@ -66,6 +67,10 @@ describe('/api/conference-notes/[id]/pdf', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expect(buildConferenceNotePdfMock).toHaveBeenCalledWith('org_1', 'note_1', {
+      userId: 'user_1',
+      role: 'pharmacist',
+    });
     expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), 'conference-note.pdf');
     expect(recordDataExportAuditMock).toHaveBeenCalledWith(
       expect.any(Object),
@@ -74,14 +79,14 @@ describe('/api/conference-notes/[id]/pdf', () => {
   });
 
   it('returns 404 when the conference note is missing', async () => {
-    buildConferenceNotePdfMock.mockRejectedValue(
-      new Error('カンファレンス記録が見つかりません'),
-    );
+    buildConferenceNotePdfMock.mockRejectedValue(new Error('カンファレンス記録が見つかりません'));
 
     const response = (await GET({} as NextRequest, {
       params: Promise.resolve({ id: 'note_1' }),
     }))!;
 
     expect(response.status).toBe(404);
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
 });

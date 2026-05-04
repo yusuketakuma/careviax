@@ -40,7 +40,9 @@ import { GET } from './route';
 describe('/api/patients/[id]/medication-calendar/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({ ctx: { orgId: 'org_1', userId: 'user_1' } });
+    requireAuthContextMock.mockResolvedValue({
+      ctx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' },
+    });
     pdfResponseMock.mockReturnValue(new Response('pdf', { status: 200 }));
     recordDataExportAuditMock.mockResolvedValue(undefined);
   });
@@ -51,18 +53,20 @@ describe('/api/patients/[id]/medication-calendar/pdf', () => {
       fileName: 'calendar.pdf',
     });
 
-    const response = (await GET({
-      url: 'http://localhost/api/patients/patient_1/medication-calendar/pdf?month=2026-03',
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'patient_1' }),
-    }))!;
+    const response = (await GET(
+      {
+        url: 'http://localhost/api/patients/patient_1/medication-calendar/pdf?month=2026-03',
+      } as NextRequest,
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(200);
-    expect(buildMedicationCalendarPdfMock).toHaveBeenCalledWith(
-      'org_1',
-      'patient_1',
-      '2026-03',
-    );
+    expect(buildMedicationCalendarPdfMock).toHaveBeenCalledWith('org_1', 'patient_1', '2026-03', {
+      userId: 'user_1',
+      role: 'pharmacist',
+    });
     expect(recordDataExportAuditMock).toHaveBeenCalledWith(
       expect.any(Object),
       expect.objectContaining({
@@ -71,5 +75,22 @@ describe('/api/patients/[id]/medication-calendar/pdf', () => {
         targetId: 'patient_1',
       }),
     );
+  });
+
+  it('does not audit or render a pdf when the scoped patient lookup fails', async () => {
+    buildMedicationCalendarPdfMock.mockRejectedValue(new Error('患者が見つかりません'));
+
+    const response = (await GET(
+      {
+        url: 'http://localhost/api/patients/patient_1/medication-calendar/pdf?month=2026-03',
+      } as NextRequest,
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(404);
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
 });

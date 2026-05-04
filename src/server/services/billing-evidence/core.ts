@@ -689,6 +689,8 @@ export async function listBillingEvidenceBlockers(
     orgId: string;
     patientId?: string;
     visitRecordId?: string;
+    visitRecordIds?: string[];
+    cycleIds?: string[];
     limit?: number;
   },
 ) {
@@ -698,6 +700,14 @@ export async function listBillingEvidenceBlockers(
       claimable: false,
       ...(args.patientId ? { patient_id: args.patientId } : {}),
       ...(args.visitRecordId ? { visit_record_id: args.visitRecordId } : {}),
+      ...(args.visitRecordIds || args.cycleIds
+        ? {
+            OR: [
+              ...(args.visitRecordIds ? [{ visit_record_id: { in: args.visitRecordIds } }] : []),
+              ...(args.cycleIds ? [{ cycle_id: { in: args.cycleIds } }] : []),
+            ],
+          }
+        : {}),
     },
     orderBy: [{ billing_month: 'desc' }, { updated_at: 'desc' }],
     take: args.limit ?? 4,

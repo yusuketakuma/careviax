@@ -307,7 +307,11 @@ export class ConferenceSyncService {
     // 5. Generate CareReport draft(s) based on note_type
     const reportDraftIds = await this.generateReportDraft(tx, orgId, userId, note, patientId);
     if (process.env.DEBUG_SYNC === '1') {
-      console.log('[conference-sync]', note.id, reportDraftIds);
+      console.log('[conference-sync]', {
+        noteId: note.id,
+        draftCount: reportDraftIds.length,
+        draftIds: reportDraftIds,
+      });
     }
     if (reportDraftIds.length > 0) {
       result.report_draft_ids = reportDraftIds;
@@ -976,7 +980,10 @@ export class ConferenceSyncService {
           : null;
 
       if (process.env.DEBUG_SYNC === '1') {
-        console.log('[conference-sync.existingDraft]', reportType, existingDraft);
+        console.log('[conference-sync.existingDraft]', {
+          reportType,
+          existingDraftId: existingDraft?.id ?? null,
+        });
       }
 
       if (existingDraft) {
@@ -1010,7 +1017,14 @@ export class ConferenceSyncService {
         },
       });
       if (process.env.DEBUG_SYNC === '1') {
-        console.log('[conference-sync.createdDraft]', reportType, createdDraft);
+        console.log('[conference-sync.createdDraft]', {
+          reportType,
+          createdDraftId: createdDraft.id,
+          patientId,
+          // status is the literal we just persisted; the typed client return
+          // shape does not surface it, but the value is known at the call site.
+          status: 'draft',
+        });
       }
       createdIds.push(createdDraft.id);
     }

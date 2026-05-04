@@ -10,6 +10,7 @@ import {
   type VisitScheduleAccessContext,
 } from '@/lib/auth/visit-schedule-access';
 import { buildMedicationHistoryPdf } from '@/server/services/pdf-documents';
+import { PdfNotFoundError } from '@/server/services/pdf-errors';
 import { storeGeneratedFile } from '@/server/services/file-storage';
 
 const BULK_EXPORT_JOB_TYPE = 'medication-history-bulk-export';
@@ -369,7 +370,12 @@ async function buildMedicationHistoryArchive(
           buffer: pdf.buffer,
         };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        // PdfNotFoundError carries a constant safe message (see pdf-errors.ts).
+        // Other errors may carry adapter/Prisma details; sanitize before exposing.
+        const message =
+          error instanceof PdfNotFoundError
+            ? error.message
+            : 'PDF 生成に失敗しました';
         return {
           patientId,
           error: message,

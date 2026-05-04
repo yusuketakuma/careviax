@@ -5,13 +5,11 @@ import { syncPatientMcsSchema } from '@/lib/validations/patient-mcs';
 import { prisma } from '@/lib/db/client';
 import { PatientMcsSyncError, syncPatientMcsTimeline } from '@/server/services/patient-mcs';
 import { canViewSensitivePatientData } from '@/lib/patient/sensitive';
+import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 
 export const runtime = 'nodejs';
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: 'MCS 連携の同期権限がありません',
@@ -25,7 +23,10 @@ export async function POST(
   const { id } = await params;
 
   const patient = await prisma.patient.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: applyPatientAssignmentWhere(
+      { id, org_id: ctx.orgId },
+      { userId: ctx.userId, role: ctx.role },
+    ),
     select: { id: true },
   });
   if (!patient) return notFound('患者が見つかりません');

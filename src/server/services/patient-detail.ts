@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import type { Prisma } from '@prisma/client';
+import type { MemberRole, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import {
@@ -37,13 +37,18 @@ import {
   getInquiryPrimaryDetail,
 } from '@/lib/inquiries/presentation';
 import { getConferenceTypeLabel } from '@/lib/visits/visit-workflow-projection';
+import {
+  applyPatientAssignmentWhere,
+  buildCareCaseAssignmentWhere,
+} from '@/lib/auth/visit-schedule-access';
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
 
 type DetailArgs = {
   orgId: string;
   patientId: string;
-  role: string;
+  role: MemberRole;
+  userId: string;
 };
 
 type FirstVisitDocumentContact = {
@@ -163,9 +168,85 @@ function normalizeFirstVisitDocumentContacts(
   });
 }
 
+function buildPatientDetailWhere(args: DetailArgs): Prisma.PatientWhereInput {
+  return applyPatientAssignmentWhere(
+    {
+      id: args.patientId,
+      org_id: args.orgId,
+    },
+    {
+      userId: args.userId,
+      role: args.role,
+    },
+  );
+}
+
+function buildAssignedCareCaseWhere(
+  args: DetailArgs,
+  base?: Prisma.CareCaseWhereInput,
+): Prisma.CareCaseWhereInput | undefined {
+  const assignmentWhere = buildCareCaseAssignmentWhere({
+    userId: args.userId,
+    role: args.role,
+  });
+  if (!assignmentWhere) return base;
+  if (!base) return assignmentWhere;
+  return { AND: [base, assignmentWhere] };
+}
+
+function buildVisitRecordCaseScope(caseIds: string[]): Prisma.VisitRecordWhereInput {
+  return {
+    schedule: {
+      case_id: { in: caseIds },
+    },
+  };
+}
+
+function buildCareReportCaseScope(caseIds: string[]): Prisma.CareReportWhereInput {
+  return {
+    OR: [{ case_id: { in: caseIds } }, { case_id: null }],
+  };
+}
+
+function buildNullableCaseScope(caseIds: string[]) {
+  return {
+    OR: [{ case_id: null }, { case_id: { in: caseIds } }],
+  };
+}
+
+async function listBillingCaseRefs(db: DbClient, args: DetailArgs, caseIds: string[]) {
+  if (caseIds.length === 0) {
+    return { visitRecordIds: [] as string[], cycleIds: [] as string[] };
+  }
+
+  const [visitRecords, cycles] = await Promise.all([
+    db.visitRecord.findMany({
+      where: {
+        org_id: args.orgId,
+        patient_id: args.patientId,
+        ...buildVisitRecordCaseScope(caseIds),
+      },
+      select: { id: true },
+    }),
+    db.medicationCycle.findMany({
+      where: {
+        org_id: args.orgId,
+        patient_id: args.patientId,
+        case_id: { in: caseIds },
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  return {
+    visitRecordIds: visitRecords.map((item) => item.id),
+    cycleIds: cycles.map((item) => item.id),
+  };
+}
+
 async function findPatientOverviewBase(db: DbClient, args: DetailArgs) {
   return db.patient.findFirst({
-    where: { id: args.patientId, org_id: args.orgId },
+    where: buildPatientDetailWhere(args),
     select: {
       id: true,
       name: true,
@@ -214,6 +295,7 @@ async function findPatientOverviewBase(db: DbClient, args: DetailArgs) {
       },
       consents: true,
       cases: {
+        ...(buildAssignedCareCaseWhere(args) ? { where: buildAssignedCareCaseWhere(args) } : {}),
         orderBy: { created_at: 'desc' },
         include: {
           care_team_links: true,
@@ -338,11 +420,13 @@ export async function getPatientOverview(db: DbClient, args: DetailArgs) {
     getPatientRiskSummary(db, {
       orgId: args.orgId,
       patientId: args.patientId,
+      caseIds,
     }),
     getPatientVisitBrief(db, {
       orgId: args.orgId,
       patientId: args.patientId,
       context: 'patient',
+      caseIds,
     }),
     listLabSummary(db, args),
     db.jahisSupplementalRecord.findMany({
@@ -409,10 +493,11 @@ export async function getPatientOverview(db: DbClient, args: DetailArgs) {
 
 export async function getPatientVisitsData(db: DbClient, args: DetailArgs) {
   const patient = await db.patient.findFirst({
-    where: { id: args.patientId, org_id: args.orgId },
+    where: buildPatientDetailWhere(args),
     select: {
       id: true,
       cases: {
+        ...(buildAssignedCareCaseWhere(args) ? { where: buildAssignedCareCaseWhere(args) } : {}),
         select: {
           id: true,
         },
@@ -472,6 +557,7 @@ export async function getPatientVisitsData(db: DbClient, args: DetailArgs) {
             where: {
               org_id: args.orgId,
               patient_id: args.patientId,
+              ...buildVisitRecordCaseScope(caseIds),
             },
             orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }],
             take: 12,
@@ -503,10 +589,11 @@ export async function getPatientVisitsData(db: DbClient, args: DetailArgs) {
 
 export async function getPatientCommunicationsData(db: DbClient, args: DetailArgs) {
   const patient = await db.patient.findFirst({
-    where: { id: args.patientId, org_id: args.orgId },
+    where: buildPatientDetailWhere(args),
     select: {
       id: true,
       cases: {
+        ...(buildAssignedCareCaseWhere(args) ? { where: buildAssignedCareCaseWhere(args) } : {}),
         select: {
           id: true,
         },
@@ -516,6 +603,20 @@ export async function getPatientCommunicationsData(db: DbClient, args: DetailArg
   if (!patient) return null;
 
   const caseIds = patient.cases.map((item) => item.id);
+  const billingRefs = await listBillingCaseRefs(db, args, caseIds);
+  const billingEvidenceScope =
+    billingRefs.visitRecordIds.length === 0 && billingRefs.cycleIds.length === 0
+      ? { id: { in: [] } }
+      : {
+          OR: [
+            { visit_record_id: { in: billingRefs.visitRecordIds } },
+            { cycle_id: { in: billingRefs.cycleIds } },
+          ],
+        };
+  const billingCandidateScope =
+    billingRefs.cycleIds.length === 0
+      ? { id: { in: [] } }
+      : { cycle_id: { in: billingRefs.cycleIds } };
   const [
     openTasks,
     medicationIssues,
@@ -565,6 +666,7 @@ export async function getPatientCommunicationsData(db: DbClient, args: DetailArg
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
+        OR: [{ case_id: { in: caseIds } }, { case_id: null }],
         status: {
           in: ['open', 'in_progress'],
         },
@@ -585,6 +687,7 @@ export async function getPatientCommunicationsData(db: DbClient, args: DetailArg
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
+        ...billingEvidenceScope,
       },
       orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }],
       take: 6,
@@ -600,12 +703,15 @@ export async function getPatientCommunicationsData(db: DbClient, args: DetailArg
     listBillingEvidenceBlockers(db as typeof prisma, {
       orgId: args.orgId,
       patientId: args.patientId,
+      visitRecordIds: billingRefs.visitRecordIds,
+      cycleIds: billingRefs.cycleIds,
       limit: 6,
     }),
     db.billingCandidate.findMany({
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
+        ...billingCandidateScope,
       },
       orderBy: [{ billing_month: 'desc' }, { created_at: 'desc' }],
       take: 6,
@@ -623,6 +729,7 @@ export async function getPatientCommunicationsData(db: DbClient, args: DetailArg
     listCommunicationQueue(db as typeof prisma, {
       orgId: args.orgId,
       patientId: args.patientId,
+      caseIds,
       limit: 6,
     }),
   ]);
@@ -698,10 +805,11 @@ export async function getPatientDocumentsData(db: DbClient, args: DetailArgs) {
 
 export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
   const patient = await db.patient.findFirst({
-    where: { id: args.patientId, org_id: args.orgId },
+    where: buildPatientDetailWhere(args),
     select: {
       id: true,
       cases: {
+        ...(buildAssignedCareCaseWhere(args) ? { where: buildAssignedCareCaseWhere(args) } : {}),
         select: {
           id: true,
         },
@@ -711,6 +819,7 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
   if (!patient) return null;
 
   const caseIds = patient.cases.map((item) => item.id);
+  const billingRefs = await listBillingCaseRefs(db, args, caseIds);
 
   const [
     visitSchedules,
@@ -761,6 +870,7 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
           where: {
             org_id: args.orgId,
             patient_id: args.patientId,
+            ...buildVisitRecordCaseScope(caseIds),
           },
           orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }],
           take: 12,
@@ -781,6 +891,7 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
+        ...buildCareReportCaseScope(caseIds),
       },
       orderBy: [{ created_at: 'desc' }],
       take: 8,
@@ -809,6 +920,7 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
+        ...buildNullableCaseScope(caseIds),
       },
       orderBy: [{ occurred_at: 'desc' }],
       take: 8,
@@ -858,109 +970,118 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
         created_at: true,
       },
     }),
-    db.inquiryRecord.findMany({
-      where: {
-        org_id: args.orgId,
-        cycle: {
-          patient_id: args.patientId,
-        },
-      },
-      orderBy: [{ resolved_at: 'desc' }, { inquired_at: 'desc' }, { created_at: 'desc' }],
-      take: 8,
-      select: {
-        id: true,
-        reason: true,
-        inquiry_to_physician: true,
-        inquiry_content: true,
-        result: true,
-        proposal_origin: true,
-        residual_adjustment: true,
-        change_detail: true,
-        inquired_at: true,
-        resolved_at: true,
-        created_at: true,
-        line: {
+    caseIds.length === 0
+      ? Promise.resolve([])
+      : db.inquiryRecord.findMany({
+          where: {
+            org_id: args.orgId,
+            cycle: {
+              patient_id: args.patientId,
+              case_id: { in: caseIds },
+            },
+          },
+          orderBy: [{ resolved_at: 'desc' }, { inquired_at: 'desc' }, { created_at: 'desc' }],
+          take: 8,
           select: {
-            intake: {
+            id: true,
+            reason: true,
+            inquiry_to_physician: true,
+            inquiry_content: true,
+            result: true,
+            proposal_origin: true,
+            residual_adjustment: true,
+            change_detail: true,
+            inquired_at: true,
+            resolved_at: true,
+            created_at: true,
+            line: {
               select: {
-                id: true,
+                intake: {
+                  select: {
+                    id: true,
+                  },
+                },
               },
             },
           },
-        },
-      },
-    }),
-    db.prescriptionIntake.findMany({
-      where: {
-        org_id: args.orgId,
-        cycle: {
-          patient_id: args.patientId,
-        },
-      },
-      orderBy: [{ created_at: 'desc' }],
-      take: 10,
-      select: {
-        id: true,
-        source_type: true,
-        prescribed_date: true,
-        prescriber_name: true,
-        prescriber_institution: true,
-        original_collected_by: true,
-        created_at: true,
-        cycle: {
-          select: {
-            overall_status: true,
-          },
-        },
-        lines: {
-          take: 3,
-          select: {
-            id: true,
-          },
-        },
-      },
-    }),
-    db.dispenseResult.findMany({
-      where: {
-        org_id: args.orgId,
-        line: {
-          intake: {
+        }),
+    caseIds.length === 0
+      ? Promise.resolve([])
+      : db.prescriptionIntake.findMany({
+          where: {
+            org_id: args.orgId,
             cycle: {
               patient_id: args.patientId,
+              case_id: { in: caseIds },
             },
           },
-        },
-      },
-      orderBy: [{ dispensed_at: 'desc' }],
-      take: 12,
-      select: {
-        id: true,
-        actual_drug_name: true,
-        actual_quantity: true,
-        actual_unit: true,
-        carry_type: true,
-        dispensed_by: true,
-        dispensed_at: true,
-        task: {
+          orderBy: [{ created_at: 'desc' }],
+          take: 10,
           select: {
+            id: true,
+            source_type: true,
+            prescribed_date: true,
+            prescriber_name: true,
+            prescriber_institution: true,
+            original_collected_by: true,
+            created_at: true,
             cycle: {
               select: {
                 overall_status: true,
               },
             },
-          },
-        },
-        line: {
-          select: {
-            intake: {
+            lines: {
+              take: 3,
               select: {
                 id: true,
               },
             },
           },
-        },
-      },
-    }),
+        }),
+    caseIds.length === 0
+      ? Promise.resolve([])
+      : db.dispenseResult.findMany({
+          where: {
+            org_id: args.orgId,
+            line: {
+              intake: {
+                cycle: {
+                  patient_id: args.patientId,
+                  case_id: { in: caseIds },
+                },
+              },
+            },
+          },
+          orderBy: [{ dispensed_at: 'desc' }],
+          take: 12,
+          select: {
+            id: true,
+            actual_drug_name: true,
+            actual_quantity: true,
+            actual_unit: true,
+            carry_type: true,
+            dispensed_by: true,
+            dispensed_at: true,
+            task: {
+              select: {
+                cycle: {
+                  select: {
+                    overall_status: true,
+                  },
+                },
+              },
+            },
+            line: {
+              select: {
+                intake: {
+                  select: {
+                    id: true,
+                  },
+                },
+              },
+            },
+          },
+        }),
     caseIds.length === 0
       ? Promise.resolve([])
       : db.managementPlan.findMany({
@@ -1008,7 +1129,7 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
       : db.conferenceNote.findMany({
           where: {
             org_id: args.orgId,
-            OR: [{ patient_id: args.patientId }, { case_id: { in: caseIds } }],
+            OR: [{ patient_id: args.patientId, case_id: null }, { case_id: { in: caseIds } }],
             note_type: { in: ['pre_discharge', 'service_manager'] },
           },
           orderBy: [{ conference_date: 'desc' }],
@@ -1028,6 +1149,9 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
+        ...(billingRefs.cycleIds.length === 0
+          ? { id: { in: [] } }
+          : { cycle_id: { in: billingRefs.cycleIds } }),
       },
       orderBy: [{ updated_at: 'desc' }],
       take: 8,
@@ -1045,7 +1169,7 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
   ]);
 
   const actorNameMap = await batchResolveNames(
-    prisma,
+    db as typeof prisma,
     args.orgId,
     Array.from(
       new Set(
@@ -1387,7 +1511,7 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
 
 export async function getPatientReadinessData(db: DbClient, args: DetailArgs) {
   const patient = await db.patient.findFirst({
-    where: { id: args.patientId, org_id: args.orgId },
+    where: buildPatientDetailWhere(args),
     select: {
       id: true,
       name: true,
@@ -1436,9 +1560,9 @@ export async function getPatientReadinessData(db: DbClient, args: DetailArgs) {
         },
       },
       cases: {
-        where: {
+        where: buildAssignedCareCaseWhere(args, {
           status: { in: ['referral_received', 'assessment', 'active', 'on_hold'] },
-        },
+        }),
         orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }],
         select: {
           id: true,
@@ -1671,7 +1795,7 @@ export async function getPatientReadinessData(db: DbClient, args: DetailArgs) {
 
 export async function getPatientWorkflowPreviewData(db: DbClient, args: DetailArgs) {
   const patient = await db.patient.findFirst({
-    where: { id: args.patientId, org_id: args.orgId },
+    where: buildPatientDetailWhere(args),
     select: {
       id: true,
       contacts: {
@@ -1734,6 +1858,7 @@ export async function getPatientWorkflowPreviewData(db: DbClient, args: DetailAr
         },
       },
       cases: {
+        ...(buildAssignedCareCaseWhere(args) ? { where: buildAssignedCareCaseWhere(args) } : {}),
         orderBy: [{ updated_at: 'desc' }],
         select: {
           id: true,

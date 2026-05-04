@@ -8,11 +8,9 @@ import {
 } from '@/server/adapters/qualification-check';
 import { format } from 'date-fns';
 import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
+import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '資格確認の実行権限がありません',
@@ -23,7 +21,10 @@ export async function POST(
   const { id } = await params;
 
   const patient = await prisma.patient.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: applyPatientAssignmentWhere(
+      { id, org_id: ctx.orgId },
+      { userId: ctx.userId, role: ctx.role },
+    ),
     select: {
       id: true,
       medical_insurance_number: true,
