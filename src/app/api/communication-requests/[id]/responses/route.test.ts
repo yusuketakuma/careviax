@@ -6,12 +6,16 @@ const {
   communicationResponseFindManyMock,
   communicationResponseCreateMock,
   communicationRequestUpdateMock,
+  careCaseFindFirstMock,
+  patientFindFirstMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   communicationRequestFindFirstMock: vi.fn(),
   communicationResponseFindManyMock: vi.fn(),
   communicationResponseCreateMock: vi.fn(),
   communicationRequestUpdateMock: vi.fn(),
+  careCaseFindFirstMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -33,6 +37,12 @@ vi.mock('@/lib/db/client', () => ({
     communicationRequest: {
       findFirst: communicationRequestFindFirstMock,
     },
+    careCase: {
+      findFirst: careCaseFindFirstMock,
+    },
+    patient: {
+      findFirst: patientFindFirstMock,
+    },
     communicationResponse: {
       findMany: communicationResponseFindManyMock,
     },
@@ -50,8 +60,12 @@ describe('/api/communication-requests/[id]/responses', () => {
     vi.clearAllMocks();
     communicationRequestFindFirstMock.mockResolvedValue({
       id: 'request_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
       status: 'sent',
     });
+    careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     communicationResponseFindManyMock.mockResolvedValue([{ id: 'response_1' }]);
     communicationResponseCreateMock.mockResolvedValue({ id: 'response_2' });
     communicationRequestUpdateMock.mockResolvedValue({ id: 'request_1', status: 'responded' });
@@ -76,20 +90,44 @@ describe('/api/communication-requests/[id]/responses', () => {
   });
 
   it('creates a response and updates the request status', async () => {
-    const response = (await POST({
-      json: async () => ({
-        responder_name: '医師A',
-        content: '確認しました',
-        responded_at: '2026-03-29',
-      }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'request_1' }),
-    }))!;
+    const response = (await POST(
+      {
+        json: async () => ({
+          responder_name: '医師A',
+          content: '確認しました',
+          responded_at: '2026-03-29',
+        }),
+      } as NextRequest,
+      {
+        params: Promise.resolve({ id: 'request_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(201);
     expect(communicationRequestUpdateMock).toHaveBeenCalledWith({
       where: { id: 'request_1' },
       data: { status: 'responded' },
     });
+  });
+
+  it('does not create a response for an unassigned communication request', async () => {
+    careCaseFindFirstMock.mockResolvedValue(null);
+
+    const response = (await POST(
+      {
+        json: async () => ({
+          responder_name: '医師A',
+          content: '確認しました',
+          responded_at: '2026-03-29',
+        }),
+      } as NextRequest,
+      {
+        params: Promise.resolve({ id: 'request_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(404);
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
   });
 });

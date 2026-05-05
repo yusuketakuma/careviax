@@ -10,6 +10,7 @@ import {
   ALLOWED_TRANSITIONS,
 } from '@/lib/db/cycle-transition';
 import { z } from 'zod';
+import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 
 const transitionSchema = z.object({
   to: z.string().min(1, '遷移先ステータスは必須です'),
@@ -17,10 +18,7 @@ const transitionSchema = z.object({
   note: z.string().optional(),
 });
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '処方サイクル更新の権限がありません',
@@ -40,8 +38,13 @@ export async function PATCH(
 
   const { to, version, note } = parsed.data;
 
+  const caseAssignmentWhere = buildCareCaseAssignmentWhere(ctx);
   const cycle = await prisma.medicationCycle.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: {
+      id,
+      org_id: ctx.orgId,
+      ...(caseAssignmentWhere ? { case_: caseAssignmentWhere } : {}),
+    },
     select: { id: true, overall_status: true, version: true, patient_id: true, case_id: true },
   });
   if (!cycle) return notFound('サイクルが見つかりません');
@@ -69,12 +72,14 @@ export async function PATCH(
   if (!allowed.includes(toStatus)) {
     return validationError(
       `ステータス "${fromStatus}" から "${toStatus}" への遷移は許可されていません`,
-      { allowed }
+      { allowed },
     );
   }
 
   const updated = await withOrgContext(ctx.orgId, async (tx) => {
-    const result = await transitionCycleStatus(tx, id, ctx.orgId, toStatus, ctx.userId, { note: note ?? undefined });
+    const result = await transitionCycleStatus(tx, id, ctx.orgId, toStatus, ctx.userId, {
+      note: note ?? undefined,
+    });
 
     // Create notification for status transition (best-effort)
     try {
@@ -85,7 +90,8 @@ export async function PATCH(
           event_type: 'status_changed',
           type: 'system',
           title: 'ステータス変更',
-          message: note ?? `処方サイクルのステータスが ${fromStatus} から ${toStatus} に変更されました`,
+          message:
+            note ?? `処方サイクルのステータスが ${fromStatus} から ${toStatus} に変更されました`,
           link: `/workflow`,
           metadata: { cycle_id: id, from: fromStatus, to: toStatus },
         },

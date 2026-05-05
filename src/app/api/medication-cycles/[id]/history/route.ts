@@ -2,11 +2,9 @@ import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { success, notFound } from '@/lib/api/response';
+import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canViewDashboard',
     message: '処方サイクル履歴の閲覧権限がありません',
@@ -16,8 +14,13 @@ export async function GET(
 
   const { id } = await params;
 
+  const caseAssignmentWhere = buildCareCaseAssignmentWhere(ctx);
   const cycle = await prisma.medicationCycle.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: {
+      id,
+      org_id: ctx.orgId,
+      ...(caseAssignmentWhere ? { case_: caseAssignmentWhere } : {}),
+    },
     select: { id: true },
   });
   if (!cycle) return notFound('サイクルが見つかりません');

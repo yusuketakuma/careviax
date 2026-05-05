@@ -78,29 +78,35 @@ describe('/api/medication-cycles/[id]/transition', () => {
   });
 
   it('rejects transition requests with a stale version', async () => {
-    const response = (await PATCH({
-      json: async () => ({
-        to: 'dispensing',
-        version: 1,
-      }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'cycle_1' }),
-    }))!;
+    const response = (await PATCH(
+      {
+        json: async () => ({
+          to: 'dispensing',
+          version: 1,
+        }),
+      } as NextRequest,
+      {
+        params: Promise.resolve({ id: 'cycle_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(409);
     expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('transitions the cycle and creates a notification best-effort', async () => {
-    const response = (await PATCH({
-      json: async () => ({
-        to: 'dispensing',
-        version: 2,
-        note: '調剤開始',
-      }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'cycle_1' }),
-    }))!;
+    const response = (await PATCH(
+      {
+        json: async () => ({
+          to: 'dispensing',
+          version: 2,
+          note: '調剤開始',
+        }),
+      } as NextRequest,
+      {
+        params: Promise.resolve({ id: 'cycle_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(200);
     expect(medicationCycleUpdateManyMock).toHaveBeenCalledWith({
@@ -124,7 +130,28 @@ describe('/api/medication-cycles/[id]/transition', () => {
       'org:org_1',
       expect.objectContaining({
         type: 'cycle_transition',
-      })
+      }),
     );
+  });
+
+  it('does not transition an unassigned cycle', async () => {
+    medicationCycleFindFirstMock.mockResolvedValue(null);
+
+    const response = (await PATCH(
+      {
+        json: async () => ({
+          to: 'dispensing',
+          version: 2,
+        }),
+      } as NextRequest,
+      {
+        params: Promise.resolve({ id: 'cycle_2' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(404);
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
   });
 });

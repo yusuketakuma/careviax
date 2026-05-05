@@ -6,12 +6,16 @@ const {
   communicationRequestFindFirstMock,
   communicationRequestUpdateMock,
   communicationResponseCreateMock,
+  careCaseFindFirstMock,
+  patientFindFirstMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   communicationRequestFindFirstMock: vi.fn(),
   communicationRequestUpdateMock: vi.fn(),
   communicationResponseCreateMock: vi.fn(),
+  careCaseFindFirstMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -23,6 +27,12 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     communicationRequest: {
       findFirst: communicationRequestFindFirstMock,
+    },
+    careCase: {
+      findFirst: careCaseFindFirstMock,
+    },
+    patient: {
+      findFirst: patientFindFirstMock,
     },
   },
 }));
@@ -54,8 +64,12 @@ describe('/api/communication-requests/[id] PATCH', () => {
     });
     communicationRequestFindFirstMock.mockResolvedValue({
       id: 'request_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
       status: 'received',
     });
+    careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     communicationRequestUpdateMock.mockResolvedValue({
       id: 'request_1',
       status: 'responded',
@@ -70,7 +84,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
         communicationResponse: {
           create: communicationResponseCreateMock,
         },
-      })
+      }),
     );
   });
 
@@ -80,10 +94,9 @@ describe('/api/communication-requests/[id] PATCH', () => {
       status: 'draft',
     });
 
-    const response = await PATCH(
-      createRequest({ status: 'received' }, { 'x-org-id': 'org_1' }),
-      { params: Promise.resolve({ id: 'request_1' }) }
-    );
+    const response = await PATCH(createRequest({ status: 'received' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'request_1' }),
+    });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -103,9 +116,9 @@ describe('/api/communication-requests/[id] PATCH', () => {
             content: '現行処方で継続',
           },
         },
-        { 'x-org-id': 'org_1' }
+        { 'x-org-id': 'org_1' },
       ),
-      { params: Promise.resolve({ id: 'request_1' }) }
+      { params: Promise.resolve({ id: 'request_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -123,5 +136,27 @@ describe('/api/communication-requests/[id] PATCH', () => {
       data: { status: 'responded' },
       select: expect.any(Object),
     });
+  });
+
+  it('returns not found and skips side effects for an unassigned request', async () => {
+    careCaseFindFirstMock.mockResolvedValue(null);
+
+    const response = await PATCH(
+      createRequest(
+        {
+          response: {
+            responder_name: '在宅主治医',
+            content: '現行処方で継続',
+          },
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
   });
 });

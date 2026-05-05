@@ -29,6 +29,15 @@ type PatientCaseListDb = PatientAccessDb & {
   };
 };
 
+type PatientListDb = PatientAccessDb & {
+  patient: PatientAccessDb['patient'] & {
+    findMany(args: {
+      where: Prisma.PatientWhereInput;
+      select: { id: true };
+    }): Promise<Array<{ id: string }>>;
+  };
+};
+
 export async function canAccessPatient(args: {
   db: PatientAccessDb;
   orgId: string;
@@ -112,4 +121,39 @@ export async function listAccessiblePatientCaseIds(args: {
   });
 
   return careCases.map((careCase) => careCase.id);
+}
+
+export async function listAccessibleCareCaseIds(args: {
+  db: PatientCaseListDb;
+  orgId: string;
+  accessContext: VisitScheduleAccessContext;
+}) {
+  const caseAssignmentWhere = buildCareCaseAssignmentWhere(args.accessContext);
+  const careCases = await args.db.careCase.findMany({
+    where: {
+      org_id: args.orgId,
+      ...(caseAssignmentWhere ? { AND: [caseAssignmentWhere] } : {}),
+    },
+    select: { id: true },
+  });
+
+  return careCases.map((careCase) => careCase.id);
+}
+
+export async function listAccessiblePatientIds(args: {
+  db: PatientListDb;
+  orgId: string;
+  accessContext: VisitScheduleAccessContext;
+}) {
+  const patients = await args.db.patient.findMany({
+    where: applyPatientAssignmentWhere(
+      {
+        org_id: args.orgId,
+      },
+      args.accessContext,
+    ),
+    select: { id: true },
+  });
+
+  return patients.map((patient) => patient.id);
 }

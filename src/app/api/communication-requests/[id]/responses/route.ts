@@ -4,6 +4,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
+import { canAccessCommunicationRequestRecord } from '@/server/services/communication-request-access';
 
 const createResponseSchema = z.object({
   responder_name: z.string().min(1, '回答者名は必須です'),
@@ -12,18 +13,25 @@ const createResponseSchema = z.object({
 });
 
 export const GET = withAuthContext(
-  async (
-    _req: NextRequest,
-    ctx,
-    { params }: { params: Promise<{ id: string }> }
-  ) => {
+  async (_req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
     const { id } = await params;
 
     const request = await prisma.communicationRequest.findFirst({
       where: { id, org_id: ctx.orgId },
-      select: { id: true },
+      select: { id: true, patient_id: true, case_id: true },
     });
     if (!request) return notFound('依頼が見つかりません');
+    if (
+      !(await canAccessCommunicationRequestRecord({
+        db: prisma,
+        orgId: ctx.orgId,
+        patientId: request.patient_id,
+        caseId: request.case_id,
+        accessContext: ctx,
+      }))
+    ) {
+      return notFound('依頼が見つかりません');
+    }
 
     const responses = await prisma.communicationResponse.findMany({
       where: { request_id: id, org_id: ctx.orgId },
@@ -35,15 +43,11 @@ export const GET = withAuthContext(
   {
     permission: 'canReport',
     message: '連携依頼の閲覧権限がありません',
-  }
+  },
 );
 
 export const POST = withAuthContext(
-  async (
-    req: NextRequest,
-    ctx,
-    { params }: { params: Promise<{ id: string }> }
-  ) => {
+  async (req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
     const { id } = await params;
 
     const body = await req.json().catch(() => null);
@@ -56,9 +60,20 @@ export const POST = withAuthContext(
 
     const existingRequest = await prisma.communicationRequest.findFirst({
       where: { id, org_id: ctx.orgId },
-      select: { id: true, status: true },
+      select: { id: true, patient_id: true, case_id: true, status: true },
     });
     if (!existingRequest) return notFound('依頼が見つかりません');
+    if (
+      !(await canAccessCommunicationRequestRecord({
+        db: prisma,
+        orgId: ctx.orgId,
+        patientId: existingRequest.patient_id,
+        caseId: existingRequest.case_id,
+        accessContext: ctx,
+      }))
+    ) {
+      return notFound('依頼が見つかりません');
+    }
     if (['closed', 'cancelled', 'expired'].includes(existingRequest.status)) {
       return validationError('完了・取消・期限切れの依頼には返信を追加できません');
     }
@@ -87,5 +102,5 @@ export const POST = withAuthContext(
   {
     permission: 'canReport',
     message: '連携依頼の更新権限がありません',
-  }
+  },
 );

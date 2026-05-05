@@ -51,7 +51,7 @@ function createRequest(url: string, body?: unknown) {
     url,
     method: body === undefined ? 'GET' : 'POST',
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
     },
     nextUrl: new URL(url),
     json: vi.fn().mockResolvedValue(body),
@@ -78,9 +78,7 @@ describe('/api/cases', () => {
         },
       },
     ]);
-    userFindManyMock.mockResolvedValue([
-      { id: 'pharmacist_1', name: '担当薬剤師' },
-    ]);
+    userFindManyMock.mockResolvedValue([{ id: 'pharmacist_1', name: '担当薬剤師' }]);
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     careCaseCreateMock.mockResolvedValue({
       id: 'case_2',
@@ -99,7 +97,9 @@ describe('/api/cases', () => {
 
   it('lists cases and resolves primary pharmacist names', async () => {
     const response = (await GET(
-      createRequest('http://localhost/api/cases?patient_id=patient_1&status=active&q=%E6%82%A3%E8%80%85')
+      createRequest(
+        'http://localhost/api/cases?patient_id=patient_1&status=active&q=%E6%82%A3%E8%80%85',
+      ),
     ))!;
 
     expect(response.status).toBe(200);
@@ -110,7 +110,7 @@ describe('/api/cases', () => {
           patient_id: 'patient_1',
           status: 'active',
         }),
-      })
+      }),
     );
     await expect(response.json()).resolves.toMatchObject({
       data: [
@@ -129,7 +129,7 @@ describe('/api/cases', () => {
         referral_source: '病院A',
         referral_date: '2026-03-28',
         notes: '初回相談',
-      })
+      }),
     ))!;
 
     expect(response.status).toBe(201);
@@ -141,5 +141,21 @@ describe('/api/cases', () => {
         notes: '初回相談',
       }),
     });
+  });
+
+  it('does not create a case for an unassigned patient', async () => {
+    patientFindFirstMock.mockResolvedValue(null);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/cases', {
+        patient_id: 'patient_2',
+        referral_source: '病院A',
+        referral_date: '2026-03-28',
+        notes: '初回相談',
+      }),
+    ))!;
+
+    expect(response.status).toBe(404);
+    expect(careCaseCreateMock).not.toHaveBeenCalled();
   });
 });

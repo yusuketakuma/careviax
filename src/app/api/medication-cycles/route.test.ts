@@ -4,12 +4,14 @@ import type { NextRequest } from 'next/server';
 const {
   medicationCycleFindManyMock,
   medicationCycleCountMock,
+  careCaseFindFirstMock,
   validateOrgReferencesMock,
   medicationCycleCreateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   medicationCycleFindManyMock: vi.fn(),
   medicationCycleCountMock: vi.fn(),
+  careCaseFindFirstMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
   medicationCycleCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -27,6 +29,9 @@ vi.mock('@/lib/db/client', () => ({
     medicationCycle: {
       findMany: medicationCycleFindManyMock,
       count: medicationCycleCountMock,
+    },
+    careCase: {
+      findFirst: careCaseFindFirstMock,
     },
   },
 }));
@@ -52,6 +57,7 @@ describe('/api/medication-cycles', () => {
       },
     ]);
     medicationCycleCountMock.mockResolvedValue(1);
+    careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
     medicationCycleCreateMock.mockResolvedValue({
       id: 'cycle_2',
@@ -68,30 +74,39 @@ describe('/api/medication-cycles', () => {
   });
 
   it('lists medication cycles with filters', async () => {
-    const response = (await GET({
-      url: 'http://localhost/api/medication-cycles?status=dispensing&patient_id=patient_1&case_id=case_1',
-    } as NextRequest, { params: Promise.resolve({}) }))!;
+    const response = (await GET(
+      {
+        url: 'http://localhost/api/medication-cycles?status=dispensing&patient_id=patient_1&case_id=case_1',
+      } as NextRequest,
+      { params: Promise.resolve({}) },
+    ))!;
 
     expect(response.status).toBe(200);
     expect(medicationCycleFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: {
+        where: expect.objectContaining({
           org_id: 'org_1',
           overall_status: 'dispensing',
           case_id: 'case_1',
           patient_id: 'patient_1',
-        },
-      })
+          case_: expect.objectContaining({
+            OR: expect.any(Array),
+          }),
+        }),
+      }),
     );
   });
 
   it('creates a medication cycle after org reference validation', async () => {
-    const response = (await POST({
-      json: async () => ({
-        case_id: 'case_1',
-        patient_id: 'patient_1',
-      }),
-    } as NextRequest, { params: Promise.resolve({}) }))!;
+    const response = (await POST(
+      {
+        json: async () => ({
+          case_id: 'case_1',
+          patient_id: 'patient_1',
+        }),
+      } as NextRequest,
+      { params: Promise.resolve({}) },
+    ))!;
 
     expect(response.status).toBe(201);
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
@@ -107,5 +122,22 @@ describe('/api/medication-cycles', () => {
         version: 1,
       },
     });
+  });
+
+  it('rejects an unassigned case before creating a medication cycle', async () => {
+    careCaseFindFirstMock.mockResolvedValue(null);
+
+    const response = (await POST(
+      {
+        json: async () => ({
+          case_id: 'case_2',
+          patient_id: 'patient_2',
+        }),
+      } as NextRequest,
+      { params: Promise.resolve({}) },
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(medicationCycleCreateMock).not.toHaveBeenCalled();
   });
 });

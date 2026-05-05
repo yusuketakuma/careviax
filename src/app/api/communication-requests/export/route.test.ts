@@ -7,12 +7,14 @@ const {
   withOrgContextMock,
   communicationRequestFindManyMock,
   patientFindManyMock,
+  careCaseFindManyMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   communicationRequestFindManyMock: vi.fn(),
   patientFindManyMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -23,6 +25,12 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     membership: {
       findFirst: membershipFindFirstMock,
+    },
+    patient: {
+      findMany: patientFindManyMock,
+    },
+    careCase: {
+      findMany: careCaseFindManyMock,
     },
   },
 }));
@@ -47,6 +55,7 @@ describe('/api/communication-requests/export GET', () => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1' }]);
     communicationRequestFindManyMock.mockResolvedValue([
       {
         id: 'request_1',

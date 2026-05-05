@@ -4,12 +4,18 @@ import type { NextRequest } from 'next/server';
 const {
   communicationRequestFindManyMock,
   communicationRequestCreateMock,
+  patientFindManyMock,
+  careCaseFindManyMock,
+  careCaseFindFirstMock,
   findLatestPrescriberInstitutionSuggestionMock,
   pickCommunicationRecipientCandidateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   communicationRequestFindManyMock: vi.fn(),
   communicationRequestCreateMock: vi.fn(),
+  patientFindManyMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
+  careCaseFindFirstMock: vi.fn(),
   findLatestPrescriberInstitutionSuggestionMock: vi.fn(),
   pickCommunicationRecipientCandidateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -17,14 +23,17 @@ const {
 
 vi.mock('@/lib/auth/middleware', () => ({
   withAuth: (
-    handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>,
+    handler: (
+      req: NextRequest & { orgId: string; userId: string; role: 'pharmacist' },
+    ) => Promise<Response>,
   ) => {
     return (req: NextRequest) =>
       handler({
         ...req,
         orgId: 'org_1',
         userId: 'user_1',
-      } as NextRequest & { orgId: string; userId: string });
+        role: 'pharmacist',
+      } as unknown as NextRequest & { orgId: string; userId: string; role: 'pharmacist' });
   },
 }));
 
@@ -32,6 +41,13 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     communicationRequest: {
       findMany: communicationRequestFindManyMock,
+    },
+    patient: {
+      findMany: patientFindManyMock,
+    },
+    careCase: {
+      findMany: careCaseFindManyMock,
+      findFirst: careCaseFindFirstMock,
     },
   },
 }));
@@ -55,6 +71,9 @@ describe('/api/communication-requests', () => {
     vi.clearAllMocks();
     communicationRequestFindManyMock.mockResolvedValue([{ id: 'request_1', status: 'draft' }]);
     communicationRequestCreateMock.mockResolvedValue({ id: 'request_2', status: 'draft' });
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_1' }]);
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1' }]);
+    careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
     findLatestPrescriberInstitutionSuggestionMock.mockResolvedValue(null);
     pickCommunicationRecipientCandidateMock.mockResolvedValue(null);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -72,6 +91,21 @@ describe('/api/communication-requests', () => {
     } as NextRequest))!;
 
     expect(response.status).toBe(200);
+    expect(communicationRequestFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          AND: [
+            expect.objectContaining({
+              OR: expect.arrayContaining([
+                { case_id: { in: ['case_1'] } },
+                { AND: [{ case_id: null }, { patient_id: { in: ['patient_1'] } }] },
+              ]),
+            }),
+          ],
+        }),
+      }),
+    );
   });
 
   it('returns 400 for an invalid status filter', async () => {
@@ -103,6 +137,25 @@ describe('/api/communication-requests', () => {
     });
   });
 
+  it('rejects an unassigned case before recipient suggestion or create side effects', async () => {
+    careCaseFindFirstMock.mockResolvedValue(null);
+
+    const response = (await POST({
+      json: async () => ({
+        patient_id: 'patient_2',
+        case_id: 'case_2',
+        request_type: '疑義照会',
+        subject: '確認事項',
+        content: '処方内容を確認したいです',
+      }),
+    } as NextRequest))!;
+
+    expect(response.status).toBe(400);
+    expect(findLatestPrescriberInstitutionSuggestionMock).not.toHaveBeenCalled();
+    expect(pickCommunicationRecipientCandidateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+  });
+
   it('fills the recipient from the latest prescriber institution when missing', async () => {
     findLatestPrescriberInstitutionSuggestionMock.mockResolvedValue({
       id: 'institution_1',
@@ -131,7 +184,7 @@ describe('/api/communication-requests', () => {
       {
         caseId: 'case_1',
         patientId: 'patient_1',
-      }
+      },
     );
     expect(communicationRequestCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -181,7 +234,7 @@ describe('/api/communication-requests', () => {
         caseId: 'case_1',
         patientId: 'patient_1',
         requestType: 'care_manager_coordination',
-      }
+      },
     );
     expect(communicationRequestCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({

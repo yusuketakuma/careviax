@@ -5,11 +5,9 @@ import { success, validationError, notFound, forbidden } from '@/lib/api/respons
 import { prisma } from '@/lib/db/client';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { canAccessCommunicationRequestRecord } from '@/server/services/communication-request-access';
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canReport',
     message: '連携依頼の閲覧権限がありません',
@@ -54,6 +52,17 @@ export async function GET(
   });
 
   if (!request) return notFound('依頼が見つかりません');
+  if (
+    !(await canAccessCommunicationRequestRecord({
+      db: prisma,
+      orgId,
+      patientId: request.patient_id,
+      caseId: request.case_id,
+      accessContext: ctx,
+    }))
+  ) {
+    return notFound('依頼が見つかりません');
+  }
 
   // FVD-01C: Include emergency contacts as SSOT for contact target suggestions
   // Avoids re-inferring contacts from care team on every communication request load
@@ -117,10 +126,7 @@ const patchCommunicationRequestSchema = z.object({
     .optional(),
 });
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canReport',
     message: '連携依頼の更新権限がありません',
@@ -144,10 +150,21 @@ export async function PATCH(
 
   const existing = await prisma.communicationRequest.findFirst({
     where: { id, org_id: orgId },
-    select: { id: true, status: true },
+    select: { id: true, patient_id: true, case_id: true, status: true },
   });
 
   if (!existing) return notFound('依頼が見つかりません');
+  if (
+    !(await canAccessCommunicationRequestRecord({
+      db: prisma,
+      orgId,
+      patientId: existing.patient_id,
+      caseId: existing.case_id,
+      accessContext: ctx,
+    }))
+  ) {
+    return notFound('依頼が見つかりません');
+  }
 
   if (existing.status === 'closed' || existing.status === 'cancelled') {
     return forbidden('完了または取消済みの依頼は変更できません');
@@ -156,111 +173,113 @@ export async function PATCH(
   if (nextStatus && nextStatus !== existing.status) {
     const allowed = ALLOWED_STATUS_TRANSITIONS[existing.status] ?? [];
     if (!allowed.includes(nextStatus)) {
-      return validationError(
-        `${existing.status} から ${nextStatus} へは遷移できません`
-      );
+      return validationError(`${existing.status} から ${nextStatus} へは遷移できません`);
     }
   }
 
-  const result = await withOrgContext(orgId, async (tx) => {
-    if (response) {
-      await tx.communicationResponse.create({
-        data: {
-          org_id: orgId,
-          request_id: id,
-          responder_name: response.responder_name,
-          content: response.content,
-          responded_at: response.responded_at
-            ? new Date(response.responded_at)
-            : new Date(),
-        },
-      });
-    }
-
-    const updated = await tx.communicationRequest.update({
-      where: { id },
-      data: {
-        ...(nextStatus ? { status: nextStatus } : {}),
-      },
-      select: {
-        id: true,
-        org_id: true,
-        patient_id: true,
-        case_id: true,
-        request_type: true,
-        template_key: true,
-        recipient_name: true,
-        recipient_role: true,
-        related_entity_type: true,
-        related_entity_id: true,
-        context_snapshot: true,
-        status: true,
-        subject: true,
-        content: true,
-        requested_by: true,
-        requested_at: true,
-        due_date: true,
-        updated_at: true,
-        responses: {
-          orderBy: { responded_at: 'desc' },
-          select: {
-            id: true,
-            responder_name: true,
-            content: true,
-            responded_at: true,
+  const result = await withOrgContext(
+    orgId,
+    async (tx) => {
+      if (response) {
+        await tx.communicationResponse.create({
+          data: {
+            org_id: orgId,
+            request_id: id,
+            responder_name: response.responder_name,
+            content: response.content,
+            responded_at: response.responded_at ? new Date(response.responded_at) : new Date(),
           },
-        },
-      },
-    });
+        });
+      }
 
-    if (
-      updated.related_entity_type === 'tracing_report' &&
-      updated.related_entity_id &&
-      nextStatus
-    ) {
-      const tracingReport = await tx.tracingReport.findFirst({
-        where: {
-          id: updated.related_entity_id,
-          org_id: orgId,
+      const updated = await tx.communicationRequest.update({
+        where: { id },
+        data: {
+          ...(nextStatus ? { status: nextStatus } : {}),
         },
         select: {
           id: true,
-          sent_at: true,
-          acknowledged_at: true,
+          org_id: true,
+          patient_id: true,
+          case_id: true,
+          request_type: true,
+          template_key: true,
+          recipient_name: true,
+          recipient_role: true,
+          related_entity_type: true,
+          related_entity_id: true,
+          context_snapshot: true,
+          status: true,
+          subject: true,
+          content: true,
+          requested_by: true,
+          requested_at: true,
+          due_date: true,
+          updated_at: true,
+          responses: {
+            orderBy: { responded_at: 'desc' },
+            select: {
+              id: true,
+              responder_name: true,
+              content: true,
+              responded_at: true,
+            },
+          },
         },
       });
 
-      if (tracingReport) {
-        const tracingStatus =
-          nextStatus === 'draft'
-            ? 'draft'
-            : nextStatus === 'sent'
-              ? 'sent'
-              : ['received', 'in_progress', 'escalated'].includes(nextStatus)
-                ? 'received'
-                : ['responded', 'closed'].includes(nextStatus)
-                  ? 'acknowledged'
-                  : null;
+      if (
+        updated.related_entity_type === 'tracing_report' &&
+        updated.related_entity_id &&
+        nextStatus
+      ) {
+        const tracingReport = await tx.tracingReport.findFirst({
+          where: {
+            id: updated.related_entity_id,
+            org_id: orgId,
+          },
+          select: {
+            id: true,
+            sent_at: true,
+            acknowledged_at: true,
+          },
+        });
 
-        if (tracingStatus) {
-          await tx.tracingReport.update({
-            where: { id: tracingReport.id },
-            data: {
-              status: tracingStatus,
-              sent_to_physician: updated.recipient_name,
-              pdf_url: `/api/tracing-reports/${tracingReport.id}/pdf`,
-              ...(tracingStatus === 'sent' && !tracingReport.sent_at ? { sent_at: new Date() } : {}),
-              ...(tracingStatus === 'acknowledged' && !tracingReport.acknowledged_at
-                ? { acknowledged_at: new Date() }
-                : {}),
-            },
-          });
+        if (tracingReport) {
+          const tracingStatus =
+            nextStatus === 'draft'
+              ? 'draft'
+              : nextStatus === 'sent'
+                ? 'sent'
+                : ['received', 'in_progress', 'escalated'].includes(nextStatus)
+                  ? 'received'
+                  : ['responded', 'closed'].includes(nextStatus)
+                    ? 'acknowledged'
+                    : null;
+
+          if (tracingStatus) {
+            await tx.tracingReport.update({
+              where: { id: tracingReport.id },
+              data: {
+                status: tracingStatus,
+                sent_to_physician: updated.recipient_name,
+                pdf_url: `/api/tracing-reports/${tracingReport.id}/pdf`,
+                ...(tracingStatus === 'sent' && !tracingReport.sent_at
+                  ? { sent_at: new Date() }
+                  : {}),
+                ...(tracingStatus === 'acknowledged' && !tracingReport.acknowledged_at
+                  ? { acknowledged_at: new Date() }
+                  : {}),
+              },
+            });
+          }
         }
       }
-    }
 
-    return updated;
-  }, { requestContext: ctx });
+      return updated;
+    },
+    { requestContext: ctx },
+  );
 
   return success({ data: result });
 }

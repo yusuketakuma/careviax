@@ -12,6 +12,28 @@ Backup directory:
 /Users/yusuke/.codex/backups/reset-to-gpt55-yolo-20260424-143155
 ```
 ## Iterations
+### 20260505-154000
+- current task: complete PHI / IDOR / assignment-scope hardening for communication requests/events, cases, and medication cycles
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `AGENTS.md`, `package.json`, Next.js route handler docs at `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/lib/auth/visit-schedule-access.ts`, `src/server/services/patient-access.ts`, communication request/event routes and tests, case routes and tests, medication cycle routes and tests, relevant Prisma schema for `CommunicationRequest`, `CommunicationEvent`, `CareCase`, and `MedicationCycle`
+- files changed: `src/server/services/communication-request-access.ts`, `src/server/services/patient-access.ts`, `src/app/api/communication-requests/route.ts`, `src/app/api/communication-requests/[id]/route.ts`, `src/app/api/communication-requests/[id]/responses/route.ts`, `src/app/api/communication-requests/export/route.ts`, `src/app/api/communication-events/route.ts`, `src/app/api/cases/route.ts`, `src/app/api/cases/[id]/transition/route.ts`, `src/app/api/medication-cycles/route.ts`, `src/app/api/medication-cycles/[id]/transition/route.ts`, `src/app/api/medication-cycles/[id]/history/route.ts`, and associated route tests
+- bugs found: communication request list/detail/export/response/update and communication event list/create were role/org scoped but not assignment scoped; case list/create/transition and medication cycle list/create/transition/history could expose or mutate same-org unassigned patient/case/cycle data
+- security risks found: reduced same-org PHI/IDOR risk by applying assignment predicates to communication request/event list and export paths, checking communication request/event patient/case access before suggestions/DB writes/response writes/tracing side effects/contact-learning side effects, applying case assignment predicates to cases and medication cycles, and requiring case/patient assignment before medication cycle creation
+- performance issues found: no performance remediation in this iteration; added bounded assignment lookups and DB predicates on access-control paths
+- validation commands: `pnpm exec prettier --write` on touched files; targeted Vitest for communication request/event, case, medication cycle, and patient-access tests; `pnpm exec tsc --noEmit --pretty false`; `pnpm lint`; `pnpm test`; `pnpm audit --audit-level moderate`; `git diff --check`; `pnpm build`
+- validation results: targeted Vitest passed with 11 files / 33 tests before final extra negative tests, then affected targeted tests passed with 3 files / 10 tests; TypeScript passed; lint passed with one pre-existing warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; full Vitest passed with 514 files / 2255 tests; audit reported no known vulnerabilities; diff whitespace check passed; production build passed with 216 routes/pages generated
+- remaining work: no known failing validation or critical blocker remains in this scope; broader repo may still contain unrelated future hardening opportunities outside the inspected communication/case/medication-cycle surfaces
+- next action: review and commit the assignment-scope hardening patch if desired
+### 20260505-000000
+- current task: research Codex `/goal` from official OpenAI docs and map three high-productivity goal patterns to the CareViaX repository
+- files inspected: `git status --short`, `/Users/yusuke/.codex/memories/MEMORY.md`, OpenAI Codex docs via developer docs MCP (`codex/app-server`, `codex/cli/slash-commands`, `codex/learn/best-practices`, `codex/config-reference`), `AGENTS.md`, `.codex/ralph-state.md`, `README.md`, `package.json`, route/service/prisma file inventory
+- files changed: `.codex/ralph-state.md`
+- bugs found: no application bug remediation requested or performed
+- security risks found: no new exploitable defect inspected in code; repository history and current structure indicate PHI assignment scope and IDOR regression prevention should be a primary `/goal` use case
+- performance issues found: no performance remediation performed; repository history and service inventory indicate workflow/billing/dashboard batch performance is a good bounded `/goal` target
+- validation commands: `git status --short`; repository file inspection; official OpenAI docs MCP lookup
+- validation results: research complete; no application tests run because no application code was changed
+- remaining work: use one selected `/goal` prompt in an interactive Codex thread, then execute the task-specific validation bundle required by that goal
+- next action: present three Japanese `/goal` prompt options with source-grounded caveats about the feature being experimental
 ### 20260504-092700
 - current task: autonomous subagent-led remediation of patient PHI assignment scoping across patient list/detail/export, child patient APIs, tracing reports, and PDF document generation
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, Next route handler docs under `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/lib/auth/visit-schedule-access.ts`, patient list/detail routes and services, patient child routes, tracing report routes, PDF route wrappers, `src/server/services/pdf-documents.tsx`, `src/server/services/patient-risk.ts`, `src/server/services/patient-service.ts`, relevant Prisma schemas, route/service tests, and findings from explorer, security, test, performance, and strict reviewer subagents
