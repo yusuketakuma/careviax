@@ -171,7 +171,7 @@ export function DataTable<TData>({
             type="button"
             variant="ghost"
             size="icon-sm"
-            className="size-7"
+            className="size-11 sm:size-7"
             onClick={(event) => {
               event.stopPropagation();
               row.toggleExpanded();
@@ -251,17 +251,13 @@ export function DataTable<TData>({
   const selectedCount = table.getSelectedRowModel().rows.length;
 
   function handleExport() {
-    const headers = visibleLeafColumns.map((column) =>
-      getColumnLabel(column.columnDef, column.id)
-    );
+    const headers = visibleLeafColumns.map((column) => getColumnLabel(column.columnDef, column.id));
     const rows = table.getRowModel().rows.map((row) =>
       visibleLeafColumns.map((column) => {
         const meta = getColumnMeta(column.columnDef);
-        const value = meta?.exportValue
-          ? meta.exportValue(row.original)
-          : row.getValue(column.id);
+        const value = meta?.exportValue ? meta.exportValue(row.original) : row.getValue(column.id);
         return stringifyExportValue(value);
-      })
+      }),
     );
 
     const csv = [toCsvRow(headers), ...rows.map((row) => toCsvRow(row))].join('\n');
@@ -289,7 +285,7 @@ export function DataTable<TData>({
                   key={header.id}
                   className={cn(
                     'relative px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground',
-                    meta?.tabletHidden && 'hidden xl:table-cell'
+                    meta?.tabletHidden && 'hidden xl:table-cell',
                   )}
                   {...(header.getSize() !== 150
                     ? ({ width: String(header.getSize()) } as unknown as Record<string, string>)
@@ -300,7 +296,7 @@ export function DataTable<TData>({
                       type="button"
                       className={cn(
                         'flex items-center gap-1 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                        isSpecial && 'sr-only'
+                        isSpecial && 'sr-only',
                       )}
                       onClick={header.column.getToggleSortingHandler()}
                       aria-label={`${getColumnLabel(header.column.columnDef, header.column.id)} で並び替え`}
@@ -352,7 +348,7 @@ export function DataTable<TData>({
                   value={globalFilter}
                   onChange={(event) => setGlobalFilter(event.target.value)}
                   placeholder={toolbar.globalFilterPlaceholder ?? 'テーブル内を絞り込み'}
-                  className="pl-8"
+                  className="min-h-[44px] pl-8 sm:h-8 sm:min-h-0"
                   aria-label={toolbar.globalFilterPlaceholder ?? 'テーブル内検索'}
                 />
               </div>
@@ -365,23 +361,25 @@ export function DataTable<TData>({
                     table.getColumn(field.columnId)?.setFilterValue(event.target.value)
                   }
                   placeholder={field.placeholder ?? `${field.label}で絞り込み`}
+                  className="min-h-[44px] sm:h-8 sm:min-h-0"
                   aria-label={field.label}
                 />
               </div>
             ))}
             {enableRowSelection && selectedCount > 0 && (
-              <p className="text-sm text-muted-foreground">
-                {selectedCount} 件を選択中
-              </p>
+              <p className="text-sm text-muted-foreground">{selectedCount} 件を選択中</p>
             )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             {toolbar.enableColumnVisibility && visibleLeafColumns.length > 0 && (
               <DropdownMenu>
-                <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
-                  <Columns3 className="mr-1.5 size-3.5" aria-hidden="true" />
-                  列
+                <DropdownMenuTrigger
+                  render={
+                    <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0" />
+                  }
+                >
+                  <Columns3 className="mr-1.5 size-3.5" aria-hidden="true" />列
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel>表示する列</DropdownMenuLabel>
@@ -401,13 +399,23 @@ export function DataTable<TData>({
               </DropdownMenu>
             )}
             {toolbar.enableExport && (
-              <Button size="sm" variant="outline" onClick={handleExport}>
+              <Button
+                size="sm"
+                variant="outline"
+                className="min-h-[44px] sm:min-h-0"
+                onClick={handleExport}
+              >
                 <Download className="mr-1.5 size-3.5" aria-hidden="true" />
                 CSV出力
               </Button>
             )}
             {toolbar.enablePrint && (
-              <Button size="sm" variant="outline" onClick={() => window.print()}>
+              <Button
+                size="sm"
+                variant="outline"
+                className="min-h-[44px] sm:min-h-0"
+                onClick={() => window.print()}
+              >
                 <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
                 印刷
               </Button>
@@ -442,8 +450,9 @@ export function DataTable<TData>({
                       className={cn(
                         'border-b border-border transition-colors last:border-0 hover:bg-muted/40',
                         index % 2 === 1 && 'bg-muted/20',
-                        selectedRowIndex === index && 'ring-2 ring-inset ring-primary/50 bg-primary/5',
-                        row.getIsSelected() && 'bg-primary/5'
+                        selectedRowIndex === index &&
+                          'ring-2 ring-inset ring-primary/50 bg-primary/5',
+                        row.getIsSelected() && 'bg-primary/5',
                       )}
                       onClick={() => onRowClick?.(index)}
                       onKeyDown={(event) => {
@@ -463,7 +472,7 @@ export function DataTable<TData>({
                             key={cell.id}
                             className={cn(
                               'px-4 py-3 text-sm text-foreground',
-                              meta?.tabletHidden && 'hidden xl:table-cell'
+                              meta?.tabletHidden && 'hidden xl:table-cell',
                             )}
                           >
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -473,10 +482,7 @@ export function DataTable<TData>({
                     </tr>
                     {renderExpandedRow && row.getIsExpanded() && (
                       <tr className="border-b border-border bg-muted/10">
-                        <td
-                          colSpan={table.getVisibleLeafColumns().length}
-                          className="px-4 py-4"
-                        >
+                        <td colSpan={table.getVisibleLeafColumns().length} className="px-4 py-4">
                           {renderExpandedRow(row)}
                         </td>
                       </tr>
@@ -516,7 +522,7 @@ export function DataTable<TData>({
                 className={cn(
                   'rounded-md border border-border bg-card p-4 shadow-sm',
                   onRowClick && 'cursor-pointer transition-colors hover:bg-muted/20',
-                  row.getIsSelected() && 'ring-2 ring-primary/40'
+                  row.getIsSelected() && 'ring-2 ring-primary/40',
                 )}
                 onClick={() => onRowClick?.(row.index)}
                 onKeyDown={(event) => {
@@ -544,6 +550,7 @@ export function DataTable<TData>({
                         type="button"
                         variant="outline"
                         size="sm"
+                        className="min-h-[44px] sm:min-h-0"
                         onClick={(event) => {
                           event.stopPropagation();
                           row.toggleExpanded();
@@ -559,8 +566,7 @@ export function DataTable<TData>({
                   return (
                     <div key={cell.id} className="flex items-start justify-between gap-2 py-1">
                       <span className="min-w-[6rem] text-xs font-medium text-muted-foreground">
-                        {meta?.mobileLabel ??
-                          getColumnLabel(cell.column.columnDef, cell.column.id)}
+                        {meta?.mobileLabel ?? getColumnLabel(cell.column.columnDef, cell.column.id)}
                       </span>
                       <span className="text-right text-sm text-foreground">
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -585,6 +591,7 @@ export function DataTable<TData>({
             variant="outline"
             onClick={onLoadMore}
             size="sm"
+            className="min-h-[44px] sm:min-h-0"
             loading={isLoading}
             loadingLabel="読み込み中..."
           >

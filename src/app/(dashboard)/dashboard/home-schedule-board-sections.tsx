@@ -113,13 +113,7 @@ function SectionShell({
   );
 }
 
-function PriorityMetricFrame({
-  active,
-  children,
-}: {
-  active: boolean;
-  children: React.ReactNode;
-}) {
+function PriorityMetricFrame({ active, children }: { active: boolean; children: React.ReactNode }) {
   return <div className={cn(active ? 'rounded-xl ring-2 ring-primary/25' : null)}>{children}</div>;
 }
 
@@ -186,7 +180,7 @@ export function InlineFilterButton({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        'inline-flex min-h-[36px] items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+        'inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors sm:min-h-[36px]',
         active
           ? 'border-primary bg-primary/10 text-primary'
           : 'border-border/70 bg-background text-muted-foreground hover:text-foreground',
@@ -283,9 +277,7 @@ function StaffSummaryCard({ summary }: { summary: HomeScheduleStaffSummary }) {
         <div className="rounded-md bg-rose-50 px-1 py-1 text-rose-700">
           時間 {summary.timingGaps}
         </div>
-        <div className="rounded-md bg-sky-50 px-1 py-1 text-sky-700">
-          進行 {summary.inProgress}
-        </div>
+        <div className="rounded-md bg-sky-50 px-1 py-1 text-sky-700">進行 {summary.inProgress}</div>
       </div>
     </div>
   );
@@ -357,17 +349,15 @@ export function HomeScheduleScopeSection({
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  className="inline-flex size-8 items-center justify-center rounded-lg border border-border/70 bg-background text-muted-foreground transition-colors hover:text-foreground"
-                  onClick={() =>
-                    onDateChange(format(addDays(selectedDateValue, -1), 'yyyy-MM-dd'))
-                  }
+                  className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-border/70 bg-background text-muted-foreground transition-colors hover:text-foreground sm:size-8 sm:min-h-0 sm:min-w-0"
+                  onClick={() => onDateChange(format(addDays(selectedDateValue, -1), 'yyyy-MM-dd'))}
                   aria-label="前日の予定"
                 >
                   <ChevronLeft className="size-4" aria-hidden="true" />
                 </button>
                 <button
                   type="button"
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-border/70 bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground sm:h-8 sm:min-h-0 sm:px-2.5"
                   onClick={() => onDateChange(currentDate)}
                 >
                   <RotateCcw className="size-3.5" aria-hidden="true" />
@@ -375,10 +365,8 @@ export function HomeScheduleScopeSection({
                 </button>
                 <button
                   type="button"
-                  className="inline-flex size-8 items-center justify-center rounded-lg border border-border/70 bg-background text-muted-foreground transition-colors hover:text-foreground"
-                  onClick={() =>
-                    onDateChange(format(addDays(selectedDateValue, 1), 'yyyy-MM-dd'))
-                  }
+                  className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-border/70 bg-background text-muted-foreground transition-colors hover:text-foreground sm:size-8 sm:min-h-0 sm:min-w-0"
+                  onClick={() => onDateChange(format(addDays(selectedDateValue, 1), 'yyyy-MM-dd'))}
                   aria-label="翌日の予定"
                 >
                   <ChevronRight className="size-4" aria-hidden="true" />
@@ -387,7 +375,10 @@ export function HomeScheduleScopeSection({
             </div>
           </div>
           <div className="space-y-1.5">
-            <label htmlFor="home-schedule-date" className="text-xs font-medium text-muted-foreground">
+            <label
+              htmlFor="home-schedule-date"
+              className="text-xs font-medium text-muted-foreground"
+            >
               表示日
             </label>
             <Input
@@ -462,9 +453,7 @@ export function HomeScheduleScopeSection({
               disabled={staffOptions.length === 0}
             >
               <SelectTrigger className="w-full">
-                <SelectValue
-                  placeholder={staffLoading ? '読み込み中...' : 'スタッフを選択'}
-                />
+                <SelectValue placeholder={staffLoading ? '読み込み中...' : 'スタッフを選択'} />
               </SelectTrigger>
               <SelectContent>
                 {staffOptions.map((staff) => (
@@ -625,7 +614,11 @@ export function HomeVisitsSection({
       {schedules.length === 0 ? (
         <EmptyState
           icon={CalendarDays}
-          title={visitScope === 'mine' ? '自分担当の該当訪問はありません' : '該当する訪問予定はありません'}
+          title={
+            visitScope === 'mine'
+              ? '自分担当の該当訪問はありません'
+              : '該当する訪問予定はありません'
+          }
           description="進行状態に合う訪問があると、ここに時間順で表示されます。"
           className="border-0 px-0 py-8"
         />
@@ -644,7 +637,7 @@ export function HomeVisitsSection({
                   <div className="min-w-0">
                     <Link
                       href={buildSchedulePatientHref(schedule)}
-                      className="block truncate text-sm font-semibold text-foreground hover:text-primary hover:underline"
+                      className="inline-flex min-h-[44px] max-w-full items-center truncate text-sm font-semibold text-foreground hover:text-primary hover:underline sm:min-h-0"
                     >
                       {schedule.case_.patient.name}
                     </Link>
@@ -702,7 +695,10 @@ export function HomeVisitsSection({
                       <ReasonFilterChip
                         key={`${schedule.id}-${reason.label}`}
                         reason={reason}
-                        count={countSchedulesByReason(statusScopedSchedules, reason.key as HomeScheduleReasonKey)}
+                        count={countSchedulesByReason(
+                          statusScopedSchedules,
+                          reason.key as HomeScheduleReasonKey,
+                        )}
                         active={scheduleReasonFilter === reason.key}
                         onClick={() =>
                           onScheduleReasonFilterChange(
@@ -819,7 +815,7 @@ export function HomeCoordinationSection({
                   <div className="min-w-0">
                     <Link
                       href={buildProposalPatientHref(proposal)}
-                      className="block truncate text-sm font-semibold text-foreground hover:text-primary hover:underline"
+                      className="inline-flex min-h-[44px] max-w-full items-center truncate text-sm font-semibold text-foreground hover:text-primary hover:underline sm:min-h-0"
                     >
                       {proposal.case_.patient.name}
                     </Link>
@@ -858,7 +854,10 @@ export function HomeCoordinationSection({
                         <ReasonFilterChip
                           key={`${proposal.id}-${reason.label}`}
                           reason={reason}
-                          count={countProposalsByReason(proposalScopedItems, reason.key as HomeProposalReasonKey)}
+                          count={countProposalsByReason(
+                            proposalScopedItems,
+                            reason.key as HomeProposalReasonKey,
+                          )}
                           active={proposalReasonFilter === reason.key}
                           onClick={() =>
                             onProposalReasonFilterChange(

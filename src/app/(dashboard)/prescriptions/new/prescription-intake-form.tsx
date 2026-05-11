@@ -1310,14 +1310,14 @@ export function PrescriptionIntakeForm() {
           <div className="flex flex-wrap gap-2">
             <Link
               href="/qr-scan"
-              className="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
+              className="inline-flex min-h-[44px] sm:h-9 sm:min-h-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
             >
               <QrCode className="size-4" aria-hidden="true" />
               QRスキャン
             </Link>
             <Link
               href="/prescriptions/qr-drafts"
-              className="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
+              className="inline-flex min-h-[44px] sm:h-9 sm:min-h-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
             >
               <QrCode className="size-4" aria-hidden="true" />
               QR下書き一覧
@@ -1352,7 +1352,7 @@ export function PrescriptionIntakeForm() {
                 <button
                   type="button"
                   onClick={applyLatestPreviousPrescription}
-                  className="inline-flex h-9 items-center gap-2 rounded-md border border-sky-300 bg-background px-3 text-sm font-medium text-sky-950 hover:bg-sky-100/40"
+                  className="inline-flex min-h-[44px] sm:h-9 sm:min-h-0 items-center gap-2 rounded-md border border-sky-300 bg-background px-3 text-sm font-medium text-sky-950 hover:bg-sky-100/40"
                 >
                   <ClipboardCopy className="size-4" aria-hidden="true" />
                   前回処方を引用
@@ -1425,7 +1425,7 @@ export function PrescriptionIntakeForm() {
             <button
               type="button"
               onClick={applyLatestPreviousPrescription}
-              className="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
+              className="inline-flex min-h-[44px] sm:h-9 sm:min-h-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
             >
               <ClipboardCopy className="size-4" aria-hidden="true" />
               前回処方を引用
@@ -1493,7 +1493,7 @@ export function PrescriptionIntakeForm() {
                 ? 'patient-search-error'
                 : undefined
             }
-            className={`h-9 w-full rounded-md border bg-background px-3 text-sm ${submitAttempted && !selectedPatientId && sourceType !== 'facility_batch' ? 'border-destructive' : 'border-input'}`}
+            className={`min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border bg-background px-3 text-sm ${submitAttempted && !selectedPatientId && sourceType !== 'facility_batch' ? 'border-destructive' : 'border-input'}`}
           />
           {submitAttempted && !selectedPatientId && sourceType !== 'facility_batch' && (
             <p id="patient-search-error" className="mt-1 text-xs text-destructive">
@@ -1559,7 +1559,7 @@ export function PrescriptionIntakeForm() {
                   ? 'case-select-error'
                   : undefined
               }
-              className={`h-9 w-full rounded-md border bg-background px-3 text-sm ${submitAttempted && !selectedCaseId && sourceType !== 'facility_batch' ? 'border-destructive' : 'border-input'}`}
+              className={`min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border bg-background px-3 text-sm ${submitAttempted && !selectedCaseId && sourceType !== 'facility_batch' ? 'border-destructive' : 'border-input'}`}
             >
               <option value="">ケースを選択</option>
               {casesData.data.map((c) => (
@@ -1591,7 +1591,7 @@ export function PrescriptionIntakeForm() {
               data-testid="prescription-source-type"
               value={sourceType}
               onChange={(e) => updatePrescriptionMeta({ sourceType: e.target.value })}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
               {SOURCE_CONFIG.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -1611,7 +1611,7 @@ export function PrescriptionIntakeForm() {
               type="date"
               value={prescribedDate}
               onChange={(e) => updatePrescriptionMeta({ prescribedDate: e.target.value })}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
               required
             />
           </div>
@@ -1633,7 +1633,7 @@ export function PrescriptionIntakeForm() {
                   emergencyCategory: value === 'regular' ? '' : emergencyCategory,
                 });
               }}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
               <option value="regular">定期処方</option>
               <option value="emergency">緊急処方</option>
@@ -1660,7 +1660,7 @@ export function PrescriptionIntakeForm() {
                     ? 'emergency-category-error'
                     : undefined
                 }
-                className={`h-9 w-full rounded-md border bg-background px-3 text-sm ${submitAttempted && prescriptionCategory === 'emergency' && !emergencyCategory ? 'border-destructive' : 'border-input'}`}
+                className={`min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border bg-background px-3 text-sm ${submitAttempted && prescriptionCategory === 'emergency' && !emergencyCategory ? 'border-destructive' : 'border-input'}`}
               >
                 <option value="">選択してください</option>
                 <option value="planned_disease_exacerbation">
@@ -1688,7 +1688,7 @@ export function PrescriptionIntakeForm() {
               type="text"
               value={prescriberName}
               onChange={(e) => updatePrescriptionMeta({ prescriberName: e.target.value })}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
             />
           </div>
           <div>
@@ -1713,7 +1713,7 @@ export function PrescriptionIntakeForm() {
                   ...(selected ? { prescriberInstitution: selected.name } : {}),
                 });
               }}
-              className="mb-3 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="mb-3 min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
               <option value="__free__">手入力 / 未選択</option>
               {prescriberInstitutions.map((item) => (
@@ -1738,7 +1738,7 @@ export function PrescriptionIntakeForm() {
                   selectedPrescriberInstitutionId: matched?.id ?? '',
                 });
               }}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
             />
           </div>
         </div>
@@ -1758,7 +1758,7 @@ export function PrescriptionIntakeForm() {
                 min={0}
                 value={refillRemainingCount}
                 onChange={(e) => updatePrescriptionMeta({ refillRemainingCount: e.target.value })}
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
               />
             </div>
             <div>
@@ -1770,7 +1770,7 @@ export function PrescriptionIntakeForm() {
                 type="date"
                 value={refillNextDispenseDate}
                 onChange={(e) => updatePrescriptionMeta({ refillNextDispenseDate: e.target.value })}
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
               />
             </div>
           </div>
@@ -1788,7 +1788,7 @@ export function PrescriptionIntakeForm() {
               value={splitDispenseTotal}
               onChange={(e) => updatePrescriptionMeta({ splitDispenseTotal: e.target.value })}
               placeholder="例: 3"
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
             />
           </div>
           <div>
@@ -1802,7 +1802,7 @@ export function PrescriptionIntakeForm() {
               value={splitDispenseCurrent}
               onChange={(e) => updatePrescriptionMeta({ splitDispenseCurrent: e.target.value })}
               placeholder="例: 1"
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
             />
           </div>
           <div>
@@ -1814,7 +1814,7 @@ export function PrescriptionIntakeForm() {
               type="date"
               value={splitNextDispenseDate}
               onChange={(e) => updatePrescriptionMeta({ splitNextDispenseDate: e.target.value })}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
             />
           </div>
         </div>
@@ -1859,7 +1859,7 @@ export function PrescriptionIntakeForm() {
               type="button"
               disabled={!selectedPatientId || documentUploading}
               onClick={() => cameraInputRef.current?.click()}
-              className="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex min-h-[44px] sm:h-9 sm:min-h-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Camera className="size-4" aria-hidden="true" />
               {documentUploading ? '撮影を準備中...' : '処方箋を撮影'}
@@ -1868,7 +1868,7 @@ export function PrescriptionIntakeForm() {
               type="button"
               disabled={!selectedPatientId || documentUploading}
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex min-h-[44px] sm:h-9 sm:min-h-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Upload className="size-4" aria-hidden="true" />
               ファイルを選択
@@ -1920,7 +1920,7 @@ export function PrescriptionIntakeForm() {
           <button
             type="button"
             onClick={addLine}
-            className="inline-flex h-7 items-center gap-1 rounded-md bg-secondary px-2 text-xs font-medium text-secondary-foreground hover:bg-secondary/80"
+            className="inline-flex min-h-[44px] sm:h-7 sm:min-h-0 items-center gap-1 rounded-md bg-secondary px-2 text-xs font-medium text-secondary-foreground hover:bg-secondary/80"
           >
             <Plus className="size-3.5" aria-hidden="true" />
             行追加
@@ -2009,7 +2009,7 @@ export function PrescriptionIntakeForm() {
                   value={line.dose}
                   onChange={(e) => updateLine(index, 'dose', e.target.value)}
                   placeholder="用量 *"
-                  className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                  className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
                   required
                 />
                 <input
@@ -2017,7 +2017,7 @@ export function PrescriptionIntakeForm() {
                   value={line.frequency}
                   onChange={(e) => updateLine(index, 'frequency', e.target.value)}
                   placeholder="用法 *"
-                  className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                  className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
                   required
                 />
                 <input
@@ -2026,7 +2026,7 @@ export function PrescriptionIntakeForm() {
                   onChange={(e) => updateLine(index, 'days', parseInt(e.target.value, 10) || 1)}
                   placeholder="日数 *"
                   min={1}
-                  className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                  className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
                   required
                 />
               </div>
@@ -2035,7 +2035,7 @@ export function PrescriptionIntakeForm() {
                 <select
                   value={line.route ?? ''}
                   onChange={(e) => updateLine(index, 'route', e.target.value || undefined)}
-                  className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                  className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
                   aria-label="投与経路"
                 >
                   <option value="">投与経路</option>
@@ -2050,7 +2050,7 @@ export function PrescriptionIntakeForm() {
                   onChange={(e) =>
                     updateLine(index, 'dispensing_method', e.target.value || undefined)
                   }
-                  className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                  className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
                   aria-label="調剤方法"
                 >
                   <option value="">調剤方法</option>
@@ -2065,13 +2065,13 @@ export function PrescriptionIntakeForm() {
                   value={line.dosage_form ?? ''}
                   onChange={(e) => updateLine(index, 'dosage_form', e.target.value || undefined)}
                   placeholder="剤形（錠剤等）"
-                  className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                  className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
                 />
                 <input
                   type="date"
                   value={line.start_date ?? ''}
                   onChange={(e) => updateLine(index, 'start_date', e.target.value || undefined)}
-                  className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                  className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
                   aria-label="服用開始日"
                 />
               </div>
@@ -2083,14 +2083,14 @@ export function PrescriptionIntakeForm() {
                   updateLine(index, 'packaging_instructions', e.target.value || undefined)
                 }
                 placeholder="包装指示（一包化指示、粉砕指示等）"
-                className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm"
+                className="min-h-[44px] sm:h-8 sm:min-h-0 w-full rounded-md border border-input bg-background px-2 text-sm"
               />
               <input
                 type="text"
                 value={line.notes ?? ''}
                 onChange={(e) => updateLine(index, 'notes', e.target.value || undefined)}
                 placeholder="備考（分包しない、PTPのまま、外用部位など）"
-                className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm"
+                className="min-h-[44px] sm:h-8 sm:min-h-0 w-full rounded-md border border-input bg-background px-2 text-sm"
               />
               <label className="flex items-center gap-2 text-xs text-muted-foreground">
                 <input
@@ -2165,7 +2165,7 @@ export function PrescriptionIntakeForm() {
                 type="button"
                 onClick={addCurrentFacilityBatchEntry}
                 disabled={!selectedCaseId}
-                className="inline-flex h-9 items-center gap-2 rounded-md border border-sky-300 bg-sky-100 px-3 text-sm font-medium text-sky-950 hover:bg-sky-200 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex min-h-[44px] sm:h-9 sm:min-h-0 items-center gap-2 rounded-md border border-sky-300 bg-sky-100 px-3 text-sm font-medium text-sky-950 hover:bg-sky-200 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Plus className="size-4" aria-hidden="true" />
                 一括リストへ追加
@@ -2208,7 +2208,7 @@ export function PrescriptionIntakeForm() {
                       <button
                         type="button"
                         onClick={() => removeFacilityBatchEntry(entry.case_id)}
-                        className="inline-flex h-8 items-center gap-1 rounded-md border border-input bg-background px-2 text-xs font-medium hover:bg-accent"
+                        className="inline-flex min-h-[44px] sm:h-8 sm:min-h-0 items-center gap-1 rounded-md border border-input bg-background px-2 text-xs font-medium hover:bg-accent"
                       >
                         <Trash2 className="size-3.5" aria-hidden="true" />
                         削除
@@ -2246,7 +2246,7 @@ export function PrescriptionIntakeForm() {
                   id="inquiry-reason"
                   value={inquiryReason}
                   onChange={(e) => updateInquiry({ inquiryReason: e.target.value })}
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="">照会理由を選択</option>
                   {INQUIRY_REASON_OPTIONS.map((option) => (
@@ -2267,7 +2267,7 @@ export function PrescriptionIntakeForm() {
                   value={inquiryToPhysician}
                   onChange={(e) => updateInquiry({ inquiryToPhysician: e.target.value })}
                   placeholder="例: 山田 太郎 先生"
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
                 />
               </div>
 
@@ -2293,7 +2293,7 @@ export function PrescriptionIntakeForm() {
                   type="date"
                   value={inquiryDueDate}
                   onChange={(e) => updateInquiry({ inquiryDueDate: e.target.value })}
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
                 />
               </div>
 
@@ -2309,7 +2309,7 @@ export function PrescriptionIntakeForm() {
                       proposalOrigin: e.target.value as 'post_inquiry' | 'pre_issuance',
                     })
                   }
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  className="min-h-[44px] sm:h-9 sm:min-h-0 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="post_inquiry">照会後変更</option>
                   <option value="pre_issuance">事前提案反映</option>
@@ -2581,7 +2581,7 @@ export function PrescriptionIntakeForm() {
             disabled={!canSubmit}
             data-testid="prescription-submit-primary"
             aria-describedby={submitBlockers.length > 0 ? submitBlockersId : undefined}
-            className="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="inline-flex min-h-[44px] sm:h-10 sm:min-h-0 items-center justify-center rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {isSubmitting
               ? '登録中...'
@@ -2592,7 +2592,7 @@ export function PrescriptionIntakeForm() {
           <button
             type="button"
             onClick={() => router.push('/prescriptions')}
-            className="inline-flex h-10 items-center justify-center rounded-lg border border-input bg-background px-4 text-sm font-medium hover:bg-accent"
+            className="inline-flex min-h-[44px] sm:h-10 sm:min-h-0 items-center justify-center rounded-lg border border-input bg-background px-4 text-sm font-medium hover:bg-accent"
           >
             キャンセル
           </button>

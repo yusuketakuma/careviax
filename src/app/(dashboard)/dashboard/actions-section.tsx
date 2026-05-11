@@ -42,11 +42,7 @@ function formatDueLabel(value: string | null) {
   return `期限 ${format(parsed, 'M/d HH:mm')}`;
 }
 
-function PipelineBar({
-  pipeline,
-}: {
-  pipeline: DashboardActionsResponse['pipeline'];
-}) {
+function PipelineBar({ pipeline }: { pipeline: DashboardActionsResponse['pipeline'] }) {
   const total = pipeline.reduce((s, p) => s + p.count, 0);
 
   return (
@@ -63,17 +59,13 @@ function PipelineBar({
               key={step.key}
               className={[
                 'flex flex-col items-center gap-1.5 rounded-md border px-1 py-2 text-center transition-colors',
-                isActive
-                  ? 'border-blue-200 bg-blue-50'
-                  : 'border-transparent bg-muted/50',
+                isActive ? 'border-blue-200 bg-blue-50' : 'border-transparent bg-muted/50',
               ].join(' ')}
             >
               <span
                 className={[
                   'inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs font-bold',
-                  isActive
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-muted text-muted-foreground',
+                  isActive ? 'bg-blue-600 text-white' : 'bg-muted text-muted-foreground',
                 ].join(' ')}
               >
                 {step.count}
@@ -96,7 +88,11 @@ function PipelineBar({
 
 export function ActionItemRow({ item }: { item: ActionItem }) {
   const dueLabel = formatDueLabel(item.due_at);
-  const detailParts = [item.patient_name, item.owner_name ? `担当 ${item.owner_name}` : null, dueLabel]
+  const detailParts = [
+    item.patient_name,
+    item.owner_name ? `担当 ${item.owner_name}` : null,
+    dueLabel,
+  ]
     .filter(Boolean)
     .join(' / ');
 
@@ -104,23 +100,18 @@ export function ActionItemRow({ item }: { item: ActionItem }) {
     <li className="flex items-center justify-between gap-3 px-4 py-2.5">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <Badge
-            variant="outline"
-            className={PRIORITY_STYLES[item.priority] ?? ''}
-          >
+          <Badge variant="outline" className={PRIORITY_STYLES[item.priority] ?? ''}>
             {item.queue_label}
           </Badge>
         </div>
-        <p className="mt-0.5 truncate text-sm font-medium text-foreground">
-          {item.title}
-        </p>
+        <p className="mt-0.5 truncate text-sm font-medium text-foreground">{item.title}</p>
         {detailParts ? (
           <p className="mt-1 truncate text-xs text-muted-foreground">{detailParts}</p>
         ) : null}
       </div>
       <Link
         href={item.action_href}
-        className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+        className="inline-flex min-h-[44px] shrink-0 items-center gap-1 text-xs font-medium text-primary hover:underline sm:min-h-0"
       >
         {item.action_label}
         <ArrowRight className="size-3" aria-hidden="true" />

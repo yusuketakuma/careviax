@@ -92,14 +92,12 @@ export function PatientCardItem({ patient }: { patient: PatientCardType }) {
             <div className="flex items-baseline gap-2">
               <Link
                 href={`/patients/${patient.patient_id}`}
-                className="text-sm font-semibold text-foreground hover:underline truncate"
+                className="inline-flex min-h-[44px] items-center truncate text-sm font-semibold text-foreground hover:underline sm:min-h-0"
               >
                 {patient.patient_name}
               </Link>
               {age !== null && (
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  {age}歳
-                </span>
+                <span className="shrink-0 text-xs text-muted-foreground">{age}歳</span>
               )}
             </div>
             {parsedBirthDate && (
@@ -136,11 +134,7 @@ export function PatientCardItem({ patient }: { patient: PatientCardType }) {
         {patient.conditions.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {patient.conditions.map((condition) => (
-              <Badge
-                key={condition}
-                variant="secondary"
-                className="text-[10px] font-normal"
-              >
+              <Badge key={condition} variant="secondary" className="text-[10px] font-normal">
                 <HeartPulse className="mr-0.5 size-2.5" aria-hidden="true" />
                 {condition}
               </Badge>
@@ -204,7 +198,10 @@ export function PatientCardItem({ patient }: { patient: PatientCardType }) {
         )}
 
         {/* Row 5: Action button */}
-        {(patient.case_id || patient.readiness_flags.missing_emergency_contact || patient.readiness_flags.missing_primary_physician || patient.readiness_flags.missing_first_visit_doc) && (
+        {(patient.case_id ||
+          patient.readiness_flags.missing_emergency_contact ||
+          patient.readiness_flags.missing_primary_physician ||
+          patient.readiness_flags.missing_first_visit_doc) && (
           <div className="mt-auto flex gap-2 pt-1">
             {(patient.readiness_flags.missing_emergency_contact ||
               patient.readiness_flags.missing_primary_physician ||
@@ -217,13 +214,13 @@ export function PatientCardItem({ patient }: { patient: PatientCardType }) {
               </Link>
             )}
             {patient.case_id && (
-            <Link
-              href={`/prescriptions/new?patient_id=${patient.patient_id}&case_id=${patient.case_id}`}
-              className={buttonVariants({ variant: 'outline', size: 'sm', className: 'flex-1' })}
-            >
-              <ClipboardPlus className="size-3.5" aria-hidden="true" />
-              処方受付
-            </Link>
+              <Link
+                href={`/prescriptions/new?patient_id=${patient.patient_id}&case_id=${patient.case_id}`}
+                className={buttonVariants({ variant: 'outline', size: 'sm', className: 'flex-1' })}
+              >
+                <ClipboardPlus className="size-3.5" aria-hidden="true" />
+                処方受付
+              </Link>
             )}
           </div>
         )}

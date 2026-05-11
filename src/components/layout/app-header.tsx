@@ -36,14 +36,17 @@ export function AppHeader() {
   }, [pathname]);
 
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
+    <header
+      className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur"
+      data-testid="app-header"
+    >
       <div className="flex min-h-14 items-center justify-between gap-3 px-4 md:px-6">
         <div className="flex min-w-0 items-center gap-2">
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="xl:hidden"
+            className="min-h-[44px] min-w-[44px] xl:hidden"
             onClick={() => setSidebarOpen(true)}
             aria-label="メニューを開く"
           >

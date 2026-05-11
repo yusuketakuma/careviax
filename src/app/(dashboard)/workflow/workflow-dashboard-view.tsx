@@ -342,7 +342,7 @@ export function WorkflowDashboardView({
                       <p className="text-sm font-medium text-foreground">{bucket.label}</p>
                       <Link
                         href={bucket.action_href}
-                        className="text-xs font-medium text-primary hover:underline"
+                        className="inline-flex min-h-[44px] items-center text-xs font-medium text-primary hover:underline sm:min-h-0"
                       >
                         inbox を開く
                       </Link>
@@ -453,7 +453,7 @@ export function WorkflowDashboardView({
                         </div>
                         <Link
                           href={draft.action_href}
-                          className="text-xs font-medium text-primary hover:underline"
+                          className="inline-flex min-h-[44px] items-center text-xs font-medium text-primary hover:underline sm:min-h-0"
                         >
                           {draft.action_label}
                         </Link>
@@ -902,7 +902,7 @@ export function WorkflowDashboardView({
                     </div>
                     <a
                       href={item.action_href}
-                      className="text-xs font-medium text-primary hover:underline"
+                      className="inline-flex min-h-[44px] items-center text-xs font-medium text-primary hover:underline sm:min-h-0"
                     >
                       {item.action_label}
                     </a>
@@ -945,7 +945,7 @@ export function WorkflowDashboardView({
                     </div>
                     <a
                       href={item.action_href}
-                      className="text-xs font-medium text-primary hover:underline"
+                      className="inline-flex min-h-[44px] items-center text-xs font-medium text-primary hover:underline sm:min-h-0"
                     >
                       {item.action_label}
                     </a>
@@ -972,7 +972,7 @@ export function WorkflowDashboardView({
                     </Badge>
                     <a
                       href={item.action_href}
-                      className="text-xs font-medium text-primary hover:underline"
+                      className="inline-flex min-h-[44px] items-center text-xs font-medium text-primary hover:underline sm:min-h-0"
                     >
                       {item.action_label}
                     </a>
@@ -1110,7 +1110,7 @@ export function WorkflowDashboardView({
                     </div>
                     <a
                       href={item.action_href}
-                      className="text-xs font-medium text-primary hover:underline"
+                      className="inline-flex min-h-[44px] items-center text-xs font-medium text-primary hover:underline sm:min-h-0"
                     >
                       {item.action_label}
                     </a>
@@ -1355,7 +1355,7 @@ export function WorkflowDashboardView({
       <div className="flex justify-end">
         <button
           onClick={() => refetch()}
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          className="flex min-h-[44px] min-w-[44px] items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground sm:min-h-0 sm:min-w-0"
           type="button"
         >
           <RefreshCw className="size-3" aria-hidden="true" />

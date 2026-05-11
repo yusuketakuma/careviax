@@ -119,6 +119,31 @@ describe('generateReportsFromVisit', () => {
     );
   });
 
+  it('throws before creating reports when the access context cannot use the visit assignment', async () => {
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'vr-1',
+      org_id: 'org-1',
+      patient_id: 'p-1',
+      pharmacist_id: 'pharm-other',
+      visit_date: new Date(),
+      structured_soap: null,
+      schedule_id: 'vs-1',
+    });
+    visitScheduleFindUniqueMock.mockResolvedValue({
+      case_id: 'case-1',
+      cycle_id: null,
+      org_id: 'org-1',
+    });
+
+    await expect(
+      generateReportsFromVisit('org-1', 'user-1', 'vr-1', undefined, {
+        userId: 'user-1',
+        role: 'pharmacist',
+      }),
+    ).rejects.toThrow('VisitRecord not accessible');
+    expect(careReportCreateMock).not.toHaveBeenCalled();
+  });
+
   it('returns existing reports without creating new ones', async () => {
     visitRecordFindFirstMock.mockResolvedValue({
       id: 'vr-1',

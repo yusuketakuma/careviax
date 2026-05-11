@@ -1,3 +1,17 @@
+overrides:
+  '@auth/core>cookie': 0.7.2
+  minimatch@3>brace-expansion: 1.1.13
+  minimatch@9>brace-expansion: 2.0.3
+  defu: '>=6.1.5'
+  vite: ^8.0.5
+  hono: ^4.12.18
+  '@hono/node-server': ^1.19.14
+  fast-xml-parser: 5.7.0
+  fast-xml-builder: 1.1.7
+  fast-uri: 3.1.2
+  uuid: 14.0.0
+  postcss: ^8.5.10
+
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver
@@ -7,3 +21,12 @@ onlyBuiltDependencies:
   - '@prisma/engines'
   - prisma
   - esbuild
+
+allowBuilds:
+  '@prisma/engines': set this to true or false
+  '@sentry/cli': set this to true or false
+  esbuild: set this to true or false
+  leveldown: set this to true or false
+  prisma: set this to true or false
+  sharp: set this to true or false
+  unrs-resolver: set this to true or false

@@ -442,7 +442,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                 {...register('gender')}
                 aria-invalid={!!errors.gender}
                 aria-describedby={errors.gender ? 'gender-error' : undefined}
-                className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50 aria-invalid:border-destructive"
+                className="min-h-[44px] w-full rounded-lg border sm:h-8 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50 aria-invalid:border-destructive"
               >
                 <option value="">選択してください</option>
                 <option value="male">男性</option>
@@ -507,7 +507,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
               <select
                 id="facility_id"
                 {...register('facility_id')}
-                className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
+                className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
               >
                 <option value="">居宅 / 未設定</option>
                 {(facilitiesQuery.data ?? []).map((facility) => (
@@ -527,7 +527,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                 id="facility_unit_id"
                 {...register('facility_unit_id')}
                 disabled={!selectedFacilityId || facilityUnitsQuery.isLoading}
-                className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <option value="">
                   {!selectedFacilityId
@@ -620,7 +620,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
               <select
                 id="requester.profession"
                 {...register('requester.profession')}
-                className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
               >
                 <option value="">未設定</option>
                 {requesterProfessionOptions.map((option) => (
@@ -672,7 +672,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
               <select
                 id="requester.preferred_contact_method"
                 {...register('requester.preferred_contact_method')}
-                className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
               >
                 <option value="">未設定</option>
                 {contactMethodOptions.map((option) => (
@@ -733,7 +733,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
               <select
                 id="intake.housing_type"
                 {...register('intake.housing_type')}
-                className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
               >
                 <option value="">未設定</option>
                 {housingTypeOptions.map((option) => (
@@ -756,7 +756,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
               <select
                 id="intake.mcs_linked"
                 {...register('intake.mcs_linked', optionalBooleanFieldOptions)}
-                className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
               >
                 <option value="">未設定</option>
                 <option value="true">あり</option>
@@ -791,7 +791,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                 <select
                   id="intake.primary_contact_preference"
                   {...register('intake.primary_contact_preference')}
-                  className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                  className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
                   <option value="">未設定</option>
                   <option value="phone">電話優先</option>
@@ -803,7 +803,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                 <select
                   id="intake.visit_before_contact_required"
                   {...register('intake.visit_before_contact_required', optionalBooleanFieldOptions)}
-                  className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                  className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
                   <option value="">未設定</option>
                   <option value="true">要</option>
@@ -823,7 +823,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                 <select
                   id="intake.first_visit_time_slot"
                   {...register('intake.first_visit_time_slot', optionalTextFieldOptions)}
-                  className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                  className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
                   <option value="">未設定</option>
                   {firstVisitSlotOptions.map((option) => (
@@ -846,7 +846,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                 <select
                   id="intake.parking_available"
                   {...register('intake.parking_available', optionalBooleanFieldOptions)}
-                  className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                  className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
                   <option value="">未設定</option>
                   <option value="true">あり</option>
@@ -863,7 +863,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                     'intake.initial_transition_management_expected',
                     optionalBooleanFieldOptions,
                   )}
-                  className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                  className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
                   <option value="">未設定</option>
                   <option value="true">該当見込みあり</option>
@@ -917,7 +917,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
               <select
                 id="intake.care_level"
                 {...register('intake.care_level')}
-                className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
               >
                 <option value="">未設定</option>
                 {careLevelOptions.map((option) => (
@@ -932,7 +932,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
               <select
                 id="intake.money_management"
                 {...register('intake.money_management')}
-                className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
               >
                 <option value="">未設定</option>
                 {moneyManagementOptions.map((option) => (
@@ -947,7 +947,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
               <select
                 id="intake.adl_level"
                 {...register('intake.adl_level')}
-                className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
               >
                 <option value="">未設定</option>
                 {adlOptions.map((option) => (
@@ -962,7 +962,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
               <select
                 id="intake.dementia_level"
                 {...register('intake.dementia_level')}
-                className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
               >
                 <option value="">未設定</option>
                 {dementiaOptions.map((option) => (
@@ -1022,7 +1022,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                 <select
                   id="intake.ent_prescription"
                   {...register('intake.ent_prescription', optionalBooleanFieldOptions)}
-                  className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                  className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
                   <option value="">未設定</option>
                   <option value="true">あり</option>
@@ -1058,7 +1058,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                 <select
                   id="intake.narcotics_base"
                   {...register('intake.narcotics_base', optionalBooleanFieldOptions)}
-                  className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                  className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
                   <option value="">未設定</option>
                   <option value="true">あり</option>
@@ -1070,7 +1070,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                 <select
                   id="intake.narcotics_rescue"
                   {...register('intake.narcotics_rescue', optionalBooleanFieldOptions)}
-                  className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                  className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
                   <option value="">未設定</option>
                   <option value="true">あり</option>

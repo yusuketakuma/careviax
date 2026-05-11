@@ -127,8 +127,8 @@ const {
   withAuthMock: vi.fn(
     (
       handler: (
-        req: NextRequest & { orgId: string; userId: string; role: string }
-      ) => Promise<Response>
+        req: NextRequest & { orgId: string; userId: string; role: string },
+      ) => Promise<Response>,
     ) => {
       return (req: NextRequest) =>
         handler({
@@ -137,7 +137,7 @@ const {
           userId: 'user_1',
           role: 'pharmacist',
         } as NextRequest & { orgId: string; userId: string; role: string });
-    }
+    },
   ),
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -318,19 +318,21 @@ function buildTx(state: TestState) {
           ],
         };
       }),
-      update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
-        if (where.id === state.cycle.id) {
-          state.cycle = {
-            ...state.cycle,
-            ...data,
+      update: vi.fn(
+        async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+          if (where.id === state.cycle.id) {
+            state.cycle = {
+              ...state.cycle,
+              ...data,
+            };
+          }
+          return {
+            id: state.cycle.id,
+            overall_status: state.cycle.overall_status,
+            exception_status: state.cycle.exception_status,
           };
-        }
-        return {
-          id: state.cycle.id,
-          overall_status: state.cycle.overall_status,
-          exception_status: state.cycle.exception_status,
-        };
-      }),
+        },
+      ),
       updateMany: vi.fn(
         async ({
           where,
@@ -367,7 +369,7 @@ function buildTx(state: TestState) {
           }
 
           return { count: 0 };
-        }
+        },
       ),
     },
     cycleTransitionLog: {
@@ -425,31 +427,39 @@ function buildTx(state: TestState) {
       updateMany: vi.fn(async () => ({ count: 0 })), // B3/B4
     },
     prescriptionLine: {
-      update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
-        if (state.intake == null) throw new Error('intake missing');
-        state.intake.lines = state.intake.lines.map((line) =>
-          line.id === where.id ? { ...line, ...data } : line
-        );
-        return state.intake.lines.find((line) => line.id === where.id);
-      }),
+      update: vi.fn(
+        async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+          if (state.intake == null) throw new Error('intake missing');
+          state.intake.lines = state.intake.lines.map((line) =>
+            line.id === where.id ? { ...line, ...data } : line,
+          );
+          return state.intake.lines.find((line) => line.id === where.id);
+        },
+      ),
     },
     inquiryRecord: {
-      update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
-        if (state.inquiry == null || state.inquiry.id !== where.id) {
-          throw new Error('inquiry missing');
-        }
-        state.inquiry = {
-          ...state.inquiry,
-          ...(data.result !== undefined
-            ? {
-                result: data.result as NonNullable<TestState['inquiry']>['result'],
-              }
-            : {}),
-          ...(data.change_detail !== undefined ? { change_detail: data.change_detail as string | null } : {}),
-          ...(data.resolved_at !== undefined ? { resolved_at: data.resolved_at as Date | null } : {}),
-        };
-        return state.inquiry;
-      }),
+      update: vi.fn(
+        async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+          if (state.inquiry == null || state.inquiry.id !== where.id) {
+            throw new Error('inquiry missing');
+          }
+          state.inquiry = {
+            ...state.inquiry,
+            ...(data.result !== undefined
+              ? {
+                  result: data.result as NonNullable<TestState['inquiry']>['result'],
+                }
+              : {}),
+            ...(data.change_detail !== undefined
+              ? { change_detail: data.change_detail as string | null }
+              : {}),
+            ...(data.resolved_at !== undefined
+              ? { resolved_at: data.resolved_at as Date | null }
+              : {}),
+          };
+          return state.inquiry;
+        },
+      ),
       count: vi.fn(async () => 0),
     },
     communicationRequest: {
@@ -495,12 +505,11 @@ function buildTx(state: TestState) {
                 })),
               },
             ],
-            visit_schedules:
-              ['planned', 'in_preparation', 'ready'].includes(
-                state.visitSchedule.schedule_status
-              )
-                ? [{ id: state.visitSchedule.id }]
-                : [],
+            visit_schedules: ['planned', 'in_preparation', 'ready'].includes(
+              state.visitSchedule.schedule_status,
+            )
+              ? [{ id: state.visitSchedule.id }]
+              : [],
             case_: {
               primary_pharmacist_id: 'pharmacist_1',
               patient: {
@@ -511,15 +520,17 @@ function buildTx(state: TestState) {
           },
         };
       }),
-      update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
-        if (where.id === state.dispenseTask.id) {
-          state.dispenseTask = {
-            ...state.dispenseTask,
-            ...data,
-          };
-        }
-        return state.dispenseTask;
-      }),
+      update: vi.fn(
+        async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+          if (where.id === state.dispenseTask.id) {
+            state.dispenseTask = {
+              ...state.dispenseTask,
+              ...data,
+            };
+          }
+          return state.dispenseTask;
+        },
+      ),
     },
     dispenseAudit: {
       findFirst: vi.fn(async () => null), // B2: no existing audit
@@ -544,23 +555,25 @@ function buildTx(state: TestState) {
         state.dispenseResults.push(created);
         return created;
       }),
-      update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
-        state.dispenseResults = state.dispenseResults.map((result) =>
-          result.id === where.id
-            ? {
-                ...result,
-                actual_drug_name: data.actual_drug_name as string,
-                actual_drug_code: (data.actual_drug_code as string | undefined) ?? null,
-                actual_quantity: data.actual_quantity as number,
-                actual_unit: (data.actual_unit as string | undefined) ?? null,
-                carry_type: data.carry_type as 'carry' | 'facility_deposit' | 'deferred',
-                special_notes: (data.special_notes as string | undefined) ?? null,
-                dispensed_at: data.dispensed_at as Date,
-              }
-            : result
-        );
-        return state.dispenseResults.find((result) => result.id === where.id);
-      }),
+      update: vi.fn(
+        async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+          state.dispenseResults = state.dispenseResults.map((result) =>
+            result.id === where.id
+              ? {
+                  ...result,
+                  actual_drug_name: data.actual_drug_name as string,
+                  actual_drug_code: (data.actual_drug_code as string | undefined) ?? null,
+                  actual_quantity: data.actual_quantity as number,
+                  actual_unit: (data.actual_unit as string | undefined) ?? null,
+                  carry_type: data.carry_type as 'carry' | 'facility_deposit' | 'deferred',
+                  special_notes: (data.special_notes as string | undefined) ?? null,
+                  dispensed_at: data.dispensed_at as Date,
+                }
+              : result,
+          );
+          return state.dispenseResults.find((result) => result.id === where.id);
+        },
+      ),
       findMany: vi.fn(async () => state.dispenseResults),
     },
     membership: {
@@ -606,21 +619,23 @@ function buildTx(state: TestState) {
           visit_deadline_date: state.visitSchedule.visit_deadline_date,
         };
       }),
-      update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
-        if (where.id === state.visitSchedule.id) {
-          state.visitSchedule = {
-            ...state.visitSchedule,
-            ...data,
-            carry_items:
-              (data.carry_items as Array<Record<string, unknown>> | undefined) ??
-              state.visitSchedule.carry_items,
-            carry_items_status:
-              (data.carry_items_status as string | undefined) ??
-              state.visitSchedule.carry_items_status,
-          };
-        }
-        return state.visitSchedule;
-      }),
+      update: vi.fn(
+        async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+          if (where.id === state.visitSchedule.id) {
+            state.visitSchedule = {
+              ...state.visitSchedule,
+              ...data,
+              carry_items:
+                (data.carry_items as Array<Record<string, unknown>> | undefined) ??
+                state.visitSchedule.carry_items,
+              carry_items_status:
+                (data.carry_items_status as string | undefined) ??
+                state.visitSchedule.carry_items_status,
+            };
+          }
+          return state.visitSchedule;
+        },
+      ),
       updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         state.visitSchedule = {
           ...state.visitSchedule,
@@ -635,50 +650,50 @@ function buildTx(state: TestState) {
       }),
     },
     visitPreparation: {
-      upsert: vi.fn(async ({
-        create,
-        update,
-      }: {
-        create: Record<string, unknown>;
-        update: Record<string, unknown>;
-      }) => ({
-        id: 'prep_1',
-        schedule_id: (create.schedule_id as string | undefined) ?? 'schedule_1',
-        prepared_at: (update.prepared_at as Date | null | undefined) ?? null,
-      })),
+      upsert: vi.fn(
+        async ({
+          create,
+          update,
+        }: {
+          create: Record<string, unknown>;
+          update: Record<string, unknown>;
+        }) => ({
+          id: 'prep_1',
+          schedule_id: (create.schedule_id as string | undefined) ?? 'schedule_1',
+          prepared_at: (update.prepared_at as Date | null | undefined) ?? null,
+        }),
+      ),
     },
     visitRecord: {
-      findFirst: vi.fn(
-        async ({ where }: { where: { schedule_id?: string; id?: string } }) => {
-          if (where.schedule_id) {
-            if (state.visitRecord == null || where.schedule_id !== state.visitRecord.schedule_id) {
-              return null;
-            }
-            return {
-              id: state.visitRecord.id,
-              version: state.visitRecord.version,
-              patient_id: state.visitRecord.patient_id,
-              visit_date: state.visitRecord.visit_date,
-              outcome_status: state.visitRecord.outcome_status,
-              soap_subjective: null,
-              soap_objective: null,
-              soap_assessment: null,
-              soap_plan: null,
-              next_visit_suggestion_date: null,
-            };
+      findFirst: vi.fn(async ({ where }: { where: { schedule_id?: string; id?: string } }) => {
+        if (where.schedule_id) {
+          if (state.visitRecord == null || where.schedule_id !== state.visitRecord.schedule_id) {
+            return null;
           }
-
-          if (where.id && state.visitRecord != null && where.id === state.visitRecord.id) {
-            return {
-              schedule: {
-                cycle_id: state.visitSchedule.cycle_id,
-              },
-            };
-          }
-
-          return null;
+          return {
+            id: state.visitRecord.id,
+            version: state.visitRecord.version,
+            patient_id: state.visitRecord.patient_id,
+            visit_date: state.visitRecord.visit_date,
+            outcome_status: state.visitRecord.outcome_status,
+            soap_subjective: null,
+            soap_objective: null,
+            soap_assessment: null,
+            soap_plan: null,
+            next_visit_suggestion_date: null,
+          };
         }
-      ),
+
+        if (where.id && state.visitRecord != null && where.id === state.visitRecord.id) {
+          return {
+            schedule: {
+              cycle_id: state.visitSchedule.cycle_id,
+            },
+          };
+        }
+
+        return null;
+      }),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         state.visitRecord = {
           id: 'record_1',
@@ -733,22 +748,23 @@ function buildTx(state: TestState) {
       }),
     },
     careReport: {
-      update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
-        state.careReports = state.careReports.map((report) =>
-          report.id === where.id
-            ? {
-                ...report,
-                status: (data.status as string | undefined) ?? report.status,
-              }
-            : report
-        );
-        return state.careReports.find((report) => report.id === where.id);
-      }),
-      findMany: vi.fn(
-        async ({ where }: { where: { visit_record_id: string } }) =>
-          state.careReports
-            .filter((report) => report.visit_record_id === where.visit_record_id)
-            .map((report) => ({ status: report.status }))
+      update: vi.fn(
+        async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+          state.careReports = state.careReports.map((report) =>
+            report.id === where.id
+              ? {
+                  ...report,
+                  status: (data.status as string | undefined) ?? report.status,
+                }
+              : report,
+          );
+          return state.careReports.find((report) => report.id === where.id);
+        },
+      ),
+      findMany: vi.fn(async ({ where }: { where: { visit_record_id: string } }) =>
+        state.careReports
+          .filter((report) => report.visit_record_id === where.visit_record_id)
+          .map((report) => ({ status: report.status })),
       ),
     },
     communicationEvent: {
@@ -826,9 +842,7 @@ describe('workflow full-cycle integration', () => {
       billingEvidenceUpserts: [],
     };
 
-    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback(buildTx(state))
-    );
+    withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(buildTx(state)));
 
     requireAuthContextMock.mockResolvedValue({
       ctx: {
@@ -840,9 +854,7 @@ describe('workflow full-cycle integration', () => {
 
     patientFindFirstMock.mockImplementation(
       async ({ where }: { where: { id: string; org_id: string } }) =>
-        where.id === state.patient.id && where.org_id === 'org_1'
-          ? { id: state.patient.id }
-          : null
+        where.id === state.patient.id && where.org_id === 'org_1' ? { id: state.patient.id } : null,
     );
 
     careCaseFindFirstMock.mockImplementation(
@@ -854,7 +866,7 @@ describe('workflow full-cycle integration', () => {
                 scheduling_preference: null,
               },
             }
-          : null
+          : null,
     );
 
     pharmacistShiftFindFirstMock.mockResolvedValue({
@@ -871,7 +883,7 @@ describe('workflow full-cycle integration', () => {
               scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
               pharmacist_id: 'user_1',
             }
-          : null
+          : null,
     );
 
     inquiryRecordFindFirstMock.mockImplementation(async ({ where }: { where: { id: string } }) => {
@@ -916,9 +928,7 @@ describe('workflow full-cycle integration', () => {
         const type = reportType ?? 'physician_report';
         const existing =
           state.careReports.find(
-            (report) =>
-              report.visit_record_id === visitRecordId &&
-              report.report_type === type
+            (report) => report.visit_record_id === visitRecordId && report.report_type === type,
           ) ?? null;
 
         if (existing) {
@@ -939,7 +949,7 @@ describe('workflow full-cycle integration', () => {
         return {
           reports: [{ id: created.id, report_type: created.report_type }],
         };
-      }
+      },
     );
   });
 
@@ -967,7 +977,7 @@ describe('workflow full-cycle integration', () => {
             unit: '錠',
           },
         ],
-      })
+      }),
     );
 
     expect(intakeResponse?.status).toBe(201);
@@ -985,7 +995,7 @@ describe('workflow full-cycle integration', () => {
           days: 14,
         },
       }),
-      { params: Promise.resolve({ id: 'inquiry_1' }) }
+      { params: Promise.resolve({ id: 'inquiry_1' }) },
     );
 
     expect(inquiryResponse?.status).toBe(200);
@@ -1005,7 +1015,7 @@ describe('workflow full-cycle integration', () => {
             carry_type: 'carry',
           },
         ],
-      })
+      }),
     );
 
     expect(dispenseResponse?.status).toBe(201);
@@ -1017,7 +1027,7 @@ describe('workflow full-cycle integration', () => {
       createRequest({
         task_id: 'task_1',
         result: 'approved',
-      })
+      }),
     );
 
     expect(auditResponse?.status).toBe(201);
@@ -1032,8 +1042,8 @@ describe('workflow full-cycle integration', () => {
           outcome_status: 'completed',
           soap_subjective: '患者の状態を確認した',
         },
-        { 'x-org-id': 'org_1' }
-      )
+        { 'x-org-id': 'org_1' },
+      ),
     );
 
     expect(visitResponse?.status).toBe(201);
@@ -1045,7 +1055,7 @@ describe('workflow full-cycle integration', () => {
       createRequest({
         visit_record_id: 'record_1',
         report_type: 'physician_report',
-      })
+      }),
     );
 
     expect(generateResponse?.status).toBe(201);
@@ -1059,9 +1069,9 @@ describe('workflow full-cycle integration', () => {
           recipient_name: '在宅主治医',
           recipient_contact: 'doctor@example.com',
         },
-        { 'x-org-id': 'org_1' }
+        { 'x-org-id': 'org_1' },
       ),
-      { params: Promise.resolve({ id: 'report_1' }) }
+      { params: Promise.resolve({ id: 'report_1' }) },
     );
 
     expect(sendResponse?.status).toBe(200);
@@ -1077,7 +1087,8 @@ describe('workflow full-cycle integration', () => {
       'org_1',
       'user_1',
       'record_1',
-      'physician_report'
+      'physician_report',
+      { userId: 'user_1', role: 'pharmacist' },
     );
     expect(sendCareReportEmailMock).toHaveBeenCalledWith({
       to: 'doctor@example.com',
@@ -1115,7 +1126,7 @@ describe('workflow full-cycle integration', () => {
         address: '東京都港区芝1-2-3',
         building_id: 'facility_alpha',
         unit_name: '201',
-      })
+      }),
     );
 
     expect(patientResponse?.status).toBe(201);
@@ -1133,7 +1144,7 @@ describe('workflow full-cycle integration', () => {
         patient_id: 'patient_1',
         referral_source: '地域包括支援センター',
         referral_date: '2026-03-20',
-      })
+      }),
     );
 
     expect(caseResponse?.status).toBe(201);
@@ -1153,7 +1164,7 @@ describe('workflow full-cycle integration', () => {
         end_date: '2026-03-30',
         time_window_start: '10:00',
         time_window_end: '11:00',
-      })
+      }),
     );
 
     expect(scheduleResponse?.status).toBe(201);
@@ -1181,9 +1192,9 @@ describe('workflow full-cycle integration', () => {
           route_confirmed: true,
           offline_synced: true,
         },
-        { 'x-org-id': 'org_1' }
+        { 'x-org-id': 'org_1' },
       ),
-      { params: Promise.resolve({ scheduleId: 'schedule_1' }) }
+      { params: Promise.resolve({ scheduleId: 'schedule_1' }) },
     );
 
     expect(preparationResponse?.status).toBe(200);
@@ -1193,7 +1204,7 @@ describe('workflow full-cycle integration', () => {
         orgId: 'org_1',
         dedupeKey: 'visit-preparation:schedule_1',
         status: 'completed',
-      })
+      }),
     );
 
     const visitResponse = await createVisitRecord(
@@ -1211,21 +1222,22 @@ describe('workflow full-cycle integration', () => {
           receipt_person_relation: 'facility_staff',
           receipt_at: '2026-03-30T11:15',
         },
-        { 'x-org-id': 'org_1' }
-      )
+        { 'x-org-id': 'org_1' },
+      ),
     );
 
     expect(visitResponse?.status).toBe(201);
     expect(state.visitSchedule.schedule_status).toBe('completed');
-    const createdVisitRecord =
-      state.visitRecord as unknown as NonNullable<TestState['visitRecord']>;
+    const createdVisitRecord = state.visitRecord as unknown as NonNullable<
+      TestState['visitRecord']
+    >;
     expect(createdVisitRecord.schedule_id).toBe('schedule_1');
 
     const generateResponse = await generateCareReports(
       createRequest({
         visit_record_id: 'record_1',
         report_type: 'care_manager_report',
-      })
+      }),
     );
 
     expect(generateResponse?.status).toBe(201);
@@ -1242,9 +1254,9 @@ describe('workflow full-cycle integration', () => {
           recipient_name: '担当ケアマネ',
           recipient_contact: 'caremanager@example.com',
         },
-        { 'x-org-id': 'org_1' }
+        { 'x-org-id': 'org_1' },
       ),
-      { params: Promise.resolve({ id: 'report_1' }) }
+      { params: Promise.resolve({ id: 'report_1' }) },
     );
 
     expect(sendResponse?.status).toBe(200);

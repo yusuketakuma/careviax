@@ -114,7 +114,7 @@ function VisitHistoryCell({ row }: { row: VisitRecordRow }) {
             直近処方:{' '}
             <Link
               href={`/prescriptions/${latestPrescription.id}`}
-              className="text-primary hover:underline"
+              className="inline-flex min-h-[44px] items-center text-primary hover:underline sm:min-h-0"
             >
               {format(parseISO(latestPrescription.prescribed_date), 'M/d', { locale: ja })}
             </Link>{' '}
@@ -126,7 +126,10 @@ function VisitHistoryCell({ row }: { row: VisitRecordRow }) {
         {previousVisit ? (
           <p className="line-clamp-1">
             前回訪問:{' '}
-            <Link href={`/visits/${previousVisit.id}`} className="text-primary hover:underline">
+            <Link
+              href={`/visits/${previousVisit.id}`}
+              className="inline-flex min-h-[44px] items-center text-primary hover:underline sm:min-h-0"
+            >
               {format(parseISO(previousVisit.visit_date), 'M/d', { locale: ja })}
             </Link>{' '}
             {OUTCOME_LABELS[previousVisit.outcome_status] ?? previousVisit.outcome_status}
@@ -146,7 +149,7 @@ const columns: ColumnDef<VisitRecordRow>[] = [
     cell: ({ row }) => (
       <Link
         href={`/visits/${row.original.id}`}
-        className="font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="inline-flex min-h-[44px] items-center font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0"
       >
         {format(parseISO(row.original.visit_date), 'yyyy/MM/dd', { locale: ja })}
       </Link>
@@ -161,7 +164,7 @@ const columns: ColumnDef<VisitRecordRow>[] = [
         <div className="space-y-0.5">
           <Link
             href={`/patients/${patient.id}?tab=visits`}
-            className="font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex min-h-11 items-center font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0"
           >
             {patient.name}
           </Link>

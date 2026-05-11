@@ -1,22 +1,20 @@
 ################################################################################
 # Project-local Codex configuration
-# Codex CLI 0.124.0 verification showed runtime mode is loaded from
-# ~/.codex/config.toml. Keep this file as repo-local documentation and future
-# compatibility; do not rely on it as the active enforcement layer.
+# Codex CLI 0.130.0 loads trusted project-scoped config on top of
+# ~/.codex/config.toml. Keep runtime-like keys here aligned with the user-level
+# goal profile, and keep CareViaX-specific behavior in AGENTS.md.
 ################################################################################
 model = "gpt-5.5"
-model_provider = "openai"
 review_model = "gpt-5.5"
 approval_policy = "never"
 sandbox_mode = "danger-full-access"
-model_reasoning_effort = "xhigh"
-plan_mode_reasoning_effort = "xhigh"
-model_reasoning_summary = "detailed"
+model_reasoning_effort = "medium"
+plan_mode_reasoning_effort = "high"
+model_reasoning_summary = "auto"
 model_supports_reasoning_summaries = true
-model_verbosity = "high"
+model_verbosity = "medium"
 personality = "pragmatic"
 web_search = "live"
-service_tier = "fast"
 project_doc_max_bytes = 131072
 project_doc_fallback_filenames = [
   "CLAUDE.md",
@@ -59,19 +57,23 @@ description = "Read-only strict reviewer for correctness, maintainability, regre
 config_file = "agents/reviewer-strict.toml"
 nickname_candidates = ["reviewer-strict"]
 [features]
-fast_mode = true
+fast_mode = false
+goals = true
 multi_agent = true
 personality = true
 shell_snapshot = true
 shell_tool = true
 skill_mcp_dependency_install = true
-undo = true
 unified_exec = true
 enable_request_compression = true
 prevent_idle_sleep = true
 memories = true
-codex_hooks = true
+hooks = true
 apps = false
+browser_use = false
+browser_use_external = false
+computer_use = false
+in_app_browser = false
 [sandbox_workspace_write]
 writable_roots = []
 network_access = true

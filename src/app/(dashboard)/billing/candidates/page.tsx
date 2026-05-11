@@ -21,6 +21,8 @@ export default async function BillingCandidatesPage({ searchParams }: BillingCan
   const resolvedSearchParams = (await searchParams) ?? {};
   const initialBillingMonth = readFirstSearchParam(resolvedSearchParams.billing_month);
   const initialPatientId = readFirstSearchParam(resolvedSearchParams.patient_id);
+  const initialWorkflowFrom = readFirstSearchParam(resolvedSearchParams.workflow_from);
+  const initialVisitRecordId = readFirstSearchParam(resolvedSearchParams.visit_record_id);
 
   return (
     <PageScaffold>
@@ -49,6 +51,8 @@ export default async function BillingCandidatesPage({ searchParams }: BillingCan
         <BillingCandidatesContent
           initialBillingMonth={initialBillingMonth}
           initialPatientId={initialPatientId}
+          initialWorkflowFrom={initialWorkflowFrom}
+          initialVisitRecordId={initialVisitRecordId}
         />
       </Suspense>
     </PageScaffold>

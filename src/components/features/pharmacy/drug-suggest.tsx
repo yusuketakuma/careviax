@@ -92,7 +92,7 @@ export function DrugSuggest({
       setOpen(false);
       setFocusedIdx(-1);
     },
-    [onSelect, onTextChange]
+    [onSelect, onTextChange],
   );
 
   const handleKeyDown = useCallback(
@@ -111,7 +111,7 @@ export function DrugSuggest({
         setOpen(false);
       }
     },
-    [open, suggestions, focusedIdx, handleSelect]
+    [open, suggestions, focusedIdx, handleSelect],
   );
 
   // Close on outside click
@@ -145,7 +145,7 @@ export function DrugSuggest({
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         required={required}
-        className={`h-8 w-full rounded-md border border-input bg-background px-2 text-sm ${className}`}
+        className={`min-h-[44px] w-full rounded-md border border-input bg-background px-2 text-sm sm:h-8 sm:min-h-0 ${className}`}
         role="combobox"
         aria-expanded={open && suggestions.length > 0}
         aria-autocomplete="list"
@@ -191,16 +191,23 @@ export function DrugSuggest({
                   )}
                   <div className="flex gap-1">
                     {drug.is_generic && (
-                      <Badge variant="outline" className="h-4 px-1 text-[9px] text-blue-600 border-blue-300">後発</Badge>
+                      <Badge
+                        variant="outline"
+                        className="h-4 px-1 text-[9px] text-blue-600 border-blue-300"
+                      >
+                        後発
+                      </Badge>
                     )}
                     {drug.is_narcotic && (
                       <span className="flex items-center gap-0.5 text-[9px] font-medium text-red-600">
-                        <AlertTriangle className="size-2.5" aria-hidden="true" />麻薬
+                        <AlertTriangle className="size-2.5" aria-hidden="true" />
+                        麻薬
                       </span>
                     )}
                     {drug.is_psychotropic && (
                       <span className="flex items-center gap-0.5 text-[9px] font-medium text-orange-600">
-                        <Shield className="size-2.5" aria-hidden="true" />向精神
+                        <Shield className="size-2.5" aria-hidden="true" />
+                        向精神
                       </span>
                     )}
                   </div>

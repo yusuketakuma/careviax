@@ -30,8 +30,7 @@ type Notification = {
   is_read: boolean;
 };
 
-const NOTIFICATION_STREAM_DISABLED =
-  process.env.NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM === '1';
+const NOTIFICATION_STREAM_DISABLED = process.env.NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM === '1';
 
 export function NotificationBell() {
   const orgId = useOrgId();
@@ -69,29 +68,32 @@ export function NotificationBell() {
     }
   }, []);
 
-  const mergeNotifications = useCallback((items: Notification[], options?: { announce?: boolean }) => {
-    if (!mountedRef.current) return;
-    const unseenItems = items.filter((item) => !seenIdsRef.current.has(item.id));
-    for (const item of items) {
-      seenIdsRef.current.add(item.id);
-    }
-    if (options?.announce) {
-      void maybeShowBrowserNotifications(unseenItems.filter((item) => !item.is_read));
-    }
+  const mergeNotifications = useCallback(
+    (items: Notification[], options?: { announce?: boolean }) => {
+      if (!mountedRef.current) return;
+      const unseenItems = items.filter((item) => !seenIdsRef.current.has(item.id));
+      for (const item of items) {
+        seenIdsRef.current.add(item.id);
+      }
+      if (options?.announce) {
+        void maybeShowBrowserNotifications(unseenItems.filter((item) => !item.is_read));
+      }
 
-    setNotifications((prev) => {
-      const merged = [...items, ...prev];
-      const unique = merged.filter(
-        (notification, index, all) =>
-          all.findIndex((candidate) => candidate.id === notification.id) === index
-      );
-      unique.sort(
-        (left, right) =>
-          new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
-      );
-      return unique.slice(0, 50);
-    });
-  }, [maybeShowBrowserNotifications]);
+      setNotifications((prev) => {
+        const merged = [...items, ...prev];
+        const unique = merged.filter(
+          (notification, index, all) =>
+            all.findIndex((candidate) => candidate.id === notification.id) === index,
+        );
+        unique.sort(
+          (left, right) =>
+            new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
+        );
+        return unique.slice(0, 50);
+      });
+    },
+    [maybeShowBrowserNotifications],
+  );
 
   const refreshNotifications = useCallback(async () => {
     if (!orgId) return;
@@ -161,11 +163,11 @@ export function NotificationBell() {
       if (!mountedRef.current) return;
       setNotifications((prev) =>
         prev.map((notification) =>
-          ids.includes(notification.id) ? { ...notification, is_read: true } : notification
-        )
+          ids.includes(notification.id) ? { ...notification, is_read: true } : notification,
+        ),
       );
     },
-    [orgId]
+    [orgId],
   );
 
   const markAllRead = useCallback(async () => {
@@ -178,7 +180,7 @@ export function NotificationBell() {
       <button
         type="button"
         onClick={() => setNotificationDrawerOpen(true)}
-        className="relative rounded-md p-2 hover:bg-accent"
+        className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-2 hover:bg-accent"
         aria-label={`通知${unreadCount > 0 ? ` ${unreadCount}件の未読` : ''}`}
         aria-expanded={notificationDrawerOpen}
         aria-haspopup="true"
@@ -200,9 +202,7 @@ export function NotificationBell() {
             <div className="flex items-center justify-between gap-3 pr-10">
               <div>
                 <SheetTitle>通知センター</SheetTitle>
-                <SheetDescription>
-                  未読 {unreadCount} 件 / 最新 20 件を表示
-                </SheetDescription>
+                <SheetDescription>未読 {unreadCount} 件 / 最新 20 件を表示</SheetDescription>
               </div>
               <div className="flex items-center gap-2">
                 <Button

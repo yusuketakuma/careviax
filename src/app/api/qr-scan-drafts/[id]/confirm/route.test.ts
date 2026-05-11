@@ -7,6 +7,7 @@ const {
   createPrescriptionIntakeMock,
   jahisSupplementalRecordUpdateManyMock,
   broadcastStatusUpdateMock,
+  careCaseFindManyMock,
 } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
     (
@@ -30,6 +31,7 @@ const {
   createPrescriptionIntakeMock: vi.fn(),
   jahisSupplementalRecordUpdateManyMock: vi.fn(),
   broadcastStatusUpdateMock: vi.fn(),
+  careCaseFindManyMock: vi.fn().mockResolvedValue([{ patient_id: 'patient_1' }]),
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
@@ -38,6 +40,14 @@ vi.mock('@/lib/auth/middleware', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/client', () => ({
+  prisma: {
+    careCase: {
+      findMany: careCaseFindManyMock,
+    },
+  },
 }));
 
 vi.mock('@/server/services/prescription-intake-service', () => ({
@@ -160,7 +170,10 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
       }),
       'org_1',
       'user_1',
-      { skipStructuringCheck: true },
+      {
+        skipStructuringCheck: true,
+        accessContext: { userId: 'user_1', role: undefined },
+      },
     );
     expect(jahisSupplementalRecordUpdateManyMock).toHaveBeenCalledWith({
       where: {
@@ -251,7 +264,10 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
       }),
       'org_1',
       'user_1',
-      { skipStructuringCheck: true },
+      {
+        skipStructuringCheck: true,
+        accessContext: { userId: 'user_1', role: undefined },
+      },
     );
     expect(withOrgContextMock).toHaveBeenCalledTimes(1);
     expect(jahisSupplementalRecordUpdateManyMock).not.toHaveBeenCalled();
@@ -295,7 +311,10 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
       }),
       'org_1',
       'user_1',
-      { skipStructuringCheck: true },
+      {
+        skipStructuringCheck: true,
+        accessContext: { userId: 'user_1', role: undefined },
+      },
     );
     expect(withOrgContextMock).toHaveBeenCalledTimes(1);
     expect(jahisSupplementalRecordUpdateManyMock).not.toHaveBeenCalled();

@@ -366,7 +366,7 @@ export default function QRScanPage() {
       : `${scannedCount}枚 スキャン済み`;
 
   return (
-    <div className="space-y-4 p-3 pb-20 md:p-4 md:pb-4 xl:p-5">
+    <div className="space-y-4 p-3 pb-20 md:p-4 md:pb-4 xl:p-5" data-testid="qr-scan-workspace">
       {/* Header */}
       <WorkflowPageIntro
         backHref="/prescriptions"
@@ -388,7 +388,12 @@ export default function QRScanPage() {
         mainWorkflowDescription="QR スキャンは処方登録の前段支援として扱い、受付確定へ戻る位置を明示しています。"
         actions={
           phase !== 'camera' ? (
-            <Button variant="outline" size="sm" onClick={resetScan}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-h-[44px] sm:min-h-0"
+              onClick={resetScan}
+            >
               <RotateCcw className="mr-1.5 h-4 w-4" />
               やり直す
             </Button>
@@ -427,7 +432,12 @@ export default function QRScanPage() {
                 <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
                   <CameraOff className="h-12 w-12 text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">{cameraError}</p>
-                  <Button variant="outline" size="sm" onClick={startCamera}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="min-h-[44px] sm:min-h-0"
+                    onClick={startCamera}
+                  >
                     <Camera className="mr-1.5 h-4 w-4" />
                     再試行
                   </Button>
@@ -457,7 +467,12 @@ export default function QRScanPage() {
                 className="hidden"
                 onChange={handleFileUpload}
               />
-              <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-h-[44px] sm:min-h-0"
+                onClick={() => fileInputRef.current?.click()}
+              >
                 <Upload className="mr-1.5 h-4 w-4" />
                 画像から読取
               </Button>

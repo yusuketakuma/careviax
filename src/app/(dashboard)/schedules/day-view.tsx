@@ -2030,7 +2030,7 @@ export function ScheduleDayView({
               <button
                 type="button"
                 className={[
-                  'rounded-md px-2.5 py-1 text-xs transition',
+                  'min-h-[44px] min-w-[44px] rounded-md px-3 py-1 text-xs transition sm:min-h-0 sm:min-w-0 sm:px-2.5',
                   mobileVisitSurface === 'list'
                     ? 'bg-slate-900 text-white'
                     : 'text-muted-foreground',
@@ -2042,7 +2042,7 @@ export function ScheduleDayView({
               <button
                 type="button"
                 className={[
-                  'rounded-md px-2.5 py-1 text-xs transition',
+                  'min-h-[44px] min-w-[44px] rounded-md px-3 py-1 text-xs transition sm:min-h-0 sm:min-w-0 sm:px-2.5',
                   mobileVisitSurface === 'map'
                     ? 'bg-slate-900 text-white'
                     : 'text-muted-foreground',

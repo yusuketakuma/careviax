@@ -4,10 +4,7 @@ import Link from 'next/link';
 import { ArrowRight, CheckCircle2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  MAIN_WORKFLOW_STEPS,
-  type MainWorkflowStepKey,
-} from './main-workflow-route';
+import { MAIN_WORKFLOW_STEPS, type MainWorkflowStepKey } from './main-workflow-route';
 
 export type WorkflowIntegrationHandoff = {
   from: MainWorkflowStepKey;
@@ -102,11 +99,17 @@ export function WorkflowIntegrationMap({
                 className="rounded-2xl border border-border/70 bg-muted/[0.06] p-3"
               >
                 <div className="flex flex-wrap items-center gap-2 text-sm">
-                  <Link href={from.href} className="font-semibold text-foreground hover:text-primary">
+                  <Link
+                    href={from.href}
+                    className="inline-flex min-h-[44px] min-w-[44px] items-center font-semibold text-foreground hover:text-primary sm:min-h-0 sm:min-w-0"
+                  >
                     {from.title}
                   </Link>
                   <ArrowRight className="size-4 text-muted-foreground" aria-hidden="true" />
-                  <Link href={to.href} className="font-semibold text-foreground hover:text-primary">
+                  <Link
+                    href={to.href}
+                    className="inline-flex min-h-[44px] min-w-[44px] items-center font-semibold text-foreground hover:text-primary sm:min-h-0 sm:min-w-0"
+                  >
                     {to.title}
                   </Link>
                 </div>
@@ -119,7 +122,10 @@ export function WorkflowIntegrationMap({
                   ))}
                 </div>
                 <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-muted-foreground">
-                  <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-emerald-600" aria-hidden="true" />
+                  <CheckCircle2
+                    className="mt-0.5 size-3.5 shrink-0 text-emerald-600"
+                    aria-hidden="true"
+                  />
                   {handoff.userCheck}
                 </p>
               </li>

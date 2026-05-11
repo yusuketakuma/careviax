@@ -16,18 +16,12 @@ interface EmptyStateProps {
   className?: string;
 }
 
-export function EmptyState({
-  icon: Icon,
-  title,
-  description,
-  action,
-  className,
-}: EmptyStateProps) {
+export function EmptyState({ icon: Icon, title, description, action, className }: EmptyStateProps) {
   return (
     <div
       className={cn(
         'flex flex-col items-center justify-center gap-4 rounded-lg border border-dashed border-border p-12 text-center',
-        className
+        className,
       )}
       role="status"
     >
@@ -45,7 +39,7 @@ export function EmptyState({
           <Link
             href={action.href}
             className={cn(
-              'inline-flex h-7 items-center justify-center rounded-[min(var(--radius-md),12px)] bg-primary px-2.5 text-[0.8rem] font-medium text-primary-foreground transition-colors hover:bg-primary/80'
+              'inline-flex min-h-[44px] items-center justify-center rounded-[min(var(--radius-md),12px)] bg-primary px-3 text-[0.8rem] font-medium text-primary-foreground transition-colors hover:bg-primary/80 sm:h-7 sm:min-h-0 sm:px-2.5',
             )}
           >
             {action.label}

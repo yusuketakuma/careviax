@@ -16,6 +16,7 @@ export function MobileNav() {
     <nav
       className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
       aria-label="モバイルナビゲーション"
+      data-testid="mobile-bottom-nav"
     >
       <ul className="flex h-16 items-stretch" role="list">
         {MOBILE_BOTTOM_NAV_ITEMS.map((item) => {
@@ -31,9 +32,7 @@ export function MobileNav() {
                   'relative flex flex-1 flex-col items-center justify-center gap-1 text-xs font-medium transition-colors',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   'min-h-[44px]',
-                  isActive
-                    ? 'text-primary'
-                    : 'text-muted-foreground hover:text-foreground'
+                  isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
                 )}
                 aria-current={isActive ? 'page' : undefined}
               >
@@ -62,7 +61,7 @@ export function MobileNav() {
             className={cn(
               'flex flex-1 flex-col items-center justify-center gap-1 text-xs font-medium text-muted-foreground transition-colors',
               'hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              'min-h-[44px]'
+              'min-h-[44px]',
             )}
             aria-label="メニューを開く"
           >

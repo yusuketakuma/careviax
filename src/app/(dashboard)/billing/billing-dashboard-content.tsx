@@ -114,7 +114,7 @@ export function BillingDashboardContent() {
             </div>
             <Link
               href="/billing/candidates"
-              className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 sm:h-10 sm:min-h-0"
             >
               候補一覧を開く
             </Link>
@@ -496,7 +496,7 @@ export function BillingDashboardContent() {
           </p>
           <Link
             href="/billing/candidates"
-            className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            className="inline-flex min-h-[44px] items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 sm:h-9 sm:min-h-0"
           >
             候補一覧を開く
           </Link>

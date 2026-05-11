@@ -8,6 +8,10 @@ import { withOrgContext } from '@/lib/db/rls';
 import { format } from 'date-fns';
 import { createPrescriptionIntake } from '@/server/services/prescription-intake-service';
 import {
+  buildPrescriptionIntakeAssignmentWhere,
+  canAccessPrescriptionPatient,
+} from '@/server/services/prescription-access';
+import {
   attachJahisSupplementalRecordsToIntake,
   readJahisSupplementalRecords,
 } from '@/server/services/jahis-supplemental-records';
@@ -57,6 +61,9 @@ export const GET = withAuth(
               overall_status: status as never,
             },
           }
+        : {}),
+      ...(buildPrescriptionIntakeAssignmentWhere(req)
+        ? { AND: [buildPrescriptionIntakeAssignmentWhere(req)!] }
         : {}),
     };
 
@@ -153,6 +160,9 @@ export const POST = withAuth(
       });
       if (!refResult.ok) return refResult.response;
     }
+    if (patient_id && !(await canAccessPrescriptionPatient(prisma, req.orgId, req, patient_id))) {
+      return validationError('この患者の処方受付を作成する権限がありません');
+    }
 
     const qrDraft = qr_draft_id
       ? await withOrgContext(req.orgId, async (tx) =>
@@ -188,6 +198,7 @@ export const POST = withAuth(
 
     const result = await createPrescriptionIntake(parsed.data, req.orgId, req.userId, {
       skipStructuringCheck: source_type === 'qr_scan',
+      accessContext: { userId: req.userId, role: req.role },
     });
 
     if (!result.ok) {

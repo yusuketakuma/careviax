@@ -11,6 +11,7 @@ const {
   prescriptionIntakeFindManyMock,
   validateOrgReferencesMock,
   upsertOperationalTaskMock,
+  careCaseFindFirstMock,
 } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
     (handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>) => {
@@ -26,6 +27,7 @@ const {
   prescriptionIntakeFindManyMock: vi.fn(),
   validateOrgReferencesMock: vi.fn().mockResolvedValue({ ok: true }),
   upsertOperationalTaskMock: vi.fn().mockResolvedValue({ id: 'task_operational_1' }),
+  careCaseFindFirstMock: vi.fn().mockResolvedValue({ id: 'case_1' }),
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
@@ -56,6 +58,9 @@ vi.mock('@/lib/db/client', () => ({
       create: vi.fn().mockResolvedValue({}),
       update: vi.fn().mockResolvedValue({}),
       updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
+    careCase: {
+      findFirst: careCaseFindFirstMock,
     },
   },
 }));

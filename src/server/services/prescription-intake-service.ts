@@ -16,9 +16,14 @@ import {
 import { detectMedicationChanges, type MedicationChange } from '@/lib/prescription/medication-diff';
 import type { Prisma, PrescriptionSourceType } from '@prisma/client';
 import { InvalidTransitionError, VersionConflictError } from '@/lib/db/cycle-transition';
+import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { createDispenseDraft } from '@/server/services/dispense-draft-service';
 import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
+import {
+  buildMedicationCycleAssignmentWhere,
+  type PrescriptionAccessContext,
+} from '@/server/services/prescription-access';
 
 export interface CreateIntakeLineInput {
   line_number: number;
@@ -71,6 +76,7 @@ export interface CreateIntakeInput {
 export interface CreateIntakeOptions {
   skipStructuringCheck?: boolean;
   skipExpiryCheck?: boolean;
+  accessContext?: PrescriptionAccessContext;
 }
 
 type CreatedIntakeLine = {
@@ -178,12 +184,20 @@ async function loadCycleContext(
     cycleId?: string;
     caseId?: string;
     patientId?: string;
+    accessContext?: PrescriptionAccessContext;
   },
 ): Promise<LoadedCycleContext | null> {
   if (args.cycleId) {
+    const assignmentWhere = args.accessContext
+      ? buildMedicationCycleAssignmentWhere(args.accessContext)
+      : null;
     return tx.medicationCycle
       .findFirst({
-        where: { id: args.cycleId, org_id: args.orgId },
+        where: {
+          id: args.cycleId,
+          org_id: args.orgId,
+          ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+        },
         select: {
           id: true,
           patient_id: true,
@@ -240,8 +254,16 @@ async function loadCycleContext(
     return null;
   }
 
+  const caseAssignmentWhere = args.accessContext
+    ? buildCareCaseAssignmentWhere(args.accessContext)
+    : null;
   const careCase = await tx.careCase.findFirst({
-    where: { id: args.caseId, org_id: args.orgId, patient_id: args.patientId },
+    where: {
+      id: args.caseId,
+      org_id: args.orgId,
+      patient_id: args.patientId,
+      ...(caseAssignmentWhere ? { AND: [caseAssignmentWhere] } : {}),
+    },
     select: {
       id: true,
       patient_id: true,
@@ -428,6 +450,7 @@ export async function createPrescriptionIntakeInTx(
     cycleId: cycle_id,
     caseId: case_id,
     patientId: patient_id,
+    accessContext: options.accessContext,
   });
   if (!cycle) {
     return { kind: 'error', error: 'cycle_not_found' };

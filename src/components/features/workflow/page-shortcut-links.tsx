@@ -24,7 +24,10 @@ export function PageShortcutLinks({ links }: PageShortcutLinksProps) {
           <Link
             key={`${link.href}:${link.label}`}
             href={link.href}
-            className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-9 sm:h-8')}
+            className={cn(
+              buttonVariants({ variant: 'outline', size: 'sm' }),
+              'min-h-[44px] sm:h-8 sm:min-h-0',
+            )}
           >
             {link.label}
           </Link>
@@ -58,7 +61,10 @@ export function PageShortcutLinks({ links }: PageShortcutLinksProps) {
               <Link
                 key={`${group.label}:${link.href}:${link.label}`}
                 href={link.href}
-                className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-9 sm:h-8')}
+                className={cn(
+                  buttonVariants({ variant: 'outline', size: 'sm' }),
+                  'min-h-[44px] sm:h-8 sm:min-h-0',
+                )}
               >
                 {link.label}
               </Link>

@@ -105,7 +105,10 @@ const columns: ColumnDef<QrDraftRow>[] = [
     cell: ({ row }) => (
       <Link
         href={`/prescriptions/qr-drafts/${row.original.id}`}
-        className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'gap-1 text-primary')}
+        className={cn(
+          buttonVariants({ variant: 'ghost', size: 'sm' }),
+          'min-h-[44px] min-w-[44px] gap-1 text-primary sm:min-h-0 sm:min-w-0',
+        )}
         onClick={(event) => event.stopPropagation()}
       >
         確認
@@ -187,12 +190,15 @@ function QrDraftList() {
   useKeyboardShortcuts(shortcuts);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-testid="qr-drafts-list-workspace">
       <div className="flex items-center gap-2">
         <button
           type="button"
-          onClick={() => { setFilterMode('all'); setSelectedIndex(0); }}
-          className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+          onClick={() => {
+            setFilterMode('all');
+            setSelectedIndex(0);
+          }}
+          className={`min-h-[44px] min-w-[44px] rounded-md px-3 py-1.5 text-sm font-medium transition-colors sm:min-h-0 sm:min-w-0 ${
             filterMode === 'all'
               ? 'bg-primary text-primary-foreground'
               : 'border border-input bg-background text-foreground hover:bg-accent'
@@ -202,8 +208,11 @@ function QrDraftList() {
         </button>
         <button
           type="button"
-          onClick={() => { setFilterMode('unmatched'); setSelectedIndex(0); }}
-          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+          onClick={() => {
+            setFilterMode('unmatched');
+            setSelectedIndex(0);
+          }}
+          className={`flex min-h-[44px] min-w-[44px] items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors sm:min-h-0 sm:min-w-0 ${
             filterMode === 'unmatched'
               ? 'bg-primary text-primary-foreground'
               : 'border border-input bg-background text-foreground hover:bg-accent'
@@ -211,9 +220,13 @@ function QrDraftList() {
         >
           未照合
           {unmatchedCount > 0 && (
-            <span className={`inline-flex size-5 items-center justify-center rounded-full text-[11px] font-semibold ${
-              filterMode === 'unmatched' ? 'bg-primary-foreground text-primary' : 'bg-amber-100 text-amber-800'
-            }`}>
+            <span
+              className={`inline-flex size-5 items-center justify-center rounded-full text-[11px] font-semibold ${
+                filterMode === 'unmatched'
+                  ? 'bg-primary-foreground text-primary'
+                  : 'bg-amber-100 text-amber-800'
+              }`}
+            >
               {unmatchedCount}
             </span>
           )}
@@ -230,7 +243,11 @@ function QrDraftList() {
           const draft = drafts[index];
           if (draft) router.push(`/prescriptions/qr-drafts/${draft.id}`);
         }}
-        emptyMessage={filterMode === 'unmatched' ? '未照合の下書きはありません' : 'QRスキャンの下書きはありません'}
+        emptyMessage={
+          filterMode === 'unmatched'
+            ? '未照合の下書きはありません'
+            : 'QRスキャンの下書きはありません'
+        }
       />
     </div>
   );

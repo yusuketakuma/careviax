@@ -1149,14 +1149,14 @@ export function ScheduleProposalsContent({
           <CardContent className="space-y-3">
             <Link
               href="/schedules"
-              className="flex items-center justify-between rounded-xl border border-border/70 px-3 py-2 text-sm hover:bg-muted/40"
+              className="flex min-h-[44px] items-center justify-between rounded-xl border border-border/70 px-3 py-2 text-sm hover:bg-muted/40"
             >
               本日の訪問予定へ
               <ChevronRight className="size-4 text-muted-foreground" />
             </Link>
             <Link
               href="/workflow"
-              className="flex items-center justify-between rounded-xl border border-border/70 px-3 py-2 text-sm hover:bg-muted/40"
+              className="flex min-h-[44px] items-center justify-between rounded-xl border border-border/70 px-3 py-2 text-sm hover:bg-muted/40"
             >
               例外・未接続案件を確認
               <ChevronRight className="size-4 text-muted-foreground" />

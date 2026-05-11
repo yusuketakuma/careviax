@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const { withAuthMock, withOrgContextMock } = vi.hoisted(() => ({
+const { withAuthMock, withOrgContextMock, careCaseFindManyMock } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
     (
       handler: (
@@ -21,6 +21,7 @@ const { withAuthMock, withOrgContextMock } = vi.hoisted(() => ({
     },
   ),
   withOrgContextMock: vi.fn(),
+  careCaseFindManyMock: vi.fn().mockResolvedValue([{ patient_id: 'patient_1' }]),
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
@@ -29,6 +30,14 @@ vi.mock('@/lib/auth/middleware', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/db/client', () => ({
+  prisma: {
+    careCase: {
+      findMany: careCaseFindManyMock,
+    },
+  },
 }));
 
 import { GET, DELETE } from './route';

@@ -224,7 +224,7 @@ function buildPatientColumns(args: {
           </Button>
           <Link
             href={`/patients/${row.original.id}`}
-            className="font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex min-h-[44px] items-center font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0"
             onClick={() => args.onMarkRecent(row.original.id)}
           >
             {row.original.name}
@@ -449,11 +449,7 @@ export type InitialPatientFilters = {
   readinessIssueFilter?: string;
 };
 
-export function PatientsTable({
-  initialFilters,
-}: {
-  initialFilters?: InitialPatientFilters;
-}) {
+export function PatientsTable({ initialFilters }: { initialFilters?: InitialPatientFilters }) {
   const orgId = useOrgId();
   const favoritePatientIds = usePatientListStore((state) => state.favoritePatientIds);
   const recentPatientIds = usePatientListStore((state) => state.recentPatientIds);
@@ -471,31 +467,31 @@ export function PatientsTable({
   const [searchQuery, setSearchQuery] = useState(initialFilters?.searchQuery ?? '');
   const [selectedPatients, setSelectedPatients] = useState<PatientRow[]>([]);
   const [caseStatusFilters, setCaseStatusFilters] = useState<string[]>(
-    initialFilters?.caseStatusFilters ?? []
+    initialFilters?.caseStatusFilters ?? [],
   );
   const [riskFilter, setRiskFilter] = useState<string>(
-    normalizeFilterValue(initialFilters?.riskFilter)
+    normalizeFilterValue(initialFilters?.riskFilter),
   );
   const [statusFilter, setStatusFilter] = useState<string>(ALL_VALUE);
   const [facilityFilter, setFacilityFilter] = useState<string>(
-    normalizeFilterValue(initialFilters?.facilityFilter)
+    normalizeFilterValue(initialFilters?.facilityFilter),
   );
   const [pharmacistFilter, setPharmacistFilter] = useState<string>(
-    normalizeFilterValue(initialFilters?.pharmacistFilter)
+    normalizeFilterValue(initialFilters?.pharmacistFilter),
   );
   const [consentFilter, setConsentFilter] = useState<string>(
-    normalizeFilterValue(initialFilters?.consentFilter)
+    normalizeFilterValue(initialFilters?.consentFilter),
   );
   const [billingSupportFilter, setBillingSupportFilter] = useState<string>(
-    normalizeFilterValue(initialFilters?.billingSupportFilter)
+    normalizeFilterValue(initialFilters?.billingSupportFilter),
   );
   const [payerFilter, setPayerFilter] = useState<string>(
-    normalizeFilterValue(initialFilters?.payerFilter)
+    normalizeFilterValue(initialFilters?.payerFilter),
   );
   const [lastVisitFrom, setLastVisitFrom] = useState(initialFilters?.lastVisitFrom ?? '');
   const [lastVisitTo, setLastVisitTo] = useState(initialFilters?.lastVisitTo ?? '');
   const [readinessIssueFilter, setReadinessIssueFilter] = useState<string>(
-    normalizeFilterValue(initialFilters?.readinessIssueFilter)
+    normalizeFilterValue(initialFilters?.readinessIssueFilter),
   );
   const [exportFeedback, setExportFeedback] = useState<{
     type: 'success' | 'error';

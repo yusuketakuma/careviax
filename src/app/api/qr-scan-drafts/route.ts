@@ -16,6 +16,11 @@ import { mapJahisToIntake } from '@/lib/pharmacy/qr-intake-mapper';
 import { replaceJahisSupplementalRecords } from '@/server/services/jahis-supplemental-records';
 import { z } from 'zod';
 import { addDays, subDays, parseISO } from 'date-fns';
+import {
+  buildQrDraftAssignmentWhere,
+  canAccessPrescriptionPatient,
+  getAssignedPatientIds,
+} from '@/server/services/prescription-access';
 
 // ── Validation schema ──
 
@@ -91,12 +96,15 @@ export const GET = withAuth(
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
     const unmatched = searchParams.get('unmatched') === 'true';
+    const assignedPatientIds = await getAssignedPatientIds(prisma, req.orgId, req);
+    const assignmentWhere = buildQrDraftAssignmentWhere(req, assignedPatientIds ?? []);
 
     const drafts = await prisma.qrScanDraft.findMany({
       where: {
         org_id: req.orgId,
         status: 'pending',
         ...(unmatched ? { patient_id: null } : {}),
+        ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
       },
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -130,6 +138,9 @@ export const POST = withAuth(
     const { qr_texts, patient_id, site_id, session_id: clientSessionId } = parsed.data;
 
     if (patient_id) {
+      if (!(await canAccessPrescriptionPatient(prisma, req.orgId, req, patient_id))) {
+        return validationError('この患者のQRスキャン下書きを作成する権限がありません');
+      }
       const patient = await prisma.patient.findFirst({
         where: { id: patient_id, org_id: req.orgId },
         select: { id: true },

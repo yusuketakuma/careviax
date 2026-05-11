@@ -99,7 +99,7 @@ test.describe('prescription intake flow', () => {
     await page.goto('/prescriptions');
     await waitForStableUi(page);
 
-    await expect(page.getByRole('heading', { name: '処方受付' })).toBeVisible();
+    await expect(page.locator('main').getByRole('heading', { name: '処方受付' }).first()).toBeVisible();
 
     // Navigate to new intake
     const main = page.locator('main');
@@ -197,7 +197,7 @@ test.describe('dispensing → auditing flow', () => {
     // Start: prescriptions
     await page.goto('/prescriptions');
     await waitForStableUi(page);
-    await expect(page.getByRole('heading', { name: '処方受付' })).toBeVisible();
+    await expect(page.locator('main').getByRole('heading', { name: '処方受付' }).first()).toBeVisible();
 
     // → dispensing
     const main = page.locator('main');

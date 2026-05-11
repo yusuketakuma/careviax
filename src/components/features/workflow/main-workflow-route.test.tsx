@@ -47,13 +47,15 @@ describe('MainWorkflowCompactNav', () => {
     render(<MainWorkflowCompactNav currentSteps={['schedules']} />);
 
     const nav = screen.getByTestId('main-workflow-compact-nav');
-    const links = nav.querySelectorAll('a');
+    const links = nav.querySelectorAll('ol a');
     expect(links).toHaveLength(8);
     expect(links[0]?.getAttribute('href')).toBe('/prescriptions');
     expect(links[5]?.getAttribute('href')).toBe('/schedules');
     expect(links[7]?.getAttribute('href')).toBe('/reports');
 
-    expect(screen.getAllByText('現在地')).toHaveLength(1);
+    expect(
+      Array.from(nav.querySelectorAll('ol span')).filter((el) => el.textContent === '現在地'),
+    ).toHaveLength(1);
     expect(screen.getByRole('link', { name: /スケジュール登録/ })).toBeTruthy();
   });
 
@@ -72,7 +74,18 @@ describe('MainWorkflowCompactNav', () => {
   it('can highlight multiple stages for combined screens', () => {
     render(<MainWorkflowCompactNav currentSteps={['medication_sets', 'set_audit']} />);
 
-    expect(screen.getAllByText('現在地')).toHaveLength(2);
-    expect(screen.getByRole('link', { name: /セット監査/ })).toBeTruthy();
+    const nav = screen.getByTestId('main-workflow-compact-nav');
+    expect(
+      Array.from(nav.querySelectorAll('ol span')).filter((el) => el.textContent === '現在地'),
+    ).toHaveLength(2);
+    expect(screen.getAllByRole('link', { name: /セット監査/ }).length).toBeGreaterThan(0);
+  });
+
+  it('summarizes the current mobile stage with adjacent route links', () => {
+    render(<MainWorkflowCompactNav currentSteps={['reports']} />);
+
+    expect(screen.getByText('08/08')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '前: 訪問時' }).getAttribute('href')).toBe('/visits');
+    expect(screen.queryByRole('link', { name: /^次:/ })).toBeNull();
   });
 });

@@ -31,7 +31,7 @@ export function ScheduleProposalWorkspaceTabs({
                 },
               })}
               className={[
-                'inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-colors',
+                'inline-flex min-h-[44px] items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-colors',
                 active
                   ? 'border-primary/40 bg-primary/5 text-foreground'
                   : 'border-border/70 bg-background text-muted-foreground hover:bg-muted/40 hover:text-foreground',

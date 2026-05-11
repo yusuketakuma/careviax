@@ -7,6 +7,11 @@ import { Prisma, ReportStatus, ReportType } from '@prisma/client';
 import { z } from 'zod';
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
 import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/prescriber-institutions';
+import {
+  buildCareReportAccessWhere,
+  canAccessCareReportSource,
+  getCareReportAccessScope,
+} from '@/server/services/care-report-access';
 
 const createCareReportSchema = z.object({
   patient_id: z.string().min(1, '患者IDは必須です'),
@@ -85,6 +90,8 @@ function normalizeOptionalSearchParam(value: string | null) {
 
 async function validateCareReportSource(args: {
   orgId: string;
+  userId: string;
+  role: AuthenticatedRequest['role'];
   patientId: string;
   caseId?: string;
   visitRecordId?: string;
@@ -129,6 +136,20 @@ async function validateCareReportSource(args: {
       return { error: '訪問記録が指定ケースに紐付いていません' };
     }
     resolvedCaseId = visitRecord.schedule.case_id;
+  }
+
+  const canAccess = await canAccessCareReportSource(
+    prisma,
+    args.orgId,
+    { userId: args.userId, role: args.role },
+    {
+      patientId: args.patientId,
+      caseId: resolvedCaseId,
+      visitRecordId: args.visitRecordId,
+    },
+  );
+  if (!canAccess) {
+    return { error: 'この報告書の作成権限がありません' };
   }
 
   return { caseId: resolvedCaseId };
@@ -204,6 +225,8 @@ export const GET = withAuth(
       });
     }
 
+    const accessScope = await getCareReportAccessScope(prisma, req.orgId, req);
+    const accessWhere = buildCareReportAccessWhere(accessScope);
     const where: Prisma.CareReportWhereInput = {
       org_id: req.orgId,
       ...(patientId ? { patient_id: patientId } : {}),
@@ -236,6 +259,7 @@ export const GET = withAuth(
             },
           }
         : {}),
+      ...(accessWhere ? { AND: [accessWhere] } : {}),
     };
 
     const reports = await prisma.careReport.findMany({
@@ -379,6 +403,8 @@ export const POST = withAuth(
 
     const sourceValidation = await validateCareReportSource({
       orgId: req.orgId,
+      userId: req.userId,
+      role: req.role,
       patientId: parsed.data.patient_id,
       caseId: parsed.data.case_id,
       visitRecordId: parsed.data.visit_record_id,

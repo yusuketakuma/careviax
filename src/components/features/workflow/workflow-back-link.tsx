@@ -8,17 +8,13 @@ type WorkflowBackLinkProps = {
   className?: string;
 };
 
-export function WorkflowBackLink({
-  href,
-  label,
-  className,
-}: WorkflowBackLinkProps) {
+export function WorkflowBackLink({ href, label, className }: WorkflowBackLinkProps) {
   return (
     <Link
       href={href}
       className={cn(
-        'inline-flex h-7 items-center gap-1 rounded-lg px-2.5 text-[0.8rem] font-medium text-foreground hover:bg-muted',
-        className
+        'inline-flex min-h-[44px] items-center gap-1 rounded-lg px-2.5 text-[0.8rem] font-medium text-foreground hover:bg-muted sm:h-7 sm:min-h-0',
+        className,
       )}
     >
       <ChevronLeft className="size-3.5" aria-hidden="true" />

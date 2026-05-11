@@ -8,6 +8,7 @@ const {
   qrScanDraftCreateMock,
   patientFindFirstMock,
   pharmacySiteFindFirstMock,
+  careCaseFindFirstMock,
   jahisSupplementalRecordDeleteManyMock,
   jahisSupplementalRecordCreateManyMock,
   broadcastStatusUpdateMock,
@@ -32,6 +33,7 @@ const {
   qrScanDraftCreateMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   pharmacySiteFindFirstMock: vi.fn(),
+  careCaseFindFirstMock: vi.fn().mockResolvedValue({ id: 'case_1' }),
   jahisSupplementalRecordDeleteManyMock: vi.fn(),
   jahisSupplementalRecordCreateManyMock: vi.fn(),
   broadcastStatusUpdateMock: vi.fn(),
@@ -60,6 +62,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     pharmacySite: {
       findFirst: pharmacySiteFindFirstMock,
+    },
+    careCase: {
+      findFirst: careCaseFindFirstMock,
     },
   },
 }));

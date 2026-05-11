@@ -55,7 +55,7 @@ export function OnboardingDismissable({ children }: { children: React.ReactNode 
           localStorage.setItem(STORAGE_KEY, 'true');
           notifyDismissedChange();
         }}
-        className="absolute right-3 top-3 z-10 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        className="absolute right-3 top-3 z-10 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:min-h-0 sm:min-w-0"
         aria-label="オンボーディングを閉じる"
       >
         <X className="size-4" aria-hidden="true" />

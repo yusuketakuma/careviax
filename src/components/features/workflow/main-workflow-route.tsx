@@ -120,13 +120,7 @@ type MainWorkflowRouteProps = {
   dataTestId?: string;
 };
 
-function MainWorkflowCard({
-  step,
-  index,
-}: {
-  step: MainWorkflowStep;
-  index: number;
-}) {
+function MainWorkflowCard({ step, index }: { step: MainWorkflowStep; index: number }) {
   const Icon = step.icon;
 
   return (
@@ -159,10 +153,7 @@ function MainWorkflowCard({
               className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-medium text-primary transition-colors hover:bg-primary/[0.06]"
             >
               {step.title}を開く
-              <ArrowRight
-                className="size-4 text-primary transition-transform"
-                aria-hidden="true"
-              />
+              <ArrowRight className="size-4 text-primary transition-transform" aria-hidden="true" />
             </Link>
           </div>
         </CardContent>
@@ -217,25 +208,75 @@ export function MainWorkflowCompactNav({
   dataTestId = 'main-workflow-compact-nav',
 }: MainWorkflowCompactNavProps) {
   const activeSteps = new Set(currentSteps);
+  const activeStepDetails = MAIN_WORKFLOW_STEPS.filter((step) => activeSteps.has(step.key));
+  const primaryActiveStep = activeStepDetails[0];
+  const primaryActiveIndex = primaryActiveStep
+    ? MAIN_WORKFLOW_STEPS.findIndex((step) => step.key === primaryActiveStep.key)
+    : -1;
+  const previousStep = primaryActiveIndex > 0 ? MAIN_WORKFLOW_STEPS[primaryActiveIndex - 1] : null;
+  const nextStep =
+    primaryActiveIndex >= 0 && primaryActiveIndex < MAIN_WORKFLOW_STEPS.length - 1
+      ? MAIN_WORKFLOW_STEPS[primaryActiveIndex + 1]
+      : null;
 
   return (
     <section
-      className="rounded-2xl border border-border/70 bg-card px-4 py-4 shadow-sm sm:px-5"
+      className="rounded-2xl border border-border/70 bg-card px-4 py-3 shadow-sm sm:px-5 sm:py-4"
       data-testid={dataTestId}
     >
       <div className="space-y-1">
         <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-        <p className="text-sm text-muted-foreground">{description}</p>
+        <p className="hidden text-sm text-muted-foreground md:block">{description}</p>
       </div>
 
-      <ol className="mt-4 grid gap-2 md:grid-cols-4 xl:grid-cols-8">
+      {primaryActiveStep ? (
+        <div className="mt-3 rounded-xl border border-primary/30 bg-primary/[0.06] p-2.5 md:hidden">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+                現在地
+              </p>
+              <p className="text-sm font-semibold text-foreground">
+                {activeStepDetails.map((step) => step.title).join(' / ')}
+              </p>
+            </div>
+            <span className="shrink-0 text-xs font-medium tabular-nums text-primary">
+              {primaryActiveStep.step}/08
+            </span>
+          </div>
+
+          <div className="mt-2 flex flex-wrap gap-2">
+            {previousStep ? (
+              <Link
+                href={previousStep.href}
+                className="inline-flex min-h-[44px] items-center rounded-lg border border-border/70 bg-background px-3 text-xs font-medium text-muted-foreground"
+              >
+                前: {previousStep.title}
+              </Link>
+            ) : null}
+            {nextStep ? (
+              <Link
+                href={nextStep.href}
+                className="inline-flex min-h-[44px] items-center rounded-lg border border-border/70 bg-background px-3 text-xs font-medium text-muted-foreground"
+              >
+                次: {nextStep.title}
+              </Link>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      <ol
+        className="mt-4 flex snap-x gap-2 overflow-x-auto pb-1 md:grid md:grid-cols-4 md:overflow-visible md:pb-0 xl:grid-cols-8"
+        aria-label="主業務フローの工程一覧"
+      >
         {MAIN_WORKFLOW_STEPS.map((step) => {
           const isActive = activeSteps.has(step.key);
           return (
-            <li key={`compact-${step.key}`}>
+            <li key={`compact-${step.key}`} className="min-w-40 snap-start md:min-w-0">
               <div
                 className={cn(
-                  'rounded-xl border px-3 py-3 transition-colors',
+                  'h-full rounded-xl border px-3 py-3 transition-colors',
                   isActive
                     ? 'border-primary/40 bg-primary/[0.08] shadow-sm'
                     : 'border-border/70 bg-background',
@@ -259,7 +300,7 @@ export function MainWorkflowCompactNav({
                     <Link
                       href={step.href}
                       className={cn(
-                        'min-h-11 rounded-lg py-2 pr-2 text-sm font-semibold transition-colors hover:text-primary',
+                        'inline-flex min-h-11 min-w-11 items-center rounded-lg px-2 py-2 text-sm font-semibold transition-colors hover:text-primary',
                         isActive ? 'text-primary' : 'text-foreground',
                       )}
                     >

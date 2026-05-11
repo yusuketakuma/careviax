@@ -1,16 +1,27 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, notFound } from '@/lib/api/response';
+import {
+  buildQrDraftAssignmentWhere,
+  getAssignedPatientIds,
+} from '@/server/services/prescription-access';
+import { prisma } from '@/lib/db/client';
 
 // ── GET: fetch single draft by id ──
 
 export const GET = withAuth(
   async (req: AuthenticatedRequest, { params }: { params: Promise<{ id: string }> }) => {
     const { id } = await params;
+    const assignedPatientIds = await getAssignedPatientIds(prisma, req.orgId, req);
+    const assignmentWhere = buildQrDraftAssignmentWhere(req, assignedPatientIds ?? []);
 
     const draft = await withOrgContext(req.orgId, async (tx) => {
       return tx.qrScanDraft.findFirst({
-        where: { id, org_id: req.orgId },
+        where: {
+          id,
+          org_id: req.orgId,
+          ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+        },
         include: {
           jahis_supplemental_records: {
             orderBy: [{ line_number: 'asc' }, { created_at: 'asc' }],
@@ -45,10 +56,16 @@ export const GET = withAuth(
 export const DELETE = withAuth(
   async (req: AuthenticatedRequest, { params }: { params: Promise<{ id: string }> }) => {
     const { id } = await params;
+    const assignedPatientIds = await getAssignedPatientIds(prisma, req.orgId, req);
+    const assignmentWhere = buildQrDraftAssignmentWhere(req, assignedPatientIds ?? []);
 
     const existing = await withOrgContext(req.orgId, async (tx) => {
       return tx.qrScanDraft.findFirst({
-        where: { id, org_id: req.orgId },
+        where: {
+          id,
+          org_id: req.orgId,
+          ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+        },
         select: { id: true, status: true },
       });
     });

@@ -131,7 +131,7 @@ describe('visit-workflow-projection', () => {
       primary_action: {
         operation: 'open_billing_candidates',
         label: '請求候補を確認',
-        href: '/billing/candidates?billing_month=2026-04-01&patient_id=patient_1',
+        href: '/billing/candidates?billing_month=2026-04-01&patient_id=patient_1&workflow_from=visit_record&visit_record_id=record_1&schedule_id=schedule_1',
       },
     });
   });

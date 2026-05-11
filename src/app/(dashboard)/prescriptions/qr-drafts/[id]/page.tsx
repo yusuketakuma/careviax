@@ -39,9 +39,7 @@ import { LoadingButton } from '@/components/ui/loading-button';
 import { cn } from '@/lib/utils';
 import { buildQrDraftShortcutLinks, QR_DRAFT_CONFIRM_SUCCESS_HREF } from './page.helpers';
 import { PageScaffold } from '@/components/layout/page-scaffold';
-import {
-  JahisSupplementalRecordsCard,
-} from '@/components/features/prescriptions/jahis-supplemental-records-card';
+import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
 import {
   normalizeJahisSupplementalRecords,
   type JahisSupplementalRecordDbView,
@@ -141,6 +139,9 @@ type DraftFormState = {
 };
 
 // ── Helpers ──
+
+const mobileDenseInputClassName = 'min-h-[44px] text-sm sm:h-8 sm:min-h-0';
+const mobileDenseButtonClassName = 'min-h-[44px] sm:min-h-0';
 
 function genderLabel(g?: string) {
   if (g === 'M' || g === '1') return '男性';
@@ -397,7 +398,7 @@ export default function QrDraftReviewPage() {
         <Button
           variant="outline"
           size="sm"
-          className="mt-3"
+          className={cn('mt-3', mobileDenseButtonClassName)}
           onClick={() => router.push('/prescriptions/qr-drafts')}
         >
           一覧へ戻る
@@ -415,7 +416,7 @@ export default function QrDraftReviewPage() {
   );
 
   return (
-    <div className="space-y-6 p-3 md:p-4 xl:p-5">
+    <div className="space-y-6 p-3 md:p-4 xl:p-5" data-testid="qr-draft-review-workspace">
       {/* Page header */}
       <WorkflowPageIntro
         backHref="/prescriptions/qr-drafts"
@@ -501,7 +502,7 @@ export default function QrDraftReviewPage() {
                     prescribedDate: e.target.value,
                   }))
                 }
-                className="h-8 text-sm"
+                className={mobileDenseInputClassName}
               />
             </div>
             <div className="space-y-1">
@@ -515,7 +516,7 @@ export default function QrDraftReviewPage() {
                     prescriberName: e.target.value,
                   }))
                 }
-                className="h-8 text-sm"
+                className={mobileDenseInputClassName}
                 placeholder="例: 田中 太郎"
               />
             </div>
@@ -530,7 +531,7 @@ export default function QrDraftReviewPage() {
                     prescriberInstitution: e.target.value,
                   }))
                 }
-                className="h-8 text-sm"
+                className={mobileDenseInputClassName}
                 placeholder="例: ○○クリニック"
               />
             </div>
@@ -562,7 +563,7 @@ export default function QrDraftReviewPage() {
                   }))
                 }
               >
-                <SelectTrigger className="h-8 text-sm">
+                <SelectTrigger className={mobileDenseInputClassName}>
                   <SelectValue placeholder="ケースを選択してください" />
                 </SelectTrigger>
                 <SelectContent>
@@ -658,7 +659,7 @@ export default function QrDraftReviewPage() {
                           value={line.drug_name}
                           onChange={(e) => updateLine(idx, 'drug_name', e.target.value)}
                           className={cn(
-                            'h-8 text-sm',
+                            mobileDenseInputClassName,
                             isDrugMissing &&
                               'border-amber-300 bg-amber-50 focus-visible:ring-amber-400',
                           )}
@@ -672,7 +673,7 @@ export default function QrDraftReviewPage() {
                         <Input
                           value={line.drug_code}
                           onChange={(e) => updateLine(idx, 'drug_code', e.target.value)}
-                          className="h-8 font-mono text-sm"
+                          className={cn(mobileDenseInputClassName, 'font-mono')}
                           placeholder="例: 2171013F1028"
                         />
                       </div>
@@ -690,7 +691,7 @@ export default function QrDraftReviewPage() {
                           value={line.dose}
                           onChange={(e) => updateLine(idx, 'dose', e.target.value)}
                           className={cn(
-                            'h-8 text-sm',
+                            mobileDenseInputClassName,
                             isDoseMissing &&
                               'border-amber-300 bg-amber-50 focus-visible:ring-amber-400',
                           )}
@@ -711,7 +712,7 @@ export default function QrDraftReviewPage() {
                           value={line.frequency}
                           onChange={(e) => updateLine(idx, 'frequency', e.target.value)}
                           className={cn(
-                            'h-8 text-sm',
+                            mobileDenseInputClassName,
                             isFreqMissing &&
                               'border-amber-300 bg-amber-50 focus-visible:ring-amber-400',
                           )}
@@ -737,7 +738,7 @@ export default function QrDraftReviewPage() {
                             updateLine(idx, 'days', v === '' ? '' : Number(v));
                           }}
                           className={cn(
-                            'h-8 text-sm',
+                            mobileDenseInputClassName,
                             isDaysMissing &&
                               'border-amber-300 bg-amber-50 focus-visible:ring-amber-400',
                           )}
@@ -758,13 +759,13 @@ export default function QrDraftReviewPage() {
                               const v = e.target.value;
                               updateLine(idx, 'quantity', v === '' ? '' : Number(v));
                             }}
-                            className="h-8 w-20 text-sm"
+                            className={cn(mobileDenseInputClassName, 'w-20')}
                             placeholder="数量"
                           />
                           <Input
                             value={line.unit}
                             onChange={(e) => updateLine(idx, 'unit', e.target.value)}
-                            className="h-8 w-20 text-sm"
+                            className={cn(mobileDenseInputClassName, 'w-20')}
                             placeholder="単位"
                           />
                         </div>
@@ -776,7 +777,7 @@ export default function QrDraftReviewPage() {
                         <Input
                           value={line.dosage_form}
                           onChange={(e) => updateLine(idx, 'dosage_form', e.target.value)}
-                          className="h-8 text-sm"
+                          className={mobileDenseInputClassName}
                           placeholder="例: 錠"
                         />
                       </div>
@@ -788,7 +789,7 @@ export default function QrDraftReviewPage() {
                           type="date"
                           value={line.start_date}
                           onChange={(e) => updateLine(idx, 'start_date', e.target.value)}
-                          className="h-8 text-sm"
+                          className={mobileDenseInputClassName}
                         />
                       </div>
                       <div className="space-y-1">
@@ -797,7 +798,7 @@ export default function QrDraftReviewPage() {
                           type="date"
                           value={line.end_date}
                           onChange={(e) => updateLine(idx, 'end_date', e.target.value)}
-                          className="h-8 text-sm"
+                          className={mobileDenseInputClassName}
                         />
                       </div>
                     </div>
@@ -807,7 +808,7 @@ export default function QrDraftReviewPage() {
                       <Input
                         value={line.packaging_instructions}
                         onChange={(e) => updateLine(idx, 'packaging_instructions', e.target.value)}
-                        className="h-8 text-sm"
+                        className={mobileDenseInputClassName}
                         placeholder="例: 一包化 / 粉砕 / 別包"
                       />
                     </div>
@@ -817,7 +818,7 @@ export default function QrDraftReviewPage() {
                       <Input
                         value={line.notes}
                         onChange={(e) => updateLine(idx, 'notes', e.target.value)}
-                        className="h-8 text-sm"
+                        className={mobileDenseInputClassName}
                         placeholder="例: 冷所保管"
                       />
                     </div>
@@ -847,14 +848,17 @@ export default function QrDraftReviewPage() {
 
       {/* Actions */}
       <Separator />
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <AlertDialog>
           <AlertDialogTrigger
             render={
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-1.5 text-destructive hover:text-destructive"
+                className={cn(
+                  'gap-1.5 text-destructive hover:text-destructive',
+                  mobileDenseButtonClassName,
+                )}
                 disabled={discardMutation.isPending || confirmMutation.isPending}
               />
             }
@@ -870,9 +874,14 @@ export default function QrDraftReviewPage() {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>キャンセル</AlertDialogCancel>
+              <AlertDialogCancel className={mobileDenseButtonClassName}>
+                キャンセル
+              </AlertDialogCancel>
               <AlertDialogAction
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                className={cn(
+                  'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+                  mobileDenseButtonClassName,
+                )}
                 onClick={() => discardMutation.mutate()}
               >
                 破棄する
@@ -881,17 +890,18 @@ export default function QrDraftReviewPage() {
           </AlertDialogContent>
         </AlertDialog>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Link
             href={registrationHref}
             className={cn(
-              'inline-flex h-10 items-center justify-center rounded-lg border border-input bg-background px-4 text-sm font-medium hover:bg-accent',
+              'inline-flex h-10 min-h-[44px] items-center justify-center rounded-lg border border-input bg-background px-4 text-sm font-medium hover:bg-accent sm:min-h-0',
             )}
           >
             処方登録画面で編集
           </Link>
           <Button
             variant="outline"
+            className={mobileDenseButtonClassName}
             onClick={() => router.push('/prescriptions/qr-drafts')}
             disabled={confirmMutation.isPending || discardMutation.isPending}
           >
@@ -900,6 +910,7 @@ export default function QrDraftReviewPage() {
           <LoadingButton
             loading={confirmMutation.isPending}
             loadingLabel="確定中..."
+            className={mobileDenseButtonClassName}
             disabled={!allRequiredFilled}
             onClick={() => confirmMutation.mutate()}
           >

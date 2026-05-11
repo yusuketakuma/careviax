@@ -55,7 +55,7 @@ function SidebarNavItem({ item, collapsed, closeOnNavigate = false }: SidebarNav
         isActive
           ? 'bg-primary/10 text-primary'
           : 'text-sidebar-foreground hover:bg-muted hover:text-foreground',
-        collapsed && 'justify-center px-2'
+        collapsed && 'justify-center px-2',
       )}
       aria-current={isActive ? 'page' : undefined}
       title={collapsed ? item.label : undefined}
@@ -101,15 +101,12 @@ function SidebarAdminGroup({
         className={cn(
           'flex w-full min-h-[32px] items-center gap-2 rounded-md px-3 py-1 text-xs font-medium tracking-wide text-muted-foreground transition-colors hover:text-foreground',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-          hasActiveChild && 'text-foreground'
+          hasActiveChild && 'text-foreground',
         )}
         aria-expanded={open}
       >
         <ChevronDown
-          className={cn(
-            'h-3 w-3 shrink-0 transition-transform',
-            !open && '-rotate-90'
-          )}
+          className={cn('h-3 w-3 shrink-0 transition-transform', !open && '-rotate-90')}
           aria-hidden="true"
         />
         <span>{group.label}</span>
@@ -118,11 +115,7 @@ function SidebarAdminGroup({
         <ul className="space-y-0.5 pl-2" role="list">
           {group.items.map((item) => (
             <li key={item.href}>
-              <SidebarNavItem
-                item={item}
-                collapsed={false}
-                closeOnNavigate={closeOnNavigate}
-              />
+              <SidebarNavItem item={item} collapsed={false} closeOnNavigate={closeOnNavigate} />
             </li>
           ))}
         </ul>
@@ -144,7 +137,7 @@ export function Sidebar({ className, closeOnNavigate = false }: SidebarProps) {
       className={cn(
         'flex h-full flex-col border-r border-border bg-sidebar transition-all duration-200',
         sidebarOpen ? 'w-48 xl:w-56' : 'w-16',
-        className
+        className,
       )}
       aria-label="メインナビゲーション"
     >
@@ -152,7 +145,7 @@ export function Sidebar({ className, closeOnNavigate = false }: SidebarProps) {
       <div
         className={cn(
           'flex h-16 shrink-0 items-center border-b border-border px-3',
-          sidebarOpen ? 'justify-between' : 'justify-center'
+          sidebarOpen ? 'justify-between' : 'justify-center',
         )}
       >
         {sidebarOpen && (
@@ -160,16 +153,14 @@ export function Sidebar({ className, closeOnNavigate = false }: SidebarProps) {
             href="/dashboard"
             className="flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span className="text-base font-bold tracking-tight text-primary">
-              CareViaX
-            </span>
+            <span className="text-base font-bold tracking-tight text-primary">CareViaX</span>
           </Link>
         )}
         <Button
           variant="ghost"
           size="icon"
           onClick={toggleSidebar}
-          className="h-8 w-8 shrink-0"
+          className="min-h-[44px] min-w-[44px] shrink-0 sm:h-8 sm:min-h-0 sm:w-8 sm:min-w-0"
           aria-label={sidebarOpen ? 'サイドバーを折りたたむ' : 'サイドバーを展開する'}
         >
           {sidebarOpen ? (
@@ -267,7 +258,7 @@ export function Sidebar({ className, closeOnNavigate = false }: SidebarProps) {
           className={cn(
             'flex min-h-[44px] w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            !sidebarOpen && 'justify-center px-2'
+            !sidebarOpen && 'justify-center px-2',
           )}
           title={!sidebarOpen ? '設定' : undefined}
         >
@@ -279,7 +270,7 @@ export function Sidebar({ className, closeOnNavigate = false }: SidebarProps) {
           className={cn(
             'flex min-h-[44px] w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            !sidebarOpen && 'justify-center px-2'
+            !sidebarOpen && 'justify-center px-2',
           )}
           aria-label="ログアウト"
           title={!sidebarOpen ? 'ログアウト' : undefined}

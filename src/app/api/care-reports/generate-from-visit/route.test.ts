@@ -7,14 +7,17 @@ const { generateReportsFromVisitMock } = vi.hoisted(() => ({
 
 vi.mock('@/lib/auth/middleware', () => ({
   withAuth: (
-    handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>,
+    handler: (
+      req: NextRequest & { orgId: string; userId: string; role: 'pharmacist' },
+    ) => Promise<Response>,
   ) => {
     return (req: NextRequest) =>
       handler({
         ...req,
         orgId: 'org_1',
         userId: 'user_1',
-      } as NextRequest & { orgId: string; userId: string });
+        role: 'pharmacist',
+      } as NextRequest & { orgId: string; userId: string; role: 'pharmacist' });
   },
 }));
 
@@ -44,6 +47,13 @@ describe('/api/care-reports/generate-from-visit', () => {
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'report_1', report_type: 'physician_report' }],
     });
+    expect(generateReportsFromVisitMock).toHaveBeenCalledWith(
+      'org_1',
+      'user_1',
+      'visit_1',
+      undefined,
+      { userId: 'user_1', role: 'pharmacist' },
+    );
   });
 
   it('returns 404 when the visit record is missing', async () => {
@@ -56,5 +66,19 @@ describe('/api/care-reports/generate-from-visit', () => {
     } as NextRequest))!;
 
     expect(response.status).toBe(404);
+  });
+
+  it('returns 403 when the caller cannot access the visit record assignment', async () => {
+    generateReportsFromVisitMock.mockRejectedValue(
+      new Error('VisitRecord not accessible: visit_1'),
+    );
+
+    const response = (await POST({
+      json: async () => ({
+        visit_record_id: 'visit_1',
+      }),
+    } as NextRequest))!;
+
+    expect(response.status).toBe(403);
   });
 });

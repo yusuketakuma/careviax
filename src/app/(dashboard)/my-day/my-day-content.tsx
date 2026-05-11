@@ -41,7 +41,11 @@ import {
 } from '@/app/(dashboard)/schedules/day-view.shared';
 import type { PatientStatusIcon } from '@/types/dashboard-home';
 import { SectionIntro } from '@/components/ui/section-intro';
-import type { MyDayFocus, MyDayTaskFilter, MyDayVisitFilter } from '@/lib/dashboard/home-link-builders';
+import type {
+  MyDayFocus,
+  MyDayTaskFilter,
+  MyDayVisitFilter,
+} from '@/lib/dashboard/home-link-builders';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 
 type Task = {
@@ -88,17 +92,11 @@ type MyDayContentProps = {
   initialContext?: string | null;
 };
 
-function InlineFilterButton({
-  active,
-  label,
-}: {
-  active: boolean;
-  label: string;
-}) {
+function InlineFilterButton({ active, label }: { active: boolean; label: string }) {
   return (
     <span
       className={[
-        'inline-flex min-h-[32px] items-center rounded-full border px-3 py-1 text-xs font-medium',
+        'inline-flex min-h-[44px] items-center rounded-full border px-3 py-1 text-xs font-medium sm:min-h-[32px]',
         active
           ? 'border-primary bg-primary/10 text-primary'
           : 'border-border/70 bg-background text-muted-foreground',
@@ -228,7 +226,10 @@ export function MyDayContent({
   return (
     <div className="space-y-4 p-4 max-w-lg mx-auto">
       {contextSummary ? (
-        <Alert className="border-sky-200 bg-sky-50 text-sky-900" data-testid="my-day-context-banner">
+        <Alert
+          className="border-sky-200 bg-sky-50 text-sky-900"
+          data-testid="my-day-context-banner"
+        >
           <AlertCircle className="size-4 text-sky-700" aria-hidden="true" />
           <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
         </Alert>
@@ -299,7 +300,11 @@ export function MyDayContent({
             <button
               type="button"
               onClick={() =>
-                replaceMyDayUrl({ focus: 'visits', visit_filter: null, context: initialContext ?? null })
+                replaceMyDayUrl({
+                  focus: 'visits',
+                  visit_filter: null,
+                  context: initialContext ?? null,
+                })
               }
               className="border-0 bg-transparent p-0"
             >
@@ -308,20 +313,34 @@ export function MyDayContent({
             <button
               type="button"
               onClick={() =>
-                replaceMyDayUrl({ focus: 'visits', visit_filter: 'unprepared', context: initialContext ?? null })
+                replaceMyDayUrl({
+                  focus: 'visits',
+                  visit_filter: 'unprepared',
+                  context: initialContext ?? null,
+                })
               }
               className="border-0 bg-transparent p-0"
             >
-              <InlineFilterButton active={initialVisitFilter === 'unprepared'} label="準備未完了のみ" />
+              <InlineFilterButton
+                active={initialVisitFilter === 'unprepared'}
+                label="準備未完了のみ"
+              />
             </button>
             <button
               type="button"
               onClick={() =>
-                replaceMyDayUrl({ focus: 'visits', visit_filter: 'in_progress', context: initialContext ?? null })
+                replaceMyDayUrl({
+                  focus: 'visits',
+                  visit_filter: 'in_progress',
+                  context: initialContext ?? null,
+                })
               }
               className="border-0 bg-transparent p-0"
             >
-              <InlineFilterButton active={initialVisitFilter === 'in_progress'} label="訪問進行中のみ" />
+              <InlineFilterButton
+                active={initialVisitFilter === 'in_progress'}
+                label="訪問進行中のみ"
+              />
             </button>
           </div>
           {visitsQuery.isLoading ? (
@@ -416,7 +435,11 @@ export function MyDayContent({
             <button
               type="button"
               onClick={() =>
-                replaceMyDayUrl({ focus: 'tasks', task_filter: null, context: initialContext ?? null })
+                replaceMyDayUrl({
+                  focus: 'tasks',
+                  task_filter: null,
+                  context: initialContext ?? null,
+                })
               }
               className="border-0 bg-transparent p-0"
             >
@@ -425,7 +448,11 @@ export function MyDayContent({
             <button
               type="button"
               onClick={() =>
-                replaceMyDayUrl({ focus: 'tasks', task_filter: 'urgent', context: initialContext ?? null })
+                replaceMyDayUrl({
+                  focus: 'tasks',
+                  task_filter: 'urgent',
+                  context: initialContext ?? null,
+                })
               }
               className="border-0 bg-transparent p-0"
             >
@@ -434,7 +461,11 @@ export function MyDayContent({
             <button
               type="button"
               onClick={() =>
-                replaceMyDayUrl({ focus: 'tasks', task_filter: 'pending', context: initialContext ?? null })
+                replaceMyDayUrl({
+                  focus: 'tasks',
+                  task_filter: 'pending',
+                  context: initialContext ?? null,
+                })
               }
               className="border-0 bg-transparent p-0"
             >

@@ -147,7 +147,7 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
         {/* タイトル */}
         <div className="flex items-center gap-2">
           <FileText className="size-4 text-primary" aria-hidden="true" />
-          <h1 className="text-sm font-semibold text-foreground">処方受付</h1>
+          <span className="text-sm font-semibold text-foreground">処方受付</span>
         </div>
 
         <div className="mx-1 h-4 w-px bg-border" />
@@ -196,7 +196,7 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
               key={opt.value}
               type="button"
               onClick={() => handleFilterStatus(opt.value)}
-              className={`inline-flex h-5 shrink-0 items-center gap-0.5 rounded px-1.5 text-[10px] font-medium transition-colors ${
+              className={`inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-0.5 rounded px-2 text-[10px] font-medium transition-colors sm:h-5 sm:min-h-0 sm:min-w-0 sm:px-1.5 ${
                 isActive
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-muted/50 text-muted-foreground hover:bg-muted'
@@ -224,7 +224,7 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
               key={opt.value}
               type="button"
               onClick={() => handleFilterSource(opt.value)}
-              className={`inline-flex h-5 shrink-0 items-center rounded px-1.5 text-[10px] font-medium transition-colors ${
+              className={`inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded px-2 text-[10px] font-medium transition-colors sm:h-5 sm:min-h-0 sm:min-w-0 sm:px-1.5 ${
                 isActive
                   ? 'bg-secondary text-secondary-foreground'
                   : 'text-muted-foreground hover:bg-muted/50'
@@ -274,19 +274,28 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
           </span>
           <span>
             <kbd className="rounded border bg-background px-1 font-mono">N</kbd>{' '}
-            <Link href="/prescriptions/new" className="hover:underline">
+            <Link
+              href="/prescriptions/new"
+              className="inline-flex min-h-[44px] min-w-[44px] items-center hover:underline sm:min-h-0 sm:min-w-0"
+            >
               新規受付
             </Link>
           </span>
           <span>
             <kbd className="rounded border bg-background px-1 font-mono">D</kbd>{' '}
-            <Link href="/dispensing" className="hover:underline">
+            <Link
+              href="/dispensing"
+              className="inline-flex min-h-[44px] items-center hover:underline sm:min-h-0"
+            >
               調剤キュー
             </Link>
           </span>
           <span>
             <kbd className="rounded border bg-background px-1 font-mono">Q</kbd>{' '}
-            <Link href="/prescriptions/qr-drafts" className="hover:underline">
+            <Link
+              href="/prescriptions/qr-drafts"
+              className="inline-flex min-h-[44px] items-center hover:underline sm:min-h-0"
+            >
               QR下書き
             </Link>
           </span>

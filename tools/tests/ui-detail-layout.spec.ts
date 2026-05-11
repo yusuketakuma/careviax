@@ -439,7 +439,7 @@ test.describe('detail page layout', () => {
     await expect(billingWorkflowCard.getByText('1件', { exact: true })).toBeVisible();
     await expect(main.getByRole('link', { name: /請求候補を確認/ })).toHaveAttribute(
       'href',
-      `/billing/candidates?billing_month=2026-04-01&patient_id=${ids.patient}`,
+      `/billing/candidates?billing_month=2026-04-01&patient_id=${ids.patient}&workflow_from=visit_record&visit_record_id=${ids.visitRecord}&schedule_id=${ids.schedule}`,
     );
 
     await expect(main.getByRole('heading', { name: '会議アクション回収' })).toBeVisible();
@@ -455,6 +455,36 @@ test.describe('detail page layout', () => {
       `/conferences?patient_id=${ids.patient}`,
     );
 
+    expect(errors).toEqual([]);
+  });
+
+  test('report detail renders DB-backed legacy report content without runtime errors', async ({
+    context,
+  }) => {
+    const ids = await ensureVisitWorkflowFixture();
+    await attachLocalSession(context);
+    const { page, errors } = await createInstrumentedPage(context);
+
+    await page.goto(`/reports/${ids.careReport}`);
+    await waitForStableUi(page);
+
+    const main = page.locator('main');
+    await expect(main.getByRole('heading', { name: /主治医|報告書/ }).first()).toBeVisible({
+      timeout: 30_000,
+    });
+    const reportBodyTitle = main.getByText('訪問後WF E2E 主治医報告');
+    await reportBodyTitle.scrollIntoViewIfNeeded();
+    await expect(reportBodyTitle).toBeVisible();
+    await expect(main.getByText('退院後の服薬支援と残薬確認を継続しています。')).toBeVisible();
+
+    const metrics = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+      h1Count: document.querySelectorAll('main h1').length,
+    }));
+
+    expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+    expect(metrics.h1Count).toBe(1);
     expect(errors).toEqual([]);
   });
 });

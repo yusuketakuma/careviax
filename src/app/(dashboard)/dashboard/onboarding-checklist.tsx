@@ -40,27 +40,26 @@ export async function OnboardingChecklist() {
   let scheduledVisitCount = 0;
 
   try {
-    [siteCount, pharmacistCount, patientCount, scheduledVisitCount] =
-      await Promise.all([
-        prisma.pharmacySite.count({
-          where: { org_id: localUser.org_id },
-        }),
-        prisma.membership.count({
-          where: {
-            org_id: localUser.org_id,
-            is_active: true,
-            role: {
-              in: ['pharmacist', 'pharmacist_trainee'],
-            },
+    [siteCount, pharmacistCount, patientCount, scheduledVisitCount] = await Promise.all([
+      prisma.pharmacySite.count({
+        where: { org_id: localUser.org_id },
+      }),
+      prisma.membership.count({
+        where: {
+          org_id: localUser.org_id,
+          is_active: true,
+          role: {
+            in: ['pharmacist', 'pharmacist_trainee'],
           },
-        }),
-        prisma.patient.count({
-          where: { org_id: localUser.org_id },
-        }),
-        prisma.visitSchedule.count({
-          where: { org_id: localUser.org_id },
-        }),
-      ]);
+        },
+      }),
+      prisma.patient.count({
+        where: { org_id: localUser.org_id },
+      }),
+      prisma.visitSchedule.count({
+        where: { org_id: localUser.org_id },
+      }),
+    ]);
   } catch (e) {
     console.error('Failed to load onboarding data:', e);
     return (
@@ -164,14 +163,12 @@ export async function OnboardingChecklist() {
 
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-100 bg-white/80 px-4 py-3">
           <div>
-            <p className="text-sm font-medium text-slate-900">
-              次に進める作業: {nextStep.label}
-            </p>
+            <p className="text-sm font-medium text-slate-900">次に進める作業: {nextStep.label}</p>
             <p className="text-xs text-slate-600">{nextStep.description}</p>
           </div>
           <Link
             href={nextStep.href}
-            className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 underline-offset-4 hover:underline"
+            className="inline-flex min-h-[44px] items-center gap-1 text-sm font-medium text-blue-700 underline-offset-4 hover:underline sm:min-h-0"
           >
             開く
             <ChevronRight className="h-4 w-4" aria-hidden="true" />

@@ -15,7 +15,11 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { badgeToneClass } from '@/lib/ui/badge-semantics';
 import { SectionIntro } from '@/components/ui/section-intro';
-import type { HomeLinkContext, NotificationTab, NotificationTypeFilter } from '@/lib/dashboard/home-link-builders';
+import type {
+  HomeLinkContext,
+  NotificationTab,
+  NotificationTypeFilter,
+} from '@/lib/dashboard/home-link-builders';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 
 // --- Types ---
@@ -279,7 +283,10 @@ export function NotificationsContent({
   return (
     <div className="space-y-6">
       {contextSummary ? (
-        <Alert className="border-sky-200 bg-sky-50 text-sky-900" data-testid="notifications-context-banner">
+        <Alert
+          className="border-sky-200 bg-sky-50 text-sky-900"
+          data-testid="notifications-context-banner"
+        >
           <Bell className="size-4 text-sky-700" aria-hidden="true" />
           <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
         </Alert>
@@ -298,7 +305,7 @@ export function NotificationsContent({
           }}
         >
           <TabsList>
-            <TabsTrigger value="unread">
+            <TabsTrigger value="unread" className="min-w-[44px]">
               未読
               {unreadNotifications.length > 0 && (
                 <Badge className="ml-1.5 h-4 min-w-[1rem] px-1 text-[10px] bg-blue-600">

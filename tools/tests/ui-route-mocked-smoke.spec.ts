@@ -401,7 +401,7 @@ test.describe('billing candidates route-mocked workbench smoke', () => {
 
     const requests = await installBillingWorkbenchRouteMocks(page);
     await page.goto(
-      `/billing/candidates?billing_month=${BILLING_MONTH}&patient_id=${BILLING_PATIENT_ID}`,
+      `/billing/candidates?billing_month=${BILLING_MONTH}&patient_id=${BILLING_PATIENT_ID}&workflow_from=visit_record&visit_record_id=visit_route_mock_record&schedule_id=visit_route_mock_schedule`,
     );
     await waitForStableUi(page);
 
@@ -412,6 +412,13 @@ test.describe('billing candidates route-mocked workbench smoke', () => {
         timeout: 15_000,
       })
       .toBeGreaterThan(0);
+    await expect(page.getByRole('heading', { name: '訪問記録から確認中' })).toBeVisible();
+    await expect(page.getByRole('link', { name: '訪問記録へ戻る' })).toHaveAttribute(
+      'href',
+      '/visits/visit_route_mock_record',
+    );
+    await expect(page.getByText(/visit_record_id:/)).toHaveCount(0);
+    await expect(page.getByText(/schedule_id:/)).toHaveCount(0);
     await expect(page.getByText('患者で絞り込み中')).toBeVisible();
     await expect(page.getByText(`患者ID ${BILLING_PATIENT_ID}`)).toBeVisible();
     await expect(

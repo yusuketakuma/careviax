@@ -56,7 +56,7 @@ export function BillingKpiSection() {
           <CardContent>
             <Link
               href="/billing/candidates"
-              className="text-2xl font-bold tabular-nums transition-colors hover:text-primary"
+              className="inline-flex min-h-11 min-w-11 items-center text-2xl font-bold tabular-nums transition-colors hover:text-primary sm:min-h-0 sm:min-w-0"
             >
               {data.total}
             </Link>
@@ -74,7 +74,7 @@ export function BillingKpiSection() {
           <CardContent>
             <Link
               href="/billing/candidates"
-              className={`text-2xl font-bold tabular-nums transition-colors ${data.pending_review > 0 ? 'text-yellow-700 hover:text-yellow-800' : 'hover:text-primary'}`}
+              className={`inline-flex min-h-11 min-w-11 items-center text-2xl font-bold tabular-nums transition-colors sm:min-h-0 sm:min-w-0 ${data.pending_review > 0 ? 'text-yellow-700 hover:text-yellow-800' : 'hover:text-primary'}`}
             >
               {data.pending_review}
             </Link>
@@ -92,7 +92,7 @@ export function BillingKpiSection() {
           <CardContent>
             <Link
               href="/billing/candidates"
-              className={`text-2xl font-bold tabular-nums transition-colors ${data.blocked_from_close > 0 ? 'text-red-700 hover:text-red-800' : 'hover:text-primary'}`}
+              className={`inline-flex min-h-11 min-w-11 items-center text-2xl font-bold tabular-nums transition-colors sm:min-h-0 sm:min-w-0 ${data.blocked_from_close > 0 ? 'text-red-700 hover:text-red-800' : 'hover:text-primary'}`}
             >
               {data.blocked_from_close}
             </Link>

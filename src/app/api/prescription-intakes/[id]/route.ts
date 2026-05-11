@@ -9,6 +9,7 @@ import {
   PrescriberInstitutionReferenceValidationError,
   resolvePrescriberInstitutionFields,
 } from '@/lib/prescriptions/prescriber-institutions';
+import { buildPrescriptionIntakeAssignmentWhere } from '@/server/services/prescription-access';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
@@ -19,9 +20,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const ctx = authResult.ctx;
 
   const { id } = await params;
+  const assignmentWhere = buildPrescriptionIntakeAssignmentWhere(ctx);
 
   const intake = await prisma.prescriptionIntake.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: {
+      id,
+      org_id: ctx.orgId,
+      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+    },
     include: {
       lines: {
         orderBy: { line_number: 'asc' },
@@ -94,6 +100,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const ctx = authResult.ctx;
 
   const { id } = await params;
+  const assignmentWhere = buildPrescriptionIntakeAssignmentWhere(ctx);
 
   const body = await req.json().catch(() => null);
   if (!body) return validationError('リクエストボディが不正です');
@@ -104,7 +111,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const existing = await prisma.prescriptionIntake.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: {
+      id,
+      org_id: ctx.orgId,
+      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+    },
   });
   if (!existing) return notFound('処方箋が見つかりません');
 

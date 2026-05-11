@@ -46,7 +46,11 @@ import {
 import { PatientCareTeamSourcePanel } from '@/components/features/visits/patient-care-team-source-panel';
 import type { PhysicianReportContent, CareManagerReportContent } from '@/types/care-report-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
-import { readReportBillingContext, readReportWarnings } from '@/lib/reports/report-content';
+import {
+  readReportBillingContext,
+  readReportContentObject,
+  readReportWarnings,
+} from '@/lib/reports/report-content';
 import { cn } from '@/lib/utils';
 
 // --- Types ---
@@ -115,6 +119,91 @@ type ExternalProfessionalSuggestion = {
   is_primary: boolean;
   source?: 'patient_care_team' | 'external_professional_master';
 };
+
+function isStringRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasStringFields(value: unknown, fields: string[]) {
+  if (!isStringRecord(value)) return false;
+  return fields.every((field) => typeof value[field] === 'string');
+}
+
+function hasReportWarnings(value: Record<string, unknown>) {
+  return Array.isArray(value.warnings) && value.warnings.every((item) => typeof item === 'string');
+}
+
+function isPhysicianReportContent(content: unknown): content is PhysicianReportContent {
+  const value = readReportContentObject(content);
+  if (!value) return false;
+
+  return (
+    hasStringFields(value.patient, ['name', 'birth_date', 'gender']) &&
+    typeof value.report_date === 'string' &&
+    typeof value.visit_date === 'string' &&
+    typeof value.pharmacist_name === 'string' &&
+    hasStringFields(value.prescriber, ['name', 'institution']) &&
+    Array.isArray(value.prescriptions) &&
+    isStringRecord(value.medication_management) &&
+    typeof value.medication_management.compliance_summary === 'string' &&
+    typeof value.medication_management.adherence_score === 'number' &&
+    typeof value.medication_management.self_management === 'string' &&
+    typeof value.medication_management.calendar_used === 'boolean' &&
+    isStringRecord(value.adverse_events) &&
+    typeof value.adverse_events.has_events === 'boolean' &&
+    Array.isArray(value.adverse_events.events) &&
+    isStringRecord(value.functional_assessment) &&
+    hasStringFields(value.functional_assessment, [
+      'sleep',
+      'cognition',
+      'diet_oral',
+      'mobility',
+      'excretion',
+    ]) &&
+    Array.isArray(value.residual_medications) &&
+    typeof value.assessment === 'string' &&
+    typeof value.plan === 'string' &&
+    typeof value.physician_communication === 'string' &&
+    hasReportWarnings(value)
+  );
+}
+
+function isCareManagerReportContent(content: unknown): content is CareManagerReportContent {
+  const value = readReportContentObject(content);
+  if (!value) return false;
+
+  return (
+    hasStringFields(value.patient, ['name', 'birth_date']) &&
+    hasStringFields(value.care_manager, ['name', 'organization']) &&
+    typeof value.report_date === 'string' &&
+    typeof value.visit_date === 'string' &&
+    typeof value.pharmacist_name === 'string' &&
+    isStringRecord(value.medication_management_summary) &&
+    typeof value.medication_management_summary.total_drugs === 'number' &&
+    typeof value.medication_management_summary.compliance_summary === 'string' &&
+    typeof value.medication_management_summary.self_management === 'string' &&
+    typeof value.medication_management_summary.calendar_used === 'boolean' &&
+    isStringRecord(value.functional_impact) &&
+    hasStringFields(value.functional_impact, [
+      'sleep_impact',
+      'cognition_impact',
+      'diet_impact',
+      'mobility_impact',
+      'excretion_impact',
+    ]) &&
+    isStringRecord(value.residual_status) &&
+    typeof value.residual_status.summary === 'string' &&
+    Array.isArray(value.residual_status.reduction_proposals) &&
+    isStringRecord(value.care_service_coordination) &&
+    typeof value.care_service_coordination.medication_assistance === 'string' &&
+    typeof value.care_service_coordination.unit_dose_packaging === 'boolean' &&
+    typeof value.care_service_coordination.calendar_recommendation === 'boolean' &&
+    typeof value.care_service_coordination.other_items === 'string' &&
+    isStringRecord(value.next_visit_plan) &&
+    Array.isArray(value.next_visit_plan.followup_items) &&
+    hasReportWarnings(value)
+  );
+}
 
 // --- Main ---
 
@@ -214,7 +303,14 @@ export default function ReportDetailPage() {
   const statusCfg = REPORT_STATUS_CONFIG[report.status];
   const isPhysician = report.report_type === 'physician_report';
   const isCareManager = report.report_type === 'care_manager_report';
-  const hasContentView = isPhysician || isCareManager;
+  const hasPhysicianContent = isPhysician && isPhysicianReportContent(report.content);
+  const hasCareManagerContent = isCareManager && isCareManagerReportContent(report.content);
+  const hasContentView = hasPhysicianContent || hasCareManagerContent;
+  const reportContentObject = readReportContentObject(report.content);
+  const genericReportTitle =
+    typeof reportContentObject?.title === 'string' ? reportContentObject.title : null;
+  const genericReportBody =
+    typeof reportContentObject?.body === 'string' ? reportContentObject.body : null;
   const billingContext = readReportBillingContext(report.content);
   const warnings = readReportWarnings(report.content);
   const complianceChecks = hasContentView
@@ -237,7 +333,7 @@ export default function ReportDetailPage() {
       key: 'content',
       label: '報告書本文',
       description: '訪問記録から生成された本文を確認し、必要に応じて編集します。',
-      done: hasContentView,
+      done: hasContentView || Boolean(genericReportBody || genericReportTitle),
     },
     {
       key: 'billing',
@@ -324,6 +420,7 @@ export default function ReportDetailPage() {
   const sendReportAction = (
     <Button
       size="sm"
+      className="min-h-[44px] sm:min-h-0"
       onClick={() => {
         if (prescriberInstitutionSuggestion) {
           applyInstitutionSuggestion();
@@ -338,6 +435,7 @@ export default function ReportDetailPage() {
 
   return (
     <PageScaffold>
+      <div data-testid="report-detail-workspace" className="contents">
       {/* Header */}
       <WorkflowPageIntro
         backHref="/reports"
@@ -354,6 +452,7 @@ export default function ReportDetailPage() {
               <Button
                 variant="outline"
                 size="sm"
+                className="min-h-[44px] sm:min-h-0"
                 onClick={() => setEditMode((v) => !v)}
               >
                 <Pencil className="mr-1.5 size-3.5" aria-hidden="true" />
@@ -364,13 +463,16 @@ export default function ReportDetailPage() {
               href={`/api/care-reports/${id}/pdf`}
               target="_blank"
               rel="noreferrer"
-              className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+              className={cn(
+                buttonVariants({ variant: 'outline', size: 'sm' }),
+                'min-h-[44px] sm:min-h-0',
+              )}
             >
               <FileText className="mr-1.5 size-3.5" aria-hidden="true" />
               PDFを開く
             </a>
             <Link href={`/reports/${id}/print`}>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0">
                 <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
                 印刷ビュー
               </Button>
@@ -465,7 +567,7 @@ export default function ReportDetailPage() {
           )}
 
           {/* Report content view or edit form */}
-          {hasContentView && (
+          {hasContentView ? (
             <>
               {editMode ? (
                 <Card>
@@ -483,12 +585,12 @@ export default function ReportDetailPage() {
                 </Card>
               ) : (
                 <>
-                  {isPhysician && (
+                  {hasPhysicianContent && (
                     <PhysicianReportView
                       content={report.content as PhysicianReportContent}
                     />
                   )}
-                  {isCareManager && (
+                  {hasCareManagerContent && (
                     <CareManagerReportView
                       content={report.content as CareManagerReportContent}
                     />
@@ -496,7 +598,27 @@ export default function ReportDetailPage() {
                 </>
               )}
             </>
-          )}
+          ) : reportContentObject ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">報告書本文</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {genericReportTitle ? (
+                  <p className="text-sm font-semibold text-foreground">{genericReportTitle}</p>
+                ) : null}
+                {genericReportBody ? (
+                  <p className="whitespace-pre-wrap text-sm leading-7 text-foreground">
+                    {genericReportBody}
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    この報告書は旧形式または最小形式の本文です。構造化ビューに必要な項目が不足しているため、保存済み本文のみ表示しています。
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
 
           {/* Delivery history */}
           <Card>
@@ -576,7 +698,7 @@ export default function ReportDetailPage() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="mt-3"
+                  className="mt-3 min-h-[44px] sm:min-h-0"
                   onClick={applyInstitutionSuggestion}
                 >
                   候補を適用
@@ -602,6 +724,7 @@ export default function ReportDetailPage() {
                       type="button"
                       variant="outline"
                       size="sm"
+                      className="min-h-[44px] sm:min-h-0"
                       onClick={() => applyExternalProfessionalSuggestion(suggestion)}
                     >
                       {suggestion.name}
@@ -621,7 +744,7 @@ export default function ReportDetailPage() {
                 value={sendForm.channel}
                 onValueChange={(v) => setSendForm((prev) => ({ ...prev, channel: v ?? prev.channel }))}
               >
-                <SelectTrigger id="send-channel">
+                <SelectTrigger id="send-channel" className="min-h-[44px] sm:h-8 sm:min-h-0">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -645,6 +768,7 @@ export default function ReportDetailPage() {
                   setSendForm((prev) => ({ ...prev, recipient_name: e.target.value }))
                 }
                 placeholder="例: 山田 太郎 先生"
+                className="min-h-[44px] sm:h-8 sm:min-h-0"
                 required
               />
             </div>
@@ -658,6 +782,7 @@ export default function ReportDetailPage() {
                   setSendForm((prev) => ({ ...prev, recipient_contact: e.target.value }))
                 }
                 placeholder="メールアドレスまたはFAX番号"
+                className="min-h-[44px] sm:h-8 sm:min-h-0"
               />
             </div>
           </div>
@@ -665,18 +790,24 @@ export default function ReportDetailPage() {
           <DialogFooter>
             <Button
               variant="outline"
+              className="min-h-[44px] sm:min-h-0"
               onClick={() => setSendDialogOpen(false)}
               disabled={sendMutation.isPending}
             >
               キャンセル
             </Button>
-            <Button onClick={handleSend} disabled={sendMutation.isPending}>
+            <Button
+              className="min-h-[44px] sm:min-h-0"
+              onClick={handleSend}
+              disabled={sendMutation.isPending}
+            >
               <Send className="mr-1.5 size-3.5" aria-hidden="true" />
               {sendMutation.isPending ? '送付中...' : '送付する'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </PageScaffold>
   );
 }

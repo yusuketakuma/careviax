@@ -96,6 +96,11 @@ describe('WorkflowPageIntro', () => {
     expect(screen.getByTestId('main-workflow-compact-nav')).toBeTruthy();
     expect(screen.getByText('主業務フロー上の現在地')).toBeTruthy();
     expect(screen.getByText('詳細画面でも、主業務フローの現在地を固定表示します。')).toBeTruthy();
-    expect(screen.getAllByText('現在地')).toHaveLength(1);
+    const workflowNav = screen.getByTestId('main-workflow-compact-nav');
+    expect(
+      Array.from(workflowNav.querySelectorAll('ol span')).filter(
+        (element) => element.textContent === '現在地',
+      ),
+    ).toHaveLength(1);
   });
 });

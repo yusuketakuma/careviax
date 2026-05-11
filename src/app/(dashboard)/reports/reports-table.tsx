@@ -84,7 +84,7 @@ function buildColumns(): ColumnDef<CareReport>[] {
         <div className="space-y-1">
           <Link
             href={`/reports/${row.original.id}`}
-            className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex min-h-[44px] items-center text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0"
             aria-label={`${REPORT_TYPE_LABELS[row.original.report_type] ?? row.original.report_type}の詳細`}
           >
             {REPORT_TYPE_LABELS[row.original.report_type] ?? row.original.report_type}
@@ -113,7 +113,7 @@ function buildColumns(): ColumnDef<CareReport>[] {
         <div className="space-y-1">
           <Link
             href={`/patients/${row.original.patient_id}`}
-            className="hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex min-h-[44px] items-center hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0"
           >
             {row.original.patient_name ?? '患者名未設定'}
           </Link>
@@ -219,7 +219,7 @@ function buildColumns(): ColumnDef<CareReport>[] {
       cell: ({ row }) => (
         <Link
           href={`/reports/${row.original.id}`}
-          className="inline-flex items-center rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0 sm:min-w-0"
           aria-label={`${row.original.patient_name ?? '患者未設定'} の報告詳細を開く`}
         >
           報告詳細
@@ -457,7 +457,7 @@ export function ReportsTable({
                 value={filters.patient}
                 onChange={(event) => updateFilterAndUrl('patient', event.target.value)}
                 placeholder="患者名 / フリガナ"
-                className="h-10 pl-8 sm:h-9"
+              className="h-10 min-h-[44px] pl-8 sm:h-9 sm:min-h-0"
               />
             </div>
           </div>
@@ -468,7 +468,7 @@ export function ReportsTable({
               value={filters.recipient}
               onChange={(event) => updateFilterAndUrl('recipient', event.target.value)}
               placeholder="主治医 / ケアマネ"
-              className="h-10 sm:h-9"
+              className="h-10 min-h-[44px] sm:h-9 sm:min-h-0"
             />
           </div>
 
@@ -478,7 +478,7 @@ export function ReportsTable({
               value={filters.status}
               onValueChange={(value) => updateFilterAndUrl('status', value ?? ALL_VALUE)}
             >
-              <SelectTrigger className="h-10 sm:h-9">
+              <SelectTrigger className="h-10 min-h-[44px] sm:h-9 sm:min-h-0">
                 <SelectValue placeholder="すべて" />
               </SelectTrigger>
               <SelectContent>
@@ -498,7 +498,7 @@ export function ReportsTable({
               value={filters.deliveryStatus}
               onValueChange={(value) => updateFilterAndUrl('deliveryStatus', value ?? ALL_VALUE)}
             >
-              <SelectTrigger className="h-10 sm:h-9">
+              <SelectTrigger className="h-10 min-h-[44px] sm:h-9 sm:min-h-0">
                 <SelectValue placeholder="すべて" />
               </SelectTrigger>
               <SelectContent>
@@ -517,7 +517,7 @@ export function ReportsTable({
             <Button
               type="button"
               variant="outline"
-              className="h-10 w-full justify-between sm:h-9"
+              className="h-10 min-h-[44px] w-full justify-between sm:h-9 sm:min-h-0"
               onClick={() => setShowAdvancedFilters((current) => !current)}
             >
               <span className="inline-flex items-center gap-2">
@@ -537,7 +537,7 @@ export function ReportsTable({
                 value={filters.keyword}
                 onChange={(event) => updateFilterAndUrl('keyword', event.target.value)}
                 placeholder="SOAP / 要点"
-                className="h-10 sm:h-9"
+                className="h-10 min-h-[44px] sm:h-9 sm:min-h-0"
               />
             </div>
 
@@ -547,7 +547,7 @@ export function ReportsTable({
                 value={filters.reportType}
                 onValueChange={(value) => updateFilterAndUrl('reportType', value ?? ALL_VALUE)}
               >
-                <SelectTrigger className="h-10 sm:h-9">
+                <SelectTrigger className="h-10 min-h-[44px] sm:h-9 sm:min-h-0">
                   <SelectValue placeholder="すべて" />
                 </SelectTrigger>
                 <SelectContent>
@@ -567,7 +567,7 @@ export function ReportsTable({
                 type="date"
                 value={filters.createdFrom}
                 onChange={(event) => updateFilterAndUrl('createdFrom', event.target.value)}
-                className="h-10 sm:h-9"
+                className="h-10 min-h-[44px] sm:h-9 sm:min-h-0"
               />
             </div>
 
@@ -577,7 +577,7 @@ export function ReportsTable({
                 type="date"
                 value={filters.createdTo}
                 onChange={(event) => updateFilterAndUrl('createdTo', event.target.value)}
-                className="h-10 sm:h-9"
+                className="h-10 min-h-[44px] sm:h-9 sm:min-h-0"
               />
             </div>
 
@@ -587,7 +587,7 @@ export function ReportsTable({
                 type="date"
                 value={filters.sentFrom}
                 onChange={(event) => updateFilterAndUrl('sentFrom', event.target.value)}
-                className="h-10 sm:h-9"
+                className="h-10 min-h-[44px] sm:h-9 sm:min-h-0"
               />
             </div>
 
@@ -597,7 +597,7 @@ export function ReportsTable({
                 type="date"
                 value={filters.sentTo}
                 onChange={(event) => updateFilterAndUrl('sentTo', event.target.value)}
-                className="h-10 sm:h-9"
+                className="h-10 min-h-[44px] sm:h-9 sm:min-h-0"
               />
             </div>
 
@@ -605,7 +605,7 @@ export function ReportsTable({
               <Button
                 type="button"
                 variant="outline"
-                className="h-10 w-full sm:h-9"
+                className="h-10 min-h-[44px] w-full sm:h-9 sm:min-h-0"
                 onClick={resetFilters}
               >
                 <RotateCcw className="mr-1.5 size-4" aria-hidden="true" />
@@ -616,7 +616,10 @@ export function ReportsTable({
         ) : null}
       </section>
 
-      <section className="space-y-4 rounded-xl border border-border/70 bg-card/80 p-4">
+      <section
+        className="space-y-4 rounded-xl border border-border/70 bg-card/80 p-4"
+        data-testid="reports-list-section"
+      >
         <SectionIntro
           title="送達状況サマリー"
           description="一覧を開く前に、滞留や失敗件数をひと目で確認できる補助グループです。"

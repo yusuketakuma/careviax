@@ -68,7 +68,7 @@
     "ioredis": "^5.6.1",
     "lib0": "^0.2.99",
     "lucide-react": "^1.7.0",
-    "next": "16.2.4",
+    "next": "16.2.5",
     "next-auth": "4.24.13",
     "next-themes": "^0.4.6",
     "pg": "^8.20.0",
@@ -121,9 +121,11 @@
       "minimatch@9>brace-expansion": "2.0.3",
       "defu": ">=6.1.5",
       "vite": "^8.0.5",
-      "hono": "^4.12.14",
+      "hono": "^4.12.18",
       "@hono/node-server": "^1.19.14",
       "fast-xml-parser": "5.7.0",
+      "fast-xml-builder": "1.1.7",
+      "fast-uri": "3.1.2",
       "uuid": "14.0.0",
       "postcss": "^8.5.10"
     }

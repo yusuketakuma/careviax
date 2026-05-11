@@ -9,6 +9,10 @@ import { buildPhysicianReport, buildCareManagerReport } from './report-templates
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import type { VisitWorkflowConferenceContext } from '@/lib/visits/visit-workflow-projection';
 import { buildReportableConferenceHighlightsFromStructuredContent } from '@/lib/conferences/conference-report-disclosure';
+import {
+  canAccessCareReportSource,
+  type CareReportAccessContext,
+} from '@/server/services/care-report-access';
 
 type ReportType = 'physician_report' | 'care_manager_report';
 
@@ -57,6 +61,7 @@ export async function generateReportsFromVisit(
   userId: string,
   visitRecordId: string,
   reportType?: ReportType,
+  accessContext?: CareReportAccessContext,
 ): Promise<{ reports: Array<{ id: string; report_type: string }> }> {
   // ─── 1. VisitRecord 取得 ────────────────────────────────────────────────────
   const visitRecord = await prisma.visitRecord.findFirst({
@@ -94,6 +99,16 @@ export async function generateReportsFromVisit(
   }
 
   const caseId = schedule.case_id;
+  if (
+    accessContext &&
+    !(await canAccessCareReportSource(prisma, orgId, accessContext, {
+      patientId: visitRecord.patient_id,
+      caseId,
+      visitRecordId,
+    }))
+  ) {
+    throw new Error(`VisitRecord not accessible: ${visitRecordId}`);
+  }
   const conferenceNoteClient = (
     prisma as unknown as {
       conferenceNote?: {

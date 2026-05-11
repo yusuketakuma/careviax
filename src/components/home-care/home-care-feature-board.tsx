@@ -3,13 +3,7 @@
 import Link from 'next/link';
 import { ArrowUpRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import type {
   HomeCareFeatureGroup,
@@ -85,7 +79,7 @@ function FeatureTile({
       className={cn(
         'rounded-xl border border-border/70 bg-background px-4 py-3',
         feature.status === 'blocked' && 'border-rose-200/80',
-        feature.status === 'attention' && 'border-amber-200/80'
+        feature.status === 'attention' && 'border-amber-200/80',
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -114,7 +108,7 @@ function FeatureTile({
       <div className="mt-3 flex items-center justify-end">
         <Link
           href={feature.action_href}
-          className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+          className="inline-flex min-h-[44px] items-center gap-1 text-xs font-medium text-primary hover:underline sm:min-h-0"
         >
           {feature.action_label}
           <ArrowUpRight className="size-3" />
@@ -144,7 +138,9 @@ export function HomeCareFeatureBoard({
           <StatusBadge status="monitoring" count={summary.totals.monitoring} />
           <StatusBadge status="ready" count={summary.totals.ready} />
         </div>
-        <div className={cn('grid gap-3', compact ? 'md:grid-cols-2' : 'md:grid-cols-2 xl:grid-cols-3')}>
+        <div
+          className={cn('grid gap-3', compact ? 'md:grid-cols-2' : 'md:grid-cols-2 xl:grid-cols-3')}
+        >
           {summary.features.map((feature) => (
             <FeatureTile key={feature.key} feature={feature} compact={compact} />
           ))}
@@ -165,9 +161,7 @@ export function HomeCareFeatureHighlights({
     <div className={cn('space-y-3', className)}>
       <div>
         <p className="text-sm font-medium text-foreground">{title}</p>
-        {description ? (
-          <p className="mt-1 text-xs text-muted-foreground">{description}</p>
-        ) : null}
+        {description ? <p className="mt-1 text-xs text-muted-foreground">{description}</p> : null}
       </div>
       {features.length === 0 ? (
         <p className="text-xs text-muted-foreground">{emptyText}</p>

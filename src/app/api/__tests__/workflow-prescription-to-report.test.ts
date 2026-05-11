@@ -40,14 +40,15 @@ const {
   prismaPatientFindManyMock,
   prismaCareReportFindManyMock,
   prismaCareCaseFindFirstMock,
+  prismaCareCaseFindManyMock,
   prismaVisitScheduleFindManyMock,
   prismaVisitScheduleCreateMock,
 } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
     (
       handler: (
-        req: NextRequest & { orgId: string; userId: string; role?: string }
-      ) => Promise<Response>
+        req: NextRequest & { orgId: string; userId: string; role?: string },
+      ) => Promise<Response>,
     ) => {
       return (req: NextRequest) =>
         handler({
@@ -56,7 +57,7 @@ const {
           userId: 'user_1',
           role: 'pharmacist',
         } as NextRequest & { orgId: string; userId: string; role?: string });
-    }
+    },
   ),
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -69,6 +70,7 @@ const {
   prismaPatientFindManyMock: vi.fn(),
   prismaCareReportFindManyMock: vi.fn(),
   prismaCareCaseFindFirstMock: vi.fn(),
+  prismaCareCaseFindManyMock: vi.fn(),
   prismaVisitScheduleFindManyMock: vi.fn(),
   prismaVisitScheduleCreateMock: vi.fn(),
 }));
@@ -110,6 +112,7 @@ vi.mock('@/lib/db/client', () => ({
     },
     careCase: {
       findFirst: prismaCareCaseFindFirstMock,
+      findMany: prismaCareCaseFindManyMock,
     },
     visitSchedule: {
       findMany: prismaVisitScheduleFindManyMock,
@@ -200,7 +203,7 @@ function createPostRequest(body: unknown) {
   return {
     url: 'http://localhost/api/test',
     headers: {
-      get: (key: string) => ({ 'x-org-id': IDS.org }[key] ?? null),
+      get: (key: string) => ({ 'x-org-id': IDS.org })[key] ?? null,
     },
     json: async () => body,
   } as unknown as NextRequest;
@@ -211,7 +214,7 @@ function createGetRequest(url: string) {
     url,
     method: 'GET',
     headers: {
-      get: (key: string) => ({ 'x-org-id': IDS.org }[key] ?? null),
+      get: (key: string) => ({ 'x-org-id': IDS.org })[key] ?? null,
     },
     nextUrl: new URL(url),
   } as unknown as NextRequest;
@@ -288,7 +291,7 @@ describe('Workflow: prescription intake to care report', () => {
         cycleTransitionLog: {
           create: vi.fn().mockResolvedValue({}),
         },
-      })
+      }),
     );
 
     const response = await createPrescriptionIntake(
@@ -306,7 +309,7 @@ describe('Workflow: prescription intake to care report', () => {
             days: 14,
           },
         ],
-      })
+      }),
     );
 
     expect(response).toBeDefined();
@@ -320,7 +323,7 @@ describe('Workflow: prescription intake to care report', () => {
           cycle_id: IDS.cycle,
           source_type: 'paper',
         }),
-      })
+      }),
     );
 
     // Dispense task was auto-created referencing the cycle
@@ -343,7 +346,7 @@ describe('Workflow: prescription intake to care report', () => {
           overall_status: 'dispensing',
           version: { increment: 1 },
         }),
-      })
+      }),
     );
   });
 
@@ -382,7 +385,7 @@ describe('Workflow: prescription intake to care report', () => {
     ]);
 
     const response = (await getDispenseQueue(
-      createGetRequest('http://localhost/api/dispense-queue')
+      createGetRequest('http://localhost/api/dispense-queue'),
     ))!;
 
     expect(response.status).toBe(200);
@@ -393,7 +396,7 @@ describe('Workflow: prescription intake to care report', () => {
           id: IDS.dispenseTask,
           facility_label: 'facility_1',
         }),
-      ])
+      ]),
     );
   });
 
@@ -497,10 +500,13 @@ describe('Workflow: prescription intake to care report', () => {
         },
         medicationCycle: {
           // B1 two-step transition: first call returns audit_pending, second returns audited
-          findFirst: vi.fn()
+          findFirst: vi
+            .fn()
             .mockResolvedValueOnce({ id: IDS.cycle, overall_status: 'audit_pending', version: 1 })
             .mockResolvedValueOnce({ id: IDS.cycle, overall_status: 'audited', version: 2 }),
-          findFirstOrThrow: vi.fn().mockResolvedValue({ id: IDS.cycle, overall_status: 'visit_ready' }),
+          findFirstOrThrow: vi
+            .fn()
+            .mockResolvedValue({ id: IDS.cycle, overall_status: 'visit_ready' }),
           update: cycleUpdateMock,
           updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         },
@@ -509,14 +515,14 @@ describe('Workflow: prescription intake to care report', () => {
           create: vi.fn().mockResolvedValue({}),
           updateMany: vi.fn().mockResolvedValue({ count: 0 }), // B4
         },
-      })
+      }),
     );
 
     const response = await createDispenseAudit(
       createPostRequest({
         task_id: IDS.dispenseTask,
         result: 'approved',
-      })
+      }),
     );
 
     expect(response).toBeDefined();
@@ -572,7 +578,7 @@ describe('Workflow: prescription intake to care report', () => {
     });
 
     const response = (await getVisitSchedules(
-      createGetRequest(`http://localhost/api/visit-schedules?patient_id=${IDS.patient}`)
+      createGetRequest(`http://localhost/api/visit-schedules?patient_id=${IDS.patient}`),
     ))!;
 
     expect(response.status).toBe(200);
@@ -582,7 +588,7 @@ describe('Workflow: prescription intake to care report', () => {
         expect.objectContaining({
           id: IDS.schedule,
         }),
-      ])
+      ]),
     );
   });
 
@@ -677,7 +683,7 @@ describe('Workflow: prescription intake to care report', () => {
         firstVisitDocument: {
           upsert: vi.fn().mockResolvedValue({}),
         },
-      })
+      }),
     );
 
     // visit-records POST uses withAuth pattern
@@ -693,7 +699,7 @@ describe('Workflow: prescription intake to care report', () => {
         soap_objective: 'BP 130/85、残薬なし。',
         soap_assessment: '服薬コンプライアンス良好。血圧コントロール安定。',
         soap_plan: '現処方継続。次回訪問時に血液検査結果確認。',
-      })
+      }),
     );
 
     expect(response).toBeDefined();
@@ -708,7 +714,7 @@ describe('Workflow: prescription intake to care report', () => {
           patient_id: IDS.patient,
           pharmacist_id: IDS.user,
         }),
-      })
+      }),
     );
   });
 
@@ -741,6 +747,7 @@ describe('Workflow: prescription intake to care report', () => {
     prismaPatientFindManyMock.mockResolvedValue([
       { id: IDS.patient, name: '山田 太郎', name_kana: 'ヤマダ タロウ' },
     ]);
+    prismaCareCaseFindManyMock.mockResolvedValue([{ id: IDS.case, patient_id: IDS.patient }]);
 
     const response = await getCareReports({
       orgId: IDS.org,
@@ -763,7 +770,7 @@ describe('Workflow: prescription intake to care report', () => {
           report_type: 'physician_report',
           patient_name: '山田 太郎',
         }),
-      ])
+      ]),
     );
 
     // Verify the report references the visit record from step 6

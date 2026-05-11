@@ -75,7 +75,7 @@ export function WorkflowPhasePanel({
             className={cn(
               'rounded-2xl border px-3 py-3',
               TONE_CLASS[phase.tone],
-              phase.key === currentPhase && 'ring-2 ring-primary/20'
+              phase.key === currentPhase && 'ring-2 ring-primary/20',
             )}
           >
             <div className="flex items-start justify-between gap-3">
@@ -96,6 +96,7 @@ export function WorkflowPhasePanel({
                 className={buttonVariants({
                   size: 'sm',
                   variant: phase.key === currentPhase ? 'default' : 'outline',
+                  className: 'min-h-[44px] sm:h-8 sm:min-h-0',
                 })}
               >
                 フェーズを開く

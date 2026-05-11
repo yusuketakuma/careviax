@@ -8,6 +8,11 @@ import {
 } from '@/server/services/jahis-supplemental-records';
 import { getRealtimeAdapter } from '@/server/adapters/realtime';
 import { z } from 'zod';
+import {
+  buildQrDraftAssignmentWhere,
+  getAssignedPatientIds,
+} from '@/server/services/prescription-access';
+import { prisma } from '@/lib/db/client';
 
 const confirmQrDraftSchema = z.object({
   patient_id: z.string().min(1),
@@ -62,11 +67,17 @@ export const POST = withAuth(
       prescriber_institution_id,
       prescriber_institution,
     } = parsed.data;
+    const assignedPatientIds = await getAssignedPatientIds(prisma, req.orgId, req);
+    const assignmentWhere = buildQrDraftAssignmentWhere(req, assignedPatientIds ?? []);
 
     // Fetch draft and verify it belongs to this org and is pending
     const draft = await withOrgContext(req.orgId, async (tx) => {
       return tx.qrScanDraft.findFirst({
-        where: { id, org_id: req.orgId },
+        where: {
+          id,
+          org_id: req.orgId,
+          ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+        },
         select: {
           id: true,
           status: true,
@@ -128,6 +139,7 @@ export const POST = withAuth(
 
     const result = await createPrescriptionIntake(intakeInput, req.orgId, req.userId, {
       skipStructuringCheck: true,
+      accessContext: { userId: req.userId, role: req.role },
     });
 
     if (!result.ok) {

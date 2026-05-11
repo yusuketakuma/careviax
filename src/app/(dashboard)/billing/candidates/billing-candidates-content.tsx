@@ -1,11 +1,13 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useMutation, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, subMonths, addMonths } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
+  ArrowLeft,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -127,6 +129,8 @@ type BillingCandidatesResponse = {
 type BillingCandidatesContentProps = {
   initialBillingMonth?: string | null;
   initialPatientId?: string | null;
+  initialWorkflowFrom?: string | null;
+  initialVisitRecordId?: string | null;
 };
 
 // --- Constants ---
@@ -271,6 +275,8 @@ function parseInitialBillingMonth(value: string | null | undefined) {
 export function BillingCandidatesContent({
   initialBillingMonth,
   initialPatientId,
+  initialWorkflowFrom,
+  initialVisitRecordId,
 }: BillingCandidatesContentProps) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
@@ -282,6 +288,12 @@ export function BillingCandidatesContent({
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const patientIdFilter = initialPatientId?.trim() || null;
+  const visitRecordIdFilter = initialVisitRecordId?.trim() || null;
+  const isVisitRecordContext =
+    initialWorkflowFrom === 'visit_record' && Boolean(visitRecordIdFilter);
+  const visitRecordBackHref = visitRecordIdFilter
+    ? `/visits/${encodeURIComponent(visitRecordIdFilter)}`
+    : null;
 
   const billingMonthStr = format(currentMonth, 'yyyy-MM-dd');
   const billingMonthLabel = format(currentMonth, 'yyyy年M月', { locale: ja });
@@ -652,6 +664,28 @@ export function BillingCandidatesContent({
 
   return (
     <div className="space-y-4">
+      {isVisitRecordContext ? (
+        <section className="rounded-lg border border-border/70 bg-card p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-1">
+              <h2 className="text-sm font-semibold text-foreground">訪問記録から確認中</h2>
+              <p className="text-sm leading-6 text-muted-foreground">
+                対象患者と訪問月で請求候補を絞り込み、訪問後ワークフローから算定根拠を確認しています。
+              </p>
+            </div>
+            {visitRecordBackHref ? (
+              <Link
+                href={visitRecordBackHref}
+                className="inline-flex min-h-9 items-center justify-center gap-1 rounded-lg border border-border bg-background px-3 text-sm font-medium hover:bg-muted"
+              >
+                <ArrowLeft className="size-3.5" aria-hidden="true" />
+                訪問記録へ戻る
+              </Link>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
       {patientIdFilter ? (
         <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
           <p className="font-medium">患者で絞り込み中</p>

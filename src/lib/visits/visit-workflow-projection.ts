@@ -76,6 +76,21 @@ function hasText(value: string | null | undefined) {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function buildVisitBillingCandidatesHref(args: {
+  billingMonth?: string | null;
+  patientId: string;
+  recordId: string;
+  scheduleId?: string | null;
+}) {
+  return `/billing/candidates?${new URLSearchParams({
+    ...(args.billingMonth ? { billing_month: args.billingMonth } : {}),
+    patient_id: args.patientId,
+    workflow_from: 'visit_record',
+    visit_record_id: args.recordId,
+    ...(args.scheduleId ? { schedule_id: args.scheduleId } : {}),
+  }).toString()}`;
+}
+
 export function getConferenceTypeLabel(type: string | null | undefined) {
   if (type === 'pre_discharge') return '退院前カンファ';
   if (type === 'service_manager') return '担当者会議';
@@ -141,6 +156,12 @@ export function buildPostVisitWorkflowActions(args: {
   const conferenceEvidence = conferenceNotes
     .slice(0, 2)
     .map((note) => `${getConferenceTypeLabel(note.note_type)}: ${note.title}`);
+  const visitBillingCandidatesHref = buildVisitBillingCandidatesHref({
+    billingMonth: args.billingMonth,
+    patientId: args.patientId,
+    recordId: args.recordId,
+    scheduleId: args.scheduleId,
+  });
 
   return [
     {
@@ -252,10 +273,7 @@ export function buildPostVisitWorkflowActions(args: {
             ? {
                 operation: 'open_billing_candidates',
                 label: '請求候補を確認',
-                href: `/billing/candidates?${new URLSearchParams({
-                  ...(args.billingMonth ? { billing_month: args.billingMonth } : {}),
-                  patient_id: args.patientId,
-                }).toString()}`,
+                href: visitBillingCandidatesHref,
               }
             : { operation: 'generate_billing_candidates', label: '請求候補を生成' },
       details: [
@@ -274,10 +292,7 @@ export function buildPostVisitWorkflowActions(args: {
         args.billingBlockerCount > 0
           ? (firstBillingBlocker?.action_href ??
             (args.scheduleId ? `/visits/${args.scheduleId}/record` : undefined))
-          : `/billing/candidates?${new URLSearchParams({
-              ...(args.billingMonth ? { billing_month: args.billingMonth } : {}),
-              patient_id: args.patientId,
-            }).toString()}`,
+          : visitBillingCandidatesHref,
       action_label:
         args.billingBlockerCount > 0
           ? (firstBillingBlocker?.action_label ?? 'ブロッカーを確認')

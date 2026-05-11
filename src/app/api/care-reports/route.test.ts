@@ -7,6 +7,7 @@ const {
   careReportCreateMock,
   careReportFindManyMock,
   careCaseFindFirstMock,
+  careCaseFindManyMock,
   patientFindFirstMock,
   patientFindManyMock,
   visitRecordFindFirstMock,
@@ -16,6 +17,7 @@ const {
   careReportCreateMock: vi.fn(),
   careReportFindManyMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   patientFindManyMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
@@ -40,6 +42,7 @@ vi.mock('@/lib/db/client', () => ({
     },
     careCase: {
       findFirst: careCaseFindFirstMock,
+      findMany: careCaseFindManyMock,
     },
     patient: {
       findFirst: patientFindFirstMock,
@@ -111,11 +114,22 @@ describe('/api/care-reports GET', () => {
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     careCaseFindFirstMock.mockResolvedValue({
       id: 'case_1',
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'user_1',
+      backup_pharmacist_id: null,
       required_visit_support: null,
     });
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
     visitRecordFindFirstMock.mockResolvedValue({
       id: 'visit_1',
-      schedule: { case_id: 'case_1' },
+      schedule: {
+        case_id: 'case_1',
+        pharmacist_id: 'user_1',
+        case_: {
+          primary_pharmacist_id: 'user_1',
+          backup_pharmacist_id: null,
+        },
+      },
     });
     careReportCreateMock.mockResolvedValue({
       id: 'report_1',
@@ -154,6 +168,14 @@ describe('/api/care-reports GET', () => {
           org_id: 'org_1',
           visit_record_id: 'visit_1',
           report_type: 'physician_report',
+          AND: [
+            {
+              OR: [
+                { case_id: { in: ['case_1'] } },
+                { case_id: null, patient_id: { in: ['patient_1'] } },
+              ],
+            },
+          ],
           delivery_records: {
             some: expect.objectContaining({
               status: 'response_waiting',
@@ -197,6 +219,34 @@ describe('/api/care-reports GET', () => {
     });
   });
 
+  it('returns an empty scoped result without reading reports when a non-admin has no assigned cases', async () => {
+    careCaseFindManyMock.mockResolvedValueOnce([]);
+    careReportFindManyMock.mockResolvedValueOnce([]);
+
+    const response = await GET({
+      orgId: 'org_1',
+      userId: 'unassigned_1',
+      role: 'pharmacist',
+      url: 'http://localhost/api/care-reports',
+      headers: { get: () => null },
+    } as unknown as NextRequest & { orgId: string; userId: string; role?: string });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(careReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          AND: [{ id: { in: [] } }],
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: [],
+      hasMore: false,
+    });
+  });
+
   it('returns 400 for an invalid status filter', async () => {
     const response = await GET({
       orgId: 'org_1',
@@ -232,11 +282,21 @@ describe('/api/care-reports POST', () => {
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     careCaseFindFirstMock.mockResolvedValue({
       id: 'case_1',
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'user_1',
+      backup_pharmacist_id: null,
       required_visit_support: null,
     });
     visitRecordFindFirstMock.mockResolvedValue({
       id: 'visit_1',
-      schedule: { case_id: 'case_1' },
+      schedule: {
+        case_id: 'case_1',
+        pharmacist_id: 'user_1',
+        case_: {
+          primary_pharmacist_id: 'user_1',
+          backup_pharmacist_id: null,
+        },
+      },
     });
     careReportCreateMock.mockResolvedValue({
       id: 'report_1',
@@ -330,6 +390,34 @@ describe('/api/care-reports POST', () => {
         }),
       }),
     );
+  });
+
+  it('rejects report creation from an unassigned visit record before writing', async () => {
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'visit_1',
+      schedule: {
+        case_id: 'case_1',
+        pharmacist_id: 'other_user',
+        case_: {
+          primary_pharmacist_id: 'other_user',
+          backup_pharmacist_id: null,
+        },
+      },
+    });
+
+    const response = await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        visit_record_id: 'visit_1',
+        report_type: 'physician_report',
+        content: { summary: '訪問後報告' },
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects reports for a case that does not belong to the patient', async () => {

@@ -66,7 +66,7 @@ export function PatientHistoryQuickLinks({
           <Link
             key={item.key}
             href={item.href}
-            className="inline-flex min-h-7 items-center rounded-md border border-border/70 bg-card px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex min-h-[44px] items-center rounded-md border border-border/70 bg-card px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-7 sm:px-2"
           >
             {item.label}
           </Link>

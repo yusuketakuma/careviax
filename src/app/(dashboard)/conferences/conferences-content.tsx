@@ -285,7 +285,7 @@ function NoteCard({
                   {note.generated_report_id || note.sync_summary?.report_draft_ids?.length ? (
                     <Link
                       href="/reports"
-                      className="inline-flex rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                      className="inline-flex min-h-[44px] items-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted sm:min-h-0"
                     >
                       報告書を確認
                     </Link>
@@ -293,7 +293,7 @@ function NoteCard({
                   {note.sync_summary?.billing_candidate_id ? (
                     <Link
                       href="/billing/candidates"
-                      className="inline-flex rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                      className="inline-flex min-h-[44px] items-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted sm:min-h-0"
                     >
                       算定候補を確認
                     </Link>
@@ -301,14 +301,14 @@ function NoteCard({
                   {note.sync_summary?.visit_proposal_id ? (
                     <Link
                       href={`/schedules/proposals?case_id=${note.case_id ?? ''}&patient_id=${note.patient_id ?? ''}&focus=patient`}
-                      className="inline-flex rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                      className="inline-flex min-h-[44px] items-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted sm:min-h-0"
                     >
                       訪問候補を確認
                     </Link>
                   ) : note.case_id || note.patient_id ? (
                     <Link
                       href={`/schedules/proposals?case_id=${note.case_id ?? ''}&patient_id=${note.patient_id ?? ''}&focus=patient`}
-                      className="inline-flex rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                      className="inline-flex min-h-[44px] items-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted sm:min-h-0"
                     >
                       訪問候補を作成
                     </Link>
@@ -322,7 +322,7 @@ function NoteCard({
                 <Link
                   href={`/api/conference-notes/${note.id}/pdf`}
                   target="_blank"
-                  className="inline-flex h-7 items-center rounded-md border border-border px-2 text-xs font-medium hover:bg-muted"
+                  className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md border border-border px-2 text-xs font-medium hover:bg-muted sm:h-7 sm:min-h-0 sm:min-w-0"
                 >
                   PDF
                 </Link>
@@ -985,7 +985,10 @@ export function ConferencesContent({
   return (
     <div className="space-y-6">
       {contextSummary ? (
-        <Alert className="border-sky-200 bg-sky-50 text-sky-900" data-testid="conferences-context-banner">
+        <Alert
+          className="border-sky-200 bg-sky-50 text-sky-900"
+          data-testid="conferences-context-banner"
+        >
           <Users className="size-4 text-sky-700" aria-hidden="true" />
           <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
         </Alert>
@@ -1047,7 +1050,12 @@ export function ConferencesContent({
         title="カンファレンス記録"
         description="会議記録は一覧またはカレンダーで確認し、タスク化や報告書生成へつなげます。"
       />
-      <section className={cn('space-y-4', initialFocus === 'notes' ? 'rounded-2xl ring-2 ring-primary/25' : null)}>
+      <section
+        className={cn(
+          'space-y-4',
+          initialFocus === 'notes' ? 'rounded-2xl ring-2 ring-primary/25' : null,
+        )}
+      >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-sm font-semibold text-foreground">カンファレンス記録</h2>
@@ -1059,7 +1067,7 @@ export function ConferencesContent({
             <div className="flex rounded-lg border border-border bg-background p-1">
               <button
                 type="button"
-                className={`rounded-md px-3 py-1 text-xs font-medium ${
+                className={`min-h-11 min-w-11 rounded-md px-3 py-1 text-xs font-medium sm:min-h-0 sm:min-w-0 ${
                   noteViewMode === 'list'
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground'
@@ -1073,7 +1081,7 @@ export function ConferencesContent({
               </button>
               <button
                 type="button"
-                className={`rounded-md px-3 py-1 text-xs font-medium ${
+                className={`min-h-11 min-w-11 rounded-md px-3 py-1 text-xs font-medium sm:min-h-0 sm:min-w-0 ${
                   noteViewMode === 'calendar'
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground'
@@ -1095,7 +1103,9 @@ export function ConferencesContent({
               }}
             >
               <TabsList variant="line">
-                <TabsTrigger value="all">全て</TabsTrigger>
+                <TabsTrigger value="all" className="min-w-11">
+                  全て
+                </TabsTrigger>
                 <TabsTrigger value="pre_discharge">退院前</TabsTrigger>
                 <TabsTrigger value="service_manager">担当者会議</TabsTrigger>
                 <TabsTrigger value="death_conference">デスカンファ</TabsTrigger>
@@ -1269,7 +1279,12 @@ export function ConferencesContent({
         title="地域活動と紹介導線"
         description="地域活動の実績と、後続フォローが必要な案件を同じまとまりで追います。"
       />
-      <section className={cn('space-y-4', initialFocus === 'activities' ? 'rounded-2xl ring-2 ring-primary/25' : null)}>
+      <section
+        className={cn(
+          'space-y-4',
+          initialFocus === 'activities' ? 'rounded-2xl ring-2 ring-primary/25' : null,
+        )}
+      >
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-foreground">地域活動と紹介導線</h2>
           <p className="text-sm text-muted-foreground">{activities.length}件</p>

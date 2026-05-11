@@ -22,7 +22,7 @@ export function Breadcrumb({ items, className }: BreadcrumbProps) {
     >
       <Link
         href="/dashboard"
-        className="flex items-center gap-1 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex min-h-[44px] min-w-[44px] items-center justify-center gap-1 rounded-md transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label="ホームへ"
       >
         <Home className="h-3.5 w-3.5" aria-hidden="true" />
@@ -34,7 +34,7 @@ export function Breadcrumb({ items, className }: BreadcrumbProps) {
           {item.href && i < items.length - 1 ? (
             <Link
               href={item.href}
-              className="transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {item.label}
             </Link>
