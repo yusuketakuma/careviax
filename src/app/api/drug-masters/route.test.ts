@@ -1,15 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const {
-  drugMasterFindManyMock,
-  drugMasterCountMock,
-  genericDrugMappingFindManyMock,
-} = vi.hoisted(() => ({
-  drugMasterFindManyMock: vi.fn(),
-  drugMasterCountMock: vi.fn(),
-  genericDrugMappingFindManyMock: vi.fn(),
-}));
+const { drugMasterFindManyMock, drugMasterCountMock, genericDrugMappingFindManyMock } = vi.hoisted(
+  () => ({
+    drugMasterFindManyMock: vi.fn(),
+    drugMasterCountMock: vi.fn(),
+    genericDrugMappingFindManyMock: vi.fn(),
+  }),
+);
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => unknown) => {
@@ -62,6 +60,10 @@ describe('/api/drug-masters GET', () => {
         is_generic: true,
         is_narcotic: false,
         is_psychotropic: false,
+        is_high_risk: true,
+        is_lasa_risk: true,
+        tall_man_name: 'amLODIPine OD錠5mg',
+        lasa_group_key: 'amlodipine_amiodarone',
         max_administration_days: null,
       },
     ]);
@@ -80,8 +82,10 @@ describe('/api/drug-masters GET', () => {
 
   it('attaches generic price-comparison data for generic candidate searches', async () => {
     const response = await GET(
-      createRequest('http://localhost/api/drug-masters?q=%E3%82%A2%E3%83%A0%E3%83%AD&generic=true&limit=5'),
-      { params: Promise.resolve({}) }
+      createRequest(
+        'http://localhost/api/drug-masters?q=%E3%82%A2%E3%83%A0%E3%83%AD&generic=true&limit=5',
+      ),
+      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');
@@ -101,11 +105,38 @@ describe('/api/drug-masters GET', () => {
       data: [
         expect.objectContaining({
           drug_name: 'アムロジピンOD錠5mg',
+          tall_man_name: 'amLODIPine OD錠5mg',
+          is_high_risk: true,
+          is_lasa_risk: true,
           generic_price_comparison: expect.objectContaining({
             lowest_price: '10.5',
           }),
         }),
       ],
     });
+  });
+
+  it('supports high-risk and LASA filters for medication-safety review', async () => {
+    const response = await GET(
+      createRequest('http://localhost/api/drug-masters?highRisk=true&lasa=true&limit=5'),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(drugMasterFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          is_high_risk: true,
+          is_lasa_risk: true,
+        }),
+        select: expect.objectContaining({
+          is_high_risk: true,
+          is_lasa_risk: true,
+          tall_man_name: true,
+          lasa_group_key: true,
+        }),
+      }),
+    );
   });
 });

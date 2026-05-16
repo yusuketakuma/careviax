@@ -58,9 +58,31 @@ const ALLOWED_TRACING_STATUS_TRANSITIONS: Record<
 };
 
 type TracingReportStatus = 'draft' | 'sent' | 'received' | 'acknowledged';
+const communicationChannelValues = ['email', 'fax', 'phone', 'in_person', 'postal', 'ses'] as const;
+type CommunicationChannelValue = (typeof communicationChannelValues)[number];
 
 function isTracingReportStatus(value: string): value is TracingReportStatus {
   return ['draft', 'sent', 'received', 'acknowledged'].includes(value);
+}
+
+function isCommunicationChannel(value: string): value is CommunicationChannelValue {
+  return communicationChannelValues.includes(value as CommunicationChannelValue);
+}
+
+function parseCommunicationChannel(value: unknown): CommunicationChannelValue | null {
+  if (value === undefined || value === null) return 'fax';
+  if (typeof value !== 'string') return null;
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return 'fax';
+
+  return isCommunicationChannel(trimmed) ? trimmed : null;
+}
+
+function parseStatusChangeReason(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -80,11 +102,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const status = typeof body.status === 'string' ? body.status : null;
   const sentToPhysician =
     typeof body.sent_to_physician === 'string' ? body.sent_to_physician.trim() : undefined;
-  const channel =
-    typeof body.channel === 'string' && body.channel.length > 0 ? body.channel : 'other';
+  const channel = parseCommunicationChannel(body.channel);
+  const statusChangeReason = parseStatusChangeReason(body.status_change_reason);
 
   if (!status || !isTracingReportStatus(status)) {
     return validationError('status が不正です');
+  }
+  if (!channel) {
+    return validationError('channel が不正です', {
+      channel: ['channel が不正です'],
+    });
   }
 
   const existing = await prisma.tracingReport.findFirst({
@@ -118,6 +145,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   if (status !== existing.status) {
+    if (!statusChangeReason) {
+      return validationError('ステータス変更理由は必須です', {
+        status_change_reason: ['ステータス変更理由は必須です'],
+      });
+    }
     const allowed = ALLOWED_TRACING_STATUS_TRANSITIONS[existing.status];
     if (!allowed.includes(status)) {
       return validationError(`${existing.status} から ${status} へは遷移できません`);
@@ -159,29 +191,55 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         },
       });
 
-      const linkedRequest = await tx.communicationRequest.findFirst({
+      const linkedRequests = await tx.communicationRequest.findMany({
         where: {
           org_id: ctx.orgId,
           related_entity_type: 'tracing_report',
           related_entity_id: id,
+          patient_id: updated.patient_id,
+          case_id: updated.case_id ?? null,
         },
         select: { id: true, status: true },
       });
 
       const linkedRequestStatus =
         status === 'sent' ? 'sent' : status === 'received' ? 'received' : 'closed';
+      const linkedRequestIds: string[] = [];
 
       if (status !== 'draft') {
-        if (linkedRequest) {
-          await tx.communicationRequest.update({
-            where: { id: linkedRequest.id },
-            data: {
-              status: linkedRequestStatus,
-              recipient_name: physicianName,
-            },
-          });
+        if (linkedRequests.length > 0) {
+          for (const linkedRequest of linkedRequests) {
+            await tx.communicationRequest.update({
+              where: { id: linkedRequest.id },
+              data: {
+                status: linkedRequestStatus,
+                recipient_name: physicianName,
+              },
+            });
+            linkedRequestIds.push(linkedRequest.id);
+
+            if (status !== existing.status && linkedRequest.status !== linkedRequestStatus) {
+              await tx.auditLog.create({
+                data: {
+                  org_id: ctx.orgId,
+                  actor_id: ctx.userId,
+                  action: 'communication_request_status_changed',
+                  target_type: 'communication_request',
+                  target_id: linkedRequest.id,
+                  changes: {
+                    from_status: linkedRequest.status,
+                    to_status: linkedRequestStatus,
+                    reason: statusChangeReason,
+                    status_change_reason: statusChangeReason,
+                    linked_tracing_report_id: id,
+                    actor_id: ctx.userId,
+                  },
+                },
+              });
+            }
+          }
         } else {
-          await tx.communicationRequest.create({
+          const createdRequest = await tx.communicationRequest.create({
             data: {
               org_id: ctx.orgId,
               patient_id: updated.patient_id,
@@ -201,6 +259,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               due_date: null,
             },
           });
+          linkedRequestIds.push(createdRequest.id);
+
+          if (status !== existing.status) {
+            await tx.auditLog.create({
+              data: {
+                org_id: ctx.orgId,
+                actor_id: ctx.userId,
+                action: 'communication_request_status_changed',
+                target_type: 'communication_request',
+                target_id: createdRequest.id,
+                changes: {
+                  from_status: null,
+                  to_status: linkedRequestStatus,
+                  reason: statusChangeReason,
+                  status_change_reason: statusChangeReason,
+                  linked_tracing_report_id: id,
+                  actor_id: ctx.userId,
+                },
+              },
+            });
+          }
         }
       }
 
@@ -219,6 +298,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               ? `${physicianName} 宛てにトレーシングレポートを送付`
               : 'トレーシングレポートを送付',
             occurred_at: updated.sent_at ?? new Date(),
+          },
+        });
+      }
+
+      if (status !== existing.status) {
+        await tx.auditLog.create({
+          data: {
+            org_id: ctx.orgId,
+            actor_id: ctx.userId,
+            action: 'tracing_report_status_changed',
+            target_type: 'tracing_report',
+            target_id: id,
+            changes: {
+              from_status: existing.status,
+              to_status: status,
+              reason: statusChangeReason,
+              status_change_reason: statusChangeReason,
+              sent_to_physician: physicianName,
+              linked_request_id: linkedRequestIds[0] ?? null,
+              linked_communication_request_ids: linkedRequestIds,
+              actor_id: ctx.userId,
+            },
           },
         });
       }

@@ -27,7 +27,11 @@ const context = {
   patients: [
     {
       scheduleId: 'schedule_1',
+      patientId: 'patient_1',
       patientName: '田中太郎',
+      patientNameKana: 'タナカタロウ',
+      birthDate: '1940-01-02',
+      gender: 'male',
       unitName: '201',
       routeOrder: 1,
       visitRecordId: 'record_1',
@@ -35,14 +39,22 @@ const context = {
     },
     {
       scheduleId: 'schedule_2',
+      patientId: 'patient_2',
       patientName: '佐藤花子',
+      patientNameKana: 'サトウハナコ',
+      birthDate: '1945-03-04',
+      gender: 'female',
       unitName: '203',
       routeOrder: 2,
       preparationBlockersCount: 1,
     },
     {
       scheduleId: 'schedule_3',
+      patientId: 'patient_3',
       patientName: '鈴木一郎',
+      patientNameKana: 'スズキイチロウ',
+      birthDate: '1939-05-06',
+      gender: 'male',
       unitName: null,
       routeOrder: 3,
       preparationBlockersCount: 0,
@@ -59,6 +71,9 @@ describe('FacilityVisitRecordSwitcher', () => {
     expect(screen.getAllByText('準備不足 1').length).toBeGreaterThan(0);
     expect(screen.getByText('受付で入館証を受け取る')).toBeTruthy();
     expect(screen.getByText('佐藤花子')).toBeTruthy();
+    expect(
+      screen.getAllByText('ID patient_2 / かな サトウハナコ / 1945/3/4 / 女性').length,
+    ).toBeGreaterThan(0);
     const previousHref = screen.getByRole('link', { name: /前: 田中太郎/ }).getAttribute('href');
     const nextHref = screen.getByRole('link', { name: /次: 鈴木一郎/ }).getAttribute('href');
     expect(previousHref).toBe('/visits/schedule_1/record');

@@ -40,6 +40,31 @@ function placeKindLabel(kind: FacilityVisitContext['placeKind']) {
   return '同一訪問先';
 }
 
+function genderLabel(value: string | null | undefined) {
+  if (value === 'male') return '男性';
+  if (value === 'female') return '女性';
+  if (value === 'other') return 'その他';
+  if (value === 'unknown') return '不明';
+  return value ?? '未設定';
+}
+
+function formatBirthDate(value: string | null | undefined) {
+  if (!value) return '生年月日未設定';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return `${parsed.getFullYear()}/${parsed.getMonth() + 1}/${parsed.getDate()}`;
+}
+
+function patientIdentityLine(patient: FacilityVisitContextPatient) {
+  const fragments = [
+    patient.patientId ? `ID ${patient.patientId}` : 'ID未設定',
+    patient.patientNameKana ? `かな ${patient.patientNameKana}` : 'かな未設定',
+    formatBirthDate(patient.birthDate),
+    genderLabel(patient.gender),
+  ];
+  return fragments.join(' / ');
+}
+
 export function FacilityVisitRecordSwitcher({
   currentScheduleId,
   context,
@@ -162,6 +187,9 @@ export function FacilityVisitRecordSwitcher({
           現在の患者
         </p>
         <p className="mt-1 text-base font-semibold text-foreground">{currentPatient.patientName}</p>
+        <p className="mt-1 text-sm font-medium text-sky-950">
+          {patientIdentityLine(currentPatient)}
+        </p>
         <p className="mt-1 text-xs text-muted-foreground">
           {currentPatient.unitName ? `部屋 ${currentPatient.unitName}` : '部屋番号未設定'}
           {currentPatient.routeOrder != null ? ` / 順路 ${currentPatient.routeOrder}` : ''}
@@ -194,6 +222,9 @@ export function FacilityVisitRecordSwitcher({
                 >
                   {statusLabel(patient)}
                 </Badge>
+              </span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                {patientIdentityLine(patient)}
               </span>
               <span className="mt-1 block text-xs text-muted-foreground">
                 {patient.unitName ? `部屋 ${patient.unitName}` : '部屋未設定'} / 服用{' '}

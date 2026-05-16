@@ -19,6 +19,10 @@ import {
 } from '@/lib/reports/document-delivery-rules';
 import { canAccessCareReportSource } from '@/server/services/care-report-access';
 
+function toDateOnlyString(value: Date | null | undefined) {
+  return value ? value.toISOString().slice(0, 10) : null;
+}
+
 const updateCareReportSchema = z.object({
   report_type: z
     .enum([
@@ -50,8 +54,29 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const report = await prisma.careReport.findFirst({
     where: { id, org_id: ctx.orgId },
-    include: {
+    select: {
+      id: true,
+      patient_id: true,
+      case_id: true,
+      visit_record_id: true,
+      report_type: true,
+      status: true,
+      content: true,
+      template_id: true,
+      pdf_url: true,
+      created_by: true,
+      created_at: true,
+      updated_at: true,
       delivery_records: {
+        select: {
+          id: true,
+          channel: true,
+          recipient_name: true,
+          recipient_contact: true,
+          status: true,
+          sent_at: true,
+          created_at: true,
+        },
         orderBy: { created_at: 'desc' },
       },
       case_: {
@@ -73,6 +98,30 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   // case_id がある場合は intake baseline context を付加してUIでの表示に利用する
   const intakeBaselineContext = getHomeVisitIntake(report.case_?.required_visit_support ?? null);
+  const [patientSummary, visitSummary] = await Promise.all([
+    prisma.patient.findFirst({
+      where: { id: report.patient_id, org_id: ctx.orgId },
+      select: {
+        id: true,
+        name: true,
+        name_kana: true,
+        birth_date: true,
+      },
+    }),
+    report.visit_record_id
+      ? prisma.visitRecord.findFirst({
+          where: {
+            id: report.visit_record_id,
+            org_id: ctx.orgId,
+            patient_id: report.patient_id,
+          },
+          select: {
+            id: true,
+            visit_date: true,
+          },
+        })
+      : Promise.resolve(null),
+  ]);
   const prescriberInstitutionSuggestion = await findLatestPrescriberInstitutionSuggestion(
     prisma,
     ctx.orgId,
@@ -91,11 +140,27 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     targetRole: inferCareReportTargetRole(report.report_type),
   });
 
-  const reportData = Object.fromEntries(Object.entries(report).filter(([key]) => key !== 'case_'));
+  const reportData = Object.fromEntries(
+    Object.entries(report).filter(([key]) => key !== 'case_' && key !== 'org_id'),
+  );
 
   return success({
     data: {
       ...reportData,
+      patient_summary: patientSummary
+        ? {
+            id: patientSummary.id,
+            name: patientSummary.name,
+            name_kana: patientSummary.name_kana,
+            birth_date: toDateOnlyString(patientSummary.birth_date),
+          }
+        : null,
+      visit_summary: visitSummary
+        ? {
+            id: visitSummary.id,
+            visit_date: visitSummary.visit_date.toISOString(),
+          }
+        : null,
       intake_baseline_context: intakeBaselineContext,
       delivery_rule_suggestion: deliveryRuleSuggestion,
       prescriber_institution_suggestion: prescriberInstitutionSuggestion

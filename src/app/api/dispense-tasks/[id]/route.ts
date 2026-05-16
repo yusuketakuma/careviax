@@ -6,6 +6,7 @@ import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { generateDispensePrefill } from '@/lib/dispensing/prefill-generator';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 import { z } from 'zod';
 
 const updateDispenseTaskSchema = z.object({
@@ -247,9 +248,14 @@ async function buildLineStockGuidance(input: {
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return withAuth(async (authReq: AuthenticatedRequest) => {
     const { id } = await params;
+    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(authReq);
 
     const task = await prisma.dispenseTask.findFirst({
-      where: { id, org_id: authReq.orgId },
+      where: {
+        id,
+        org_id: authReq.orgId,
+        ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
+      },
       include: {
         results: {
           select: {
@@ -448,9 +454,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const { assigned_to, priority, due_date, status } = parsed.data;
+    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(authReq);
 
     const existing = await prisma.dispenseTask.findFirst({
-      where: { id, org_id: authReq.orgId },
+      where: {
+        id,
+        org_id: authReq.orgId,
+        ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
+      },
       select: { id: true, status: true, assigned_to: true },
     });
     if (!existing) return notFound('タスクが見つかりません');

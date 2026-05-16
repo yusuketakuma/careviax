@@ -55,6 +55,9 @@ type FacilityParallelSchedule = {
     patient: {
       id: string;
       name: string;
+      name_kana: string | null;
+      birth_date: Date | null;
+      gender: string | null;
       residences: Array<{
         address: string;
         facility_id: string | null;
@@ -338,6 +341,9 @@ export async function GET(
             select: {
               id: true,
               name: true,
+              name_kana: true,
+              birth_date: true,
+              gender: true,
               residences: {
                 where: { is_primary: true },
                 take: 1,
@@ -622,6 +628,9 @@ export async function GET(
                   select: {
                     id: true,
                     name: true,
+                    name_kana: true,
+                    birth_date: true,
+                    gender: true,
                     residences: {
                       where: { is_primary: true },
                       take: 1,
@@ -766,6 +775,9 @@ export async function GET(
       patient: {
         id: schedule.case_.patient.id,
         name: schedule.case_.patient.name,
+        name_kana: schedule.case_.patient.name_kana,
+        birth_date: schedule.case_.patient.birth_date,
+        gender: schedule.case_.patient.gender,
         residences: schedule.case_.patient.residences.map((residence) => ({
           address: residence.address,
           facility_id: residence.facility_id,
@@ -796,6 +808,9 @@ export async function GET(
               schedule_id: item.id,
               patient_id: item.case_.patient.id,
               patient_name: item.case_.patient.name,
+              patient_name_kana: item.case_.patient.name_kana,
+              patient_birth_date: toDateString(item.case_.patient.birth_date),
+              patient_gender: item.case_.patient.gender,
               unit_name: residence?.unit_name ?? null,
               route_order: item.route_order,
               schedule_status: item.schedule_status,

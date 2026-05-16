@@ -63,7 +63,7 @@ vi.mock('@/server/adapters/e-prescription', () => {
 });
 
 vi.mock('@/lib/auth/visit-schedule-access', () => ({
-  applyPatientAssignmentWhere: (_base: unknown, _ctx: unknown) => _base,
+  applyPatientAssignmentWhere: (base: unknown) => base,
 }));
 
 import { POST } from './route';
@@ -83,8 +83,8 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
       ctx: DEFAULT_CTX,
       rateLimit: { allowed: true, remaining: 10, resetAt: Number.MAX_SAFE_INTEGER },
     });
-    withOrgContextMock.mockImplementation(async (_orgId: string, callback: (tx: typeof txMock) => unknown) =>
-      callback(txMock),
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, callback: (tx: typeof txMock) => unknown) => callback(txMock),
     );
   });
 
@@ -92,10 +92,9 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
     prismaMock.patient.findFirst.mockResolvedValue({ id: 'patient_1', name: '山田太郎' });
     listAccessiblePatientCaseIdsMock.mockResolvedValue([]);
 
-    const response = await POST(
-      createRequest({ prescription_id: 'rx_abc123' }),
-      { params: Promise.resolve({ id: 'patient_1' }) },
-    );
+    const response = await POST(createRequest({ prescription_id: 'rx_abc123' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(422);
@@ -137,10 +136,9 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
       source_type: 'e_prescription',
     });
 
-    const response = await POST(
-      createRequest({ prescription_id: 'rx_abc123' }),
-      { params: Promise.resolve({ id: 'patient_1' }) },
-    );
+    const response = await POST(createRequest({ prescription_id: 'rx_abc123' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);

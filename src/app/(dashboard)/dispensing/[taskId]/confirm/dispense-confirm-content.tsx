@@ -109,9 +109,25 @@ const CHECKLIST_ITEMS = [
   },
   { id: 'cold_storage', label: '冷所保管薬の取扱を確認しました', required: false },
   { id: 'packaging', label: '包装指示を確認しました', required: true },
+  {
+    id: 'cds_alerts',
+    label: '禁忌・相互作用・アレルギー等の処方安全アラートを確認しました',
+    required: true,
+  },
 ] as const;
 
 type ChecklistItemId = (typeof CHECKLIST_ITEMS)[number]['id'];
+
+function buildDispenseSafetyChecklist(checked: Record<ChecklistItemId, boolean>) {
+  return {
+    patient_identity: checked.patient_name,
+    drug_name_strength: checked.drug_match,
+    quantity_days: checked.quantity_match,
+    directions_route: checked.dosage_form,
+    packaging_storage: checked.packaging,
+    cds_alerts_reviewed: checked.cds_alerts,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // High-risk / cold-storage detection
@@ -154,6 +170,7 @@ export function DispenseConfirmContent() {
     high_risk: false,
     cold_storage: false,
     packaging: false,
+    cds_alerts: false,
   });
 
   // Fetch task detail
@@ -170,7 +187,11 @@ export function DispenseConfirmContent() {
   });
 
   // Fetch prescription safety alerts
-  const { data: cdsData, isLoading: cdsLoading } = useQuery<{ alerts: CdsAlert[] }>({
+  const {
+    data: cdsData,
+    isLoading: cdsLoading,
+    isError: cdsError,
+  } = useQuery<{ alerts: CdsAlert[] }>({
     queryKey: ['cds-alerts', task?.cycle_id, orgId],
     queryFn: async () => {
       const res = await fetch('/api/cds/check', {
@@ -178,10 +199,11 @@ export function DispenseConfirmContent() {
         headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
         body: JSON.stringify({ cycleId: task!.cycle_id }),
       });
-      if (!res.ok) return { alerts: [] };
+      if (!res.ok) throw new Error('処方安全チェックに失敗しました');
       return res.json() as Promise<{ alerts: CdsAlert[] }>;
     },
     enabled: !!orgId && !!task?.cycle_id,
+    retry: false,
   });
 
   // Submit dispense results
@@ -203,7 +225,11 @@ export function DispenseConfirmContent() {
       const res = await fetch('/api/dispense-results', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
-        body: JSON.stringify({ task_id: taskId, lines }),
+        body: JSON.stringify({
+          task_id: taskId,
+          lines,
+          safety_checklist: buildDispenseSafetyChecklist(checked),
+        }),
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { message?: string };
@@ -234,6 +260,8 @@ export function DispenseConfirmContent() {
 
   const patient = task.cycle.case_.patient;
   const results = task.results;
+  const cdsCheckReady = Boolean(cdsData) && !cdsLoading && !cdsError;
+  const cdsCheckUnavailable = Boolean(task.cycle_id) && cdsError;
 
   const showHighRisk = hasHighRiskDrug(results);
   const showColdStorage = hasColdStorageDrug(results);
@@ -247,9 +275,11 @@ export function DispenseConfirmContent() {
   });
 
   const requiredUnchecked = visibleItems.filter((item) => item.required && !checked[item.id]);
-  const isSubmitDisabled = requiredUnchecked.length > 0 || submitMutation.isPending;
+  const isSubmitDisabled =
+    requiredUnchecked.length > 0 || !cdsCheckReady || submitMutation.isPending;
 
   const toggleCheck = (id: ChecklistItemId) => {
+    if (id === 'cds_alerts' && !cdsCheckReady) return;
     setChecked((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
@@ -397,7 +427,11 @@ export function DispenseConfirmContent() {
             <CardTitle className="text-sm">処方安全アラート確認</CardTitle>
           </CardHeader>
           <CardContent>
-            <CdsAlertPanel alerts={cdsData?.alerts ?? []} isLoading={cdsLoading} />
+            <CdsAlertPanel
+              alerts={cdsData?.alerts ?? []}
+              isLoading={cdsLoading}
+              isUnavailable={cdsCheckUnavailable}
+            />
           </CardContent>
         </Card>
 
@@ -486,13 +520,17 @@ export function DispenseConfirmContent() {
             <ul className="space-y-3" role="list">
               {visibleItems.map((item) => {
                 const isChecked = checked[item.id];
+                const isCdsItem = item.id === 'cds_alerts';
+                const isDisabled = isCdsItem && !cdsCheckReady;
                 return (
                   <li key={item.id}>
                     <button
                       type="button"
                       onClick={() => toggleCheck(item.id)}
-                      className="flex w-full items-start gap-3 rounded-md p-2 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="flex min-h-[44px] w-full items-start gap-3 rounded-md p-2 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
                       aria-pressed={isChecked}
+                      disabled={isDisabled}
+                      aria-describedby={isDisabled ? 'cds-check-unavailable-hint' : undefined}
                     >
                       {isChecked ? (
                         <CheckSquare
@@ -519,6 +557,11 @@ export function DispenseConfirmContent() {
                         )}
                       </span>
                     </button>
+                    {isDisabled && (
+                      <p id="cds-check-unavailable-hint" className="sr-only">
+                        処方安全チェックが完了するまで確認できません
+                      </p>
+                    )}
                   </li>
                 );
               })}

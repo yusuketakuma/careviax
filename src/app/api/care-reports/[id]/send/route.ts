@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import type { MemberRole } from '@prisma/client';
+import type { MemberRole, Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { error, forbiddenResponse, success, validationError, notFound } from '@/lib/api/response';
@@ -26,11 +26,57 @@ function toPrimaryCommunicationEventType(reportType: string) {
   }
 }
 
+function maskRecipientContact(channel: string, contact: string) {
+  if (channel === 'email' || channel === 'ses') {
+    const [localPart, domain] = contact.split('@');
+    if (!localPart || !domain) return '***';
+    return `${localPart.slice(0, 1)}***@${domain.toLowerCase()}`;
+  }
+
+  const digits = contact.replace(/\D/g, '');
+  if (digits.length >= 4) return `***${digits.slice(-4)}`;
+  return contact ? '***' : '';
+}
+
+function buildDeliveryAttemptAuditChanges(args: {
+  deliveryRecordId: string;
+  report: {
+    id: string;
+    case_id: string | null;
+    visit_record_id: string | null;
+    report_type: string;
+    status: string;
+  };
+  request: {
+    channel: string;
+    recipient_name: string;
+    recipient_contact: string;
+    safety_ack: true;
+  };
+}) {
+  return {
+    delivery_record_id: args.deliveryRecordId,
+    report_type: args.report.report_type,
+    previous_report_status: args.report.status,
+    channel: args.request.channel,
+    safety_ack: args.request.safety_ack,
+    recipient: {
+      name: args.request.recipient_name,
+      contact_masked: maskRecipientContact(args.request.channel, args.request.recipient_contact),
+    },
+    source_scope: {
+      has_case: Boolean(args.report.case_id),
+      has_visit_record: Boolean(args.report.visit_record_id),
+    },
+  } satisfies Prisma.InputJsonValue;
+}
+
 const sendCareReportSchema = z
   .object({
     channel: z.enum(['email', 'fax', 'phone', 'in_person', 'postal', 'ses']),
-    recipient_name: z.string().min(1, '送付先氏名は必須です'),
-    recipient_contact: z.string().min(1, '送付先連絡先は必須です'),
+    recipient_name: z.string().trim().min(1, '送付先氏名は必須です'),
+    recipient_contact: z.string().trim().min(1, '送付先連絡先は必須です'),
+    safety_ack: z.literal(true),
   })
   .superRefine((value, ctx) => {
     if (
@@ -175,6 +221,40 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return forbiddenResponse('この報告書を送信する権限がありません');
   }
 
+  const attemptedDeliveryRecord = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const deliveryRecord = await tx.deliveryRecord.create({
+        data: {
+          org_id: ctx.orgId,
+          report_id: id,
+          channel: parsed.data.channel,
+          recipient_name: parsed.data.recipient_name,
+          recipient_contact: parsed.data.recipient_contact,
+          status: 'draft',
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          org_id: ctx.orgId,
+          actor_id: ctx.userId,
+          action: 'care_report_delivery_attempted',
+          target_type: 'care_report',
+          target_id: id,
+          changes: buildDeliveryAttemptAuditChanges({
+            deliveryRecordId: deliveryRecord.id,
+            report: existing,
+            request: parsed.data,
+          }),
+        },
+      });
+
+      return deliveryRecord;
+    },
+    { requestContext: ctx },
+  );
+
   if (parsed.data.channel === 'email' || parsed.data.channel === 'ses') {
     try {
       await sendCareReportEmail({
@@ -191,13 +271,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       await withOrgContext(
         ctx.orgId,
         async (tx) => {
-          await tx.deliveryRecord.create({
+          await tx.deliveryRecord.update({
+            where: { id: attemptedDeliveryRecord.id },
             data: {
-              org_id: ctx.orgId,
-              report_id: id,
-              channel: parsed.data.channel,
-              recipient_name: parsed.data.recipient_name,
-              recipient_contact: parsed.data.recipient_contact,
               status: 'failed',
               failure_reason: failureReason,
             },
@@ -246,20 +322,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     async (tx) => {
       const primaryEventType = toPrimaryCommunicationEventType(existing.report_type);
 
-      // DeliveryRecord を作成し、MVPではステータスを sent に設定
-      const deliveryRecord = await tx.deliveryRecord.create({
+      const deliveryRecord = await tx.deliveryRecord.update({
+        where: { id: attemptedDeliveryRecord.id },
         data: {
-          org_id: ctx.orgId,
-          report_id: id,
-          channel: parsed.data.channel,
-          recipient_name: parsed.data.recipient_name,
-          recipient_contact: parsed.data.recipient_contact,
           status: 'sent',
           sent_at: new Date(),
+          failure_reason: null,
         },
       });
 
-      // 報告書のステータスも sent に更新
       const report = await tx.careReport.update({
         where: { id },
         data: { status: 'sent' },

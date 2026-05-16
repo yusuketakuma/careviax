@@ -28,8 +28,9 @@ export const POST = withAuthContext(async (req: NextRequest, authCtx) => {
         pimCount: result.pimCount,
         highRiskCount: result.highRiskCount,
         renalCount: result.renalCount,
+        safetyOverrideCount: result.safetyOverrideCount,
       },
     },
-    201
+    201,
   );
 });

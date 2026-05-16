@@ -87,6 +87,10 @@ type DrugMasterInfo = {
   is_generic: boolean;
   is_narcotic: boolean;
   is_psychotropic: boolean;
+  is_high_risk: boolean;
+  is_lasa_risk: boolean;
+  tall_man_name: string | null;
+  lasa_group_key: string | null;
   max_administration_days: number | null;
   therapeutic_category: string | null;
 };
@@ -144,7 +148,10 @@ const SOURCE_LABELS: Record<string, string> = {
   refill: 'リフィル',
 };
 
-const STATUS_LABELS: Record<string, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }> = {
+const STATUS_LABELS: Record<
+  string,
+  { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }
+> = {
   intake_received: { label: '受付済', variant: 'outline' },
   structuring: { label: '構造化中', variant: 'outline' },
   inquiry_pending: { label: '疑義照会中', variant: 'secondary' },
@@ -162,10 +169,12 @@ const STATUS_LABELS: Record<string, { label: string; variant: 'default' | 'secon
 };
 
 // 一包化不適応キーワード（OD錠, 徐放製剤, 貼付剤, 坐剤, 点眼, 吸入等）
-const UNIT_DOSE_INCOMPATIBLE_RE = /OD錠|口腔内崩壊|徐放|SR|CR|LA|XR|貼付|テープ|パップ|坐剤|坐薬|点眼|点鼻|吸入|注射|軟膏|クリーム|ローション|ゲル|液剤|シロップ|ドライシロップ|カプセル/i;
+const UNIT_DOSE_INCOMPATIBLE_RE =
+  /OD錠|口腔内崩壊|徐放|SR|CR|LA|XR|貼付|テープ|パップ|坐剤|坐薬|点眼|点鼻|吸入|注射|軟膏|クリーム|ローション|ゲル|液剤|シロップ|ドライシロップ|カプセル/i;
 
 // 粉砕不可キーワード（腸溶性, 徐放, コーティング製剤）
-const CRUSHED_INCOMPATIBLE_RE = /腸溶|徐放|SR|CR|LA|XR|コーティング|フィルムコート|糖衣|カプセル|OD錠|口腔内崩壊/i;
+const CRUSHED_INCOMPATIBLE_RE =
+  /腸溶|徐放|SR|CR|LA|XR|コーティング|フィルムコート|糖衣|カプセル|OD錠|口腔内崩壊/i;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -174,7 +183,8 @@ function inferRoute(line: PrescriptionLine): string {
   const form = (line.dosage_form ?? '').toLowerCase();
   const name = line.drug_name.toLowerCase();
   if (/注射|注入|点滴/.test(form) || /注射/.test(name)) return 'injection';
-  if (/軟膏|クリーム|貼付|テープ|パップ|坐剤|坐薬|吸入|点眼|点鼻|噴霧|ローション|ゲル/.test(form)) return 'external';
+  if (/軟膏|クリーム|貼付|テープ|パップ|坐剤|坐薬|吸入|点眼|点鼻|噴霧|ローション|ゲル/.test(form))
+    return 'external';
   return 'internal';
 }
 
@@ -239,11 +249,13 @@ function groupByFrequency(lines: PrescriptionLine[]): RpGroup[] {
 /** Detect change type between prev and current prescription for a drug */
 function detectChange(
   prevLines: PrescriptionLine[] | null,
-  currentLine: PrescriptionLine
+  currentLine: PrescriptionLine,
 ): ChangeType {
   if (!prevLines) return 'added';
   const prev = prevLines.find(
-    (p) => p.drug_name === currentLine.drug_name || (p.drug_code && p.drug_code === currentLine.drug_code)
+    (p) =>
+      p.drug_name === currentLine.drug_name ||
+      (p.drug_code && p.drug_code === currentLine.drug_code),
   );
   if (!prev) return 'added';
   if (prev.dose !== currentLine.dose) return 'dose_changed';
@@ -259,13 +271,25 @@ function isDoPrescription(current: PrescriptionIntake, prev: PrescriptionIntake 
   const sortedPrev = [...prev.lines].sort((a, b) => a.drug_name.localeCompare(b.drug_name));
   return sortedCurr.every((c, i) => {
     const p = sortedPrev[i];
-    return c.drug_name === p.drug_name && c.dose === p.dose && c.frequency === p.frequency && c.days === p.days;
+    return (
+      c.drug_name === p.drug_name &&
+      c.dose === p.dose &&
+      c.frequency === p.frequency &&
+      c.days === p.days
+    );
   });
 }
 
 function buildOverlapSet(allIntakes: PrescriptionIntake[]): Set<string> {
   const overlaps = new Set<string>();
-  const periods: Array<{ lineId: string; drugName: string; drugCode: string | null; start: number; end: number; intakeId: string }> = [];
+  const periods: Array<{
+    lineId: string;
+    drugName: string;
+    drugCode: string | null;
+    start: number;
+    end: number;
+    intakeId: string;
+  }> = [];
 
   for (const intake of allIntakes) {
     for (const line of intake.lines) {
@@ -288,7 +312,8 @@ function buildOverlapSet(allIntakes: PrescriptionIntake[]): Set<string> {
       const a = periods[i];
       const b = periods[j];
       if (a.intakeId === b.intakeId) continue;
-      const sameDrug = a.drugName === b.drugName || (a.drugCode != null && a.drugCode === b.drugCode);
+      const sameDrug =
+        a.drugName === b.drugName || (a.drugCode != null && a.drugCode === b.drugCode);
       if (!sameDrug) continue;
       if (a.start <= b.end && b.start <= a.end) {
         overlaps.add(a.lineId);
@@ -300,11 +325,18 @@ function buildOverlapSet(allIntakes: PrescriptionIntake[]): Set<string> {
   return overlaps;
 }
 
-const CHANGE_BADGES: Record<ChangeType, { label: string; icon: typeof Plus; color: string } | null> = {
+const CHANGE_BADGES: Record<
+  ChangeType,
+  { label: string; icon: typeof Plus; color: string } | null
+> = {
   added: { label: '新規', icon: Plus, color: 'bg-green-100 text-green-800' },
   removed: { label: '中止', icon: Minus, color: 'bg-red-100 text-red-800' },
   dose_changed: { label: '用量変更', icon: ArrowRight, color: 'bg-orange-100 text-orange-800' },
-  frequency_changed: { label: '用法変更', icon: ArrowRight, color: 'bg-orange-100 text-orange-800' },
+  frequency_changed: {
+    label: '用法変更',
+    icon: ArrowRight,
+    color: 'bg-orange-100 text-orange-800',
+  },
   unchanged: null,
   do: null,
 };
@@ -312,7 +344,7 @@ const CHANGE_BADGES: Record<ChangeType, { label: string; icon: typeof Plus; colo
 function buildOverviewCards(intakes: PrescriptionIntake[]): PrescriptionOverviewCard[] {
   const latest = intakes[0] ?? null;
   const uniquePrescribers = new Set(
-    intakes.map((item) => item.prescriber_name).filter((value): value is string => Boolean(value))
+    intakes.map((item) => item.prescriber_name).filter((value): value is string => Boolean(value)),
   );
   const latestLines = latest?.lines ?? [];
   const specialMethods = latestLines.filter((line) => {
@@ -332,7 +364,9 @@ function buildOverviewCards(intakes: PrescriptionIntake[]): PrescriptionOverview
     {
       label: '最新処方日',
       value: latest ? fmtDate(latest.prescribed_date) : '—',
-      description: latest?.source_type ? SOURCE_LABELS[latest.source_type] ?? latest.source_type : '処方履歴なし',
+      description: latest?.source_type
+        ? (SOURCE_LABELS[latest.source_type] ?? latest.source_type)
+        : '処方履歴なし',
     },
     {
       label: '最新処方の薬剤数',
@@ -354,7 +388,7 @@ function buildOverviewCards(intakes: PrescriptionIntake[]): PrescriptionOverview
 
 function buildLatestChangeSummary(
   current: PrescriptionIntake | null,
-  previous: PrescriptionIntake | null
+  previous: PrescriptionIntake | null,
 ): PrescriptionChangeSummaryItem[] {
   if (!current) return [];
   const previousLines = previous?.lines ?? [];
@@ -379,7 +413,7 @@ function buildLatestChangeSummary(
     const exists = current.lines.some(
       (currentLine) =>
         currentLine.drug_name === line.drug_name ||
-        (currentLine.drug_code && currentLine.drug_code === line.drug_code)
+        (currentLine.drug_code && currentLine.drug_code === line.drug_code),
     );
     if (exists) continue;
     items.push({
@@ -437,19 +471,23 @@ function DrugLineRow({
   masterInfo?: DrugMasterInfo;
 }) {
   const method = inferMethod(line);
-  const methodCfg = method ? METHOD_CONFIG[method] ?? null : null;
+  const methodCfg = method ? (METHOD_CONFIG[method] ?? null) : null;
   const startDate = line.start_date ?? prescribedDate;
   const endDate = computeEndDate(line, prescribedDate);
   const changeBadge = CHANGE_BADGES[changeType];
   const unitDoseWarn = method === 'unit_dose' && isUnitDoseIncompatible(line);
   const crushedWarn = method === 'crushed' && isCrushedIncompatible(line);
+  const displayDrugName = masterInfo?.tall_man_name?.trim() || line.drug_name;
+  const hasTallManName = displayDrugName !== line.drug_name;
 
   return (
     <div
       className={[
         'flex items-start gap-3 border-b border-border/30 px-4 py-2 last:border-0 transition-colors',
         changeType === 'added' ? 'bg-green-50/40' : '',
-        changeType === 'dose_changed' || changeType === 'frequency_changed' ? 'bg-orange-50/40' : '',
+        changeType === 'dose_changed' || changeType === 'frequency_changed'
+          ? 'bg-orange-50/40'
+          : '',
         hasOverlap ? 'ring-1 ring-inset ring-red-300' : '',
       ].join(' ')}
     >
@@ -457,21 +495,47 @@ function DrugLineRow({
       <div className="min-w-0 flex-1 space-y-0.5">
         {/* Name row */}
         <div className="flex flex-wrap items-baseline gap-1.5">
-          <span className="font-medium text-foreground">{line.drug_name}</span>
+          <span className="font-medium text-foreground">{displayDrugName}</span>
+          {hasTallManName && (
+            <Badge
+              variant="outline"
+              className="h-4 border-amber-300 px-1 text-[10px] font-normal text-amber-800"
+            >
+              Tall Man
+            </Badge>
+          )}
           {line.is_generic && (
-            <Badge variant="outline" className="h-4 px-1 text-[10px] font-normal text-blue-600 border-blue-300">後発</Badge>
+            <Badge
+              variant="outline"
+              className="h-4 px-1 text-[10px] font-normal text-blue-600 border-blue-300"
+            >
+              後発
+            </Badge>
           )}
           {line.dosage_form && (
             <span className="text-xs text-muted-foreground">[{line.dosage_form}]</span>
           )}
-          {(masterInfo?.is_narcotic) && (
+          {masterInfo?.is_narcotic && (
             <span className="inline-flex items-center gap-0.5 rounded bg-red-100 px-1 py-0.5 text-[10px] font-bold text-red-700">
-              <AlertTriangle className="size-2.5" aria-hidden="true" />麻薬
+              <AlertTriangle className="size-2.5" aria-hidden="true" />
+              麻薬
             </span>
           )}
-          {(masterInfo?.is_psychotropic) && (
+          {masterInfo?.is_psychotropic && (
             <span className="inline-flex items-center gap-0.5 rounded bg-orange-100 px-1 py-0.5 text-[10px] font-bold text-orange-700">
-              <Shield className="size-2.5" aria-hidden="true" />向精神
+              <Shield className="size-2.5" aria-hidden="true" />
+              向精神
+            </span>
+          )}
+          {masterInfo?.is_high_risk && (
+            <span className="inline-flex items-center gap-0.5 rounded border border-red-300 bg-red-50 px-1 py-0.5 text-[10px] font-bold text-red-700">
+              <AlertTriangle className="size-2.5" aria-hidden="true" />
+              ハイリスク
+            </span>
+          )}
+          {masterInfo?.is_lasa_risk && (
+            <span className="inline-flex items-center gap-0.5 rounded border border-amber-300 bg-amber-50 px-1 py-0.5 text-[10px] font-bold text-amber-800">
+              LASA
             </span>
           )}
           {masterInfo?.drug_price != null && (
@@ -480,21 +544,36 @@ function DrugLineRow({
             </span>
           )}
           {changeBadge && (
-            <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium ${changeBadge.color}`}>
+            <span
+              className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium ${changeBadge.color}`}
+            >
               <changeBadge.icon className="size-2.5" aria-hidden="true" />
               {changeBadge.label}
             </span>
           )}
         </div>
+        {hasTallManName && (
+          <p className="text-xs text-muted-foreground">通常表記: {line.drug_name}</p>
+        )}
+        {masterInfo?.lasa_group_key && (
+          <p className="text-xs font-medium text-amber-800">
+            類似薬剤名グループ: {masterInfo.lasa_group_key}
+          </p>
+        )}
 
         {/* Dose row */}
         <div className="flex flex-wrap items-center gap-x-3 text-sm">
           <span className="font-medium">{line.dose}</span>
           {line.quantity != null && line.unit && (
-            <span className="tabular-nums text-muted-foreground">({line.quantity}{line.unit})</span>
+            <span className="tabular-nums text-muted-foreground">
+              ({line.quantity}
+              {line.unit})
+            </span>
           )}
           {methodCfg && (
-            <span className={`rounded px-1 py-0.5 text-[10px] font-medium leading-none ${methodCfg.color}`}>
+            <span
+              className={`rounded px-1 py-0.5 text-[10px] font-medium leading-none ${methodCfg.color}`}
+            >
               {methodCfg.label}
             </span>
           )}
@@ -568,10 +647,15 @@ function RpGroupBlock({
     <div className="border-b border-border/50 last:border-0">
       {/* Rp header: route icon + frequency + days */}
       <div className="flex items-center gap-2 bg-muted/20 px-4 py-1.5">
-        <span className={`flex size-5 items-center justify-center rounded ${routeCfg.color}`} title={routeCfg.label}>
+        <span
+          className={`flex size-5 items-center justify-center rounded ${routeCfg.color}`}
+          title={routeCfg.label}
+        >
           <RouteIcon className="size-3" aria-hidden="true" />
         </span>
-        <span className="text-xs font-semibold text-muted-foreground tabular-nums">Rp{rpIndex}</span>
+        <span className="text-xs font-semibold text-muted-foreground tabular-nums">
+          Rp{rpIndex}
+        </span>
         <span className="text-xs font-medium text-foreground">{group.frequency}</span>
         <span className="text-xs text-muted-foreground tabular-nums">{group.days}日分</span>
       </div>
@@ -621,7 +705,9 @@ function RouteSection({
   return (
     <section>
       <div className={`border-t px-4 py-1 ${sectionColors[routeKey] ?? sectionColors.other}`}>
-        <span className="text-xs font-semibold">{cfg.label}（{totalDrugs}剤）</span>
+        <span className="text-xs font-semibold">
+          {cfg.label}（{totalDrugs}剤）
+        </span>
       </div>
       {groups.map((group, gi) => (
         <RpGroupBlock
@@ -670,7 +756,10 @@ function PrescriptionIntakeCard({
   const removedDrugs = useMemo(() => {
     if (!prevLines) return [];
     return prevLines.filter(
-      (p) => !intake.lines.some((c) => c.drug_name === p.drug_name || (c.drug_code && c.drug_code === p.drug_code))
+      (p) =>
+        !intake.lines.some(
+          (c) => c.drug_name === p.drug_name || (c.drug_code && c.drug_code === p.drug_code),
+        ),
     );
   }, [prevLines, intake.lines]);
 
@@ -698,16 +787,29 @@ function PrescriptionIntakeCard({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="print:hidden">
-              {expanded ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
+              {expanded ? (
+                <ChevronDown className="size-4 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="size-4 text-muted-foreground" />
+              )}
             </span>
             <FileText className="size-4 text-muted-foreground" aria-hidden="true" />
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <time dateTime={intake.prescribed_date} className="text-sm font-semibold tabular-nums">
+                <time
+                  dateTime={intake.prescribed_date}
+                  className="text-sm font-semibold tabular-nums"
+                >
                   {format(new Date(intake.prescribed_date), 'yyyy年M月d日', { locale: ja })}
                 </time>
-                <span className="text-xs text-muted-foreground">{SOURCE_LABELS[intake.source_type] ?? intake.source_type}</span>
-                {statusCfg && <Badge variant={statusCfg.variant} className="h-5 text-[10px]">{statusCfg.label}</Badge>}
+                <span className="text-xs text-muted-foreground">
+                  {SOURCE_LABELS[intake.source_type] ?? intake.source_type}
+                </span>
+                {statusCfg && (
+                  <Badge variant={statusCfg.variant} className="h-5 text-[10px]">
+                    {statusCfg.label}
+                  </Badge>
+                )}
                 {isDo && (
                   <span className="inline-flex items-center gap-0.5 rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">
                     <Copy className="size-2.5" aria-hidden="true" />
@@ -720,25 +822,35 @@ function PrescriptionIntakeCard({
                 {intake.prescriber_institution && <span>（{intake.prescriber_institution}）</span>}
                 <span>{intake.lines.length}剤</span>
                 {intake.source_type === 'refill' && (
-                  <Badge variant="outline" className="h-4 text-[9px]">薬局保管</Badge>
+                  <Badge variant="outline" className="h-4 text-[9px]">
+                    薬局保管
+                  </Badge>
                 )}
                 {intake.refill_remaining_count != null && intake.refill_remaining_count > 0 && (
-                  <Badge variant="outline" className="h-4 text-[9px]">リフィル残{intake.refill_remaining_count}回</Badge>
+                  <Badge variant="outline" className="h-4 text-[9px]">
+                    リフィル残{intake.refill_remaining_count}回
+                  </Badge>
                 )}
                 {intake.split_dispense_total != null && intake.split_dispense_current != null && (
                   <Badge variant="outline" className="h-4 text-[9px]">
                     分割 {intake.split_dispense_current}/{intake.split_dispense_total}
-                    {intake.split_next_dispense_date ? ` 次回 ${fmtDate(intake.split_next_dispense_date)}` : ''}
+                    {intake.split_next_dispense_date
+                      ? ` 次回 ${fmtDate(intake.split_next_dispense_date)}`
+                      : ''}
                   </Badge>
                 )}
                 {isFax && !originalCollected ? (
-                  <Badge variant={faxOriginalOverdue ? 'destructive' : 'outline'} className="h-4 text-[9px]">
+                  <Badge
+                    variant={faxOriginalOverdue ? 'destructive' : 'outline'}
+                    className="h-4 text-[9px]"
+                  >
                     {faxOriginalOverdue ? 'FAX原本未回収' : 'FAX原本回収待ち'}
                   </Badge>
                 ) : null}
                 {isFax && originalCollected ? (
                   <Badge variant="outline" className="h-4 text-[9px]">
-                    原本回収済 {intake.original_collected_at ? fmtDate(intake.original_collected_at) : ''}
+                    原本回収済{' '}
+                    {intake.original_collected_at ? fmtDate(intake.original_collected_at) : ''}
                   </Badge>
                 ) : null}
               </div>
@@ -757,7 +869,9 @@ function PrescriptionIntakeCard({
                 <div>
                   <span className="font-semibold">前回から中止:</span>
                   {removedDrugs.map((d) => (
-                    <span key={d.id} className="ml-2">{d.drug_name}</span>
+                    <span key={d.id} className="ml-2">
+                      {d.drug_name}
+                    </span>
                   ))}
                 </div>
               </div>
@@ -950,28 +1064,45 @@ export function PrescriptionHistoryContent() {
   const overviewCards = useMemo(() => buildOverviewCards(data?.data ?? []), [data]);
   const latestChanges = useMemo(
     () => buildLatestChangeSummary(latestIntake, previousIntake),
-    [latestIntake, previousIntake]
+    [latestIntake, previousIntake],
   );
-  const dispensingOverview = useMemo(
-    () => buildDispensingOverview(latestIntake),
-    [latestIntake]
-  );
+  const dispensingOverview = useMemo(() => buildDispensingOverview(latestIntake), [latestIntake]);
 
   const stats = useMemo(() => {
     if (!data?.data) return null;
-    let totalLines = 0, unitDose = 0, crushed = 0, external = 0, injection = 0, warnings = 0;
+    let totalLines = 0,
+      unitDose = 0,
+      crushed = 0,
+      external = 0,
+      injection = 0,
+      warnings = 0;
     for (const intake of data.data) {
       for (const line of intake.lines) {
         totalLines++;
         const method = inferMethod(line);
-        if (method === 'unit_dose') { unitDose++; if (isUnitDoseIncompatible(line)) warnings++; }
-        if (method === 'crushed') { crushed++; if (isCrushedIncompatible(line)) warnings++; }
+        if (method === 'unit_dose') {
+          unitDose++;
+          if (isUnitDoseIncompatible(line)) warnings++;
+        }
+        if (method === 'crushed') {
+          crushed++;
+          if (isCrushedIncompatible(line)) warnings++;
+        }
         const route = inferRoute(line);
         if (route === 'external') external++;
         if (route === 'injection') injection++;
       }
     }
-    return { total: data.data.length, totalLines, unitDose, crushed, external, injection, warnings, overlaps: overlapSet.size };
+    return {
+      total: data.data.length,
+      totalLines,
+      unitDose,
+      crushed,
+      external,
+      injection,
+      warnings,
+      overlaps: overlapSet.size,
+    };
   }, [data, overlapSet]);
 
   const handlePrint = useCallback(() => window.print(), []);
@@ -989,7 +1120,12 @@ export function PrescriptionHistoryContent() {
               <span className="text-sm text-muted-foreground">({data.patient.name_kana})</span>
             )}
           </div>
-          <Button variant="outline" size="sm" className="gap-1.5 print:hidden" onClick={handlePrint}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 print:hidden"
+            onClick={handlePrint}
+          >
             <Printer className="size-3.5" aria-hidden="true" />
             印刷
           </Button>
@@ -1001,10 +1137,24 @@ export function PrescriptionHistoryContent() {
         <div className="flex flex-wrap gap-2 print:hidden">
           <Badge variant="outline">{stats.total}回の処方</Badge>
           <Badge variant="outline">{stats.totalLines}剤</Badge>
-          {stats.unitDose > 0 && <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">一包化 {stats.unitDose}</Badge>}
-          {stats.crushed > 0 && <Badge className="bg-red-100 text-red-800 hover:bg-red-100">粉砕 {stats.crushed}</Badge>}
-          {stats.external > 0 && <Badge className="bg-green-100 text-green-800 hover:bg-green-100">外用 {stats.external}</Badge>}
-          {stats.injection > 0 && <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100">注射 {stats.injection}</Badge>}
+          {stats.unitDose > 0 && (
+            <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
+              一包化 {stats.unitDose}
+            </Badge>
+          )}
+          {stats.crushed > 0 && (
+            <Badge className="bg-red-100 text-red-800 hover:bg-red-100">粉砕 {stats.crushed}</Badge>
+          )}
+          {stats.external > 0 && (
+            <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+              外用 {stats.external}
+            </Badge>
+          )}
+          {stats.injection > 0 && (
+            <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100">
+              注射 {stats.injection}
+            </Badge>
+          )}
           {stats.warnings > 0 && (
             <Badge className="bg-red-200 text-red-900 hover:bg-red-200">
               <AlertTriangle className="mr-0.5 size-3" aria-hidden="true" />
@@ -1013,7 +1163,7 @@ export function PrescriptionHistoryContent() {
           )}
           {stats.overlaps > 0 && (
             <Badge className="bg-red-200 text-red-900 hover:bg-red-200">
-              期間重複 {stats.overlaps / 2 | 0}件
+              期間重複 {(stats.overlaps / 2) | 0}件
             </Badge>
           )}
         </div>
@@ -1042,22 +1192,25 @@ export function PrescriptionHistoryContent() {
         <Card className="border-slate-200 shadow-sm">
           <CardHeader>
             <CardTitle className="text-base">処方変更ダッシュボード</CardTitle>
-            <CardDescription>
-              最新処方と前回処方の差分を先に確認できます。
-            </CardDescription>
+            <CardDescription>最新処方と前回処方の差分を先に確認できます。</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {latestChanges.length === 0 ? (
               <p className="text-sm text-muted-foreground">前回から大きな変更はありません。</p>
             ) : (
               latestChanges.map((item) => (
-                <div key={`${item.drugName}-${item.label}`} className="rounded-xl border border-slate-200 bg-white p-3">
+                <div
+                  key={`${item.drugName}-${item.label}`}
+                  className="rounded-xl border border-slate-200 bg-white p-3"
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-medium text-foreground">{item.drugName}</p>
                       <p className="mt-1 text-xs text-muted-foreground">{item.detail}</p>
                     </div>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${item.color}`}>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${item.color}`}
+                    >
                       {item.label}
                     </span>
                   </div>
@@ -1076,19 +1229,22 @@ export function PrescriptionHistoryContent() {
           </CardHeader>
           <CardContent className="space-y-3">
             {dispensingOverview.length === 0 ? (
-              <p className="text-sm text-muted-foreground">最新処方に特別な調剤指示はありません。</p>
+              <p className="text-sm text-muted-foreground">
+                最新処方に特別な調剤指示はありません。
+              </p>
             ) : (
               dispensingOverview.map((item) => (
-                <div key={`${item.drugName}-${item.note}`} className="rounded-xl border border-slate-200 bg-white p-3">
+                <div
+                  key={`${item.drugName}-${item.note}`}
+                  className="rounded-xl border border-slate-200 bg-white p-3"
+                >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-medium text-foreground">{item.drugName}</p>
                         <Badge variant="outline">{item.routeLabel}</Badge>
                         {item.hasWarning ? (
-                          <Badge className="bg-red-100 text-red-800 hover:bg-red-100">
-                            要確認
-                          </Badge>
+                          <Badge className="bg-red-100 text-red-800 hover:bg-red-100">要確認</Badge>
                         ) : null}
                       </div>
                       <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.note}</p>
@@ -1117,14 +1273,18 @@ export function PrescriptionHistoryContent() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-foreground">今回</p>
-                <p className="text-xs text-muted-foreground">{fmtDate(latestIntake.prescribed_date)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {fmtDate(latestIntake.prescribed_date)}
+                </p>
               </div>
               <PrescriptionIntakeCard
                 intake={latestIntake}
                 prevIntake={previousIntake}
                 overlapSet={overlapSet}
                 masterMap={masterMap}
-                onMarkOriginalCollected={(intakeId) => markOriginalCollectedMutation.mutate(intakeId)}
+                onMarkOriginalCollected={(intakeId) =>
+                  markOriginalCollectedMutation.mutate(intakeId)
+                }
                 isMarkingOriginalCollected={markOriginalCollectedMutation.isPending}
               />
             </div>
@@ -1132,14 +1292,18 @@ export function PrescriptionHistoryContent() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-foreground">前回</p>
-                <p className="text-xs text-muted-foreground">{fmtDate(previousIntake.prescribed_date)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {fmtDate(previousIntake.prescribed_date)}
+                </p>
               </div>
               <PrescriptionIntakeCard
                 intake={previousIntake}
                 prevIntake={null}
                 overlapSet={overlapSet}
                 masterMap={masterMap}
-                onMarkOriginalCollected={(intakeId) => markOriginalCollectedMutation.mutate(intakeId)}
+                onMarkOriginalCollected={(intakeId) =>
+                  markOriginalCollectedMutation.mutate(intakeId)
+                }
                 isMarkingOriginalCollected={markOriginalCollectedMutation.isPending}
               />
             </div>
@@ -1149,11 +1313,29 @@ export function PrescriptionHistoryContent() {
 
       {/* Filters */}
       <div className="flex items-center gap-3 print:hidden">
-        <select value={routeFilter} onChange={(e) => setRouteFilter(e.target.value)} className="h-8 rounded-md border border-input bg-background px-2 text-sm" aria-label="剤形フィルタ">
-          {ROUTE_FILTER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        <select
+          value={routeFilter}
+          onChange={(e) => setRouteFilter(e.target.value)}
+          className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+          aria-label="剤形フィルタ"
+        >
+          {ROUTE_FILTER_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
         </select>
-        <select value={methodFilter} onChange={(e) => setMethodFilter(e.target.value)} className="h-8 rounded-md border border-input bg-background px-2 text-sm" aria-label="調剤方法フィルタ">
-          {METHOD_FILTER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        <select
+          value={methodFilter}
+          onChange={(e) => setMethodFilter(e.target.value)}
+          className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+          aria-label="調剤方法フィルタ"
+        >
+          {METHOD_FILTER_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
         </select>
       </div>
 
@@ -1164,18 +1346,26 @@ export function PrescriptionHistoryContent() {
         </div>
       ) : (
         <div className="relative space-y-3">
-          <div className="absolute left-[19px] top-4 bottom-4 w-px bg-border print:hidden" aria-hidden="true" />
+          <div
+            className="absolute left-[19px] top-4 bottom-4 w-px bg-border print:hidden"
+            aria-hidden="true"
+          />
           {filteredIntakes.map((intake, idx) => {
             const prevIntake = idx < filteredIntakes.length - 1 ? filteredIntakes[idx + 1] : null;
             return (
               <div key={intake.id} className="relative pl-10 print:pl-0">
-                <div className="absolute left-3.5 top-4 size-2.5 rounded-full border-2 border-primary bg-background print:hidden" aria-hidden="true" />
+                <div
+                  className="absolute left-3.5 top-4 size-2.5 rounded-full border-2 border-primary bg-background print:hidden"
+                  aria-hidden="true"
+                />
                 <PrescriptionIntakeCard
                   intake={intake}
                   prevIntake={prevIntake}
                   overlapSet={overlapSet}
                   masterMap={masterMap}
-                  onMarkOriginalCollected={(intakeId) => markOriginalCollectedMutation.mutate(intakeId)}
+                  onMarkOriginalCollected={(intakeId) =>
+                    markOriginalCollectedMutation.mutate(intakeId)
+                  }
                   isMarkingOriginalCollected={markOriginalCollectedMutation.isPending}
                 />
               </div>

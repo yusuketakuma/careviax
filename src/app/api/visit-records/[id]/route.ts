@@ -17,11 +17,17 @@ import {
 } from '@/lib/validations/visit-record';
 import { prisma } from '@/lib/db/client';
 import {
+  getMissingHomeVisit2026CompletionItems,
+  isHomeVisit2026CompletionOutcome,
+} from '@/lib/visits/home-visit-2026-evidence';
+import type { StructuredSoap } from '@/types/structured-soap';
+import {
   getStoredFileRecord,
   toVisitRecordAttachment,
   type VisitRecordAttachment,
 } from '@/server/services/file-storage';
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
+import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
 
 function parseStoredVisitRecordAttachments(value: unknown): VisitRecordAttachment[] {
   if (!Array.isArray(value)) return [];
@@ -197,7 +203,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const { version, next_visit_suggestion_date, visit_date, attachments, ...rest } = parsed.data;
+  const {
+    version,
+    next_visit_suggestion_date,
+    visit_date,
+    attachments,
+    residual_medications,
+    ...rest
+  } = parsed.data;
   const updated = await withOrgContext(
     ctx.orgId,
     async (tx) => {
@@ -207,13 +220,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         select: {
           id: true,
           version: true,
+          patient_id: true,
+          outcome_status: true,
+          structured_soap: true,
           schedule: {
             select: {
+              case_id: true,
               pharmacist_id: true,
+              visit_type: true,
               case_: {
                 select: {
                   primary_pharmacist_id: true,
                   backup_pharmacist_id: true,
+                  required_visit_support: true,
                 },
               },
             },
@@ -221,8 +240,73 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         },
       });
       if (!existing) return null;
-      if (!canAccessVisitScheduleAssignment(ctx, existing.schedule)) return 'forbidden' as const;
+      if (!existing.schedule || !canAccessVisitScheduleAssignment(ctx, existing.schedule)) {
+        return 'forbidden' as const;
+      }
+      const schedule = existing.schedule;
       if (existing.version !== version) return 'conflict' as const;
+
+      const residualMedicationCount =
+        residual_medications?.length ??
+        (await tx.residualMedication.count({
+          where: {
+            org_id: ctx.orgId,
+            visit_record_id: id,
+          },
+        }));
+      const targetOutcome = rest.outcome_status ?? existing.outcome_status;
+      let billingBlockers: Parameters<
+        typeof getMissingHomeVisit2026CompletionItems
+      >[0]['billingBlockers'] = [];
+      if (isHomeVisit2026CompletionOutcome(targetOutcome)) {
+        const [scopedVisitRecords, scopedMedicationCycles] = await Promise.all([
+          tx.visitRecord.findMany({
+            where: {
+              org_id: ctx.orgId,
+              patient_id: existing.patient_id,
+              schedule: {
+                case_id: schedule.case_id,
+              },
+            },
+            select: { id: true },
+          }),
+          tx.medicationCycle.findMany({
+            where: {
+              org_id: ctx.orgId,
+              patient_id: existing.patient_id,
+              case_id: schedule.case_id,
+            },
+            select: { id: true },
+          }),
+        ]);
+        const billingEvidence = await listBillingEvidenceBlockers(tx, {
+          orgId: ctx.orgId,
+          patientId: existing.patient_id,
+          visitRecordIds: scopedVisitRecords.map((item) => item.id),
+          cycleIds: scopedMedicationCycles.map((item) => item.id),
+          limit: 4,
+        });
+        billingBlockers = billingEvidence.flatMap((item) => item.blockers);
+      }
+      const intakeInitialTransitionExpected =
+        getHomeVisitIntake(schedule.case_.required_visit_support)
+          ?.initial_transition_management_expected ?? null;
+      const missingHomeVisit2026Items = getMissingHomeVisit2026CompletionItems({
+        outcomeStatus: targetOutcome,
+        structuredSoap:
+          (rest.structured_soap as Partial<StructuredSoap> | undefined) ??
+          (existing.structured_soap as Partial<StructuredSoap> | null),
+        visitType: schedule.visit_type ?? null,
+        residualMedicationCount,
+        billingBlockers,
+        intakeInitialTransitionExpected,
+      });
+      if (missingHomeVisit2026Items.length > 0) {
+        return {
+          error: 'home_visit_2026_readiness_incomplete' as const,
+          missingItems: missingHomeVisit2026Items.map((item) => item.label),
+        };
+      }
 
       let normalizedAttachments: VisitRecordAttachment[] | undefined;
       if (attachments) {
@@ -265,6 +349,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   if ('error' in updated && updated.error === 'attachment_validation') {
     return validationError(updated.message);
+  }
+  if ('error' in updated && updated.error === 'home_visit_2026_readiness_incomplete') {
+    return validationError('訪問完了には訪問薬剤管理の必須確認が必要です', {
+      home_visit_2026_readiness: updated.missingItems,
+    });
   }
 
   return success(updated);

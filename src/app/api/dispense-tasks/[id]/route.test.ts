@@ -14,14 +14,19 @@ const {
   notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
-    (handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>) => {
+    (
+      handler: (
+        req: NextRequest & { orgId: string; userId: string; role: 'pharmacist' },
+      ) => Promise<Response>,
+    ) => {
       return (req: NextRequest) =>
         handler({
           ...req,
           orgId: 'org_1',
           userId: 'user_1',
-        } as NextRequest & { orgId: string; userId: string });
-    }
+          role: 'pharmacist',
+        } as NextRequest & { orgId: string; userId: string; role: 'pharmacist' });
+    },
   ),
   dispenseTaskFindFirstMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -102,7 +107,7 @@ describe('/api/dispense-tasks/[id]', () => {
         dispenseTask: {
           update: dispenseTaskUpdateMock,
         },
-      })
+      }),
     );
   });
 
@@ -214,6 +219,20 @@ describe('/api/dispense-tasks/[id]', () => {
       ],
     });
     expect(generateDispensePrefillMock).toHaveBeenCalledWith('cycle_1', 'org_1', 'site_1');
+    expect(dispenseTaskFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'task_1',
+          cycle: expect.objectContaining({
+            case_: expect.objectContaining({
+              OR: expect.arrayContaining([
+                expect.objectContaining({ primary_pharmacist_id: 'user_1' }),
+              ]),
+            }),
+          }),
+        }),
+      }),
+    );
   });
 
   it('returns fax original collection check metadata for fax-origin tasks', async () => {
@@ -423,11 +442,25 @@ describe('/api/dispense-tasks/[id]', () => {
       } as NextRequest,
       {
         params: Promise.resolve({ id: 'task_1' }),
-      }
+      },
     );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(dispenseTaskFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'task_1',
+          cycle: expect.objectContaining({
+            case_: expect.objectContaining({
+              OR: expect.arrayContaining([
+                expect.objectContaining({ primary_pharmacist_id: 'user_1' }),
+              ]),
+            }),
+          }),
+        }),
+      }),
+    );
     expect(dispenseTaskUpdateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'task_1' },
@@ -435,7 +468,7 @@ describe('/api/dispense-tasks/[id]', () => {
           status: 'in_progress',
           assigned_to: 'user_1',
         }),
-      })
+      }),
     );
     expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
       orgId: 'org_1',

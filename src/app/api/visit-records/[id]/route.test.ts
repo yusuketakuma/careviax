@@ -5,6 +5,8 @@ const {
   requireAuthContextMock,
   visitRecordFindFirstMock,
   visitRecordUpdateMock,
+  visitRecordFindManyMock,
+  medicationCycleFindManyMock,
   auditLogFindFirstMock,
   userFindManyMock,
   careCaseFindFirstMock,
@@ -12,10 +14,13 @@ const {
   withOrgContextMock,
   getStoredFileRecordMock,
   toVisitRecordAttachmentMock,
+  listBillingEvidenceBlockersMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
   visitRecordUpdateMock: vi.fn(),
+  visitRecordFindManyMock: vi.fn(),
+  medicationCycleFindManyMock: vi.fn(),
   auditLogFindFirstMock: vi.fn(),
   userFindManyMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
@@ -23,6 +28,7 @@ const {
   withOrgContextMock: vi.fn(),
   getStoredFileRecordMock: vi.fn(),
   toVisitRecordAttachmentMock: vi.fn(),
+  listBillingEvidenceBlockersMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -58,6 +64,10 @@ vi.mock('@/server/services/file-storage', () => ({
   toVisitRecordAttachment: toVisitRecordAttachmentMock,
 }));
 
+vi.mock('@/server/services/billing-evidence', () => ({
+  listBillingEvidenceBlockers: listBillingEvidenceBlockersMock,
+}));
+
 import { GET, PATCH } from './route';
 
 function createRequest(body?: unknown) {
@@ -83,6 +93,9 @@ describe('/api/visit-records/[id]', () => {
     userFindManyMock.mockResolvedValue([{ id: 'user_1', name: '薬剤師A' }]);
     careCaseFindFirstMock.mockResolvedValue(null);
     patientSchedulePreferenceFindFirstMock.mockResolvedValue(null);
+    visitRecordFindManyMock.mockResolvedValue([{ id: 'visit_1' }]);
+    medicationCycleFindManyMock.mockResolvedValue([{ id: 'cycle_1' }]);
+    listBillingEvidenceBlockersMock.mockResolvedValue([]);
     toVisitRecordAttachmentMock.mockImplementation((record) => ({
       file_id: record.id,
       file_name: record.originalName,
@@ -97,15 +110,28 @@ describe('/api/visit-records/[id]', () => {
           findFirst: vi.fn().mockResolvedValue({
             id: 'visit_1',
             version: 1,
+            patient_id: 'patient_1',
+            outcome_status: 'delivery_only',
+            structured_soap: null,
             schedule: {
+              case_id: 'case_1',
               pharmacist_id: 'user_1',
+              visit_type: 'regular',
               case_: {
                 primary_pharmacist_id: 'user_primary',
                 backup_pharmacist_id: null,
+                required_visit_support: null,
               },
             },
           }),
+          findMany: visitRecordFindManyMock,
           update: visitRecordUpdateMock,
+        },
+        medicationCycle: {
+          findMany: medicationCycleFindManyMock,
+        },
+        residualMedication: {
+          count: vi.fn().mockResolvedValue(0),
         },
       }),
     );
@@ -238,8 +264,11 @@ describe('/api/visit-records/[id]', () => {
           findFirst: vi.fn().mockResolvedValue({
             id: 'visit_1',
             version: 1,
+            outcome_status: 'delivery_only',
+            structured_soap: null,
             schedule: {
               pharmacist_id: 'user_other',
+              visit_type: 'regular',
               case_: {
                 primary_pharmacist_id: 'user_primary',
                 backup_pharmacist_id: null,
@@ -247,6 +276,9 @@ describe('/api/visit-records/[id]', () => {
             },
           }),
           update: visitRecordUpdateMock,
+        },
+        residualMedication: {
+          count: vi.fn().mockResolvedValue(0),
         },
       }),
     );
@@ -333,6 +365,30 @@ describe('/api/visit-records/[id]', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitRecordUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects completing a visit record update without medication-management readiness evidence', async () => {
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        outcome_status: 'completed',
+        soap_subjective: '服薬状況は確認したが必須確認は未完了',
+      }),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '訪問完了には訪問薬剤管理の必須確認が必要です',
+      details: {
+        home_visit_2026_readiness: expect.arrayContaining(['残薬確認']),
+      },
+    });
     expect(visitRecordUpdateMock).not.toHaveBeenCalled();
   });
 

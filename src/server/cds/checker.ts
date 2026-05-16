@@ -28,17 +28,26 @@ type CurrentMed = {
   drug_master_id: string | null;
 };
 
-type MasterInfo = { id: string; yj_code: string; drug_name: string; therapeutic_category: string | null };
+type MasterInfo = {
+  id: string;
+  yj_code: string;
+  drug_name: string;
+  therapeutic_category: string | null;
+};
 
 type DrugMasterForCds = {
   id: string;
   yj_code: string;
   drug_name: string;
+  tall_man_name: string | null;
   therapeutic_category: string | null;
   max_administration_days: number | null;
   transitional_expiry_date: Date | null;
   is_narcotic: boolean;
   is_psychotropic: boolean;
+  is_high_risk: boolean;
+  is_lasa_risk: boolean;
+  lasa_group_key: string | null;
 };
 
 type AllergyEntry = {
@@ -101,7 +110,13 @@ const DO_PRESCRIPTION_RISK_PROFILES: DoPrescriptionRiskProfile[] = [
     key: 'anti_inflammatory_analgesic',
     label: '消炎鎮痛剤',
     therapeuticCategoryPrefixes: ['114'],
-    drugNameKeywords: ['ロキソ', 'ジクロフェナク', 'セレコキシブ', 'イブプロフェン', 'アセトアミノフェン'],
+    drugNameKeywords: [
+      'ロキソ',
+      'ジクロフェナク',
+      'セレコキシブ',
+      'イブプロフェン',
+      'アセトアミノフェン',
+    ],
     minimumContinuedDays: 28,
   },
   {
@@ -115,7 +130,14 @@ const DO_PRESCRIPTION_RISK_PROFILES: DoPrescriptionRiskProfile[] = [
     key: 'laxative',
     label: '下剤',
     therapeuticCategoryPrefixes: ['235'],
-    drugNameKeywords: ['センノシド', '酸化マグネシウム', 'マグミット', 'ラキソベロン', 'ルビプロストン', 'モビコール'],
+    drugNameKeywords: [
+      'センノシド',
+      '酸化マグネシウム',
+      'マグミット',
+      'ラキソベロン',
+      'ルビプロストン',
+      'モビコール',
+    ],
     minimumContinuedDays: 28,
   },
 ];
@@ -144,14 +166,12 @@ async function resolveManagedAlertTypeStates() {
   return states;
 }
 
-function buildComparableLineKey(line: Pick<PrescriptionLine, 'drug_name' | 'drug_code' | 'dose' | 'frequency' | 'days'>) {
-  return [
-    line.drug_code ?? '',
-    line.drug_name,
-    line.dose,
-    line.frequency,
-    String(line.days),
-  ].join('::');
+function buildComparableLineKey(
+  line: Pick<PrescriptionLine, 'drug_name' | 'drug_code' | 'dose' | 'frequency' | 'days'>,
+) {
+  return [line.drug_code ?? '', line.drug_name, line.dose, line.frequency, String(line.days)].join(
+    '::',
+  );
 }
 
 function isSamePrescriptionContent(
@@ -171,8 +191,7 @@ function findMatchingPreviousLine(
   currentLine: PrescriptionLine,
 ) {
   return previousLines.find(
-    (line) =>
-      buildComparableLineKey(line) === buildComparableLineKey(currentLine),
+    (line) => buildComparableLineKey(line) === buildComparableLineKey(currentLine),
   );
 }
 
@@ -182,8 +201,12 @@ function resolveDoPrescriptionRiskProfile(
 ) {
   return DO_PRESCRIPTION_RISK_PROFILES.find((profile) => {
     const category = drugInfo?.therapeutic_category ?? '';
-    const matchByCategory = profile.therapeuticCategoryPrefixes.some((prefix) => category.startsWith(prefix));
-    const matchByName = profile.drugNameKeywords.some((keyword) => line.drug_name.includes(keyword));
+    const matchByCategory = profile.therapeuticCategoryPrefixes.some((prefix) =>
+      category.startsWith(prefix),
+    );
+    const matchByName = profile.drugNameKeywords.some((keyword) =>
+      line.drug_name.includes(keyword),
+    );
     return matchByCategory || matchByName;
   });
 }
@@ -257,9 +280,10 @@ async function checkInteractions(
         alerts.push({
           type: 'interaction',
           severity: interaction.severity === 'contraindicated' ? 'critical' : 'warning',
-          message: interaction.severity === 'contraindicated'
-            ? `併用禁忌: ${line.drug_name} × ${med.drug_name}`
-            : `併用注意: ${line.drug_name} × ${med.drug_name}`,
+          message:
+            interaction.severity === 'contraindicated'
+              ? `併用禁忌: ${line.drug_name} × ${med.drug_name}`
+              : `併用注意: ${line.drug_name} × ${med.drug_name}`,
           details: {
             interaction_severity: interaction.severity,
             mechanism: interaction.mechanism ?? undefined,
@@ -300,9 +324,7 @@ async function checkDuplicates(
       }
     }
 
-    const dupByName = currentMeds.find(
-      (m) => m.drug_name === line.drug_name,
-    );
+    const dupByName = currentMeds.find((m) => m.drug_name === line.drug_name);
     if (dupByName) {
       alerts.push({
         type: 'duplicate',
@@ -331,7 +353,10 @@ async function checkMaxDays(
 
   if (drugCodes.length === 0) return alerts;
 
-  let drugByCode: Map<string, Pick<DrugMasterForCds, 'yj_code' | 'max_administration_days' | 'drug_name'>>;
+  let drugByCode: Map<
+    string,
+    Pick<DrugMasterForCds, 'yj_code' | 'max_administration_days' | 'drug_name'>
+  >;
   if (drugMasterMap) {
     drugByCode = drugMasterMap;
   } else {
@@ -391,13 +416,9 @@ async function checkPackageInsertAudit(
 
   if (packageInserts.length === 0) return alerts;
 
-  const patientAge = patient?.birth_date
-    ? differenceInYears(new Date(), patient.birth_date)
-    : null;
+  const patientAge = patient?.birth_date ? differenceInYears(new Date(), patient.birth_date) : null;
 
-  const insertByCode = new Map(
-    packageInserts.map((pi) => [pi.drug_master.yj_code, pi]),
-  );
+  const insertByCode = new Map(packageInserts.map((pi) => [pi.drug_master.yj_code, pi]));
 
   for (const line of prescriptionLines) {
     if (!line.drug_code) continue;
@@ -438,7 +459,12 @@ async function checkPackageInsertAudit(
     }
 
     // Check elderly precautions (only for patients >= 65)
-    if (patientAge !== null && patientAge >= 65 && pi.precautions_elderly && Array.isArray(pi.precautions_elderly)) {
+    if (
+      patientAge !== null &&
+      patientAge >= 65 &&
+      pi.precautions_elderly &&
+      Array.isArray(pi.precautions_elderly)
+    ) {
       const items = pi.precautions_elderly as Array<{ text?: string }>;
       for (const item of items.slice(0, 2)) {
         if (item.text) {
@@ -501,14 +527,21 @@ async function checkTransitionalExpiry(
         type: 'transitional_expiry',
         severity: 'critical',
         message: `経過措置期限切れ: ${drug.drug_name}（${drug.transitional_expiry_date.toISOString().slice(0, 10)}に失効済み）`,
-        details: { drug_code: drug.yj_code, expiry_date: drug.transitional_expiry_date.toISOString() },
+        details: {
+          drug_code: drug.yj_code,
+          expiry_date: drug.transitional_expiry_date.toISOString(),
+        },
       });
     } else if (daysUntilExpiry <= 90) {
       alerts.push({
         type: 'transitional_expiry',
         severity: 'warning',
         message: `経過措置期限接近: ${drug.drug_name}（残${daysUntilExpiry}日、${drug.transitional_expiry_date.toISOString().slice(0, 10)}）`,
-        details: { drug_code: drug.yj_code, expiry_date: drug.transitional_expiry_date.toISOString(), days_remaining: daysUntilExpiry },
+        details: {
+          drug_code: drug.yj_code,
+          expiry_date: drug.transitional_expiry_date.toISOString(),
+          days_remaining: daysUntilExpiry,
+        },
       });
     }
   }
@@ -530,9 +563,7 @@ async function checkAllergyReactions(
   if (!patient?.allergy_info) return alerts;
 
   const allergyEntries = (
-    Array.isArray(patient.allergy_info)
-      ? patient.allergy_info
-      : []
+    Array.isArray(patient.allergy_info) ? patient.allergy_info : []
   ) as AllergyEntry[];
 
   if (allergyEntries.length === 0) return alerts;
@@ -547,16 +578,20 @@ async function checkAllergyReactions(
     .map((l) => l.drug_code)
     .filter((c): c is string => c !== null);
 
-  let drugByCode: Map<string, Pick<DrugMasterForCds, 'yj_code' | 'drug_name' | 'therapeutic_category'>>;
+  let drugByCode: Map<
+    string,
+    Pick<DrugMasterForCds, 'yj_code' | 'drug_name' | 'therapeutic_category'>
+  >;
   if (drugMasterMap) {
     drugByCode = drugMasterMap;
   } else {
-    const prescribedDrugs = drugCodes.length > 0
-      ? await prisma.drugMaster.findMany({
-          where: { yj_code: { in: drugCodes } },
-          select: { yj_code: true, drug_name: true, therapeutic_category: true },
-        })
-      : [];
+    const prescribedDrugs =
+      drugCodes.length > 0
+        ? await prisma.drugMaster.findMany({
+            where: { yj_code: { in: drugCodes } },
+            select: { yj_code: true, drug_name: true, therapeutic_category: true },
+          })
+        : [];
     drugByCode = new Map(prescribedDrugs.map((d) => [d.yj_code, d]));
   }
 
@@ -572,7 +607,11 @@ async function checkAllergyReactions(
           type: 'allergy_cross',
           severity: allergyAlertSeverity(allergy.severity),
           message: `アレルギー交差反応: ${line.drug_name}（患者アレルギー: ${allergy.drug_name}）`,
-          details: { allergy_drug: allergy.drug_name, prescribed_drug: line.drug_name, allergy_severity: allergy.severity },
+          details: {
+            allergy_drug: allergy.drug_name,
+            prescribed_drug: line.drug_name,
+            allergy_severity: allergy.severity,
+          },
         });
       }
 
@@ -600,8 +639,7 @@ async function checkAllergyReactions(
       const condition = rule.condition as AlertRuleCondition | null;
       if (!condition) continue;
 
-      const matchByCode =
-        condition.yj_codes?.includes(line.drug_code) ?? false;
+      const matchByCode = condition.yj_codes?.includes(line.drug_code) ?? false;
       const matchByCategory =
         drugInfo?.therapeutic_category &&
         (condition.therapeutic_categories?.includes(drugInfo.therapeutic_category) ?? false);
@@ -636,7 +674,10 @@ async function checkNarcoticFlags(
 
   if (drugCodes.length === 0) return alerts;
 
-  let drugByCode: Map<string, Pick<DrugMasterForCds, 'yj_code' | 'drug_name' | 'is_narcotic' | 'is_psychotropic'>>;
+  let drugByCode: Map<
+    string,
+    Pick<DrugMasterForCds, 'yj_code' | 'drug_name' | 'is_narcotic' | 'is_psychotropic'>
+  >;
   if (drugMasterMap) {
     drugByCode = drugMasterMap;
   } else {
@@ -688,36 +729,73 @@ async function checkHighRiskDrugs(
     where: { alert_type: 'high_risk', is_active: true },
   });
 
-  if (highRiskRules.length === 0) return alerts;
-
   // Resolve DrugMaster for therapeutic category matching
   const drugCodes = prescriptionLines
     .map((l) => l.drug_code)
     .filter((c): c is string => c !== null);
 
-  let drugByCode: Map<string, Pick<DrugMasterForCds, 'yj_code' | 'therapeutic_category'>>;
+  let drugByCode: Map<
+    string,
+    Pick<
+      DrugMasterForCds,
+      | 'yj_code'
+      | 'drug_name'
+      | 'tall_man_name'
+      | 'therapeutic_category'
+      | 'is_high_risk'
+      | 'is_lasa_risk'
+      | 'lasa_group_key'
+    >
+  >;
   if (drugMasterMap) {
     drugByCode = drugMasterMap;
   } else {
-    const prescribedDrugs = drugCodes.length > 0
-      ? await prisma.drugMaster.findMany({
-          where: { yj_code: { in: drugCodes } },
-          select: { yj_code: true, therapeutic_category: true },
-        })
-      : [];
+    const prescribedDrugs =
+      drugCodes.length > 0
+        ? await prisma.drugMaster.findMany({
+            where: { yj_code: { in: drugCodes } },
+            select: {
+              yj_code: true,
+              drug_name: true,
+              tall_man_name: true,
+              therapeutic_category: true,
+              is_high_risk: true,
+              is_lasa_risk: true,
+              lasa_group_key: true,
+            },
+          })
+        : [];
     drugByCode = new Map(prescribedDrugs.map((d) => [d.yj_code, d]));
   }
 
   for (const line of prescriptionLines) {
     if (!line.drug_code) continue;
     const drugInfo = drugByCode.get(line.drug_code);
+    const displayName = drugInfo?.tall_man_name ?? line.drug_name;
+
+    if (drugInfo?.is_high_risk || drugInfo?.is_lasa_risk) {
+      alerts.push({
+        type: drugInfo.is_lasa_risk ? 'lasa_drug_name' : 'high_risk',
+        severity: 'warning',
+        message: drugInfo.is_lasa_risk
+          ? `類似薬剤名注意: ${displayName}（通常表記: ${line.drug_name}）`
+          : `ハイリスク薬: ${displayName}`,
+        details: {
+          drug_code: line.drug_code,
+          drug: line.drug_name,
+          drug_display_name: displayName,
+          tall_man_name: drugInfo.tall_man_name ?? undefined,
+          lasa_group_key: drugInfo.lasa_group_key ?? undefined,
+          source: 'drug_master_safety_flags',
+        },
+      });
+    }
 
     for (const rule of highRiskRules) {
       const condition = rule.condition as AlertRuleCondition | null;
       if (!condition) continue;
 
-      const matchByCode =
-        condition.yj_codes?.includes(line.drug_code) ?? false;
+      const matchByCode = condition.yj_codes?.includes(line.drug_code) ?? false;
       const matchByCategory =
         drugInfo?.therapeutic_category &&
         (condition.therapeutic_categories?.includes(drugInfo.therapeutic_category) ?? false);
@@ -728,8 +806,13 @@ async function checkHighRiskDrugs(
           severity: 'warning',
           message:
             rule.message ||
-            `ハイリスク薬：服薬指導必須（特定薬剤管理指導加算対象）: ${line.drug_name}`,
-          details: { rule_id: rule.id, drug: line.drug_name },
+            `ハイリスク薬：服薬指導必須（特定薬剤管理指導加算対象）: ${displayName}`,
+          details: {
+            rule_id: rule.id,
+            drug: line.drug_name,
+            drug_display_name: displayName,
+            tall_man_name: drugInfo?.tall_man_name ?? undefined,
+          },
         });
       }
     }
@@ -807,9 +890,7 @@ async function checkDoPrescriptionRisk(
         })
       : [];
 
-  const drugByCode = new Map(
-    prescribedDrugs.map((drug) => [drug.yj_code, drug]),
-  );
+  const drugByCode = new Map(prescribedDrugs.map((drug) => [drug.yj_code, drug]));
 
   const flaggedLines = currentIntake.lines
     .map((line) => {
@@ -897,12 +978,13 @@ async function checkElderlyPIM(
   if (drugMasterMap) {
     drugByCode = drugMasterMap;
   } else {
-    const prescribedDrugs = drugCodes.length > 0
-      ? await prisma.drugMaster.findMany({
-          where: { yj_code: { in: drugCodes } },
-          select: { yj_code: true, therapeutic_category: true },
-        })
-      : [];
+    const prescribedDrugs =
+      drugCodes.length > 0
+        ? await prisma.drugMaster.findMany({
+            where: { yj_code: { in: drugCodes } },
+            select: { yj_code: true, therapeutic_category: true },
+          })
+        : [];
     drugByCode = new Map(prescribedDrugs.map((d) => [d.yj_code, d]));
   }
 
@@ -914,8 +996,7 @@ async function checkElderlyPIM(
       const condition = rule.condition as AlertRuleCondition | null;
       if (!condition) continue;
 
-      const matchByCode =
-        condition.yj_codes?.includes(line.drug_code) ?? false;
+      const matchByCode = condition.yj_codes?.includes(line.drug_code) ?? false;
       const matchByCategory =
         drugInfo?.therapeutic_category &&
         (condition.therapeutic_categories?.includes(drugInfo.therapeutic_category) ?? false);
@@ -924,9 +1005,7 @@ async function checkElderlyPIM(
         alerts.push({
           type: 'pim_elderly',
           severity: 'warning',
-          message:
-            rule.message ||
-            `高齢者PIM警告: ${line.drug_name}（${age}歳）`,
+          message: rule.message || `高齢者PIM警告: ${line.drug_name}（${age}歳）`,
           details: { rule_id: rule.id, drug: line.drug_name, patient_age: age },
         });
       }
@@ -976,9 +1055,7 @@ async function checkRenalDoseAdjustment(
   });
 
   // Map by yj_code for quick lookup
-  const insertByCode = new Map(
-    packageInserts.map((pi) => [pi.drug_master.yj_code, pi]),
-  );
+  const insertByCode = new Map(packageInserts.map((pi) => [pi.drug_master.yj_code, pi]));
 
   for (const line of prescriptionLines) {
     if (!line.drug_code) continue;
@@ -987,9 +1064,7 @@ async function checkRenalDoseAdjustment(
 
     // dosage_adjustment_renal is expected to be an array of { egfr_min, egfr_max, recommendation }
     const adjustments = (
-      Array.isArray(pi.dosage_adjustment_renal)
-        ? pi.dosage_adjustment_renal
-        : []
+      Array.isArray(pi.dosage_adjustment_renal) ? pi.dosage_adjustment_renal : []
     ) as RenalDoseEntry[];
 
     for (const adj of adjustments) {
@@ -1021,9 +1096,22 @@ async function checkRenalDoseAdjustment(
 // ---------------------------------------------------------------------------
 
 const ANTICOAGULANT_CATEGORY_PREFIXES = ['333'];
-const ANTICOAGULANT_KEYWORDS = ['ワルファリン', 'アピキサバン', 'リバーロキサバン', 'エドキサバン', 'ダビガトラン'];
+const ANTICOAGULANT_KEYWORDS = [
+  'ワルファリン',
+  'アピキサバン',
+  'リバーロキサバン',
+  'エドキサバン',
+  'ダビガトラン',
+];
 const DIURETIC_CATEGORY_PREFIXES = ['213', '214', '2149'];
-const DIURETIC_KEYWORDS = ['フロセミド', 'スピロノラクトン', 'トルバプタン', 'アゾセミド', 'カンレノ酸', 'ヒドロクロロチアジド'];
+const DIURETIC_KEYWORDS = [
+  'フロセミド',
+  'スピロノラクトン',
+  'トルバプタン',
+  'アゾセミド',
+  'カンレノ酸',
+  'ヒドロクロロチアジド',
+];
 
 async function checkMonitoringAlerts(
   prescriptionLines: PrescriptionLine[],
@@ -1041,12 +1129,13 @@ async function checkMonitoringAlerts(
   if (drugMasterMap) {
     drugByCode = drugMasterMap;
   } else {
-    const prescribedDrugs = drugCodes.length > 0
-      ? await prisma.drugMaster.findMany({
-          where: { yj_code: { in: drugCodes } },
-          select: { yj_code: true, therapeutic_category: true },
-        })
-      : [];
+    const prescribedDrugs =
+      drugCodes.length > 0
+        ? await prisma.drugMaster.findMany({
+            where: { yj_code: { in: drugCodes } },
+            select: { yj_code: true, therapeutic_category: true },
+          })
+        : [];
     drugByCode = new Map(prescribedDrugs.map((d) => [d.yj_code, d]));
   }
 
@@ -1054,15 +1143,19 @@ async function checkMonitoringAlerts(
   let hasDiuretic = false;
 
   for (const line of prescriptionLines) {
-    const category = line.drug_code ? (drugByCode.get(line.drug_code)?.therapeutic_category ?? '') : '';
+    const category = line.drug_code
+      ? (drugByCode.get(line.drug_code)?.therapeutic_category ?? '')
+      : '';
     if (
       ANTICOAGULANT_CATEGORY_PREFIXES.some((p) => category.startsWith(p)) ||
       ANTICOAGULANT_KEYWORDS.some((kw) => line.drug_name.includes(kw))
-    ) hasAnticoagulant = true;
+    )
+      hasAnticoagulant = true;
     if (
       DIURETIC_CATEGORY_PREFIXES.some((p) => category.startsWith(p)) ||
       DIURETIC_KEYWORDS.some((kw) => line.drug_name.includes(kw))
-    ) hasDiuretic = true;
+    )
+      hasDiuretic = true;
   }
 
   if (!hasAnticoagulant && !hasDiuretic) return alerts;
@@ -1072,7 +1165,11 @@ async function checkMonitoringAlerts(
   if (hasDiuretic) analyteCodes.push('k');
 
   const latestLabs = await prisma.patientLabObservation.findMany({
-    where: { patient_id: patientId, org_id: orgId, analyte_code: { in: analyteCodes as LabAnalyteCode[] } },
+    where: {
+      patient_id: patientId,
+      org_id: orgId,
+      analyte_code: { in: analyteCodes as LabAnalyteCode[] },
+    },
     orderBy: { measured_at: 'desc' },
     select: { analyte_code: true, value_numeric: true },
   });
@@ -1087,22 +1184,52 @@ async function checkMonitoringAlerts(
   if (hasAnticoagulant) {
     const ptInr = latestByAnalyte.get('pt_inr') ?? null;
     if (ptInr === null) {
-      alerts.push({ type: 'monitoring', severity: 'info', message: 'モニタリング: 抗凝固薬処方あり — PT-INR の直近値が未記録です', details: { analyte: 'pt_inr' } });
+      alerts.push({
+        type: 'monitoring',
+        severity: 'info',
+        message: 'モニタリング: 抗凝固薬処方あり — PT-INR の直近値が未記録です',
+        details: { analyte: 'pt_inr' },
+      });
     } else if (ptInr >= 3.0) {
-      alerts.push({ type: 'monitoring', severity: 'critical', message: `モニタリング: 抗凝固薬 × PT-INR 高値（${ptInr}）— 出血リスク要確認`, details: { analyte: 'pt_inr', value: ptInr } });
+      alerts.push({
+        type: 'monitoring',
+        severity: 'critical',
+        message: `モニタリング: 抗凝固薬 × PT-INR 高値（${ptInr}）— 出血リスク要確認`,
+        details: { analyte: 'pt_inr', value: ptInr },
+      });
     } else if (ptInr >= 2.5) {
-      alerts.push({ type: 'monitoring', severity: 'warning', message: `モニタリング: 抗凝固薬 × PT-INR 上昇傾向（${ptInr}）— 用量見直しを検討`, details: { analyte: 'pt_inr', value: ptInr } });
+      alerts.push({
+        type: 'monitoring',
+        severity: 'warning',
+        message: `モニタリング: 抗凝固薬 × PT-INR 上昇傾向（${ptInr}）— 用量見直しを検討`,
+        details: { analyte: 'pt_inr', value: ptInr },
+      });
     }
   }
 
   if (hasDiuretic) {
     const k = latestByAnalyte.get('k') ?? null;
     if (k === null) {
-      alerts.push({ type: 'monitoring', severity: 'info', message: 'モニタリング: 利尿薬/RAA系薬処方あり — 血清K値の直近値が未記録です', details: { analyte: 'k' } });
+      alerts.push({
+        type: 'monitoring',
+        severity: 'info',
+        message: 'モニタリング: 利尿薬/RAA系薬処方あり — 血清K値の直近値が未記録です',
+        details: { analyte: 'k' },
+      });
     } else if (k < 3.0) {
-      alerts.push({ type: 'monitoring', severity: 'critical', message: `モニタリング: 利尿薬 × K低値（${k} mEq/L）— 低カリウム血症リスク要確認`, details: { analyte: 'k', value: k } });
+      alerts.push({
+        type: 'monitoring',
+        severity: 'critical',
+        message: `モニタリング: 利尿薬 × K低値（${k} mEq/L）— 低カリウム血症リスク要確認`,
+        details: { analyte: 'k', value: k },
+      });
     } else if (k < 3.5) {
-      alerts.push({ type: 'monitoring', severity: 'warning', message: `モニタリング: 利尿薬 × K低め（${k} mEq/L）— カリウム補充を検討`, details: { analyte: 'k', value: k } });
+      alerts.push({
+        type: 'monitoring',
+        severity: 'warning',
+        message: `モニタリング: 利尿薬 × K低め（${k} mEq/L）— カリウム補充を検討`,
+        details: { analyte: 'k', value: k },
+      });
     }
   }
 
@@ -1194,23 +1321,28 @@ export async function checkDispenseAlerts(
   const prescriptionDrugCodes = prescriptionLines
     .map((l) => l.drug_code)
     .filter((c): c is string => c !== null);
-  const allDrugMasters = prescriptionDrugCodes.length > 0
-    ? await prisma.drugMaster.findMany({
-        where: { yj_code: { in: prescriptionDrugCodes } },
-        select: {
-          id: true,
-          yj_code: true,
-          drug_name: true,
-          therapeutic_category: true,
-          max_administration_days: true,
-          transitional_expiry_date: true,
-          is_narcotic: true,
-          is_psychotropic: true,
-        },
-      })
-    : [];
+  const allDrugMasters =
+    prescriptionDrugCodes.length > 0
+      ? await prisma.drugMaster.findMany({
+          where: { yj_code: { in: prescriptionDrugCodes } },
+          select: {
+            id: true,
+            yj_code: true,
+            drug_name: true,
+            tall_man_name: true,
+            therapeutic_category: true,
+            max_administration_days: true,
+            transitional_expiry_date: true,
+            is_narcotic: true,
+            is_psychotropic: true,
+            is_high_risk: true,
+            is_lasa_risk: true,
+            lasa_group_key: true,
+          },
+        })
+      : [];
   const drugMasterMap = new Map<string, DrugMasterForCds>(
-    allDrugMasters.map((d) => [d.yj_code, d])
+    allDrugMasters.map((d) => [d.yj_code, d]),
   );
 
   // Run all checks in parallel

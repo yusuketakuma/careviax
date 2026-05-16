@@ -53,6 +53,10 @@ type DrugMasterRow = {
   is_generic: boolean;
   is_narcotic: boolean;
   is_psychotropic: boolean;
+  is_high_risk: boolean;
+  is_lasa_risk: boolean;
+  tall_man_name: string | null;
+  lasa_group_key: string | null;
   max_administration_days: number | null;
 };
 
@@ -132,19 +136,7 @@ const columns: ColumnDef<DrugMasterRow>[] = [
   {
     accessorKey: 'drug_name',
     header: '医薬品名',
-    cell: ({ row }) => (
-      <div className="min-w-[200px]">
-        <div className="flex items-center gap-1.5">
-          <Pill className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <span className="font-medium text-foreground">{row.original.drug_name}</span>
-        </div>
-        {row.original.generic_name && (
-          <div className="mt-0.5 text-xs text-muted-foreground">
-            一般名: {row.original.generic_name}
-          </div>
-        )}
-      </div>
-    ),
+    cell: ({ row }) => <DrugNameCell drug={row.original} />,
   },
   {
     accessorKey: 'yj_code',
@@ -180,6 +172,17 @@ const columns: ColumnDef<DrugMasterRow>[] = [
           <span className="inline-flex items-center gap-0.5 rounded bg-orange-100 px-1 py-0.5 text-[10px] font-medium text-orange-700">
             <Shield className="size-2.5" aria-hidden="true" />
             向精神
+          </span>
+        )}
+        {row.original.is_high_risk && (
+          <span className="inline-flex items-center gap-0.5 rounded border border-red-300 bg-red-50 px-1 py-0.5 text-[10px] font-medium text-red-700">
+            <AlertTriangle className="size-2.5" aria-hidden="true" />
+            ハイリスク
+          </span>
+        )}
+        {row.original.is_lasa_risk && (
+          <span className="inline-flex items-center gap-0.5 rounded border border-amber-300 bg-amber-50 px-1 py-0.5 text-[10px] font-medium text-amber-800">
+            LASA
           </span>
         )}
       </div>
@@ -282,6 +285,36 @@ const IMPORT_SOURCE_LABEL: Record<DrugMasterImportLog['source'], string> = {
   manual_clinical: '手動臨床ルール',
 };
 
+function DrugNameCell({ drug }: { drug: DrugMasterRow }) {
+  const displayName = drug.tall_man_name?.trim() || drug.drug_name;
+  const hasTallMan = displayName !== drug.drug_name;
+
+  return (
+    <div className="min-w-[200px]">
+      <div className="flex items-center gap-1.5">
+        <Pill className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="font-medium text-foreground">{displayName}</span>
+        {hasTallMan && (
+          <Badge variant="outline" className="border-amber-300 text-[10px] text-amber-800">
+            Tall Man
+          </Badge>
+        )}
+      </div>
+      {hasTallMan && (
+        <div className="mt-0.5 text-xs text-muted-foreground">通常表記: {drug.drug_name}</div>
+      )}
+      {drug.generic_name && (
+        <div className="mt-0.5 text-xs text-muted-foreground">一般名: {drug.generic_name}</div>
+      )}
+      {(drug.is_lasa_risk || drug.lasa_group_key) && (
+        <div className="mt-1 text-xs font-medium text-amber-800">
+          LASA注意{drug.lasa_group_key ? `: ${drug.lasa_group_key}` : ''}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StructuredPayload({ value }: { value: unknown }) {
   if (value == null) {
     return <p className="text-sm text-muted-foreground">情報はまだ登録されていません。</p>;
@@ -321,6 +354,8 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const [category, setCategory] = useState('');
   const [genericOnly, setGenericOnly] = useState(false);
   const [narcoticOnly, setNarcoticOnly] = useState(false);
+  const [highRiskOnly, setHighRiskOnly] = useState(false);
+  const [lasaOnly, setLasaOnly] = useState(false);
   const [selectedDrugId, setSelectedDrugId] = useState<string | null>(null);
   const [selectedSiteId, setSelectedSiteId] = useState('');
   const [preferredGenericId, setPreferredGenericId] = useState<string | null>(null);
@@ -332,8 +367,10 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     if (category) p.set('category', category);
     if (genericOnly) p.set('generic', 'true');
     if (narcoticOnly) p.set('narcotic', 'true');
+    if (highRiskOnly) p.set('highRisk', 'true');
+    if (lasaOnly) p.set('lasa', 'true');
     return p.toString();
-  }, [searchQuery, category, genericOnly, narcoticOnly]);
+  }, [searchQuery, category, genericOnly, narcoticOnly, highRiskOnly, lasaOnly]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['drug-masters', orgId, params],
@@ -659,7 +696,8 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                 <p className="mt-1 rounded-md bg-muted/40 px-3 py-2 font-mono text-xs text-muted-foreground">
                   HOT: <code>HOT_MASTER_URL</code> または明示 URL
                   <br />
-                  PMDA: <code>PMDA_PACKAGE_INSERT_FULL_URL</code> / <code>PMDA_PACKAGE_INSERT_DELTA_URL</code>
+                  PMDA: <code>PMDA_PACKAGE_INSERT_FULL_URL</code> /{' '}
+                  <code>PMDA_PACKAGE_INSERT_DELTA_URL</code>
                 </p>
               </details>
             </div>
@@ -696,10 +734,10 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
           <CardHeader className="pb-3">
             <CardTitle className="text-base">マスター更新ステータス</CardTitle>
             <p className="text-xs text-muted-foreground">
-              総品目数: {masterStatusData.totals.drug_master_count.toLocaleString()}件 ・
-              添付文書: {masterStatusData.totals.package_insert_count.toLocaleString()}件 ・
-              相互作用: {masterStatusData.totals.interaction_count.toLocaleString()}件 ・
-              アラートルール: {masterStatusData.totals.active_alert_rule_count}件
+              総品目数: {masterStatusData.totals.drug_master_count.toLocaleString()}件 ・ 添付文書:{' '}
+              {masterStatusData.totals.package_insert_count.toLocaleString()}件 ・ 相互作用:{' '}
+              {masterStatusData.totals.interaction_count.toLocaleString()}件 ・ アラートルール:{' '}
+              {masterStatusData.totals.active_alert_rule_count}件
             </p>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -719,20 +757,30 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                     {source.last_success
                       ? `最終取込: ${new Date(source.last_success.imported_at).toLocaleDateString('ja-JP')} (${source.last_success.days_ago}日前) ・ ${source.last_success.record_count.toLocaleString()}件`
                       : '未取込'}
-                    {source.last_failure ? ` / 直近失敗: ${source.last_failure.error ?? '詳細なし'}` : ''}
+                    {source.last_failure
+                      ? ` / 直近失敗: ${source.last_failure.error ?? '詳細なし'}`
+                      : ''}
                   </div>
                 </div>
                 <Badge
                   variant={
-                    source.freshness === 'fresh' ? 'outline' :
-                    source.freshness === 'aging' ? 'secondary' :
-                    source.freshness === 'stale' ? 'destructive' : 'destructive'
+                    source.freshness === 'fresh'
+                      ? 'outline'
+                      : source.freshness === 'aging'
+                        ? 'secondary'
+                        : source.freshness === 'stale'
+                          ? 'destructive'
+                          : 'destructive'
                   }
                   className="text-[10px]"
                 >
-                  {source.freshness === 'fresh' ? '最新' :
-                   source.freshness === 'aging' ? '更新推奨' :
-                   source.freshness === 'stale' ? '要更新' : '未取込'}
+                  {source.freshness === 'fresh'
+                    ? '最新'
+                    : source.freshness === 'aging'
+                      ? '更新推奨'
+                      : source.freshness === 'stale'
+                        ? '要更新'
+                        : '未取込'}
                 </Badge>
               </div>
             ))}
@@ -843,6 +891,24 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                 className="size-4 rounded border-input"
               />
               麻薬のみ
+            </label>
+            <label className="flex items-center gap-1.5 text-sm">
+              <input
+                type="checkbox"
+                checked={highRiskOnly}
+                onChange={(e) => setHighRiskOnly(e.target.checked)}
+                className="size-4 rounded border-input"
+              />
+              ハイリスク薬のみ
+            </label>
+            <label className="flex items-center gap-1.5 text-sm">
+              <input
+                type="checkbox"
+                checked={lasaOnly}
+                onChange={(e) => setLasaOnly(e.target.checked)}
+                className="size-4 rounded border-input"
+              />
+              LASA注意のみ
             </label>
           </div>
         </CardContent>
@@ -1065,7 +1131,49 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                         向精神
                       </Badge>
                     )}
+                    {detailQuery.data.is_high_risk && (
+                      <Badge variant="destructive">ハイリスク薬</Badge>
+                    )}
+                    {detailQuery.data.is_lasa_risk && (
+                      <Badge variant="outline" className="border-amber-300 text-amber-800">
+                        LASA注意
+                      </Badge>
+                    )}
                   </div>
+                  {(detailQuery.data.tall_man_name ||
+                    detailQuery.data.is_lasa_risk ||
+                    detailQuery.data.is_high_risk) && (
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+                      <h2 className="font-semibold">薬剤名・高リスク確認</h2>
+                      <dl className="mt-2 grid gap-2 sm:grid-cols-2">
+                        <div>
+                          <dt className="text-xs font-medium text-amber-800">表示名</dt>
+                          <dd className="mt-0.5 font-medium">
+                            {detailQuery.data.tall_man_name ?? detailQuery.data.drug_name}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs font-medium text-amber-800">通常表記</dt>
+                          <dd className="mt-0.5">{detailQuery.data.drug_name}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs font-medium text-amber-800">LASAグループ</dt>
+                          <dd className="mt-0.5">{detailQuery.data.lasa_group_key ?? '—'}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs font-medium text-amber-800">安全属性</dt>
+                          <dd className="mt-0.5">
+                            {[
+                              detailQuery.data.is_lasa_risk ? '類似薬剤名注意' : null,
+                              detailQuery.data.is_high_risk ? '高リスク薬' : null,
+                            ]
+                              .filter(Boolean)
+                              .join(' / ') || '—'}
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+                  )}
                   <dl className="grid gap-3 rounded-lg border border-border/60 bg-muted/20 p-4 sm:grid-cols-2">
                     <div>
                       <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

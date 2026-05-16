@@ -1,6 +1,10 @@
 export type FacilityVisitContextPatient = {
   scheduleId: string;
+  patientId?: string | null;
   patientName: string;
+  patientNameKana?: string | null;
+  birthDate?: string | null;
+  gender?: string | null;
   unitName: string | null;
   routeOrder: number | null;
   scheduleStatus?: string | null;
@@ -38,7 +42,11 @@ export function decodeFacilityVisitContext(value: string | string[] | undefined)
     const patients = parsed.patients
       .map((item) => ({
         scheduleId: typeof item?.scheduleId === 'string' ? item.scheduleId : '',
+        patientId: typeof item?.patientId === 'string' ? item.patientId : null,
         patientName: typeof item?.patientName === 'string' ? item.patientName : '',
+        patientNameKana: typeof item?.patientNameKana === 'string' ? item.patientNameKana : null,
+        birthDate: typeof item?.birthDate === 'string' ? item.birthDate : null,
+        gender: typeof item?.gender === 'string' ? item.gender : null,
         unitName: typeof item?.unitName === 'string' ? item.unitName : null,
         routeOrder: typeof item?.routeOrder === 'number' ? item.routeOrder : null,
         scheduleStatus: typeof item?.scheduleStatus === 'string' ? item.scheduleStatus : null,

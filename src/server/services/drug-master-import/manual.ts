@@ -11,7 +11,7 @@ const alertRuleConditionSchema = z
     (value) => (value.yj_codes?.length ?? 0) > 0 || (value.therapeutic_categories?.length ?? 0) > 0,
     {
       message: 'yj_codes または therapeutic_categories のいずれかが必要です',
-    }
+    },
   );
 
 const alertRuleSchema = z.object({
@@ -38,10 +38,24 @@ const renalAdjustmentEntrySchema = z
     message: 'yj_code または drug_name のいずれかが必要です',
   });
 
+const drugSafetyOverrideSchema = z
+  .object({
+    yj_code: z.string().trim().min(1).optional(),
+    drug_name: z.string().trim().min(1).optional(),
+    tall_man_name: z.string().trim().min(1).nullable().optional(),
+    lasa_group_key: z.string().trim().min(1).nullable().optional(),
+    is_lasa_risk: z.boolean().optional(),
+    is_high_risk: z.boolean().optional(),
+  })
+  .refine((value) => Boolean(value.yj_code || value.drug_name), {
+    message: 'yj_code または drug_name のいずれかが必要です',
+  });
+
 export const manualClinicalRuleBundleSchema = z.object({
   pim_rules: z.array(alertRuleSchema).default([]),
   high_risk_rules: z.array(alertRuleSchema).default([]),
   renal_adjustments: z.array(renalAdjustmentEntrySchema).default([]),
+  drug_safety_overrides: z.array(drugSafetyOverrideSchema).default([]),
 });
 
 export type ManualClinicalRuleBundle = z.input<typeof manualClinicalRuleBundleSchema>;
@@ -49,7 +63,7 @@ type ParsedManualClinicalRuleBundle = z.output<typeof manualClinicalRuleBundleSc
 
 async function upsertRenalAdjustment(
   db: DrugMasterImportDbClient,
-  entry: ParsedManualClinicalRuleBundle['renal_adjustments'][number]
+  entry: ParsedManualClinicalRuleBundle['renal_adjustments'][number],
 ) {
   const drug = await db.drugMaster.findFirst({
     where: entry.yj_code
@@ -110,7 +124,7 @@ async function replaceAlertRules(
   alertType: 'pim_elderly' | 'high_risk',
   rules:
     | ParsedManualClinicalRuleBundle['pim_rules']
-    | ParsedManualClinicalRuleBundle['high_risk_rules']
+    | ParsedManualClinicalRuleBundle['high_risk_rules'],
 ) {
   await db.drugAlertRule.deleteMany({
     where: { alert_type: alertType },
@@ -133,9 +147,42 @@ async function replaceAlertRules(
   return rules.length;
 }
 
+async function applyDrugSafetyOverride(
+  db: DrugMasterImportDbClient,
+  override: ParsedManualClinicalRuleBundle['drug_safety_overrides'][number],
+) {
+  const drug = await db.drugMaster.findFirst({
+    where: override.yj_code
+      ? { yj_code: override.yj_code }
+      : { drug_name: { contains: override.drug_name! } },
+    select: { id: true },
+  });
+
+  if (!drug) {
+    return false;
+  }
+
+  const data: Prisma.DrugMasterUpdateInput = {
+    ...(override.tall_man_name !== undefined ? { tall_man_name: override.tall_man_name } : {}),
+    ...(override.lasa_group_key !== undefined ? { lasa_group_key: override.lasa_group_key } : {}),
+    ...(override.is_lasa_risk !== undefined ? { is_lasa_risk: override.is_lasa_risk } : {}),
+    ...(override.is_high_risk !== undefined ? { is_high_risk: override.is_high_risk } : {}),
+  };
+
+  if (Object.keys(data).length === 0) {
+    return false;
+  }
+
+  await db.drugMaster.update({
+    where: { id: drug.id },
+    data,
+  });
+  return true;
+}
+
 export async function importManualClinicalRules(
   db: DrugMasterImportDbClient,
-  bundle: ManualClinicalRuleBundle
+  bundle: ManualClinicalRuleBundle,
 ) {
   return withImportLog(db, 'manual_clinical', async () => {
     const parsed: ParsedManualClinicalRuleBundle = manualClinicalRuleBundleSchema.parse(bundle);
@@ -152,12 +199,20 @@ export async function importManualClinicalRules(
       }
     }
 
+    let safetyOverrideCount = 0;
+    for (const override of parsed.drug_safety_overrides) {
+      if (await applyDrugSafetyOverride(db, override)) {
+        safetyOverrideCount += 1;
+      }
+    }
+
     return {
-      recordCount: pimCount + highRiskCount + renalCount,
+      recordCount: pimCount + highRiskCount + renalCount + safetyOverrideCount,
       payload: {
         pimCount,
         highRiskCount,
         renalCount,
+        safetyOverrideCount,
       },
     };
   });

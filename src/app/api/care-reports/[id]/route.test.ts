@@ -5,6 +5,8 @@ const {
   requireAuthContextMock,
   careReportFindFirstMock,
   careReportUpdateMock,
+  patientFindFirstMock,
+  visitRecordFindFirstMock,
   withOrgContextMock,
   findLatestPrescriberInstitutionSuggestionMock,
   getChannelStatsByNameMock,
@@ -13,6 +15,8 @@ const {
   requireAuthContextMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
   careReportUpdateMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
+  visitRecordFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   findLatestPrescriberInstitutionSuggestionMock: vi.fn(),
   getChannelStatsByNameMock: vi.fn(),
@@ -27,6 +31,12 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     careReport: {
       findFirst: careReportFindFirstMock,
+    },
+    patient: {
+      findFirst: patientFindFirstMock,
+    },
+    visitRecord: {
+      findFirst: visitRecordFindFirstMock,
     },
   },
 }));
@@ -49,7 +59,7 @@ import { GET, PATCH } from './route';
 function createRequest(body?: unknown) {
   return {
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
     },
     json: body === undefined ? undefined : vi.fn().mockResolvedValue(body),
   } as unknown as NextRequest;
@@ -70,6 +80,7 @@ describe('care-reports/[id] route', () => {
       org_id: 'org_1',
       patient_id: 'patient_1',
       case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
       report_type: 'physician_report',
       status: 'draft',
       content: {},
@@ -83,6 +94,16 @@ describe('care-reports/[id] route', () => {
         required_visit_support: null,
       },
     });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '山田 太郎',
+      name_kana: 'ヤマダ タロウ',
+      birth_date: new Date('1940-01-01T00:00:00.000Z'),
+    });
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'visit_record_1',
+      visit_date: new Date('2026-03-29T09:00:00.000Z'),
+    });
     careReportUpdateMock.mockResolvedValue({
       id: 'report_1',
       status: 'draft',
@@ -92,7 +113,7 @@ describe('care-reports/[id] route', () => {
         careReport: {
           update: careReportUpdateMock,
         },
-      })
+      }),
     );
     findLatestPrescriberInstitutionSuggestionMock.mockResolvedValue({
       id: 'institution_1',
@@ -116,7 +137,7 @@ describe('care-reports/[id] route', () => {
             in_person: { success: 0, failure: 0 },
           },
         ],
-      ])
+      ]),
     );
     getRecommendedChannelsMock.mockReturnValue(['fax', 'phone', 'postal']);
   });
@@ -134,14 +155,25 @@ describe('care-reports/[id] route', () => {
       {
         caseId: 'case_1',
         patientId: 'patient_1',
-      }
+      },
     );
     expect(getChannelStatsByNameMock).toHaveBeenCalledWith(expect.anything(), 'org_1', [
       'みなとクリニック',
     ]);
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(payload).toMatchObject({
       data: {
         id: 'report_1',
+        patient_summary: {
+          id: 'patient_1',
+          name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
+          birth_date: '1940-01-01',
+        },
+        visit_summary: {
+          id: 'visit_record_1',
+          visit_date: '2026-03-29T09:00:00.000Z',
+        },
         prescriber_institution_suggestion: {
           id: 'institution_1',
           recommended_channels: ['fax', 'phone', 'postal'],
@@ -149,6 +181,7 @@ describe('care-reports/[id] route', () => {
         },
       },
     });
+    expect(payload.data).not.toHaveProperty('org_id');
   });
 
   it('rejects non-draft status updates outside the send workflow', async () => {

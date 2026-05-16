@@ -148,6 +148,10 @@ const DEFAULT_RESPONSE_FORM = {
   content: '',
 };
 
+const DEFAULT_STATUS_REASON_FORM = {
+  reason: '',
+};
+
 type CommunicationRequestsContentProps = {
   initialStatus?: string | null;
   initialPatientId?: string | null;
@@ -170,6 +174,10 @@ export function CommunicationRequestsContent({
   const [responseDialogOpen, setResponseDialogOpen] = useState(false);
   const [responseTarget, setResponseTarget] = useState<CommunicationRequestRow | null>(null);
   const [responseForm, setResponseForm] = useState(DEFAULT_RESPONSE_FORM);
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [statusTarget, setStatusTarget] = useState<CommunicationRequestRow | null>(null);
+  const [statusTransition, setStatusTransition] = useState<StatusTransition | null>(null);
+  const [statusReasonForm, setStatusReasonForm] = useState(DEFAULT_STATUS_REASON_FORM);
   const patientFilter = initialPatientId ?? '';
   const relatedEntityTypeFilter = initialRelatedEntityType ?? '';
   const relatedEntityIdFilter = initialRelatedEntityId ?? '';
@@ -188,6 +196,7 @@ export function CommunicationRequestsContent({
     mutationFn: async ({
       id,
       status,
+      reason,
     }: {
       id: string;
       status:
@@ -198,6 +207,7 @@ export function CommunicationRequestsContent({
         | 'closed'
         | 'escalated'
         | 'expired';
+      reason: string;
     }) => {
       const res = await fetch(`/api/communication-requests/${id}`, {
         method: 'PATCH',
@@ -205,7 +215,7 @@ export function CommunicationRequestsContent({
           'Content-Type': 'application/json',
           'x-org-id': orgId,
         },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, status_change_reason: reason }),
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
@@ -215,6 +225,10 @@ export function CommunicationRequestsContent({
     },
     onSuccess: async () => {
       toast.success('依頼ステータスを更新しました');
+      setStatusDialogOpen(false);
+      setStatusTarget(null);
+      setStatusTransition(null);
+      setStatusReasonForm(DEFAULT_STATUS_REASON_FORM);
       await queryClient.invalidateQueries({ queryKey: ['communication-requests', orgId] });
       await queryClient.invalidateQueries({ queryKey: ['dashboard-workflow', orgId] });
     },
@@ -273,6 +287,13 @@ export function CommunicationRequestsContent({
       content: '',
     });
     setResponseDialogOpen(true);
+  };
+
+  const openStatusDialog = (item: CommunicationRequestRow, transition: StatusTransition) => {
+    setStatusTarget(item);
+    setStatusTransition(transition);
+    setStatusReasonForm(DEFAULT_STATUS_REASON_FORM);
+    setStatusDialogOpen(true);
   };
 
   async function handleExport() {
@@ -548,7 +569,7 @@ export function CommunicationRequestsContent({
                   onClick={() =>
                     t.action === 'response_dialog'
                       ? openResponseDialog(item)
-                      : statusMutation.mutate({ id: item.id, status: t.nextStatus })
+                      : openStatusDialog(item, t)
                   }
                   disabled={
                     t.action === 'response_dialog'
@@ -570,7 +591,10 @@ export function CommunicationRequestsContent({
   return (
     <div className="space-y-6">
       {contextSummary ? (
-        <Alert className="border-sky-200 bg-sky-50 text-sky-900" data-testid="communications-context-banner">
+        <Alert
+          className="border-sky-200 bg-sky-50 text-sky-900"
+          data-testid="communications-context-banner"
+        >
           <AlertTriangle className="size-4 text-sky-700" aria-hidden="true" />
           <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
         </Alert>
@@ -704,6 +728,85 @@ export function CommunicationRequestsContent({
         isLoading={isEventsLoading}
         caption="連携ログ一覧"
       />
+
+      <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>ステータス変更を確認</DialogTitle>
+            <DialogDescription>
+              {statusTarget?.subject ?? '依頼'} を
+              {statusTransition ? `「${statusTransition.label}」` : '次の状態'}
+              へ進める理由を記録します。
+            </DialogDescription>
+          </DialogHeader>
+
+          <Alert className="border-amber-300 bg-amber-50 text-amber-950">
+            <AlertTriangle className="size-4 text-amber-700" aria-hidden="true" />
+            <AlertDescription className="text-amber-900">
+              患者・相手先・期限を確認し、変更理由を監査ログに残してから更新します。
+            </AlertDescription>
+          </Alert>
+
+          <div className="space-y-3">
+            <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
+              <p className="font-medium">{statusTarget?.recipient_name ?? '宛先未設定'}</p>
+              <p className="text-muted-foreground">
+                現在:{' '}
+                {statusTarget
+                  ? (STATUS_CONFIG[statusTarget.status]?.label ?? statusTarget.status)
+                  : '—'}
+                {statusTransition
+                  ? ` / 変更後: ${STATUS_CONFIG[statusTransition.nextStatus]?.label ?? statusTransition.nextStatus}`
+                  : ''}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="status_change_reason">変更理由</Label>
+              <Textarea
+                id="status_change_reason"
+                rows={4}
+                value={statusReasonForm.reason}
+                aria-describedby="status_change_reason_help"
+                onChange={(event) =>
+                  setStatusReasonForm({
+                    reason: event.target.value,
+                  })
+                }
+              />
+              <p id="status_change_reason_help" className="text-xs text-muted-foreground">
+                例: 電話で受領確認済み、医師へ再確認が必要、期限切れとして管理者へ引き継ぎ。
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setStatusDialogOpen(false);
+                setStatusTarget(null);
+                setStatusTransition(null);
+                setStatusReasonForm(DEFAULT_STATUS_REASON_FORM);
+              }}
+            >
+              キャンセル
+            </Button>
+            <Button
+              onClick={() => {
+                if (!statusTarget || !statusTransition) return;
+                statusMutation.mutate({
+                  id: statusTarget.id,
+                  status: statusTransition.nextStatus,
+                  reason: statusReasonForm.reason.trim(),
+                });
+              }}
+              disabled={statusMutation.isPending || statusReasonForm.reason.trim().length === 0}
+            >
+              理由を記録して更新
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={responseDialogOpen} onOpenChange={setResponseDialogOpen}>
         <DialogContent>

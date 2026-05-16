@@ -2,14 +2,17 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { success } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { annotateDispenseTask, sortDispenseTasks } from '@/server/services/dispense-task-list';
+import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 
 export const GET = withAuth(
   async (req: AuthenticatedRequest) => {
     const now = new Date();
+    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(req);
     const tasks = await prisma.dispenseTask.findMany({
       where: {
         org_id: req.orgId,
         status: { in: ['pending', 'in_progress'] },
+        ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
       },
       orderBy: [
         {

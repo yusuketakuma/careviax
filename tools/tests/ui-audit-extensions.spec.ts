@@ -2,15 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import {
-  PLAYWRIGHT_ELEMENT_SCREENSHOT_DIR,
-  PLAYWRIGHT_SCREENSHOT_DIR,
-} from './helpers/artifacts';
-import {
-  attachLocalSession,
-  createInstrumentedPage,
-  waitForStableUi,
-} from './helpers/local-auth';
+import { PLAYWRIGHT_ELEMENT_SCREENSHOT_DIR, PLAYWRIGHT_SCREENSHOT_DIR } from './helpers/artifacts';
+import { attachLocalSession, createInstrumentedPage, waitForStableUi } from './helpers/local-auth';
 
 const SCREENSHOT_DIR = PLAYWRIGHT_SCREENSHOT_DIR;
 const ELEMENT_SCREEN_DIR = PLAYWRIGHT_ELEMENT_SCREENSHOT_DIR;
@@ -35,7 +28,7 @@ function summarizeViolations(
     id: string;
     impact?: string | null;
     nodes: Array<{ target: unknown }>;
-  }>
+  }>,
 ) {
   return violations.map((violation) => ({
     id: violation.id,
@@ -88,7 +81,9 @@ test.beforeEach(async ({ context }) => {
   await attachLocalSession(context);
 });
 
-test('dashboard accessibility has no critical or serious violations', async ({ context }, testInfo) => {
+test('dashboard accessibility has no critical or serious violations', async ({
+  context,
+}, testInfo) => {
   test.skip(testInfo.project.name !== 'chromium');
 
   const { page, errors } = await createInstrumentedPage(context);
@@ -97,7 +92,7 @@ test('dashboard accessibility has no critical or serious violations', async ({ c
 
   const results = await analyzeMainAccessibility(page);
   const severe = results.violations.filter((violation) =>
-    ['critical', 'serious'].includes(violation.impact ?? '')
+    ['critical', 'serious'].includes(violation.impact ?? ''),
   );
 
   await writeScreenshot(page, 'dashboard-a11y');
@@ -106,7 +101,9 @@ test('dashboard accessibility has no critical or serious violations', async ({ c
   expect(summarizeViolations(severe)).toEqual([]);
 });
 
-test('patients accessibility has no critical or serious violations', async ({ context }, testInfo) => {
+test('patients accessibility has no critical or serious violations', async ({
+  context,
+}, testInfo) => {
   test.skip(testInfo.project.name !== 'chromium');
 
   const { page, errors } = await createInstrumentedPage(context);
@@ -115,7 +112,7 @@ test('patients accessibility has no critical or serious violations', async ({ co
 
   const results = await analyzeMainAccessibility(page);
   const severe = results.violations.filter((violation) =>
-    ['critical', 'serious'].includes(violation.impact ?? '')
+    ['critical', 'serious'].includes(violation.impact ?? ''),
   );
 
   const searchInput = page.getByLabel('患者検索');
@@ -126,7 +123,9 @@ test('patients accessibility has no critical or serious violations', async ({ co
   expect(summarizeViolations(severe)).toEqual([]);
 });
 
-test('prescription intake accessibility has no critical or serious violations', async ({ context }, testInfo) => {
+test('prescription intake accessibility has no critical or serious violations', async ({
+  context,
+}, testInfo) => {
   test.skip(testInfo.project.name !== 'chromium');
 
   const { page, errors } = await createInstrumentedPage(context);
@@ -135,7 +134,7 @@ test('prescription intake accessibility has no critical or serious violations', 
 
   const results = await analyzeMainAccessibility(page);
   const severe = results.violations.filter((violation) =>
-    ['critical', 'serious'].includes(violation.impact ?? '')
+    ['critical', 'serious'].includes(violation.impact ?? ''),
   );
 
   await expect(page.locator('main')).toBeVisible();
@@ -158,7 +157,10 @@ test('mobile dashboard keeps primary action accessible without horizontal overfl
     return root.scrollWidth - root.clientWidth;
   });
 
-  const primaryAction = page.locator('main').getByRole('link', { name: /処方受付/ }).first();
+  const primaryAction = page
+    .locator('main')
+    .getByRole('link', { name: /処方受付/ })
+    .first();
   await expect(primaryAction).toBeVisible();
   const box = await primaryAction.boundingBox();
 
@@ -197,7 +199,9 @@ test('mobile patients screen preserves search usability without horizontal overf
 test.describe('environment emulation audit', () => {
   test.use({ colorScheme: 'dark' });
 
-  test('dashboard respects system dark mode without runtime errors', async ({ context }, testInfo) => {
+  test('dashboard respects system dark mode without runtime errors', async ({
+    context,
+  }, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium');
 
     const { page, errors } = await createInstrumentedPage(context);
@@ -220,8 +224,8 @@ test.describe('motion and network audit', () => {
     await page.goto('/dashboard');
     await waitForStableUi(page);
 
-    const prefersReducedMotion = await page.evaluate(() =>
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const prefersReducedMotion = await page.evaluate(
+      () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
     );
 
     await writeScreenshot(page, 'dashboard-reduced-motion');
@@ -265,7 +269,9 @@ test.describe('locale and timezone audit', () => {
     await waitForStableUi(page);
 
     const runtimeLocale = await page.evaluate(() => navigator.language);
-    const runtimeTimezone = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const runtimeTimezone = await page.evaluate(
+      () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+    );
 
     await expect(page.getByTestId('app-shell-main')).toBeVisible();
     await expect(page.locator('main').getByText(/CareViaX.*ダッシュボード/)).toBeVisible();
@@ -320,73 +326,46 @@ test.describe('ARIA and keyboard contracts', () => {
     await page.goto('/dashboard');
     await waitForStableUi(page);
 
-    await expect(page.getByRole('navigation', { name: 'ワークフローナビ' }).first()).toMatchAriaSnapshot(`
-      - navigation "ワークフローナビ":
-        - list:
-          - listitem:
-            - link "ホーム"
-          - listitem:
-            - link "患者"
-          - listitem:
-            - link /処方受付/
-          - listitem:
-            - link "スケジュール"
-          - listitem:
-            - link /調剤/
-          - listitem:
-            - link /鑑査/
-          - listitem:
-            - link /セット/
-          - listitem:
-            - link /訪問/
-          - listitem:
-            - link /報告/
-          - listitem:
-            - link "多職種連携"
-          - listitem:
-            - link "QRスキャン"
-          - listitem:
-            - link "申し送り"
-        - paragraph: ワークベンチ
-        - list:
-          - listitem:
-            - link "My Day"
-          - listitem:
-            - link "ワークフロー"
-          - listitem:
-            - link "タスク"
-          - listitem:
-            - link "請求"
-          - listitem:
-            - link "管理"
-          - listitem:
-            - link "通知"
-          - listitem:
-            - link "依頼・照会"
-          - listitem:
-            - link "外部連携"
-        - paragraph: 管理
-        - list:
-          - listitem:
-            - button "運営"
-          - listitem:
-            - button "スタッフ"
-          - listitem:
-            - button "施設・連携先"
-          - listitem:
-            - button "薬剤"
-          - listitem:
-            - button "文書・通知"
-          - listitem:
-            - button "分析・監視"
-          - listitem:
-            - button "その他"
-    `);
+    const nav = page.getByRole('navigation', { name: 'ワークフローナビ' }).first();
+    await expect(nav).toBeVisible();
+    await expect(nav.getByText('主要')).toBeVisible();
+    await expect(nav.getByText('主業務ルート')).toBeVisible();
+    await expect(nav.getByText('補助導線')).toBeVisible();
+    await expect(nav.getByText('ワークベンチ')).toBeVisible();
+
+    for (const [name, href] of [
+      ['ホーム', '/dashboard'],
+      ['患者', '/patients'],
+      ['ワークフロー', '/workflow'],
+      ['処方登録', '/prescriptions'],
+      ['調剤', '/dispensing'],
+      ['調剤監査', '/auditing'],
+      ['スケジュール', '/schedules'],
+      ['訪問時', '/visits'],
+      ['報告書', '/reports'],
+      ['依頼・照会', '/communications/requests'],
+    ] as const) {
+      await expect(nav.getByRole('link', { name, exact: true })).toHaveAttribute('href', href);
+    }
+
+    for (const name of [
+      '運営',
+      'スタッフ',
+      '施設・連携先',
+      '薬剤',
+      '文書・通知',
+      '分析・監視',
+      'その他',
+    ]) {
+      await expect(nav.getByRole('button', { name })).toBeVisible();
+    }
 
     expect(errors).toEqual([]);
   });
 
-  test('dashboard sidebar supports sequential keyboard navigation', async ({ context }, testInfo) => {
+  test('dashboard sidebar supports sequential keyboard navigation', async ({
+    context,
+  }, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium');
 
     const { page, errors } = await createInstrumentedPage(context);
@@ -512,7 +491,7 @@ test.describe('ARIA and keyboard contracts', () => {
     await page.keyboard.press('Tab');
     await expect(prescribedDate).toBeFocused();
     await expect(page.getByTestId('prescription-submit-summary')).toContainText(
-      '最後にこのボタンで受付を確定します'
+      '最後にこのボタンで受付を確定します',
     );
 
     expect(errors).toEqual([]);
@@ -530,7 +509,9 @@ test.describe('ARIA and keyboard contracts', () => {
     await waitForStableUi(page);
 
     await expect(page.locator('main').getByText('最初に必要な設定')).toBeVisible();
-    await expect(page.locator('main').getByRole('button', { name: 'URL を入力する' })).toBeVisible();
+    await expect(
+      page.locator('main').getByRole('button', { name: 'URL を入力する' }),
+    ).toBeVisible();
     expect(errors).toEqual([]);
   });
 
@@ -549,7 +530,7 @@ test.describe('ARIA and keyboard contracts', () => {
     await sourceInput.fill('invalid-url');
 
     await expect(
-      page.getByText('MCS の患者 URL または医療・介護側タイムライン URL を入力してください')
+      page.getByText('MCS の患者 URL または医療・介護側タイムライン URL を入力してください'),
     ).toBeVisible();
     await expect(page.getByRole('button', { name: '今すぐ同期' })).toBeDisabled();
     await expect(page.getByRole('button', { name: 'MCS で開く' })).toBeDisabled();
@@ -567,7 +548,9 @@ test.describe('ARIA and keyboard contracts', () => {
     await page.goto('/prescriptions/new');
     await waitForStableUi(page);
 
-    await expect(page.locator('main').getByText('最後にこのボタンで受付を確定します')).toBeVisible();
+    await expect(
+      page.locator('main').getByText('最後にこのボタンで受付を確定します'),
+    ).toBeVisible();
     await expect(page.getByRole('button', { name: '処方受付を登録' })).toBeVisible();
     expect(errors).toEqual([]);
   });

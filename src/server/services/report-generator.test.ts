@@ -13,6 +13,7 @@ const {
   prescriptionLineFindManyMock,
   careReportFindManyMock,
   careReportCreateMock,
+  careReportCreateManyMock,
   buildPhysicianReportMock,
   buildCareManagerReportMock,
   withOrgContextMock,
@@ -30,6 +31,7 @@ const {
   prescriptionLineFindManyMock: vi.fn(),
   careReportFindManyMock: vi.fn(),
   careReportCreateMock: vi.fn(),
+  careReportCreateManyMock: vi.fn(),
   buildPhysicianReportMock: vi.fn(),
   buildCareManagerReportMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -221,10 +223,10 @@ describe('generateReportsFromVisit', () => {
       async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
         const tx = {
           careReport: {
-            create: careReportCreateMock.mockResolvedValue({
-              id: 'report-new',
-              report_type: 'physician_report',
-            }),
+            createMany: careReportCreateManyMock.mockResolvedValue({ count: 1 }),
+            findMany: vi
+              .fn()
+              .mockResolvedValue([{ id: 'report-new', report_type: 'physician_report' }]),
           },
         };
         return fn(tx);
@@ -236,15 +238,18 @@ describe('generateReportsFromVisit', () => {
     expect(result.reports).toHaveLength(1);
     expect(result.reports[0].report_type).toBe('physician_report');
     expect(withOrgContextMock).toHaveBeenCalledOnce();
-    expect(careReportCreateMock).toHaveBeenCalledWith(
+    expect(careReportCreateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          content: expect.objectContaining({
-            billing_context: expect.objectContaining({
-              payer_basis: 'medical',
+        data: [
+          expect.objectContaining({
+            content: expect.objectContaining({
+              billing_context: expect.objectContaining({
+                payer_basis: 'medical',
+              }),
             }),
           }),
-        }),
+        ],
+        skipDuplicates: true,
       }),
     );
   });
@@ -312,10 +317,10 @@ describe('generateReportsFromVisit', () => {
       async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
         fn({
           careReport: {
-            create: careReportCreateMock.mockResolvedValue({
-              id: 'report-new',
-              report_type: 'physician_report',
-            }),
+            createMany: careReportCreateManyMock.mockResolvedValue({ count: 1 }),
+            findMany: vi
+              .fn()
+              .mockResolvedValue([{ id: 'report-new', report_type: 'physician_report' }]),
           },
         }),
     );
@@ -332,5 +337,72 @@ describe('generateReportsFromVisit', () => {
         where: { org_id: 'org-1', intake: { cycle_id: 'cycle-from-schedule' } },
       }),
     );
+  });
+
+  it('uses createMany skipDuplicates and returns the persisted report after a concurrent duplicate insert', async () => {
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'vr-1',
+      org_id: 'org-1',
+      patient_id: 'p-1',
+      pharmacist_id: 'pharm-1',
+      visit_date: new Date(),
+      structured_soap: null,
+      schedule_id: 'vs-1',
+    });
+    visitScheduleFindUniqueMock.mockResolvedValue({
+      case_id: 'case-1',
+      cycle_id: null,
+      org_id: 'org-1',
+    });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'p-1',
+      name: '田中太郎',
+      birth_date: new Date('1950-01-01'),
+      gender: 'male',
+    });
+    medicationCycleFindFirstMock.mockResolvedValue(null);
+    residualMedicationFindManyMock.mockResolvedValue([]);
+    careTeamLinkFindManyMock.mockResolvedValue([]);
+    userFindFirstMock.mockResolvedValue({ name: '薬剤師A' });
+    billingEvidenceFindFirstMock.mockResolvedValue({ payer_basis: 'medical' });
+    careCaseFindFirstMock.mockResolvedValue({ required_visit_support: null });
+    prescriptionLineFindManyMock.mockResolvedValue([]);
+    buildPhysicianReportMock.mockReturnValue({ title: 'physician report' });
+    careReportFindManyMock.mockResolvedValue([]);
+    const txFindManyMock = vi
+      .fn()
+      .mockResolvedValue([{ id: 'report-race-winner', report_type: 'physician_report' }]);
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          careReport: {
+            createMany: careReportCreateManyMock.mockResolvedValue({ count: 0 }),
+            findMany: txFindManyMock,
+          },
+        }),
+    );
+
+    const result = await generateReportsFromVisit('org-1', 'user-1', 'vr-1');
+
+    expect(careReportCreateManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          org_id: 'org-1',
+          visit_record_id: 'vr-1',
+          report_type: 'physician_report',
+        }),
+      ],
+      skipDuplicates: true,
+    });
+    expect(txFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org-1',
+        visit_record_id: 'vr-1',
+        report_type: { in: ['physician_report'] },
+      },
+      select: { id: true, report_type: true },
+    });
+    expect(result.reports).toEqual([{ id: 'report-race-winner', report_type: 'physician_report' }]);
   });
 });

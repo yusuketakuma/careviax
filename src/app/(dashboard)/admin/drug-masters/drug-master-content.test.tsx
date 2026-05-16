@@ -111,4 +111,11 @@ describe('DrugMasterContent', () => {
     expect(screen.getByText('外部設定')).toBeTruthy();
     expect(screen.getByText(/直近失敗: URL未設定/)).toBeTruthy();
   });
+
+  it('shows medication-safety filters for high-risk and LASA review', () => {
+    render(<DrugMasterContent />);
+
+    expect(screen.getByLabelText('ハイリスク薬のみ')).toBeTruthy();
+    expect(screen.getByLabelText('LASA注意のみ')).toBeTruthy();
+  });
 });

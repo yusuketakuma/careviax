@@ -149,6 +149,53 @@ describe('checkDispenseAlerts', () => {
     );
   });
 
+  it('surfaces DrugMaster LASA and Tall Man safety flags as medication-safety alerts', async () => {
+    prescriptionLineFindManyMock.mockResolvedValue([
+      {
+        id: 'line_current_1',
+        drug_name: 'ドブタミン注100mg',
+        drug_code: '2119401A1020',
+        dose: '1アンプル',
+        frequency: '必要時',
+        days: 1,
+      },
+    ]);
+
+    drugMasterFindManyMock.mockResolvedValue([
+      {
+        id: 'drug_1',
+        yj_code: '2119401A1020',
+        drug_name: 'ドブタミン注100mg',
+        tall_man_name: 'DOBUTamine注100mg',
+        therapeutic_category: '2119',
+        max_administration_days: null,
+        transitional_expiry_date: null,
+        is_narcotic: false,
+        is_psychotropic: false,
+        is_high_risk: true,
+        is_lasa_risk: true,
+        lasa_group_key: 'dobutamine_dopamine',
+      },
+    ]);
+
+    const alerts = await checkDispenseAlerts('org_1', 'cycle_current', 'patient_1');
+
+    expect(alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'lasa_drug_name',
+          severity: 'warning',
+          message: expect.stringContaining('DOBUTamine注100mg'),
+          details: expect.objectContaining({
+            tall_man_name: 'DOBUTamine注100mg',
+            lasa_group_key: 'dobutamine_dopamine',
+            source: 'drug_master_safety_flags',
+          }),
+        }),
+      ]),
+    );
+  });
+
   it('does not warn when the previous intake is not identical', async () => {
     prescriptionLineFindManyMock.mockResolvedValue([
       {

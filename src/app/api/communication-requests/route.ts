@@ -1,6 +1,6 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError } from '@/lib/api/response';
+import { success, validationError, notFound } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { RequestStatus, type Prisma } from '@prisma/client';
@@ -10,6 +10,7 @@ import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/p
 import {
   buildCommunicationRequestAssignmentWhere,
   canAccessCommunicationRequestRecord,
+  resolveTracingReportCommunicationScope,
 } from '@/server/services/communication-request-access';
 
 const requestStatusSchema = z.nativeEnum(RequestStatus);
@@ -158,12 +159,64 @@ export const POST = withAuth(
       status,
     } = parsed.data;
 
+    let effectivePatientId = patient_id ?? null;
+    let effectiveCaseId = case_id ?? null;
+
+    if (related_entity_type === 'tracing_report') {
+      if (!related_entity_id) {
+        return validationError('関連トレーシングレポートIDは必須です', {
+          related_entity_id: ['関連トレーシングレポートIDは必須です'],
+        });
+      }
+
+      const tracingReport = await prisma.tracingReport.findFirst({
+        where: {
+          id: related_entity_id,
+          org_id: req.orgId,
+        },
+        select: {
+          id: true,
+          patient_id: true,
+          case_id: true,
+        },
+      });
+
+      if (!tracingReport) return notFound('トレーシングレポートが見つかりません');
+
+      const resolvedScope = resolveTracingReportCommunicationScope({
+        requestedPatientId: patient_id,
+        requestedCaseId: case_id,
+        tracingReport,
+      });
+
+      if (!resolvedScope) {
+        return validationError('関連トレーシングレポートと患者またはケースが一致しません', {
+          related_entity_id: ['関連トレーシングレポートと患者またはケースが一致しません'],
+        });
+      }
+
+      if (
+        !(await canAccessCommunicationRequestRecord({
+          db: prisma,
+          orgId: req.orgId,
+          patientId: resolvedScope.patientId,
+          caseId: resolvedScope.caseId,
+          accessContext: req,
+        }))
+      ) {
+        return notFound('トレーシングレポートが見つかりません');
+      }
+
+      effectivePatientId = resolvedScope.patientId;
+      effectiveCaseId = resolvedScope.caseId;
+    }
+
     if (
       !(await canAccessCommunicationRequestRecord({
         db: prisma,
         orgId: req.orgId,
-        patientId: patient_id,
-        caseId: case_id,
+        patientId: effectivePatientId,
+        caseId: effectiveCaseId,
         accessContext: req,
       }))
     ) {
@@ -171,17 +224,17 @@ export const POST = withAuth(
     }
 
     const suggestedInstitution =
-      !recipient_name && (patient_id || case_id)
+      !recipient_name && (effectivePatientId || effectiveCaseId)
         ? await findLatestPrescriberInstitutionSuggestion(prisma, req.orgId, {
-            caseId: case_id,
-            patientId: patient_id,
+            caseId: effectiveCaseId ?? undefined,
+            patientId: effectivePatientId ?? undefined,
           })
         : null;
     const suggestedProfessional =
-      !recipient_name && !suggestedInstitution && (patient_id || case_id)
+      !recipient_name && !suggestedInstitution && (effectivePatientId || effectiveCaseId)
         ? await pickCommunicationRecipientCandidate(prisma, req.orgId, {
-            caseId: case_id,
-            patientId: patient_id,
+            caseId: effectiveCaseId ?? undefined,
+            patientId: effectivePatientId ?? undefined,
             requestType: request_type,
           })
         : null;
@@ -222,8 +275,8 @@ export const POST = withAuth(
       return tx.communicationRequest.create({
         data: {
           org_id: req.orgId,
-          patient_id: patient_id ?? null,
-          case_id: case_id ?? null,
+          patient_id: effectivePatientId,
+          case_id: effectiveCaseId,
           request_type,
           template_key: template_key ?? null,
           recipient_name: effectiveRecipientName,

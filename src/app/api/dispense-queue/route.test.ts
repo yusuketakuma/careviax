@@ -1,11 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const {
-  authMock,
-  membershipFindFirstMock,
-  dispenseTaskFindManyMock,
-} = vi.hoisted(() => ({
+const { authMock, membershipFindFirstMock, dispenseTaskFindManyMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   dispenseTaskFindManyMock: vi.fn(),
@@ -93,7 +89,7 @@ describe('/api/dispense-queue', () => {
       url: 'http://localhost/api/dispense-queue',
       method: 'GET',
       headers: {
-        get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+        get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
       },
       nextUrl: new URL('http://localhost/api/dispense-queue'),
     } as NextRequest))!;
@@ -112,5 +108,18 @@ describe('/api/dispense-queue', () => {
         }),
       ],
     });
+    expect(dispenseTaskFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          cycle: expect.objectContaining({
+            case_: expect.objectContaining({
+              OR: expect.arrayContaining([
+                expect.objectContaining({ primary_pharmacist_id: 'user_1' }),
+              ]),
+            }),
+          }),
+        }),
+      }),
+    );
   });
 });

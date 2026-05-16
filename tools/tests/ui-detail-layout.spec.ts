@@ -50,17 +50,6 @@ async function openFirstPatientDetail(page: Page) {
   await waitForStableUi(page);
 }
 
-async function openFirstVisitDetail(page: Page) {
-  await page.goto('/visits');
-  await waitForStableUi(page);
-  const firstLink = page.locator('a[href^="/visits/"]').filter({ visible: true }).first();
-  await expect(firstLink).toBeVisible();
-  const href = await firstLink.getAttribute('href');
-  expect(href).toBeTruthy();
-  await page.goto(href!);
-  await waitForStableUi(page);
-}
-
 async function ensureVisitWorkflowFixture() {
   assertSafeE2eDatabase();
 
@@ -395,8 +384,10 @@ test.describe('detail page layout', () => {
   });
 
   test('visit detail keeps grouped layout and action cluster visible', async ({ context }) => {
+    const ids = await ensureVisitWorkflowFixture();
     const { page, errors } = await createInstrumentedPage(context);
-    await openFirstVisitDetail(page);
+    await page.goto(`/visits/${ids.visitRecord}`);
+    await waitForStableUi(page);
 
     await expect(page.getByTestId('page-scaffold')).toBeVisible();
     await expect(page.getByRole('link', { name: '訪問記録 PDF を開く' })).toBeVisible();

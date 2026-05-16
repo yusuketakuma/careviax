@@ -9,6 +9,7 @@ describe('importManualClinicalRules', () => {
     },
     drugMaster: {
       findFirst: vi.fn(),
+      update: vi.fn(),
     },
     drugPackageInsert: {
       findFirst: vi.fn(),
@@ -26,6 +27,7 @@ describe('importManualClinicalRules', () => {
     db.drugMasterImportLog.create.mockResolvedValue({ id: 'log_1', status: 'running' });
     db.drugMasterImportLog.update.mockResolvedValue({ id: 'log_1', status: 'completed' });
     db.drugMaster.findFirst.mockResolvedValue({ id: 'drug_1' });
+    db.drugMaster.update.mockResolvedValue({ id: 'drug_1' });
     db.drugPackageInsert.findFirst.mockResolvedValue(null);
     db.drugPackageInsert.create.mockResolvedValue({ id: 'insert_1' });
     db.drugPackageInsert.update.mockResolvedValue({ id: 'insert_1' });
@@ -62,11 +64,29 @@ describe('importManualClinicalRules', () => {
           precautions_elderly: ['脱水に注意'],
         },
       ],
+      drug_safety_overrides: [
+        {
+          yj_code: '123456789012',
+          tall_man_name: 'DOBUTamine注',
+          lasa_group_key: 'dobutamine_dopamine',
+          is_lasa_risk: true,
+          is_high_risk: true,
+        },
+      ],
     });
 
-    expect(result.importedCount).toBe(3);
+    expect(result.importedCount).toBe(4);
     expect(db.drugAlertRule.deleteMany).toHaveBeenCalledTimes(2);
     expect(db.drugAlertRule.createMany).toHaveBeenCalledTimes(2);
+    expect(db.drugMaster.update).toHaveBeenCalledWith({
+      where: { id: 'drug_1' },
+      data: {
+        tall_man_name: 'DOBUTamine注',
+        lasa_group_key: 'dobutamine_dopamine',
+        is_lasa_risk: true,
+        is_high_risk: true,
+      },
+    });
     expect(db.drugPackageInsert.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         drug_master_id: 'drug_1',

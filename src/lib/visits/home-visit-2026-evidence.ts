@@ -31,11 +31,25 @@ export type HomeVisit2026ReadinessInput = {
   intakeInitialTransitionExpected?: boolean | null;
 };
 
+export type HomeVisit2026CompletionReadinessInput = HomeVisit2026ReadinessInput & {
+  outcomeStatus?: string | null;
+};
+
 export type HomeVisit2026BillingEligibility = {
   physicianSimultaneousEligible: boolean;
   multiStaffVisitEligible: boolean;
   initialTransitionEligible: boolean;
 };
+
+const homeVisit2026CompletionOutcomeStatuses = new Set([
+  'completed',
+  'completed_with_issue',
+  'revisit_needed',
+]);
+
+export function isHomeVisit2026CompletionOutcome(outcomeStatus?: string | null) {
+  return outcomeStatus != null && homeVisit2026CompletionOutcomeStatuses.has(outcomeStatus);
+}
 
 export function readHomeVisit2026Evidence(
   structuredSoap?: Partial<StructuredSoap> | null,
@@ -328,6 +342,15 @@ export function buildHomeVisit2026ReadinessItems({
     ...buildMultiStaffItems(evidence.multi_staff_visit),
     ...blockerItems,
   ];
+}
+
+export function getMissingHomeVisit2026CompletionItems({
+  outcomeStatus,
+  ...input
+}: HomeVisit2026CompletionReadinessInput): HomeVisit2026EvidenceItem[] {
+  if (!isHomeVisit2026CompletionOutcome(outcomeStatus)) return [];
+
+  return buildHomeVisit2026ReadinessItems(input).filter((item) => item.required && !item.done);
 }
 
 export function summarizeHomeVisit2026Evidence(structuredSoap?: Partial<StructuredSoap> | null) {

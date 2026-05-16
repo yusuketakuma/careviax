@@ -75,6 +75,8 @@ import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import type { StructuredSoap } from '@/types/structured-soap';
 import {
   buildHomeVisit2026ReadinessItems,
+  getMissingHomeVisit2026CompletionItems,
+  isHomeVisit2026CompletionOutcome,
   type HomeVisit2026BillingBlocker,
 } from '@/lib/visits/home-visit-2026-evidence';
 import {
@@ -96,6 +98,7 @@ import {
   getVisitAttachmentConstraints,
   validateVisitAttachment,
 } from './visit-record-form.shared';
+import { VisitCompletionReadinessWarning } from './visit-completion-readiness-warning';
 
 type ScheduleDetail = {
   id: string;
@@ -179,6 +182,9 @@ type VisitPreparationSnapshot = {
           schedule_id: string;
           patient_id: string;
           patient_name: string;
+          patient_name_kana: string | null;
+          patient_birth_date: string | null;
+          patient_gender: string | null;
           unit_name: string | null;
           route_order: number | null;
           schedule_status: string;
@@ -333,7 +339,11 @@ export function VisitRecordForm({
     enabled: !!orgId && !!id,
   });
 
-  const { data: visitAlertData, isLoading: visitAlertsLoading } = useQuery<{ alerts: CdsAlert[] }>({
+  const {
+    data: visitAlertData,
+    isLoading: visitAlertsLoading,
+    isError: visitAlertsError,
+  } = useQuery<{ alerts: CdsAlert[] }>({
     queryKey: ['visit-record-cds-alerts', schedule?.cycle_id, orgId],
     queryFn: async () => {
       const res = await fetch('/api/cds/check', {
@@ -351,6 +361,7 @@ export function VisitRecordForm({
     },
     enabled: !!orgId && !!schedule?.cycle_id,
     staleTime: 30_000,
+    retry: false,
   });
   const { data: visitPreparationSnapshot, isLoading: visitPreparationLoading } =
     useQuery<VisitPreparationSnapshot>({
@@ -922,6 +933,29 @@ export function VisitRecordForm({
   });
 
   async function onSubmit(values: FormValues) {
+    const completionStructuredSoap = buildStructuredSoap(values);
+    const completionMissingItems = getMissingHomeVisit2026CompletionItems({
+      outcomeStatus: values.outcome_status,
+      structuredSoap: completionStructuredSoap,
+      visitType: schedule?.visit_type,
+      residualMedicationCount: values.residual_medications?.length ?? 0,
+      billingBlockers,
+      intakeInitialTransitionExpected,
+    }).filter((item) => item.required && !item.done);
+
+    if (completionMissingItems.length > 0) {
+      form.setError('structured_soap', {
+        type: 'manual',
+        message: `訪問完了には訪問薬剤管理の必須確認が必要です: ${completionMissingItems
+          .slice(0, 4)
+          .map((item) => item.label)
+          .join(' / ')}`,
+      });
+      scrollToErrorSummary();
+      toast.error('訪問薬剤管理の必須確認を完了してから保存してください');
+      return;
+    }
+
     let nextVisitGeoLog = visitGeoLog;
     if (locationTrackingEnabled && !visitGeoLog?.end) {
       const endPoint = await captureLocationPhase('end', {
@@ -973,6 +1007,7 @@ export function VisitRecordForm({
   const errorSummaryItems = collectFormErrorSummaryItems(form.formState.errors, {
     visit_date: '訪問日',
     outcome_status: '訪問結果',
+    structured_soap: '訪問薬剤管理の必須確認',
     receipt_at: '受領日時',
     'residual_medications.*.drug_name': '残薬の薬剤名',
     'residual_medications.*.remaining_quantity': '残薬数',
@@ -1058,7 +1093,11 @@ export function VisitRecordForm({
           commonNotes: facilityParallelContext.common_notes,
           patients: facilityParallelContext.patients.map((patient) => ({
             scheduleId: patient.schedule_id,
+            patientId: patient.patient_id,
             patientName: patient.patient_name,
+            patientNameKana: patient.patient_name_kana,
+            birthDate: patient.patient_birth_date,
+            gender: patient.patient_gender,
             unitName: patient.unit_name,
             routeOrder: patient.route_order,
             scheduleStatus: patient.schedule_status,
@@ -1083,6 +1122,7 @@ export function VisitRecordForm({
   const requiredHomeVisit2026Items = homeVisit2026ReadinessItems.filter((item) => item.required);
   const completedHomeVisit2026Count = requiredHomeVisit2026Items.filter((item) => item.done).length;
   const missingHomeVisit2026Items = requiredHomeVisit2026Items.filter((item) => !item.done);
+  const isCompletionOutcome = isHomeVisit2026CompletionOutcome(outcomeStatus);
   const visitReportReadinessItems: VisitReportReadinessItem[] = [
     {
       key: 'subjective',
@@ -1231,13 +1271,17 @@ export function VisitRecordForm({
               </Card>
             )}
 
-            {(visitAlertsLoading || visitAlerts.length > 0) && (
+            {(visitAlertsLoading || visitAlertsError || visitAlerts.length > 0) && (
               <Card className="border-amber-200 bg-amber-50/40">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm text-amber-950">訪問時チェック</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <CdsAlertPanel alerts={visitAlerts} isLoading={visitAlertsLoading} />
+                  <CdsAlertPanel
+                    alerts={visitAlerts}
+                    isLoading={visitAlertsLoading}
+                    isUnavailable={visitAlertsError}
+                  />
                 </CardContent>
               </Card>
             )}
@@ -1703,6 +1747,10 @@ export function VisitRecordForm({
                   <ResidualMedicationForm />
                 </CardContent>
               </Card>
+
+              {isCompletionOutcome && missingHomeVisit2026Items.length > 0 ? (
+                <VisitCompletionReadinessWarning items={missingHomeVisit2026Items} />
+              ) : null}
 
               <Card>
                 <CardHeader className="pb-2">

@@ -369,16 +369,21 @@ test.describe('visits page', () => {
     await page.goto('/visits');
     await waitForStableUi(page);
 
-    // Should show either table rows or empty message
+    // Desktop uses a table; mobile uses stacked cards with the same patient/date links.
     const main = page.locator('main');
-    await expect(main.getByRole('table', { name: '訪問記録一覧' })).toBeVisible();
-    const hasRows = (await main.getByRole('row').count()) > 1;
+    const table = main.getByRole('table', { name: '訪問記録一覧' });
+    const hasTable = await table.isVisible().catch(() => false);
+    const hasRows = hasTable ? (await table.getByRole('row').count()) > 1 : false;
+    const hasMobileCards =
+      !hasTable &&
+      ((await main.locator('a[href^="/visits/"]').filter({ visible: true }).count()) > 0 ||
+        (await main.locator('a[href^="/patients/"]').filter({ visible: true }).count()) > 0);
     const hasEmpty = await main
       .getByText(/訪問記録がありません|データがありません/)
       .isVisible()
       .catch(() => false);
 
-    expect(hasRows || hasEmpty).toBe(true);
+    expect(hasRows || hasMobileCards || hasEmpty).toBe(true);
 
     expect(errors).toEqual([]);
   });
@@ -504,6 +509,13 @@ test.describe('visits page', () => {
     await page.getByLabel('客観情報').fill(soap.objective);
     await page.getByLabel('薬学的評価').fill(soap.assessment);
     await page.getByLabel('計画・介入').fill(soap.plan);
+
+    await page.getByRole('checkbox', { name: '服薬状況を確認した' }).check();
+    await page.getByRole('checkbox', { name: '残薬を確認した' }).check();
+    await page.getByRole('checkbox', { name: '副作用・有害事象を確認した' }).check();
+    await page.getByRole('checkbox', { name: '重複投薬・相互作用を確認した' }).check();
+    await page.getByRole('checkbox', { name: '夜間休日の連絡体制を確認した' }).check();
+
     await page.getByRole('button', { name: '保存', exact: true }).click();
 
     await expect

@@ -4,6 +4,7 @@ import type { NextRequest } from 'next/server';
 const {
   communicationRequestFindManyMock,
   communicationRequestCreateMock,
+  tracingReportFindFirstMock,
   patientFindManyMock,
   careCaseFindManyMock,
   careCaseFindFirstMock,
@@ -13,6 +14,7 @@ const {
 } = vi.hoisted(() => ({
   communicationRequestFindManyMock: vi.fn(),
   communicationRequestCreateMock: vi.fn(),
+  tracingReportFindFirstMock: vi.fn(),
   patientFindManyMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
@@ -41,6 +43,9 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     communicationRequest: {
       findMany: communicationRequestFindManyMock,
+    },
+    tracingReport: {
+      findFirst: tracingReportFindFirstMock,
     },
     patient: {
       findMany: patientFindManyMock,
@@ -71,6 +76,11 @@ describe('/api/communication-requests', () => {
     vi.clearAllMocks();
     communicationRequestFindManyMock.mockResolvedValue([{ id: 'request_1', status: 'draft' }]);
     communicationRequestCreateMock.mockResolvedValue({ id: 'request_2', status: 'draft' });
+    tracingReportFindFirstMock.mockResolvedValue({
+      id: 'tracing_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+    });
     patientFindManyMock.mockResolvedValue([{ id: 'patient_1' }]);
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1' }]);
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
@@ -151,6 +161,87 @@ describe('/api/communication-requests', () => {
     } as NextRequest))!;
 
     expect(response.status).toBe(400);
+    expect(findLatestPrescriberInstitutionSuggestionMock).not.toHaveBeenCalled();
+    expect(pickCommunicationRecipientCandidateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('derives patient and case from an accessible linked tracing report', async () => {
+    const response = (await POST({
+      json: async () => ({
+        request_type: 'tracing_report',
+        related_entity_type: 'tracing_report',
+        related_entity_id: 'tracing_1',
+        subject: '服薬情報提供書',
+        content: '処方医へ共有します',
+      }),
+    } as NextRequest))!;
+
+    expect(response.status).toBe(201);
+    expect(tracingReportFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'tracing_1',
+        org_id: 'org_1',
+      },
+      select: {
+        id: true,
+        patient_id: true,
+        case_id: true,
+      },
+    });
+    expect(communicationRequestCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        related_entity_type: 'tracing_report',
+        related_entity_id: 'tracing_1',
+      }),
+    });
+  });
+
+  it('rejects a cross-case tracing report link before create side effects', async () => {
+    tracingReportFindFirstMock.mockResolvedValue({
+      id: 'tracing_2',
+      patient_id: 'patient_1',
+      case_id: 'case_2',
+    });
+
+    const response = (await POST({
+      json: async () => ({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        request_type: 'tracing_report',
+        related_entity_type: 'tracing_report',
+        related_entity_id: 'tracing_2',
+        subject: '服薬情報提供書',
+        content: '処方医へ共有します',
+      }),
+    } as NextRequest))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '関連トレーシングレポートと患者またはケースが一致しません',
+    });
+    expect(findLatestPrescriberInstitutionSuggestionMock).not.toHaveBeenCalled();
+    expect(pickCommunicationRecipientCandidateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns not found for an inaccessible linked tracing report before side effects', async () => {
+    careCaseFindFirstMock.mockResolvedValue(null);
+
+    const response = (await POST({
+      json: async () => ({
+        request_type: 'tracing_report',
+        related_entity_type: 'tracing_report',
+        related_entity_id: 'tracing_1',
+        subject: '服薬情報提供書',
+        content: '処方医へ共有します',
+      }),
+    } as NextRequest))!;
+
+    expect(response.status).toBe(404);
     expect(findLatestPrescriberInstitutionSuggestionMock).not.toHaveBeenCalled();
     expect(pickCommunicationRecipientCandidateMock).not.toHaveBeenCalled();
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();

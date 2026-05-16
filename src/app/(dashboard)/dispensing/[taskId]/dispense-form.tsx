@@ -50,10 +50,12 @@ import { useCollaborativeForm } from '@/lib/hooks/use-collaborative-form';
 import { CollaborativeTextarea } from '@/components/features/collaboration/collaborative-textarea';
 import { CARRY_TYPE_OPTIONS } from '@/lib/dispensing/constants';
 import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
+import { CdsAlertPanel, type CdsAlert } from '@/components/features/cds/alert-panel';
 import {
   normalizeJahisSupplementalRecords,
   type JahisSupplementalRecordDbView,
 } from '@/lib/pharmacy/jahis-supplemental-records-view';
+import { DISPENSE_SAFETY_CHECKLIST_ACK } from '@/lib/dispensing/safety-checklist';
 import type {
   DispensePrefillLine,
   DispensePrefillResult,
@@ -488,6 +490,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [usePrefill, setUsePrefill] = useState(true);
   const [checkedLines, setCheckedLines] = useState<Set<string>>(new Set());
+  const [safetyAck, setSafetyAck] = useState(false);
   const [editedLines, setEditedLines] = useState<Map<string, Partial<DispensePrefillLine>>>(
     new Map(),
   );
@@ -515,6 +518,25 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
       return res.json() as Promise<DispenseTaskDetail>;
     },
     enabled: !!orgId && !!taskId,
+  });
+
+  const {
+    data: cdsData,
+    isLoading: cdsLoading,
+    isError: cdsError,
+  } = useQuery<{ alerts: CdsAlert[] }>({
+    queryKey: ['cds-alerts', task?.cycle.id, orgId],
+    queryFn: async () => {
+      const res = await fetch('/api/cds/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify({ cycleId: task!.cycle.id }),
+      });
+      if (!res.ok) throw new Error('処方安全チェックに失敗しました');
+      return res.json() as Promise<{ alerts: CdsAlert[] }>;
+    },
+    enabled: !!orgId && !!task?.cycle.id,
+    retry: false,
   });
 
   const intake = task?.cycle.prescription_intakes[0];
@@ -620,6 +642,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
         body: JSON.stringify({
           task_id: taskId,
           lines: values.lines.filter((line) => !blockedInquiryByLineId.has(line.line_id)),
+          safety_checklist: DISPENSE_SAFETY_CHECKLIST_ACK,
         }),
       });
       if (!res.ok) {
@@ -651,7 +674,8 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
 
       const payload = {
         task_id: taskId,
-        results: lines
+        safety_checklist: DISPENSE_SAFETY_CHECKLIST_ACK,
+        lines: lines
           .filter((line) => line.changeMarker !== 'removed')
           .map((line) => {
             const edited = editedLines.get(line.lineId) ?? {};
@@ -738,11 +762,14 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
   }
 
   const patient = task.cycle.case_.patient;
+  const cdsCheckReady = Boolean(cdsData) && !cdsLoading && !cdsError;
+  const cdsCheckUnavailable = Boolean(task?.cycle.id) && cdsError;
   const hasLineLevelBlock = blockedInquiryByLineId.size > 0;
   const availableLineCount = intake.lines.filter(
     (line) => !blockedInquiryByLineId.has(line.id),
   ).length;
-  const submitBlocked = cycleLevelInquiries.length > 0 || availableLineCount === 0;
+  const submitBlocked =
+    cycleLevelInquiries.length > 0 || availableLineCount === 0 || !safetyAck || !cdsCheckReady;
   const originalCollectionCheck = task.original_collection_check;
 
   // Prefill mode
@@ -1173,6 +1200,36 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
           );
         })()}
 
+        <Card className="border-amber-300 bg-amber-50/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm text-amber-950">
+              <AlertTriangle className="size-4" aria-hidden="true" />
+              調剤完了前の安全確認
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <CdsAlertPanel
+              alerts={cdsData?.alerts ?? []}
+              isLoading={cdsLoading}
+              isUnavailable={cdsCheckUnavailable}
+            />
+            <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-background px-3 py-3">
+              <Checkbox
+                id="prefill-dispense-safety-ack"
+                checked={safetyAck}
+                onCheckedChange={(checked) => setSafetyAck(Boolean(checked))}
+                disabled={!cdsCheckReady}
+              />
+              <Label
+                htmlFor="prefill-dispense-safety-ack"
+                className="text-sm leading-5 text-amber-950"
+              >
+                患者、薬剤名・規格、数量・日数、用法、包装・保管、処方安全アラートを確認しました
+              </Label>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Prefill action buttons */}
         <div className="flex justify-end gap-3">
           <Button
@@ -1189,7 +1246,7 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
             type="button"
             loading={prefillMutation.isPending}
             loadingLabel="登録中..."
-            disabled={!allChecked}
+            disabled={!allChecked || !safetyAck || !cdsCheckReady}
             onClick={() => prefillMutation.mutate(prefillLines)}
           >
             承認
@@ -1527,6 +1584,36 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
           );
         })}
       </div>
+
+      <Card className="border-amber-300 bg-amber-50/60">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-sm text-amber-950">
+            <AlertTriangle className="size-4" aria-hidden="true" />
+            調剤完了前の安全確認
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <CdsAlertPanel
+            alerts={cdsData?.alerts ?? []}
+            isLoading={cdsLoading}
+            isUnavailable={cdsCheckUnavailable}
+          />
+          <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-background px-3 py-3">
+            <Checkbox
+              id="manual-dispense-safety-ack"
+              checked={safetyAck}
+              onCheckedChange={(checked) => setSafetyAck(Boolean(checked))}
+              disabled={!cdsCheckReady}
+            />
+            <Label
+              htmlFor="manual-dispense-safety-ack"
+              className="text-sm leading-5 text-amber-950"
+            >
+              患者、薬剤名・規格、数量・日数、用法、包装・保管、処方安全アラートを確認しました
+            </Label>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="flex justify-end gap-3">
         <Button

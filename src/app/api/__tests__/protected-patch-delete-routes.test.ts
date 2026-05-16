@@ -1,12 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const {
-  authMock,
-  prismaMock,
-  withOrgContextMock,
-  txMock,
-} = vi.hoisted(() => {
+const { authMock, prismaMock, withOrgContextMock, txMock } = vi.hoisted(() => {
   const createRecord = () => ({
     id: 'entity_1',
     status: 'active',
@@ -30,6 +25,16 @@ const {
     visit_deadline_date: null,
     escalation_reason: null,
     finalized_schedule_id: null,
+    schedule: {
+      case_id: 'case_1',
+      pharmacist_id: 'user_1',
+      visit_type: 'regular',
+      case_: {
+        primary_pharmacist_id: 'user_1',
+        backup_pharmacist_id: null,
+        required_visit_support: null,
+      },
+    },
   });
 
   const createModel = () => ({
@@ -54,7 +59,7 @@ const {
           }
           return cache.get(prop);
         },
-      }
+      },
     );
   };
 
@@ -93,16 +98,15 @@ import { PATCH as patientPatch } from '../patients/[id]/route';
 import { PATCH as prescriptionIntakePatch } from '../prescription-intakes/[id]/route';
 import { PATCH as visitRecordPatch } from '../visit-records/[id]/route';
 import { PATCH as visitScheduleProposalPatch } from '../visit-schedule-proposals/[id]/route';
-import { PATCH as visitSchedulePatch, DELETE as visitScheduleDelete } from '../visit-schedules/[id]/route';
+import {
+  PATCH as visitSchedulePatch,
+  DELETE as visitScheduleDelete,
+} from '../visit-schedules/[id]/route';
 
 type Handler = () => Promise<Response | undefined>;
 type RouteEntry = { name: string; handler: Handler; successBody?: unknown };
 
-function createRequest(
-  url: string,
-  headers?: Record<string, string>,
-  body?: unknown
-) {
+function createRequest(url: string, headers?: Record<string, string>, body?: unknown) {
   return {
     url,
     headers: {
@@ -115,73 +119,162 @@ function createRequest(
 const permissionRoutes: RouteEntry[] = [
   {
     name: 'cases/[id] PATCH',
-    handler: () => casePatch(createRequest('http://localhost/api/cases/case_1', { 'x-org-id': 'org_1' }, {}), { params: Promise.resolve({ id: 'case_1' }) }),
+    handler: () =>
+      casePatch(createRequest('http://localhost/api/cases/case_1', { 'x-org-id': 'org_1' }, {}), {
+        params: Promise.resolve({ id: 'case_1' }),
+      }),
   },
   {
     name: 'cases/[id]/transition PATCH',
-    handler: () => caseTransitionPatch(createRequest('http://localhost/api/cases/case_1/transition', { 'x-org-id': 'org_1' }, { from: 'active', to: 'on_hold' }), { params: Promise.resolve({ id: 'case_1' }) }),
+    handler: () =>
+      caseTransitionPatch(
+        createRequest(
+          'http://localhost/api/cases/case_1/transition',
+          { 'x-org-id': 'org_1' },
+          { from: 'active', to: 'on_hold' },
+        ),
+        { params: Promise.resolve({ id: 'case_1' }) },
+      ),
   },
   {
     name: 'care-reports/[id] PATCH',
-    handler: () => careReportPatch(createRequest('http://localhost/api/care-reports/report_1', { 'x-org-id': 'org_1' }, {}), { params: Promise.resolve({ id: 'report_1' }) }),
+    handler: () =>
+      careReportPatch(
+        createRequest('http://localhost/api/care-reports/report_1', { 'x-org-id': 'org_1' }, {}),
+        { params: Promise.resolve({ id: 'report_1' }) },
+      ),
   },
   {
     name: 'billing-candidates/[id] PATCH',
     handler: () =>
       billingCandidatePatch(
-        createRequest('http://localhost/api/billing-candidates/candidate_1', { 'x-org-id': 'org_1' }, { action: 'confirm' }),
-        { params: Promise.resolve({ id: 'candidate_1' }) }
+        createRequest(
+          'http://localhost/api/billing-candidates/candidate_1',
+          { 'x-org-id': 'org_1' },
+          { action: 'confirm' },
+        ),
+        { params: Promise.resolve({ id: 'candidate_1' }) },
       ),
     successBody: { action: 'confirm' },
   },
   {
     name: 'communication-requests/[id] PATCH',
-    handler: () => communicationRequestPatch(createRequest('http://localhost/api/communication-requests/request_1', { 'x-org-id': 'org_1' }, {}), { params: Promise.resolve({ id: 'request_1' }) }),
+    handler: () =>
+      communicationRequestPatch(
+        createRequest(
+          'http://localhost/api/communication-requests/request_1',
+          { 'x-org-id': 'org_1' },
+          {},
+        ),
+        { params: Promise.resolve({ id: 'request_1' }) },
+      ),
   },
   {
     name: 'inquiry-records/[id] PATCH',
-    handler: () => inquiryRecordPatch(createRequest('http://localhost/api/inquiry-records/inquiry_1', { 'x-org-id': 'org_1' }, {}), { params: Promise.resolve({ id: 'inquiry_1' }) }),
+    handler: () =>
+      inquiryRecordPatch(
+        createRequest(
+          'http://localhost/api/inquiry-records/inquiry_1',
+          { 'x-org-id': 'org_1' },
+          {},
+        ),
+        { params: Promise.resolve({ id: 'inquiry_1' }) },
+      ),
   },
   {
     name: 'medication-cycles/[id]/transition PATCH',
-    handler: () => medicationCycleTransitionPatch(createRequest('http://localhost/api/medication-cycles/cycle_1/transition', { 'x-org-id': 'org_1' }, { to: 'dispensing', version: 1 }), { params: Promise.resolve({ id: 'cycle_1' }) }),
+    handler: () =>
+      medicationCycleTransitionPatch(
+        createRequest(
+          'http://localhost/api/medication-cycles/cycle_1/transition',
+          { 'x-org-id': 'org_1' },
+          { to: 'dispensing', version: 1 },
+        ),
+        { params: Promise.resolve({ id: 'cycle_1' }) },
+      ),
   },
   {
     name: 'medication-issues/[id] PATCH',
-    handler: () => medicationIssuePatch(createRequest('http://localhost/api/medication-issues/issue_1', { 'x-org-id': 'org_1' }, {}), { params: Promise.resolve({ id: 'issue_1' }) }),
+    handler: () =>
+      medicationIssuePatch(
+        createRequest(
+          'http://localhost/api/medication-issues/issue_1',
+          { 'x-org-id': 'org_1' },
+          {},
+        ),
+        { params: Promise.resolve({ id: 'issue_1' }) },
+      ),
   },
   {
     name: 'patients/[id] PATCH',
-    handler: () => patientPatch(createRequest('http://localhost/api/patients/patient_1', { 'x-org-id': 'org_1' }, {}), { params: Promise.resolve({ id: 'patient_1' }) }),
+    handler: () =>
+      patientPatch(
+        createRequest('http://localhost/api/patients/patient_1', { 'x-org-id': 'org_1' }, {}),
+        { params: Promise.resolve({ id: 'patient_1' }) },
+      ),
   },
   {
     name: 'prescription-intakes/[id] PATCH',
-    handler: () => prescriptionIntakePatch(createRequest('http://localhost/api/prescription-intakes/intake_1', { 'x-org-id': 'org_1' }, {}), { params: Promise.resolve({ id: 'intake_1' }) }),
+    handler: () =>
+      prescriptionIntakePatch(
+        createRequest(
+          'http://localhost/api/prescription-intakes/intake_1',
+          { 'x-org-id': 'org_1' },
+          {},
+        ),
+        { params: Promise.resolve({ id: 'intake_1' }) },
+      ),
   },
   {
     name: 'visit-records/[id] PATCH',
-    handler: () => visitRecordPatch(createRequest('http://localhost/api/visit-records/record_1', { 'x-org-id': 'org_1' }, { version: 1 }), { params: Promise.resolve({ id: 'record_1' }) }),
+    handler: () =>
+      visitRecordPatch(
+        createRequest(
+          'http://localhost/api/visit-records/record_1',
+          { 'x-org-id': 'org_1' },
+          { version: 1 },
+        ),
+        { params: Promise.resolve({ id: 'record_1' }) },
+      ),
   },
   {
     name: 'visit-schedule-proposals/[id] PATCH',
-    handler: () => visitScheduleProposalPatch(createRequest('http://localhost/api/visit-schedule-proposals/proposal_1', { 'x-org-id': 'org_1' }, { action: 'approve' }), { params: Promise.resolve({ id: 'proposal_1' }) }),
+    handler: () =>
+      visitScheduleProposalPatch(
+        createRequest(
+          'http://localhost/api/visit-schedule-proposals/proposal_1',
+          { 'x-org-id': 'org_1' },
+          { action: 'approve' },
+        ),
+        { params: Promise.resolve({ id: 'proposal_1' }) },
+      ),
   },
   {
     name: 'visit-schedules/[id] PATCH',
-    handler: () => visitSchedulePatch(createRequest('http://localhost/api/visit-schedules/schedule_1', { 'x-org-id': 'org_1' }, {}), { params: Promise.resolve({ id: 'schedule_1' }) }),
+    handler: () =>
+      visitSchedulePatch(
+        createRequest(
+          'http://localhost/api/visit-schedules/schedule_1',
+          { 'x-org-id': 'org_1' },
+          {},
+        ),
+        { params: Promise.resolve({ id: 'schedule_1' }) },
+      ),
   },
   {
     name: 'visit-schedules/[id] DELETE',
-    handler: () => visitScheduleDelete(createRequest('http://localhost/api/visit-schedules/schedule_1', { 'x-org-id': 'org_1' }), { params: Promise.resolve({ id: 'schedule_1' }) }),
+    handler: () =>
+      visitScheduleDelete(
+        createRequest('http://localhost/api/visit-schedules/schedule_1', { 'x-org-id': 'org_1' }),
+        { params: Promise.resolve({ id: 'schedule_1' }) },
+      ),
   },
 ];
 
 describe('protected PATCH/DELETE routes auth matrix', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback(txMock)
-    );
+    withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
   });
 
   for (const route of permissionRoutes) {
@@ -222,7 +315,7 @@ describe('protected PATCH/DELETE routes auth matrix', () => {
     authMock.mockResolvedValue(null);
 
     const response = await notificationsPatch(
-      createRequest('http://localhost/api/notifications', { 'x-org-id': 'org_1' }, { all: true })
+      createRequest('http://localhost/api/notifications', { 'x-org-id': 'org_1' }, { all: true }),
     );
 
     if (!response) throw new Error('response is required');
@@ -234,7 +327,7 @@ describe('protected PATCH/DELETE routes auth matrix', () => {
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'admin' });
 
     const response = await notificationsPatch(
-      createRequest('http://localhost/api/notifications', { 'x-org-id': 'org_1' }, { all: true })
+      createRequest('http://localhost/api/notifications', { 'x-org-id': 'org_1' }, { all: true }),
     );
 
     if (!response) throw new Error('response is required');

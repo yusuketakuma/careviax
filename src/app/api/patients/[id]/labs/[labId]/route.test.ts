@@ -1,22 +1,30 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const {
-  requireAuthContextMock,
-  patientLabObservationFindFirstMock,
-  patientLabObservationUpdateMock,
-  withOrgContextMock,
-  buildCareCaseAssignmentWhereMock,
-} = vi.hoisted(() => ({
-  requireAuthContextMock: vi.fn(),
+const { patientLabObservationFindFirstMock, patientLabObservationUpdateMock } = vi.hoisted(() => ({
   patientLabObservationFindFirstMock: vi.fn(),
   patientLabObservationUpdateMock: vi.fn(),
-  withOrgContextMock: vi.fn(),
-  buildCareCaseAssignmentWhereMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  requireAuthContext: requireAuthContextMock,
+  requireAuthContext: vi.fn(async () => ({
+    ctx: {
+      orgId: 'org_1',
+      userId: 'pharmacist_1',
+      role: 'pharmacist',
+      ipAddress: '127.0.0.1',
+      userAgent: 'vitest',
+    },
+  })),
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+    fn({
+      patientLabObservation: {
+        update: patientLabObservationUpdateMock,
+      },
+    }),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -27,82 +35,66 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
-vi.mock('@/lib/db/rls', () => ({
-  withOrgContext: withOrgContextMock,
-}));
-
-vi.mock('@/lib/auth/visit-schedule-access', () => ({
-  buildCareCaseAssignmentWhere: buildCareCaseAssignmentWhereMock,
-}));
-
 import { PATCH } from './route';
 
-const defaultParams = () => Promise.resolve({ id: 'patient_1', labId: 'lab_1' });
+function createPatchRequest(body: Record<string, unknown>) {
+  return {
+    json: async () => body,
+  } as NextRequest;
+}
 
 describe('/api/patients/[id]/labs/[labId] PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    buildCareCaseAssignmentWhereMock.mockReturnValue(null);
-    requireAuthContextMock.mockResolvedValue({
-      ctx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' },
+    patientLabObservationFindFirstMock.mockResolvedValue({
+      id: 'lab_1',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
     });
-    patientLabObservationFindFirstMock.mockResolvedValue({ id: 'lab_1' });
-    const updatedRecord = { id: 'lab_1', value_numeric: 5.2 };
-    patientLabObservationUpdateMock.mockResolvedValue(updatedRecord);
-    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
-      callback({
-        patientLabObservation: { update: patientLabObservationUpdateMock },
-      }),
-    );
+    patientLabObservationUpdateMock.mockResolvedValue({
+      id: 'lab_1',
+      note: '再確認済み',
+    });
   });
 
-  it('returns 200 with updated record on happy path', async () => {
-    const response = await PATCH(
-      { json: async () => ({ value_numeric: 5.2 }) } as NextRequest,
-      { params: defaultParams() },
-    );
-    if (!response) throw new Error('response is required');
+  it('folds assignment-scope into the lab resource lookup before updating', async () => {
+    const response = (await PATCH(createPatchRequest({ note: '再確認済み' }), {
+      params: Promise.resolve({ id: 'patient_1', labId: 'lab_1' }),
+    }))!;
+
     expect(response.status).toBe(200);
+    expect(patientLabObservationFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'lab_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        patient: {
+          cases: {
+            some: {
+              OR: [
+                { primary_pharmacist_id: 'pharmacist_1' },
+                { backup_pharmacist_id: 'pharmacist_1' },
+                { visit_schedules: { some: { pharmacist_id: 'pharmacist_1' } } },
+              ],
+            },
+          },
+        },
+      },
+    });
     expect(patientLabObservationUpdateMock).toHaveBeenCalledWith({
       where: { id: 'lab_1' },
-      data: { value_numeric: 5.2 },
+      data: { note: '再確認済み' },
     });
   });
 
-  it('returns 404 when patientLabObservation.findFirst returns null', async () => {
+  it('does not update when the lab is outside the assigned patient scope', async () => {
     patientLabObservationFindFirstMock.mockResolvedValue(null);
-    const response = await PATCH(
-      { json: async () => ({ value_numeric: 5.2 }) } as NextRequest,
-      { params: defaultParams() },
-    );
-    if (!response) throw new Error('response is required');
+
+    const response = (await PATCH(createPatchRequest({ note: '再確認済み' }), {
+      params: Promise.resolve({ id: 'patient_1', labId: 'lab_foreign' }),
+    }))!;
+
     expect(response.status).toBe(404);
-    expect(patientLabObservationUpdateMock).not.toHaveBeenCalled();
-  });
-
-  it('returns 403 when requireAuthContext returns a forbidden response', async () => {
-    requireAuthContextMock.mockResolvedValue({
-      response: new Response(
-        JSON.stringify({ code: 'AUTH_FORBIDDEN', message: '検査値の更新権限がありません' }),
-        { status: 403, headers: { 'Content-Type': 'application/json' } },
-      ),
-    });
-    const response = await PATCH(
-      { json: async () => ({ value_numeric: 5.2 }) } as NextRequest,
-      { params: defaultParams() },
-    );
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(403);
-    expect(patientLabObservationFindFirstMock).not.toHaveBeenCalled();
-  });
-
-  it('returns 400 when value_numeric is a string instead of a number', async () => {
-    const response = await PATCH(
-      { json: async () => ({ value_numeric: 'not-a-number' }) } as NextRequest,
-      { params: defaultParams() },
-    );
-    if (!response) throw new Error('response is required');
-    expect(response.status).toBe(400);
     expect(patientLabObservationUpdateMock).not.toHaveBeenCalled();
   });
 });

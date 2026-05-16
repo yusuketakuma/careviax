@@ -4,14 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import {
-  CheckCircle2,
-  XCircle,
-  PauseCircle,
-  Package,
-  History,
-  AlertTriangle,
-} from 'lucide-react';
+import { CheckCircle2, XCircle, PauseCircle, Package, History, AlertTriangle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -214,9 +207,7 @@ function GroupCard({
           <Package className="size-3.5 text-muted-foreground" aria-hidden="true" />
           <CardTitle className="text-sm font-semibold">{groupLabel}</CardTitle>
           {!isUngrouped && (
-            <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 text-xs">
-              一包化
-            </Badge>
+            <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 text-xs">一包化</Badge>
           )}
           {isUngrouped && (
             <Badge variant="secondary" className="text-xs">
@@ -230,10 +221,18 @@ function GroupCard({
         <table className="min-w-full text-sm" aria-label={`${groupLabel}の調剤品目`}>
           <thead>
             <tr className="border-b bg-muted/10">
-              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">薬剤名</th>
-              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">数量</th>
-              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">持参区分</th>
-              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">調剤時刻</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">
+                薬剤名
+              </th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">
+                数量
+              </th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">
+                持参区分
+              </th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">
+                調剤時刻
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -250,9 +249,7 @@ function GroupCard({
                     <div className="space-y-0.5">
                       <p className="font-medium leading-snug">{result.actual_drug_name}</p>
                       {hasDiscrepancy && (
-                        <p className="text-xs text-amber-700">
-                          処方: {result.line.drug_name}
-                        </p>
+                        <p className="text-xs text-amber-700">処方: {result.line.drug_name}</p>
                       )}
                       {isPkg && (
                         <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-xs">
@@ -318,7 +315,7 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
 
   const [historyOpen, setHistoryOpen] = useState(false);
   const [checklist, setChecklist] = useState<Record<string, boolean>>(
-    Object.fromEntries(CHECKLIST_ITEMS.map((item) => [item.id, false]))
+    Object.fromEntries(CHECKLIST_ITEMS.map((item) => [item.id, false])),
   );
   const [formState, setFormState] = useState(() => ({
     rejectReason: '',
@@ -328,7 +325,7 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
     emergencyReason: '',
   }));
   const [activePane, setActivePane] = useState<AuditPane>(() =>
-    actionParam === 'approve' || actionParam === 'reject' ? 'checklist' : 'groups'
+    actionParam === 'approve' || actionParam === 'reject' ? 'checklist' : 'groups',
   );
   const [activeChecklistIndex, setActiveChecklistIndex] = useState(0);
 
@@ -348,7 +345,11 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
   const cycleId = task?.cycle.id ?? '';
   const patientId = task?.cycle.patient_id ?? '';
 
-  const { data: cdsData, isLoading: cdsLoading } = useQuery({
+  const {
+    data: cdsData,
+    isLoading: cdsLoading,
+    isError: cdsError,
+  } = useQuery({
     queryKey: ['cds-alerts', cycleId, patientId, orgId],
     queryFn: async () => {
       const res = await fetch('/api/cds/check', {
@@ -359,10 +360,11 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
         },
         body: JSON.stringify({ cycleId, patientId }),
       });
-      if (!res.ok) return { alerts: [] as CdsAlert[] };
+      if (!res.ok) throw new Error('処方安全チェックに失敗しました');
       return res.json() as Promise<{ alerts: CdsAlert[] }>;
     },
     enabled: !!orgId && !!cycleId && !!patientId,
+    retry: false,
   });
 
   const mutation = useMutation({
@@ -381,9 +383,7 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(
-          (err as { message?: string }).message ?? '鑑査の登録に失敗しました'
-        );
+        throw new Error((err as { message?: string }).message ?? '鑑査の登録に失敗しました');
       }
       return res.json();
     },
@@ -392,8 +392,8 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
         variables.result === 'approved' || variables.result === 'emergency_approved'
           ? '承認しました'
           : variables.result === 'rejected'
-          ? '差戻しました'
-          : '保留にしました';
+            ? '差戻しました'
+            : '保留にしました';
       toast.success('鑑査完了', { description: label });
       router.push('/auditing');
     },
@@ -499,7 +499,7 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
         scope: 'auditing',
       },
     ],
-    [handleApprove, handleNextPane, handleReject, handleToggleChecklistItem, formState.showReject]
+    [handleApprove, handleNextPane, handleReject, handleToggleChecklistItem, formState.showReject],
   );
 
   useKeyboardShortcuts(shortcuts);
@@ -525,8 +525,7 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
         </Badge>
         {intake && (
           <span className="text-sm text-muted-foreground">
-            処方日:{' '}
-            {format(parseISO(intake.prescribed_date), 'yyyy/MM/dd', { locale: ja })}
+            処方日: {format(parseISO(intake.prescribed_date), 'yyyy/MM/dd', { locale: ja })}
             {intake.prescriber_name && ` / ${intake.prescriber_name}`}
             {intake.prescriber_institution && ` (${intake.prescriber_institution})`}
           </span>
@@ -538,12 +537,7 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
         <div className="flex-1">
           <PreviousStageSummary cycleId={cycleId} />
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => setHistoryOpen(true)}
-        >
+        <Button type="button" variant="outline" size="sm" onClick={() => setHistoryOpen(true)}>
           <History className="mr-1.5 size-3.5" aria-hidden="true" />
           履歴
         </Button>
@@ -562,7 +556,7 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
       </Sheet>
 
       {/* CDS alerts */}
-      <CdsAlertPanel alerts={alerts} isLoading={cdsLoading} />
+      <CdsAlertPanel alerts={alerts} isLoading={cdsLoading} isUnavailable={cdsError} />
 
       {/* Empty results fallback */}
       {task.results.length === 0 && (
@@ -597,9 +591,7 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
       )}
 
       {/* Checklist */}
-      <Card
-        className={activePane === 'checklist' ? 'ring-2 ring-primary/50' : undefined}
-      >
+      <Card className={activePane === 'checklist' ? 'ring-2 ring-primary/50' : undefined}>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">鑑査チェックリスト</CardTitle>
         </CardHeader>
@@ -655,9 +647,7 @@ export function AuditDetail({ taskId }: AuditDetailProps) {
               </Label>
               <Select
                 value={formState.rejectReason}
-                onValueChange={(v) =>
-                  setFormState((prev) => ({ ...prev, rejectReason: v ?? '' }))
-                }
+                onValueChange={(v) => setFormState((prev) => ({ ...prev, rejectReason: v ?? '' }))}
               >
                 <SelectTrigger id="reject-reason" className="h-8 text-sm">
                   <SelectValue placeholder="理由を選択してください" />

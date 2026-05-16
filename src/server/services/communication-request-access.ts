@@ -110,3 +110,28 @@ export async function canAccessCommunicationRequestRecord(args: {
 
   return true;
 }
+
+export function resolveTracingReportCommunicationScope(args: {
+  requestedPatientId?: string | null;
+  requestedCaseId?: string | null;
+  tracingReport: {
+    patient_id: string;
+    case_id: string | null;
+  };
+}): { patientId: string; caseId: string | null } | null {
+  const requestedPatientId = args.requestedPatientId ?? null;
+  const requestedCaseId = args.requestedCaseId ?? null;
+
+  if (requestedPatientId && requestedPatientId !== args.tracingReport.patient_id) {
+    return null;
+  }
+
+  if (requestedCaseId && requestedCaseId !== args.tracingReport.case_id) {
+    return null;
+  }
+
+  return {
+    patientId: requestedPatientId ?? args.tracingReport.patient_id,
+    caseId: requestedCaseId ?? args.tracingReport.case_id ?? null,
+  };
+}

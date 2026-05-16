@@ -35,6 +35,10 @@ describe('/api/drug-masters/batch', () => {
         is_generic: true,
         is_narcotic: false,
         is_psychotropic: false,
+        is_high_risk: true,
+        is_lasa_risk: true,
+        tall_man_name: 'acetAMINOPHEN',
+        lasa_group_key: 'acetaminophen_anticoagulant',
         max_administration_days: 30,
         therapeutic_category: '解熱鎮痛薬',
       },
@@ -42,20 +46,32 @@ describe('/api/drug-masters/batch', () => {
   });
 
   it('returns drug master records keyed by yj code', async () => {
-    const response = (await POST({
-      json: async () => ({
-        yj_codes: ['1111111A'],
-      }),
-    } as NextRequest, { params: Promise.resolve({}) }))!;
+    const response = (await POST(
+      {
+        json: async () => ({
+          yj_codes: ['1111111A'],
+        }),
+      } as NextRequest,
+      { params: Promise.resolve({}) },
+    ))!;
 
     expect(response.status).toBe(200);
     expect(drugMasterFindManyMock).toHaveBeenCalledWith({
       where: { yj_code: { in: ['1111111A'] } },
       select: expect.any(Object),
     });
+    expect(drugMasterFindManyMock.mock.calls[0]?.[0].select).toEqual(
+      expect.objectContaining({
+        is_high_risk: true,
+        is_lasa_risk: true,
+        tall_man_name: true,
+        lasa_group_key: true,
+      }),
+    );
     await expect(response.json()).resolves.toMatchObject({
       '1111111A': expect.objectContaining({
         drug_name: 'アセトアミノフェン',
+        tall_man_name: 'acetAMINOPHEN',
       }),
     });
   });

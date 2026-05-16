@@ -1,20 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const { withAuthMock, withOrgContextMock, dispatchNotificationEventMock } = vi.hoisted(() => ({
-  withAuthMock: vi.fn((
-    handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>
-  ) => {
-    return (req: NextRequest) =>
-      handler({
-        ...req,
-        orgId: 'org_1',
-        userId: 'user_1',
-      } as NextRequest & { orgId: string; userId: string });
-  }),
-  withOrgContextMock: vi.fn(),
-  dispatchNotificationEventMock: vi.fn(),
-}));
+const { withAuthMock, withOrgContextMock, dispatchNotificationEventMock, checkDispenseAlertsMock } =
+  vi.hoisted(() => ({
+    withAuthMock: vi.fn(
+      (
+        handler: (
+          req: NextRequest & { orgId: string; userId: string; role: 'pharmacist' },
+        ) => Promise<Response>,
+      ) => {
+        return (req: NextRequest) =>
+          handler({
+            ...req,
+            orgId: 'org_1',
+            userId: 'user_1',
+            role: 'pharmacist',
+          } as NextRequest & { orgId: string; userId: string; role: 'pharmacist' });
+      },
+    ),
+    withOrgContextMock: vi.fn(),
+    dispatchNotificationEventMock: vi.fn(),
+    checkDispenseAlertsMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/auth/middleware', () => ({
   withAuth: withAuthMock,
@@ -28,6 +35,10 @@ vi.mock('@/server/services/notifications', () => ({
   dispatchNotificationEvent: dispatchNotificationEventMock,
 }));
 
+vi.mock('@/server/cds/checker', () => ({
+  checkDispenseAlerts: checkDispenseAlertsMock,
+}));
+
 const { upsertOperationalTaskMock } = vi.hoisted(() => ({
   upsertOperationalTaskMock: vi.fn().mockResolvedValue({ id: 'task_operational_1' }),
 }));
@@ -38,6 +49,15 @@ vi.mock('@/server/services/operational-tasks', () => ({
 
 import { POST } from './route';
 
+const safetyChecklist = {
+  patient_identity: true,
+  drug_name_strength: true,
+  quantity_days: true,
+  directions_route: true,
+  packaging_storage: true,
+  cds_alerts_reviewed: true,
+};
+
 function createRequest(body: unknown) {
   return {
     json: async () => body,
@@ -47,6 +67,7 @@ function createRequest(body: unknown) {
 describe('/api/dispense-results POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    checkDispenseAlertsMock.mockResolvedValue([]);
   });
 
   it('blocks dispense completion when the cycle has an unresolved cycle-level inquiry', async () => {
@@ -73,7 +94,7 @@ describe('/api/dispense-results POST', () => {
         dispenseResult: { create: vi.fn() },
         medicationCycle: { update: vi.fn() },
         visitSchedule: { update: vi.fn() },
-      })
+      }),
     );
 
     const response = await POST(
@@ -88,7 +109,7 @@ describe('/api/dispense-results POST', () => {
             carry_type: 'carry',
           },
         ],
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -122,7 +143,7 @@ describe('/api/dispense-results POST', () => {
         dispenseResult: { create: vi.fn() },
         medicationCycle: { update: vi.fn() },
         visitSchedule: { update: vi.fn() },
-      })
+      }),
     );
 
     const response = await POST(
@@ -136,7 +157,7 @@ describe('/api/dispense-results POST', () => {
             carry_type: 'carry',
           },
         ],
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -152,6 +173,250 @@ describe('/api/dispense-results POST', () => {
         ],
       },
     });
+  });
+
+  it('requires safety checklist acknowledgement before saving dispense results', async () => {
+    const dispenseResultCreateMock = vi.fn();
+    const dispenseTaskUpdateMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_1',
+            cycle_id: 'cycle_1',
+            results: [],
+            cycle: {
+              id: 'cycle_1',
+              overall_status: 'dispensing',
+              inquiries: [],
+              prescription_intakes: [
+                {
+                  id: 'intake_1',
+                  source_type: 'paper',
+                  original_collected_at: null,
+                  lines: [
+                    {
+                      id: 'line_1',
+                      drug_name: 'アムロジピン',
+                      drug_code: '123',
+                      quantity: 14,
+                    },
+                  ],
+                },
+              ],
+              visit_schedules: [],
+              case_: {
+                patient: {
+                  name: '山田 太郎',
+                },
+              },
+            },
+          }),
+          update: dispenseTaskUpdateMock,
+        },
+        dispenseResult: {
+          create: dispenseResultCreateMock,
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        workflowException: {
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_1',
+        lines: [
+          {
+            line_id: 'line_1',
+            actual_drug_name: 'アムロジピン',
+            actual_drug_code: '123',
+            actual_quantity: 14,
+            carry_type: 'carry',
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '調剤結果の保存には患者・薬剤・数量・用法・保管・安全アラートの確認が必要です',
+      details: {
+        safety_checklist: ['required'],
+      },
+    });
+    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
+    expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks partial dispense result writes when the safety checklist is missing', async () => {
+    const dispenseResultCreateMock = vi.fn();
+    const dispenseTaskUpdateMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_1',
+            cycle_id: 'cycle_1',
+            results: [],
+            cycle: {
+              id: 'cycle_1',
+              patient_id: 'patient_1',
+              overall_status: 'dispensing',
+              inquiries: [],
+              prescription_intakes: [
+                {
+                  id: 'intake_1',
+                  source_type: 'paper',
+                  original_collected_at: null,
+                  lines: [
+                    {
+                      id: 'line_1',
+                      drug_name: 'アムロジピン',
+                      drug_code: '123',
+                      quantity: 14,
+                    },
+                    {
+                      id: 'line_2',
+                      drug_name: 'ロキソプロフェン',
+                      drug_code: '456',
+                      quantity: 14,
+                    },
+                  ],
+                },
+              ],
+              visit_schedules: [],
+              case_: {
+                patient: {
+                  name: '山田 太郎',
+                },
+              },
+            },
+          }),
+          update: dispenseTaskUpdateMock,
+        },
+        dispenseResult: {
+          create: dispenseResultCreateMock,
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        workflowException: {
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_1',
+        lines: [
+          {
+            line_id: 'line_1',
+            actual_drug_name: 'アムロジピン',
+            actual_drug_code: '123',
+            actual_quantity: 14,
+            carry_type: 'carry',
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        safety_checklist: ['required'],
+      },
+    });
+    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
+    expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks dispense result writes when server-side CDS cannot complete', async () => {
+    const dispenseResultCreateMock = vi.fn();
+    const dispenseTaskUpdateMock = vi.fn();
+    checkDispenseAlertsMock.mockRejectedValueOnce(new Error('cds unavailable'));
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_1',
+            cycle_id: 'cycle_1',
+            results: [],
+            cycle: {
+              id: 'cycle_1',
+              patient_id: 'patient_1',
+              overall_status: 'dispensing',
+              inquiries: [],
+              prescription_intakes: [
+                {
+                  id: 'intake_1',
+                  source_type: 'paper',
+                  original_collected_at: null,
+                  lines: [
+                    {
+                      id: 'line_1',
+                      drug_name: 'アムロジピン',
+                      drug_code: '123',
+                      quantity: 14,
+                    },
+                  ],
+                },
+              ],
+              visit_schedules: [],
+              case_: {
+                patient: {
+                  name: '山田 太郎',
+                },
+              },
+            },
+          }),
+          update: dispenseTaskUpdateMock,
+        },
+        dispenseResult: {
+          create: dispenseResultCreateMock,
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        workflowException: {
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_1',
+        safety_checklist: safetyChecklist,
+        lines: [
+          {
+            line_id: 'line_1',
+            actual_drug_name: 'アムロジピン',
+            actual_drug_code: '123',
+            actual_quantity: 14,
+            carry_type: 'carry',
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message:
+        '処方安全チェックを完了できません。禁忌・相互作用・アレルギー等を確認できる状態で再試行してください',
+      details: {
+        cds_check: ['unavailable'],
+      },
+    });
+    expect(checkDispenseAlertsMock).toHaveBeenCalledWith('org_1', 'cycle_1', 'patient_1');
+    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
   });
 
   it('allows fax-origin prescriptions to complete dispensing and creates a follow-up task for original collection', async () => {
@@ -196,6 +461,7 @@ describe('/api/dispense-results POST', () => {
             results: [],
             cycle: {
               id: 'cycle_1',
+              patient_id: 'patient_1',
               overall_status: 'dispensing',
               inquiries: [],
               prescription_intakes: [
@@ -229,7 +495,9 @@ describe('/api/dispense-results POST', () => {
         },
         medicationCycle: {
           findFirst: medicationCycleFindFirstMock,
-          findFirstOrThrow: vi.fn().mockResolvedValue({ id: 'cycle_1', overall_status: 'audit_pending' }),
+          findFirstOrThrow: vi
+            .fn()
+            .mockResolvedValue({ id: 'cycle_1', overall_status: 'audit_pending' }),
           updateMany: medicationCycleUpdateManyMock,
         },
         cycleTransitionLog: { create: cycleTransitionLogCreateMock },
@@ -241,12 +509,16 @@ describe('/api/dispense-results POST', () => {
         membership: {
           findMany: vi.fn().mockResolvedValue([{ user_id: 'auditor_1' }]),
         },
-      })
+        auditLog: {
+          create: vi.fn().mockResolvedValue({ id: 'audit_log_1' }),
+        },
+      }),
     );
 
     const response = await POST(
       createRequest({
         task_id: 'task_1',
+        safety_checklist: safetyChecklist,
         lines: [
           {
             line_id: 'line_1',
@@ -256,7 +528,7 @@ describe('/api/dispense-results POST', () => {
             carry_type: 'carry',
           },
         ],
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -334,6 +606,7 @@ describe('/api/dispense-results POST', () => {
             results: [],
             cycle: {
               id: 'cycle_1',
+              patient_id: 'patient_1',
               overall_status: 'dispensing',
               inquiries: [],
               prescription_intakes: [
@@ -371,7 +644,9 @@ describe('/api/dispense-results POST', () => {
         },
         medicationCycle: {
           findFirst: medicationCycleFindFirstMock,
-          findFirstOrThrow: vi.fn().mockResolvedValue({ id: 'cycle_1', overall_status: 'audit_pending' }),
+          findFirstOrThrow: vi
+            .fn()
+            .mockResolvedValue({ id: 'cycle_1', overall_status: 'audit_pending' }),
           updateMany: medicationCycleUpdateManyMock,
         },
         cycleTransitionLog: { create: cycleTransitionLogCreateMock },
@@ -383,12 +658,16 @@ describe('/api/dispense-results POST', () => {
         membership: {
           findMany: vi.fn().mockResolvedValue([{ user_id: 'auditor_1' }]),
         },
-      })
+        auditLog: {
+          create: vi.fn().mockResolvedValue({ id: 'audit_log_1' }),
+        },
+      }),
     );
 
     const response = await POST(
       createRequest({
         task_id: 'task_1',
+        safety_checklist: safetyChecklist,
         lines: [
           {
             line_id: 'line_1',
@@ -409,7 +688,7 @@ describe('/api/dispense-results POST', () => {
             special_notes: '欠品後送',
           },
         ],
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -431,7 +710,7 @@ describe('/api/dispense-results POST', () => {
         eventType: 'dispense_audit_pending',
         link: '/auditing/task_1',
         explicitUserIds: ['auditor_1'],
-      })
+      }),
     );
   });
 
@@ -467,7 +746,7 @@ describe('/api/dispense-results POST', () => {
         dispenseResult: { create: vi.fn() },
         medicationCycle: { update: vi.fn() },
         visitSchedule: { update: vi.fn() },
-      })
+      }),
     );
 
     const response = await POST(
@@ -482,7 +761,7 @@ describe('/api/dispense-results POST', () => {
             carry_type: 'carry',
           },
         ],
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');

@@ -200,6 +200,9 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
         patient: {
           id: 'patient_1',
           name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
+          birth_date: new Date('1940-01-01T00:00:00Z'),
+          gender: 'male',
           residences: [
             {
               address: '東京都港区1-1-1',
@@ -287,6 +290,9 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
           patient: {
             id: 'patient_2',
             name: '山田 花子',
+            name_kana: 'ヤマダ ハナコ',
+            birth_date: new Date('1945-02-03T00:00:00Z'),
+            gender: 'female',
             residences: [
               {
                 address: '東京都港区1-1-1',
@@ -492,7 +498,11 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
             patients: [
               expect.objectContaining({
                 schedule_id: 'schedule_1',
+                patient_id: 'patient_1',
                 patient_name: '山田 太郎',
+                patient_name_kana: 'ヤマダ タロウ',
+                patient_birth_date: '1940-01-01',
+                patient_gender: 'male',
                 unit_name: '201',
                 medication_start_date: '2026-03-27',
                 medication_end_date: '2026-04-09',
@@ -502,7 +512,11 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
               }),
               expect.objectContaining({
                 schedule_id: 'schedule_2',
+                patient_id: 'patient_2',
                 patient_name: '山田 花子',
+                patient_name_kana: 'ヤマダ ハナコ',
+                patient_birth_date: '1945-02-03',
+                patient_gender: 'female',
                 preparation_blockers_count: 1,
               }),
             ],
@@ -729,6 +743,9 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
         patient: {
           id: 'patient_1',
           name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
+          birth_date: new Date('1940-01-01T00:00:00Z'),
+          gender: 'male',
           residences: [],
           contacts: [],
           consents: [],
@@ -781,6 +798,9 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
         patient: {
           id: 'home_patient_1',
           name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
+          birth_date: new Date('1940-01-01T00:00:00Z'),
+          gender: 'male',
           residences: [
             {
               address: '東京都港区個人宅1-1-1',
@@ -810,6 +830,9 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
           patient: {
             id: 'home_patient_2',
             name: '山田 花子',
+            name_kana: 'ヤマダ ハナコ',
+            birth_date: new Date('1945-02-03T00:00:00Z'),
+            gender: 'female',
             residences: [
               {
                 address: '東京都港区個人宅1-1-1',
@@ -840,11 +863,19 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
             patients: [
               expect.objectContaining({
                 schedule_id: 'home_schedule_1',
+                patient_id: 'home_patient_1',
                 patient_name: '山田 太郎',
+                patient_name_kana: 'ヤマダ タロウ',
+                patient_birth_date: '1940-01-01',
+                patient_gender: 'male',
               }),
               expect.objectContaining({
                 schedule_id: 'home_schedule_2',
+                patient_id: 'home_patient_2',
                 patient_name: '山田 花子',
+                patient_name_kana: 'ヤマダ ハナコ',
+                patient_birth_date: '1945-02-03',
+                patient_gender: 'female',
               }),
             ],
           },

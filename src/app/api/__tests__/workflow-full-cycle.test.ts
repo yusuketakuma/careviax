@@ -107,6 +107,38 @@ type TestState = {
   billingEvidenceUpserts: string[];
 };
 
+const completedVisitStructuredSoap = {
+  subjective: { symptom_checks: [], free_text: '服薬状況を確認' },
+  objective: {
+    medication_status: 'full_compliance',
+    adherence_score: 4,
+    side_effect_checks: ['none'],
+  },
+  assessment: {
+    problem_checks: ['interaction_risk'],
+  },
+  plan: {
+    intervention_checks: ['physician_report'],
+    free_text: '医師へ報告し次回も確認',
+  },
+  home_visit_2026: {
+    medication_review_completed: true,
+    residual_medication_checked: true,
+    adverse_event_checked: true,
+    polypharmacy_reviewed: true,
+    after_hours_contact_confirmed: true,
+  },
+};
+
+const dispenseSafetyChecklist = {
+  patient_identity: true,
+  drug_name_strength: true,
+  quantity_days: true,
+  directions_route: true,
+  packaging_storage: true,
+  cds_alerts_reviewed: true,
+};
+
 const {
   withAuthMock,
   requireAuthContextMock,
@@ -121,8 +153,10 @@ const {
   upsertOperationalTaskMock,
   resolveOperationalTasksMock,
   upsertBillingEvidenceForVisitMock,
+  listBillingEvidenceBlockersMock,
   generateReportsFromVisitMock,
   sendCareReportEmailMock,
+  checkDispenseAlertsMock,
 } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
     (
@@ -151,8 +185,10 @@ const {
   upsertOperationalTaskMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
   upsertBillingEvidenceForVisitMock: vi.fn(),
+  listBillingEvidenceBlockersMock: vi.fn(),
   generateReportsFromVisitMock: vi.fn(),
   sendCareReportEmailMock: vi.fn(),
+  checkDispenseAlertsMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
@@ -201,6 +237,11 @@ vi.mock('@/server/services/operational-tasks', () => ({
 
 vi.mock('@/server/services/billing-evidence', () => ({
   upsertBillingEvidenceForVisit: upsertBillingEvidenceForVisitMock,
+  listBillingEvidenceBlockers: listBillingEvidenceBlockersMock,
+}));
+
+vi.mock('@/server/cds/checker', () => ({
+  checkDispenseAlerts: checkDispenseAlertsMock,
 }));
 
 vi.mock('@/server/services/report-generator', () => ({
@@ -236,6 +277,10 @@ function createRequest(body: unknown, headers?: Record<string, string>) {
 function buildTx(state: TestState) {
   return {
     patient: {
+      findFirst: vi.fn(async ({ where }: { where: { id: string } }) => {
+        if (where.id !== state.patient.id) return null;
+        return state.patient;
+      }),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         state.patient = {
           id: 'patient_1',
@@ -281,6 +326,7 @@ function buildTx(state: TestState) {
         if (where.id !== state.careCase.id) return null;
         return {
           patient_id: state.careCase.patient_id,
+          required_visit_support: null,
         };
       }),
     },
@@ -318,6 +364,7 @@ function buildTx(state: TestState) {
           ],
         };
       }),
+      findMany: vi.fn(async () => [{ id: state.cycle.id }]),
       update: vi.fn(
         async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
           if (where.id === state.cycle.id) {
@@ -694,6 +741,9 @@ function buildTx(state: TestState) {
 
         return null;
       }),
+      findMany: vi.fn(async () =>
+        state.visitRecord == null ? [] : [{ id: state.visitRecord.id }],
+      ),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         state.visitRecord = {
           id: 'record_1',
@@ -746,6 +796,14 @@ function buildTx(state: TestState) {
         state.deliveryRecords.push(record);
         return record;
       }),
+      update: vi.fn(
+        async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+          const record = state.deliveryRecords.find((item) => item.id === where.id);
+          if (!record) throw new Error('delivery record missing');
+          Object.assign(record, data);
+          return record;
+        },
+      ),
     },
     careReport: {
       update: vi.fn(
@@ -769,6 +827,9 @@ function buildTx(state: TestState) {
     },
     communicationEvent: {
       create: vi.fn(async () => ({ id: 'event_1' })),
+    },
+    auditLog: {
+      create: vi.fn(async () => ({ id: 'audit_log_1' })),
     },
   };
 }
@@ -921,6 +982,8 @@ describe('workflow full-cycle integration', () => {
 
     upsertOperationalTaskMock.mockResolvedValue({ id: 'task_followup_1' });
     resolveOperationalTasksMock.mockResolvedValue(undefined);
+    listBillingEvidenceBlockersMock.mockResolvedValue([]);
+    checkDispenseAlertsMock.mockResolvedValue([]);
     sendCareReportEmailMock.mockResolvedValue({ messageId: 'ses-message-1', stub: false });
 
     generateReportsFromVisitMock.mockImplementation(
@@ -1005,6 +1068,7 @@ describe('workflow full-cycle integration', () => {
     const dispenseResponse = await createDispenseResults(
       createRequest({
         task_id: 'task_1',
+        safety_checklist: dispenseSafetyChecklist,
         lines: [
           {
             line_id: 'line_1',
@@ -1041,6 +1105,7 @@ describe('workflow full-cycle integration', () => {
           visit_date: '2026-03-28',
           outcome_status: 'completed',
           soap_subjective: '患者の状態を確認した',
+          structured_soap: completedVisitStructuredSoap,
         },
         { 'x-org-id': 'org_1' },
       ),
@@ -1068,6 +1133,7 @@ describe('workflow full-cycle integration', () => {
           channel: 'email',
           recipient_name: '在宅主治医',
           recipient_contact: 'doctor@example.com',
+          safety_ack: true,
         },
         { 'x-org-id': 'org_1' },
       ),
@@ -1218,6 +1284,7 @@ describe('workflow full-cycle integration', () => {
           soap_objective: '残薬少量',
           soap_assessment: '継続支援可能',
           soap_plan: '次回も同曜日で訪問',
+          structured_soap: completedVisitStructuredSoap,
           receipt_person_name: '施設担当',
           receipt_person_relation: 'facility_staff',
           receipt_at: '2026-03-30T11:15',
@@ -1253,6 +1320,7 @@ describe('workflow full-cycle integration', () => {
           channel: 'email',
           recipient_name: '担当ケアマネ',
           recipient_contact: 'caremanager@example.com',
+          safety_ack: true,
         },
         { 'x-org-id': 'org_1' },
       ),

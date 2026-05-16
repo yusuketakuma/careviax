@@ -391,7 +391,7 @@ export function HomeScheduleScopeSection({
           </div>
         </div>
 
-        <div className="grid gap-2 md:grid-cols-3" role="tablist" aria-label="スケジュール表示範囲">
+        <div className="grid gap-2 md:grid-cols-3" role="group" aria-label="スケジュール表示範囲">
           {VISIT_SCOPE_OPTIONS.map((option) => {
             const Icon = option.icon;
             const count = countSchedulesByScope(
@@ -452,7 +452,7 @@ export function HomeScheduleScopeSection({
               }}
               disabled={staffOptions.length === 0}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="w-full" aria-label="スタッフ指定">
                 <SelectValue placeholder={staffLoading ? '読み込み中...' : 'スタッフを選択'} />
               </SelectTrigger>
               <SelectContent>
@@ -588,7 +588,7 @@ export function HomeVisitsSection({
           : '対象担当者の時間、準備状況、優先度を上から確認し、そのまま訪問記録へ進みます。'
       }
     >
-      <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="訪問進行状態">
+      <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="訪問進行状態">
         {VISIT_STATUS_FILTER_OPTIONS.map((option) => (
           <InlineFilterButton
             key={option.key}
@@ -773,7 +773,7 @@ export function HomeCoordinationSection({
       }
       className={focusRole === 'clerk' ? 'ring-2 ring-primary/25' : undefined}
     >
-      <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="提案フォロー分類">
+      <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="提案フォロー分類">
         {PROPOSAL_FILTER_OPTIONS.map((option) => (
           <InlineFilterButton
             key={option.key}

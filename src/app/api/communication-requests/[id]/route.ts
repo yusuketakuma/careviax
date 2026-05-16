@@ -5,7 +5,10 @@ import { success, validationError, notFound, forbidden } from '@/lib/api/respons
 import { prisma } from '@/lib/db/client';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { canAccessCommunicationRequestRecord } from '@/server/services/communication-request-access';
+import {
+  canAccessCommunicationRequestRecord,
+  resolveTracingReportCommunicationScope,
+} from '@/server/services/communication-request-access';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
@@ -117,6 +120,12 @@ const patchCommunicationRequestSchema = z.object({
       'expired',
     ])
     .optional(),
+  status_change_reason: z
+    .string()
+    .trim()
+    .min(1, 'ステータス変更理由は必須です')
+    .max(500, 'ステータス変更理由は500文字以内で入力してください')
+    .optional(),
   response: z
     .object({
       responder_name: z.string().min(1, '返信者名は必須です'),
@@ -145,12 +154,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const { status, response } = parsed.data;
+  const { status, status_change_reason: statusChangeReason, response } = parsed.data;
   const nextStatus = status ?? (response ? 'responded' : undefined);
 
   const existing = await prisma.communicationRequest.findFirst({
     where: { id, org_id: orgId },
-    select: { id: true, patient_id: true, case_id: true, status: true },
+    select: {
+      id: true,
+      patient_id: true,
+      case_id: true,
+      status: true,
+      related_entity_type: true,
+      related_entity_id: true,
+    },
   });
 
   if (!existing) return notFound('依頼が見つかりません');
@@ -171,17 +187,80 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   if (nextStatus && nextStatus !== existing.status) {
+    if (!statusChangeReason && !response) {
+      return validationError('ステータス変更理由は必須です', {
+        status_change_reason: ['ステータス変更理由は必須です'],
+      });
+    }
     const allowed = ALLOWED_STATUS_TRANSITIONS[existing.status] ?? [];
     if (!allowed.includes(nextStatus)) {
       return validationError(`${existing.status} から ${nextStatus} へは遷移できません`);
     }
   }
 
+  const statusChanged = !!nextStatus && nextStatus !== existing.status;
+  let linkedTracingReport: {
+    id: string;
+    patient_id: string;
+    case_id: string | null;
+    status: 'draft' | 'sent' | 'received' | 'acknowledged';
+    sent_at: Date | null;
+    acknowledged_at: Date | null;
+  } | null = null;
+
+  if (
+    statusChanged &&
+    existing.related_entity_type === 'tracing_report' &&
+    existing.related_entity_id
+  ) {
+    linkedTracingReport = await prisma.tracingReport.findFirst({
+      where: {
+        id: existing.related_entity_id,
+        org_id: orgId,
+      },
+      select: {
+        id: true,
+        patient_id: true,
+        case_id: true,
+        status: true,
+        sent_at: true,
+        acknowledged_at: true,
+      },
+    });
+
+    if (!linkedTracingReport) return notFound('トレーシングレポートが見つかりません');
+
+    const resolvedScope = resolveTracingReportCommunicationScope({
+      requestedPatientId: existing.patient_id,
+      requestedCaseId: existing.case_id,
+      tracingReport: linkedTracingReport,
+    });
+
+    if (!resolvedScope) {
+      return validationError('関連トレーシングレポートと患者またはケースが一致しません', {
+        related_entity_id: ['関連トレーシングレポートと患者またはケースが一致しません'],
+      });
+    }
+
+    if (
+      !(await canAccessCommunicationRequestRecord({
+        db: prisma,
+        orgId,
+        patientId: resolvedScope.patientId,
+        caseId: resolvedScope.caseId,
+        accessContext: ctx,
+      }))
+    ) {
+      return notFound('トレーシングレポートが見つかりません');
+    }
+  }
+
   const result = await withOrgContext(
     orgId,
     async (tx) => {
+      let responseId: string | null = null;
       if (response) {
-        await tx.communicationResponse.create({
+        const createdResponse = await tx.communicationResponse.create({
           data: {
             org_id: orgId,
             request_id: id,
@@ -190,6 +269,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             responded_at: response.responded_at ? new Date(response.responded_at) : new Date(),
           },
         });
+        responseId = createdResponse.id;
       }
 
       const updated = await tx.communicationRequest.update({
@@ -228,48 +308,72 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         },
       });
 
-      if (
-        updated.related_entity_type === 'tracing_report' &&
-        updated.related_entity_id &&
-        nextStatus
-      ) {
-        const tracingReport = await tx.tracingReport.findFirst({
-          where: {
-            id: updated.related_entity_id,
+      if (statusChanged) {
+        await tx.auditLog.create({
+          data: {
             org_id: orgId,
-          },
-          select: {
-            id: true,
-            sent_at: true,
-            acknowledged_at: true,
+            actor_id: ctx.userId,
+            action: 'communication_request_status_changed',
+            target_type: 'communication_request',
+            target_id: id,
+            changes: {
+              from_status: existing.status,
+              to_status: nextStatus,
+              reason: statusChangeReason ?? 'communication_response_recorded',
+              status_change_reason: statusChangeReason ?? null,
+              response_id: responseId,
+              linked_tracing_report_id:
+                updated.related_entity_type === 'tracing_report' ? updated.related_entity_id : null,
+              actor_id: ctx.userId,
+            },
           },
         });
+      }
 
-        if (tracingReport) {
-          const tracingStatus =
-            nextStatus === 'draft'
-              ? 'draft'
-              : nextStatus === 'sent'
-                ? 'sent'
-                : ['received', 'in_progress', 'escalated'].includes(nextStatus)
-                  ? 'received'
-                  : ['responded', 'closed'].includes(nextStatus)
-                    ? 'acknowledged'
-                    : null;
+      if (linkedTracingReport && nextStatus) {
+        const tracingStatus =
+          nextStatus === 'draft'
+            ? 'draft'
+            : nextStatus === 'sent'
+              ? 'sent'
+              : ['received', 'in_progress', 'escalated'].includes(nextStatus)
+                ? 'received'
+                : ['responded', 'closed'].includes(nextStatus)
+                  ? 'acknowledged'
+                  : null;
 
-          if (tracingStatus) {
-            await tx.tracingReport.update({
-              where: { id: tracingReport.id },
+        if (tracingStatus) {
+          await tx.tracingReport.update({
+            where: { id: linkedTracingReport.id },
+            data: {
+              status: tracingStatus,
+              sent_to_physician: updated.recipient_name,
+              pdf_url: `/api/tracing-reports/${linkedTracingReport.id}/pdf`,
+              ...(tracingStatus === 'sent' && !linkedTracingReport.sent_at
+                ? { sent_at: new Date() }
+                : {}),
+              ...(tracingStatus === 'acknowledged' && !linkedTracingReport.acknowledged_at
+                ? { acknowledged_at: new Date() }
+                : {}),
+            },
+          });
+
+          if (tracingStatus !== linkedTracingReport.status) {
+            await tx.auditLog.create({
               data: {
-                status: tracingStatus,
-                sent_to_physician: updated.recipient_name,
-                pdf_url: `/api/tracing-reports/${tracingReport.id}/pdf`,
-                ...(tracingStatus === 'sent' && !tracingReport.sent_at
-                  ? { sent_at: new Date() }
-                  : {}),
-                ...(tracingStatus === 'acknowledged' && !tracingReport.acknowledged_at
-                  ? { acknowledged_at: new Date() }
-                  : {}),
+                org_id: orgId,
+                actor_id: ctx.userId,
+                action: 'tracing_report_status_changed',
+                target_type: 'tracing_report',
+                target_id: linkedTracingReport.id,
+                changes: {
+                  from_status: linkedTracingReport.status,
+                  to_status: tracingStatus,
+                  reason: statusChangeReason ?? 'communication_response_recorded',
+                  status_change_reason: statusChangeReason ?? null,
+                  linked_communication_request_id: updated.id,
+                  actor_id: ctx.userId,
+                },
               },
             });
           }

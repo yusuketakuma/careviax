@@ -17,6 +17,7 @@ const {
   visitScheduleUpdateMock,
   consentRecordFindFirstMock,
   medicationCycleFindFirstMock,
+  medicationCycleFindManyMock,
   medicationCycleUpdateMock,
   medicationCycleUpdateManyMock,
   cycleTransitionLogCreateMock,
@@ -37,6 +38,7 @@ const {
   firstVisitDocumentUpdateMock,
   taskUpsertMock,
   billingEvidenceUpsertMock,
+  listBillingEvidenceBlockersMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   getRequestAuthContextMock: vi.fn(),
@@ -53,6 +55,7 @@ const {
   visitScheduleUpdateMock: vi.fn(),
   consentRecordFindFirstMock: vi.fn(),
   medicationCycleFindFirstMock: vi.fn(),
+  medicationCycleFindManyMock: vi.fn(),
   medicationCycleUpdateMock: vi.fn(),
   medicationCycleUpdateManyMock: vi.fn(),
   cycleTransitionLogCreateMock: vi.fn(),
@@ -73,6 +76,7 @@ const {
   firstVisitDocumentUpdateMock: vi.fn(),
   taskUpsertMock: vi.fn(),
   billingEvidenceUpsertMock: vi.fn(),
+  listBillingEvidenceBlockersMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -105,6 +109,7 @@ vi.mock('@/lib/auth/request-context', async (importOriginal) => {
 
 vi.mock('@/server/services/billing-evidence', () => ({
   upsertBillingEvidenceForVisit: billingEvidenceUpsertMock,
+  listBillingEvidenceBlockers: listBillingEvidenceBlockersMock,
 }));
 
 vi.mock('@/server/services/visit-handoff', () => ({
@@ -122,6 +127,42 @@ function createRequest(body: unknown, headers?: Record<string, string>) {
     json: async () => body,
   } as unknown as NextRequest;
 }
+
+const completedVisitStructuredSoap = {
+  subjective: { symptom_checks: [], free_text: '服薬状況を確認' },
+  objective: {
+    medication_status: 'full_compliance',
+    adherence_score: 4,
+    side_effect_checks: ['none'],
+  },
+  assessment: {
+    problem_checks: ['interaction_risk'],
+  },
+  plan: {
+    intervention_checks: ['physician_report'],
+    free_text: '医師へ報告し次回も確認',
+  },
+  home_visit_2026: {
+    medication_review_completed: true,
+    residual_medication_checked: true,
+    adverse_event_checked: true,
+    polypharmacy_reviewed: true,
+    after_hours_contact_confirmed: true,
+  },
+};
+
+const completedInitialVisitStructuredSoap = {
+  ...completedVisitStructuredSoap,
+  home_visit_2026: {
+    ...completedVisitStructuredSoap.home_visit_2026,
+    initial_transition_management: {
+      target: true,
+      pre_visit_environment_assessed: true,
+      medication_risk_assessed: true,
+      transition_support_summary: '在宅移行初期の服薬支援体制を確認',
+    },
+  },
+};
 
 function createGetRequest(url = 'http://localhost/api/visit-records') {
   return {
@@ -467,7 +508,10 @@ describe('/api/visit-records POST', () => {
     });
     careCaseFindFirstMock.mockResolvedValue({
       patient_id: 'patient_1',
+      required_visit_support: null,
     });
+    visitRecordFindManyMock.mockResolvedValue([{ id: 'record_1' }]);
+    listBillingEvidenceBlockersMock.mockResolvedValue([]);
     visitRecordCreateMock.mockResolvedValue({ id: 'record_1' });
     visitRecordFindFirstMock.mockResolvedValue(null);
     residualMedicationFindManyMock.mockResolvedValue([]);
@@ -485,6 +529,7 @@ describe('/api/visit-records POST', () => {
       version: 1,
       patient_id: 'patient_1',
     });
+    medicationCycleFindManyMock.mockResolvedValue([{ id: 'cycle_1' }]);
     medicationCycleUpdateMock.mockResolvedValue({ id: 'cycle_1' });
     medicationCycleUpdateManyMock.mockResolvedValue({ count: 1 });
     cycleTransitionLogCreateMock.mockResolvedValue({ id: 'transition_1' });
@@ -514,6 +559,7 @@ describe('/api/visit-records POST', () => {
         visitRecord: {
           create: visitRecordCreateMock,
           findFirst: visitRecordFindFirstMock,
+          findMany: visitRecordFindManyMock,
         },
         residualMedication: {
           findMany: residualMedicationFindManyMock,
@@ -528,6 +574,7 @@ describe('/api/visit-records POST', () => {
         },
         medicationCycle: {
           findFirst: medicationCycleFindFirstMock,
+          findMany: medicationCycleFindManyMock,
           update: medicationCycleUpdateMock,
           updateMany: medicationCycleUpdateManyMock,
         },
@@ -664,6 +711,34 @@ describe('/api/visit-records POST', () => {
     expect(workflowExceptionCreateMock).not.toHaveBeenCalled();
   });
 
+  it('returns 400 before writes when completing a visit without required medication-management readiness', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          soap_subjective: '服薬状況問題なし',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '訪問完了には訪問薬剤管理の必須確認が必要です',
+      details: {
+        home_visit_2026_readiness: expect.arrayContaining(['残薬確認']),
+      },
+    });
+    expect(visitRecordCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+  });
+
   it('auto-suggests the next visit date from recurrence rule when none is provided', async () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
@@ -688,6 +763,7 @@ describe('/api/visit-records POST', () => {
           visit_date: '2026-03-26',
           outcome_status: 'completed',
           soap_subjective: '服薬状況問題なし',
+          structured_soap: completedVisitStructuredSoap,
         },
         { 'x-org-id': 'org_1' },
       ),
@@ -720,6 +796,7 @@ describe('/api/visit-records POST', () => {
           visit_date: '2026-03-26',
           outcome_status: 'completed',
           soap_subjective: '服薬状況問題なし',
+          structured_soap: completedVisitStructuredSoap,
         },
         { 'x-org-id': 'org_1' },
       ),
@@ -754,6 +831,7 @@ describe('/api/visit-records POST', () => {
           visit_date: '2026-03-26',
           outcome_status: 'completed',
           soap_subjective: '服薬状況問題なし',
+          structured_soap: completedVisitStructuredSoap,
           residual_medications: [
             {
               drug_name: 'アムロジピン錠5mg',
@@ -860,6 +938,7 @@ describe('/api/visit-records POST', () => {
           visit_date: '2026-03-26',
           outcome_status: 'completed',
           soap_subjective: '服薬状況問題なし',
+          structured_soap: completedInitialVisitStructuredSoap,
           receipt_person_name: '長男 山田',
           receipt_at: '2026-03-26T10:30',
         },
@@ -898,16 +977,7 @@ describe('/api/visit-records POST', () => {
           patient_id: 'patient_1',
           visit_date: '2026-03-26',
           outcome_status: 'completed',
-          structured_soap: {
-            subjective: { symptom_checks: [] },
-            objective: {
-              medication_status: 'full_compliance',
-              adherence_score: 3,
-              side_effect_checks: [],
-            },
-            assessment: { problem_checks: [] },
-            plan: { intervention_checks: [] },
-          },
+          structured_soap: completedVisitStructuredSoap,
         },
         { 'x-org-id': 'org_1' },
       ),

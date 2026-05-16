@@ -22,6 +22,29 @@ const IDS = {
   line: 'line_1',
 } as const;
 
+const completedVisitStructuredSoap = {
+  subjective: { symptom_checks: [], free_text: '服薬状況を確認' },
+  objective: {
+    medication_status: 'full_compliance',
+    adherence_score: 4,
+    side_effect_checks: ['none'],
+  },
+  assessment: {
+    problem_checks: ['interaction_risk'],
+  },
+  plan: {
+    intervention_checks: ['physician_report'],
+    free_text: '医師へ報告し次回も確認',
+  },
+  home_visit_2026: {
+    medication_review_completed: true,
+    residual_medication_checked: true,
+    adverse_event_checked: true,
+    polypharmacy_reviewed: true,
+    after_hours_contact_confirmed: true,
+  },
+};
+
 /* -------------------------------------------------------------------------- */
 /*  Mock setup (vi.hoisted)                                                   */
 /* -------------------------------------------------------------------------- */
@@ -161,6 +184,7 @@ vi.mock('@/lib/prescription/packaging', () => ({
 
 vi.mock('@/server/services/billing-evidence', () => ({
   upsertBillingEvidenceForVisit: vi.fn(),
+  listBillingEvidenceBlockers: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('@/server/services/operational-tasks', () => ({
@@ -613,6 +637,15 @@ describe('Workflow: prescription intake to care report', () => {
 
     withOrgContextMock.mockImplementation(async (_orgId: string, callback: TxCallback) =>
       callback({
+        patient: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: IDS.patient,
+            name: '山田 太郎',
+            name_kana: 'ヤマダ タロウ',
+            birth_date: new Date('1945-05-10T00:00:00.000Z'),
+            gender: 'male',
+          }),
+        },
         visitSchedule: {
           findFirst: vi.fn().mockResolvedValue({
             id: IDS.schedule,
@@ -633,10 +666,12 @@ describe('Workflow: prescription intake to care report', () => {
         careCase: {
           findFirst: vi.fn().mockResolvedValue({
             patient_id: IDS.patient,
+            required_visit_support: null,
           }),
         },
         visitRecord: {
           findFirst: vi.fn().mockResolvedValue(null), // no existing record
+          findMany: vi.fn().mockResolvedValue([]),
           create: visitRecordCreateMock,
         },
         residualMedication: {
@@ -653,6 +688,7 @@ describe('Workflow: prescription intake to care report', () => {
             version: 1,
             patient_id: IDS.patient,
           }),
+          findMany: vi.fn().mockResolvedValue([{ id: IDS.cycle }]),
           update: vi.fn().mockResolvedValue({}),
           updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         },
@@ -699,6 +735,7 @@ describe('Workflow: prescription intake to care report', () => {
         soap_objective: 'BP 130/85、残薬なし。',
         soap_assessment: '服薬コンプライアンス良好。血圧コントロール安定。',
         soap_plan: '現処方継続。次回訪問時に血液検査結果確認。',
+        structured_soap: completedVisitStructuredSoap,
       }),
     );
 
