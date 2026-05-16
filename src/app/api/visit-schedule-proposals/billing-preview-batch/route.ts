@@ -1,5 +1,7 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
-import { success, validationError } from '@/lib/api/response';
+import { success, validationError, notFound } from '@/lib/api/response';
+import { buildVisitScheduleProposalCaseAccessWhere } from '@/lib/auth/visit-schedule-access';
+import { prisma } from '@/lib/db/client';
 import { buildVisitScheduleBillingPreviewBatch } from '@/server/services/visit-schedule-billing-preview';
 import { z } from 'zod';
 
@@ -19,26 +21,61 @@ const batchPreviewSchema = z.object({
     .max(100),
 });
 
-export const POST = withAuth(async (req: AuthenticatedRequest) => {
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+export const POST = withAuth(
+  async (req: AuthenticatedRequest) => {
+    const body = await req.json().catch(() => null);
+    if (!body) return validationError('リクエストボディが不正です');
 
-  const parsed = batchPreviewSchema.safeParse(body);
-  if (!parsed.success) {
-    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-  }
+    const parsed = batchPreviewSchema.safeParse(body);
+    if (!parsed.success) {
+      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    }
 
-  return success({
-    data: await buildVisitScheduleBillingPreviewBatch(
-      parsed.data.items.map((item) => ({
-        key: item.key,
-        caseId: item.case_id,
-        proposedDate: item.proposed_date,
-        pharmacistId: item.pharmacist_id,
-        siteId: item.site_id,
-        visitType: item.visit_type,
-      })),
-      req.orgId,
-    ),
-  });
-});
+    const accessChecks = Array.from(
+      new Map(
+        parsed.data.items.map((item) => [
+          `${item.case_id}:${item.pharmacist_id ?? ''}`,
+          {
+            caseId: item.case_id,
+            pharmacistId: item.pharmacist_id,
+          },
+        ]),
+      ).values(),
+    );
+
+    const accessibleCases = await Promise.all(
+      accessChecks.map((item) => {
+        const caseAccessWhere = buildVisitScheduleProposalCaseAccessWhere(req, item.pharmacistId);
+        return prisma.careCase.findFirst({
+          where: {
+            id: item.caseId,
+            org_id: req.orgId,
+            ...(caseAccessWhere ? { AND: [caseAccessWhere] } : {}),
+          },
+          select: { id: true },
+        });
+      }),
+    );
+    if (accessibleCases.some((careCase) => careCase === null)) {
+      return notFound('ケースが見つかりません');
+    }
+
+    return success({
+      data: await buildVisitScheduleBillingPreviewBatch(
+        parsed.data.items.map((item) => ({
+          key: item.key,
+          caseId: item.case_id,
+          proposedDate: item.proposed_date,
+          pharmacistId: item.pharmacist_id,
+          siteId: item.site_id,
+          visitType: item.visit_type,
+        })),
+        req.orgId,
+      ),
+    });
+  },
+  {
+    permission: 'canVisit',
+    message: '訪問候補の算定プレビュー権限がありません',
+  },
+);

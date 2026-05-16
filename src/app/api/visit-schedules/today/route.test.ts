@@ -7,10 +7,17 @@ const { visitScheduleFindManyMock } = vi.hoisted(() => ({
 
 vi.mock('@/lib/auth/middleware', () => ({
   withAuth: (
-    handler: (req: NextRequest & { orgId: string }) => Promise<Response>,
+    handler: (
+      req: NextRequest & { orgId: string; userId: string; role: 'pharmacist' },
+    ) => Promise<Response>,
   ) => {
     return (req: NextRequest) =>
-      handler({ ...req, orgId: 'org_1' } as NextRequest & { orgId: string });
+      handler({
+        ...req,
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      } as NextRequest & { orgId: string; userId: string; role: 'pharmacist' });
   },
 }));
 
@@ -45,6 +52,15 @@ describe('/api/visit-schedules/today', () => {
           schedule_status: {
             in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
           },
+          AND: [
+            {
+              OR: [
+                { pharmacist_id: 'user_1' },
+                { case_: { primary_pharmacist_id: 'user_1' } },
+                { case_: { backup_pharmacist_id: 'user_1' } },
+              ],
+            },
+          ],
         }),
       }),
     );

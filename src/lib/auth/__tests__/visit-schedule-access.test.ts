@@ -4,6 +4,8 @@ import {
   buildCareCaseAssignmentWhere,
   buildPatientAssignmentWhere,
   buildVisitRecordScheduleAssignmentWhere,
+  buildVisitScheduleProposalAssignmentWhere,
+  buildVisitScheduleProposalCaseAccessWhere,
   buildVisitScheduleAssignmentWhere,
   canAccessVisitScheduleAssignment,
 } from '../visit-schedule-access';
@@ -52,9 +54,9 @@ describe('visit schedule assignment access', () => {
 
   it('denies all non-bypass roles when not assigned, including clerk/driver/external_viewer', () => {
     for (const role of ['clerk', 'driver', 'external_viewer'] as const) {
-      expect(
-        canAccessVisitScheduleAssignment({ userId: 'unassigned_1', role }, schedule),
-      ).toBe(false);
+      expect(canAccessVisitScheduleAssignment({ userId: 'unassigned_1', role }, schedule)).toBe(
+        false,
+      );
     }
   });
 
@@ -68,6 +70,7 @@ describe('visit schedule assignment access', () => {
     ] as const) {
       expect(buildCareCaseAssignmentWhere({ userId: 'user_1', role })).not.toBeNull();
       expect(buildVisitScheduleAssignmentWhere({ userId: 'user_1', role })).not.toBeNull();
+      expect(buildVisitScheduleProposalAssignmentWhere({ userId: 'user_1', role })).not.toBeNull();
       expect(buildPatientAssignmentWhere({ userId: 'user_1', role })).not.toBeNull();
     }
   });
@@ -76,6 +79,8 @@ describe('visit schedule assignment access', () => {
     for (const role of ['owner', 'admin'] as const) {
       expect(buildCareCaseAssignmentWhere({ userId: 'admin_1', role })).toBeNull();
       expect(buildVisitScheduleAssignmentWhere({ userId: 'admin_1', role })).toBeNull();
+      expect(buildVisitScheduleProposalAssignmentWhere({ userId: 'admin_1', role })).toBeNull();
+      expect(buildVisitScheduleProposalCaseAccessWhere({ userId: 'admin_1', role })).toBeNull();
       expect(buildPatientAssignmentWhere({ userId: 'admin_1', role })).toBeNull();
       expect(buildVisitRecordScheduleAssignmentWhere({ userId: 'admin_1', role })).toBeNull();
     }
@@ -114,6 +119,50 @@ describe('visit schedule assignment access', () => {
         role: 'admin',
       }),
     ).toBeNull();
+  });
+
+  it('builds proposal filters from proposed pharmacist and case assignment policy', () => {
+    expect(
+      buildVisitScheduleProposalAssignmentWhere({
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+    ).toEqual({
+      OR: [
+        { proposed_pharmacist_id: 'user_1' },
+        { case_: { primary_pharmacist_id: 'user_1' } },
+        { case_: { backup_pharmacist_id: 'user_1' } },
+        { case_: { visit_schedules: { some: { pharmacist_id: 'user_1' } } } },
+      ],
+    });
+  });
+
+  it('allows proposal case access through the proposed pharmacist before falling back to case assignment', () => {
+    expect(
+      buildVisitScheduleProposalCaseAccessWhere(
+        {
+          userId: 'user_1',
+          role: 'pharmacist',
+        },
+        'user_1',
+      ),
+    ).toBeNull();
+
+    expect(
+      buildVisitScheduleProposalCaseAccessWhere(
+        {
+          userId: 'user_1',
+          role: 'pharmacist',
+        },
+        'other_user',
+      ),
+    ).toEqual({
+      OR: [
+        { primary_pharmacist_id: 'user_1' },
+        { backup_pharmacist_id: 'user_1' },
+        { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+      ],
+    });
   });
 
   it('builds patient and care-case filters from the same assignment policy', () => {

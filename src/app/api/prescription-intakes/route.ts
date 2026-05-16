@@ -51,6 +51,8 @@ export const GET = withAuth(
 
     const status = searchParams.get('status') ?? undefined;
     const sourceType = searchParams.get('source_type') ?? undefined;
+    const includeTotal = searchParams.get('include_total') === '1';
+    const assignmentWhere = buildPrescriptionIntakeAssignmentWhere(req);
 
     const where = {
       org_id: req.orgId,
@@ -62,49 +64,55 @@ export const GET = withAuth(
             },
           }
         : {}),
-      ...(buildPrescriptionIntakeAssignmentWhere(req)
-        ? { AND: [buildPrescriptionIntakeAssignmentWhere(req)!] }
-        : {}),
+      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
     };
 
-    const intakes = await prisma.prescriptionIntake.findMany({
-      where,
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-      select: {
-        id: true,
-        cycle_id: true,
-        source_type: true,
-        prescribed_date: true,
-        prescriber_name: true,
-        prescriber_institution_id: true,
-        prescriber_institution: true,
-        prescription_expiry_date: true,
-        refill_remaining_count: true,
-        refill_next_dispense_date: true,
-        created_at: true,
-        cycle: {
-          select: {
-            overall_status: true,
-            patient_id: true,
-            case_: {
-              select: {
-                patient: {
-                  select: { id: true, name: true, name_kana: true },
+    const [intakes, totalCount] = await Promise.all([
+      prisma.prescriptionIntake.findMany({
+        where,
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+        select: {
+          id: true,
+          cycle_id: true,
+          source_type: true,
+          prescribed_date: true,
+          prescriber_name: true,
+          prescriber_institution_id: true,
+          prescriber_institution: true,
+          prescription_expiry_date: true,
+          refill_remaining_count: true,
+          refill_next_dispense_date: true,
+          created_at: true,
+          cycle: {
+            select: {
+              overall_status: true,
+              patient_id: true,
+              case_: {
+                select: {
+                  patient: {
+                    select: { id: true, name: true, name_kana: true },
+                  },
                 },
               },
             },
           },
         },
-      },
-    });
+      }),
+      includeTotal ? prisma.prescriptionIntake.count({ where }) : Promise.resolve(undefined),
+    ]);
 
     const hasMore = intakes.length > limit;
     const data = hasMore ? intakes.slice(0, limit) : intakes;
     const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
-    return success({ data, hasMore, nextCursor });
+    return success({
+      data,
+      hasMore,
+      nextCursor,
+      ...(includeTotal ? { totalCount } : {}),
+    });
   },
   {
     permission: 'canVisit',

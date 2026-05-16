@@ -5,6 +5,7 @@ import { createInquiryRecordSchema } from '@/lib/validations/prescription';
 import { prisma } from '@/lib/db/client';
 import type { Prisma } from '@prisma/client';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
+import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 
 export const GET = withAuth(
   async (req: AuthenticatedRequest) => {
@@ -12,17 +13,22 @@ export const GET = withAuth(
     const cycleId = searchParams.get('cycle_id') ?? undefined;
     const patientId = searchParams.get('patient_id') ?? undefined;
     const status = searchParams.get('status') ?? undefined;
+    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(req);
+    const cycleFilters: Prisma.MedicationCycleWhereInput[] = [
+      ...(patientId ? [{ patient_id: patientId }] : []),
+      ...(cycleAssignmentWhere ? [cycleAssignmentWhere] : []),
+    ];
+    const cycleWhere =
+      cycleFilters.length === 0
+        ? undefined
+        : cycleFilters.length === 1
+          ? cycleFilters[0]
+          : { AND: cycleFilters };
 
-    const where = {
+    const where: Prisma.InquiryRecordWhereInput = {
       org_id: req.orgId,
       ...(cycleId ? { cycle_id: cycleId } : {}),
-      ...(patientId
-        ? {
-            cycle: {
-              patient_id: patientId,
-            },
-          }
-        : {}),
+      ...(cycleWhere ? { cycle: cycleWhere } : {}),
       ...(status === 'unresolved' ? { OR: [{ result: null }, { result: 'pending' }] } : {}),
       ...(status === 'resolved' ? { result: { in: ['changed', 'unchanged'] } } : {}),
     };
@@ -84,9 +90,13 @@ export const POST = withAuth(
     } = parsed.data;
 
     const result = await withOrgContext(req.orgId, async (tx) => {
-      // Verify cycle belongs to this org
+      const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(req);
       const cycle = await tx.medicationCycle.findFirst({
-        where: { id: cycle_id, org_id: req.orgId },
+        where: {
+          id: cycle_id,
+          org_id: req.orgId,
+          ...(cycleAssignmentWhere ? { AND: [cycleAssignmentWhere] } : {}),
+        },
         select: {
           id: true,
           overall_status: true,
@@ -96,12 +106,27 @@ export const POST = withAuth(
       });
       if (!cycle) return { error: 'cycle_not_found' as const };
 
+      if (rest.line_id) {
+        const line = await tx.prescriptionLine.findFirst({
+          where: {
+            id: rest.line_id,
+            org_id: req.orgId,
+            intake: {
+              cycle_id,
+            },
+          },
+          select: { id: true },
+        });
+        if (!line) return { error: 'line_not_found' as const };
+      }
+
       if (issue_id) {
         const issue = await tx.medicationIssue.findFirst({
           where: {
             id: issue_id,
             org_id: req.orgId,
             patient_id: cycle.patient_id,
+            OR: [{ case_id: cycle.case_id }, { case_id: null }],
           },
           select: { id: true },
         });
@@ -216,6 +241,9 @@ export const POST = withAuth(
       }
       if (result.error === 'issue_not_found') {
         return validationError('指定された服薬課題が見つかりません');
+      }
+      if (result.error === 'line_not_found') {
+        return validationError('指定された処方明細が見つかりません');
       }
     }
 

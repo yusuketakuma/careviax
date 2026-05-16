@@ -1,12 +1,13 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { FilePlus, AlertTriangle, FileText, Keyboard } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import { useRealtimeEvents } from '@/lib/hooks/use-realtime-events';
 import {
   useKeyboardShortcuts,
   type ShortcutDefinition,
@@ -21,6 +22,9 @@ import { PrescriptionInlineDetail } from './prescription-inline-detail';
 // ---------------------------------------------------------------------------
 
 type FilterKey = 'all' | string;
+
+const PRESCRIPTION_INTAKE_PAGE_SIZE = 50;
+const REALTIME_INVALIDATE_EVENTS = new Set(['cycle_transition', 'prescription_intake_created']);
 
 const STATUS_FILTER_OPTIONS: Array<{ value: FilterKey; label: string }> = [
   { value: 'all', label: '全' },
@@ -43,71 +47,82 @@ const SOURCE_FILTER_OPTIONS: Array<{ value: FilterKey; label: string }> = [
   { value: 'qr_scan', label: 'QR' },
 ];
 
+type PrescriptionIntakesPage = {
+  data: PrescriptionIntakeRow[];
+  hasMore: boolean;
+  nextCursor?: string;
+  totalCount?: number;
+};
+
 // ---------------------------------------------------------------------------
 // Workspace (レセコン風 master-detail)
 // ---------------------------------------------------------------------------
 
 export function PrescriptionsWorkspace({ className }: { className?: string } = {}) {
   const orgId = useOrgId();
+  const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<FilterKey>('all');
   const [sourceFilter, setSourceFilter] = useState<FilterKey>('all');
 
-  // Fetch all intakes
-  const { data, isLoading } = useRealtimeQuery({
-    queryKey: ['prescription-intakes', orgId],
-    queryFn: async () => {
-      const all: PrescriptionIntakeRow[] = [];
-      let cursor: string | undefined;
-      for (;;) {
-        const params = new URLSearchParams({ limit: '100' });
-        if (cursor) params.set('cursor', cursor);
-        const res = await fetch(`/api/prescription-intakes?${params}`, {
-          headers: { 'x-org-id': orgId },
-        });
-        if (!res.ok) throw new Error('処方受付一覧の取得に失敗しました');
-        const page = (await res.json()) as {
-          data: PrescriptionIntakeRow[];
-          hasMore: boolean;
-          nextCursor?: string;
-        };
-        all.push(...page.data);
-        if (!page.hasMore || !page.nextCursor) break;
-        cursor = page.nextCursor;
-      }
-      return { data: all };
+  const queryKey = useMemo(
+    () => ['prescription-intakes', orgId, statusFilter, sourceFilter] as const,
+    [orgId, statusFilter, sourceFilter],
+  );
+
+  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+    queryKey,
+    queryFn: async ({ pageParam }) => {
+      const params = new URLSearchParams({
+        limit: String(PRESCRIPTION_INTAKE_PAGE_SIZE),
+        include_total: '1',
+      });
+      if (pageParam) params.set('cursor', pageParam);
+      if (statusFilter !== 'all') params.set('status', statusFilter);
+      if (sourceFilter !== 'all') params.set('source_type', sourceFilter);
+
+      const res = await fetch(`/api/prescription-intakes?${params}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('処方受付一覧の取得に失敗しました');
+      return res.json() as Promise<PrescriptionIntakesPage>;
     },
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    initialPageParam: undefined as string | undefined,
     enabled: !!orgId,
-    refetchInterval: 30_000,
-    invalidateOn: ['cycle_transition', 'prescription_intake_created'],
   });
 
-  const allItems = useMemo(() => data?.data ?? [], [data]);
+  const handleRealtimeEvent = useCallback(
+    (event: unknown) => {
+      const eventType =
+        typeof event === 'object' && event !== null && 'type' in event
+          ? (event as { type: string }).type
+          : undefined;
 
-  // Client-side filtering
-  const filteredItems = useMemo(() => {
-    let items = allItems;
-    if (statusFilter !== 'all') {
-      items = items.filter((item) => item.cycle.overall_status === statusFilter);
-    }
-    if (sourceFilter !== 'all') {
-      items = items.filter((item) => item.source_type === sourceFilter);
-    }
-    return items;
-  }, [allItems, statusFilter, sourceFilter]);
+      if (!eventType || !REALTIME_INVALIDATE_EVENTS.has(eventType)) return;
 
-  // Status counts
+      queryClient.invalidateQueries({ queryKey: ['prescription-intakes', orgId] });
+    },
+    [orgId, queryClient],
+  );
+
+  useRealtimeEvents({ onEvent: handleRealtimeEvent, enabled: !!orgId });
+
+  const loadedItems = useMemo(() => data?.pages.flatMap((page) => page.data) ?? [], [data]);
+  const totalMatchingCount = data?.pages[0]?.totalCount ?? loadedItems.length;
+
+  // Counts reflect the loaded page window. Totals come from the server-side filtered query.
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const item of allItems) {
+    for (const item of loadedItems) {
       const s = item.cycle.overall_status;
       counts[s] = (counts[s] ?? 0) + 1;
     }
     return counts;
-  }, [allItems]);
+  }, [loadedItems]);
 
   // Selection state
   const { selectedItem, handleMoveUp, handleMoveDown, handleRowClick, resetSelection } =
-    useSelectableQueueState(filteredItems);
+    useSelectableQueueState(loadedItems);
 
   const selectedId = selectedItem?.id ?? null;
 
@@ -154,7 +169,7 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
 
         {/* 件数サマリ */}
         <span className="text-[11px] tabular-nums text-muted-foreground">
-          {filteredItems.length}/{allItems.length}件
+          {loadedItems.length}/{totalMatchingCount}件
         </span>
 
         {inquiryCount > 0 && (
@@ -190,7 +205,6 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
         <span className="shrink-0 text-[10px] font-medium text-muted-foreground">状態</span>
         {STATUS_FILTER_OPTIONS.map((opt) => {
           const isActive = statusFilter === opt.value;
-          const count = opt.value === 'all' ? allItems.length : (statusCounts[opt.value] ?? 0);
           return (
             <button
               key={opt.value}
@@ -203,13 +217,6 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
               }`}
             >
               {opt.label}
-              {count > 0 && (
-                <span
-                  className={`text-[9px] ${isActive ? 'text-primary-foreground/70' : 'text-muted-foreground/60'}`}
-                >
-                  {count}
-                </span>
-              )}
             </button>
           );
         })}
@@ -239,13 +246,29 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
       {/* ━━ メイン: マスタ-ディテール分割 ━━ */}
       <div className="flex flex-1 overflow-hidden">
         {/* 左パネル: 処方一覧 */}
-        <div className="w-[420px] shrink-0 overflow-hidden border-r lg:w-[480px]">
-          <PrescriptionsTable
-            items={filteredItems}
-            isLoading={!orgId || isLoading}
-            selectedId={selectedId}
-            onRowClick={handleRowClick}
-          />
+        <div className="flex w-[420px] shrink-0 flex-col overflow-hidden border-r lg:w-[480px]">
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <PrescriptionsTable
+              items={loadedItems}
+              isLoading={!orgId || isLoading}
+              selectedId={selectedId}
+              onRowClick={handleRowClick}
+            />
+          </div>
+          {hasNextPage && (
+            <div className="border-t bg-background px-3 py-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 w-full text-xs"
+                onClick={() => void fetchNextPage()}
+                disabled={isFetchingNextPage}
+              >
+                {isFetchingNextPage ? '読み込み中...' : 'さらに読み込む'}
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* 右パネル: 詳細 */}

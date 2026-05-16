@@ -148,6 +148,7 @@ const {
   pharmacistShiftFindFirstMock,
   prismaVisitScheduleFindFirstMock,
   inquiryRecordFindFirstMock,
+  prescriptionLineFindFirstMock,
   careReportFindFirstMock,
   dispatchNotificationEventMock,
   upsertOperationalTaskMock,
@@ -180,6 +181,7 @@ const {
   pharmacistShiftFindFirstMock: vi.fn(),
   prismaVisitScheduleFindFirstMock: vi.fn(),
   inquiryRecordFindFirstMock: vi.fn(),
+  prescriptionLineFindFirstMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
@@ -219,6 +221,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     inquiryRecord: {
       findFirst: inquiryRecordFindFirstMock,
+    },
+    prescriptionLine: {
+      findFirst: prescriptionLineFindFirstMock,
     },
     careReport: {
       findFirst: careReportFindFirstMock,
@@ -957,6 +962,12 @@ describe('workflow full-cycle integration', () => {
         result: state.inquiry.result,
       };
     });
+    prescriptionLineFindFirstMock.mockImplementation(
+      async ({ where }: { where: { id: string } }) => {
+        const line = state.intake?.lines.find((item) => item.id === where.id) ?? null;
+        return line ? { id: line.id } : null;
+      },
+    );
 
     careReportFindFirstMock.mockImplementation(async ({ where }: { where: { id: string } }) => {
       const report = state.careReports.find((item) => item.id === where.id) ?? null;

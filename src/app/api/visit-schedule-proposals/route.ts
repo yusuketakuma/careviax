@@ -1,21 +1,29 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError } from '@/lib/api/response';
+import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { validateOrgReferences } from '@/lib/api/org-reference';
+import {
+  buildVisitScheduleProposalAssignmentWhere,
+  buildVisitScheduleProposalCaseAccessWhere,
+} from '@/lib/auth/visit-schedule-access';
 import {
   generateVisitScheduleProposalSchema,
   proposalStatusValues,
 } from '@/lib/validations/visit-schedule-proposal';
-import {
-  resolveBillingRulesForDate,
-} from '@/server/services/billing-rules';
+import { resolveBillingRulesForDate } from '@/server/services/billing-rules';
 import { resolveBillingPayerBasis } from '@/server/services/billing-payer-basis';
 import { findLatestPrescriptionIntakeClassification } from '@/server/services/prescription-intake-classification';
 import { generateVisitScheduleProposalDrafts } from '@/server/services/visit-schedule-planner';
-import { formatVisitWorkflowGateIssues, type VisitWorkflowGateIssue } from '@/server/services/management-plans';
+import {
+  formatVisitWorkflowGateIssues,
+  type VisitWorkflowGateIssue,
+} from '@/server/services/management-plans';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
-import { validateBillingRequirements, type BillingRequirementAlert } from '@/server/services/billing-requirement-validator';
+import {
+  validateBillingRequirements,
+  type BillingRequirementAlert,
+} from '@/server/services/billing-requirement-validator';
 import type { ProposalCandidateDiagnostic } from '@/server/services/visit-schedule-planner';
 
 function startOfMonth(value: Date) {
@@ -143,393 +151,420 @@ function dedupeBillingAlerts(alerts: BillingRequirementAlert[]) {
   });
 }
 
-export const GET = withAuth(async (req: AuthenticatedRequest) => {
-  const { searchParams } = new URL(req.url);
-  const caseId = searchParams.get('case_id');
-  const patientId = searchParams.get('patient_id');
-  const status = searchParams.get('status');
-  const dateFrom = searchParams.get('date_from');
-  const dateTo = searchParams.get('date_to');
+export const GET = withAuth(
+  async (req: AuthenticatedRequest) => {
+    const { searchParams } = new URL(req.url);
+    const caseId = searchParams.get('case_id');
+    const patientId = searchParams.get('patient_id');
+    const status = searchParams.get('status');
+    const dateFrom = searchParams.get('date_from');
+    const dateTo = searchParams.get('date_to');
+    const assignmentWhere = buildVisitScheduleProposalAssignmentWhere(req);
 
-  const parsedStatus = status
-    ? proposalStatusValues.includes(status as (typeof proposalStatusValues)[number])
-      ? (status as (typeof proposalStatusValues)[number])
-      : null
-    : null;
-  if (status && !parsedStatus) {
-    return validationError('status が不正です');
-  }
+    const parsedStatus = status
+      ? proposalStatusValues.includes(status as (typeof proposalStatusValues)[number])
+        ? (status as (typeof proposalStatusValues)[number])
+        : null
+      : null;
+    if (status && !parsedStatus) {
+      return validationError('status が不正です');
+    }
 
-  const proposals = await prisma.visitScheduleProposal.findMany({
-    where: {
-      org_id: req.orgId,
-      ...(caseId ? { case_id: caseId } : {}),
-      ...(patientId
-        ? {
-            case_: {
-              is: {
-                patient_id: patientId,
+    const proposals = await prisma.visitScheduleProposal.findMany({
+      where: {
+        org_id: req.orgId,
+        ...(caseId ? { case_id: caseId } : {}),
+        ...(patientId
+          ? {
+              case_: {
+                is: {
+                  patient_id: patientId,
+                },
+              },
+            }
+          : {}),
+        ...(parsedStatus ? { proposal_status: parsedStatus } : {}),
+        ...(dateFrom || dateTo
+          ? {
+              proposed_date: {
+                ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
+                ...(dateTo ? { lte: new Date(dateTo) } : {}),
+              },
+            }
+          : {}),
+        ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+      },
+      include: {
+        case_: {
+          include: {
+            patient: {
+              include: {
+                residences: {
+                  where: { is_primary: true },
+                  take: 1,
+                },
               },
             },
-          }
-        : {}),
-      ...(parsedStatus ? { proposal_status: parsedStatus } : {}),
-      ...(dateFrom || dateTo
-        ? {
-            proposed_date: {
-              ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
-              ...(dateTo ? { lte: new Date(dateTo) } : {}),
-            },
-          }
-        : {}),
-    },
-    include: {
-      case_: {
-        include: {
-          patient: {
-            include: {
-              residences: {
-                where: { is_primary: true },
-                take: 1,
-              },
-            },
           },
         },
-      },
-      site: {
-        select: {
-          id: true,
-          name: true,
-          address: true,
-          lat: true,
-          lng: true,
-        },
-      },
-      finalized_schedule: {
-        select: {
-          id: true,
-          scheduled_date: true,
-          pharmacist_id: true,
-        },
-      },
-      reschedule_source_schedule: {
-        select: {
-          id: true,
-          scheduled_date: true,
-          pharmacist_id: true,
-          override_request: {
-            select: {
-              status: true,
-              impact_summary: true,
-            },
-          },
-        },
-      },
-      contact_logs: {
-        orderBy: { called_at: 'desc' },
-        take: 10,
-      },
-    },
-    orderBy: [
-      { proposed_date: 'asc' },
-      { time_window_start: 'asc' },
-    ],
-  });
-
-  const pharmacistIds = Array.from(
-    new Set(proposals.map((proposal) => proposal.proposed_pharmacist_id))
-  );
-  const pharmacists =
-    pharmacistIds.length === 0
-      ? []
-      : await prisma.user.findMany({
-          where: {
-            org_id: req.orgId,
-            id: { in: pharmacistIds },
-          },
+        site: {
           select: {
             id: true,
             name: true,
-            name_kana: true,
-          },
-        });
-  const pharmacistById = new Map(
-    pharmacists.map((pharmacist) => [pharmacist.id, pharmacist])
-  );
-
-  return success({
-    data: proposals.map((proposal) => ({
-      ...proposal,
-      proposed_pharmacist: pharmacistById.get(proposal.proposed_pharmacist_id) ?? null,
-    })),
-  });
-}, {
-  permission: 'canVisit',
-  message: '訪問候補の閲覧権限がありません',
-});
-
-export const POST = withAuth(async (req: AuthenticatedRequest) => {
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
-
-  const parsed = generateVisitScheduleProposalSchema.safeParse(body);
-  if (!parsed.success) {
-    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-  }
-
-  const refResult = await validateOrgReferences(req.orgId, {
-    case_id: parsed.data.case_id,
-    ...(parsed.data.preferred_pharmacist_id
-      ? { pharmacist_id: parsed.data.preferred_pharmacist_id }
-      : {}),
-    ...(parsed.data.reschedule_source_schedule_id
-      ? { schedule_id: parsed.data.reschedule_source_schedule_id }
-      : {}),
-  });
-  if (!refResult.ok) return refResult.response;
-
-  const hasExplicitVisitType = Object.prototype.hasOwnProperty.call(body, 'visit_type');
-  // Auto-propagate visitType from active PrescriptionIntake when not provided
-  let resolvedVisitType = parsed.data.visit_type;
-  if (hasExplicitVisitType) {
-    resolvedVisitType = parsed.data.visit_type;
-  } else {
-    const activeIntake = await findLatestPrescriptionIntakeClassification(prisma, {
-      orgId: req.orgId,
-      caseId: parsed.data.case_id,
-    });
-    resolvedVisitType = activeIntake?.prescription_category === 'emergency' ? 'emergency' : 'regular';
-  }
-  const hasExplicitPriority = Object.prototype.hasOwnProperty.call(body, 'priority');
-  const resolvedPriority =
-    !hasExplicitPriority && resolvedVisitType === 'emergency'
-      ? 'emergency'
-      : parsed.data.priority;
-
-  const { blockingMessages, alerts: billingAlerts } = await validateProposalBillingExclusions({
-    orgId: req.orgId,
-    caseId: parsed.data.case_id,
-    visitType: resolvedVisitType,
-    targetDate: parsed.data.start_date ? new Date(parsed.data.start_date) : new Date(),
-    prescriptionCategory: resolvedVisitType === 'emergency' ? 'emergency' : 'regular',
-    specialCapEligible: parsed.data.special_cap_eligible,
-  });
-  if (blockingMessages.length > 0) {
-    return validationError(blockingMessages.join(' / '));
-  }
-
-  let drafts;
-  let plannerDiagnostics:
-    | {
-        accepted: Array<{
-          pharmacist_id: string;
-          pharmacist_name: string;
-          site_id: string | null;
-          site_name: string | null;
-          proposed_date: string;
-          travel_mode: string;
-          route_order: number;
-          route_distance_score: number;
-          travel_summary: string;
-          assignment_mode: string;
-          care_relationship: string;
-          score: number;
-          score_breakdown: Record<string, number>;
-          time_window_start: Date;
-          time_window_end: Date;
-        }>;
-        rejected: ProposalCandidateDiagnostic[];
-      }
-    | undefined;
-  try {
-    const plannerResult = await generateVisitScheduleProposalDrafts({
-      orgId: req.orgId,
-      caseId: parsed.data.case_id,
-      visitType: resolvedVisitType,
-      priority: resolvedPriority,
-      candidateCount: parsed.data.candidate_count,
-      travelMode: parsed.data.travel_mode,
-      startDate: parsed.data.start_date ? new Date(parsed.data.start_date) : undefined,
-      lockedDate: parsed.data.locked_date ? new Date(parsed.data.locked_date) : undefined,
-      preferredTimeFrom: parsed.data.preferred_time_from,
-      preferredTimeTo: parsed.data.preferred_time_to,
-      preferredPharmacistId: parsed.data.preferred_pharmacist_id,
-      rescheduleSourceScheduleId: parsed.data.reschedule_source_schedule_id,
-    });
-    drafts = plannerResult.drafts;
-    plannerDiagnostics = plannerResult.diagnostics;
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith('VISIT_WORKFLOW_GATE:')) {
-      const issues = error.message
-        .replace('VISIT_WORKFLOW_GATE:', '')
-        .split(',')
-        .filter(Boolean) as VisitWorkflowGateIssue[];
-      return validationError(formatVisitWorkflowGateIssues(issues));
-    }
-    throw error;
-  }
-
-  if (drafts.length === 0) {
-    return validationError('シフト・休日・期限条件に合う候補を生成できませんでした', {
-      rejections: plannerDiagnostics?.rejected ?? [],
-    });
-  }
-
-  const perDraftValidationKeys = new Set<string>();
-  const draftValidationPairs = await Promise.all(
-    drafts.map(async (draft) => {
-      const validationKey = `${draft.proposed_pharmacist_id}:${draft.proposed_date.toISOString()}`;
-      if (perDraftValidationKeys.has(validationKey)) {
-        return { draft, validation: null };
-      }
-      perDraftValidationKeys.add(validationKey);
-
-      const validation = await validateProposalBillingExclusions({
-        orgId: req.orgId,
-        caseId: parsed.data.case_id,
-        visitType: resolvedVisitType,
-        targetDate: draft.proposed_date,
-        pharmacistId: draft.proposed_pharmacist_id,
-        prescriptionCategory: resolvedVisitType === 'emergency' ? 'emergency' : 'regular',
-      });
-
-      return { draft, validation };
-    }),
-  );
-
-  const validationByKey = new Map(
-    draftValidationPairs
-      .filter((pair): pair is { draft: typeof drafts[number]; validation: NonNullable<typeof pair.validation> } => pair.validation != null)
-      .map((pair) => [
-        `${pair.draft.proposed_pharmacist_id}:${pair.draft.proposed_date.toISOString()}`,
-        pair.validation,
-      ]),
-  );
-  const validDrafts = drafts.filter((draft) => {
-    const validation = validationByKey.get(
-      `${draft.proposed_pharmacist_id}:${draft.proposed_date.toISOString()}`,
-    );
-    return (validation?.blockingMessages.length ?? 0) === 0;
-  });
-  const rejectedByBilling = drafts
-    .filter((draft) => !validDrafts.includes(draft))
-    .map((draft) => ({
-      pharmacist_id: draft.proposed_pharmacist_id,
-      pharmacist_name:
-        plannerDiagnostics?.accepted.find(
-          (item) =>
-            item.pharmacist_id === draft.proposed_pharmacist_id &&
-            item.proposed_date === draft.proposed_date.toISOString().slice(0, 10)
-        )?.pharmacist_name ?? draft.proposed_pharmacist_id,
-      site_id: draft.site_id ?? null,
-      site_name: null,
-      proposed_date: draft.proposed_date.toISOString().slice(0, 10),
-      travel_mode: parsed.data.travel_mode,
-      reason_code: 'billing_constraint' as const,
-      reason_label: '算定制約',
-      detail:
-        validationByKey
-          .get(`${draft.proposed_pharmacist_id}:${draft.proposed_date.toISOString()}`)
-          ?.blockingMessages.join(' / ') ?? '算定要件を満たしません',
-    }));
-  const allBlockingMessages = Array.from(
-    new Set([
-      ...blockingMessages,
-      ...Array.from(validationByKey.values()).flatMap((validation) => validation.blockingMessages),
-    ]),
-  );
-  if (validDrafts.length === 0) {
-    return validationError(
-      allBlockingMessages.join(' / ') || '算定要件を満たす訪問候補を生成できませんでした',
-      {
-        rejections: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
-      },
-    );
-  }
-  const allAlerts = dedupeBillingAlerts([
-    ...billingAlerts,
-    ...Array.from(validationByKey.values()).flatMap((validation) => validation.alerts),
-  ]);
-  const acceptedDiagnostics =
-    plannerDiagnostics?.accepted.filter((item) =>
-      validDrafts.some(
-        (draft) =>
-          draft.proposed_pharmacist_id === item.pharmacist_id &&
-          draft.proposed_date.toISOString().slice(0, 10) === item.proposed_date
-      )
-    ) ?? [];
-
-  const proposals = await withOrgContext(req.orgId, async (tx) => {
-    if (!parsed.data.reschedule_source_schedule_id) {
-      await tx.visitScheduleProposal.updateMany({
-        where: {
-          org_id: req.orgId,
-          case_id: parsed.data.case_id,
-          proposal_status: {
-            in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+            address: true,
+            lat: true,
+            lng: true,
           },
         },
-        data: {
-          proposal_status: 'superseded',
+        finalized_schedule: {
+          select: {
+            id: true,
+            scheduled_date: true,
+            pharmacist_id: true,
+          },
         },
-      });
-    }
-
-    const created = await Promise.all(
-      validDrafts.map((draft) =>
-        tx.visitScheduleProposal.create({
-          data: draft,
-        })
-      )
-    );
-
-    await Promise.all(
-      created.map((proposal) => {
-        const acceptedDiagnostic =
-          acceptedDiagnostics.find(
-            (item) =>
-              item.pharmacist_id === proposal.proposed_pharmacist_id &&
-              item.proposed_date === proposal.proposed_date.toISOString().slice(0, 10)
-          ) ?? null;
-
-        return tx.auditLog.create({
-          data: {
-            org_id: req.orgId,
-            actor_id: req.userId,
-            action: 'visit_schedule_proposals_created',
-            target_type: 'VisitScheduleProposal',
-            target_id: proposal.id,
-            changes: {
-              diagnostics: {
-                accepted: acceptedDiagnostic ? [acceptedDiagnostic] : [],
-                rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
+        reschedule_source_schedule: {
+          select: {
+            id: true,
+            scheduled_date: true,
+            pharmacist_id: true,
+            override_request: {
+              select: {
+                status: true,
+                impact_summary: true,
               },
             },
           },
+        },
+        contact_logs: {
+          orderBy: { called_at: 'desc' },
+          take: 10,
+        },
+      },
+      orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }],
+    });
+
+    const pharmacistIds = Array.from(
+      new Set(proposals.map((proposal) => proposal.proposed_pharmacist_id)),
+    );
+    const pharmacists =
+      pharmacistIds.length === 0
+        ? []
+        : await prisma.user.findMany({
+            where: {
+              org_id: req.orgId,
+              id: { in: pharmacistIds },
+            },
+            select: {
+              id: true,
+              name: true,
+              name_kana: true,
+            },
+          });
+    const pharmacistById = new Map(pharmacists.map((pharmacist) => [pharmacist.id, pharmacist]));
+
+    return success({
+      data: proposals.map((proposal) => ({
+        ...proposal,
+        proposed_pharmacist: pharmacistById.get(proposal.proposed_pharmacist_id) ?? null,
+      })),
+    });
+  },
+  {
+    permission: 'canVisit',
+    message: '訪問候補の閲覧権限がありません',
+  },
+);
+
+export const POST = withAuth(
+  async (req: AuthenticatedRequest) => {
+    const body = await req.json().catch(() => null);
+    if (!body) return validationError('リクエストボディが不正です');
+
+    const parsed = generateVisitScheduleProposalSchema.safeParse(body);
+    if (!parsed.success) {
+      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    }
+
+    const caseAccessWhere = buildVisitScheduleProposalCaseAccessWhere(
+      req,
+      parsed.data.preferred_pharmacist_id,
+    );
+    const accessibleCase = await prisma.careCase.findFirst({
+      where: {
+        id: parsed.data.case_id,
+        org_id: req.orgId,
+        ...(caseAccessWhere ? { AND: [caseAccessWhere] } : {}),
+      },
+      select: { id: true },
+    });
+    if (!accessibleCase) return notFound('ケースが見つかりません');
+
+    const refResult = await validateOrgReferences(req.orgId, {
+      case_id: parsed.data.case_id,
+      ...(parsed.data.preferred_pharmacist_id
+        ? { pharmacist_id: parsed.data.preferred_pharmacist_id }
+        : {}),
+      ...(parsed.data.reschedule_source_schedule_id
+        ? { schedule_id: parsed.data.reschedule_source_schedule_id }
+        : {}),
+    });
+    if (!refResult.ok) return refResult.response;
+
+    const hasExplicitVisitType = Object.prototype.hasOwnProperty.call(body, 'visit_type');
+    // Auto-propagate visitType from active PrescriptionIntake when not provided
+    let resolvedVisitType = parsed.data.visit_type;
+    if (hasExplicitVisitType) {
+      resolvedVisitType = parsed.data.visit_type;
+    } else {
+      const activeIntake = await findLatestPrescriptionIntakeClassification(prisma, {
+        orgId: req.orgId,
+        caseId: parsed.data.case_id,
+      });
+      resolvedVisitType =
+        activeIntake?.prescription_category === 'emergency' ? 'emergency' : 'regular';
+    }
+    const hasExplicitPriority = Object.prototype.hasOwnProperty.call(body, 'priority');
+    const resolvedPriority =
+      !hasExplicitPriority && resolvedVisitType === 'emergency'
+        ? 'emergency'
+        : parsed.data.priority;
+
+    const { blockingMessages, alerts: billingAlerts } = await validateProposalBillingExclusions({
+      orgId: req.orgId,
+      caseId: parsed.data.case_id,
+      visitType: resolvedVisitType,
+      targetDate: parsed.data.start_date ? new Date(parsed.data.start_date) : new Date(),
+      prescriptionCategory: resolvedVisitType === 'emergency' ? 'emergency' : 'regular',
+      specialCapEligible: parsed.data.special_cap_eligible,
+    });
+    if (blockingMessages.length > 0) {
+      return validationError(blockingMessages.join(' / '));
+    }
+
+    let drafts;
+    let plannerDiagnostics:
+      | {
+          accepted: Array<{
+            pharmacist_id: string;
+            pharmacist_name: string;
+            site_id: string | null;
+            site_name: string | null;
+            proposed_date: string;
+            travel_mode: string;
+            route_order: number;
+            route_distance_score: number;
+            travel_summary: string;
+            assignment_mode: string;
+            care_relationship: string;
+            score: number;
+            score_breakdown: Record<string, number>;
+            time_window_start: Date;
+            time_window_end: Date;
+          }>;
+          rejected: ProposalCandidateDiagnostic[];
+        }
+      | undefined;
+    try {
+      const plannerResult = await generateVisitScheduleProposalDrafts({
+        orgId: req.orgId,
+        caseId: parsed.data.case_id,
+        visitType: resolvedVisitType,
+        priority: resolvedPriority,
+        candidateCount: parsed.data.candidate_count,
+        travelMode: parsed.data.travel_mode,
+        startDate: parsed.data.start_date ? new Date(parsed.data.start_date) : undefined,
+        lockedDate: parsed.data.locked_date ? new Date(parsed.data.locked_date) : undefined,
+        preferredTimeFrom: parsed.data.preferred_time_from,
+        preferredTimeTo: parsed.data.preferred_time_to,
+        preferredPharmacistId: parsed.data.preferred_pharmacist_id,
+        rescheduleSourceScheduleId: parsed.data.reschedule_source_schedule_id,
+      });
+      drafts = plannerResult.drafts;
+      plannerDiagnostics = plannerResult.diagnostics;
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('VISIT_WORKFLOW_GATE:')) {
+        const issues = error.message
+          .replace('VISIT_WORKFLOW_GATE:', '')
+          .split(',')
+          .filter(Boolean) as VisitWorkflowGateIssue[];
+        return validationError(formatVisitWorkflowGateIssues(issues));
+      }
+      throw error;
+    }
+
+    if (drafts.length === 0) {
+      return validationError('シフト・休日・期限条件に合う候補を生成できませんでした', {
+        rejections: plannerDiagnostics?.rejected ?? [],
+      });
+    }
+
+    const perDraftValidationKeys = new Set<string>();
+    const draftValidationPairs = await Promise.all(
+      drafts.map(async (draft) => {
+        const validationKey = `${draft.proposed_pharmacist_id}:${draft.proposed_date.toISOString()}`;
+        if (perDraftValidationKeys.has(validationKey)) {
+          return { draft, validation: null };
+        }
+        perDraftValidationKeys.add(validationKey);
+
+        const validation = await validateProposalBillingExclusions({
+          orgId: req.orgId,
+          caseId: parsed.data.case_id,
+          visitType: resolvedVisitType,
+          targetDate: draft.proposed_date,
+          pharmacistId: draft.proposed_pharmacist_id,
+          prescriptionCategory: resolvedVisitType === 'emergency' ? 'emergency' : 'regular',
         });
-      })
+
+        return { draft, validation };
+      }),
     );
 
-    return created;
-  });
+    const validationByKey = new Map(
+      draftValidationPairs
+        .filter(
+          (
+            pair,
+          ): pair is {
+            draft: (typeof drafts)[number];
+            validation: NonNullable<typeof pair.validation>;
+          } => pair.validation != null,
+        )
+        .map((pair) => [
+          `${pair.draft.proposed_pharmacist_id}:${pair.draft.proposed_date.toISOString()}`,
+          pair.validation,
+        ]),
+    );
+    const validDrafts = drafts.filter((draft) => {
+      const validation = validationByKey.get(
+        `${draft.proposed_pharmacist_id}:${draft.proposed_date.toISOString()}`,
+      );
+      return (validation?.blockingMessages.length ?? 0) === 0;
+    });
+    const rejectedByBilling = drafts
+      .filter((draft) => !validDrafts.includes(draft))
+      .map((draft) => ({
+        pharmacist_id: draft.proposed_pharmacist_id,
+        pharmacist_name:
+          plannerDiagnostics?.accepted.find(
+            (item) =>
+              item.pharmacist_id === draft.proposed_pharmacist_id &&
+              item.proposed_date === draft.proposed_date.toISOString().slice(0, 10),
+          )?.pharmacist_name ?? draft.proposed_pharmacist_id,
+        site_id: draft.site_id ?? null,
+        site_name: null,
+        proposed_date: draft.proposed_date.toISOString().slice(0, 10),
+        travel_mode: parsed.data.travel_mode,
+        reason_code: 'billing_constraint' as const,
+        reason_label: '算定制約',
+        detail:
+          validationByKey
+            .get(`${draft.proposed_pharmacist_id}:${draft.proposed_date.toISOString()}`)
+            ?.blockingMessages.join(' / ') ?? '算定要件を満たしません',
+      }));
+    const allBlockingMessages = Array.from(
+      new Set([
+        ...blockingMessages,
+        ...Array.from(validationByKey.values()).flatMap(
+          (validation) => validation.blockingMessages,
+        ),
+      ]),
+    );
+    if (validDrafts.length === 0) {
+      return validationError(
+        allBlockingMessages.join(' / ') || '算定要件を満たす訪問候補を生成できませんでした',
+        {
+          rejections: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
+        },
+      );
+    }
+    const allAlerts = dedupeBillingAlerts([
+      ...billingAlerts,
+      ...Array.from(validationByKey.values()).flatMap((validation) => validation.alerts),
+    ]);
+    const acceptedDiagnostics =
+      plannerDiagnostics?.accepted.filter((item) =>
+        validDrafts.some(
+          (draft) =>
+            draft.proposed_pharmacist_id === item.pharmacist_id &&
+            draft.proposed_date.toISOString().slice(0, 10) === item.proposed_date,
+        ),
+      ) ?? [];
 
-  await notifyWorkflowMutation({
-    orgId: req.orgId,
-    payload: { source: 'visit_schedule_proposals_create', case_id: parsed.data.case_id },
-  });
+    const proposals = await withOrgContext(req.orgId, async (tx) => {
+      if (!parsed.data.reschedule_source_schedule_id) {
+        await tx.visitScheduleProposal.updateMany({
+          where: {
+            org_id: req.orgId,
+            case_id: parsed.data.case_id,
+            proposal_status: {
+              in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+            },
+          },
+          data: {
+            proposal_status: 'superseded',
+          },
+        });
+      }
 
-  return success(
-    {
-      data: proposals,
-      alerts: allAlerts,
-      diagnostics: {
-        accepted: acceptedDiagnostics,
-        rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
+      const created = await Promise.all(
+        validDrafts.map((draft) =>
+          tx.visitScheduleProposal.create({
+            data: draft,
+          }),
+        ),
+      );
+
+      await Promise.all(
+        created.map((proposal) => {
+          const acceptedDiagnostic =
+            acceptedDiagnostics.find(
+              (item) =>
+                item.pharmacist_id === proposal.proposed_pharmacist_id &&
+                item.proposed_date === proposal.proposed_date.toISOString().slice(0, 10),
+            ) ?? null;
+
+          return tx.auditLog.create({
+            data: {
+              org_id: req.orgId,
+              actor_id: req.userId,
+              action: 'visit_schedule_proposals_created',
+              target_type: 'VisitScheduleProposal',
+              target_id: proposal.id,
+              changes: {
+                diagnostics: {
+                  accepted: acceptedDiagnostic ? [acceptedDiagnostic] : [],
+                  rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
+                },
+              },
+            },
+          });
+        }),
+      );
+
+      return created;
+    });
+
+    await notifyWorkflowMutation({
+      orgId: req.orgId,
+      payload: { source: 'visit_schedule_proposals_create', case_id: parsed.data.case_id },
+    });
+
+    return success(
+      {
+        data: proposals,
+        alerts: allAlerts,
+        diagnostics: {
+          accepted: acceptedDiagnostics,
+          rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
+        },
       },
-    },
-    201
-  );
-}, {
-  permission: 'canVisit',
-  message: '訪問候補の生成権限がありません',
-});
+      201,
+    );
+  },
+  {
+    permission: 'canVisit',
+    message: '訪問候補の生成権限がありません',
+  },
+);

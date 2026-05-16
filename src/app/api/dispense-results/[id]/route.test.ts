@@ -57,12 +57,26 @@ function createRequest(url: string, body?: unknown) {
     url,
     method: body === undefined ? 'GET' : 'PATCH',
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
     },
     nextUrl: new URL(url),
     json: vi.fn().mockResolvedValue(body),
   } as unknown as NextRequest;
 }
+
+const expectedResultAssignmentWhere = {
+  task: {
+    cycle: {
+      case_: {
+        OR: [
+          { primary_pharmacist_id: 'user_1' },
+          { backup_pharmacist_id: 'user_1' },
+          { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+        ],
+      },
+    },
+  },
+};
 
 describe('/api/dispense-results/[id]', () => {
   beforeEach(() => {
@@ -99,7 +113,9 @@ describe('/api/dispense-results/[id]', () => {
         },
         medicationCycle: {
           findFirst: medicationCycleFindFirstMock,
-          findFirstOrThrow: vi.fn().mockResolvedValue({ id: 'cycle_1', overall_status: 'audit_pending' }),
+          findFirstOrThrow: vi
+            .fn()
+            .mockResolvedValue({ id: 'cycle_1', overall_status: 'audit_pending' }),
           updateMany: medicationCycleUpdateManyMock,
         },
         cycleTransitionLog: {
@@ -115,6 +131,26 @@ describe('/api/dispense-results/[id]', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expect(dispenseResultFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'result_1',
+        org_id: 'org_1',
+        ...expectedResultAssignmentWhere,
+      },
+      include: {
+        line: true,
+      },
+    });
+  });
+
+  it('denies unassigned result reads through the cycle assignment scope', async () => {
+    dispenseResultFindFirstMock.mockResolvedValue(null);
+
+    const response = (await GET(createRequest('http://localhost/api/dispense-results/result_1'), {
+      params: Promise.resolve({ id: 'result_1' }),
+    }))!;
+
+    expect(response.status).toBe(404);
   });
 
   it('patches a dispense result only after a rejected audit and resets statuses', async () => {
@@ -124,10 +160,22 @@ describe('/api/dispense-results/[id]', () => {
       }),
       {
         params: Promise.resolve({ id: 'result_1' }),
-      }
+      },
     ))!;
 
     expect(response.status).toBe(200);
+    expect(dispenseResultFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'result_1',
+        org_id: 'org_1',
+        ...expectedResultAssignmentWhere,
+      },
+      select: {
+        id: true,
+        task_id: true,
+        version: true,
+      },
+    });
     expect(dispenseResultUpdateMock).toHaveBeenCalled();
     expect(dispenseTaskUpdateMock).toHaveBeenCalledWith({
       where: { id: 'task_1' },
@@ -144,5 +192,24 @@ describe('/api/dispense-results/[id]', () => {
       eventType: 'cycle_transition',
       payload: { source: 'dispense_results_rework', result_id: 'result_1' },
     });
+  });
+
+  it('denies unassigned result patches before audit checks or writes', async () => {
+    dispenseResultFindFirstMock.mockResolvedValue(null);
+
+    const response = (await PATCH(
+      createRequest('http://localhost/api/dispense-results/result_unassigned', {
+        actual_drug_name: 'Drug B',
+      }),
+      {
+        params: Promise.resolve({ id: 'result_unassigned' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(404);
+    expect(dispenseAuditFindFirstMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
+    expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,7 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { parsePaginationParams } from '@/lib/api/pagination';
-import { success, validationError } from '@/lib/api/response';
+import { notFound, success, validationError } from '@/lib/api/response';
+import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
@@ -23,10 +24,31 @@ export const GET = withAuthContext(
     const patientId = searchParams.get('patient_id') ?? undefined;
     const status = searchParams.get('status') ?? undefined;
 
+    const accessiblePatients = await prisma.patient.findMany({
+      where: applyPatientAssignmentWhere(
+        {
+          org_id: ctx.orgId,
+          ...(patientId ? { id: patientId } : {}),
+        },
+        ctx,
+      ),
+      select: {
+        id: true,
+        name: true,
+        name_kana: true,
+      },
+    });
+    const patientMap = new Map(accessiblePatients.map((patient) => [patient.id, patient]));
+    const accessiblePatientIds = accessiblePatients.map((patient) => patient.id);
+
+    if (accessiblePatientIds.length === 0) {
+      return success({ data: [], hasMore: false, nextCursor: undefined });
+    }
+
     const reports = await prisma.patientSelfReport.findMany({
       where: {
         org_id: ctx.orgId,
-        ...(patientId ? { patient_id: patientId } : {}),
+        patient_id: patientId ?? { in: accessiblePatientIds },
         ...(status
           ? {
               status: status as
@@ -59,25 +81,6 @@ export const GET = withAuthContext(
       },
     });
 
-    const patientIds = [...new Set(reports.map((item) => item.patient_id))];
-    const patients =
-      patientIds.length === 0
-        ? []
-        : await prisma.patient.findMany({
-            where: {
-              org_id: ctx.orgId,
-              id: { in: patientIds },
-            },
-            select: {
-              id: true,
-              name: true,
-              name_kana: true,
-            },
-          });
-    const patientMap = new Map(
-      patients.map((patient) => [patient.id, patient])
-    );
-
     const hasMore = reports.length > limit;
     const data = (hasMore ? reports.slice(0, limit) : reports).map((report) => ({
       ...report,
@@ -91,7 +94,7 @@ export const GET = withAuthContext(
   {
     permission: 'canReport',
     message: '患者自己申告の閲覧権限がありません',
-  }
+  },
 );
 
 export const POST = withAuthContext(
@@ -103,6 +106,18 @@ export const POST = withAuthContext(
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
+
+    const patient = await prisma.patient.findFirst({
+      where: applyPatientAssignmentWhere(
+        {
+          id: parsed.data.patient_id,
+          org_id: ctx.orgId,
+        },
+        ctx,
+      ),
+      select: { id: true },
+    });
+    if (!patient) return notFound('患者が見つかりません');
 
     const created = await withOrgContext(ctx.orgId, async (tx) => {
       return tx.patientSelfReport.create({
@@ -128,5 +143,5 @@ export const POST = withAuthContext(
   {
     permission: 'canReport',
     message: '患者自己申告の登録権限がありません',
-  }
+  },
 );

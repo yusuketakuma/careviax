@@ -274,6 +274,14 @@ const permissionRoutes: RouteEntry[] = [
 describe('protected PATCH/DELETE routes auth matrix', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 'patient_1' });
+    prismaMock.careCase.findFirst.mockResolvedValue({
+      id: 'case_1',
+      patient_id: 'patient_1',
+      status: 'active',
+      primary_pharmacist_id: 'user_1',
+      backup_pharmacist_id: null,
+    });
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
   });
 

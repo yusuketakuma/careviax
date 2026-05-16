@@ -4,11 +4,13 @@ import type { NextRequest } from 'next/server';
 const {
   patientSelfReportFindManyMock,
   patientFindManyMock,
+  patientFindFirstMock,
   patientSelfReportCreateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   patientSelfReportFindManyMock: vi.fn(),
   patientFindManyMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
   patientSelfReportCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
@@ -27,6 +29,7 @@ vi.mock('@/lib/db/client', () => ({
     },
     patient: {
       findMany: patientFindManyMock,
+      findFirst: patientFindFirstMock,
     },
   },
 }));
@@ -65,6 +68,9 @@ describe('/api/patient-self-reports', () => {
         name_kana: 'カンジャエー',
       },
     ]);
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+    });
     patientSelfReportCreateMock.mockResolvedValue({
       id: 'report_2',
       patient_id: 'patient_1',
@@ -91,9 +97,12 @@ describe('/api/patient-self-reports', () => {
   });
 
   it('lists self reports with patient display names', async () => {
-    const response = (await GET({
-      url: 'http://localhost/api/patient-self-reports?patient_id=patient_1&status=triaged',
-    } as NextRequest, { params: Promise.resolve({}) }))!;
+    const response = (await GET(
+      {
+        url: 'http://localhost/api/patient-self-reports?patient_id=patient_1&status=triaged',
+      } as NextRequest,
+      { params: Promise.resolve({}) },
+    ))!;
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -105,19 +114,48 @@ describe('/api/patient-self-reports', () => {
         }),
       ],
     });
+    expect(patientSelfReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+        }),
+      }),
+    );
+  });
+
+  it('returns no reports when the requested patient is outside assignment scope', async () => {
+    patientFindManyMock.mockResolvedValue([]);
+
+    const response = (await GET(
+      {
+        url: 'http://localhost/api/patient-self-reports?patient_id=patient_unassigned',
+      } as NextRequest,
+      { params: Promise.resolve({}) },
+    ))!;
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [],
+      hasMore: false,
+    });
+    expect(patientSelfReportFindManyMock).not.toHaveBeenCalled();
   });
 
   it('creates a triaged self report', async () => {
-    const response = (await POST({
-      json: async () => ({
-        patient_id: 'patient_1',
-        reported_by_name: '家族B',
-        relation: 'spouse',
-        category: 'adherence',
-        subject: '飲み忘れ',
-        content: '朝食後を飲み忘れ',
-      }),
-    } as NextRequest, { params: Promise.resolve({}) }))!;
+    const response = (await POST(
+      {
+        json: async () => ({
+          patient_id: 'patient_1',
+          reported_by_name: '家族B',
+          relation: 'spouse',
+          category: 'adherence',
+          subject: '飲み忘れ',
+          content: '朝食後を飲み忘れ',
+        }),
+      } as NextRequest,
+      { params: Promise.resolve({}) },
+    ))!;
 
     expect(response.status).toBe(201);
     expect(patientSelfReportCreateMock).toHaveBeenCalledWith({
@@ -129,5 +167,25 @@ describe('/api/patient-self-reports', () => {
         status: 'triaged',
       }),
     });
+  });
+
+  it('does not create a self report for an unassigned patient', async () => {
+    patientFindFirstMock.mockResolvedValue(null);
+
+    const response = (await POST(
+      {
+        json: async () => ({
+          patient_id: 'patient_unassigned',
+          reported_by_name: '家族B',
+          category: 'adherence',
+          subject: '飲み忘れ',
+          content: '朝食後を飲み忘れ',
+        }),
+      } as NextRequest,
+      { params: Promise.resolve({}) },
+    ))!;
+
+    expect(response.status).toBe(404);
+    expect(patientSelfReportCreateMock).not.toHaveBeenCalled();
   });
 });

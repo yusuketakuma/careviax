@@ -5,20 +5,27 @@ const {
   withAuthMock,
   withOrgContextMock,
   medicationCycleFindFirstMock,
+  dispenseTaskFindManyMock,
   dispatchNotificationEventMock,
 } = vi.hoisted(() => ({
-  withAuthMock: vi.fn((
-    handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>
-  ) => {
-    return (req: NextRequest) =>
-      handler({
-        ...req,
-        orgId: 'org_1',
-        userId: 'user_1',
-      } as NextRequest & { orgId: string; userId: string });
-  }),
+  withAuthMock: vi.fn(
+    (
+      handler: (
+        req: NextRequest & { orgId: string; userId: string; role: 'pharmacist' },
+      ) => Promise<Response>,
+    ) => {
+      return (req: NextRequest) =>
+        handler({
+          ...req,
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+        } as NextRequest & { orgId: string; userId: string; role: 'pharmacist' });
+    },
+  ),
   withOrgContextMock: vi.fn(),
   medicationCycleFindFirstMock: vi.fn(),
+  dispenseTaskFindManyMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
 }));
 
@@ -35,6 +42,9 @@ vi.mock('@/lib/db/client', () => ({
     medicationCycle: {
       findFirst: medicationCycleFindFirstMock,
     },
+    dispenseTask: {
+      findMany: dispenseTaskFindManyMock,
+    },
   },
 }));
 
@@ -42,13 +52,55 @@ vi.mock('@/server/services/notifications', () => ({
   dispatchNotificationEvent: dispatchNotificationEventMock,
 }));
 
-import { POST } from './route';
+import { GET, POST } from './route';
 
 function createRequest(body: unknown) {
   return {
     json: async () => body,
   } as unknown as NextRequest;
 }
+
+function createGetRequest(url = 'http://localhost/api/dispense-tasks') {
+  return {
+    url,
+  } as unknown as NextRequest;
+}
+
+const expectedCycleAssignmentWhere = {
+  case_: {
+    OR: [
+      { primary_pharmacist_id: 'user_1' },
+      { backup_pharmacist_id: 'user_1' },
+      { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+    ],
+  },
+};
+
+describe('/api/dispense-tasks GET', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dispenseTaskFindManyMock.mockResolvedValue([]);
+  });
+
+  it('scopes collection reads to assigned medication cycles', async () => {
+    const response = await GET(
+      createGetRequest('http://localhost/api/dispense-tasks?status=pending&cycle_id=cycle_1'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(dispenseTaskFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          status: 'pending',
+          cycle_id: 'cycle_1',
+          cycle: expectedCycleAssignmentWhere,
+        },
+      }),
+    );
+  });
+});
 
 describe('/api/dispense-tasks POST', () => {
   beforeEach(() => {
@@ -80,10 +132,9 @@ describe('/api/dispense-tasks POST', () => {
         },
       },
     });
-    const membershipFindManyMock = vi.fn().mockResolvedValue([
-      { user_id: 'admin_1' },
-      { user_id: 'pharmacist_1' },
-    ]);
+    const membershipFindManyMock = vi
+      .fn()
+      .mockResolvedValue([{ user_id: 'admin_1' }, { user_id: 'pharmacist_1' }]);
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -91,8 +142,12 @@ describe('/api/dispense-tasks POST', () => {
           create: createMock,
         },
         medicationCycle: {
-          findFirst: vi.fn().mockResolvedValue({ id: 'cycle_1', overall_status: 'ready_to_dispense', version: 1 }),
-          findFirstOrThrow: vi.fn().mockResolvedValue({ id: 'cycle_1', overall_status: 'dispensing' }),
+          findFirst: vi
+            .fn()
+            .mockResolvedValue({ id: 'cycle_1', overall_status: 'ready_to_dispense', version: 1 }),
+          findFirstOrThrow: vi
+            .fn()
+            .mockResolvedValue({ id: 'cycle_1', overall_status: 'dispensing' }),
           updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         },
         cycleTransitionLog: {
@@ -101,7 +156,7 @@ describe('/api/dispense-tasks POST', () => {
         membership: {
           findMany: membershipFindManyMock,
         },
-      })
+      }),
     );
 
     const response = await POST(
@@ -110,7 +165,7 @@ describe('/api/dispense-tasks POST', () => {
         priority: 'emergency',
         due_date: '2026-03-29',
         assigned_to: 'user_urgent',
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -124,8 +179,53 @@ describe('/api/dispense-tasks POST', () => {
         link: '/dispensing/task_1',
         explicitUserIds: expect.arrayContaining(['user_urgent', 'pharmacist_1', 'admin_1']),
         dedupeKey: 'dispense-task-emergency:task_1',
-      })
+      }),
     );
+  });
+
+  it('denies unassigned cycles before creating dispense tasks', async () => {
+    medicationCycleFindFirstMock.mockResolvedValue(null);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          create: vi.fn(),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        cycle_id: 'cycle_unassigned',
+        priority: 'urgent',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expect(medicationCycleFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'cycle_unassigned',
+        org_id: 'org_1',
+        AND: [expectedCycleAssignmentWhere],
+      },
+      select: {
+        id: true,
+        patient_id: true,
+        overall_status: true,
+        case_: {
+          select: {
+            primary_pharmacist_id: true,
+            patient: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
   });
 
   it('does not dispatch notifications for non-emergency dispense tasks', async () => {
@@ -147,8 +247,12 @@ describe('/api/dispense-tasks POST', () => {
           }),
         },
         medicationCycle: {
-          findFirst: vi.fn().mockResolvedValue({ id: 'cycle_1', overall_status: 'ready_to_dispense', version: 1 }),
-          findFirstOrThrow: vi.fn().mockResolvedValue({ id: 'cycle_1', overall_status: 'dispensing' }),
+          findFirst: vi
+            .fn()
+            .mockResolvedValue({ id: 'cycle_1', overall_status: 'ready_to_dispense', version: 1 }),
+          findFirstOrThrow: vi
+            .fn()
+            .mockResolvedValue({ id: 'cycle_1', overall_status: 'dispensing' }),
           updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         },
         cycleTransitionLog: {
@@ -157,14 +261,14 @@ describe('/api/dispense-tasks POST', () => {
         membership: {
           findMany: vi.fn().mockResolvedValue([]),
         },
-      })
+      }),
     );
 
     const response = await POST(
       createRequest({
         cycle_id: 'cycle_1',
         priority: 'normal',
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');

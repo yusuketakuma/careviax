@@ -19,6 +19,7 @@ const {
   withOrgContextMock,
   findActiveVisitConsentMock,
   findCurrentManagementPlanMock,
+  notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -37,6 +38,7 @@ const {
   withOrgContextMock: vi.fn(),
   findActiveVisitConsentMock: vi.fn(),
   findCurrentManagementPlanMock: vi.fn(),
+  notifyWorkflowMutationMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -88,6 +90,10 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/server/services/workflow-dashboard-cache', () => ({
+  notifyWorkflowMutation: notifyWorkflowMutationMock,
+}));
+
 import { GET, POST } from './route';
 
 function createRequest(url: string, body?: unknown) {
@@ -95,7 +101,7 @@ function createRequest(url: string, body?: unknown) {
     url,
     method: body === undefined ? 'GET' : 'POST',
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
     },
     nextUrl: new URL(url),
     json: vi.fn().mockResolvedValue(body),
@@ -136,8 +142,14 @@ describe('/api/visit-schedule-proposals', () => {
     visitScheduleCountMock.mockResolvedValue(0);
     prescriptionIntakeFindFirstMock.mockResolvedValue(null);
     userFindFirstMock.mockResolvedValue({ max_weekly_visits: 40 });
-    findActiveVisitConsentMock.mockResolvedValue({ id: 'consent_1', expiry_date: new Date('2027-12-31') });
-    findCurrentManagementPlanMock.mockResolvedValue({ current: { id: 'plan_1', status: 'approved' }, reviewOverdue: false });
+    findActiveVisitConsentMock.mockResolvedValue({
+      id: 'consent_1',
+      expiry_date: new Date('2027-12-31'),
+    });
+    findCurrentManagementPlanMock.mockResolvedValue({
+      current: { id: 'plan_1', status: 'approved' },
+      reviewOverdue: false,
+    });
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
     generateVisitScheduleProposalDraftsMock.mockResolvedValue({
       drafts: [
@@ -170,7 +182,7 @@ describe('/api/visit-schedule-proposals', () => {
 
   it('lists proposals with pharmacist metadata', async () => {
     const response = (await GET(
-      createRequest('http://localhost/api/visit-schedule-proposals?case_id=case_1')
+      createRequest('http://localhost/api/visit-schedule-proposals?case_id=case_1'),
     ))!;
 
     expect(response.status).toBe(200);
@@ -185,12 +197,26 @@ describe('/api/visit-schedule-proposals', () => {
         }),
       ],
     });
+    expect(visitScheduleProposalFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [
+            {
+              OR: [
+                { proposed_pharmacist_id: 'user_1' },
+                { case_: { primary_pharmacist_id: 'user_1' } },
+                { case_: { backup_pharmacist_id: 'user_1' } },
+                { case_: { visit_schedules: { some: { pharmacist_id: 'user_1' } } } },
+              ],
+            },
+          ],
+        }),
+      }),
+    );
   });
 
   it('filters proposals by patient_id when provided', async () => {
-    await GET(
-      createRequest('http://localhost/api/visit-schedule-proposals?patient_id=patient_1')
-    );
+    await GET(createRequest('http://localhost/api/visit-schedule-proposals?patient_id=patient_1'));
 
     expect(visitScheduleProposalFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -201,7 +227,7 @@ describe('/api/visit-schedule-proposals', () => {
             },
           },
         }),
-      })
+      }),
     );
   });
 
@@ -211,16 +237,60 @@ describe('/api/visit-schedule-proposals', () => {
         case_id: 'case_1',
         visit_type: 'regular',
         candidate_count: 1,
-      })
+      }),
     ))!;
 
     expect(response.status).toBe(201);
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
       case_id: 'case_1',
     });
+    expect(careCaseFindFirstMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'case_1',
+          org_id: 'org_1',
+          AND: [
+            {
+              OR: [
+                { primary_pharmacist_id: 'user_1' },
+                { backup_pharmacist_id: 'user_1' },
+                { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+              ],
+            },
+          ],
+        }),
+        select: { id: true },
+      }),
+    );
     expect(generateVisitScheduleProposalDraftsMock).toHaveBeenCalled();
     expect(visitScheduleProposalUpdateManyMock).toHaveBeenCalled();
     expect(visitScheduleProposalCreateMock).toHaveBeenCalled();
+  });
+
+  it('denies unassigned proposal generation before billing, planner, writes, audit, or notify side effects', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_unassigned',
+        candidate_count: 1,
+      }),
+    ))!;
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('returns planner diagnostics for rejected candidates', async () => {
@@ -281,7 +351,7 @@ describe('/api/visit-schedule-proposals', () => {
         case_id: 'case_1',
         visit_type: 'regular',
         candidate_count: 1,
-      })
+      }),
     ))!;
 
     expect(response.status).toBe(201);
@@ -307,7 +377,7 @@ describe('/api/visit-schedule-proposals', () => {
         preferred_time_from: '13:00',
         preferred_time_to: '15:00',
         preferred_pharmacist_id: 'user_2',
-      })
+      }),
     );
 
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
@@ -322,7 +392,7 @@ describe('/api/visit-schedule-proposals', () => {
         preferredTimeFrom: '13:00',
         preferredTimeTo: '15:00',
         preferredPharmacistId: 'user_2',
-      })
+      }),
     );
   });
 
@@ -340,7 +410,7 @@ describe('/api/visit-schedule-proposals', () => {
         visit_type: 'regular',
         candidate_count: 1,
         start_date: '2026-04-01',
-      })
+      }),
     ))!;
 
     expect(response.status).toBe(400);
@@ -356,7 +426,7 @@ describe('/api/visit-schedule-proposals', () => {
       createRequest('http://localhost/api/visit-schedule-proposals', {
         case_id: 'case_1',
         candidate_count: 1,
-      })
+      }),
     ))!;
 
     expect(response.status).toBe(201);
@@ -364,7 +434,7 @@ describe('/api/visit-schedule-proposals', () => {
       expect.objectContaining({
         visitType: 'emergency',
         priority: 'emergency',
-      })
+      }),
     );
   });
 
@@ -376,7 +446,7 @@ describe('/api/visit-schedule-proposals', () => {
         case_id: 'case_1',
         visit_type: 'regular',
         candidate_count: 1,
-      })
+      }),
     ))!;
 
     expect(response.status).toBe(201);

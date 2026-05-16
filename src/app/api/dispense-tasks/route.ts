@@ -4,13 +4,21 @@ import { success, validationError, notFound, conflict } from '@/lib/api/response
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
-import { transitionCycleStatus, InvalidTransitionError, VersionConflictError } from '@/lib/db/cycle-transition';
+import {
+  transitionCycleStatus,
+  InvalidTransitionError,
+  VersionConflictError,
+} from '@/lib/db/cycle-transition';
+import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 import { z } from 'zod';
 
 const createDispenseTaskSchema = z.object({
   cycle_id: z.string().min(1, 'サイクルIDは必須です'),
   priority: z.enum(['emergency', 'urgent', 'normal']).default('normal'),
-  due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}/).optional(),
+  due_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}/)
+    .optional(),
   assigned_to: z.string().optional(),
 });
 
@@ -43,12 +51,14 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const status = searchParams.get('status') ?? undefined;
   const cycle_id = searchParams.get('cycle_id') ?? undefined;
   const assigned_to = searchParams.get('assigned_to') ?? undefined;
+  const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(req);
 
   const where = {
     org_id: req.orgId,
     ...(status ? { status } : {}),
     ...(cycle_id ? { cycle_id } : {}),
     ...(assigned_to ? { assigned_to } : {}),
+    ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
   };
 
   const tasks = await prisma.dispenseTask.findMany({
@@ -76,10 +86,14 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   }
 
   const { cycle_id, priority, due_date, assigned_to } = parsed.data;
+  const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(req);
 
-  // Verify cycle exists and belongs to org
   const cycle = await prisma.medicationCycle.findFirst({
-    where: { id: cycle_id, org_id: req.orgId },
+    where: {
+      id: cycle_id,
+      org_id: req.orgId,
+      ...(cycleAssignmentWhere ? { AND: [cycleAssignmentWhere] } : {}),
+    },
     select: {
       id: true,
       patient_id: true,
@@ -112,10 +126,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     });
 
     // Update cycle status to 'dispensing' if currently ready_to_dispense or dispensing
-    if (
-      cycle.overall_status === 'ready_to_dispense' ||
-      cycle.overall_status === 'dispensing'
-    ) {
+    if (cycle.overall_status === 'ready_to_dispense' || cycle.overall_status === 'dispensing') {
       try {
         await transitionCycleStatus(tx, cycle_id, req.orgId, 'dispensing', req.userId);
       } catch (err) {
@@ -150,8 +161,8 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
             assigned_to ?? null,
             cycle.case_?.primary_pharmacist_id ?? null,
             ...fallbackRecipients.map((member) => member.user_id),
-          ].filter((value): value is string => Boolean(value))
-        )
+          ].filter((value): value is string => Boolean(value)),
+        ),
       );
 
       await dispatchNotificationEvent(tx, {

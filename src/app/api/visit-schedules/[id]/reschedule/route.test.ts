@@ -21,6 +21,7 @@ const {
   generateVisitScheduleProposalDraftsMock,
   upsertOperationalTaskMock,
   dispatchNotificationEventMock,
+  notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -41,6 +42,7 @@ const {
   generateVisitScheduleProposalDraftsMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
+  notifyWorkflowMutationMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -71,6 +73,10 @@ vi.mock('@/server/services/notifications', () => ({
   dispatchNotificationEvent: dispatchNotificationEventMock,
 }));
 
+vi.mock('@/server/services/workflow-dashboard-cache', () => ({
+  notifyWorkflowMutation: notifyWorkflowMutationMock,
+}));
+
 import { POST } from './route';
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
@@ -93,7 +99,7 @@ function buildSchedule(overrides?: Record<string, unknown>) {
     scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
     time_window_start: new Date('1970-01-01T09:00:00'),
     time_window_end: new Date('1970-01-01T10:00:00'),
-    pharmacist_id: 'pharmacist_1',
+    pharmacist_id: 'user_1',
     assignment_mode: 'primary',
     route_order: 1,
     schedule_status: 'planned',
@@ -120,7 +126,7 @@ function buildImpactedSchedule(overrides?: Record<string, unknown>) {
     scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
     time_window_start: new Date('1970-01-01T10:00:00'),
     time_window_end: new Date('1970-01-01T11:00:00'),
-    pharmacist_id: 'pharmacist_1',
+    pharmacist_id: 'user_1',
     assignment_mode: 'primary',
     route_order: 2,
     schedule_status: 'planned',
@@ -145,97 +151,104 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
       ctx: {
         orgId: 'org_1',
         userId: 'user_1',
+        role: 'pharmacist',
       },
     });
     visitScheduleFindFirstMock.mockResolvedValue(buildSchedule());
     visitScheduleFindManyMock.mockResolvedValue([buildImpactedSchedule()]);
-    generateVisitScheduleProposalDraftsMock.mockImplementation(async ({ caseId }: { caseId: string }) => {
-      if (caseId === 'case_2') {
+    generateVisitScheduleProposalDraftsMock.mockImplementation(
+      async ({ caseId }: { caseId: string }) => {
+        if (caseId === 'case_2') {
+          return {
+            drafts: [
+              {
+                org_id: 'org_1',
+                cycle_id: 'cycle_2',
+                case_id: 'case_2',
+                site_id: 'site_1',
+                visit_type: 'regular',
+                priority: 'normal',
+                proposal_status: 'reschedule_pending',
+                patient_contact_status: 'pending',
+                proposed_date: new Date('2026-03-27T00:00:00.000Z'),
+                time_window_start: new Date('1970-01-01T15:00:00.000Z'),
+                time_window_end: new Date('1970-01-01T16:00:00.000Z'),
+                proposed_pharmacist_id: 'pharmacist_1',
+                assignment_mode: 'primary',
+                route_order: 3,
+                route_distance_score: 2.4,
+                medication_end_date: new Date('2026-03-31T00:00:00.000Z'),
+                visit_deadline_date: new Date('2026-03-30T00:00:00.000Z'),
+                proposal_reason: '同日内で後段へ再配置',
+                escalation_reason: null,
+                reschedule_source_schedule_id: 'schedule_2',
+              },
+            ],
+            diagnostics: { accepted: [], rejected: [] },
+          };
+        }
+
         return {
           drafts: [
             {
               org_id: 'org_1',
-              cycle_id: 'cycle_2',
-              case_id: 'case_2',
+              cycle_id: 'cycle_1',
+              case_id: 'case_1',
               site_id: 'site_1',
               visit_type: 'regular',
-              priority: 'normal',
+              priority: 'urgent',
               proposal_status: 'reschedule_pending',
               patient_contact_status: 'pending',
-              proposed_date: new Date('2026-03-27T00:00:00.000Z'),
-              time_window_start: new Date('1970-01-01T15:00:00.000Z'),
-              time_window_end: new Date('1970-01-01T16:00:00.000Z'),
-              proposed_pharmacist_id: 'pharmacist_1',
-              assignment_mode: 'primary',
-              route_order: 3,
-              route_distance_score: 2.4,
+              proposed_date: new Date('2026-03-28T00:00:00.000Z'),
+              time_window_start: new Date('1970-01-01T13:00:00.000Z'),
+              time_window_end: new Date('1970-01-01T14:00:00.000Z'),
+              proposed_pharmacist_id: 'pharmacist_2',
+              assignment_mode: 'fallback',
+              route_order: 2,
+              route_distance_score: 4.2,
               medication_end_date: new Date('2026-03-31T00:00:00.000Z'),
               visit_deadline_date: new Date('2026-03-30T00:00:00.000Z'),
-              proposal_reason: '同日内で後段へ再配置',
-              escalation_reason: null,
-              reschedule_source_schedule_id: 'schedule_2',
+              proposal_reason: '担当者不在のため再配置',
+              escalation_reason: '代替薬剤師へ割当',
+              reschedule_source_schedule_id: 'schedule_1',
             },
           ],
           diagnostics: { accepted: [], rejected: [] },
         };
-      }
-
-      return {
-        drafts: [
-          {
-            org_id: 'org_1',
-            cycle_id: 'cycle_1',
-            case_id: 'case_1',
-            site_id: 'site_1',
-            visit_type: 'regular',
-            priority: 'urgent',
-            proposal_status: 'reschedule_pending',
-            patient_contact_status: 'pending',
-            proposed_date: new Date('2026-03-28T00:00:00.000Z'),
-            time_window_start: new Date('1970-01-01T13:00:00.000Z'),
-            time_window_end: new Date('1970-01-01T14:00:00.000Z'),
-            proposed_pharmacist_id: 'pharmacist_2',
-            assignment_mode: 'fallback',
-            route_order: 2,
-            route_distance_score: 4.2,
-            medication_end_date: new Date('2026-03-31T00:00:00.000Z'),
-            visit_deadline_date: new Date('2026-03-30T00:00:00.000Z'),
-            proposal_reason: '担当者不在のため再配置',
-            escalation_reason: '代替薬剤師へ割当',
-            reschedule_source_schedule_id: 'schedule_1',
-          },
-        ],
-        diagnostics: { accepted: [], rejected: [] },
-      };
-    });
+      },
+    );
     visitScheduleCountMock.mockResolvedValue(2);
-    visitScheduleProposalCreateMock.mockImplementation(async ({
-      data,
-    }: {
-      data: {
-        reschedule_source_schedule_id?: string;
-        proposed_date: Date;
-        time_window_start: Date | null;
-        time_window_end: Date | null;
-        proposed_pharmacist_id: string;
-      };
-    }) => ({
-      id: data.reschedule_source_schedule_id === 'schedule_2' ? 'proposal_2' : 'proposal_1',
-      proposed_date: data.proposed_date,
-      time_window_start: data.time_window_start,
-      time_window_end: data.time_window_end,
-      proposed_pharmacist_id: data.proposed_pharmacist_id,
-    }));
+    visitScheduleProposalCreateMock.mockImplementation(
+      async ({
+        data,
+      }: {
+        data: {
+          reschedule_source_schedule_id?: string;
+          proposed_date: Date;
+          time_window_start: Date | null;
+          time_window_end: Date | null;
+          proposed_pharmacist_id: string;
+        };
+      }) => ({
+        id: data.reschedule_source_schedule_id === 'schedule_2' ? 'proposal_2' : 'proposal_1',
+        proposed_date: data.proposed_date,
+        time_window_start: data.time_window_start,
+        time_window_end: data.time_window_end,
+        proposed_pharmacist_id: data.proposed_pharmacist_id,
+      }),
+    );
     visitScheduleProposalUpdateManyMock.mockResolvedValue({ count: 1 });
-    visitScheduleOverrideCreateMock.mockImplementation(async ({
-      data,
-    }: {
-      data: {
-        source_schedule_id: string;
-      };
-    }) => ({
-      id: data.source_schedule_id === 'schedule_2' ? 'override_2' : 'override_1',
-    }));
+    visitScheduleOverrideCreateMock.mockImplementation(
+      async ({
+        data,
+      }: {
+        data: {
+          source_schedule_id: string;
+        };
+      }) => ({
+        id: data.source_schedule_id === 'schedule_2' ? 'override_2' : 'override_1',
+      }),
+    );
     contactPartyFindManyMock.mockResolvedValue([
       {
         name: '長女',
@@ -312,7 +325,7 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
         auditLog: {
           create: auditLogCreateMock,
         },
-      })
+      }),
     );
   });
 
@@ -322,15 +335,12 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
         time_window_start: null,
         time_window_end: null,
         schedule_status: 'completed',
-      })
+      }),
     );
 
     const response = await POST(
-      createRequest(
-        { reason: '緊急案件対応', priority: 'urgent' },
-        { 'x-org-id': 'org_1' }
-      ),
-      { params: Promise.resolve({ id: 'schedule_1' }) }
+      createRequest({ reason: '緊急案件対応', priority: 'urgent' }, { 'x-org-id': 'org_1' }),
+      { params: Promise.resolve({ id: 'schedule_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -353,9 +363,9 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
           start_date: '2026-03-28',
           priority: 'urgent',
         },
-        { 'x-org-id': 'org_1' }
+        { 'x-org-id': 'org_1' },
       ),
-      { params: Promise.resolve({ id: 'schedule_1' }) }
+      { params: Promise.resolve({ id: 'schedule_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -382,6 +392,42 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
       preferredTimeTo: '11:00',
       rescheduleSourceScheduleId: 'schedule_2',
     });
+    expect(visitScheduleCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        pharmacist_id: 'user_1',
+        scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
+        schedule_status: {
+          notIn: ['cancelled', 'rescheduled'],
+        },
+        id: { not: 'schedule_1' },
+        AND: [
+          {
+            OR: [
+              { pharmacist_id: 'user_1' },
+              { case_: { primary_pharmacist_id: 'user_1' } },
+              { case_: { backup_pharmacist_id: 'user_1' } },
+            ],
+          },
+        ],
+      },
+    });
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          pharmacist_id: 'user_1',
+          AND: [
+            {
+              OR: [
+                { pharmacist_id: 'user_1' },
+                { case_: { primary_pharmacist_id: 'user_1' } },
+                { case_: { backup_pharmacist_id: 'user_1' } },
+              ],
+            },
+          ],
+        }),
+      }),
+    );
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
     expect(visitScheduleProposalCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -413,7 +459,7 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
           reason: expect.stringContaining('緊急訪問割込みの影響'),
           requested_by: 'user_1',
         }),
-      })
+      }),
     );
     expect(visitScheduleOverrideCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -429,7 +475,7 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
             impacted_patient_names: ['佐藤次郎'],
           }),
         }),
-      })
+      }),
     );
     expect(communicationRequestCreateMock).toHaveBeenCalledTimes(4);
     expect(communicationRequestCreateMock).toHaveBeenCalledWith({
@@ -490,5 +536,56 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
         }),
       }),
     });
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      payload: { source: 'visit_schedules_reschedule_request', schedule_id: 'schedule_1' },
+    });
+  });
+
+  it('denies unassigned source schedules before proposal, write, audit, or notify side effects', async () => {
+    visitScheduleFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await POST(
+      createRequest(
+        {
+          reason: '担当外予定のリスケ試行',
+          reason_code: 'patient_request',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'schedule_unassigned' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expect(visitScheduleFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'schedule_unassigned',
+          org_id: 'org_1',
+          AND: [
+            {
+              OR: [
+                { pharmacist_id: 'user_1' },
+                { case_: { primary_pharmacist_id: 'user_1' } },
+                { case_: { backup_pharmacist_id: 'user_1' } },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 });

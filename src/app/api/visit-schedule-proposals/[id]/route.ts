@@ -5,6 +5,10 @@ import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { updateVisitScheduleProposalSchema } from '@/lib/validations/visit-schedule-proposal';
 import {
+  buildVisitScheduleAssignmentWhere,
+  buildVisitScheduleProposalAssignmentWhere,
+} from '@/lib/auth/visit-schedule-access';
+import {
   computeOptimizedVisitRoute,
   type VisitRoutePlan,
   type VisitRouteTravelMode,
@@ -188,7 +192,7 @@ async function buildRoutePreview(args: {
   }
 
   const previewProposals = [proposal, ...args.relatedProposals].filter(
-    (item) => !item.finalized_schedule_id
+    (item) => !item.finalized_schedule_id,
   );
 
   for (const previewProposal of previewProposals) {
@@ -270,10 +274,7 @@ async function buildRoutePreview(args: {
   return { plan, points, site };
 }
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問候補の閲覧権限がありません',
@@ -289,11 +290,14 @@ export async function GET(
     requestedTravelMode === 'TWO_WHEELER'
       ? requestedTravelMode
       : 'DRIVE';
+  const proposalAssignmentWhere = buildVisitScheduleProposalAssignmentWhere(ctx);
+  const scheduleAssignmentWhere = buildVisitScheduleAssignmentWhere(ctx);
 
   const proposal = await prisma.visitScheduleProposal.findFirst({
     where: {
       id,
       org_id: ctx.orgId,
+      ...(proposalAssignmentWhere ? { AND: [proposalAssignmentWhere] } : {}),
     },
     include: {
       case_: {
@@ -425,6 +429,7 @@ export async function GET(
         ...(proposal.reschedule_source_schedule_id
           ? { reschedule_source_schedule_id: proposal.reschedule_source_schedule_id }
           : { reschedule_source_schedule_id: null }),
+        ...(proposalAssignmentWhere ? { AND: [proposalAssignmentWhere] } : {}),
       },
       include: {
         case_: {
@@ -460,6 +465,7 @@ export async function GET(
         schedule_status: {
           notIn: ['cancelled', 'rescheduled'],
         },
+        ...(scheduleAssignmentWhere ? { AND: [scheduleAssignmentWhere] } : {}),
       },
       select: {
         id: true,
@@ -568,10 +574,7 @@ export async function GET(
   });
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問候補の更新権限がありません',
@@ -588,11 +591,13 @@ export async function PATCH(
   }
 
   const { id } = await params;
+  const assignmentWhere = buildVisitScheduleProposalAssignmentWhere(ctx);
 
   const existing = await prisma.visitScheduleProposal.findFirst({
     where: {
       id,
       org_id: ctx.orgId,
+      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
     },
     include: {
       case_: {
@@ -667,7 +672,11 @@ export async function PATCH(
   }
 
   if (parsed.data.action === 'reject') {
-    if (!['proposed', 'patient_contact_pending', 'reschedule_pending'].includes(existing.proposal_status)) {
+    if (
+      !['proposed', 'patient_contact_pending', 'reschedule_pending'].includes(
+        existing.proposal_status,
+      )
+    ) {
       return validationError('この候補は却下できません');
     }
 
@@ -729,9 +738,7 @@ export async function PATCH(
         contactName: data.contact_name,
         contactPhone: data.contact_phone,
         note: data.note,
-        callbackDueAt: data.callback_due_at
-          ? new Date(data.callback_due_at)
-          : null,
+        callbackDueAt: data.callback_due_at ? new Date(data.callback_due_at) : null,
         calledBy: ctx.userId,
       });
 
@@ -760,7 +767,7 @@ export async function PATCH(
             assignedTo: existing.proposed_pharmacist_id,
             dueAt: new Date(data.callback_due_at),
             description: data.note ?? '訪問候補の再架電対応を行ってください。',
-          })
+          }),
         );
       } else {
         await resolveOperationalTasks(tx, {

@@ -1,18 +1,40 @@
 # Ralph State
+
 Initialized: 20260424-143155
+
 ## Current mode
+
 - model: gpt-5.5
 - approval_policy: never
 - sandbox_mode: danger-full-access
 - web_search: live
 - service_tier: fast
+
 ## Last configuration reset
+
 Backup directory:
+
 ```
 /Users/yusuke/.codex/backups/reset-to-gpt55-yolo-20260424-143155
 ```
+
 ## Iterations
+
+### 20260516-163307
+
+- current task: autonomous subagent-driven hardening and improvement for schedule workflows, patient information management, prescription management, and patient timeline display
+- files inspected: `AGENTS.md`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `package.json`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/lib/auth/visit-schedule-access.ts`, patient self-report routes, patient detail/timeline services and components, visit schedule and proposal routes, medication profile/issue/residual routes, inquiry/dispense routes, prescription intake API, prescription workspace UI, and subagent findings for security, performance, testing, and review
+- files changed: `.codex/ralph-state.md`, patient timeline/detail files, prescription workspace/API files, patient self-report routes/tests, visit schedule/proposal routes/tests, medication profile/issue/residual routes/tests, inquiry/dispense routes/tests, `src/lib/auth/visit-schedule-access.ts`, `src/lib/auth/__tests__/visit-schedule-access.test.ts`, and workflow/protected route regression fixtures
+- bugs found: patient self-report APIs allowed patient-level reads/writes without assignment checks; timeline display duplicated self-report communication events and mislabeled communication direction; visit schedule reschedule/reorder and proposal flows had assignment-scope gaps before side effects; route ordering could collide silently; medication profiles/issues/residuals, inquiry records, dispense tasks/audits/results, and billing-preview paths had same-org but unassigned access gaps; prescription workspace loaded all intake pages and polled every 30 seconds
+- security risks found: reduced same-organization unassigned PHI/IDOR exposure across patient self-reports, schedule/proposal operations, medication and residual medication workflows, inquiry records, dispensing operations, and billing-preview proposal flows by applying assignment-scoped patient/case/schedule/cycle checks before reads, mutations, billing evidence generation, and audit side effects
+- performance issues found: prescription workspace now uses server-side filtering plus cursor pagination and realtime invalidation instead of full history fetches and interval polling; billing-preview batch rejects inaccessible schedules before expensive preview work; proposal/schedule ordering checks remain bounded to the affected day/pharmacist scope
+- validation commands: Prettier write over all changed/untracked files; targeted Vitest for the affected 24 route/service/component test files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `pnpm --config.verify-deps-before-run=false lint`; `git diff --check`; `pnpm --config.verify-deps-before-run=false test`; `pnpm --config.verify-deps-before-run=false build`; `pnpm --config.verify-deps-before-run=false audit --prod --audit-level moderate`
+- validation results: Prettier completed; targeted Vitest passed 24 files / 128 tests; TypeScript passed; lint passed; diff whitespace check passed; full Vitest passed 523 files / 2401 tests; Next.js 16.2.6 production build passed with 216 routes; production dependency audit reported no known vulnerabilities
+- remaining work: full `medical-ui:e2e:gate:prod` was not rerun in this pass because the local E2E DB/app lifecycle was not started; strict case-level isolation for patient self-reports still needs a `PatientSelfReport.case_id` schema migration; route-order uniqueness is enforced in route logic but not yet by a database unique constraint; broader external-access/conference/set-plan families remain outside this scoped schedule/patient/prescription/timeline pass
+- next action: commit this validated hardening bundle, then plan the patient self-report case-id migration and DB route-order constraint as follow-up release work
+
 ### 20260516-153146
+
 - current task: implement PHI provenance hardening for patient lab observations only, scoped to lab routes and route tests
 - files inspected: `AGENTS.md`, `.codex/ralph-state.md`, `package.json`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `node_modules/next/dist/docs/01-app/01-getting-started/07-mutating-data.md`, `node_modules/next/dist/docs/01-app/01-getting-started/10-error-handling.md`, `src/app/api/patients/[id]/labs/route.ts`, `src/app/api/patients/[id]/labs/[labId]/route.ts`, `src/app/api/patients/[id]/labs/[labId]/route.test.ts`, `src/lib/auth/visit-schedule-access.ts`, `src/lib/api/response.ts`, `src/app/api/visit-records/route.ts`, `src/app/api/visit-records/[id]/route.ts`, `prisma/schema/patient.prisma`, `prisma/schema/visit.prisma`, and memory context for CareViaX assignment-scoped PHI hardening
 - files changed: `src/app/api/patients/[id]/labs/route.ts`, `src/app/api/patients/[id]/labs/route.test.ts`, `src/app/api/patients/[id]/labs/[labId]/route.ts`, `src/app/api/patients/[id]/labs/[labId]/route.test.ts`, `.codex/ralph-state.md`
@@ -23,7 +45,9 @@ Backup directory:
 - validation results: Prettier completed; targeted Vitest passed 2 files / 10 tests; TypeScript passed; `git diff --check` passed; no-index whitespace check for the new untracked test passed after correcting a shell variable name in the helper command
 - remaining work: no blocker for this scoped lab provenance task; broader dirty worktree remains from unrelated CareViaX hardening work and was not modified or reverted
 - next action: review and commit only the intended lab provenance files if repository history should be updated
+
 ### 20260516-150934
+
 - current task: close the autonomous subagent blocker queue for CareViaX PHI/assignment hardening, dashboard scope correctness, external-access release gates, and validation
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `.github/workflows/ci.yml`, `package.json`, `vitest.config.ts`, `tools/scripts/medical-ui-e2e-preflight.ts`, `docs/testing/TESTING.md`, `docs/operations/medical-ui-safety-release-runbook.md`, `src/server/services/dashboard-assignment-scope.ts`, `src/server/services/patient-access.ts`, `src/server/services/external-access.ts`, `src/server/services/communication-queue.ts`, `src/server/services/patient-risk.ts`, `src/server/services/patient-detail.ts`, `src/server/services/workflow-dashboard-queries.ts`, `src/server/services/billing-evidence/core.ts`, `src/app/api/dashboard/home/actions/route.ts`, `src/app/api/dashboard/home/patients/route.ts`, `src/app/api/dashboard/today/route.ts`, `src/app/api/dashboard/workflow/route.ts`, `src/app/api/external-access/route.ts`, `src/app/api/external-access/[token]/route.ts`, `src/app/api/facility-visit-batches/route.ts`, `src/app/api/facility-visit-batches/[id]/route.ts`, `src/app/api/patients/[id]/route.ts`, related Prisma schema snippets, and the corresponding route/service tests
 - files changed: `.github/workflows/ci.yml`, `docs/operations/medical-ui-safety-release-runbook.md`, `docs/testing/TESTING.md`, `tools/scripts/medical-ui-e2e-preflight.ts`, `src/tools/medical-ui-e2e-contract.test.ts`, `src/server/services/dashboard-assignment-scope.ts`, `src/server/services/dashboard-assignment-scope.test.ts`, `src/server/services/external-access.ts`, `src/server/services/external-access.test.ts`, `src/server/services/communication-queue.ts`, `src/server/services/communication-queue.test.ts`, `src/server/services/patient-risk.ts`, `src/server/services/patient-risk.test.ts`, `src/server/services/patient-detail.ts`, `src/server/services/patient-detail.test.ts`, `src/server/services/workflow-dashboard-queries.ts`, `src/server/services/billing-evidence/core.ts`, `src/server/services/billing-evidence/core.test.ts`, `src/app/api/dashboard/home/actions/route.ts`, `src/app/api/dashboard/home/actions/route.test.ts`, `src/app/api/dashboard/home/patients/route.ts`, `src/app/api/dashboard/home/patients/route.test.ts`, `src/app/api/dashboard/today/route.ts`, `src/app/api/dashboard/today/route.test.ts`, `src/app/api/dashboard/workflow/route.ts`, `src/app/api/dashboard/workflow/route.test.ts`, `src/app/api/dashboard/workflow/__snapshots__/route.test.ts.snap`, `src/app/api/external-access/route.ts`, `src/app/api/external-access/route.test.ts`, `src/app/api/external-access/[token]/route.ts`, `src/app/api/external-access/[token]/route.test.ts`, `src/app/api/facility-visit-batches/route.ts`, `src/app/api/facility-visit-batches/route.test.ts`, `src/app/api/facility-visit-batches/[id]/route.ts`, `src/app/api/facility-visit-batches/[id]/route.test.ts`, `src/app/api/patients/[id]/route.ts`, `src/app/api/patients/[id]/route.test.ts`, `src/app/api/patients/[id]/insurance/route.test.ts`, `.codex/ralph-state.md`
@@ -34,7 +58,9 @@ Backup directory:
 - validation results: targeted Vitest passed, including the final patient-detail/external-access set at 3 files / 38 tests; TypeScript passed; lint passed; full Vitest passed 521 files / 2336 tests with existing jsdom navigation notices; actionlint passed; diff whitespace check passed; production dependency audit reported no known vulnerabilities; targeted Playwright manifest resolved 184 tests in 5 files; Next.js 16.2.6 production build passed with 216 routes
 - remaining work: full `medical-ui:e2e:gate:prod` was not rerun in this pass because the local E2E DB/app lifecycle was not started; target-environment duplicate precheck and facility/clinical sign-off remain release operations; no commit, push, deployment, or production data operation was performed
 - next action: if repository history should be updated, review the curated dirty worktree and commit this PHI/dashboard/external-access hardening bundle
+
 ### 20260516-134216
+
 - current task: autonomous subagent-driven CareViaX hardening after `/goal`, prioritizing release-gate enforcement, dashboard PHI/authz fixes, performance fan-out reduction, and missing high-risk regression tests
 - files inspected: `git status --short --untracked-files=all`, `.codex/ralph-state.md`, `package.json`, `.github/workflows/ci.yml`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `node_modules/next/dist/docs/01-app/01-getting-started/10-error-handling.md`, `src/lib/auth/middleware.ts`, `src/lib/auth/context.ts`, `src/lib/auth/permissions.ts`, `src/lib/auth/visit-schedule-access.ts`, `src/server/services/patient-access.ts`, `src/app/api/dashboard/home/patients/route.ts`, `src/app/api/dashboard/home/patients/route.test.ts`, `src/app/api/dashboard/home/actions/route.ts`, `src/app/api/dashboard/home/actions/route.test.ts`, `src/server/services/patient-risk.ts`, `src/app/api/facility-visit-batches/[id]/route.ts`, `src/app/api/facility-visit-batches/[id]/route.test.ts`, `src/app/api/patients/[id]/insurance/route.ts`, `src/app/api/patients/[id]/insurance/route.test.ts`, `tools/scripts/medical-ui-e2e-preflight.ts`, `docs/testing/TESTING.md`, `docs/operations/medical-ui-safety-release-runbook.md`, and subagent-reviewed PHI/authz surfaces including `external-access`, `conference-notes`, `set-plans`, `set-audits`, `management-plans`, `medication-profiles`, `medication-issues`, `residual-medications`, and `consent-records/[id]/revoke`
 - files changed: `.github/workflows/ci.yml`, `docs/operations/medical-ui-safety-release-runbook.md`, `docs/testing/TESTING.md`, `tools/scripts/medical-ui-e2e-preflight.ts`, `src/app/api/dashboard/home/patients/route.ts`, `src/app/api/dashboard/home/patients/route.test.ts`, `src/app/api/dashboard/home/actions/route.ts`, `src/app/api/dashboard/home/actions/route.test.ts`, `src/app/api/facility-visit-batches/[id]/route.test.ts`, `src/app/api/patients/[id]/insurance/route.test.ts`, `.codex/ralph-state.md`
@@ -45,7 +71,9 @@ Backup directory:
 - validation results: actionlint passed; diff whitespace check passed; focused Prettier/ESLint checks passed; targeted Vitest passed 6 files / 33 tests; TypeScript passed; full lint passed; full Vitest passed 519 files / 2300 tests with existing jsdom navigation warnings; production dependency audit found no known vulnerabilities; targeted Playwright manifest resolved 184 tests in 5 files; Next.js 16.2.6 production build passed with 216 routes; full `medical-ui:e2e:gate:prod` was not rerun in this pass because the local E2E DB/app lifecycle was not started here
 - remaining work: close the security-auditor's remaining high-priority PHI/authz families: external access grant create/list must deny unassigned patients before token/OTP/SMS side effects; conference note list/create/detail/generate/tasks need assignment-scoped case checks before report/task/clinical sync side effects; set plan/audit routes need medication-cycle/case assignment scoping before generation/audit/transition writes; management plan JSON routes need the same assignment strength as PDF paths; medication profile/issues, residual medication, self-report, and consent revoke routes need patient/case/visit assignment checks and no-side-effect tests; dashboard home actions still has `canViewDashboard` but deeper non-admin assignment-scoped aggregate semantics remain to be designed
 - next action: continue the security hardening queue, starting with external-access grant creation/list because it can issue public PHI tokens and OTPs before assignment denial
+
 ### 20260516-131951
+
 - current task: completion-audit the active goal `推奨タスクが完了するまで実装を止めない` against the actual current state without repeating already-completed heavy work
 - files inspected: `git status --short --untracked-files=all`, `.github/workflows/ci.yml`, `package.json`, `tools/scripts/medical-ui-e2e-preflight.ts`, `tools/scripts/run-medical-ui-e2e-gate.ts`, `prisma/schema/drug.prisma`, `prisma/migrations/20260516124500_add_drug_safety_display_flags/migration.sql`, drug-master import/API/UI/CDS files and tests, `src/app/api/patients/[id]/labs/[labId]/route.test.ts`, `docs/operations/medical-ui-safety-release-runbook.md`, `docs/operations/README.md`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
 - files changed: `.codex/ralph-state.md`
@@ -56,7 +84,9 @@ Backup directory:
 - validation results: diff whitespace check passed; targeted medication-safety/assignment-scope Vitest passed 8 files / 17 tests; medical UI E2E target manifest resolved 184 tests in 5 files; TypeScript passed; previous completion audit records the full latest validation stack including lint, full Vitest, production build, audit, and `medical-ui:e2e:gate:prod` passing with 122 passed / 62 skipped
 - remaining work: no additional repository implementation work remains for the active objective; target-database duplicate precheck and facility/clinical sign-off remain external release operations
 - next action: mark the active goal complete, then commit the cohesive medical UI/UX hardening changes if repository history should be updated
+
 ### 20260516-131000
+
 - current task: finish the recommended follow-up tasks by making the medical UI browser gate mandatory in CI, adding Tall Man/LASA/high-risk medication-safety master support, adding assignment-scope regression coverage, documenting target release checks, and rerunning the full validation stack
 - files inspected: `git status --short --untracked-files=all`, `.codex/ralph-state.md`, `.codex/medical-ui-ux-completion-audit.md`, `docs/ui-ux-design-guidelines.md`, `.github/workflows/ci.yml`, `package.json`, `prisma/schema/drug.prisma`, drug master import/API/UI/CDS tests and implementations, patient lab route tests, `docs/operations/README.md`, `docs/operations/medical-ui-safety-release-runbook.md`, and memory context for prior CareViaX medical UI/E2E and assignment-scope hardening
 - files changed: `.github/workflows/ci.yml`, `prisma/schema/drug.prisma`, `prisma/migrations/20260516124500_add_drug_safety_display_flags/migration.sql`, `src/server/services/drug-master-import/manual.ts`, `src/server/services/drug-master-import/manual.test.ts`, `src/app/api/drug-master-imports/manual-clinical/route.ts`, `src/app/api/drug-master-imports/manual-clinical/route.test.ts`, `src/app/api/drug-masters/route.ts`, `src/app/api/drug-masters/route.test.ts`, `src/app/api/drug-masters/batch/route.ts`, `src/app/api/drug-masters/batch/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx`, `src/server/cds/checker.ts`, `src/server/cds/checker.test.ts`, `src/components/features/cds/alert-panel.tsx`, `src/components/features/cds/alert-panel.test.tsx`, `src/app/api/patients/[id]/labs/[labId]/route.test.ts`, `docs/operations/medical-ui-safety-release-runbook.md`, `docs/operations/README.md`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
@@ -67,7 +97,9 @@ Backup directory:
 - validation results: Prisma format and client generation passed; targeted medication-safety/assignment-scope Vitest passed 8 files / 17 tests; TypeScript passed; lint passed; full Vitest passed 517 files / 2285 tests with harmless jsdom navigation warnings; Next.js 16.2.6 production build passed with 216 routes; production dependency audit reported no known vulnerabilities; diff whitespace check passed; `medical-ui:e2e:gate:prod` passed with production build, preflight, local duplicate check `duplicate_groups:0`, and targeted Playwright/axe 122 passed / 62 skipped; temporary local PostgreSQL was stopped and `.codex/pg-e2e` was removed
 - remaining work: run `db:check-care-report-duplicates` against each non-local target database before applying the CareReport unique-index migration there; obtain facility/clinical owner sign-off for CDS outage, two-person verification, LASA/Tall Man ownership, audit retention, and pharmacist training; no production deployment, push, or commit was performed
 - next action: commit the cohesive medical UI/UX hardening changes if repository history should be updated
+
 ### 20260516-124227
+
 - current task: complete the medical-system UI/UX goal by closing patient-safety, medication-safety, communication/tracing authorization, report-send audit-order, visit-readiness parity, accessibility, and E2E validation gaps
 - files inspected: `git status --short`, `/Users/yusuke/.codex/memories/MEMORY.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/03-architecture/accessibility.md`, `node_modules/next/dist/docs/01-app/01-getting-started/10-error-handling.md`, `node_modules/next/dist/docs/01-app/01-getting-started/07-mutating-data.md`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, official/credible guidance from W3C WCAG 2.2, FDA human factors, NHS Service Manual, NN/g heuristics, and ISMP Tall Man Lettering, plus the related dashboard/report/visit/dispensing/auditing/communication/tracing API, component, service, Prisma, and Playwright test files
 - files changed: `src/components/features/cds/alert-panel.tsx`, `src/components/features/cds/alert-panel.test.tsx`, `src/app/(dashboard)/dispensing/[taskId]/dispense-form.tsx`, `src/app/(dashboard)/dispensing/[taskId]/confirm/dispense-confirm-content.tsx`, `src/app/(dashboard)/dispensing/[taskId]/confirm/dispense-confirm-content.test.tsx`, `src/lib/dispensing/safety-checklist.ts`, `src/app/api/dispense-results/route.ts`, `src/app/api/dispense-results/route.test.ts`, `src/app/api/dispense-queue/route.ts`, `src/app/api/dispense-queue/route.test.ts`, `src/app/api/dispense-tasks/[id]/route.ts`, `src/app/api/dispense-tasks/[id]/route.test.ts`, `src/app/(dashboard)/auditing/[taskId]/audit-detail.tsx`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/app/api/visit-records/route.ts`, `src/app/api/visit-records/route.test.ts`, `src/app/api/visit-records/[id]/route.ts`, `src/app/api/visit-records/[id]/route.test.ts`, `src/server/services/communication-request-access.ts`, `src/app/api/communication-requests/route.ts`, `src/app/api/communication-requests/route.test.ts`, `src/app/api/communication-requests/[id]/route.ts`, `src/app/api/communication-requests/[id]/route.test.ts`, `src/app/api/tracing-reports/[id]/route.ts`, `src/app/api/tracing-reports/[id]/route.test.ts`, `src/app/(dashboard)/reports/[id]/page.tsx`, `src/app/api/care-reports/[id]/route.ts`, `src/app/api/care-reports/[id]/route.test.ts`, `src/app/api/care-reports/[id]/send/route.ts`, `src/app/api/care-reports/[id]/send/route.test.ts`, workflow regression tests, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`, and existing medical UI/E2E gate support files already in the dirty worktree
@@ -78,7 +110,9 @@ Backup directory:
 - validation results: targeted CDS/dispense tests passed 5 files / 17 tests; targeted visit/dispense tests passed 4 files / 36 tests; workflow-full-cycle passed 1 file / 2 tests; protected patch/delete plus prescription-to-report workflow passed 2 files / 51 tests; TypeScript passed; lint passed; full Vitest passed 517 files / 2283 tests with harmless jsdom navigation warnings; production dependency audit reported no known vulnerabilities; Next.js 16.2.6 production build passed with 216 routes; first `medical-ui:e2e:gate:prod` run failed only because Playwright Chromium was not installed; after `playwright install chromium`, `medical-ui:e2e:gate:prod` passed with production build, preflight, duplicate check `duplicate_groups:0`, and targeted Playwright/axe 122 passed / 62 skipped; temporary local PostgreSQL was stopped and removed; diff whitespace check passed
 - remaining work: run `db:check-care-report-duplicates` against each non-local target database before applying the CareReport unique-index migration; no production deployment, push, or commit was performed
 - next action: review and commit the cohesive medical UI/UX hardening changes if repository history should be updated
+
 ### 20260516-122141
+
 - current task: fix CareReport send patient-safety confirmation and audit-order blockers without changing providers or deployment
 - files inspected: `git status --short`, `/Users/yusuke/.codex/memories/MEMORY.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`, `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/page.md`, `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/dynamic-routes.md`, `src/app/(dashboard)/reports/[id]/page.tsx`, `src/app/(dashboard)/reports/[id]/page.test.tsx`, `src/app/api/care-reports/[id]/route.ts`, `src/app/api/care-reports/[id]/route.test.ts`, `src/app/api/care-reports/[id]/send/route.ts`, `src/app/api/care-reports/[id]/send/route.test.ts`, `prisma/schema/communication.prisma`, `prisma/schema/admin.prisma`, `src/server/services/care-report-access.ts`, `src/server/services/report-delivery.ts`
 - files changed: `src/app/(dashboard)/reports/[id]/page.tsx`, `src/app/(dashboard)/reports/[id]/page.test.tsx`, `src/app/api/care-reports/[id]/route.ts`, `src/app/api/care-reports/[id]/route.test.ts`, `src/app/api/care-reports/[id]/send/route.ts`, `src/app/api/care-reports/[id]/send/route.test.ts`, `.codex/ralph-state.md`
@@ -89,7 +123,9 @@ Backup directory:
 - validation results: focused report-send/detail Vitest passed 3 files / 14 tests; targeted ESLint passed with no output; targeted diff whitespace check passed; TypeScript did not pass because existing out-of-scope `src/app/api/dispense-results/route.test.ts` and `src/app/api/dispense-tasks/[id]/route.test.ts` cast mock requests directly to `NextRequest`; broad `workflow-full-cycle.test.ts` failed before reaching report-send at the dispense step with response 400 instead of 201
 - remaining work: fix the existing dispense test TypeScript casts and the workflow-full-cycle dispense blocker in a separate scope if broad suite closure is required
 - next action: run full TypeScript/test again after the out-of-scope dispense blockers are resolved
+
 ### 20260516-122055
+
 - current task: fix communication request / tracing report security review blockers around tracing_report IDOR, paired audit logs, PHI-minimizing audit metadata, and tracing report channel validation
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `/Users/yusuke/.codex/memories/MEMORY.md`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `prisma/schema/communication.prisma`, `prisma/schema/admin.prisma`, `src/server/services/communication-request-access.ts`, `src/server/services/patient-access.ts`, `src/lib/auth/visit-schedule-access.ts`, `src/app/api/communication-requests/route.ts`, `src/app/api/communication-requests/route.test.ts`, `src/app/api/communication-requests/[id]/route.ts`, `src/app/api/communication-requests/[id]/route.test.ts`, `src/app/api/tracing-reports/[id]/route.ts`, `src/app/api/tracing-reports/[id]/route.test.ts`
 - files changed: `src/server/services/communication-request-access.ts`, `src/app/api/communication-requests/route.ts`, `src/app/api/communication-requests/route.test.ts`, `src/app/api/communication-requests/[id]/route.ts`, `src/app/api/communication-requests/[id]/route.test.ts`, `src/app/api/tracing-reports/[id]/route.ts`, `src/app/api/tracing-reports/[id]/route.test.ts`, `.codex/ralph-state.md`
@@ -100,7 +136,9 @@ Backup directory:
 - validation results: Prettier passed; targeted Vitest passed 3 files / 23 tests; targeted ESLint passed; touched-file whitespace check passed; repository TypeScript did not complete because pre-existing dirty-worktree errors remain in `src/app/api/dispense-results/route.test.ts` and `src/app/api/dispense-tasks/[id]/route.test.ts` around direct `NextRequest` casts
 - remaining work: full repository typecheck should be rerun after the unrelated `dispense-*` test cast errors are resolved
 - next action: hand back this focused security patch without commit/push, or continue with the unrelated typecheck blockers if requested
+
 ### 20260512-174431
+
 - current task: run an additional Ralph loop after goal completion to eliminate the remaining E2E duplicate-precheck target-drift risk and revalidate the medical UI/UX gate
 - files inspected: `git status --short --untracked-files=all`, `package.json`, `tools/tests/README.md`, `tools/scripts/medical-ui-e2e-preflight.ts`, `.codex/medical-ui-ux-completion-audit.md`
 - files changed: `package.json`, `tools/scripts/medical-ui-e2e-preflight.ts`, `tools/tests/README.md`, `.codex/ralph-state.md`, `.codex/medical-ui-ux-completion-audit.md`
@@ -111,7 +149,9 @@ Backup directory:
 - validation results: Prettier passed; TypeScript passed; targeted lint passed; targeted Playwright list passed with 184 tests in 5 files; local E2E DB prepare passed; new `db:e2e:check-care-report-duplicates` returned `duplicate_groups:0`; standalone preflight passed DB/script/spec checks and failed only before app start, as expected; production-style `medical-ui:e2e:gate:prod` passed after Next.js 16.2.6 production build, preflight, pinned E2E duplicate check, and targeted Playwright/axe with 122 passed / 62 skipped; temporary E2E DB was stopped and removed; diff whitespace check passed
 - remaining work: no additional autonomous blocker remains for the local medical UI/UX goal; target-environment duplicate precheck is still an operational release step before applying the migration outside local E2E
 - next action: commit the cohesive medical UI/UX hardening changes if repository history should be updated
+
 ### 20260512-171821
+
 - current task: revalidate the medical UI/UX `/goal` closeout against the current dirty worktree with live official research context, local E2E database, production-style app start, and targeted Playwright/axe gate
 - files inspected: `git status --short --untracked-files=all`, `/Users/yusuke/.codex/memories/MEMORY.md`, `.codex/medical-ui-ux-completion-audit.md`, `docs/ui-ux-design-guidelines.md`, `package.json`, `node_modules/next/dist/docs/03-architecture/accessibility.md`, `node_modules/next/dist/docs/01-app/index.md`, `tools/scripts/run-medical-ui-e2e-gate.ts`, `tools/scripts/medical-ui-e2e-preflight.ts`, `src/app` route inventory, `prisma/schema/*.prisma` domain inventory, and external guidance from W3C WCAG 2.2, FDA human factors/usability engineering, ONC SAFER Guides/CDS, NHS service manual, NN/g heuristics, and FDA/ISMP Tall Man lettering references
 - files changed: `.codex/ralph-state.md`
@@ -122,7 +162,9 @@ Backup directory:
 - validation results: local E2E DB init/start/create/prepare passed; TypeScript passed; full lint passed with no output; full Vitest passed 516 files / 2271 tests; production dependency audit reported no known vulnerabilities; `medical-ui:e2e:gate:prod` passed after building Next.js 16.2.6 with 216 routes, starting `next start` on `localhost:3012`, passing preflight, returning CareReport duplicate precheck `duplicate_groups:0`, and running targeted Playwright/axe with 122 passed / 62 skipped; diff whitespace check passed
 - remaining work: run the CareReport duplicate precheck against each non-local target database before applying the new unique-index migration there; no commit or push was performed because the user did not request it in this turn
 - next action: if the owner wants repository history updated, review the final dirty worktree and commit the medical UI/UX hardening changes as one coherent changeset
+
 ### 20260512-030205
+
 - current task: extend the medical UI/UX preflight to validate required package scripts and target Playwright spec files before final browser execution
 - files inspected: `tools/scripts/medical-ui-e2e-preflight.ts`, `package.json`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
 - files changed: `tools/scripts/medical-ui-e2e-preflight.ts`, `package.json`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
@@ -133,7 +175,9 @@ Backup directory:
 - validation results: Prettier passed; initial preflight correctly failed `db:e2e:prepare` script pinning, then passed all DB URL, package-script, spec-file, and duplicate-script checks after the package script fix, failing only on closed ports `3012` and `5433`; TypeScript passed; targeted lint passed with one existing unrelated warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; diff whitespace check passed
 - remaining work: active goal still cannot be marked complete because full `medical-ui:e2e:gate` execution requires a running local `careviax_e2e` DB and app server
 - next action: after starting local PostgreSQL on `localhost:5433`, run `pnpm db:e2e:prepare`, start the app with `pnpm dev:e2e:local` or `pnpm start:e2e:local`, then run `pnpm medical-ui:e2e:gate`
+
 ### 20260512-025915
+
 - current task: strengthen the medical UI/UX E2E preflight to verify both `DATABASE_URL` and `DIRECT_URL` and point operators to the pinned E2E DB prepare command
 - files inspected: `tools/scripts/medical-ui-e2e-preflight.ts`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
 - files changed: `tools/scripts/medical-ui-e2e-preflight.ts`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
@@ -144,7 +188,9 @@ Backup directory:
 - validation results: Prettier passed; preflight passed both `DATABASE_URL` and `DIRECT_URL` local `careviax_e2e` target checks and failed only because ports `3012`/`5433` are closed; TypeScript passed; targeted lint passed with one existing unrelated warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`
 - remaining work: active goal still cannot be marked complete because full `medical-ui:e2e:gate` execution requires a running local `careviax_e2e` DB and app server
 - next action: after starting local PostgreSQL on `localhost:5433`, run `pnpm db:e2e:prepare`, start the app with `pnpm dev:e2e:local` or `pnpm start:e2e:local`, then run `pnpm medical-ui:e2e:gate`
+
 ### 20260512-025540
+
 - current task: add pinned local E2E database preparation scripts for the medical UI/UX browser gate
 - files inspected: `package.json`, `tools/tests/README.md`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
 - files changed: `package.json`, `tools/tests/README.md`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
@@ -155,7 +201,9 @@ Backup directory:
 - validation results: Prettier passed; `db:e2e:push` failed as expected with Prisma `P1001` against `careviax_e2e` on `localhost:5433`, confirming it does not target the default dev DB; preflight still passes the URL target check and fails only because ports `3012`/`5433` are closed; TypeScript passed; diff whitespace check passed
 - remaining work: active goal still cannot be marked complete because full `medical-ui:e2e:gate` execution requires a running local `careviax_e2e` DB and app server
 - next action: after starting local PostgreSQL on `localhost:5433`, run `pnpm db:e2e:prepare`, start the app with `pnpm dev:e2e:local` or `pnpm start:e2e:local`, then run `pnpm medical-ui:e2e:gate`
+
 ### 20260512-025105
+
 - current task: pin all local E2E scripts to the dedicated `careviax_e2e` database so the final medical UI/UX gate cannot drift to the default development database
 - files inspected: `package.json`, `tools/tests/README.md`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
 - files changed: `package.json`, `tools/tests/README.md`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
@@ -166,7 +214,9 @@ Backup directory:
 - validation results: Prettier passed; preflight now passes the `DATABASE_URL` target check for local `careviax_e2e` and fails only because ports `3012` and `5433` are closed; gate short-circuits at preflight and does not reach duplicate precheck or Playwright; targeted Playwright list passed with 184 tests in 5 files; full local Playwright list passed with 430 tests in 16 files; TypeScript passed
 - remaining work: active goal still cannot be marked complete because full `medical-ui:e2e:gate` execution requires a running local `careviax_e2e` DB and app server
 - next action: after starting local `careviax_e2e` and app `localhost:3012`, run `pnpm medical-ui:e2e:gate`, then perform the final completion audit
+
 ### 20260512-024530
+
 - current task: verify the medical UI/UX final gate short-circuits safely when the local E2E environment is not ready
 - files inspected: `git status --short`, ignored `tools/tests/.artifacts` status, process list for Playwright/Chromium/Next, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
 - files changed: `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
@@ -177,7 +227,9 @@ Backup directory:
 - validation results: no leftover Playwright/Next processes were found; `.artifacts` remains ignored only; Prettier check passed; `medical-ui:e2e:gate` failed as expected at preflight with `DATABASE_URL` pointing at `careviax_dev` and ports `3012`/`5433` closed; diff whitespace check passed
 - remaining work: active goal still cannot be marked complete because full `medical-ui:e2e:gate` execution requires a local `careviax_e2e` DB/app environment and the current environment still lacks it
 - next action: after starting local `careviax_e2e` and app `localhost:3012`, run `pnpm medical-ui:e2e:gate`, then perform the final completion audit
+
 ### 20260512-024120
+
 - current task: add a single medical UI/UX final gate command that chains preflight, CareReport duplicate precheck, and targeted Playwright/axe coverage
 - files inspected: `package.json`, `tools/tests/README.md`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
 - files changed: `package.json`, `tools/tests/README.md`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
@@ -188,7 +240,9 @@ Backup directory:
 - validation results: Prettier passed; targeted Playwright manifest listing passed with 184 tests in 5 files across `chromium` and `mobile-chromium`; TypeScript passed; targeted lint for the script passed with the existing unrelated `e-prescription/route.test.ts` warning; a later lint invocation that included `tools/tests/README.md` also warned that the Markdown file is ignored by ESLint config; diff whitespace check passed
 - remaining work: active goal still cannot be marked complete because full `medical-ui:e2e:gate` execution requires a local `careviax_e2e` DB/app environment and the current environment still lacks it
 - next action: after starting local `careviax_e2e` and app `localhost:3012`, run `pnpm medical-ui:e2e:gate`, then perform the final completion audit
+
 ### 20260512-023720
+
 - current task: add a repeatable medical UI/UX E2E readiness preflight for the remaining browser/a11y completion gate
 - files inspected: `package.json`, `tools/tests/README.md`, `tools/browser-harness/run.sh`, `tools/tests/helpers/local-auth.ts`, `playwright.local.config.ts`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
 - files changed: `tools/scripts/medical-ui-e2e-preflight.ts`, `package.json`, `tools/tests/README.md`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
@@ -199,7 +253,9 @@ Backup directory:
 - validation results: Prettier passed; TypeScript passed; targeted lint passed with one existing unrelated warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; preflight failed as expected because `.env` currently targets `careviax_dev`, app port `3012` is closed, and DB port `5433` is closed; diff whitespace check passed
 - remaining work: active goal still cannot be marked complete because authenticated Playwright/axe/browser validation and the CareReport duplicate precheck require a local `careviax_e2e` DB/app environment that is not currently available
 - next action: after starting local `careviax_e2e` and app `localhost:3012`, rerun `medical-ui:e2e:preflight`, `db:check-care-report-duplicates`, and the targeted Playwright/axe suite, then perform the final completion audit
+
 ### 20260512-023345
+
 - current task: improve and test the visit completion readiness warning accessibility while authenticated Playwright/axe remains blocked
 - files inspected: `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/app/api/visit-records/route.ts`, `src/app/api/visit-records/route.test.ts`, `src/app/api/visit-records/[id]/route.ts`, `src/app/api/visit-records/[id]/route.test.ts`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
 - files changed: `src/app/(dashboard)/visits/[id]/record/visit-completion-readiness-warning.tsx`, `src/app/(dashboard)/visits/[id]/record/visit-completion-readiness-warning.test.tsx`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
@@ -210,7 +266,9 @@ Backup directory:
 - validation results: targeted visit readiness warning/API Vitest passed 3 files / 25 tests; TypeScript passed; targeted lint passed with one existing unrelated warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; full Vitest passed 516 files / 2271 tests
 - remaining work: active goal still cannot be marked complete because authenticated Playwright/axe/browser validation and the CareReport duplicate precheck require a local DB/app environment that is not currently available
 - next action: once local PostgreSQL `careviax_e2e` and `localhost:3012` app are available, run the targeted Playwright/axe suite and `db:check-care-report-duplicates`, then update the audit and complete only if no uncovered requirement remains
+
 ### 20260512-023050
+
 - current task: add DB-free regression coverage for the dispensing confirmation safety checklist while authenticated Playwright/axe remains blocked
 - files inspected: `src/app/(dashboard)/dispensing/[taskId]/dispense-form.tsx`, `src/app/(dashboard)/dispensing/[taskId]/confirm/dispense-confirm-content.tsx`, `src/app/api/dispense-results/route.ts`, `src/app/api/dispense-results/route.test.ts`, `src/lib/dispensing/safety-checklist.ts`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
 - files changed: `src/app/(dashboard)/dispensing/[taskId]/confirm/dispense-confirm-content.test.tsx`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
@@ -221,7 +279,9 @@ Backup directory:
 - validation results: targeted dispensing confirm/API Vitest passed 2 files / 7 tests; TypeScript passed; targeted lint passed with one existing unrelated warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; full Vitest passed 515 files / 2270 tests
 - remaining work: active goal still cannot be marked complete because authenticated Playwright/axe/browser validation and the CareReport duplicate precheck require a local DB/app environment that is not currently available
 - next action: continue adding DB-free coverage only where it materially reduces uncovered high-risk UI regression risk, or run the targeted Playwright/axe and DB precheck once local DB/app are available
+
 ### 20260512-022755
+
 - current task: refresh the active medical UI/UX goal completion audit and rerun current build/audit/lint validation after the DB-free report-send UI regression coverage
 - files inspected: `git status --short`, `package.json`, `playwright.local.config.ts`, `tools/tests/helpers/local-auth.ts`, `tools/tests/ui-route-mocked-smoke.spec.ts`, `tools/tests/ui-audit-extensions.spec.ts`, `.codex/medical-ui-ux-completion-audit.md`
 - files changed: `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
@@ -232,7 +292,9 @@ Backup directory:
 - validation results: app ports `3012` and `3000` remain closed; DB port `5433` remains closed; `docker`, `psql`, `postgres`, `initdb`, and `pg_ctl` are unavailable; production build passed with 216 routes; production dependency audit reported no known vulnerabilities; full lint passed with one existing unrelated warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`
 - remaining work: active goal still cannot be marked complete because authenticated Playwright/axe/browser validation and the CareReport duplicate precheck require a local DB/app environment that is not currently available
 - next action: once local PostgreSQL `careviax_e2e` and `localhost:3012` app are available, run the targeted Playwright/axe suite and `db:check-care-report-duplicates`, then update the audit and complete only if no uncovered requirement remains
+
 ### 20260512-022230
+
 - current task: add DB-free regression coverage for the report-send high-risk safety acknowledgement UI while authenticated Playwright/axe remains blocked
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `.codex/medical-ui-ux-completion-audit.md`, `src/app/(dashboard)/reports/[id]/page.test.tsx`, `src/app/(dashboard)/reports/[id]/page.tsx`, `src/app/api/care-reports/[id]/send/route.test.ts`
 - files changed: `src/app/(dashboard)/reports/[id]/page.test.tsx`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
@@ -243,7 +305,9 @@ Backup directory:
 - validation results: targeted report-send Vitest passed 2 files / 11 tests; TypeScript passed; targeted lint passed with one pre-existing warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; full Vitest passed 514 files / 2269 tests; diff whitespace check passed
 - remaining work: active goal still cannot be marked complete because authenticated Playwright/axe/browser validation remains blocked by unavailable local DB/app environment
 - next action: only after `careviax_e2e` DB and `localhost:3012` app are available, run targeted Playwright/axe tests and update the completion audit
+
 ### 20260512-022650
+
 - current task: reduce the remaining CareReport unique-index migration risk by adding a repeatable, PHI-minimizing duplicate precheck command
 - files inspected: `package.json`, `prisma/migrations/20260512021000_add_care_report_visit_type_unique_index/migration.sql`, `.env`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
 - files changed: `tools/scripts/check-care-report-duplicates.ts`, `package.json`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
@@ -254,7 +318,9 @@ Backup directory:
 - validation results: Prettier passed; TypeScript passed; targeted lint passed with one pre-existing warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; duplicate precheck command loads `.env` and currently fails with `ECONNREFUSED` to local PostgreSQL on `localhost:5433`, matching the known DB-down environment blocker; diff whitespace check passed
 - remaining work: run the duplicate precheck against the target database before applying the new index; authenticated Playwright/axe/browser validation remains blocked until local DB/app are available
 - next action: once DB/app are available, run `db:check-care-report-duplicates` and targeted Playwright/axe suite, then perform the final completion audit
+
 ### 20260512-022035
+
 - current task: add DB-free regression coverage for the communication status reason-confirmation UI because the authenticated Playwright/axe environment remains unavailable
 - files inspected: `src/app/(dashboard)/communications/requests/requests-content.test.tsx`, `src/app/(dashboard)/communications/requests/requests-content.tsx`, `src/components/ui/data-table.tsx`, `tools/tests/ui-route-mocked-smoke.spec.ts`, `tools/tests/helpers/local-auth.ts`, `src/lib/auth/config.ts`, `src/lib/auth/context.ts`, `src/lib/auth/middleware.ts`
 - files changed: `src/app/(dashboard)/communications/requests/requests-content.test.tsx`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
@@ -265,7 +331,9 @@ Backup directory:
 - validation results: targeted communication/tracing Vitest passed 3 files / 12 tests; TypeScript passed; targeted lint passed with one pre-existing warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; full Vitest passed 513 files / 2268 tests; diff whitespace check passed
 - remaining work: active goal still cannot be marked complete because authenticated Playwright/axe/browser validation is blocked by unavailable local DB/app environment
 - next action: only after `careviax_e2e` DB and `localhost:3012` app are available, run targeted Playwright/axe tests and update the completion audit
+
 ### 20260512-021820
+
 - current task: perform a completion audit for the active medical UI/UX goal and verify whether remaining browser/accessibility validation can run in the current environment
 - files inspected: `git status --short`, `README.md`, `docs/testing/TESTING.md`, `tools/tests/README.md`, `playwright.local.config.ts`, `tools/tests/helpers/local-auth.ts`, `docker-compose.yml`, `.env`, `package.json`, Playwright test inventory, local port checks for `localhost:3012`, `localhost:3000`, and `localhost:5433`
 - files changed: `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`
@@ -276,7 +344,9 @@ Backup directory:
 - validation results: app ports `3012` and `3000` were closed; DB port `5433` was closed; `docker` was unavailable (`command not found`); Playwright local suite inventory listed successfully with 430 tests in 16 files, including accessibility, mobile, major-screen, schedule/visit/report, and prescription/dispensing coverage
 - remaining work: start/provide local PostgreSQL `careviax_e2e`, migrate/seed it, start the E2E app on `localhost:3012`, then run targeted Playwright/axe/browser checks before considering the active goal complete
 - next action: wait for an environment where local DB/app can run, or have the owner start the DB/app and request the targeted Playwright pass
+
 ### 20260512-021145
+
 - current task: continue the medical UI/UX `/goal` by making visit-derived CareReport generation idempotent at the database/write path
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `prisma/schema/communication.prisma`, existing Prisma migrations, `src/app/api/care-reports/generate-from-visit/route.ts`, `src/app/api/care-reports/generate-from-visit/route.test.ts`, `src/server/services/report-generator.ts`, `src/server/services/report-generator.test.ts`, `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`
 - files changed: `src/server/services/report-generator.ts`, `src/server/services/report-generator.test.ts`, `prisma/migrations/20260512021000_add_care_report_visit_type_unique_index/migration.sql`, `.codex/ralph-state.md`
@@ -287,7 +357,9 @@ Backup directory:
 - validation results: targeted Vitest passed 2 files / 12 tests; targeted lint passed with one pre-existing warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; Prisma schema validate passed; TypeScript passed; full Vitest passed 513 files / 2267 tests; production build passed with 216 routes/pages; production dependency audit reported no known vulnerabilities; diff whitespace check passed
 - remaining work: active `/goal` is not yet fully closed until an authenticated browser/a11y pass or an explicit environment blocker is recorded for the newly touched high-risk flows, and a final goal-wide completion audit is performed
 - next action: check local E2E DB/server availability, then run Playwright accessibility/interaction coverage where possible or record the blocker precisely
+
 ### 20260512-020930
+
 - current task: continue the medical UI/UX `/goal` by requiring reason capture and audit logging for communication request and tracing-report status transitions
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `src/app/(dashboard)/communications/requests/requests-content.tsx`, `src/app/(dashboard)/communications/requests/requests-content.test.tsx`, `src/app/api/communication-requests/[id]/route.ts`, `src/app/api/communication-requests/[id]/route.test.ts`, `src/app/api/tracing-reports/[id]/route.ts`, `src/app/api/tracing-reports/[id]/route.test.ts`, `prisma/schema/communication.prisma`, `prisma/schema/admin.prisma`
 - files changed: `src/app/(dashboard)/communications/requests/requests-content.tsx`, `src/app/api/communication-requests/[id]/route.ts`, `src/app/api/communication-requests/[id]/route.test.ts`, `src/app/api/tracing-reports/[id]/route.ts`, `src/app/api/tracing-reports/[id]/route.test.ts`, `.codex/ralph-state.md`
@@ -298,7 +370,9 @@ Backup directory:
 - validation results: targeted Vitest passed 3 files / 11 tests; targeted lint passed with one pre-existing warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; TypeScript passed; full Vitest passed 513 files / 2266 tests; production build passed with 216 routes/pages; production dependency audit reported no known vulnerabilities; diff whitespace check passed
 - remaining work: active `/goal` is not yet complete; remaining high-priority safety work includes DB-level care-report draft idempotency, broader Playwright/axe coverage for the newly hardened high-risk flows, and a final goal-wide review against the full medical UI/UX completion criteria
 - next action: implement DB-backed idempotency for care-report generation or run an authenticated Playwright/axe pass if the local E2E database is available
+
 ### 20260512-020235
+
 - current task: continue the medical UI/UX `/goal` by hardening grouped/facility visit patient identification before clinicians switch between residents in the visit-record workflow
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `package.json`, `src/lib/visits/facility-visit-context.ts`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/api/visit-preparations/[scheduleId]/route.test.ts`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/components/features/visits/facility-visit-record-switcher.tsx`, `src/components/features/visits/facility-visit-record-switcher.test.tsx`
 - files changed: `src/lib/visits/facility-visit-context.ts`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/api/visit-preparations/[scheduleId]/route.test.ts`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/components/features/visits/facility-visit-record-switcher.tsx`, `src/components/features/visits/facility-visit-record-switcher.test.tsx`, `.codex/ralph-state.md`
@@ -309,7 +383,9 @@ Backup directory:
 - validation results: targeted Vitest passed 2 files / 11 tests; TypeScript passed; targeted lint passed; full Vitest passed 513 files / 2263 tests; production build passed with 216 routes/pages; production dependency audit reported no known vulnerabilities; diff whitespace check passed
 - remaining work: active `/goal` is not yet complete; remaining high-priority safety work includes one-click communication/tracing status transitions without reason capture, DB-level care-report draft idempotency, broader Playwright/axe coverage for newly hardened high-risk flows, and a final goal-wide review against all stated completion criteria
 - next action: implement communication request/tracing status transition reason capture and server-side validation, then rerun targeted and full validation
+
 ### 20260512-012509
+
 - current task: continue the medical UI/UX `/goal` by researching current accessibility/medical safety guidance, reconstructing CareViaX routes/data flow with subagents, and hardening the report-send high-risk action
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `AGENTS.md`, `package.json`, `docs/ui-ux-design-guidelines.md`, Next.js local accessibility/link docs in `node_modules/next/dist/docs/`, W3C WCAG 2.2 docs, FDA human factors guidance, ONC SAFER Guides, NHS Digital Service Manual, NN/g heuristics, FDA/ISMP Tall Man lettering references, `src/app/(dashboard)/reports/page.tsx`, `src/app/(dashboard)/reports/[id]/page.tsx`, `src/app/(dashboard)/reports/reports-table.tsx`, `src/app/(dashboard)/prescriptions/qr-drafts/page.tsx`, `src/components/ui/data-table.tsx`, `src/components/ui/button.tsx`, `src/components/ui/alert.tsx`, `src/components/ui/checkbox.tsx`, `src/app/api/care-reports/[id]/send/route.ts`, `src/app/api/care-reports/[id]/send/route.test.ts`, `src/app/api/__tests__/workflow-full-cycle.test.ts`, and subagent reports for code intelligence, clinical safety/security, and UX/visual architecture
 - files changed: `src/app/(dashboard)/reports/[id]/page.tsx`, `src/app/api/care-reports/[id]/send/route.ts`, `src/app/api/care-reports/[id]/send/route.test.ts`, `src/app/api/__tests__/workflow-full-cycle.test.ts`, `.codex/ralph-state.md`
@@ -320,7 +396,9 @@ Backup directory:
 - validation results: targeted ESLint passed; targeted Vitest passed 2 files / 12 tests; TypeScript passed; full ESLint passed with one pre-existing warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; full Vitest passed 513 files / 2260 tests; production build passed with 216 routes/pages; production dependency audit reported no known vulnerabilities; Prettier check and diff whitespace check passed; authenticated Playwright/a11y screenshot validation was not run because no local server was listening on 3012 and local `careviax_e2e` DB port 5433 was closed
 - remaining work: security subagent still found larger high-priority clinical safety gaps outside this slice, including visit-record completion readiness, dispensing/CDS acknowledgement persistence, grouped-visit patient identifiers, one-click communication status transitions, and report generation duplicate race; Playwright mobile/axe validation should be rerun once local E2E DB is available
 - next action: implement the next high-risk safety slice by enforcing visit-record completion readiness or dispensing/CDS acknowledgement at both UI and API layers, then run authenticated Playwright once `localhost:5433/careviax_e2e` is available
+
 ### 20260512-001520
+
 - current task: continue the full UI/UX improvement goal by screenshot-reviewing report/intake/QR surfaces and fixing the highest-impact mobile touch-target regression
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, Next.js app forms and linking/navigation docs, external guidance from W3C WCAG target-size and GOV.UK form/task patterns, `src/app/(dashboard)/prescriptions/new/page.tsx`, `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`, `src/app/(dashboard)/qr-scan/page.tsx`, `src/app/(dashboard)/reports/page.tsx`, `src/app/(dashboard)/reports/[id]/page.tsx`, `src/components/features/pharmacy/drug-suggest.tsx`, `src/components/features/workflow/page-shortcut-links.tsx`, `src/components/features/workflow/workflow-back-link.tsx`, `src/components/features/workflow/main-workflow-route.tsx`, `tools/tests/ui-mobile-layout.spec.ts`, and screenshots/metrics under `tools/tests/.artifacts/ui-review-intake-report*`
 - files changed: `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`, `src/app/(dashboard)/qr-scan/page.tsx`, `src/components/features/pharmacy/drug-suggest.tsx`, `src/components/features/workflow/page-shortcut-links.tsx`, `src/components/features/workflow/workflow-back-link.tsx`, `src/components/features/workflow/main-workflow-route.tsx`, `tools/tests/ui-mobile-layout.spec.ts`, `.codex/ralph-state.md`
@@ -331,7 +409,9 @@ Backup directory:
 - validation results: added mobile touch-target assertions passed; full mobile layout Playwright passed 10/10; prescription/QR/dispensing/auditing plus detail flow Playwright passed 14/14; production screenshots after the fix show `/prescriptions/new` form scope and `/qr-scan` workspace each at `smallTargetCount: 0`, no console/page/http errors, no horizontal overflow, and one `main h1`; touched ESLint passed; targeted Vitest passed 4 files / 17 tests; TypeScript passed after rerunning it separately from `next build` to avoid `.next/types` generation race; E2E production build passed with 216 routes/pages; full ESLint passed with one pre-existing warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; full Vitest passed 513 files / 2258 tests; production audit reported no known vulnerabilities; diff whitespace check passed
 - remaining work: active `/goal` is still not complete because screenshots show remaining small touch targets and dense table/action controls on `/reports`, `/reports/:id`, and `/prescriptions/qr-drafts`; QR draft detail and report edit mode still need the same evidence-driven pass
 - next action: focus the next UI slice on report list/detail action controls and QR draft detail, then convert the remaining small-target metrics into scoped assertions instead of global page checks
+
 ### 20260512-000930
+
 - current task: continue the realistic prescription-registration to report-creation validation flow by hardening DB-backed report detail rendering discovered during screenshot/browser review
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, local Next.js app navigation/link docs, external UX references from GOV.UK task list/summary card and W3C target-size guidance, `src/app/(dashboard)/reports/[id]/page.tsx`, `src/lib/reports/report-content.ts`, `tools/tests/ui-detail-layout.spec.ts`, `tools/tests/helpers/local-auth.ts`, and production screenshots/metrics under `tools/tests/.artifacts/ui-review-detail-flow-after/`
 - files changed: `src/app/(dashboard)/reports/[id]/page.tsx`, `tools/tests/ui-detail-layout.spec.ts`, `.codex/ralph-state.md`
@@ -342,7 +422,9 @@ Backup directory:
 - validation results: detail-layout Playwright passed 4/4, including the new legacy report-content regression; prescription/QR/dispensing/auditing browser flow passed 10/10 after the report detail fix; desktop/mobile production screenshots for `/visits/e2e_visit_workflow_record`, `/reports/e2e_visit_workflow_report`, and the visit-record billing-candidates context returned no console/page/http errors, no horizontal overflow, and one `main h1`; full ESLint passed with one pre-existing warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; TypeScript passed; full Vitest passed 513 files / 2258 tests; E2E production build passed with 216 routes/pages; production dependency audit reported no known vulnerabilities; diff whitespace check passed
 - remaining work: the active `/goal` asks for every screen transition and maximum UI/UX improvement, which is larger than this checkpoint; continue with additional seeded non-empty screens, especially report creation/edit, QR prescription intake, dispensing/auditing, and mobile table/touch-target review
 - next action: run a focused browser pass on report creation/edit and QR prescription intake states, then turn any crash or layout regression into a Playwright assertion before making further UI changes
+
 ### 20260511-231413
+
 - current task: continue UI/UX improvement by screenshot-reviewing main workflow screens, checking external best practices, and tightening the mobile workflow navigator without losing route transitions
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, Next.js linking/navigation docs, external web guidance from W3C WCAG target-size guidance and task/progress/navigation UX references, `src/components/features/workflow/workflow-page-header.tsx`, `src/components/features/workflow/main-workflow-route.tsx`, `src/components/features/workflow/main-workflow-route.test.tsx`, `src/components/features/workflow/workflow-page-intro.test.tsx`, `tools/tests/ui-mobile-layout.spec.ts`, `tools/tests/ui-page-layout.spec.ts`, `tools/tests/e2e-prescription-dispensing-flow.spec.ts`, and screenshot reports under `tools/tests/.artifacts/ui-review-next*`
 - files changed: `src/components/features/workflow/main-workflow-route.tsx`, `src/components/features/workflow/main-workflow-route.test.tsx`, `src/components/features/workflow/workflow-page-intro.test.tsx`, `tools/tests/ui-mobile-layout.spec.ts`, `.codex/ralph-state.md`
@@ -353,7 +435,9 @@ Backup directory:
 - validation results: mobile workflow nav height reduced from about 1383px header-bottom / full vertical stack to 297px nav height with visible current-stage summary; `/prescriptions`, `/dispensing`, `/reports`, `/prescriptions/new`, `/schedules`, `/visits`, and `/billing/candidates` mobile screenshots returned 200 with no console/page/http errors, no horizontal page overflow, and one `main h1`; mobile layout Playwright passed 8/8; main workflow route unit tests passed 5/5; workflow intro and route tests passed 9/9; desktop prescription/dispensing/page layout Playwright passed 23/23; TypeScript passed; production build passed with 216 routes/pages; full Vitest passed 514 files / 2260 tests; full ESLint passed with one pre-existing warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; diff whitespace check passed
 - remaining work: a fully exhaustive UI/UX maximization pass across every route and every seeded non-empty workflow state is larger than this checkpoint; the next practical slice is seeded non-empty report/detail/form states and table-sort touch target sizing
 - next action: convert the screenshot/DOM metrics into a reusable visual-review helper, then run it on non-empty seeded data for report creation and visit-detail/report-detail transitions
+
 ### 20260511-225549
+
 - current task: review real workflow screens from prescription intake through reporting, then fix the highest-impact UI regression found during the visual/browser pass
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, Next.js linking/navigation docs under `node_modules/next/dist/docs/01-app/01-getting-started/04-linking-and-navigating.md` and component docs under `node_modules/next/dist/docs/01-app/03-api-reference/02-components/link.md`, `src/app/(dashboard)/prescriptions/page.tsx`, `src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx`, `tools/tests/helpers/local-auth.ts`, `playwright.local.config.ts`, and real screenshots under `tools/tests/.artifacts/ui-review/`
 - files changed: `src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx`, `.codex/ralph-state.md`
@@ -364,7 +448,9 @@ Backup directory:
 - validation results: authenticated `/prescriptions` desktop and mobile returned 200, no console/page/http errors, no horizontal overflow, and `main h1` count reduced from 2 to 1; screenshots refreshed at `tools/tests/.artifacts/ui-review/desktop-prescriptions-after-auth.png` and `tools/tests/.artifacts/ui-review/mobile-prescriptions-after-auth.png`; targeted ESLint passed; TypeScript passed; production build passed with 216 routes/pages; Playwright targeted chromium run passed 23/23; full Vitest passed 514 files / 2259 tests; full ESLint passed with one pre-existing warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; diff whitespace check passed
 - remaining work: broader visual polish can continue across additional pages and data-rich seeded states, but no blocker remains in the inspected prescription intake layout path
 - next action: if continuing UI hardening, run the same screenshot-and-DOM review on `/prescriptions/new`, `/dispensing`, `/visits`, `/reports`, and `/billing/candidates` with seeded non-empty workflow data and convert any recurring layout assertions into Playwright tests
+
 ### 20260511-000000
+
 - current task: update Codex CLI 0.130.0 settings so trusted CareViaX project config no longer overrides the user-level goal baseline with Fast mode
 - files inspected: `git status --short`, `/Users/yusuke/.codex/memories/MEMORY.md`, `/Users/yusuke/.codex/skills/.system/openai-docs/SKILL.md`, official OpenAI Codex config reference via developer docs MCP, `~/.codex/config.toml`, `.codex/config.toml`, `codex --version`, `codex features list`, `codex debug models`
 - files changed: `~/.codex/config.toml`, `.codex/config.toml`, `.codex/ralph-state.md`
@@ -375,7 +461,9 @@ Backup directory:
 - validation results: Codex reports `codex-cli 0.130.0`; effective feature state now includes `fast_mode=false`, `goals=true`, `memories=true`, `multi_agent=true`, `unified_exec=true`, `shell_snapshot=true`, and `browser_use_external=false`; model catalog includes `gpt-5.5` with default reasoning `medium`
 - remaining work: restart or open a new Codex session when convenient so this interactive TUI fully reloads the updated config layers; unrelated pre-existing CareViaX working-tree edits remain untouched
 - next action: none for this configuration update unless another profile policy should be changed
+
 ### 20260505-155300
+
 - current task: improve 2026 home-visit post-visit workflow continuity from visit detail to billing candidates, with focused performance goal limited to preserving existing bounded patient/month query context
 - files inspected: `git status --short`, `AGENTS.md`, `.codex/ralph-state.md`, `README.md`, `package.json`, `docs/ui-ux-design-guidelines.md`, Next.js docs at `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `05-server-and-client-components.md`, and `15-route-handlers.md`, `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/app/(dashboard)/billing/candidates/page.tsx`, `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`, `src/lib/visits/visit-workflow-projection.ts`, `src/lib/visits/home-visit-2026-evidence.ts`, related unit tests, and route-mocked Playwright specs
 - files changed: `src/lib/visits/visit-workflow-projection.ts`, `src/app/(dashboard)/billing/candidates/page.tsx`, `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`, `src/lib/visits/visit-workflow-projection.test.ts`, `tools/tests/ui-detail-layout.spec.ts`, `tools/tests/ui-route-mocked-smoke.spec.ts`, `.codex/ralph-state.md`
@@ -386,7 +474,9 @@ Backup directory:
 - validation results: Prettier completed; targeted Vitest passed with 1 file / 4 tests; touched-file ESLint passed; TypeScript passed; Playwright list passed with 6 tests; focused Playwright chromium run could not complete because local auth requires `careviax_e2e` on `localhost:5433` and that DB port was closed (`db_port_5433=1`), after installing the missing Chromium browser and starting `pnpm dev:e2e:local`; diff whitespace check passed; full ESLint passed with one pre-existing warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; full Vitest passed with 514 files / 2255 tests; audit reported no known vulnerabilities; production build passed with 216 routes/pages generated
 - remaining work: authenticated browser smoke for the billing candidates context banner should be rerun when local PostgreSQL/Docker `careviax_e2e` is available; no known failing code validation remains
 - next action: rerun focused Playwright smoke after local E2E DB is available, or commit the workflow-context patch if browser verification is not required for this small UI bridge
+
 ### 20260505-154000
+
 - current task: complete PHI / IDOR / assignment-scope hardening for communication requests/events, cases, and medication cycles
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `AGENTS.md`, `package.json`, Next.js route handler docs at `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/lib/auth/visit-schedule-access.ts`, `src/server/services/patient-access.ts`, communication request/event routes and tests, case routes and tests, medication cycle routes and tests, relevant Prisma schema for `CommunicationRequest`, `CommunicationEvent`, `CareCase`, and `MedicationCycle`
 - files changed: `src/server/services/communication-request-access.ts`, `src/server/services/patient-access.ts`, `src/app/api/communication-requests/route.ts`, `src/app/api/communication-requests/[id]/route.ts`, `src/app/api/communication-requests/[id]/responses/route.ts`, `src/app/api/communication-requests/export/route.ts`, `src/app/api/communication-events/route.ts`, `src/app/api/cases/route.ts`, `src/app/api/cases/[id]/transition/route.ts`, `src/app/api/medication-cycles/route.ts`, `src/app/api/medication-cycles/[id]/transition/route.ts`, `src/app/api/medication-cycles/[id]/history/route.ts`, and associated route tests
@@ -397,7 +487,9 @@ Backup directory:
 - validation results: targeted Vitest passed with 11 files / 33 tests before final extra negative tests, then affected targeted tests passed with 3 files / 10 tests; TypeScript passed; lint passed with one pre-existing warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; full Vitest passed with 514 files / 2255 tests; audit reported no known vulnerabilities; diff whitespace check passed; production build passed with 216 routes/pages generated
 - remaining work: no known failing validation or critical blocker remains in this scope; broader repo may still contain unrelated future hardening opportunities outside the inspected communication/case/medication-cycle surfaces
 - next action: review and commit the assignment-scope hardening patch if desired
+
 ### 20260505-000000
+
 - current task: research Codex `/goal` from official OpenAI docs and map three high-productivity goal patterns to the CareViaX repository
 - files inspected: `git status --short`, `/Users/yusuke/.codex/memories/MEMORY.md`, OpenAI Codex docs via developer docs MCP (`codex/app-server`, `codex/cli/slash-commands`, `codex/learn/best-practices`, `codex/config-reference`), `AGENTS.md`, `.codex/ralph-state.md`, `README.md`, `package.json`, route/service/prisma file inventory
 - files changed: `.codex/ralph-state.md`
@@ -408,7 +500,9 @@ Backup directory:
 - validation results: research complete; no application tests run because no application code was changed
 - remaining work: use one selected `/goal` prompt in an interactive Codex thread, then execute the task-specific validation bundle required by that goal
 - next action: present three Japanese `/goal` prompt options with source-grounded caveats about the feature being experimental
+
 ### 20260504-092700
+
 - current task: autonomous subagent-led remediation of patient PHI assignment scoping across patient list/detail/export, child patient APIs, tracing reports, and PDF document generation
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, Next route handler docs under `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/lib/auth/visit-schedule-access.ts`, patient list/detail routes and services, patient child routes, tracing report routes, PDF route wrappers, `src/server/services/pdf-documents.tsx`, `src/server/services/patient-risk.ts`, `src/server/services/patient-service.ts`, relevant Prisma schemas, route/service tests, and findings from explorer, security, test, performance, and strict reviewer subagents
 - files changed: `src/lib/auth/visit-schedule-access.ts`, `src/server/services/patient-access.ts`, `src/server/services/patient-service.ts`, `src/server/services/patient-detail.ts`, `src/server/services/patient-risk.ts`, `src/server/services/pdf-documents.tsx`, patient list/detail/export/child API routes under `src/app/api/patients`, tracing report routes under `src/app/api/tracing-reports`, PDF routes for care reports, management plans, conference notes, visit records, patient medication PDFs, and associated tests
@@ -419,7 +513,9 @@ Backup directory:
 - validation results: TypeScript passed; targeted Vitest passed; ESLint passed; full Vitest passed with 506 files / 2166 tests; diff whitespace check passed; dependency audit reported no known vulnerabilities; production build passed with 216 routes/pages generated; final strict reviewer reported no blockers for correctness/security/PHI authorization scope
 - remaining work: `src/server/services/patient-access.ts` is intentionally new and must be included with the patch; focused service-level tests for malformed PDF source rows would further lock down the new guards, though route tests and full suite pass
 - next action: include all modified and new files in the eventual commit; no commit or push was performed in this turn
+
 ### 20260430-031300
+
 - current task: system-wide review and remediation of merge-blocking authorization issues found by subagents in the dirty CareViaX worktree
 - files inspected: `git status --short`, `/Users/yusuke/.codex/memories/MEMORY.md`, `AGENTS.md`, `README.md`, `package.json`, `.github/workflows/ci.yml`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `node_modules/next/dist/docs/01-app/02-guides/authentication.md`, `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/instrumentation-client.md`, `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/error.md`, `.codex/ralph-state.md`, `src/lib/auth/visit-schedule-access.ts`, `src/server/services/visit-schedule-service.ts`, visit schedule route/tests, care-report send route/tests, file presigned-upload route/tests, shared external viewer content, Sentry/offline/service-worker/security/performance review surfaces, and subagent findings from architecture, security, bug, performance, test, implementation, and final review agents
 - files changed: `src/server/services/visit-schedule-service.ts`, `src/app/api/visit-schedules/route.ts`, `src/app/api/visit-schedules/route.test.ts`, `src/app/api/visit-schedules/generate/route.ts`, `src/app/api/visit-schedules/generate/route.test.ts`, `src/app/api/files/presigned-upload/route.ts`, `src/app/api/files/presigned-upload/route.test.ts`, `src/app/api/care-reports/[id]/send/route.ts`, `src/app/api/care-reports/[id]/send/route.test.ts`, `src/app/shared/[token]/shared-viewer-content.tsx`, `.codex/ralph-state.md`
@@ -430,7 +526,9 @@ Backup directory:
 - validation results: targeted Vitest passed with 4 files / 31 tests and broader targeted auth/storage Vitest passed with 4 files / 51 tests; TypeScript passed; ESLint passed; full Vitest passed with 506 files / 2154 tests; dependency audit reported no known vulnerabilities; diff whitespace check passed; production build passed with 216 static pages generated; route-mocked Playwright smoke did not pass because browser run hit app/page errors and authenticated specs could not resolve the local E2E DB while Docker was unavailable
 - remaining work: broad dirty worktree contains many pre-existing/concurrent changes; critical patient org-wide PHI access scope remains a larger follow-up; other deferred security/performance risks include offline secret threat model, OTP grant lockout, presigned upload S3-side size enforcement, outbound webhook redirect/DNS SSRF hardening, production rate-limit distributed-store enforcement, and performance batch refactors
 - next action: run authenticated Playwright smoke after local Docker/Postgres `careviax_e2e` is available; if continuing remediation, prioritize patient list/detail/export/PDF assignment scoping as a dedicated larger security pass
+
 ### 20260428-191132
+
 - current task: harden drug-master import source URL handling so credential-bearing `user:pass@host` URLs are rejected before API import execution, service fetches, returned payload echo, or SSK job dedupe-key use
 - files inspected: `git status --short`, `/Users/yusuke/.codex/memories/MEMORY.md`, `.codex/ralph-state.md`, `package.json`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/server/services/drug-master-import/shared.ts`, `src/server/services/drug-master-import/shared.test.ts`, `src/server/services/drug-master-import/mhlw.ts`, `src/server/services/drug-master-import/mhlw.test.ts`, `src/server/services/drug-master-import/ssk.ts`, `src/server/services/drug-master-import/ssk.test.ts`, `src/server/services/drug-master-import/hot.ts`, `src/server/services/drug-master-import/hot.test.ts`, `src/server/services/drug-master-import/pmda.ts`, `src/server/services/drug-master-import/pmda.test.ts`, drug-master import API route files/tests, `src/server/jobs/drug-master.ts`, `src/server/jobs/runner.ts`, `src/lib/api/response.ts`, target `git diff`
 - files changed: `src/server/services/drug-master-import/shared.ts`, `src/server/services/drug-master-import/shared.test.ts`, `src/server/services/drug-master-import/mhlw.ts`, `src/server/services/drug-master-import/ssk.ts`, `src/server/services/drug-master-import/ssk.test.ts`, `src/server/services/drug-master-import/hot.ts`, `src/server/services/drug-master-import/pmda.ts`, `src/app/api/drug-master-imports/mhlw-price/route.test.ts`, `src/app/api/drug-master-imports/mhlw-generic/route.test.ts`, `src/app/api/drug-master-imports/ssk/route.test.ts`, `src/app/api/drug-master-imports/pmda/route.test.ts`, `src/app/api/drug-master-imports/hot/route.test.ts`, `.codex/ralph-state.md`
@@ -441,7 +539,9 @@ Backup directory:
 - validation results: passed; Prettier completed; broader drug-master service/API Vitest passed with 14 files / 61 tests; targeted ESLint passed; TypeScript passed; touched-file whitespace check passed
 - remaining work: no remaining issue in this scoped drug-master import credential-bearing URL hardening pass; broader dirty worktree contains unrelated/concurrent edits outside this ownership area and pre-existing drug-master hardening changes were preserved
 - next action: none for this scoped finding
+
 ### 20260428-190349
+
 - current task: add focused route-mocked Playwright smoke for shared external viewer OTP query stripping/header use, billing candidates patient/month workbench context, and visit-record offline save persistence
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `playwright.local.config.ts`, `tools/tests/README.md`, `tools/tests/e2e-billing-flow.spec.ts`, `tools/tests/ui-schedule-visit-report.spec.ts`, `tools/tests/helpers/local-auth.ts`, `src/app/shared/[token]/page.tsx`, `src/app/shared/[token]/shared-viewer-content.tsx`, `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`, `src/app/(dashboard)/visits/[id]/record/page.tsx`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/lib/hooks/use-soap-draft.ts`, `src/lib/stores/offline-db.ts`, `src/lib/stores/sync-engine.ts`, `src/components/providers/app-provider.tsx`
 - files changed: `tools/tests/ui-route-mocked-smoke.spec.ts`, `src/app/shared/[token]/page.tsx`, `.codex/ralph-state.md`
@@ -452,7 +552,9 @@ Backup directory:
 - validation results: passed; Playwright list showed 6 tests across chromium/mobile-chromium in the new file; focused chromium run passed 3/3 in 11.3s after restarting `pnpm dev:e2e:local`; touched-file ESLint passed; TypeScript passed; diff whitespace check passed
 - remaining work: broader dirty worktree contains many unrelated concurrent/pre-existing application and test edits; the new authenticated billing/offline tests still require the existing local auth DB path because dashboard layout resolves the local user from `careviax_e2e`
 - next action: none for this browser-validation slice unless the owner wants the new smoke mirrored into mobile or production-start validation
+
 ### 20260428-190047
+
 - current task: fix medication history bulk export authorization so non-bypass users cannot queue/export unassigned same-org patients and bulk-export ZIP downloads are tied to the requesting user or admin/owner bypass
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `node_modules/next/dist/docs/01-app/02-guides/authentication.md`, `src/lib/auth/visit-schedule-access.ts`, `src/app/api/patients/medications/bulk-export/route.ts`, `src/server/services/pdf-bulk-export.ts`, `src/server/services/file-storage.ts`, related bulk-export/file-storage tests, file download routes/tests, relevant patient/visit Prisma schema files, target `git diff`
 - files changed: `src/app/api/patients/medications/bulk-export/route.ts`, `src/app/api/patients/medications/bulk-export/route.test.ts`, `src/server/services/pdf-bulk-export.ts`, `src/server/services/pdf-bulk-export.test.ts`, `src/server/services/file-storage.ts`, `src/server/services/file-storage.test.ts`, `.codex/ralph-state.md`
@@ -463,18 +565,22 @@ Backup directory:
 - validation results: passed; targeted Vitest passed with 5 files / 42 tests; targeted ESLint passed; TypeScript passed; diff whitespace check passed
 - remaining work: no remaining issue in this scoped medication bulk export authorization pass; broader dirty worktree contains unrelated concurrent/pre-existing edits outside this ownership area
 - next action: none for this scoped fix unless the owner wants the single-patient medication PDF route brought under the same assignment policy in a separate pass
+
 ### 20260428-190000
+
 - current task: harden generic Data Explorer edit authorization for audit/log/history/job models and Membership/User auth-sensitive fields
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `src/server/services/data-explorer.ts`, `src/server/services/data-explorer.test.ts`, Data Explorer API route tests, relevant Prisma schema snippets for `AuditLog`, `IntegrationJob`, `DrugMasterImportLog`, `CycleTransitionLog`, `SetBatchChangeLog`, `VisitScheduleContactLog`, `User`, and `Membership`
 - files changed: `src/server/services/data-explorer.ts`, `src/server/services/data-explorer.test.ts`, `.codex/ralph-state.md`
 - bugs found: generic Data Explorer edit metadata allowed org-scoped audit/log/history-style rows and Membership/User authorization or lifecycle fields to be updated whenever the field was visible and scalar
-- security risks found: reduced generic admin edit-authority risk by marking audit/log/history/job model patterns read-only, making Membership access linkage/role/can_* flags/is_active non-editable, and making User auth/lifecycle/status fields including `is_active`, `can_accept_emergency`, invitation/activation/deactivation fields, and session/account identifiers non-editable while preserving existing projection redaction
+- security risks found: reduced generic admin edit-authority risk by marking audit/log/history/job model patterns read-only, making Membership access linkage/role/can\_\* flags/is_active non-editable, and making User auth/lifecycle/status fields including `is_active`, `can_accept_emergency`, invitation/activation/deactivation fields, and session/account identifiers non-editable while preserving existing projection redaction
 - performance issues found: no performance regression introduced; previous explicit search-field and bounded-count behavior in Data Explorer was preserved
 - validation commands: `pnpm exec vitest run src/server/services/data-explorer.test.ts`; `pnpm exec prettier --write src/server/services/data-explorer.ts src/server/services/data-explorer.test.ts`; `pnpm exec vitest run src/server/services/data-explorer.test.ts 'src/app/api/admin/data-explorer/[table]/route.test.ts' 'src/app/api/admin/data-explorer/[table]/[id]/route.test.ts' src/app/api/admin/data-explorer/models/route.test.ts src/lib/admin/data-explorer-catalog.test.ts`; `pnpm exec eslint src/server/services/data-explorer.ts src/server/services/data-explorer.test.ts 'src/app/api/admin/data-explorer/[table]/route.ts' 'src/app/api/admin/data-explorer/[table]/[id]/route.ts' src/app/api/admin/data-explorer/models/route.ts`; `pnpm exec tsc --noEmit --pretty false`; `pnpm exec prettier --check src/server/services/data-explorer.ts src/server/services/data-explorer.test.ts`; `git diff --check -- src/server/services/data-explorer.ts src/server/services/data-explorer.test.ts`
 - validation results: targeted service Vitest passed with 1 file / 15 tests; targeted Data Explorer service/API/catalog Vitest passed with 5 files / 24 tests; targeted ESLint passed; Prettier write/check passed; touched-file whitespace check passed; repo-wide TypeScript failed in unrelated dirty `src/server/services/pdf-bulk-export.test.ts` because `QueueMedicationHistoryBulkExportArgs` now requires `accessContext`
 - remaining work: no remaining issue found in the scoped Data Explorer edit-authorization change; full completion is blocked until the unrelated `pdf-bulk-export.test.ts` TypeScript failure outside this ownership area is fixed
 - next action: rerun `pnpm exec tsc --noEmit --pretty false` after the bulk-export test owner adds `accessContext` or authorizes taking over that file
+
 ### 20260428-185819
+
 - current task: fix `/api/external-access` management-list authorization so sensitive external sharing metadata requires report-send authority
 - files inspected: `git status --short`, `/Users/yusuke/.codex/memories/MEMORY.md`, `.codex/ralph-state.md`, `package.json`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/app/api/external-access/route.ts`, `src/app/api/external-access/route.test.ts`, `src/lib/auth/context.ts`, `src/lib/auth/permissions.ts`, `src/lib/auth/__tests__/permissions.test.ts`, `src/server/services/external-access.ts`, relevant care-report send route test pattern
 - files changed: `src/app/api/external-access/route.ts`, `src/app/api/external-access/route.test.ts`, `.codex/ralph-state.md`
@@ -485,7 +591,9 @@ Backup directory:
 - validation results: passed; targeted external-access route Vitest passed with 1 file / 9 tests; TypeScript passed; targeted ESLint passed; whitespace check passed
 - remaining work: no remaining issue in this scoped external-access GET management-list authorization fix; broader dirty worktree contains many unrelated/concurrent edits, including pre-existing changes in the same external-access files that were left intact
 - next action: none for this scoped fix
+
 ### 20260428-185415
+
 - current task: harden drug-master import archive/network paths for streamed overflow, redirect loops, fetch/body timeouts, and PMDA/SSK/HOT ZIP expansion limits
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `src/server/services/drug-master-import/shared.ts`, `src/server/services/drug-master-import/shared.test.ts`, `src/server/services/drug-master-import/ssk.ts`, `src/server/services/drug-master-import/ssk.test.ts`, `src/server/services/drug-master-import/pmda.ts`, `src/server/services/drug-master-import/pmda.test.ts`, `src/server/services/drug-master-import/hot.ts`, `src/server/services/drug-master-import/hot.test.ts`, `src/server/jobs/drug-master.ts`, drug-master import API route tests, `node_modules/fflate/lib/index.d.ts`
 - files changed: `src/server/services/drug-master-import/shared.ts`, `src/server/services/drug-master-import/shared.test.ts`, `src/server/services/drug-master-import/ssk.ts`, `src/server/services/drug-master-import/ssk.test.ts`, `src/server/services/drug-master-import/pmda.ts`, `src/server/services/drug-master-import/pmda.test.ts`, `src/server/services/drug-master-import/hot.ts`, `src/server/services/drug-master-import/hot.test.ts`, `.codex/ralph-state.md`
@@ -496,7 +604,9 @@ Backup directory:
 - validation results: passed; focused service Vitest passed with 4 files / 25 tests; broader drug-master service/API Vitest passed with 14 files / 53 tests; TypeScript passed; targeted ESLint passed; diff whitespace check passed
 - remaining work: no remaining issue in this scoped drug-master import hardening pass; broader dirty worktree includes unrelated/concurrent edits outside this ownership area, including pre-existing drug-master API route/job changes
 - next action: none for this scoped archive/network hardening unless the owner wants production-sized PMDA archive profiling with real official payloads
+
 ### 20260428-185311
+
 - current task: fix billing candidates endpoint inconsistency around `billing_month` parsing and normalization for list/generate/close/export
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/app/api/billing-candidates/route.ts`, `src/app/api/billing-candidates/close/route.ts`, `src/app/api/billing-candidates/export/route.ts`, billing candidate route tests, `prisma/schema/admin.prisma`, relevant billing evidence service month usage
 - files changed: `src/app/api/billing-candidates/billing-month.ts`, `src/app/api/billing-candidates/route.ts`, `src/app/api/billing-candidates/close/route.ts`, `src/app/api/billing-candidates/export/route.ts`, `src/app/api/billing-candidates/route.test.ts`, `src/app/api/billing-candidates/close/route.test.ts`, `src/app/api/billing-candidates/export/route.test.ts`, `.codex/ralph-state.md`
@@ -507,7 +617,9 @@ Backup directory:
 - validation results: passed; targeted Vitest passed with 3 files / 38 tests; targeted ESLint passed; TypeScript passed; diff whitespace check passed
 - remaining work: no remaining issue in this scoped billing-month parser fix; broader dirty worktree contains unrelated concurrent/pre-existing edits outside this ownership area
 - next action: none for this scoped fix
+
 ### 20260428-185222
+
 - current task: reduce Data Explorer search/count DB cost without weakening existing model allowlist, sensitive-field filtering, or explicit org scoping
 - files inspected: `git status --short`, `AGENTS.md`, `package.json`, `.codex/ralph-state.md`, `src/server/services/data-explorer.ts`, `src/server/services/data-explorer.test.ts`, `src/lib/admin/data-explorer-catalog.ts`, `src/lib/admin/data-explorer-catalog.test.ts`, Data Explorer API route tests, `src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx`, `src/lib/db/rls.ts`, relevant Prisma schema fields/indexes
 - files changed: `src/server/services/data-explorer.ts`, `src/server/services/data-explorer.test.ts`, `.codex/ralph-state.md`
@@ -518,7 +630,9 @@ Backup directory:
 - validation results: passed; targeted Data Explorer Vitest passed with 5 files / 17 tests; targeted ESLint passed; TypeScript passed; tracked diff whitespace check passed; Prettier check passed
 - remaining work: no remaining issue in this Data Explorer performance/stability scope; broader dirty worktree includes unrelated concurrent/pre-existing edits outside this ownership area
 - next action: none for this scoped fix
+
 ### 20260428-184224
+
 - current task: fix files complete/download authorization so stored visit-photo/prescription/report files re-check purpose-specific entity assignment before completion or presigned download
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/app/api/files/presigned-upload/route.ts`, `src/app/api/files/complete/route.ts`, `src/app/api/files/[id]/download/route.ts`, `src/app/api/files/[id]/presigned-download/route.ts`, `src/server/services/file-storage.ts`, files API tests, `src/lib/auth/visit-schedule-access.ts`, `src/lib/auth/permissions.ts`, relevant visit/patient/report schemas and existing visit/report authorization routes
 - files changed: `src/server/services/file-storage.ts`, `src/server/services/file-storage.test.ts`, `src/app/api/files/complete/route.ts`, `src/app/api/files/complete/route.test.ts`, `src/app/api/files/[id]/download/route.ts`, `src/app/api/files/[id]/download/route.test.ts`, `src/app/api/files/[id]/presigned-download/route.ts`, `src/app/api/files/[id]/presigned-download/route.test.ts`, `.codex/ralph-state.md`
@@ -529,7 +643,9 @@ Backup directory:
 - validation results: passed; targeted Vitest passed with 5 files / 38 tests; TypeScript passed; targeted ESLint passed; diff whitespace check passed
 - remaining work: no remaining issue in this scoped file completion/download authorization fix; broader dirty worktree includes unrelated concurrent/pre-existing edits outside this ownership area
 - next action: none for this scoped fix unless the owner wants initial presigned-upload prescription/report assignment policy tightened in a separate pass
+
 ### 20260428-163130
+
 - current task: schedule brief performance fix scoped to day schedule board and visit-preparation brief APIs
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/api/visit-preparations/[scheduleId]/brief/route.ts`, `src/app/api/visit-preparations/[scheduleId]/brief/route.test.ts`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `src/app/api/__tests__/protected-post-routes.test.ts`, `src/app/api/visit-schedule-proposals/billing-preview-batch/route.ts`, `src/app/api/visit-schedule-proposals/billing-preview-batch/route.test.ts`, `src/lib/auth/context.ts`, `src/lib/auth/visit-schedule-access.ts`, `src/server/services/visit-brief.ts`, `src/server/services/visit-brief.test.ts`
 - files changed: `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/api/visit-preparations/[scheduleId]/brief/route.ts`, `src/app/api/visit-preparations/[scheduleId]/brief/route.test.ts`, `src/app/api/visit-preparations/brief-batch/route.ts`, `src/app/api/visit-preparations/brief-batch/route.test.ts`, `src/app/api/__tests__/protected-post-routes.test.ts`, `src/server/services/visit-brief.ts`, `src/server/services/visit-brief.test.ts`, `.codex/ralph-state.md`
@@ -540,7 +656,9 @@ Backup directory:
 - validation results: passed; targeted Vitest passed with 5 files / 221 tests; TypeScript passed; targeted ESLint passed; diff whitespace check passed; production build passed and lists `/api/visit-preparations/brief-batch`
 - remaining work: no remaining issue in the schedule brief performance scope; broader dirty worktree contains unrelated concurrent/pre-existing edits outside this ownership area
 - next action: none for this scoped fix unless follow-up browser profiling is requested
+
 ### 20260424-143927
+
 - current task: fix user-level versus repository-level Codex settings after review
 - files inspected: `~/.codex/config.toml`, `~/.codex/AGENTS.md`, `AGENTS.md`, `.codex/config.toml`, `.codex/ralph-state.md`, `~/.codex/agents/*.toml`, `.codex/agents/*.toml`
 - files changed: `~/.codex/config.toml`, `~/.codex/agents/*.toml`, `AGENTS.md`, `.codex/config.toml`, `.codex/agents/*.toml`, `.codex/ralph-state.md`
@@ -551,7 +669,9 @@ Backup directory:
 - validation results: passed; startup shows gpt-5.5, approval never, sandbox danger-full-access, xhigh reasoning; prompt input includes CareViaX Next.js/UI SSOT rules; custom roles visible: explorer-deep, performance-auditor, reviewer-strict, security-auditor, test-auditor, worker-fixer
 - remaining work: none for this configuration repair
 - next action: restart Codex when ready so the active interactive session reloads the repaired config and AGENTS chain
+
 ### 20260424-150849
+
 - current task: inspect whole CareViaX codebase error surface and repair validation failures
 - files inspected: `package.json`, `pnpm-lock.yaml`, `tsconfig.json`, `vitest.config.ts`, `next.config.ts`, `README.md`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `node_modules/next/dist/docs/01-app/01-getting-started/18-upgrading.md`, `node_modules/next/dist/docs/01-app/03-api-reference/05-config/02-typescript.md`, `src/lib/auth/context.ts`, `src/lib/auth/middleware.ts`, `src/lib/utils/performance.ts`, `src/lib/api/keyset-cursor.ts`, `src/server/services/admin-master-readiness.ts`, affected API route tests and patient-list tests
 - files changed: `package.json`, `pnpm-lock.yaml`, `public/swe-worker-ab00d3c7d2d59769.js.map`, `src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx`, `src/app/api/__tests__/workflow-prescription-to-report.test.ts`, `src/app/api/admin/data-explorer/[table]/route.ts`, `src/app/api/admin/data-explorer/models/route.ts`, `src/app/api/admin/pharmacist-credentials/[id]/route.ts`, `src/app/api/auth/password/reset/request/route.test.ts`, `src/app/api/external-access/[token]/self-report/route.test.ts`, `src/app/api/patients/[id]/packaging/route.ts`, `src/app/api/patients/route.test.ts`, `src/lib/api/keyset-cursor.ts`, `src/lib/auth/__tests__/secret.test.ts`, `src/lib/auth/context.ts`, `src/lib/utils/performance.ts`, `src/server/services/admin-master-readiness.ts`, `.codex/ralph-state.md`
@@ -562,7 +682,9 @@ Backup directory:
 - validation results: passed; final `tsc`, `lint`, `pnpm test` passed with 491 files and 1939 tests; `pnpm build` passed; `pnpm audit --audit-level moderate` reports no known vulnerabilities; ExcelJS smoke passed. Build still emits non-failing Sentry warnings about missing global error handler, `sentry.client.config.ts` deprecation for Turbopack, and the existing `@sentry/nextjs` peer range not listing Next 16.
 - remaining work: no failing validation remains; optional follow-up is to migrate Sentry client instrumentation/global-error handling when addressing warnings
 - next action: none unless the owner wants the broad pre-existing dirty worktree split into commits
+
 ### 20260424-151955
+
 - current task: investigate and repair bugs around the top page/dashboard entry surface
 - files inspected: `src/app/page.tsx`, `src/app/layout.tsx`, `src/app/(dashboard)/layout.tsx`, `src/app/(dashboard)/dashboard/page.tsx`, `src/app/(dashboard)/dashboard/dashboard-content.tsx`, dashboard subcomponents, `src/components/layout/app-shell.tsx`, `src/components/layout/app-header.tsx`, `src/components/layout/sidebar.tsx`, `src/components/layout/mobile-nav.tsx`, `src/components/layout/navigation-config.ts`, `src/components/layout/navigation-utils.ts`, `src/lib/dashboard/home-config.ts`, `src/lib/dashboard/home-link-builders.ts`, `tools/tests/ui-dashboard-nav.spec.ts`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `node_modules/next/dist/docs/01-app/01-getting-started/04-linking-and-navigating.md`
 - files changed: `src/components/layout/app-shell.tsx`, `src/components/layout/sidebar.tsx`, `src/components/layout/sidebar.test.tsx`, `tools/tests/ui-dashboard-nav.spec.ts`, `.codex/ralph-state.md`
@@ -573,7 +695,9 @@ Backup directory:
 - validation results: passed; targeted Vitest layout/dashboard tests passed with 17 files / 69 tests before changes and 5 files / 33 tests after the sidebar fix; TypeScript and lint passed; Playwright spec listing passed; unauthenticated root redirect chain returned `/` 307 -> `/dashboard` 307 -> login 200; production build passed. Local authenticated Playwright execution was not run because Postgres on `localhost:5433` was unavailable and Docker daemon was not running.
 - remaining work: authenticated browser smoke for `/dashboard` should be rerun after local Postgres/Docker is available; existing non-failing Sentry build warnings remain
 - next action: none for the top-page fix unless the owner wants the authenticated Playwright suite rerun after starting local services
+
 ### 20260424-160820
+
 - current task: plan 2026 dispensing-fee/home-visit pharmacist support direction before implementation
 - files inspected: `README.md`, `package.json`, `docs/ui-ux-design-guidelines.md`, `docs/ssot-home-visit-intake.md`, `docs/compliance/patient-consent-workflow.md`, `docs/ssot-first-visit-document.md`, `Plans.md`, `prisma/schema/visit.prisma`, `prisma/schema/patient.prisma`, `prisma/schema/admin.prisma`, `src/server/services/billing-rules/revisions/medical/official-2026.ts`, `src/server/services/billing-rules/revisions/medical/2026.ts`, `src/server/services/billing-evidence/core.ts`, `src/server/services/visit-brief.ts`, `src/lib/validations/visit-record.ts`, `src/lib/visits/checklist-template.ts`, official MHLW 2026 fee table/notification/explanation PDFs
 - files changed: `.codex/ralph-state.md`
@@ -584,7 +708,9 @@ Backup directory:
 - validation results: planning/research complete; no application tests run because no application code was changed
 - remaining work: implement the selected roadmap slice, then run targeted Vitest/TypeScript/lint/build and authenticated browser smoke when local services are available
 - next action: start with the compliance-critical slice: convert 2026 official requirements into structured visit readiness and visit-record evidence requirements, then expose them in visit-brief / visit-preparation / billing blockers
+
 ### 20260424-173310
+
 - current task: understand CareViaX codebase before implementing the 2026 home-visit pharmacist support plan, with focus on natural pharmacist screens
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `README.md`, `package.json`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`, `src/app/(dashboard)/dashboard/dashboard-content.tsx`, dashboard section components, `src/components/layout/page-scaffold.tsx`, `src/components/features/workflow/workflow-page-header.tsx`, `src/components/features/workflow/workflow-page-intro.tsx`, `src/components/features/dashboard/dashboard-section-group.tsx`, `src/app/(dashboard)/schedules/page.tsx`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.shared.ts`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/(dashboard)/visits/[id]/record/page.tsx`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/components/features/visits/soap-step-wizard.tsx`, `src/components/features/visits/structured-soap-wizard.tsx`, `src/components/features/visits/visit-report-readiness-panel.tsx`, `src/lib/constants/soap-options.ts`, `src/types/structured-soap.ts`, `src/lib/validations/visit-record.ts`, `src/app/api/visit-records/route.ts`, `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`, `src/server/services/report-generator.ts`, `src/app/(dashboard)/patients/[id]/page.tsx`, `src/app/(dashboard)/patients/[id]/patient-detail-tabs.tsx`, `src/app/(dashboard)/patients/[id]/patient-readiness-card.tsx`, `src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx`, `src/app/(dashboard)/patients/[id]/patient-intake-summary-card.tsx`, `src/server/services/visit-brief.ts`, `src/components/visit-brief/visit-brief-card.tsx`, `src/server/services/billing-evidence/core.ts`, `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`, `src/server/services/workflow-dashboard-sections.ts`, `src/server/services/workflow-dashboard-queries.ts`, `src/app/api/dashboard/workflow/route.ts`
 - files changed: `.codex/ralph-state.md`
@@ -595,7 +721,9 @@ Backup directory:
 - validation results: discovery complete; no application tests run because no application code was changed
 - remaining work: design and implement one coherent pharmacist flow across dashboard -> schedule preparation -> visit record -> report/detail -> billing evidence, then run targeted tests/typecheck/lint/build and authenticated browser smoke when local services are available
 - next action: implement the smallest vertical slice by turning the existing visit preparation/record surfaces into a guided evidence workflow before adding any standalone 2026 compliance page
+
 ### 20260424-190300
+
 - current task: implement the first vertical slice of 2026 home-visit pharmacist support across preparation, visit record, reports, and billing evidence
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`, `src/types/structured-soap.ts`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/components/features/visits/visit-report-readiness-panel.tsx`, `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.shared.ts`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/api/visit-records/[id]/route.ts`, `src/lib/utils/soap-text-builder.ts`, `src/server/services/billing-evidence/core.ts`, `src/server/services/billing-rules/rule-engine.ts`, `src/server/services/billing-rules/types.ts`, `src/server/services/report-templates.ts`, related billing tests
 - files changed: `src/types/structured-soap.ts`, `src/lib/visits/home-visit-2026-evidence.ts`, `src/lib/visits/home-visit-2026-evidence.test.ts`, `src/components/features/visits/home-visit-2026-evidence-panel.tsx`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.shared.ts`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/lib/utils/soap-text-builder.ts`, `src/server/services/billing-evidence/core.ts`, `src/server/services/billing-evidence/core.test.ts`, `src/server/services/billing-rules/rule-engine.ts`, `src/server/services/billing-rules/types.ts`, `src/server/services/billing-rules/__tests__/rule-engine-emergency.test.ts`, `src/server/services/report-templates.ts`, `.codex/ralph-state.md`
@@ -606,7 +734,9 @@ Backup directory:
 - validation results: formatting passed; TypeScript passed; targeted Vitest passed with 3 files / 27 tests; lint passed; full Vitest passed with 492 files / 1946 tests; production build passed with existing non-failing Sentry warnings; diff whitespace check passed; audit reported no known vulnerabilities; dev server started at `http://localhost:3012`; authenticated Playwright schedule/visit/report smoke could not run because local PostgreSQL on `localhost:5433` refused connections, causing the local auth helper to fail before page navigation; unauthenticated Playwright CLI snapshot confirmed `/login` renders
 - remaining work: authenticated browser smoke should be rerun after local PostgreSQL/Docker is available; existing non-failing Sentry build warnings remain
 - next action: report implementation and validation results
+
 ### 20260424-192700
+
 - current task: review whether the 2026 home-visit evidence feature is naturally embedded in the existing pharmacist workflow and fix UX friction
 - files inspected: `git status --short`, `/Users/yusuke/.codex/memories/MEMORY.md`, `docs/ui-ux-design-guidelines.md`, `/Users/yusuke/.codex/skills/playwright/SKILL.md`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/components/features/visits/home-visit-2026-evidence-panel.tsx`, `src/components/features/visits/soap-step-wizard.tsx`, `src/components/features/visits/visit-report-readiness-panel.tsx`, `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`, `src/app/(dashboard)/schedules/day-view.tsx`
 - files changed: `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/components/features/visits/soap-step-wizard.tsx`, `.codex/ralph-state.md`
@@ -617,7 +747,9 @@ Backup directory:
 - validation results: TypeScript passed; targeted Vitest passed with 4 files / 30 tests; lint passed; full Vitest passed with 492 files / 1946 tests; production build passed with existing non-failing Sentry warnings; diff whitespace check passed; local PostgreSQL on `localhost:5433` still refused connections; Playwright CLI confirmed `/login` renders through the running dev server
 - remaining work: authenticated browser smoke for the actual schedule/visit/report workflow remains blocked until local PostgreSQL or Docker is available
 - next action: report UX review results and remaining browser-verification blocker
+
 ### 20260424-193500
+
 - current task: take the next screen-placement recommendation and further organize the implemented 2026 workflow
 - files inspected: `git status --short`, `/Users/yusuke/.codex/memories/MEMORY.md`, `docs/ui-ux-design-guidelines.md`, `/Users/yusuke/.codex/skills/playwright/SKILL.md`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`
 - files changed: `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `.codex/ralph-state.md`
@@ -628,7 +760,9 @@ Backup directory:
 - validation results: TypeScript passed; targeted Vitest passed with 4 files / 30 tests; lint passed; full Vitest passed with 492 files / 1946 tests; production build passed with existing non-failing Sentry warnings; diff whitespace check passed; local PostgreSQL on `localhost:5433` still refused connections; Playwright CLI confirmed `/login` renders through the running dev server
 - remaining work: authenticated browser smoke for actual schedule/visit/report screens remains blocked until local PostgreSQL or Docker is available
 - next action: report the second-stage layout cleanup and validation results
+
 ### 20260424-170800
+
 - current task: push the 2026 evidence workflow one more level toward natural screen placement
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`, `/Users/yusuke/.codex/skills/playwright/SKILL.md`, `src/components/features/visits/home-visit-2026-evidence-panel.tsx`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/lib/visits/home-visit-2026-evidence.ts`, `src/lib/visits/home-visit-2026-evidence.test.ts`
 - files changed: `src/components/features/visits/home-visit-2026-evidence-panel.tsx`, `src/lib/visits/home-visit-2026-evidence.test.ts`, `.codex/ralph-state.md`
@@ -639,7 +773,9 @@ Backup directory:
 - validation results: formatting passed; TypeScript passed; targeted Vitest passed with 4 files / 31 tests; lint passed; full Vitest passed with 492 files / 1947 tests; production build passed with existing non-failing Sentry warnings; diff whitespace check passed; dependency audit reported no known vulnerabilities; `npx` is available; local PostgreSQL on `127.0.0.1:5433` refused connections; Playwright CLI confirmed `/login` renders through the running dev server and the browser was closed
 - remaining work: authenticated browser smoke for schedule -> visit record -> report/billing workflow remains blocked until local PostgreSQL or Docker is available; existing non-failing Sentry build warnings remain
 - next action: rerun authenticated workflow smoke after the local DB is available, then inspect the real visit-record viewport screenshots for final spacing if needed
+
 ### 20260424-174622
+
 - current task: continue from the previous blocker by completing authenticated workflow and real visit-record layout verification
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `docker-compose.yml`, `prisma.config.ts`, `prisma/schema/visit.prisma`, `prisma/schema/patient.prisma`, `/Users/yusuke/.codex/skills/playwright/SKILL.md`, `tools/tests/ui-schedule-visit-report.spec.ts`, `tools/tests/helpers/local-auth.ts`, Playwright failure artifacts under `tools/tests/.artifacts/results`
 - files changed: `tools/tests/ui-schedule-visit-report.spec.ts`, `tools/tests/helpers/local-auth.ts`, `.codex/ralph-state.md`
@@ -650,7 +786,9 @@ Backup directory:
 - validation results: Docker and DB are available; `careviax_e2e` is schema-synced and seeded; production build passed with existing non-failing Sentry and large font precache warnings; authenticated Playwright smoke passed with 14/14 tests against production start; visit-record browser check confirmed the 2026 evidence panel is visible and contains `保存前に閉じる不足`, `全訪問で閉じる確認`, `該当時だけ記録する加算根拠`, and `在宅移行初期管理`; TypeScript passed; targeted Vitest passed with 4 files / 31 tests; lint passed; full Vitest passed with 492 files / 1947 tests; diff whitespace check passed; audit reports no known vulnerabilities; `/login` returns 200 from production server
 - remaining work: production server remains running on `http://localhost:3012` for manual inspection; existing non-failing Sentry warnings remain separate follow-up work
 - next action: if continuing, inspect screenshot `tools/tests/.artifacts/home-visit-2026-record-panel.png` and then decide whether to tighten spacing further or move to the next product slice
+
 ### 20260424-181020
+
 - current task: answer whether退院前カンファレンス and担当者会議 are supported in the current implementation
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `prisma/schema/communication.prisma`, `docs/ssot-conference-note-wiring.md`, `src/app/api/conference-notes/route.ts`, `src/server/services/conference-sync.ts`, `src/server/services/conference-data-sync.ts`, `src/app/(dashboard)/conferences/conference-note-templates.ts`, `src/app/(dashboard)/conferences/conferences-content.tsx`, `src/app/api/conference-notes/route.test.ts`, `src/app/api/conference-notes/[id]/pdf/route.ts`, `src/app/api/conference-notes/[id]/generate-report/route.ts`, visit/schedule surfaces searched for conference references
 - files changed: `.codex/ralph-state.md`
@@ -661,7 +799,9 @@ Backup directory:
 - validation results: confirmed dedicated ConferenceNote support for `pre_discharge` and `service_manager`, including structured templates, API create/list, sync side effects, billing candidates, visit proposals, tasks, medication issues, CareReport drafts, PDF/report generation; no tests rerun because no application code changed
 - remaining work: improve workflow embedding by surfacing recent退院前カンファ/担当者会議 context inside schedule preparation and visit-record evidence capture
 - next action: implement conference-context cards and handoff links in the visit workflow if the owner wants this as the next slice
+
 ### 20260424-181420
+
 - current task: remove the standalone 2026 evidence panel feeling and integrate medication-management evidence plus conference context into the top of the visit record workflow
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`, `/Users/yusuke/.codex/skills/playwright/SKILL.md`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/components/features/visits/home-visit-2026-evidence-panel.tsx`, `src/components/features/visits/soap-step-wizard.tsx`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.shared.ts`, `src/app/api/visit-preparations/[scheduleId]/route.test.ts`, `tools/tests/ui-schedule-visit-report.spec.ts`
 - files changed: `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/components/features/visits/visit-medication-management-section.tsx`, `src/components/features/visits/soap-step-wizard.tsx`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/api/visit-preparations/[scheduleId]/route.test.ts`, `src/app/(dashboard)/schedules/day-view.shared.ts`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`, `tools/tests/ui-schedule-visit-report.spec.ts`, `.codex/ralph-state.md`
@@ -672,7 +812,9 @@ Backup directory:
 - validation results: TypeScript passed after the internal rename; targeted Vitest passed with 3 files / 26 tests; lint passed; full Vitest passed after the internal rename with 492 files / 1947 tests; production build passed after the internal rename with existing non-failing Sentry warnings; diff whitespace check passed; audit reported no known vulnerabilities; authenticated Playwright smoke passed 14/14 after starting the server with `PLAYWRIGHT=1`; browser check confirmed `本日の訪問薬剤管理` and `会議からの引き継ぎ` render at the top and legacy `2026 訪問薬剤管理エビデンス` text count is 0
 - remaining work: production server remains running at `http://localhost:3012`; screenshot artifact is `tools/tests/.artifacts/visit-record-integrated-medication-management.png`; existing non-failing Sentry warnings remain separate follow-up work
 - next action: review the integrated visit-record screenshot visually, then move to the next product slice
+
 ### 20260424-215120
+
 - current task: continue the screen-placement cleanup after removing the standalone 2026 evidence panel
 - files inspected: `git status --short`, `tools/tests/.artifacts/visit-record-integrated-medication-management.png`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/components/features/visits/visit-medication-management-section.tsx`
 - files changed: `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `.codex/ralph-state.md`
@@ -683,7 +825,9 @@ Backup directory:
 - validation results: TypeScript passed; targeted Vitest passed with 3 files / 26 tests; browser check confirmed the first headings inside `訪問前確認` are `本日の訪問薬剤管理`, `会議からの引き継ぎ`, `全訪問で確認すること`; screenshot artifact is `tools/tests/.artifacts/visit-record-integrated-medication-management-top.png`
 - remaining work: production server remains running at `http://localhost:3012`; full validation remains from the previous pass and this pass rechecked the affected slice
 - next action: proceed to the next workflow slice after this top-placement cleanup
+
 ### 20260424-223250
+
 - current task: integrate all remaining recommended 2026 home-visit workflow features while refactoring similar logic into shared projection helpers
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`, `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`, `src/server/services/report-templates.ts`, `src/server/services/report-generator.ts`, `src/server/services/billing-evidence/core.ts`, `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.shared.ts`, `src/server/services/patient-detail.ts`, `src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx`, `src/app/(dashboard)/patients/[id]/patient-detail.types.ts`, `src/components/features/visits/visit-medication-management-section.tsx`, `tools/tests/ui-schedule-visit-report.spec.ts`, `tools/tests/helpers/local-auth.ts`, Playwright failure artifacts for the first incorrect-auth smoke run
 - files changed: `src/lib/visits/visit-workflow-projection.ts`, `src/lib/visits/visit-workflow-projection.test.ts`, `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`, `src/server/services/report-templates.ts`, `src/server/services/report-generator.ts`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/server/services/patient-detail.ts`, `src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx`, `src/app/(dashboard)/patients/[id]/patient-detail.types.ts`, `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`, `.codex/ralph-state.md`
@@ -694,7 +838,9 @@ Backup directory:
 - validation results: TypeScript passed; targeted Vitest passed with 6 files / 39 tests; lint passed; full Vitest passed with 493 files / 1950 tests; production build passed with existing non-failing Sentry warnings; diff whitespace check passed; audit reported no known vulnerabilities; first Playwright run failed at login because of secret mismatch, then passed 14/14 after restarting with `AUTH_SECRET=careviax-local-auth-secret`; browser script confirmed visit-record top has `本日の訪問薬剤管理` and `会議からの引き継ぎ`, legacy `2026 訪問薬剤管理エビデンス` is absent, and `/schedules` loads
 - remaining work: production server remains running at `http://localhost:3012`; e2e database currently has no visit records, so the new visit-detail `訪問後ワークフロー` panel was covered by TypeScript/unit integration and build, not by a populated detail-page browser fixture
 - next action: if continuing, seed a visit-record detail fixture and add Playwright assertions for `訪問後ワークフロー`, billing evidence summary, conference timeline events, and conference-derived proposal labels
+
 ### 20260425-085800
+
 - current task: implement the refined visit-detail workflow plan by making the post-visit workflow actionable while keeping send/confirm decisions on dedicated screens
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `src/lib/visits/visit-workflow-projection.ts`, `src/lib/visits/visit-workflow-projection.test.ts`, `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`, `src/app/api/care-reports/route.ts`, `src/app/api/care-reports/route.test.ts`, `src/app/api/billing-candidates/route.ts`, `src/app/api/billing-candidates/route.test.ts`, `src/app/api/billing-candidates/export/route.ts`, `src/app/(dashboard)/billing/candidates/page.tsx`, `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`, `package.json`, `pnpm-lock.yaml`, `playwright.local.config.ts`, production server/E2E logs
 - files changed: `src/lib/visits/visit-workflow-projection.ts`, `src/lib/visits/visit-workflow-projection.test.ts`, `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`, `src/app/api/care-reports/route.ts`, `src/app/api/care-reports/route.test.ts`, `src/app/api/billing-candidates/route.ts`, `src/app/api/billing-candidates/route.test.ts`, `src/app/api/billing-candidates/export/route.ts`, `src/app/(dashboard)/billing/candidates/page.tsx`, `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`, `package.json`, `pnpm-lock.yaml`, `.codex/ralph-state.md`
@@ -705,7 +851,9 @@ Backup directory:
 - validation results: TypeScript passed; targeted Vitest passed with 3 files / 9 tests; lint passed; full Vitest passed with 493 files / 1951 tests; production build passed with existing non-failing Sentry warnings; diff whitespace check passed; audit reports no known vulnerabilities; authenticated Playwright smoke passed 14/14 after restarting with the correct `careviax_e2e` database. The E2E server was stopped after validation.
 - remaining work: no failing validation remains; existing non-failing Sentry warnings remain separate follow-up work. The broad dirty worktree still includes previous feature changes not made in this iteration.
 - next action: use the refined visit-detail workflow in a seeded browser fixture if the owner wants pixel-level inspection of the new `訪問後ワークフロー` cards themselves
+
 ### 20260425-084700
+
 - current task: audit whether information fragmentation still exists after the visit/report/billing/conference workflow integration and patch context-losing links
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `src/app/(dashboard)/reports/reports-query-state.ts`, `src/app/(dashboard)/reports/page.tsx`, `src/app/(dashboard)/reports/reports-table.tsx`, reports tests, `src/app/(dashboard)/conferences/conferences-query-state.ts`, `src/app/(dashboard)/conferences/conferences-content.tsx`, `src/lib/visits/visit-workflow-projection.ts`, `src/lib/visits/visit-workflow-projection.test.ts`, `src/server/services/patient-detail.ts`, `src/app/api/patients/[id]/timeline/route.ts`, `src/app/(dashboard)/patients/[id]/patient-activity-timeline.tsx`
 - files changed: `src/app/(dashboard)/reports/reports-query-state.ts`, `src/app/(dashboard)/reports/reports-query-state.test.ts`, `src/app/(dashboard)/reports/page.tsx`, `src/app/(dashboard)/reports/reports-table.tsx`, `src/app/(dashboard)/reports/reports-table.test.tsx`, `src/lib/visits/visit-workflow-projection.ts`, `src/lib/visits/visit-workflow-projection.test.ts`, `src/server/services/patient-detail.ts`, `.codex/ralph-state.md`
@@ -716,7 +864,9 @@ Backup directory:
 - validation results: TypeScript passed; targeted Vitest passed with 3 files / 6 tests; lint passed; full Vitest passed with 493 files / 1951 tests; production build passed with existing non-failing Sentry warnings; diff whitespace check passed; audit reports no known vulnerabilities
 - remaining work: no failing validation remains. Remaining lower-risk fragmentation to consider later is a dedicated report-list patient banner name lookup instead of ID-only context display, and pixel-level browser inspection of the new report linked-context banner if desired.
 - next action: continue with seeded browser fixture only if the owner wants visual inspection of the linked report/billing/conference context chips
+
 ### 20260425-091800
+
 - current task: improve visit-time facility workflow for simultaneous parallel facility visits with mobile/tablet swipe switching and medication/billing requirement context
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs` snippets for current Next.js guidance, `prisma/schema/visit.prisma`, `prisma/schema/patient.prisma`, `prisma/schema/prescription.prisma`, `src/app/api/facility-visit-batches/route.ts`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/api/visit-preparations/[scheduleId]/route.test.ts`, `src/lib/visits/facility-visit-context.ts`, `src/components/features/visits/facility-visit-record-switcher.tsx`, `src/components/features/visits/facility-visit-record-switcher.test.tsx`, `src/components/features/visits/visit-medication-management-section.tsx`, `src/app/(dashboard)/visits/[id]/record/page.tsx`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/app/(dashboard)/schedules/day-view.shared.ts`, `/Users/yusuke/.codex/skills/playwright/SKILL.md`
 - files changed: `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/api/visit-preparations/[scheduleId]/route.test.ts`, `src/lib/visits/facility-visit-context.ts`, `src/components/features/visits/facility-visit-record-switcher.tsx`, `src/components/features/visits/visit-medication-management-section.tsx`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/app/(dashboard)/schedules/day-view.shared.ts`, `.codex/ralph-state.md`
@@ -727,7 +877,9 @@ Backup directory:
 - validation results: formatting passed; TypeScript passed; targeted Vitest passed with 2 files / 5 tests; lint passed; full Vitest passed with 493 files / 1951 tests; production build passed with existing non-failing Sentry warnings; diff whitespace check passed; audit reported no known vulnerabilities; `careviax_e2e` schema was already in sync; authenticated Playwright smoke passed 14/14; mobile browser check confirmed `facility-visit-record-switcher`, `本日の訪問薬剤管理`, and medication period text render, screenshot `tools/tests/.artifacts/facility-parallel-visit-mobile.png`; local production server was stopped after validation
 - remaining work: no failing validation remains; existing non-failing Sentry warnings remain separate follow-up work. The broad dirty worktree includes earlier feature work outside this iteration.
 - next action: if continuing, seed a true multi-patient facility batch fixture so the API-derived `facility_parallel_context` path can be covered by browser E2E instead of only API/unit tests plus query-context UI smoke
+
 ### 20260425-093100
+
 - current task: implement the remaining grouped-visit improvements except dedicated Playwright fixture test, and extend the same workflow to private-home grouped visits
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs` snippets for App Router client navigation and route handlers, `src/lib/utils/facility.ts`, `src/lib/visits/facility-visit-context.ts`, `src/lib/visits/facility-visit-context.test.ts`, `src/components/features/visits/facility-visit-record-switcher.tsx`, `src/components/features/visits/facility-visit-record-switcher.test.tsx`, `src/components/features/visits/facility-patient-swipe-rail.tsx`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/api/visit-preparations/[scheduleId]/route.test.ts`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/app/(dashboard)/schedules/day-view.shared.ts`, `prisma/schema/patient.prisma`, `/Users/yusuke/.codex/skills/playwright/SKILL.md`
 - files changed: `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/api/visit-preparations/[scheduleId]/route.test.ts`, `src/lib/visits/facility-visit-context.ts`, `src/lib/visits/facility-visit-context.test.ts`, `src/components/features/visits/facility-visit-record-switcher.tsx`, `src/components/features/visits/facility-visit-record-switcher.test.tsx`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/app/(dashboard)/schedules/day-view.shared.ts`, `.codex/ralph-state.md`
@@ -738,7 +890,9 @@ Backup directory:
 - validation results: formatting passed; TypeScript passed; targeted Vitest passed with 3 files / 8 tests; lint passed; full Vitest passed with 493 files / 1953 tests; production build passed with existing non-failing Sentry warnings; diff whitespace check passed; audit reported no known vulnerabilities; `careviax_e2e` schema was already in sync; authenticated Playwright smoke passed 14/14; mobile browser check confirmed `同一個人宅訪問`, `訪問先全体の進捗`, `訪問先共通メモ`, `保存後 1/2`, and `本日の訪問薬剤管理`, screenshot `tools/tests/.artifacts/home-group-parallel-visit-mobile.png`; local production server was stopped after validation
 - remaining work: no failing validation remains. The explicitly skipped item remains a dedicated DB-backed Playwright fixture for grouped visit creation/coverage. Existing non-failing Sentry warnings and the broader pre-existing dirty worktree remain separate.
 - next action: add DB-backed grouped-visit E2E coverage only when the previously skipped item is brought back into scope
+
 ### 20260425-101900
+
 - current task: resume the previously skipped grouped-visit browser coverage by adding a DB-backed facility and private-home visit fixture to the authenticated Playwright workflow
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, Next.js docs snippets under `node_modules/next/dist/docs`, `/Users/yusuke/.codex/skills/playwright/SKILL.md`, `tools/tests/ui-schedule-visit-report.spec.ts`, `tools/tests/helpers/local-auth.ts`, `prisma/seed.ts`, Prisma schema references for `FacilityVisitBatch`, `VisitSchedule`, `VisitPreparation`, `Residence`, `Patient`, `CareCase`
 - files changed: `tools/tests/ui-schedule-visit-report.spec.ts`, `.codex/ralph-state.md`
@@ -749,7 +903,9 @@ Backup directory:
 - validation results: formatting passed; TypeScript passed; `careviax_e2e` schema was already in sync; targeted grouped-visit Playwright passed 1/1; lint passed; full Vitest passed with 493 files / 1953 tests; production build passed with existing non-failing Sentry warnings; diff whitespace check passed; audit reported no known vulnerabilities; first full Playwright rerun failed due to build/server chunk mismatch, then passed 15/15 after restarting the E2E server; local production server was stopped after validation
 - remaining work: no failing validation remains. Existing non-failing Sentry warnings and the broader pre-existing dirty worktree remain separate from this iteration.
 - next action: if continuing, visually inspect the grouped visit switcher on tablet/phone widths against real fixture rows and then consider splitting the slow Playwright file if runtime becomes a CI concern
+
 ### 20260425-112900
+
 - current task: continue grouped-visit workflow polish by locking the real-fixture mobile/tablet layout, swipe navigation, and no-horizontal-overflow behavior into validation
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `/Users/yusuke/.codex/skills/playwright/SKILL.md`, Next.js docs for accessibility, linking/navigation, and server/client components, `package.json`, `src/components/features/visits/facility-visit-record-switcher.tsx`, `src/components/features/visits/facility-visit-record-switcher.test.tsx`, `tools/tests/ui-schedule-visit-report.spec.ts`, `tools/tests/helpers/local-auth.ts`
 - files changed: `src/components/features/visits/facility-visit-record-switcher.tsx`, `src/components/features/visits/facility-visit-record-switcher.test.tsx`, `tools/tests/ui-schedule-visit-report.spec.ts`, `.codex/ralph-state.md`
@@ -760,7 +916,9 @@ Backup directory:
 - validation results: formatting passed; TypeScript passed; targeted switcher Vitest passed with 4 tests; diff whitespace check passed; lint passed; production build passed with existing non-failing Sentry warnings; `careviax_e2e` schema was already in sync; targeted grouped-visit Playwright passed 1/1; screenshot capture reported no console errors and no horizontal overflow at 390px or 768px, with artifacts `tools/tests/.artifacts/grouped-visit-facility-mobile-real-fixture.png` and `tools/tests/.artifacts/grouped-visit-home-tablet-real-fixture.png`; full Vitest passed with 493 files / 1954 tests; audit reported no known vulnerabilities; full Playwright smoke passed 15/15; local production server was stopped after validation
 - remaining work: no failing validation remains. Existing non-failing Sentry warnings and the broad pre-existing dirty worktree remain separate from this iteration.
 - next action: split the slow E2E smoke file or move grouped-visit fixture setup into a reusable helper if CI runtime becomes painful; otherwise the grouped visit screen-placement slice is ready for the next product workflow.
+
 ### 20260427-000000
+
 - current task: extract grouped-visit Playwright database fixture setup into a reusable helper without changing behavior
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `playwright.local.config.ts`, `tools/tests/ui-schedule-visit-report.spec.ts`, `tools/tests/helpers/local-auth.ts`, `tools/tests/helpers/`
 - files changed: `tools/tests/helpers/grouped-visit-fixtures.ts`, `tools/tests/ui-schedule-visit-report.spec.ts`, `.codex/ralph-state.md`
@@ -771,7 +929,9 @@ Backup directory:
 - validation results: Prettier check passed; TypeScript passed; Playwright grep listed the expected grouped-visit test in chromium and mobile-chromium projects; targeted ESLint passed; whitespace check passed; real Playwright execution was not run because no local E2E server was listening on `localhost:3012`
 - remaining work: rerun the grouped-visit Playwright grep as an execution after starting `pnpm start:e2e:local` or `pnpm dev:e2e:local` with a reachable local database
 - next action: none for this refactor unless the owner wants a live browser run
+
 ### 20260427-032200
+
 - current task: strengthen billing candidates Playwright coverage with route-mocked candidate workflow states and actions
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `playwright.local.config.ts`, `tools/tests/e2e-billing-flow.spec.ts`, `tools/tests/helpers/local-auth.ts`, `src/app/(dashboard)/billing/candidates/page.tsx`, `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`, `src/components/ui/data-table.tsx`, `src/components/providers/app-provider.tsx`, `src/lib/stores/auth-store.ts`
 - files changed: `tools/tests/e2e-billing-flow.spec.ts`, `.codex/ralph-state.md`
@@ -782,7 +942,9 @@ Backup directory:
 - validation results: Prettier check passed; TypeScript passed after fixing nullable route body handling; targeted ESLint passed; Playwright grep listed the new test in chromium and mobile-chromium; local server responded on `localhost:3012`; targeted chromium Playwright passed 1/1 in 16.9s; whitespace check passed
 - remaining work: mobile-chromium execution for the new test was listed but not run; full billing E2E file was not run to keep scope bounded
 - next action: run the focused test on mobile-chromium or the full billing file if CI-runtime confidence is needed
+
 ### 20260427-033000
+
 - current task: complete mobile-chromium execution for the route-mocked billing candidates workbench test
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `tools/tests/e2e-billing-flow.spec.ts`
 - files changed: `.codex/ralph-state.md`
@@ -793,7 +955,9 @@ Backup directory:
 - validation results: initial curl showed no server on `localhost:3012`; `pnpm dev:e2e:local` started Next.js 16.2.4 on port 3012; mobile-chromium focused Playwright passed 1/1 in 12.2s; the dev server was stopped after validation
 - remaining work: full billing E2E file remains unrun by design; no mobile-specific failure remains for the route-mocked workbench test
 - next action: none for this mobile validation slice
+
 ### 20260427-041500
+
 - current task: add grouped facility visit-record form save-stub E2E coverage
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `tools/tests/ui-schedule-visit-report.spec.ts`, `tools/tests/helpers/grouped-visit-fixtures.ts`, `src/app/(dashboard)/visits/[id]/record/page.tsx`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/lib/visits/facility-visit-context.ts`, `src/components/features/visits/facility-visit-record-switcher.tsx`
 - files changed: `tools/tests/ui-schedule-visit-report.spec.ts`, `.codex/ralph-state.md`
@@ -804,7 +968,9 @@ Backup directory:
 - validation results: Prettier check passed; TypeScript passed; targeted ESLint passed; Playwright list showed the new test in chromium and mobile-chromium; initial curl found no server; dev server started on port 3012 with `careviax_e2e`; first Playwright attempt without `PLAYWRIGHT_REUSE_SERVER=1` failed on fixture guard; second attempt against default DB failed because grouped schedules were not found; final focused chromium Playwright passed 1/1 in 12.5s; whitespace check passed; dev server was stopped
 - remaining work: mobile-chromium execution for this new save-stub test was listed but not run; full `ui-schedule-visit-report.spec.ts` was not run to keep scope bounded
 - next action: run the new save-stub test on mobile-chromium if mobile-specific confidence is needed
+
 ### 20260427-042800
+
 - current task: run grouped facility save-stub E2E on mobile-chromium and make the test stable there
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `tools/tests/ui-schedule-visit-report.spec.ts`, Playwright failure artifact `tools/tests/.artifacts/results/ui-schedule-visit-report-v-ff268-nd-advances-to-next-patient-mobile-chromium/error-context.md`
 - files changed: `tools/tests/ui-schedule-visit-report.spec.ts`, `.codex/ralph-state.md`
@@ -815,7 +981,9 @@ Backup directory:
 - validation results: initial mobile-chromium attempt failed waiting for `facility-visit-record-switcher`; after stubbing grouped schedule responses, Prettier check passed, TypeScript passed, targeted ESLint passed, focused mobile-chromium Playwright passed 1/1 in 8.0s, whitespace check passed, dev server was stopped and port 3012 no longer responded
 - remaining work: full `ui-schedule-visit-report.spec.ts` remains unrun by design; no mobile-specific failure remains for the save-stub test
 - next action: none for this mobile validation slice
+
 ### 20260427-033900
+
 - current task: add DB-backed E2E/browser coverage for the already implemented visit-detail post-visit workflow panel without touching grouped-visit helper files
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `tools/tests/ui-detail-layout.spec.ts`, `tools/tests/ui-schedule-visit-report.spec.ts`, `tools/tests/helpers/local-auth.ts`, `package.json`, `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`, `src/lib/visits/visit-workflow-projection.ts`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, Prisma schema references for `VisitRecord`, `CareReport`, `BillingCandidate`, `ConferenceNote`, `CareCase`, `Patient`, and `CareTeamLink`
 - files changed: `tools/tests/ui-detail-layout.spec.ts`, `.codex/ralph-state.md`
@@ -826,7 +994,9 @@ Backup directory:
 - validation results: formatting passed; TypeScript passed; Playwright listed the new DB-backed visit-detail test; Prisma reported `careviax_e2e` schema already in sync; E2E production build passed with existing non-failing Sentry warnings and a Serwist asset-size warning; targeted production Playwright passed 1/1 for the new visit-detail post-visit workflow fixture. Dev-server Playwright attempts exposed transient Next dev `Manifest file is empty` 500s, so final browser validation used production start.
 - remaining work: no failing validation remains for this task; existing non-failing Sentry/Serwist warnings remain separate
 - next action: none
+
 ### 20260427-052500
+
 - current task: autonomous multi-agent hardening and workflow completion for grouped visits, post-visit workflow coverage, billing export, care report/conference boundaries, and final review clearance
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, relevant Next.js docs under `node_modules/next/dist/docs`, `src/app/api/billing-candidates/*`, `src/app/api/care-reports/route.ts`, `src/app/api/conference-notes/**`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/server/services/conference-sync.ts`, `src/server/services/report-generator.ts`, `src/server/services/report-templates.ts`, `src/lib/conferences/conference-report-disclosure.ts`, visit workflow components/tests, billing content UI, Playwright E2E specs and helpers
 - files changed: `src/app/api/billing-candidates/export/route.ts`, `src/app/api/billing-candidates/export/route.test.ts`, `src/app/api/billing-candidates/route.ts`, `src/app/api/billing-candidates/route.test.ts`, `src/app/api/care-reports/route.ts`, `src/app/api/care-reports/route.test.ts`, `src/app/api/conference-notes/route.ts`, `src/app/api/conference-notes/route.test.ts`, `src/app/api/conference-notes/[id]/route.ts`, `src/app/api/conference-notes/[id]/generate-report/route.ts`, `src/app/api/conference-notes/[id]/generate-report/route.test.ts`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/api/visit-preparations/[scheduleId]/route.test.ts`, `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`, `src/components/features/visits/facility-visit-record-switcher.test.tsx`, `src/lib/conferences/conference-report-disclosure.ts`, `src/lib/conferences/conference-report-disclosure.test.ts`, `src/server/services/billing-evidence/core.ts`, `src/server/services/conference-sync.ts`, `src/server/services/report-generator.ts`, `src/server/services/report-templates.ts`, `tools/tests/helpers/local-auth.ts`, `tools/tests/e2e-billing-flow.spec.ts`, `tools/tests/ui-detail-layout.spec.ts`, `tools/tests/ui-schedule-visit-report.spec.ts`, `.codex/ralph-state.md`
@@ -837,7 +1007,9 @@ Backup directory:
 - validation results: final TypeScript passed; final lint passed; final full Vitest passed with 494 files / 1976 tests; final production build passed with existing non-failing Sentry global-error/instrumentation warnings and Serwist bundling output; audit reported no known vulnerabilities; diff whitespace check passed; focused Playwright validations passed for billing workbench, grouped save-stub, and visit-detail post-visit workflow; final security audit returned High/Medium residual none; final strict review returned重大/高/中 residual none
 - remaining work: no failing validation remains. Existing non-failing Sentry warnings about global error handling / instrumentation-client migration remain a separate platform cleanup. The broad dirty worktree includes earlier feature work from this development stream.
 - next action: consider a separate cleanup task for Sentry App Router instrumentation warnings and CI runtime splitting for the largest Playwright smoke file
+
 ### 20260428-151500
+
 - current task: clean up recurring non-failing Sentry/App Router platform warnings for global error handling and instrumentation-client migration
 - files inspected: `AGENTS.md`, `package.json`, `.codex/ralph-state.md`, `next.config.ts`, `src/instrumentation.ts`, `sentry.server.config.ts`, `sentry.edge.config.ts`, prior `sentry.client.config.ts`, `src/app/error.tsx`, dashboard segment `error.tsx` files, `src/components/ui/route-error-boundary.tsx`, `src/components/ui/error-state.tsx`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/10-error-handling.md`, `node_modules/next/dist/docs/01-app/02-guides/instrumentation.md`, `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/error.md`, `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/instrumentation.md`, `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/instrumentation-client.md`, `node_modules/@sentry/nextjs/build/cjs/config/webpack.js`, `node_modules/@sentry/nextjs/build/cjs/config/withSentryConfig.js`
 - files changed: `src/instrumentation-client.ts`, `src/app/global-error.tsx`, `src/components/ui/route-error-boundary.tsx`, `sentry.client.config.ts`, `.codex/ralph-state.md`
@@ -848,7 +1020,9 @@ Backup directory:
 - validation results: TypeScript passed; targeted ESLint passed; first `pnpm build` attempt failed because another Next build process was already running, then passed after that process exited; final build output did not include the previous Sentry global-error or `sentry.client.config.ts` deprecation warnings; Prettier check passed; diff whitespace check passed
 - remaining work: the broad Sentry SDK peer-range compatibility with Next 16 remains dependent on upstream `@sentry/nextjs` support, but no recurring global-error/instrumentation-client warning remains in the validated build
 - next action: none for this Sentry/App Router platform-warning cleanup
+
 ### 20260428-151039
+
 - current task: prevent broad `/api/` responses that may contain PHI from being stored in Service Worker CacheStorage
 - files inspected: `AGENTS.md`, `.codex/ralph-state.md`, `docs/compliance/data-classification.md`, `docs/phase5-api-ui-sync-strategy.md`, `src/app/sw.ts`, `src/lib/offline/crypto.ts`, `src/lib/api/response.ts`, `next.config.ts`, `package.json`, `vitest.config.ts`, `tsconfig.json`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `node_modules/next/dist/docs/01-app/01-getting-started/08-caching.md`, Serwist runtime strategy type definitions
 - files changed: `src/app/sw.ts`, `src/lib/offline/sw-cache-policy.ts`, `src/lib/offline/sw-cache-policy.test.ts`, `public/sw.js.map`, `.codex/ralph-state.md`
@@ -859,7 +1033,9 @@ Backup directory:
 - validation results: initial Prettier check failed on `src/app/sw.ts` and `src/lib/offline/sw-cache-policy.test.ts`, then passed after targeted formatting; targeted Vitest passed with 1 file / 2 tests; targeted ESLint passed; TypeScript passed; production build passed and bundled the Serwist service worker; compiled worker contains the `/api` network-only policy and no `api-cache` cacheName route; diff whitespace check passed
 - remaining work: no failing validation remains for this bounded Service Worker API CacheStorage fix. Existing Sentry/App Router dirty files are owned by another in-progress thread and were not edited by this task.
 - next action: none
+
 ### 20260428-151437
+
 - current task: Data Explorer security hardening only: explicit model allowlist, safe field projection, and explicit org-scoped SQL
 - files inspected: `git status --short`, `AGENTS.md`, `.codex/ralph-state.md`, `package.json`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/server/services/data-explorer.ts`, `src/lib/admin/data-explorer-catalog.ts`, `src/app/api/admin/data-explorer/models/route.ts`, `src/app/api/admin/data-explorer/[table]/route.ts`, `src/app/api/admin/data-explorer/[table]/[id]/route.ts`, existing Data Explorer route/catalog tests, `prisma/schema/organization.prisma`, `prisma/schema/admin.prisma`, `prisma/rls-policies.sql`, `src/lib/db/rls.ts`, `src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx`, `tools/tests/ui-data-explorer.spec.ts`
 - files changed: `src/server/services/data-explorer.ts`, `src/server/services/data-explorer.test.ts`, `.codex/ralph-state.md`
@@ -870,7 +1046,9 @@ Backup directory:
 - validation results: targeted Vitest passed with 5 files / 17 tests; Prettier check passed after targeted formatting of the two changed Data Explorer service files; targeted ESLint passed; TypeScript passed; diff whitespace check passed
 - remaining work: no failing validation remains for the bounded Data Explorer hardening. Existing Sentry/App Router and Service Worker PHI cache changes remain separate parallel work and were not edited by this task.
 - next action: none
+
 ### 20260428-152111
+
 - current task: split `canReport` over-permission for billing candidates and care-report sending without touching Sentry, Service Worker/cache, Data Explorer, or visit authorization ownership areas
 - files inspected: `git status --short`, `AGENTS.md`, `.codex/ralph-state.md`, `package.json`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `prisma/schema/organization.prisma`, `src/lib/auth/permissions.ts`, `src/lib/auth/__tests__/permissions.test.ts`, `src/lib/auth/context.ts`, `src/lib/auth/middleware.ts`, `src/lib/auth/member-roles.ts`, `src/lib/api/route-catalog.ts`, `src/app/api/billing-candidates/route.ts`, `src/app/api/billing-candidates/route.test.ts`, `src/app/api/billing-candidates/[id]/route.ts`, `src/app/api/billing-candidates/[id]/route.test.ts`, `src/app/api/billing-candidates/export/route.ts`, `src/app/api/billing-candidates/export/route.test.ts`, `src/app/api/billing-candidates/close/route.ts`, `src/app/api/billing-candidates/close/route.test.ts`, `src/app/api/care-reports/[id]/send/route.ts`, `src/app/api/care-reports/[id]/send/route.test.ts`, protected route auth matrix tests
 - files changed: `src/lib/auth/permissions.ts`, `src/lib/auth/__tests__/permissions.test.ts`, `src/lib/api/route-catalog.ts`, `src/app/api/billing-candidates/route.ts`, `src/app/api/billing-candidates/route.test.ts`, `src/app/api/billing-candidates/[id]/route.ts`, `src/app/api/billing-candidates/[id]/route.test.ts`, `src/app/api/billing-candidates/export/route.ts`, `src/app/api/billing-candidates/export/route.test.ts`, `src/app/api/billing-candidates/close/route.ts`, `src/app/api/billing-candidates/close/route.test.ts`, `src/app/api/care-reports/[id]/send/route.ts`, `src/app/api/care-reports/[id]/send/route.test.ts`, `.codex/ralph-state.md`
@@ -881,7 +1059,9 @@ Backup directory:
 - validation results: targeted auth/billing/report Vitest passed with 6 files / 28 tests; protected route matrix Vitest passed with 3 files / 255 tests; targeted ESLint passed; TypeScript passed after an initial concurrent dirty-file check surfaced `src/app/api/visit-records/route.ts` `forbiddenResponse` and a rerun confirmed the tree typechecks; Prettier check passed; diff whitespace check passed
 - remaining work: no failing validation remains for this bounded permission split. Broad dirty worktree entries in Sentry/App Router, Service Worker/cache, Data Explorer, and visit-record authorization files remain owned by other work and were not edited by this task.
 - next action: none for this bounded canReport hardening slice
+
 ### 20260428-152308
+
 - current task: centralize visit schedule assignment authorization for visit records and schedule ID mutations without touching Sentry, Service Worker/cache, or Data Explorer ownership areas
 - files inspected: `git status --short`, `AGENTS.md`, `.codex/ralph-state.md`, `package.json`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/api/visit-records/route.ts`, `src/app/api/visit-records/[id]/route.ts`, `src/app/api/visit-schedules/[id]/route.ts`, `src/lib/auth/permissions.ts`, `src/lib/auth/context.ts`, `src/lib/auth/middleware.ts`, `src/lib/db/schedule-includes.ts`, `src/lib/validations/visit-record.ts`, `src/lib/validations/visit-schedule.ts`, relevant visit record/preparation/schedule tests, `prisma/schema/visit.prisma`
 - files changed: `src/lib/auth/visit-schedule-access.ts`, `src/lib/auth/__tests__/visit-schedule-access.test.ts`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/api/visit-records/route.ts`, `src/app/api/visit-records/[id]/route.ts`, `src/app/api/visit-schedules/[id]/route.ts`, `src/app/api/visit-records/route.test.ts`, `src/app/api/visit-records/[id]/route.test.ts`, `src/app/api/visit-schedules/[id]/route.test.ts`, `.codex/ralph-state.md`
@@ -892,7 +1072,9 @@ Backup directory:
 - validation results: formatting passed; targeted Vitest passed with 5 files / 33 tests; TypeScript passed; protected PATCH/DELETE matrix passed with 1 file / 44 tests; full ESLint passed; touched-file whitespace check passed
 - remaining work: no failing validation remains for this bounded visit assignment authorization slice. Broader dirty worktree entries in Sentry/App Router, Service Worker/cache, Data Explorer, billing, care-report, and unrelated auth permission files remain separate concurrent work and were not edited by this task.
 - next action: none for this bounded assignment-authorization fix
+
 ### 20260428-161500
+
 - current task: integrate multi-agent autonomous hardening, close reviewer-blocking findings, and complete repository validation
 - files inspected: `AGENTS.md`, `.codex/ralph-state.md`, `package.json`, `docs/ui-ux-design-guidelines.md`, relevant Next.js docs under `node_modules/next/dist/docs`, Sentry instrumentation files, `next.config.ts`, `src/app/sw.ts`, `src/lib/offline/sw-cache-policy.ts`, Data Explorer service/routes, permission catalog, billing candidate routes, care-report send route, visit preparation/record/schedule routes, visit schedule service/includes, reviewer/security/performance/test auditor findings, and generated Service Worker output
 - files changed: `src/instrumentation-client.ts`, `src/app/global-error.tsx`, `src/components/ui/route-error-boundary.tsx`, `sentry.client.config.ts`, `next.config.ts`, `src/app/sw.ts`, `src/lib/offline/sw-cache-policy.ts`, `src/lib/offline/sw-cache-policy.test.ts`, `src/server/services/data-explorer.ts`, `src/server/services/data-explorer.test.ts`, `src/lib/auth/permissions.ts`, `src/lib/auth/__tests__/permissions.test.ts`, `src/lib/api/route-catalog.ts`, billing candidate route/test files, `src/app/api/care-reports/[id]/send/route.ts`, `src/app/api/care-reports/[id]/send/route.test.ts`, `src/lib/auth/visit-schedule-access.ts`, `src/lib/auth/__tests__/visit-schedule-access.test.ts`, visit preparation/record/schedule route/test files, `src/lib/db/schedule-includes.ts`, `src/server/services/visit-schedule-service.ts`, generated Service Worker files, and `.codex/ralph-state.md`
@@ -903,7 +1085,9 @@ Backup directory:
 - validation results: targeted Vitest passed with 7 files / 48 tests; TypeScript passed; full lint passed; full test suite passed with 497 files / 2006 tests; production build passed; dependency audit reported no known vulnerabilities; whitespace check passed; compiled Service Worker contains `api-network-only` and `navigation-network-only`, deletes the legacy `api-cache`/`pages` caches on activation, and only retains the intentional `/offline` page cache path
 - remaining work: no failing validation remains. Browser Playwright smoke was not rerun for this final hardening batch. Residual follow-ups identified by auditors remain outside this completed slice: external-access scope tightening, presigned-upload purpose authorization, drug-import SSRF hardening, schedule brief batching, patient detail client-boundary reduction, JAHIS QR batch lookup, and CI/Playwright gate improvements.
 - next action: pick one residual security item first, preferably external-access scope tightening or presigned-upload purpose authorization
+
 ### 20260428-171500
+
 - current task: max-subagent autonomous development follow-up across residual security, performance, and validation gates
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `.github/workflows/ci.yml`, Next.js local docs under `node_modules/next/dist/docs`, external-access routes/services/shared page, Sentry instrumentation files, presigned upload/file-storage, drug-master import routes/services/jobs, QR draft/confirm/mapper/intake services, visit-preparations routes/tests, schedule day view and visit brief services/routes, offline SOAP draft storage/crypto/hooks, billing candidates routes/tests, Playwright helper/spec files, and generated Service Worker output
 - files changed: CI workflow, billing E2E and search E2E tests, Sentry shared-token redaction utilities/configuration, shared external viewer page/content, external-access scope and token/OTP tests, presigned upload route/tests, file-storage service tests, drug-master import shared fetch hardening/routes/services/tests/jobs, QR/JAHIS mapper batching/tests, QR draft org/input validation/tests, QR confirm/intake negative tests, visit-preparation PUT tests, schedule brief batch endpoint/service/client/tests, offline SOAP draft encryption/migration/tests/form handling, prior Sentry/SW/Data Explorer/visit/billing hardening files, and `.codex/ralph-state.md`
@@ -914,7 +1098,9 @@ Backup directory:
 - validation results: final TypeScript passed; final lint passed; final full Vitest suite passed with 503 files / 2071 tests; final production build passed and includes `/api/visit-preparations/brief-batch`; dependency audit reported no known vulnerabilities; diff whitespace check passed. Vitest emitted non-failing `Not implemented: navigation to another Document` messages during jsdom tests.
 - remaining work: no failing validation remains. Full browser Playwright execution was not rerun in this final integration pass; only Playwright `--list` and targeted spec static/lint checks were run locally in this slice. Residual follow-up candidates include download-side file authorization parity, multi-QR split sequence consistency, patient-detail server/client data boundary reduction, and production browser smoke for the new shared-token/SW/offline flows.
 - next action: run focused production Playwright smoke for shared external viewer redaction, schedule brief batch behavior, QR draft creation, and offline SOAP save if browser-level confidence is required
+
 ### 20260428-162219
+
 - current task: harden `/api/files/presigned-upload` purpose authorization without touching external-access, drug import, QR/JAHIS, Service Worker, Sentry, Data Explorer, billing, or visit schedule auth implementation areas
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/app/api/files/presigned-upload/route.ts`, `src/app/api/files/presigned-upload/route.test.ts`, `src/server/services/file-storage.ts`, file download routes, `src/lib/auth/permissions.ts`, `src/lib/auth/context.ts`, `src/lib/auth/visit-schedule-access.ts`, `src/lib/api/response.ts`, `src/lib/api/org-reference.ts`, relevant care-report/patient/visit-record route patterns
 - files changed: `src/app/api/files/presigned-upload/route.ts`, `src/app/api/files/presigned-upload/route.test.ts`, `.codex/ralph-state.md`
@@ -925,7 +1111,9 @@ Backup directory:
 - validation results: baseline presigned-upload Vitest passed with 1 file / 3 tests; post-change presigned-upload Vitest passed with 1 file / 7 tests; TypeScript passed; targeted ESLint passed; touched-file whitespace check passed
 - remaining work: no failing validation remains for this bounded presigned-upload purpose authorization slice. The worktree still contains many unrelated dirty files from other parallel hardening areas, and they were not modified here.
 - next action: none for this bounded slice
+
 ### 20260428-162253
+
 - current task: harden external-access scope validation and sensitive-scope issuance without touching presigned upload, drug import, QR/JAHIS, Service Worker, Sentry, Data Explorer, billing, or visit schedule auth areas
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/server/services/external-access.ts`, `src/server/services/external-access.test.ts`, `src/app/api/external-access/route.ts`, `src/app/api/external-access/route.test.ts`, `src/app/api/external-access/[token]/route.ts`, `src/app/api/external-access/[token]/route.test.ts`, `src/app/api/external-access/[token]/self-report/route.ts`, `src/app/api/external-access/[token]/self-report/route.test.ts`, `src/app/api/external-access/shared.ts`, `src/lib/auth/permissions.ts`, `src/lib/auth/context.ts`, `prisma/schema/communication.prisma`, external share/viewer UI scope references for compatibility
 - files changed: `src/server/services/external-access.ts`, `src/server/services/external-access.test.ts`, `src/app/api/external-access/route.ts`, `src/app/api/external-access/route.test.ts`, `.codex/ralph-state.md`
@@ -936,7 +1124,9 @@ Backup directory:
 - validation results: initial targeted external-access Vitest passed with 4 files / 22 tests before formatting; initial Prettier check failed on the four touched files, then passed after targeted formatting; final targeted external-access Vitest passed with 4 files / 22 tests; targeted ESLint passed; TypeScript passed; touched-file whitespace check passed
 - remaining work: no failing validation remains for this bounded external-access scope hardening. The worktree still contains many unrelated dirty files from other parallel hardening areas, and they were not modified here.
 - next action: none for this bounded slice
+
 ### 20260428-162521
+
 - current task: add bounded file-storage service tests for presigned upload and completion security conditions without touching route auth or unrelated hardening areas
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `src/server/services/file-storage.ts`, `src/server/services/file-storage.test.ts`, targeted file-storage references
 - files changed: `src/server/services/file-storage.test.ts`, `.codex/ralph-state.md`
@@ -947,7 +1137,9 @@ Backup directory:
 - validation results: baseline targeted Vitest passed with 1 file / 10 tests; post-change targeted Vitest passed with 1 file / 13 tests; initial Prettier check failed on the touched test file and passed after targeted formatting; final targeted Vitest passed with 1 file / 13 tests; final Prettier check passed; targeted ESLint passed; TypeScript passed; touched-file whitespace check passed
 - remaining work: no failing validation remains for this bounded file-storage test slice. The broad dirty worktree still includes unrelated edits owned by other work and was not touched.
 - next action: none for file-storage service tests
+
 ### 20260428-162430
+
 - current task: implement bounded batching for JAHIS/QR DrugMaster and PharmacyDrugStock lookups without touching external-access, presigned-upload, drug-import SSRF, Service Worker, Sentry, Data Explorer, billing, or visit schedule auth areas
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `src/lib/pharmacy/qr-intake-mapper.ts`, `src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts`, `prisma/schema/drug.prisma`, QR scan/intake references
 - files changed: `src/lib/pharmacy/qr-intake-mapper.ts`, `src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts`, `.codex/ralph-state.md`
@@ -958,7 +1150,9 @@ Backup directory:
 - validation results: baseline QR mapper Vitest passed with 1 file / 39 tests; post-change QR mapper Vitest passed with 1 file / 41 tests; targeted ESLint passed; TypeScript passed; Prettier check passed; touched-file whitespace check passed
 - remaining work: no failing validation remains for this bounded QR lookup batching slice. The worktree still contains many unrelated dirty files from other parallel hardening areas, and they were not modified here.
 - next action: none for this bounded slice
+
 ### 20260428-162513
+
 - current task: add bounded negative validation tests for billing-candidates close/update routes without touching external-access, presigned-upload, drug import, QR/JAHIS, schedule brief, Service Worker, Sentry, Data Explorer, or visit auth areas
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/app/api/billing-candidates/[id]/route.test.ts`, `src/app/api/billing-candidates/[id]/route.ts`, `src/app/api/billing-candidates/close/route.test.ts`, `src/app/api/billing-candidates/close/route.ts`, `src/app/api/billing-candidates/export/route.ts`, `src/app/api/billing-candidates/route.test.ts`, `src/lib/api/response.ts`, billing-month client/service references
 - files changed: `src/app/api/billing-candidates/[id]/route.test.ts`, `src/app/api/billing-candidates/close/route.test.ts`, `src/app/api/billing-candidates/close/route.ts`, `.codex/ralph-state.md`
@@ -969,7 +1163,9 @@ Backup directory:
 - validation results: baseline targeted billing-candidate Vitest passed with 2 files / 4 tests; Prettier write reported unchanged files; post-change targeted Vitest passed with 2 files / 12 tests; TypeScript passed; targeted ESLint passed; touched-file whitespace check passed
 - remaining work: no failing validation remains for this bounded billing-candidates negative-test slice. The worktree still contains many unrelated dirty files from other parallel hardening areas, and they were not modified here.
 - next action: none for this bounded slice
+
 ### 20260428-162601
+
 - current task: harden drug master import external URL fetching against SSRF/untrusted import-source risk without touching external-access, presigned-upload, QR/JAHIS, Service Worker, Sentry, Data Explorer, billing, or visit schedule auth areas
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `AGENTS.md`, `package.json`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `node_modules/next/dist/docs/01-app/03-api-reference/04-functions/fetch.md`, `src/server/services/drug-master-import/shared.ts`, `mhlw.ts`, `ssk.ts`, `hot.ts`, `pmda.ts`, related drug-master import route handlers/tests, related drug-master import service tests, `src/server/jobs/drug-master.ts`
 - files changed: `src/server/services/drug-master-import/shared.ts`, `src/server/services/drug-master-import/shared.test.ts`, `src/server/services/drug-master-import/mhlw.ts`, `src/server/services/drug-master-import/ssk.ts`, `src/server/services/drug-master-import/hot.ts`, `src/server/services/drug-master-import/pmda.ts`, `src/server/jobs/drug-master.ts`, `src/app/api/drug-master-imports/mhlw-price/route.ts`, `src/app/api/drug-master-imports/mhlw-generic/route.ts`, `src/app/api/drug-master-imports/hot/route.ts`, `src/app/api/drug-master-imports/ssk/route.ts`, `src/app/api/drug-master-imports/pmda/route.ts`, related route/service tests, `.codex/ralph-state.md`
@@ -980,7 +1176,9 @@ Backup directory:
 - validation results: targeted drug-master import Vitest passed with 10 files / 29 tests; TypeScript passed; full ESLint passed; touched-file whitespace check passed; dependency audit reported no known vulnerabilities
 - remaining work: no failing validation remains for this bounded drug-master import SSRF hardening slice. `pnpm build` was not run because the requested validation was targeted and the worktree contains concurrent generated Service Worker/Sentry changes outside this ownership area.
 - next action: none for this bounded slice
+
 ### 20260428-162632
+
 - current task: add bounded invalid token/OTP failure side-effect tests for external-access without touching unrelated hardening areas
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/app/api/external-access/[token]/route.ts`, `src/app/api/external-access/[token]/route.test.ts`, `src/app/api/external-access/shared.ts`, `src/server/services/external-access.ts`, `src/server/services/external-access.test.ts`, `src/lib/api/request-ip.ts`, related self-report/password-reset request tests
 - files changed: `src/app/api/external-access/[token]/route.test.ts`, `src/server/services/external-access.test.ts`, `.codex/ralph-state.md`
@@ -991,7 +1189,9 @@ Backup directory:
 - validation results: Prettier reported both touched tests unchanged; targeted Vitest passed with 2 files / 21 tests; targeted ESLint passed; TypeScript passed
 - remaining work: no failing validation remains for this bounded external-access token/OTP failure test slice. The broader dirty worktree includes unrelated concurrent edits outside this ownership area and was not reverted or modified here.
 - next action: none for this bounded test slice
+
 ### 20260428-162854
+
 - current task: add bounded PUT authorization/readiness tests for `src/app/api/visit-preparations/[scheduleId]/route.test.ts` only, avoiding production code changes unless tests expose a real bug
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `AGENTS.md`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/app/api/visit-preparations/[scheduleId]/route.test.ts`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/lib/validations/visit-preparation.ts`, `src/lib/auth/context.ts`, `src/lib/auth/visit-schedule-access.ts`, `src/lib/db/rls.ts`, comparable route tests using `withOrgContext`
 - files changed: `src/app/api/visit-preparations/[scheduleId]/route.test.ts`, `.codex/ralph-state.md`
@@ -1002,7 +1202,9 @@ Backup directory:
 - validation results: baseline targeted Vitest passed with 1 file / 7 tests; initial ESLint passed; initial Prettier check failed on the touched test file and passed after targeted formatting; initial TypeScript passed; initial touched-file whitespace check passed; final targeted Vitest passed with 1 file / 7 tests; final targeted ESLint passed; final Prettier check passed; final TypeScript passed; final touched-file whitespace check passed
 - remaining work: no failing validation remains for this bounded visit-preparations PUT authorization test slice. The broader worktree contains many unrelated concurrent edits and they were not reverted or modified here.
 - next action: none for this bounded slice
+
 ### 20260428-162900
+
 - current task: add QR scan draft confirm negative tests for case/patient mismatch and downstream service validation mapping, plus bounded prescription-intake service tests, without touching QR mapper batching, external-access, presigned upload, drug import, schedule brief, Service Worker, Sentry, Data Explorer, billing, or visit auth
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `AGENTS.md`, `package.json`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/app/api/qr-scan-drafts/[id]/confirm/route.ts`, `src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts`, `src/server/services/prescription-intake-service.ts`, `src/lib/prescriptions/prescriber-institutions.ts`, `src/lib/api/response.ts`, `src/app/api/prescription-intakes/route.ts`, `src/app/api/prescription-intakes/route.test.ts`, `src/lib/db/rls.ts`, `src/server/services/dispense-draft-service.ts`, `src/lib/validations/prescription.ts`, `src/lib/api/org-reference.ts`, `src/lib/hooks/use-soap-draft.ts`
 - files changed: `src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts`, `src/server/services/prescription-intake-service.test.ts`, `.codex/ralph-state.md`
@@ -1013,7 +1215,9 @@ Backup directory:
 - validation results: baseline QR confirm Vitest passed with 1 file / 2 tests; targeted Prettier completed; targeted Vitest passed with 2 files / 6 tests; targeted ESLint passed; TypeScript failed in concurrently dirty `src/lib/hooks/use-soap-draft.ts` with `soapSubjective` not existing on `OfflineVisitDraft` update/add payloads, outside this ownership scope and not changed here.
 - remaining work: QR confirm / prescription-intake test slice has passing targeted tests and lint. Repo-wide TypeScript remains blocked by the unrelated `src/lib/hooks/use-soap-draft.ts` dirty edit owned by another slice.
 - next action: none for this bounded QR confirm negative-test slice unless the owner asks to take over the unrelated offline SOAP draft TypeScript failure.
+
 ### 20260428-162934
+
 - current task: final revalidation for bounded visit-preparations PUT authorization test slice after concurrent worktree activity
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/api/visit-preparations/[scheduleId]/route.test.ts`
 - files changed: `.codex/ralph-state.md`
@@ -1024,7 +1228,9 @@ Backup directory:
 - validation results: targeted visit-preparations Vitest passed with 1 file / 7 tests; targeted ESLint passed; targeted Prettier check passed; touched-file whitespace check passed; TypeScript passed on the current worktree at revalidation time
 - remaining work: no failing validation remains for this bounded visit-preparations test slice; unrelated concurrent dirty files remain outside this ownership area
 - next action: none for this bounded slice
+
 ### 20260428-162953
+
 - current task: harden QR scan draft org/input security for `site_id` and bounded QR payloads without touching unrelated ownership areas
 - files inspected: `git status --short`, `AGENTS.md`, `.codex/ralph-state.md`, `package.json`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/app/api/qr-scan-drafts/route.ts`, `src/app/api/qr-scan-drafts/route.test.ts`, `src/lib/pharmacy/qr-intake-mapper.ts`, `src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts`, `src/lib/api/org-reference.ts`, `src/app/api/pharmacy-drug-stocks/route.ts`
 - files changed: `src/app/api/qr-scan-drafts/route.ts`, `src/app/api/qr-scan-drafts/route.test.ts`, `src/lib/pharmacy/qr-intake-mapper.ts`, `src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts`, `.codex/ralph-state.md`
@@ -1035,7 +1241,9 @@ Backup directory:
 - validation results: Prettier write completed; targeted QR draft/mapper Vitest passed with 2 files / 46 tests; targeted ESLint passed; targeted Prettier check passed; TypeScript passed; touched-file whitespace check passed
 - remaining work: no failing validation remains for this bounded QR scan draft org/input security slice. The broad worktree still contains unrelated concurrent edits outside this ownership area and was not reverted or modified.
 - next action: none for this bounded slice
+
 ### 20260428-163100
+
 - current task: harden offline SOAP draft PHI storage by removing plaintext duplicate S/O/A/P fields and failing closed when SOAP draft encryption is unavailable
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `AGENTS.md`, `package.json`, `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`, `node_modules/next/dist/docs/01-app/01-getting-started/04-linking-and-navigating.md`, `src/lib/hooks/use-soap-draft.ts`, `src/lib/offline/crypto.ts`, `src/lib/stores/offline-db.ts`, `src/lib/stores/sync-engine.ts`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/types/structured-soap.ts`, related offline/hook test inventory
 - files changed: `src/lib/hooks/use-soap-draft.ts`, `src/lib/hooks/use-soap-draft.test.tsx`, `src/lib/offline/crypto.ts`, `src/lib/offline/crypto.test.ts`, `src/lib/stores/offline-db.ts`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `.codex/ralph-state.md`
@@ -1046,7 +1254,9 @@ Backup directory:
 - validation results: Prettier completed; targeted Vitest passed with 2 files / 5 tests; TypeScript passed; full ESLint passed; touched-file whitespace check passed
 - remaining work: no failing validation remains for this bounded offline SOAP draft PHI hardening slice. Broader dirty worktree changes from other parallel ownership areas remain untouched.
 - next action: none for this bounded slice
+
 ### 20260428-163600
+
 - current task: stop accepting/removing `otp` query values from shared URLs and add bounded Sentry shared token/OTP redaction
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `AGENTS.md`, `package.json`, `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/instrumentation-client.md`, `node_modules/next/dist/docs/01-app/03-api-reference/04-functions/redirect.md`, `src/instrumentation-client.ts`, `sentry.server.config.ts`, `sentry.edge.config.ts`, `src/app/shared/[token]/page.tsx`, `src/app/shared/[token]/shared-viewer-content.tsx`, `src/app/api/external-access/[token]/route.ts`, `src/app/api/external-access/[token]/route.test.ts`
 - files changed: `src/lib/observability/sentry-redaction.ts`, `src/lib/observability/sentry-redaction.test.ts`, `src/instrumentation-client.ts`, `sentry.server.config.ts`, `sentry.edge.config.ts`, `src/app/shared/[token]/page.tsx`, `src/app/shared/[token]/shared-viewer-content.tsx`, `.codex/ralph-state.md`
@@ -1057,7 +1267,9 @@ Backup directory:
 - validation results: targeted sanitizer Vitest passed with 1 file / 3 tests; targeted ESLint passed; TypeScript passed; production build passed; final shared-viewer ESLint passed after minimizing formatting-only diff; sanitizer Vitest/targeted ESLint/TypeScript were rerun after the pure-object traversal guard and passed; touched-file whitespace check passed
 - remaining work: no failing validation remains for this bounded shared token/OTP redaction slice. The broad dirty worktree still contains unrelated concurrent edits and pre-existing generated Service Worker map changes outside this ownership area.
 - next action: none for this bounded slice
+
 ### 20260428-183459
+
 - current task: finish Sentry/observability warning cleanup for Next 16 without touching unrelated feature files
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `next.config.ts`, `sentry.server.config.ts`, `sentry.edge.config.ts`, `src/instrumentation.ts`, `src/instrumentation-client.ts`, `src/app/global-error.tsx`, `src/lib/observability/sentry-redaction.ts`, `src/lib/observability/sentry-redaction.test.ts`, `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/instrumentation-client.md`, `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/instrumentation.md`, `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/error.md`, `node_modules/@sentry/nextjs/package.json`, Sentry SDK config warning source under `node_modules/@sentry/nextjs/build`
 - files changed: `package.json`, `pnpm-lock.yaml`, `next.config.ts`, `.codex/ralph-state.md`; existing Sentry migration files remained part of the dirty worktree: deleted `sentry.client.config.ts`, changed `sentry.server.config.ts`, changed `sentry.edge.config.ts`, untracked `src/instrumentation-client.ts`, untracked `src/app/global-error.tsx`, untracked `src/lib/observability/sentry-redaction.ts`, untracked `src/lib/observability/sentry-redaction.test.ts`
@@ -1068,7 +1280,9 @@ Backup directory:
 - validation results: baseline build passed with no old `global-error`, `sentry.client.config.ts`, or Next peer build warning; Sentry SDK was updated to `@sentry/nextjs@10.50.0`, whose peer range includes `^16.0.0-0`; targeted redaction Vitest passed with 1 file / 3 tests; targeted ESLint passed; TypeScript passed; first post-upgrade build surfaced `reactComponentAnnotation` deprecation, then final build passed without Sentry warnings after using `webpack.reactComponentAnnotation`; dependency audit reported no known vulnerabilities; touched-file whitespace check passed
 - remaining work: no failing validation or Sentry build warning remains in this ownership scope. Broad unrelated dirty files remain outside this task. `pnpm add` also preserved concurrent package entries used by other dirty tests, including `fake-indexeddb`, which were not edited further here.
 - next action: none for Sentry/observability warning cleanup
+
 ### 20260428-184700
+
 - current task: max-subagent autonomous integration closeout after security/performance/test/review findings
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `next.config.ts`, CareViaX UI/UX SSOT, Next 16 local docs for instrumentation/global-error/route handlers, offline crypto/db/sync/prescription draft/day-view cache paths, external-access scope validation, files API completion/download routes, file-storage service/tests, Service Worker cache policy, subagent security/performance/test/reviewer findings, and Sentry/observability worker output
 - files changed: `package.json`, `pnpm-lock.yaml`, `next.config.ts`, `src/lib/offline/crypto.ts`, `src/lib/offline/crypto.test.ts`, `src/lib/stores/offline-db.test.ts`, `src/lib/offline/sw-cache-policy.ts`, `src/lib/offline/sw-cache-policy.test.ts`, `src/app/sw.ts`, `src/lib/stores/sync-engine.ts`, `src/lib/stores/sync-engine.test.ts`, `src/lib/hooks/use-prescription-draft.ts`, `src/lib/hooks/use-prescription-draft.test.tsx`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/server/services/external-access.ts`, `src/server/services/external-access.test.ts`, files API/file-storage files changed by worker: `src/server/services/file-storage.ts`, `src/server/services/file-storage.test.ts`, `src/app/api/files/complete/route.ts`, `src/app/api/files/complete/route.test.ts`, `src/app/api/files/[id]/download/route.ts`, `src/app/api/files/[id]/download/route.test.ts`, `src/app/api/files/[id]/presigned-download/route.ts`, `src/app/api/files/[id]/presigned-download/route.test.ts`, plus `.codex/ralph-state.md`
@@ -1079,7 +1293,9 @@ Backup directory:
 - validation results: targeted offline/external-access Vitest passed with 8 files / 34 tests before files integration; targeted files API/file-storage Vitest passed with 5 files / 38 tests; final TypeScript passed; final ESLint passed; final full Vitest passed with 506 files / 2092 tests; final production build passed with no Sentry build warnings; dependency audit reported no known vulnerabilities; diff whitespace check passed
 - remaining work: no failing validation remains. Full browser Playwright execution was not rerun in this final integration pass; browser-level shared viewer/offline flow smoke remains the main residual confidence gap. Performance auditor follow-ups not completed here include true bulk `visit-brief` projection, billing evidence bulk upsert/rules memoization, drug-master import index/caching, and Data Explorer search/count optimization.
 - next action: run production Playwright smoke for shared external viewer URL/OTP behavior, offline save/cache behavior, and route-mocked billing workbench if browser-level confidence is required before commit
+
 ### 20260428-190833
+
 - current task: integrate strict-review fixes for Data Explorer relation IDs, external shared OTP fail-closed behavior, and day-view visit-brief cache merge/cancellation
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `src/server/services/data-explorer.ts`, `src/server/services/data-explorer.test.ts`, `src/server/services/external-access.ts`, `src/server/services/external-access.test.ts`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, strict reviewer findings, browser-validation subagent output
 - files changed: `src/server/services/data-explorer.ts`, `src/server/services/data-explorer.test.ts`, `src/server/services/external-access.ts`, `src/server/services/external-access.test.ts`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/day-view.test.tsx`, `.codex/ralph-state.md`
@@ -1090,7 +1306,9 @@ Backup directory:
 - validation results: targeted Vitest passed with 7 files / 56 tests; TypeScript passed; targeted ESLint passed; formatting completed
 - remaining work: broader full test/build/lint closeout still needs rerun after the active drug-import URL credentials worker finishes; bulk medication export durable audit and offline high-entropy session key remain known medium residuals not completed in this iteration
 - next action: integrate drug-import URL credentials result, then rerun full validation set
+
 ### 20260430-031700
+
 - current task: final system-review closeout for visit/report assignment hardening
 - files inspected: `git status --short`, `src/app/api/files/presigned-upload/route.ts`, `src/app/api/files/presigned-upload/route.test.ts`, `.codex/ralph-state.md`
 - files changed: `src/app/api/files/presigned-upload/route.test.ts`, `.codex/ralph-state.md`
@@ -1101,7 +1319,9 @@ Backup directory:
 - validation results: Prettier completed with no formatting change; targeted presigned-upload Vitest passed with 1 file / 12 tests
 - remaining work: browser Playwright smoke remains blocked by local e2e database/Docker availability and a route-mocked shared page error; broader patient list/detail/export assignment scoping remains the highest-priority unresolved security finding from the system review
 - next action: resolve patient PHI assignment scoping and restore browser smoke environment before release
+
 ### 20260504-093900
+
 - current task: autonomous low-risk/high-impact quality, security, and test reliability improvement after repository/subagent review
 - files inspected: `git status --short`, `AGENTS.md`, `.codex/ralph-state.md`, `package.json`, Next route handler docs under `node_modules/next/dist/docs`, PHI assignment diff, `src/server/services/patient-access.ts`, `src/server/services/communication-queue.ts`, `src/server/services/visit-brief.ts`, `src/server/services/patient-detail.ts`, patient detail/visit-brief/tracing report routes and tests, PDF route tests, Prisma schema relation fields, and subagent architecture/test/security/performance/reviewer findings
 - files changed: `src/server/services/patient-access.ts`, `src/server/services/patient-access.test.ts`, `src/server/services/communication-queue.ts`, `src/server/services/communication-queue.test.ts`, `src/server/services/visit-brief.ts`, `src/server/services/visit-brief.test.ts`, `src/server/services/patient-detail.ts`, `src/server/services/patient-detail.test.ts`, `src/server/services/patient-service.ts`, `src/server/services/billing-evidence/core.ts`, `src/app/api/patients/[id]/visit-brief/route.ts`, `src/app/api/patients/[id]/visit-brief/route.test.ts`, `src/app/api/patients/[id]/route.ts`, `src/app/api/patients/[id]/route.test.ts`, `src/app/api/patients/export/route.ts`, `src/app/api/patients/export/route.test.ts`, `src/app/api/patients/route.test.ts`, `src/app/api/visit-preparations/[scheduleId]/brief/route.ts`, `src/app/api/visit-preparations/[scheduleId]/brief/route.test.ts`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/api/visit-preparations/[scheduleId]/route.test.ts`, `src/app/api/visit-preparations/brief-batch/route.ts`, `src/app/api/visit-preparations/brief-batch/route.test.ts`, `src/app/api/tracing-reports/[id]/route.test.ts`, `src/app/api/tracing-reports/[id]/pdf/route.test.ts`, `.codex/ralph-state.md`
@@ -1112,7 +1332,9 @@ Backup directory:
 - validation results: targeted patient-access/tracing tests passed first with 4 files / 17 tests and then 4 files / 15 tests; targeted visit-brief/communication queue/patient route tests passed with 4 files / 26 tests; blocker-fix targeted tests passed with 6 files / 49 tests; schedule-brief blocker-fix tests passed with 4 files / 16 tests; patient export/list blocker-fix tests passed with 2 files / 13 tests; final targeted Vitest passed with 15 files / 91 tests; TypeScript passed; full ESLint passed; full Vitest passed with 507 files / 2177 tests; whitespace check passed; dependency audit reported no known vulnerabilities; production build passed; Final Reviewer blocker-only check returned `No blockers found`
 - remaining work: non-blocking deferred items include explicit policy for clerk `canReport` versus assignment-scoped report reads, patient CSV export case-summary scoping, lab `source_visit_record_id` ownership validation, conference-note PDF patient/case mismatch hardening, invalid query parameter validation for list endpoints, tracing report list OR-size optimization, and DB index/schema follow-ups
 - next action: address patient CSV export case summary scoping and lab visit-record provenance validation as the next highest security-focused improvements
+
 ### 20260511-235900
+
 - current task: validate and harden the real prescription-registration to report-creation workflow
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, CareViaX UI/UX SSOT, local Next docs, prescription intake routes/services/tests, QR scan draft routes/tests, care report routes/services/tests, report generator, workflow full-cycle tests, billing candidate workflow-context UI/tests, dependency audit output, subagent explorer/architect/test/security/reviewer reports
 - files changed: `next.config.ts`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `src/server/services/care-report-access.ts`, `src/server/services/prescription-access.ts`, `src/server/services/prescription-intake-service.ts`, `src/server/services/report-generator.ts`, care report route/tests, prescription intake route/tests, QR draft route/tests, workflow full-cycle tests, billing candidate workflow-context UI/tests, `.codex/ralph-state.md`
@@ -1123,7 +1345,9 @@ Backup directory:
 - validation results: targeted Vitest passed; final full Vitest passed with 514 files / 2259 tests; final full ESLint passed with 0 errors and 1 pre-existing warning; TypeScript passed after rerun without build race; normal production build passed with Serwist bundled; E2E production build passed with Serwist disabled; dependency audit reported no known vulnerabilities; whitespace check passed; production Playwright shared external viewer smoke passed; local Homebrew PostgreSQL was used to create/sync/seed `careviax_e2e`; authenticated route-mocked smoke passed with 3 tests; authenticated prescription/dispensing plus schedule/visit/report Playwright passed with 26 tests
 - remaining work: database-level idempotency for generated care-report drafts is still a recommended follow-up rather than implemented in this slice; local `careviax_e2e` was created with `prisma db push` instead of migration history because the current Prisma config did not detect migrations
 - next action: add DB-level care-report draft idempotency in a dedicated migration if release gating requires duplicate-submit protection
+
 ### 20260512-002540
+
 - current task: continue UI/UX hardening for the real prescription-registration through report-creation workflow, focusing on report list/detail and QR draft list/detail mobile controls after screenshot-based review
 - files inspected: `git status --short`, `.codex/ralph-state.md`, CareViaX UI/UX SSOT, local Next app docs already loaded in this goal, W3C WCAG target-size guidance, GOV.UK task-list/summary-card/action patterns, `src/components/ui/data-table.tsx`, `src/components/ui/input.tsx`, `src/components/ui/button.tsx`, `src/components/ui/select.tsx`, `src/components/ui/loading-button.tsx`, `src/components/ui/alert-dialog.tsx`, `src/app/(dashboard)/reports/reports-table.tsx`, `src/app/(dashboard)/reports/[id]/page.tsx`, `src/app/(dashboard)/prescriptions/qr-drafts/page.tsx`, `src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx`, `tools/tests/ui-mobile-layout.spec.ts`, QR draft API/schema/tests, and existing prescription/report Playwright tests
 - files changed: `src/components/ui/data-table.tsx`, `src/app/(dashboard)/reports/reports-table.tsx`, `src/app/(dashboard)/reports/[id]/page.tsx`, `src/app/(dashboard)/prescriptions/qr-drafts/page.tsx`, `src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx`, `tools/tests/ui-mobile-layout.spec.ts`, `.codex/ralph-state.md`
@@ -1134,7 +1358,9 @@ Backup directory:
 - validation results: targeted formatting/lint and TypeScript passed; production E2E build passed with 216 routes/pages; mobile Playwright passed with 15/15 tests after fixing duplicate test titles, excluding hidden Base UI 1x1 inputs from touch-target measurement, and adding a deterministic QR draft detail fixture; prescription/QR/dispensing/report detail Playwright regression passed with 14/14 tests; full ESLint passed with 0 errors and 1 pre-existing warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; full Vitest passed with 513 files / 2258 tests; dependency audit reported no known vulnerabilities; whitespace check passed
 - remaining work: this checkpoint completes the report/QR draft mobile touch-target slice. Broader goal-level UI polish can continue with additional non-critical screens, but no failing validation or known blocker remains for this slice.
 - next action: run a final cross-screen screenshot/metrics sweep and prioritize any remaining non-critical layout polish outside the prescription-to-report critical path
+
 ### 20260512-002935
+
 - current task: run the final cross-screen mobile screenshot/metrics sweep, harden shared mobile chrome/UI primitives, and close the Next dependency audit finding
 - files inspected: `git status --short`, `.codex/ralph-state.md`, CareViaX UI/UX SSOT, local Next app docs already loaded in this goal, W3C WCAG 2.2 target-size minimum guidance, GOV.UK task list and summary-card/action patterns, route-mocked/mobile/page-layout/workflow Playwright specs, shared app chrome and UI primitive components, and the generated cross-screen screenshot/metrics artifacts
 - files changed: `src/components/layout/app-header.tsx`, `src/components/layout/breadcrumb.tsx`, `src/components/layout/mobile-nav.tsx`, `src/components/features/notifications/notification-bell.tsx`, `src/components/ui/button.tsx`, `src/components/ui/input.tsx`, `src/components/ui/select.tsx`, `src/components/ui/tabs.tsx`, `tools/tests/ui-mobile-layout.spec.ts`, `package.json`, `pnpm-lock.yaml`, `.codex/ralph-state.md`
@@ -1145,7 +1371,9 @@ Backup directory:
 - validation results: cross-screen sweep produced screenshots and metrics under `tools/tests/.artifacts/ui-cross-screen-sweep-after-primitives/`; no measured route had horizontal overflow or missing/duplicate H1; common header and primitive touch-target regressions were fixed; targeted formatting/lint, TypeScript, production build on Next 16.2.5, mobile Playwright 18/18, dependency audit, and whitespace check passed; full ESLint passed with 0 errors and 1 pre-existing warning before the Next patch; full Vitest passed with 513 files / 2258 tests before the Next patch
 - remaining work: the broad UI/UX goal is not complete because the latest sweep still found page-specific small targets on dashboard, my-day, patients, patients/new, workflow, prescriptions, conferences, schedules, visits, reports, billing, notifications, and admin. These are outside the now-fixed shared chrome/primitive layer and should be handled route-by-route with screenshots.
 - next action: prioritize dashboard/workflow/patients/prescriptions residual mobile controls, then rerun the cross-screen sweep and promote the residual checks into stable Playwright assertions once the noisy page-specific controls are fixed
+
 ### 20260512-005949
+
 - current task: finish the cross-screen mobile UI/UX hardening pass after the shared primitive update
 - files inspected: final cross-screen Playwright metrics under `tools/tests/.artifacts/ui-cross-screen-sweep-complete*`, `tools/tests/ui-mobile-layout.spec.ts`, app chrome, workflow dashboard, home-care feature board, dashboard action/patient cards, prescription workspace, schedule/proposal controls, visits/reports tables, conferences tabs/actions, notifications tabs, and local PostgreSQL E2E auth setup
 - files changed: `src/app/(dashboard)/dashboard/actions-section.tsx`, `src/app/(dashboard)/dashboard/home-schedule-board-sections.tsx`, `src/app/(dashboard)/dashboard/onboarding-checklist.tsx`, `src/app/(dashboard)/dashboard/onboarding-dismissable.tsx`, `src/app/(dashboard)/dashboard/patient-card.tsx`, `src/app/(dashboard)/my-day/my-day-content.tsx`, `src/app/(dashboard)/patients/patients-table.tsx`, `src/app/(dashboard)/prescriptions/prescriptions-workspace.tsx`, `src/app/(dashboard)/reports/reports-table.tsx`, `src/app/(dashboard)/schedules/day-view.tsx`, `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`, `src/app/(dashboard)/conferences/conferences-content.tsx`, `src/app/(dashboard)/notifications/notifications-content.tsx`, `src/app/(dashboard)/visits/visits-table.tsx`, `src/app/(dashboard)/workflow/workflow-dashboard-view.tsx`, `src/components/features/patients/patient-form.tsx`, `src/components/features/patients/patient-history-quick-links.tsx`, `src/components/features/workflow/workflow-integration-map.tsx`, `src/components/features/workflow/workflow-phase-panel.tsx`, `src/components/home-care/home-care-feature-board.tsx`, `src/components/layout/sidebar.tsx`, `src/components/ui/empty-state.tsx`, `.codex/ralph-state.md`
@@ -1156,7 +1384,9 @@ Backup directory:
 - validation results: targeted lint/type/diff passed; production build passed on Next 16.2.5 with 216 routes; mobile Playwright passed 18/18 after reconnecting to the real local E2E DB; final 23-route sweep saved screenshots and `mobile-metrics.json` under `tools/tests/.artifacts/ui-cross-screen-sweep-final-pass/`, with every route at horizontal overflow 0, exactly one H1, and 0 console/page/http errors; full ESLint passed with 0 errors and 1 pre-existing warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; production dependency audit reported no known vulnerabilities
 - remaining work: full Vitest was not rerun after the final UI-only class changes; the last full Vitest in this goal passed earlier with 513 files / 2258 tests. The final generic sweep still reported 5 small targets, but direct DOM checks for those labels on `/dashboard`, `/visits`, and `/conferences` did not reproduce visible small `a`/`button` elements, and the stable mobile Playwright assertions passed.
 - next action: if release gating requires zero generic-metric noise, convert the ad hoc sweep into a committed Playwright spec that uses the same hidden-element filtering as `ui-mobile-layout.spec.ts`, then address any deterministic failures it reports
+
 ### 20260512-014245
+
 - current task: harden high-risk report sending and visit-record completion safety gates for the medical UI/UX goal
 - files inspected: `git status --short`, `.codex/ralph-state.md`, CareViaX UI/UX SSOT, local Next docs under `node_modules/next/dist/docs`, WCAG/FDA/ONC/NHS/NNg/ISMP/FDA Tall Man public guidance, report detail/send route/tests, visit record form/routes/tests, workflow integration tests, clinical safety/code/UX subagent findings, and dispensing checklist/CDS paths for next-slice scoping
 - files changed: `src/app/(dashboard)/reports/[id]/page.tsx`, `src/app/api/care-reports/[id]/send/route.ts`, `src/app/api/care-reports/[id]/send/route.test.ts`, `src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx`, `src/app/api/visit-records/route.ts`, `src/app/api/visit-records/route.test.ts`, `src/app/api/visit-records/[id]/route.ts`, `src/app/api/visit-records/[id]/route.test.ts`, `src/lib/visits/home-visit-2026-evidence.ts`, `src/app/api/__tests__/workflow-full-cycle.test.ts`, `src/app/api/__tests__/workflow-prescription-to-report.test.ts`, `.codex/ralph-state.md`
@@ -1167,7 +1397,9 @@ Backup directory:
 - validation results: targeted tests passed; TypeScript passed; full ESLint passed with 0 errors and 1 pre-existing warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; full Vitest passed with 513 files / 2262 tests; production build passed with 216 routes/pages; whitespace check passed
 - remaining work: broad medical UI/UX goal is not complete. Remaining high-priority safety follow-ups include dispensing checklist/CDS acknowledgement persistence and API enforcement, grouped visit patient identifier strengthening, communication request/status reason capture, and DB-level report draft idempotency. Browser Playwright/a11y for this exact slice was not rerun because the current turn focused on route/UI code and full unit/build validation.
 - next action: implement dispensing completion safety acknowledgement with persisted audit evidence across `/dispensing/[taskId]`, `/dispensing/[taskId]/confirm`, and `/api/dispense-results` without breaking the direct-entry workflow
+
 ### 20260512-015055
+
 - current task: enforce dispensing completion safety checklist/CDS acknowledgement across API and UI, and remediate the new Next dependency advisory
 - files inspected: `git status --short`, CareViaX UI/UX SSOT, `src/app/api/dispense-results/route.ts`, dispense result tests, workflow integration tests, direct dispensing form, confirm checklist page, `AuditLog` schema, `package.json`, `pnpm why next`, and dependency audit output
 - files changed: `src/app/api/dispense-results/route.ts`, `src/app/api/dispense-results/route.test.ts`, `src/app/(dashboard)/dispensing/[taskId]/dispense-form.tsx`, `src/app/(dashboard)/dispensing/[taskId]/confirm/dispense-confirm-content.tsx`, `src/lib/dispensing/safety-checklist.ts`, `src/app/api/__tests__/workflow-full-cycle.test.ts`, `package.json`, `pnpm-lock.yaml`, `.codex/ralph-state.md`
@@ -1178,7 +1410,9 @@ Backup directory:
 - validation results: targeted tests passed with 3 files / 15 tests; TypeScript passed; full ESLint passed with 0 errors and 1 pre-existing warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; full Vitest passed with 513 files / 2263 tests; production build passed on Next 16.2.6 with 216 routes/pages; dependency audit reported no known vulnerabilities; `pnpm why next` showed a single resolved `next@16.2.6`; whitespace check passed
 - remaining work: broad medical UI/UX goal is still not complete. Remaining high-priority follow-ups include grouped/facility visit patient identifier strengthening, communication status change reason/confirmation capture, DB-level care-report draft idempotency, and browser-level Playwright/axe coverage for the newest high-risk confirmation flows.
 - next action: harden grouped/facility visit patient identification in visit recording and facility visit switcher screens, then add browser-level checks for the new report/visit/dispense safety confirmations
+
 ### 20260512-032706
+
 - current task: final medical UI/UX goal completion audit, E2E environment bring-up, browser/axe gate repair, and closeout
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `.codex/medical-ui-ux-completion-audit.md`, `package.json`, `tools/tests/README.md`, `tools/scripts/medical-ui-e2e-preflight.ts`, `tools/scripts/check-care-report-duplicates.ts`, Next local docs inventory, CareViaX UI/UX SSOT already used in this goal, Homebrew PostgreSQL availability, Playwright failure traces/error contexts, `tools/tests/ui-audit-extensions.spec.ts`, `tools/tests/ui-schedule-visit-report.spec.ts`, `src/app/(dashboard)/dashboard/home-schedule-board-sections.tsx`, and E2E artifact outputs
 - files changed: `src/app/(dashboard)/dashboard/home-schedule-board-sections.tsx`, `tools/tests/ui-audit-extensions.spec.ts`, `tools/tests/ui-schedule-visit-report.spec.ts`, `.codex/medical-ui-ux-completion-audit.md`, `.codex/ralph-state.md`; existing broader medical UI/UX implementation files remain dirty from previous goal iterations
@@ -1189,7 +1423,9 @@ Backup directory:
 - validation results: isolated PostgreSQL 17 E2E cluster started on `localhost:5433`; `db:e2e:prepare` passed and seeded local `careviax_e2e`; preflight passed all URL/script/spec/port checks; duplicate precheck returned `duplicate_groups:0`; E2E production build passed on Next 16.2.6 with 216 routes; final `medical-ui:e2e:gate` passed with 122 passed / 62 skipped; TypeScript passed; full lint passed with one existing unrelated `_ctx` warning in `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`; full Vitest passed with 516 files / 2271 tests; production dependency audit reported no known vulnerabilities; diff whitespace check passed
 - remaining work: no goal-level blocker remains. Operational residual: run `db:check-care-report-duplicates` against any target database before applying the CareReport unique-index migration outside local E2E, and prefer production `next start` for future browser release evidence.
 - next action: final response and mark the active goal complete
+
 ### 20260512-064422
+
 - current task: continue after goal completion by clearing the remaining repository lint warning
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`
 - files changed: `src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts`, `.codex/ralph-state.md`
@@ -1200,7 +1436,9 @@ Backup directory:
 - validation results: targeted e-prescription Vitest passed with 1 file / 2 tests; targeted lint passed with no warnings; TypeScript passed; full lint passed with no warnings; diff whitespace check passed
 - remaining work: no lint warning remains. Broader dirty worktree is the existing medical UI/UX goal implementation and generated audit artifacts.
 - next action: optional next improvement is to run target-environment `db:check-care-report-duplicates` before applying the CareReport unique-index migration outside local E2E
+
 ### 20260512-070240
+
 - current task: continue by making the medical UI/UX browser gate reproducible under a production `next start` server
 - files inspected: `git status --short`, `.codex/ralph-state.md`, `package.json`, `tools/tests/README.md`, `tools/scripts/medical-ui-e2e-preflight.ts`, `tools/tests/ui-detail-layout.spec.ts`, Playwright failure screenshot/error context for the visit detail layout test, local PostgreSQL/port availability
 - files changed: `package.json`, `tools/tests/README.md`, `tools/scripts/medical-ui-e2e-preflight.ts`, `tools/scripts/run-medical-ui-e2e-gate.ts`, `tools/tests/ui-detail-layout.spec.ts`, `.codex/ralph-state.md`
@@ -1211,7 +1449,9 @@ Backup directory:
 - validation results: formatting passed; TypeScript passed; targeted lint passed; standalone preflight correctly failed before DB/app startup while confirming `medical-ui:e2e:gate:prod` script presence; local E2E DB prepare passed; first production gate reproduced one deterministic-test defect; after changing the visit detail test to open the DB-backed fixture directly, the final `medical-ui:e2e:gate:prod` passed with production build, production `next start`, preflight PASS, duplicate precheck `duplicate_groups:0`, and Playwright 122 passed / 62 skipped; final process exit code was 0 with no pnpm lifecycle 143 stop noise; ports 3012 and 5433 were clear after cleanup
 - remaining work: no blocker remains for the production browser gate wrapper. Target-environment duplicate checking is still required before applying the CareReport unique-index migration outside local E2E.
 - next action: use `pnpm --config.verify-deps-before-run=false medical-ui:e2e:gate:prod` as the preferred local release evidence command after preparing `careviax_e2e`
+
 ### 20260516-140102
+
 - current task: autonomous CareViaX security/performance/test hardening with parallel subagent review
 - files inspected: `git status --short --untracked-files=all`, `.codex/ralph-state.md`, local Next route-handler docs under `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`, `.github/workflows/ci.yml`, `package.json`, medical UI E2E docs/scripts, dashboard home actions/patients routes and tests, external access route/public payload service/tests, communication queue service/tests, patient access helper, patient insurance and facility visit batch route tests, Prisma external access/care report/self-report schema, and subagent security/test/performance/reviewer reports
 - files changed: `.github/workflows/ci.yml`, `docs/operations/medical-ui-safety-release-runbook.md`, `docs/testing/TESTING.md`, `tools/scripts/medical-ui-e2e-preflight.ts`, `src/app/api/dashboard/home/actions/route.ts`, `src/app/api/dashboard/home/actions/route.test.ts`, `src/app/api/dashboard/home/patients/route.ts`, `src/app/api/dashboard/home/patients/route.test.ts`, `src/app/api/external-access/route.ts`, `src/app/api/external-access/route.test.ts`, `src/server/services/communication-queue.ts`, `src/server/services/external-access.ts`, `src/server/services/external-access.test.ts`, `src/server/services/patient-access.ts`, `src/app/api/facility-visit-batches/[id]/route.test.ts`, `src/app/api/patients/[id]/insurance/route.test.ts`, `.codex/ralph-state.md`
@@ -1222,7 +1462,9 @@ Backup directory:
 - validation results: targeted Vitest passed with 7 files / 67 tests; TypeScript passed; full ESLint passed with no warnings; full Vitest passed with 519 files / 2314 tests; production build passed on Next 16.2.6 with 216 app routes; production dependency audit reported no known vulnerabilities; actionlint passed; whitespace check passed; medical UI targeted Playwright manifest listed 184 tests in 5 files. Full `medical-ui:e2e:gate:prod` was not rerun in this slice because the local app/DB gate environment was not started.
 - remaining work: final blocker-only subagent reviews are still running at this checkpoint; broader security backlog from audit remains for conference notes, set plans/audits, management plans, medication/profile/residual/consent routes, and target-environment duplicate checking before applying CareReport unique-index migrations outside local E2E.
 - next action: wait for final blocker-only review, fix any blocker found, then close the active goal with validation evidence
+
 ### 20260516-154212
+
 - current task: close the autonomous CareViaX hardening pass after final subagent blocker reviews
 - files inspected: `git status --short`, `.codex/ralph-state.md`, local Next route-handler/error docs, CareViaX UI/UX SSOT, package scripts, CI workflow, dashboard home/today/workflow routes and tests, dashboard assignment/cache/query services, external access route/token/self-report services and tests, shared viewer, patient lab routes/tests, communication queue/patient detail/risk services, facility visit batch routes/tests, E2E scripts/runbook, and final security/performance/test/reviewer subagent reports
 - files changed: `.github/workflows/ci.yml`, `docs/operations/medical-ui-safety-release-runbook.md`, `docs/testing/TESTING.md`, `package.json`, `tools/scripts/README.md`, `tools/scripts/medical-ui-e2e-preflight.ts`, `tools/scripts/external-access-case-boundary-audit.ts`, `tools/tests/ui-route-mocked-smoke.spec.ts`, `src/app/shared/[token]/shared-viewer-content.tsx`, dashboard home/today/workflow route/test files, external-access route/token route/service/test files, facility-visit-batches route/test files, patient lab route/test files, patient detail route/test files, communication queue/patient-access/patient-detail/patient-risk/billing-evidence/workflow dashboard services/tests, new dashboard assignment scope service/tests, and `.codex/ralph-state.md`

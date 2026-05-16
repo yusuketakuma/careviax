@@ -3,8 +3,13 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
-import { transitionCycleStatus, InvalidTransitionError, VersionConflictError } from '@/lib/db/cycle-transition';
+import {
+  transitionCycleStatus,
+  InvalidTransitionError,
+  VersionConflictError,
+} from '@/lib/db/cycle-transition';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 import { z } from 'zod';
 
 const updateDispenseResultSchema = z.object({
@@ -18,15 +23,17 @@ const updateDispenseResultSchema = z.object({
   version: z.number().int().min(1).optional(),
 });
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return withAuth(async (authReq: AuthenticatedRequest) => {
     const { id } = await params;
+    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(authReq);
 
     const result = await prisma.dispenseResult.findFirst({
-      where: { id, org_id: authReq.orgId },
+      where: {
+        id,
+        org_id: authReq.orgId,
+        ...(cycleAssignmentWhere ? { task: { cycle: cycleAssignmentWhere } } : {}),
+      },
       include: {
         line: true,
       },
@@ -38,12 +45,10 @@ export async function GET(
   })(req);
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return withAuth(async (authReq: AuthenticatedRequest) => {
     const { id } = await params;
+    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(authReq);
 
     const body = await req.json().catch(() => null);
     if (!body) return validationError('リクエストボディが不正です');
@@ -55,7 +60,11 @@ export async function PATCH(
 
     const updated = await withOrgContext(authReq.orgId, async (tx) => {
       const existing = await tx.dispenseResult.findFirst({
-        where: { id, org_id: authReq.orgId },
+        where: {
+          id,
+          org_id: authReq.orgId,
+          ...(cycleAssignmentWhere ? { task: { cycle: cycleAssignmentWhere } } : {}),
+        },
         select: {
           id: true,
           task_id: true,
@@ -100,10 +109,18 @@ export async function PATCH(
       });
 
       try {
-        await transitionCycleStatus(tx, task.cycle_id, authReq.orgId, 'audit_pending', authReq.userId);
+        await transitionCycleStatus(
+          tx,
+          task.cycle_id,
+          authReq.orgId,
+          'audit_pending',
+          authReq.userId,
+        );
       } catch (err) {
         if (err instanceof InvalidTransitionError) {
-          return { error: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}` } as const;
+          return {
+            error: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}`,
+          } as const;
         }
         if (err instanceof VersionConflictError) {
           return { error: err.message, conflict: true } as const;

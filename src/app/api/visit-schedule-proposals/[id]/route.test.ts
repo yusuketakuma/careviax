@@ -22,6 +22,7 @@ const {
   computeOptimizedVisitRouteMock,
   upsertOperationalTaskMock,
   resolveOperationalTasksMock,
+  notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -43,6 +44,7 @@ const {
   computeOptimizedVisitRouteMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
+  notifyWorkflowMutationMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -83,6 +85,10 @@ vi.mock('@/server/services/operational-tasks', () => ({
 
 vi.mock('@/server/services/visit-route-engine', () => ({
   computeOptimizedVisitRoute: computeOptimizedVisitRouteMock,
+}));
+
+vi.mock('@/server/services/workflow-dashboard-cache', () => ({
+  notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
 import { GET, PATCH } from './route';
@@ -146,6 +152,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       ctx: {
         orgId: 'org_1',
         userId: 'user_1',
+        role: 'pharmacist',
       },
     });
     proposalFindFirstMock.mockResolvedValue(buildProposal());
@@ -235,7 +242,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         auditLog: {
           create: auditLogCreateMock,
         },
-      })
+      }),
     );
   });
 
@@ -374,6 +381,80 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     });
   });
 
+  it('scopes proposal detail, related proposals, and day schedules to assignment predicates', async () => {
+    const response = await GET(createRequest(undefined, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(proposalFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'proposal_1',
+          org_id: 'org_1',
+          AND: [
+            {
+              OR: [
+                { proposed_pharmacist_id: 'user_1' },
+                { case_: { primary_pharmacist_id: 'user_1' } },
+                { case_: { backup_pharmacist_id: 'user_1' } },
+                { case_: { visit_schedules: { some: { pharmacist_id: 'user_1' } } } },
+              ],
+            },
+          ],
+        }),
+      }),
+    );
+    expect(proposalFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [
+            {
+              OR: [
+                { proposed_pharmacist_id: 'user_1' },
+                { case_: { primary_pharmacist_id: 'user_1' } },
+                { case_: { backup_pharmacist_id: 'user_1' } },
+                { case_: { visit_schedules: { some: { pharmacist_id: 'user_1' } } } },
+              ],
+            },
+          ],
+        }),
+      }),
+    );
+    expect(scheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [
+            {
+              OR: [
+                { pharmacist_id: 'user_1' },
+                { case_: { primary_pharmacist_id: 'user_1' } },
+                { case_: { backup_pharmacist_id: 'user_1' } },
+              ],
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
+  it('denies unassigned proposal detail before route planning or enrichment reads', async () => {
+    proposalFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await GET(createRequest(undefined, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expect(proposalFindManyMock).not.toHaveBeenCalled();
+    expect(scheduleFindManyMock).not.toHaveBeenCalled();
+    expect(auditLogFindFirstMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
+    expect(computeOptimizedVisitRouteMock).not.toHaveBeenCalled();
+  });
+
   it('returns persisted creation diagnostics when available', async () => {
     auditLogFindFirstMock.mockResolvedValueOnce({
       changes: {
@@ -424,13 +505,9 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
   });
 
   it('rejects confirmation before approval and patient contact', async () => {
-    const response = await PATCH(
-      createRequest(
-        { action: 'confirm' },
-        { 'x-org-id': 'org_1' }
-      ),
-      { params: Promise.resolve({ id: 'proposal_1' }) }
-    );
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -441,21 +518,62 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     expect(scheduleCreateMock).not.toHaveBeenCalled();
   });
 
+  it('denies unassigned contact attempts before update, contact, audit, task, or notify side effects', async () => {
+    proposalFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await PATCH(
+      createRequest(
+        {
+          action: 'contact_attempt',
+          outcome: 'attempted',
+          contact_method: 'phone',
+          callback_due_at: '2026-03-30T09:00:00.000Z',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'proposal_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expect(proposalFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'proposal_1',
+          org_id: 'org_1',
+          AND: [
+            {
+              OR: [
+                { proposed_pharmacist_id: 'user_1' },
+                { case_: { primary_pharmacist_id: 'user_1' } },
+                { case_: { backup_pharmacist_id: 'user_1' } },
+                { case_: { visit_schedules: { some: { pharmacist_id: 'user_1' } } } },
+              ],
+            },
+          ],
+        }),
+      }),
+    );
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(proposalUpdateMock).not.toHaveBeenCalled();
+    expect(contactLogCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('requires a confirmed phone result before finalizing the proposal', async () => {
     proposalFindFirstMock.mockResolvedValue(
       buildProposal({
         proposal_status: 'patient_contact_pending',
         patient_contact_status: 'attempted',
-      })
+      }),
     );
 
-    const response = await PATCH(
-      createRequest(
-        { action: 'confirm' },
-        { 'x-org-id': 'org_1' }
-      ),
-      { params: Promise.resolve({ id: 'proposal_1' }) }
-    );
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -471,7 +589,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       buildProposal({
         proposal_status: 'patient_contact_pending',
         patient_contact_status: 'pending',
-      })
+      }),
     );
 
     const response = await PATCH(
@@ -483,9 +601,9 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
           contact_name: '本人',
           note: '了承済み',
         },
-        { 'x-org-id': 'org_1' }
+        { 'x-org-id': 'org_1' },
       ),
-      { params: Promise.resolve({ id: 'proposal_1' }) }
+      { params: Promise.resolve({ id: 'proposal_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -515,7 +633,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       buildProposal({
         proposal_status: 'patient_contact_pending',
         patient_contact_status: 'pending',
-      })
+      }),
     );
 
     const response = await PATCH(
@@ -526,9 +644,9 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
           contact_method: 'email',
           note: '午前帯のみ希望',
         },
-        { 'x-org-id': 'org_1' }
+        { 'x-org-id': 'org_1' },
       ),
-      { params: Promise.resolve({ id: 'proposal_1' }) }
+      { params: Promise.resolve({ id: 'proposal_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -546,7 +664,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         orgId: 'org_1',
         dedupeKey: 'visit-contact-followup:proposal_1',
         status: 'completed',
-      })
+      }),
     );
   });
 
@@ -555,7 +673,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       buildProposal({
         proposal_status: 'patient_contact_pending',
         patient_contact_status: 'pending',
-      })
+      }),
     );
 
     const response = await PATCH(
@@ -566,9 +684,9 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
           contact_method: 'phone',
           note: '再架電不要',
         },
-        { 'x-org-id': 'org_1' }
+        { 'x-org-id': 'org_1' },
       ),
-      { params: Promise.resolve({ id: 'proposal_1' }) }
+      { params: Promise.resolve({ id: 'proposal_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -580,7 +698,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         orgId: 'org_1',
         dedupeKey: 'visit-contact-followup:proposal_1',
         status: 'completed',
-      })
+      }),
     );
   });
 
@@ -589,7 +707,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       buildProposal({
         proposal_status: 'patient_contact_pending',
         patient_contact_status: 'pending',
-      })
+      }),
     );
 
     const response = await PATCH(
@@ -601,9 +719,9 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
           note: '夕方に再架電',
           callback_due_at: '2026-03-30T09:00:00.000Z',
         },
-        { 'x-org-id': 'org_1' }
+        { 'x-org-id': 'org_1' },
       ),
-      { params: Promise.resolve({ id: 'proposal_1' }) }
+      { params: Promise.resolve({ id: 'proposal_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -625,7 +743,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
           case_id: 'case_1',
           patient_id: 'patient_1',
         },
-      })
+      }),
     );
   });
 
@@ -634,16 +752,12 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       buildProposal({
         proposal_status: 'proposed',
         patient_contact_status: 'pending',
-      })
+      }),
     );
 
-    const response = await PATCH(
-      createRequest(
-        { action: 'reject' },
-        { 'x-org-id': 'org_1' }
-      ),
-      { params: Promise.resolve({ id: 'proposal_1' }) }
-    );
+    const response = await PATCH(createRequest({ action: 'reject' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -660,16 +774,12 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       buildProposal({
         proposal_status: 'patient_contact_pending',
         patient_contact_status: 'confirmed',
-      })
+      }),
     );
 
-    const response = await PATCH(
-      createRequest(
-        { action: 'confirm' },
-        { 'x-org-id': 'org_1' }
-      ),
-      { params: Promise.resolve({ id: 'proposal_1' }) }
-    );
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -722,16 +832,12 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         proposal_status: 'patient_contact_pending',
         patient_contact_status: 'confirmed',
         suggested_recurrence_rule: 'FREQ=WEEKLY;INTERVAL=2;BYDAY=TU',
-      })
+      }),
     );
 
-    const response = await PATCH(
-      createRequest(
-        { action: 'confirm' },
-        { 'x-org-id': 'org_1' }
-      ),
-      { params: Promise.resolve({ id: 'proposal_1' }) }
-    );
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);

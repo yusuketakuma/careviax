@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
+import { buildVisitScheduleProposalAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 
 const proposalRouteOrderUpdateSchema = z.object({
@@ -39,8 +40,8 @@ export const PATCH = withAuth(
     const explicitUpdates = explicitInput
       ? Array.from(
           new Map(
-            explicitInput.map((item) => [item.proposal_id, item.route_order] as const)
-          ).entries()
+            explicitInput.map((item) => [item.proposal_id, item.route_order] as const),
+          ).entries(),
         ).map(([proposalId, routeOrder]) => ({
           proposal_id: proposalId,
           route_order: routeOrder,
@@ -48,10 +49,12 @@ export const PATCH = withAuth(
       : null;
 
     const result = await withOrgContext(req.orgId, async (tx) => {
+      const assignmentWhere = buildVisitScheduleProposalAssignmentWhere(req);
       const proposals = await tx.visitScheduleProposal.findMany({
         where: {
           org_id: req.orgId,
           id: { in: orderedIds },
+          ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
         },
         select: {
           id: true,
@@ -81,7 +84,7 @@ export const PATCH = withAuth(
       const locked = proposals.find(
         (proposal) =>
           proposal.finalized_schedule_id != null ||
-          ['confirmed', 'rejected', 'superseded', 'expired'].includes(proposal.proposal_status)
+          ['confirmed', 'rejected', 'superseded', 'expired'].includes(proposal.proposal_status),
       );
       if (locked) {
         return { error: 'locked' as const };
@@ -93,7 +96,7 @@ export const PATCH = withAuth(
               proposal_id: proposalId,
               route_order: index + 1,
             }))
-          : explicitUpdates ?? [];
+          : (explicitUpdates ?? []);
 
       const duplicateRouteOrder = new Set<number>();
       const hasDuplicateRouteOrder = updates.some((item) => {
@@ -110,8 +113,8 @@ export const PATCH = withAuth(
           tx.visitScheduleProposal.update({
             where: { id: item.proposal_id },
             data: { route_order: item.route_order },
-          })
-        )
+          }),
+        ),
       );
 
       await tx.auditLog.create({
@@ -120,9 +123,7 @@ export const PATCH = withAuth(
           actor_id: req.userId,
           action: 'visit_schedule_proposals_reordered',
           target_type:
-            mode === 'ordered'
-              ? 'VisitScheduleProposalBatch'
-              : 'VisitScheduleProposalRouteBatch',
+            mode === 'ordered' ? 'VisitScheduleProposalBatch' : 'VisitScheduleProposalRouteBatch',
           target_id:
             mode === 'ordered'
               ? first.case_id
@@ -156,7 +157,7 @@ export const PATCH = withAuth(
         return validationError(
           mode === 'ordered'
             ? '同一ケース・同一薬剤師・同一日の候補のみ並べ替えできます'
-            : '同一薬剤師・同一日の候補のみ route_order を更新できます'
+            : '同一薬剤師・同一日の候補のみ route_order を更新できます',
         );
       }
       if (result.error === 'locked') {
@@ -172,8 +173,8 @@ export const PATCH = withAuth(
         notifyWorkflowMutation({
           orgId: req.orgId,
           payload: { source: 'visit_schedule_proposals_reorder', case_id: caseId },
-        })
-      )
+        }),
+      ),
     );
 
     return success(result);
@@ -181,5 +182,5 @@ export const PATCH = withAuth(
   {
     permission: 'canVisit',
     message: '訪問候補の更新権限がありません',
-  }
+  },
 );

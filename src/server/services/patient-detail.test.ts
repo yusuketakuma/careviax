@@ -331,4 +331,94 @@ describe('getPatientTimelineData', () => {
     expect(externalAccessGrantFindManyMock.mock.calls[0][0]).not.toHaveProperty('skip');
     expect(JSON.stringify(result?.timeline_events)).not.toContain('grant_hidden');
   });
+
+  it('adds self reports to timeline and avoids duplicate self-report communication events', async () => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      visitSchedule: { findMany: vi.fn().mockResolvedValue([]) },
+      visitRecord: { findMany: vi.fn().mockResolvedValue([]) },
+      careReport: { findMany: vi.fn().mockResolvedValue([]) },
+      communicationEvent: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'comm_self_report',
+            event_type: 'patient_self_report',
+            channel: 'phone',
+            direction: 'inbound',
+            subject: '夕方にふらつきあり',
+            counterpart_name: '山田花子',
+            occurred_at: new Date('2026-04-03T09:01:00.000Z'),
+          },
+          {
+            id: 'comm_family_call',
+            event_type: 'family_call',
+            channel: 'phone',
+            direction: 'inbound',
+            subject: '服薬時間を相談',
+            counterpart_name: '長女',
+            occurred_at: new Date('2026-04-03T10:00:00.000Z'),
+          },
+        ]),
+      },
+      patientSelfReport: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'self_report_1',
+            subject: '夕方にふらつきあり',
+            category: '副作用・体調変化',
+            content: '夕方になると立ち上がり時にふらつきます。折り返し連絡を希望します。',
+            relation: '本人',
+            status: 'submitted',
+            reported_by_name: '山田花子',
+            requested_callback: true,
+            preferred_contact_time: '18:00以降',
+            created_at: new Date('2026-04-03T09:00:00.000Z'),
+          },
+        ]),
+      },
+      externalAccessGrant: { findMany: vi.fn().mockResolvedValue([]) },
+      inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
+      prescriptionIntake: { findMany: vi.fn().mockResolvedValue([]) },
+      dispenseResult: { findMany: vi.fn().mockResolvedValue([]) },
+      managementPlan: { findMany: vi.fn().mockResolvedValue([]) },
+      firstVisitDocument: { findMany: vi.fn().mockResolvedValue([]) },
+      conferenceNote: { findMany: vi.fn().mockResolvedValue([]) },
+      billingCandidate: { findMany: vi.fn().mockResolvedValue([]) },
+      medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
+    });
+
+    const result = await getPatientTimelineData(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(result?.timeline_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'self_report:self_report_1',
+          event_type: 'self_report',
+          title: '患者から自己申告を受信',
+          status_label: '未対応',
+          actor_name: '山田花子',
+          metadata: expect.arrayContaining(['関係 本人', '折返し希望', '希望時間 18:00以降']),
+        }),
+        expect.objectContaining({
+          id: 'communication:comm_family_call',
+          event_type: 'communication',
+          title: '連絡を受信',
+          status_label: '受信',
+        }),
+      ]),
+    );
+    expect(result?.timeline_events.map((item) => item.id)).not.toContain(
+      'communication:comm_self_report',
+    );
+  });
 });

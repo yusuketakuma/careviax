@@ -63,32 +63,42 @@ const selfReports = [
     requested_callback: true,
     preferred_contact_time: '18:00以降',
     created_at: '2026-04-03T09:00:00.000Z',
+    content: '立ち上がり時にふらつきがあり、折り返し連絡を希望しています。',
   },
 ];
 
+const selfReportTimelineEvent = {
+  id: 'event_self_report',
+  event_type: 'self_report' as const,
+  category: 'communication' as const,
+  occurred_at: '2026-04-03T09:00:00.000Z',
+  title: '患者から自己申告を受信',
+  summary: '夕食後の飲み忘れ / adherence / 夕食後薬を2日続けて飲み忘れています。',
+  href: '/patients/patient_1?tab=communications',
+  action_label: '連携を確認',
+  status: 'submitted',
+  status_label: '未対応',
+  actor_name: '家族A',
+  metadata: ['関係 家族', '折返し希望', '希望時間 18時以降'],
+};
+
 describe('PatientActivityTimeline', () => {
   it('groups actions by day and renders patient-originated updates separately', () => {
-    render(
-      <PatientActivityTimeline
-        timelineEvents={timelineEvents}
-        selfReports={selfReports}
-      />
-    );
+    render(<PatientActivityTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
 
     expect(screen.getByText('2026年4月3日')).toBeTruthy();
     expect(screen.getByText('2026年4月2日')).toBeTruthy();
     expect(screen.getAllByText('訪問記録を登録').length).toBeGreaterThan(0);
     expect(screen.getAllByText('管理計画書を承認').length).toBeGreaterThan(0);
     expect(screen.getByText('夕方にふらつきあり')).toBeTruthy();
+    expect(screen.getByText(/未対応/)).toBeTruthy();
+    expect(
+      screen.getByText('立ち上がり時にふらつきがあり、折り返し連絡を希望しています。'),
+    ).toBeTruthy();
   });
 
   it('filters the timeline by category', () => {
-    render(
-      <PatientActivityTimeline
-        timelineEvents={timelineEvents}
-        selfReports={selfReports}
-      />
-    );
+    render(<PatientActivityTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
 
     fireEvent.click(screen.getByRole('button', { name: /訪問/ }));
 
@@ -98,12 +108,7 @@ describe('PatientActivityTimeline', () => {
   });
 
   it('filters the timeline by search query', async () => {
-    render(
-      <PatientActivityTimeline
-        timelineEvents={timelineEvents}
-        selfReports={selfReports}
-      />
-    );
+    render(<PatientActivityTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
 
     fireEvent.change(screen.getByLabelText('タイムライン検索'), {
       target: { value: '計画書' },
@@ -114,5 +119,30 @@ describe('PatientActivityTimeline', () => {
       expect(screen.queryByText('訪問記録を登録')).toBeNull();
       expect(screen.queryByText('調剤を記録')).toBeNull();
     });
+  });
+
+  it('renders self report events in the main communication timeline', () => {
+    render(
+      <PatientActivityTimeline
+        timelineEvents={[selfReportTimelineEvent, ...timelineEvents]}
+        selfReports={[]}
+      />,
+    );
+
+    expect(screen.getAllByText('患者から自己申告を受信').length).toBeGreaterThan(0);
+    expect(screen.getByText('自己申告')).toBeTruthy();
+    expect(screen.getByText('未対応')).toBeTruthy();
+    expect(screen.getAllByText(/家族A/).length).toBeGreaterThan(0);
+    expect(screen.getByText('関係 家族')).toBeTruthy();
+    expect(screen.getByText('折返し希望')).toBeTruthy();
+    expect(screen.getByText('希望時間 18時以降')).toBeTruthy();
+    expect(screen.getByRole('link', { name: /連携を確認/ }).getAttribute('href')).toBe(
+      '/patients/patient_1?tab=communications',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /共有・連絡/ }));
+
+    expect(screen.getAllByText('患者から自己申告を受信').length).toBeGreaterThan(0);
+    expect(screen.queryByText('訪問記録を登録')).toBeNull();
   });
 });

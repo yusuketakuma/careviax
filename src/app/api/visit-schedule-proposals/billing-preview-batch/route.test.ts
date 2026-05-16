@@ -1,36 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const {
-  withAuthMock,
-  careCaseFindFirstMock,
-  prescriptionIntakeFindFirstMock,
-  visitScheduleFindManyMock,
-  visitScheduleCountMock,
-  userFindFirstMock,
-  findActiveVisitConsentMock,
-  findCurrentManagementPlanMock,
-} = vi.hoisted(() => ({
-  withAuthMock: vi.fn(
-    (
-      handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>,
-    ) => {
-      return (req: NextRequest) =>
-        handler({
-          ...req,
-          orgId: 'org_1',
-          userId: 'user_1',
-        } as NextRequest & { orgId: string; userId: string });
-    },
-  ),
-  careCaseFindFirstMock: vi.fn(),
-  prescriptionIntakeFindFirstMock: vi.fn(),
-  visitScheduleFindManyMock: vi.fn(),
-  visitScheduleCountMock: vi.fn(),
-  userFindFirstMock: vi.fn(),
-  findActiveVisitConsentMock: vi.fn(),
-  findCurrentManagementPlanMock: vi.fn(),
-}));
+const { withAuthMock, careCaseFindFirstMock, buildVisitScheduleBillingPreviewBatchMock } =
+  vi.hoisted(() => ({
+    withAuthMock: vi.fn(
+      (
+        handler: (
+          req: NextRequest & { orgId: string; userId: string; role: 'pharmacist' },
+        ) => Promise<Response>,
+        _options?: unknown,
+      ) => {
+        void _options;
+        return (req: NextRequest) =>
+          handler({
+            ...req,
+            orgId: 'org_1',
+            userId: 'user_1',
+            role: 'pharmacist',
+          } as NextRequest & { orgId: string; userId: string; role: 'pharmacist' });
+      },
+    ),
+    careCaseFindFirstMock: vi.fn(),
+    buildVisitScheduleBillingPreviewBatchMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/auth/middleware', () => ({
   withAuth: withAuthMock,
@@ -41,56 +33,42 @@ vi.mock('@/lib/db/client', () => ({
     careCase: {
       findFirst: careCaseFindFirstMock,
     },
-    prescriptionIntake: {
-      findFirst: prescriptionIntakeFindFirstMock,
-    },
-    visitSchedule: {
-      findMany: visitScheduleFindManyMock,
-      count: visitScheduleCountMock,
-    },
-    user: {
-      findFirst: userFindFirstMock,
-    },
-    patientInsurance: {
-      findFirst: vi.fn().mockResolvedValue(null),
-    },
-    pharmacySiteInsuranceConfig: {
-      findFirst: vi.fn().mockResolvedValue(null),
-    },
   },
 }));
 
-vi.mock('@/server/services/management-plans', () => ({
-  findActiveVisitConsent: findActiveVisitConsentMock,
-  findCurrentManagementPlan: findCurrentManagementPlanMock,
+vi.mock('@/server/services/visit-schedule-billing-preview', () => ({
+  buildVisitScheduleBillingPreviewBatch: buildVisitScheduleBillingPreviewBatchMock,
 }));
 
 import { POST } from './route';
+
+const withAuthRegistrationCalls = [...withAuthMock.mock.calls];
 
 describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     careCaseFindFirstMock.mockResolvedValue({
       id: 'case_1',
-      patient_id: 'patient_1',
-      primary_pharmacist_id: 'user_2',
-      required_visit_support: null,
-      patient: {
-        medical_insurance_number: 'med_1',
-        care_insurance_number: null,
+    });
+    buildVisitScheduleBillingPreviewBatchMock.mockResolvedValue({
+      proposal_1: {
+        cadence: {
+          next_billable_date: '2026-04-03',
+        },
+      },
+      schedule_1: {
+        cadence: {
+          current_month_count: 1,
+        },
       },
     });
-    prescriptionIntakeFindFirstMock.mockResolvedValue({
-      prescription_category: 'regular',
-      emergency_category: null,
+  });
+
+  it('registers the route with canVisit permission', () => {
+    expect(withAuthRegistrationCalls[0]?.[1]).toMatchObject({
+      permission: 'canVisit',
+      message: '訪問候補の算定プレビュー権限がありません',
     });
-    visitScheduleFindManyMock.mockResolvedValue([
-      { scheduled_date: new Date('2026-04-02T00:00:00.000Z') },
-    ]);
-    visitScheduleCountMock.mockResolvedValue(1);
-    userFindFirstMock.mockResolvedValue({ max_weekly_visits: 40 });
-    findActiveVisitConsentMock.mockResolvedValue({ id: 'consent_1', expiry_date: new Date('2027-12-31') });
-    findCurrentManagementPlanMock.mockResolvedValue({ current: { id: 'plan_1', status: 'approved' }, reviewOverdue: false });
   });
 
   it('returns keyed preview results for multiple requests', async () => {
@@ -98,13 +76,55 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
       json: async () => ({
         items: [
           { key: 'proposal_1', case_id: 'case_1', proposed_date: '2026-04-03' },
-          { key: 'schedule_1', case_id: 'case_1', proposed_date: '2026-04-05', visit_type: 'regular' },
+          {
+            key: 'schedule_1',
+            case_id: 'case_1',
+            proposed_date: '2026-04-05',
+            visit_type: 'regular',
+          },
         ],
       }),
     } as NextRequest);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(careCaseFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'case_1',
+        org_id: 'org_1',
+        AND: [
+          {
+            OR: [
+              { primary_pharmacist_id: 'user_1' },
+              { backup_pharmacist_id: 'user_1' },
+              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+            ],
+          },
+        ],
+      },
+      select: { id: true },
+    });
+    expect(buildVisitScheduleBillingPreviewBatchMock).toHaveBeenCalledWith(
+      [
+        {
+          key: 'proposal_1',
+          caseId: 'case_1',
+          proposedDate: '2026-04-03',
+          pharmacistId: undefined,
+          siteId: undefined,
+          visitType: undefined,
+        },
+        {
+          key: 'schedule_1',
+          caseId: 'case_1',
+          proposedDate: '2026-04-05',
+          pharmacistId: undefined,
+          siteId: undefined,
+          visitType: 'regular',
+        },
+      ],
+      'org_1',
+    );
     await expect(response.json()).resolves.toMatchObject({
       data: {
         proposal_1: expect.objectContaining({
@@ -119,5 +139,19 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
         }),
       },
     });
+  });
+
+  it('denies unassigned batch preview requests before calling the billing-preview service', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await POST({
+      json: async () => ({
+        items: [{ key: 'proposal_1', case_id: 'case_unassigned', proposed_date: '2026-04-03' }],
+      }),
+    } as NextRequest);
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expect(buildVisitScheduleBillingPreviewBatchMock).not.toHaveBeenCalled();
   });
 });

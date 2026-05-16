@@ -5,11 +5,13 @@ const {
   requireAuthContextMock,
   withOrgContextMock,
   inquiryRecordFindFirstMock,
+  prescriptionLineFindFirstMock,
   resolveOperationalTasksMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   inquiryRecordFindFirstMock: vi.fn(),
+  prescriptionLineFindFirstMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
 }));
 
@@ -21,6 +23,9 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     inquiryRecord: {
       findFirst: inquiryRecordFindFirstMock,
+    },
+    prescriptionLine: {
+      findFirst: prescriptionLineFindFirstMock,
     },
   },
 }));
@@ -48,8 +53,42 @@ describe('/api/inquiry-records/[id] PATCH', () => {
       ctx: {
         orgId: 'org_1',
         userId: 'user_1',
+        role: 'pharmacist',
       },
     });
+    prescriptionLineFindFirstMock.mockResolvedValue({ id: 'line_1' });
+  });
+
+  it('denies records outside the cycle assignment scope before writing', async () => {
+    inquiryRecordFindFirstMock.mockResolvedValue(null);
+
+    const response = await PATCH(
+      createRequest({
+        result: 'unchanged',
+      }),
+      { params: Promise.resolve({ id: 'inquiry_unassigned' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expect(inquiryRecordFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'inquiry_unassigned',
+        org_id: 'org_1',
+        cycle: {
+          case_: {
+            OR: [
+              { primary_pharmacist_id: 'user_1' },
+              { backup_pharmacist_id: 'user_1' },
+              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+            ],
+          },
+        },
+      },
+      select: { id: true, cycle_id: true, line_id: true, issue_id: true, result: true },
+    });
+    expect(prescriptionLineFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('updates the linked prescription line when confirming a changed inquiry', async () => {
@@ -122,6 +161,42 @@ describe('/api/inquiry-records/[id] PATCH', () => {
       }),
     );
     expect(resolveOperationalTasksMock).toHaveBeenCalled();
+  });
+
+  it('denies stale line ownership before updating prescription lines', async () => {
+    inquiryRecordFindFirstMock.mockResolvedValue({
+      id: 'inquiry_1',
+      cycle_id: 'cycle_1',
+      line_id: 'line_foreign',
+      issue_id: 'issue_1',
+      result: 'pending',
+    });
+    prescriptionLineFindFirstMock.mockResolvedValue(null);
+
+    const response = await PATCH(
+      createRequest({
+        result: 'changed',
+        change_detail: '1日2回へ変更',
+        line_update: {
+          frequency: '1日2回',
+        },
+      }),
+      { params: Promise.resolve({ id: 'inquiry_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(prescriptionLineFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'line_foreign',
+        org_id: 'org_1',
+        intake: {
+          cycle_id: 'cycle_1',
+        },
+      },
+      select: { id: true },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('persists structured inquiry fields when provided', async () => {

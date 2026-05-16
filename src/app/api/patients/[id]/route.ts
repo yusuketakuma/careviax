@@ -120,6 +120,14 @@ const MANAGEMENT_PLAN_STATUS_LABELS: Record<string, string> = {
   approved: '承認済み',
 };
 
+const SELF_REPORT_STATUS_LABELS: Record<string, string> = {
+  submitted: '未対応',
+  triaged: 'トリアージ済み',
+  converted_to_task: 'タスク化済み',
+  resolved: '解決済み',
+  dismissed: '対応不要',
+};
+
 const CARRY_TYPE_LABELS: Record<string, string> = {
   carry: '持参',
   facility_deposit: '施設預け',
@@ -142,6 +150,18 @@ function formatTimelineDate(value: Date | null | undefined) {
 
 function compactTimelineValues(values: Array<string | null | undefined | false>) {
   return values.filter((value): value is string => Boolean(value && value.trim()));
+}
+
+function previewTimelineText(value: string | null | undefined, maxLength = 96) {
+  const normalized = value?.replace(/\s+/g, ' ').trim();
+  if (!normalized) return null;
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
+}
+
+function getCommunicationDirectionLabel(direction: string) {
+  if (direction === 'inbound' || direction === 'incoming') return '受信';
+  if (direction === 'outbound' || direction === 'outgoing') return '発信';
+  return direction;
 }
 
 const OPEN_CASE_STATUSES = ['referral_received', 'assessment', 'active', 'on_hold'] as const;
@@ -1414,27 +1434,54 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         metadata: [],
       };
     }),
+    ...selfReports.map((item) => ({
+      id: `self_report:${item.id}`,
+      event_type: 'self_report' as const,
+      category: 'communication' as const,
+      occurred_at: item.created_at,
+      title: '患者から自己申告を受信',
+      summary:
+        compactTimelineValues([
+          item.subject,
+          item.category,
+          previewTimelineText(item.content),
+        ]).join(' / ') || null,
+      href: `/patients/${id}?tab=communications`,
+      action_label: '連携を確認',
+      status: item.status,
+      status_label: SELF_REPORT_STATUS_LABELS[item.status] ?? item.status,
+      actor_name: item.reported_by_name,
+      metadata: compactTimelineValues([
+        item.relation ? `関係 ${item.relation}` : null,
+        item.requested_callback ? '折返し希望' : null,
+        item.preferred_contact_time ? `希望時間 ${item.preferred_contact_time}` : null,
+      ]),
+    })),
     ...communicationEvents
-      .filter((item) => item.direction !== 'incoming')
-      .map((item) => ({
-        id: `communication:${item.id}`,
-        event_type: 'communication' as const,
-        category: 'communication' as const,
-        occurred_at: item.occurred_at,
-        title: '連絡を記録',
-        summary:
-          compactTimelineValues([
-            CHANNEL_LABELS[item.channel] ?? item.channel,
-            item.counterpart_name,
-            item.subject ?? item.event_type,
-          ]).join(' / ') || null,
-        href: `/conferences?patient_id=${id}`,
-        action_label: '連絡履歴を開く',
-        status: item.direction,
-        status_label: '発信',
-        actor_name: null,
-        metadata: [],
-      })),
+      .filter((item) => item.event_type !== 'patient_self_report')
+      .map((item) => {
+        const directionLabel = getCommunicationDirectionLabel(item.direction);
+
+        return {
+          id: `communication:${item.id}`,
+          event_type: 'communication' as const,
+          category: 'communication' as const,
+          occurred_at: item.occurred_at,
+          title: directionLabel === '受信' ? '連絡を受信' : '連絡を発信',
+          summary:
+            compactTimelineValues([
+              CHANNEL_LABELS[item.channel] ?? item.channel,
+              item.counterpart_name,
+              item.subject ?? item.event_type,
+            ]).join(' / ') || null,
+          href: `/conferences?patient_id=${id}`,
+          action_label: '連絡履歴を開く',
+          status: item.direction,
+          status_label: directionLabel,
+          actor_name: null,
+          metadata: [],
+        };
+      }),
     ...externalShares.map((item) => ({
       id: `external_share:${item.id}`,
       event_type: 'external_share' as const,

@@ -39,6 +39,7 @@ type TimelineEvent = {
     | 'first_visit_document'
     | 'conference_note'
     | 'billing_candidate'
+    | 'self_report'
     | 'communication'
     | 'external_share';
   category: 'visit' | 'prescription' | 'document' | 'communication';
@@ -63,6 +64,7 @@ type SelfReport = {
   requested_callback: boolean;
   preferred_contact_time: string | null;
   created_at: string;
+  content?: string | null;
 };
 
 type TimelineCategory = 'all' | TimelineEvent['category'];
@@ -163,6 +165,11 @@ const EVENT_META: Record<
     icon: CircleDollarSign,
     className: 'border-amber-200 bg-amber-50 text-amber-700',
   },
+  self_report: {
+    label: '自己申告',
+    icon: MessageSquareWarning,
+    className: 'border-rose-200 bg-rose-50 text-rose-700',
+  },
   communication: {
     label: '連絡',
     icon: Phone,
@@ -173,6 +180,14 @@ const EVENT_META: Record<
     icon: Share2,
     className: 'border-slate-200 bg-slate-50 text-slate-700',
   },
+};
+
+const SELF_REPORT_STATUS_LABELS: Record<string, string> = {
+  submitted: '未対応',
+  triaged: 'トリアージ済み',
+  converted_to_task: 'タスク化済み',
+  resolved: '解決済み',
+  dismissed: '対応不要',
 };
 
 function formatGroupLabel(value: string) {
@@ -189,6 +204,12 @@ function formatOccurredAt(value: string) {
 
 function formatOccurredAtLong(value: string) {
   return format(new Date(value), 'yyyy/MM/dd HH:mm', { locale: ja });
+}
+
+function previewText(value: string | null | undefined, maxLength = 96) {
+  const normalized = value?.replace(/\s+/g, ' ').trim();
+  if (!normalized) return null;
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
 }
 
 function matchesQuery(event: TimelineEvent, query: string) {
@@ -491,8 +512,13 @@ export function PatientActivityTimeline({
                     {' / '}
                     {item.category}
                     {' / '}
-                    {item.status}
+                    {SELF_REPORT_STATUS_LABELS[item.status] ?? item.status}
                   </p>
+                  {item.content ? (
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      {previewText(item.content)}
+                    </p>
+                  ) : null}
                   <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
                     {item.requested_callback ? <span>折返し希望</span> : null}
                     {item.preferred_contact_time ? (

@@ -8,6 +8,7 @@ const {
   proposalUpdateMock,
   auditLogCreateMock,
   withOrgContextMock,
+  notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -15,6 +16,7 @@ const {
   proposalUpdateMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  notifyWorkflowMutationMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -33,6 +35,10 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/server/services/workflow-dashboard-cache', () => ({
+  notifyWorkflowMutation: notifyWorkflowMutationMock,
+}));
+
 import { PATCH } from './route';
 
 function createRequest(body: unknown) {
@@ -40,7 +46,7 @@ function createRequest(body: unknown) {
     url: 'http://localhost/api/visit-schedule-proposals/reorder',
     method: 'PATCH',
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
     },
     json: vi.fn().mockResolvedValue(body),
   } as unknown as NextRequest;
@@ -80,7 +86,7 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
         auditLog: {
           create: auditLogCreateMock,
         },
-      })
+      }),
     );
   });
 
@@ -88,7 +94,7 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
     const response = (await PATCH(
       createRequest({
         ordered_proposal_ids: ['proposal_2', 'proposal_1'],
-      })
+      }),
     ))!;
 
     expect(response.status).toBe(200);
@@ -100,6 +106,37 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
       where: { id: 'proposal_1' },
       data: { route_order: 2 },
     });
+    expect(proposalFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: [
+            {
+              OR: [
+                { proposed_pharmacist_id: 'user_1' },
+                { case_: { primary_pharmacist_id: 'user_1' } },
+                { case_: { backup_pharmacist_id: 'user_1' } },
+                { case_: { visit_schedules: { some: { pharmacist_id: 'user_1' } } } },
+              ],
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
+  it('denies unassigned reorder requests before update, audit, or notify side effects', async () => {
+    proposalFindManyMock.mockResolvedValueOnce([]);
+
+    const response = (await PATCH(
+      createRequest({
+        ordered_proposal_ids: ['proposal_1', 'proposal_2'],
+      }),
+    ))!;
+
+    expect(response.status).toBe(404);
+    expect(proposalUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects proposals from different batches', async () => {
@@ -125,7 +162,7 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
     const response = (await PATCH(
       createRequest({
         ordered_proposal_ids: ['proposal_1', 'proposal_2'],
-      })
+      }),
     ))!;
 
     expect(response.status).toBe(400);
@@ -160,7 +197,7 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
           { proposal_id: 'proposal_1', route_order: 2 },
           { proposal_id: 'proposal_2', route_order: 4 },
         ],
-      })
+      }),
     ))!;
 
     expect(response.status).toBe(200);

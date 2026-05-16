@@ -5,6 +5,7 @@ import { success, validationError, notFound } from '@/lib/api/response';
 import { updateInquiryRecordSchema } from '@/lib/validations/prescription';
 import { prisma } from '@/lib/db/client';
 import { resolveOperationalTasks } from '@/server/services/operational-tasks';
+import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
@@ -15,6 +16,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const ctx = authResult.ctx;
 
   const { id } = await params;
+  const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
 
   const body = await req.json().catch(() => null);
   if (!body) return validationError('リクエストボディが不正です');
@@ -25,7 +27,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const existing = await prisma.inquiryRecord.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: {
+      id,
+      org_id: ctx.orgId,
+      ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
+    },
     select: { id: true, cycle_id: true, line_id: true, issue_id: true, result: true },
   });
   if (!existing) return notFound('疑義照会記録が見つかりません');
@@ -41,6 +47,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   if (result === 'changed' && existing.line_id && !line_update) {
     return validationError('変更ありで確定する場合は処方明細の更新内容が必要です');
+  }
+
+  if (existing.line_id) {
+    const line = await prisma.prescriptionLine.findFirst({
+      where: {
+        id: existing.line_id,
+        org_id: ctx.orgId,
+        intake: {
+          cycle_id: existing.cycle_id,
+        },
+      },
+      select: { id: true },
+    });
+    if (!line) return validationError('指定された処方明細が見つかりません');
   }
 
   const inquiry = await withOrgContext(ctx.orgId, async (tx) => {

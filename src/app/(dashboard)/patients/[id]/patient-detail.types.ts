@@ -293,6 +293,7 @@ export type PatientTimelineEvent = {
     | 'first_visit_document'
     | 'conference_note'
     | 'billing_candidate'
+    | 'self_report'
     | 'communication'
     | 'external_share';
   category: 'visit' | 'prescription' | 'document' | 'communication';

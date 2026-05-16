@@ -1,78 +1,197 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError } from '@/lib/api/response';
+import { notFound, success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { createMedicationIssueSchema } from '@/lib/validations/medication';
 import { prisma } from '@/lib/db/client';
+import { validateOrgReferences } from '@/lib/api/org-reference';
+import {
+  canBypassVisitScheduleAssignmentAccess,
+  type VisitScheduleAccessContext,
+} from '@/lib/auth/visit-schedule-access';
+import {
+  canAccessCareCase,
+  canAccessPatient,
+  listAccessibleCareCaseIds,
+  listAccessiblePatientIds,
+} from '@/server/services/patient-access';
+import type { Prisma } from '@prisma/client';
 
-export const GET = withAuth(async (req: AuthenticatedRequest) => {
-  const { searchParams } = new URL(req.url);
-  const { cursor, limit } = parsePaginationParams(searchParams);
+async function buildMedicationIssueAssignmentWhere(args: {
+  orgId: string;
+  accessContext: VisitScheduleAccessContext;
+}): Promise<Prisma.MedicationIssueWhereInput | null> {
+  if (canBypassVisitScheduleAssignmentAccess(args.accessContext)) return null;
 
-  const patientId = searchParams.get('patient_id') ?? undefined;
-  const status = searchParams.get('status') ?? undefined;
+  const [caseIds, patientIds] = await Promise.all([
+    listAccessibleCareCaseIds({
+      db: prisma,
+      orgId: args.orgId,
+      accessContext: args.accessContext,
+    }),
+    listAccessiblePatientIds({
+      db: prisma,
+      orgId: args.orgId,
+      accessContext: args.accessContext,
+    }),
+  ]);
 
-  const where = {
-    org_id: req.orgId,
-    ...(patientId ? { patient_id: patientId } : {}),
-    ...(status ? { status: status as 'open' | 'in_progress' | 'resolved' | 'dismissed' } : {}),
+  return {
+    OR: [
+      { case_id: { in: caseIds } },
+      { AND: [{ case_id: null }, { patient_id: { in: patientIds } }] },
+    ],
   };
+}
 
-  const issues = await prisma.medicationIssue.findMany({
-    where,
-    take: limit + 1,
-    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    orderBy: { identified_at: 'desc' },
-    select: {
-      id: true,
-      org_id: true,
-      patient_id: true,
-      case_id: true,
-      title: true,
-      description: true,
-      status: true,
-      priority: true,
-      category: true,
-      identified_by: true,
-      identified_at: true,
-      resolved_by: true,
-      resolved_at: true,
-      created_at: true,
-      updated_at: true,
-    },
-  });
-
-  const hasMore = issues.length > limit;
-  const data = hasMore ? issues.slice(0, limit) : issues;
-  const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
-
-  return success({ data, hasMore, nextCursor });
-}, {
-  permission: 'canVisit',
-  message: '服薬課題の閲覧権限がありません',
-});
-
-export const POST = withAuth(async (req: AuthenticatedRequest) => {
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
-
-  const parsed = createMedicationIssueSchema.safeParse(body);
-  if (!parsed.success) {
-    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+async function canAccessMedicationIssueScope(args: {
+  orgId: string;
+  patientId?: string | null;
+  caseId?: string | null;
+  accessContext: VisitScheduleAccessContext;
+}) {
+  if (args.caseId) {
+    return canAccessCareCase({
+      db: prisma,
+      orgId: args.orgId,
+      caseId: args.caseId,
+      patientId: args.patientId ?? undefined,
+      accessContext: args.accessContext,
+    });
   }
 
-  const issue = await withOrgContext(req.orgId, async (tx) => {
-    return tx.medicationIssue.create({
-      data: {
-        org_id: req.orgId,
-        identified_by: req.userId,
-        ...parsed.data,
+  if (args.patientId) {
+    return canAccessPatient({
+      db: prisma,
+      orgId: args.orgId,
+      patientId: args.patientId,
+      accessContext: args.accessContext,
+    });
+  }
+
+  return true;
+}
+
+export const GET = withAuth(
+  async (req: AuthenticatedRequest) => {
+    const { searchParams } = new URL(req.url);
+    const { cursor, limit } = parsePaginationParams(searchParams);
+
+    const patientId = searchParams.get('patient_id') ?? undefined;
+    const caseId = searchParams.get('case_id') ?? undefined;
+    const status = searchParams.get('status') ?? undefined;
+
+    if (patientId && caseId) {
+      const refResult = await validateOrgReferences(req.orgId, {
+        patient_id: patientId,
+        case_id: caseId,
+      });
+      if (!refResult.ok) return refResult.response;
+    }
+
+    const accessContext = { userId: req.userId, role: req.role };
+    if (
+      (patientId || caseId) &&
+      !(await canAccessMedicationIssueScope({
+        orgId: req.orgId,
+        patientId,
+        caseId,
+        accessContext,
+      }))
+    ) {
+      return success({ data: [], hasMore: false, nextCursor: undefined });
+    }
+
+    const assignmentWhere = await buildMedicationIssueAssignmentWhere({
+      orgId: req.orgId,
+      accessContext,
+    });
+    const where: Prisma.MedicationIssueWhereInput = {
+      org_id: req.orgId,
+      ...(patientId ? { patient_id: patientId } : {}),
+      ...(caseId ? { case_id: caseId } : {}),
+      ...(status ? { status: status as 'open' | 'in_progress' | 'resolved' | 'dismissed' } : {}),
+      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+    };
+
+    const issues = await prisma.medicationIssue.findMany({
+      where,
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      orderBy: { identified_at: 'desc' },
+      select: {
+        id: true,
+        org_id: true,
+        patient_id: true,
+        case_id: true,
+        title: true,
+        description: true,
+        status: true,
+        priority: true,
+        category: true,
+        identified_by: true,
+        identified_at: true,
+        resolved_by: true,
+        resolved_at: true,
+        created_at: true,
+        updated_at: true,
       },
     });
-  });
 
-  return success({ data: issue }, 201);
-}, {
-  permission: 'canVisit',
-  message: '服薬課題の作成権限がありません',
-});
+    const hasMore = issues.length > limit;
+    const data = hasMore ? issues.slice(0, limit) : issues;
+    const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
+
+    return success({ data, hasMore, nextCursor });
+  },
+  {
+    permission: 'canVisit',
+    message: '服薬課題の閲覧権限がありません',
+  },
+);
+
+export const POST = withAuth(
+  async (req: AuthenticatedRequest) => {
+    const body = await req.json().catch(() => null);
+    if (!body) return validationError('リクエストボディが不正です');
+
+    const parsed = createMedicationIssueSchema.safeParse(body);
+    if (!parsed.success) {
+      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    }
+
+    const { patient_id, case_id } = parsed.data;
+    const refResult = await validateOrgReferences(req.orgId, {
+      patient_id,
+      case_id,
+    });
+    if (!refResult.ok) return refResult.response;
+
+    if (
+      !(await canAccessMedicationIssueScope({
+        orgId: req.orgId,
+        patientId: patient_id,
+        caseId: case_id,
+        accessContext: { userId: req.userId, role: req.role },
+      }))
+    ) {
+      return notFound('患者またはケースが見つかりません');
+    }
+
+    const issue = await withOrgContext(req.orgId, async (tx) => {
+      return tx.medicationIssue.create({
+        data: {
+          org_id: req.orgId,
+          identified_by: req.userId,
+          ...parsed.data,
+        },
+      });
+    });
+
+    return success({ data: issue }, 201);
+  },
+  {
+    permission: 'canVisit',
+    message: '服薬課題の作成権限がありません',
+  },
+);

@@ -2,122 +2,168 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { buildVisitRecordScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 
-export const GET = withAuth(async (req: AuthenticatedRequest) => {
-  const { searchParams } = new URL(req.url);
-  const visitRecordId = searchParams.get('visit_record_id') ?? undefined;
-  const patientId = searchParams.get('patient_id') ?? undefined;
-  const limitParam = Number(searchParams.get('limit') ?? '');
-  const take = Number.isFinite(limitParam) && limitParam > 0 ? Math.floor(limitParam) : undefined;
+export const GET = withAuth(
+  async (req: AuthenticatedRequest) => {
+    const { searchParams } = new URL(req.url);
+    const visitRecordId = searchParams.get('visit_record_id') ?? undefined;
+    const patientId = searchParams.get('patient_id') ?? undefined;
+    const limitParam = Number(searchParams.get('limit') ?? '');
+    const take = Number.isFinite(limitParam) && limitParam > 0 ? Math.floor(limitParam) : undefined;
 
-  let patientVisitRecordIds: string[] | null = null;
-  if (patientId) {
-    const visitRecords = await prisma.visitRecord.findMany({
-      where: {
-        org_id: req.orgId,
-        patient_id: patientId,
-      },
-      select: { id: true },
+    const visitRecordAssignmentWhere = buildVisitRecordScheduleAssignmentWhere({
+      userId: req.userId,
+      role: req.role,
     });
 
-    patientVisitRecordIds = visitRecords.map((record) => record.id);
-    if (visitRecordId && !patientVisitRecordIds.includes(visitRecordId)) {
-      return success({ data: [] });
-    }
-    if (!visitRecordId && patientVisitRecordIds.length === 0) {
-      return success({ data: [] });
-    }
-  }
+    let patientVisitRecordIds: string[] | null = null;
+    if (visitRecordId) {
+      const visitRecordWhere: Prisma.VisitRecordWhereInput = {
+        id: visitRecordId,
+        org_id: req.orgId,
+        ...(patientId ? { patient_id: patientId } : {}),
+        ...(visitRecordAssignmentWhere ? { AND: [visitRecordAssignmentWhere] } : {}),
+      };
+      const visitRecord = await prisma.visitRecord.findFirst({
+        where: visitRecordWhere,
+        select: { id: true },
+      });
 
-  const records = await prisma.residualMedication.findMany({
-    where: {
-      org_id: req.orgId,
-      ...(visitRecordId
-        ? { visit_record_id: visitRecordId }
-        : patientVisitRecordIds
-          ? { visit_record_id: { in: patientVisitRecordIds } }
-          : {}),
-    },
-    orderBy: { created_at: 'asc' },
-    ...(take ? { take } : {}),
-  });
+      if (!visitRecord) return success({ data: [] });
+      patientVisitRecordIds = [visitRecord.id];
+    }
 
-  return success({ data: records });
-}, {
-  permission: 'canVisit',
-  message: '残薬情報の閲覧権限がありません',
-});
+    if (!visitRecordId && patientId) {
+      const visitRecords = await prisma.visitRecord.findMany({
+        where: {
+          org_id: req.orgId,
+          patient_id: patientId,
+          ...(visitRecordAssignmentWhere ? { AND: [visitRecordAssignmentWhere] } : {}),
+        },
+        select: { id: true },
+      });
+
+      patientVisitRecordIds = visitRecords.map((record) => record.id);
+      if (patientVisitRecordIds.length === 0) {
+        return success({ data: [] });
+      }
+    } else if (!visitRecordId && visitRecordAssignmentWhere) {
+      const visitRecords = await prisma.visitRecord.findMany({
+        where: {
+          org_id: req.orgId,
+          AND: [visitRecordAssignmentWhere],
+        },
+        select: { id: true },
+      });
+
+      patientVisitRecordIds = visitRecords.map((record) => record.id);
+      if (patientVisitRecordIds.length === 0) {
+        return success({ data: [] });
+      }
+    }
+
+    const records = await prisma.residualMedication.findMany({
+      where: {
+        org_id: req.orgId,
+        ...(visitRecordId
+          ? { visit_record_id: visitRecordId }
+          : patientVisitRecordIds
+            ? { visit_record_id: { in: patientVisitRecordIds } }
+            : {}),
+      },
+      orderBy: { created_at: 'asc' },
+      ...(take ? { take } : {}),
+    });
+
+    return success({ data: records });
+  },
+  {
+    permission: 'canVisit',
+    message: '残薬情報の閲覧権限がありません',
+  },
+);
 
 const createResidualMedicationSchema = z.object({
   visit_record_id: z.string().min(1, '訪問記録IDは必須です'),
-  medications: z.array(
-    z.object({
-      drug_name: z.string().min(1, '薬剤名は必須です'),
-      drug_code: z.string().optional(),
-      prescribed_quantity: z.number().positive().optional(),
-      prescribed_daily_dose: z.number().positive().optional(),
-      remaining_quantity: z.number().min(0, '残数は0以上で入力してください'),
-      is_prohibited_reduction: z.boolean().default(false),
-    })
-  ).min(1, '薬剤情報は1件以上必要です'),
+  medications: z
+    .array(
+      z.object({
+        drug_name: z.string().min(1, '薬剤名は必須です'),
+        drug_code: z.string().optional(),
+        prescribed_quantity: z.number().positive().optional(),
+        prescribed_daily_dose: z.number().positive().optional(),
+        remaining_quantity: z.number().min(0, '残数は0以上で入力してください'),
+        is_prohibited_reduction: z.boolean().default(false),
+      }),
+    )
+    .min(1, '薬剤情報は1件以上必要です'),
 });
 
-export const POST = withAuth(async (req: AuthenticatedRequest) => {
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+export const POST = withAuth(
+  async (req: AuthenticatedRequest) => {
+    const body = await req.json().catch(() => null);
+    if (!body) return validationError('リクエストボディが不正です');
 
-  const parsed = createResidualMedicationSchema.safeParse(body);
-  if (!parsed.success) {
-    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-  }
+    const parsed = createResidualMedicationSchema.safeParse(body);
+    if (!parsed.success) {
+      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    }
 
-  const { visit_record_id, medications } = parsed.data;
+    const { visit_record_id, medications } = parsed.data;
 
-  const result = await withOrgContext(req.orgId, async (tx) => {
-    // Verify visit record belongs to this org
-    const visitRecord = await tx.visitRecord.findFirst({
-      where: { id: visit_record_id, org_id: req.orgId },
+    const visitRecordAssignmentWhere = buildVisitRecordScheduleAssignmentWhere({
+      userId: req.userId,
+      role: req.role,
+    });
+    const visitRecord = await prisma.visitRecord.findFirst({
+      where: {
+        id: visit_record_id,
+        org_id: req.orgId,
+        ...(visitRecordAssignmentWhere ? { AND: [visitRecordAssignmentWhere] } : {}),
+      },
       select: { id: true },
     });
-    if (!visitRecord) return null;
+    if (!visitRecord) return notFound('指定された訪問記録が見つかりません');
 
-    const created = await Promise.all(
-      medications.map((med) => {
-        // Calculate excess days: remaining_quantity / prescribed_daily_dose
-        let excess_days: number | undefined;
-        if (
-          med.prescribed_daily_dose &&
-          med.prescribed_daily_dose > 0 &&
-          med.remaining_quantity > 0
-        ) {
-          excess_days = Math.floor(med.remaining_quantity / med.prescribed_daily_dose);
-        }
+    const result = await withOrgContext(req.orgId, async (tx) => {
+      const created = await Promise.all(
+        medications.map((med) => {
+          // Calculate excess days: remaining_quantity / prescribed_daily_dose
+          let excess_days: number | undefined;
+          if (
+            med.prescribed_daily_dose &&
+            med.prescribed_daily_dose > 0 &&
+            med.remaining_quantity > 0
+          ) {
+            excess_days = Math.floor(med.remaining_quantity / med.prescribed_daily_dose);
+          }
 
-        return tx.residualMedication.create({
-          data: {
-            org_id: req.orgId,
-            visit_record_id,
-            drug_name: med.drug_name,
-            drug_code: med.drug_code,
-            prescribed_quantity: med.prescribed_quantity,
-            remaining_quantity: med.remaining_quantity,
-            excess_days: excess_days ?? null,
-            is_reduction_target:
-              excess_days !== undefined && excess_days > 7,
-            is_prohibited_reduction: med.is_prohibited_reduction,
-          },
-        });
-      })
-    );
+          return tx.residualMedication.create({
+            data: {
+              org_id: req.orgId,
+              visit_record_id,
+              drug_name: med.drug_name,
+              drug_code: med.drug_code,
+              prescribed_quantity: med.prescribed_quantity,
+              remaining_quantity: med.remaining_quantity,
+              excess_days: excess_days ?? null,
+              is_reduction_target: excess_days !== undefined && excess_days > 7,
+              is_prohibited_reduction: med.is_prohibited_reduction,
+            },
+          });
+        }),
+      );
 
-    return created;
-  });
+      return created;
+    });
 
-  if (!result) return notFound('指定された訪問記録が見つかりません');
-
-  return success(result, 201);
-}, {
-  permission: 'canVisit',
-  message: '残薬情報の作成権限がありません',
-});
+    return success(result, 201);
+  },
+  {
+    permission: 'canVisit',
+    message: '残薬情報の作成権限がありません',
+  },
+);

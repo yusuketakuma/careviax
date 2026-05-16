@@ -5,125 +5,135 @@ import { prisma } from '@/lib/db/client';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { annotateDispenseTask, sortDispenseTasks } from '@/server/services/dispense-task-list';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
-import { transitionCycleStatus, InvalidTransitionError, VersionConflictError } from '@/lib/db/cycle-transition';
+import {
+  transitionCycleStatus,
+  InvalidTransitionError,
+  VersionConflictError,
+} from '@/lib/db/cycle-transition';
+import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
-export const GET = withAuth(async (req: AuthenticatedRequest) => {
-  const now = new Date();
-  const tasks = await prisma.dispenseTask.findMany({
-    where: {
-      org_id: req.orgId,
-      status: 'completed',
-    },
-    orderBy: [{ priority: 'asc' }, { updated_at: 'asc' }],
-    include: {
-      audits: {
-        orderBy: { audited_at: 'desc' },
-        take: 1,
-        select: {
-          id: true,
-          result: true,
-          audited_at: true,
-        },
+export const GET = withAuth(
+  async (req: AuthenticatedRequest) => {
+    const now = new Date();
+    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(req);
+    const tasks = await prisma.dispenseTask.findMany({
+      where: {
+        org_id: req.orgId,
+        status: 'completed',
+        ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
       },
-      results: {
-        select: {
-          id: true,
-          actual_drug_name: true,
-          actual_quantity: true,
-          actual_unit: true,
-          carry_type: true,
-          dispensed_at: true,
-          line: {
-            select: {
-              id: true,
-              line_number: true,
-              drug_name: true,
-              drug_code: true,
-              dosage_form: true,
-              dose: true,
-              frequency: true,
-              days: true,
-              quantity: true,
-              unit: true,
-              is_generic: true,
-              packaging_instructions: true,
-              notes: true,
+      orderBy: [{ priority: 'asc' }, { updated_at: 'asc' }],
+      include: {
+        audits: {
+          orderBy: { audited_at: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            result: true,
+            audited_at: true,
+          },
+        },
+        results: {
+          select: {
+            id: true,
+            actual_drug_name: true,
+            actual_quantity: true,
+            actual_unit: true,
+            carry_type: true,
+            dispensed_at: true,
+            line: {
+              select: {
+                id: true,
+                line_number: true,
+                drug_name: true,
+                drug_code: true,
+                dosage_form: true,
+                dose: true,
+                frequency: true,
+                days: true,
+                quantity: true,
+                unit: true,
+                is_generic: true,
+                packaging_instructions: true,
+                notes: true,
+              },
             },
           },
         },
-      },
-      cycle: {
-        select: {
-          id: true,
-          patient_id: true,
-          overall_status: true,
-          case_: {
-            select: {
-              id: true,
-              patient: {
-                select: {
-                  id: true,
-                  name: true,
-                  name_kana: true,
-                  residences: {
-                    where: { is_primary: true },
-                    take: 1,
-                    select: {
-                      building_id: true,
-                      address: true,
+        cycle: {
+          select: {
+            id: true,
+            patient_id: true,
+            overall_status: true,
+            case_: {
+              select: {
+                id: true,
+                patient: {
+                  select: {
+                    id: true,
+                    name: true,
+                    name_kana: true,
+                    residences: {
+                      where: { is_primary: true },
+                      take: 1,
+                      select: {
+                        building_id: true,
+                        address: true,
+                      },
                     },
                   },
                 },
               },
             },
-          },
-          prescription_intakes: {
-            orderBy: { created_at: 'desc' },
-            take: 1,
-            select: {
-              id: true,
-              prescribed_date: true,
-              prescriber_name: true,
-              prescriber_institution: true,
-              original_document_url: true,
-              lines: {
-                select: {
-                  id: true,
-                  line_number: true,
-                  drug_name: true,
-                  drug_code: true,
-                  dosage_form: true,
-                  dose: true,
-                  frequency: true,
-                  days: true,
-                  quantity: true,
-                  unit: true,
-                  is_generic: true,
-                  packaging_instructions: true,
-                  notes: true,
+            prescription_intakes: {
+              orderBy: { created_at: 'desc' },
+              take: 1,
+              select: {
+                id: true,
+                prescribed_date: true,
+                prescriber_name: true,
+                prescriber_institution: true,
+                original_document_url: true,
+                lines: {
+                  select: {
+                    id: true,
+                    line_number: true,
+                    drug_name: true,
+                    drug_code: true,
+                    dosage_form: true,
+                    dose: true,
+                    frequency: true,
+                    days: true,
+                    quantity: true,
+                    unit: true,
+                    is_generic: true,
+                    packaging_instructions: true,
+                    notes: true,
+                  },
                 },
               },
             },
           },
         },
       },
-    },
-  });
+    });
 
-  const visible = sortDispenseTasks(tasks, 'updated_at').filter((task) => {
-    const latestAudit = task.audits[0] ?? null;
-    return latestAudit == null || latestAudit.result === 'hold';
-  });
+    const visible = sortDispenseTasks(tasks, 'updated_at').filter((task) => {
+      const latestAudit = task.audits[0] ?? null;
+      return latestAudit == null || latestAudit.result === 'hold';
+    });
 
-  return success({
-    data: visible.map((task) => annotateDispenseTask(task, now)),
-  });
-}, {
-  permission: 'canAuditDispense',
-  message: '調剤鑑査の閲覧権限がありません',
-});
+    return success({
+      data: visible.map((task) => annotateDispenseTask(task, now)),
+    });
+  },
+  {
+    permission: 'canAuditDispense',
+    message: '調剤鑑査の閲覧権限がありません',
+  },
+);
 
 const REJECT_REASON_CODES = [
   'drug_name_mismatch',
@@ -184,255 +194,265 @@ type DispenseAuditMutationError =
   | { error: 'already_audited' }
   | { error: string; conflict?: true };
 
-export const POST = withAuth(async (req: AuthenticatedRequest) => {
-  const body = await req.json().catch(() => null);
-  if (!body) return validationError('リクエストボディが不正です');
+export const POST = withAuth(
+  async (req: AuthenticatedRequest) => {
+    const body = await req.json().catch(() => null);
+    if (!body) return validationError('リクエストボディが不正です');
 
-  const parsed = createDispenseAuditSchema.safeParse(body);
-  if (!parsed.success) {
-    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
-  }
+    const parsed = createDispenseAuditSchema.safeParse(body);
+    if (!parsed.success) {
+      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    }
 
-  const { task_id, result, reject_reason, reject_reason_code, reject_detail, external_audit } = parsed.data;
+    const { task_id, result, reject_reason, reject_reason_code, reject_detail, external_audit } =
+      parsed.data;
+    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(req);
 
-  if (result === 'rejected' && !reject_reason) {
-    return validationError('差戻し時は理由コードが必須です');
-  }
-  if (result === 'emergency_approved' && !reject_detail?.trim()) {
-    return validationError('緊急例外承認時は理由の記録が必須です');
-  }
+    if (result === 'rejected' && !reject_reason) {
+      return validationError('差戻し時は理由コードが必須です');
+    }
+    if (result === 'emergency_approved' && !reject_detail?.trim()) {
+      return validationError('緊急例外承認時は理由の記録が必須です');
+    }
 
-  const auditResult = await withOrgContext(req.orgId, async (tx) => {
-    // Verify task belongs to this org
-    const task = await tx.dispenseTask.findFirst({
-      where: { id: task_id, org_id: req.orgId },
-      select: {
-        id: true,
-        cycle_id: true,
-        assigned_to: true,
-        due_date: true,
-        priority: true,
-        cycle: {
-          select: {
-            patient_id: true,
-            set_plans: {
-              select: {
-                id: true,
+    const auditResult = await withOrgContext(req.orgId, async (tx) => {
+      const task = await tx.dispenseTask.findFirst({
+        where: {
+          id: task_id,
+          org_id: req.orgId,
+          ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
+        },
+        select: {
+          id: true,
+          cycle_id: true,
+          assigned_to: true,
+          due_date: true,
+          priority: true,
+          cycle: {
+            select: {
+              patient_id: true,
+              set_plans: {
+                select: {
+                  id: true,
+                },
+                take: 1,
               },
-              take: 1,
-            },
-            case_: {
-              select: {
-                primary_pharmacist_id: true,
-                patient: {
-                  select: {
-                    name: true,
+              case_: {
+                select: {
+                  primary_pharmacist_id: true,
+                  patient: {
+                    select: {
+                      name: true,
+                    },
                   },
                 },
               },
             },
           },
         },
-      },
-    });
-    if (!task) return null;
-
-    // S2: Self-audit prevention — dispenser cannot audit their own work
-    const dispensedByUsers = await tx.dispenseResult.findMany({
-      where: { task_id, org_id: req.orgId },
-      select: { dispensed_by: true },
-      distinct: ['dispensed_by'],
-    });
-    const dispenserIds = new Set(dispensedByUsers.map((r) => r.dispensed_by));
-    if (dispenserIds.has(req.userId)) {
-      return { error: 'self_audit' as const };
-    }
-
-    // B2: Concurrent audit prevention — reject if a non-hold audit already exists
-    const existingAudit = await tx.dispenseAudit.findFirst({
-      where: { task_id, result: { notIn: ['hold'] } },
-      select: { id: true },
-    });
-    if (existingAudit) {
-      return { error: 'already_audited' as const };
-    }
-
-    if (result === 'emergency_approved') {
-      const adminMembership = await tx.membership.findFirst({
-        where: {
-          org_id: req.orgId,
-          user_id: req.userId,
-          is_active: true,
-          role: { in: ['owner', 'admin'] as never[] },
-        },
-        select: {
-          id: true,
-        },
       });
-      if (!adminMembership) {
-        return { error: '緊急例外承認は管理者のみ実行できます' } as const;
+      if (!task) return null;
+
+      // S2: Self-audit prevention — dispenser cannot audit their own work
+      const dispensedByUsers = await tx.dispenseResult.findMany({
+        where: { task_id, org_id: req.orgId },
+        select: { dispensed_by: true },
+        distinct: ['dispensed_by'],
+      });
+      const dispenserIds = new Set(dispensedByUsers.map((r) => r.dispensed_by));
+      if (dispenserIds.has(req.userId)) {
+        return { error: 'self_audit' as const };
       }
-    }
 
-    const now = new Date();
+      // B2: Concurrent audit prevention — reject if a non-hold audit already exists
+      const existingAudit = await tx.dispenseAudit.findFirst({
+        where: { task_id, result: { notIn: ['hold'] } },
+        select: { id: true },
+      });
+      if (existingAudit) {
+        return { error: 'already_audited' as const };
+      }
 
-    // Create DispenseAudit — the partial unique index on (task_id WHERE result NOT IN ('hold'))
-    // provides a DB-level TOCTOU guard; catch the constraint violation here.
-    const audit = await (async () => {
-      try {
-        return await tx.dispenseAudit.create({
-          data: {
+      if (result === 'emergency_approved') {
+        const adminMembership = await tx.membership.findFirst({
+          where: {
             org_id: req.orgId,
-            task_id,
-            result,
-            reject_reason: reject_reason ?? null,
-            reject_reason_code: reject_reason_code ?? null,
-            reject_detail: mergeRejectDetail({
-              rejectDetail: reject_detail,
-              externalAudit: external_audit,
-            }),
-            audited_by: req.userId,
-            audited_at: now,
+            user_id: req.userId,
+            is_active: true,
+            role: { in: ['owner', 'admin'] as never[] },
+          },
+          select: {
+            id: true,
           },
         });
-      } catch (err) {
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-          return { error: 'already_audited' as const };
+        if (!adminMembership) {
+          return { error: '緊急例外承認は管理者のみ実行できます' } as const;
         }
-        throw err;
       }
-    })();
-    if ('error' in audit) return audit;
 
-    const transitionHelper = async (toStatus: string) => {
-      try {
-        await transitionCycleStatus(tx, task.cycle_id, req.orgId, toStatus, req.userId);
-      } catch (err) {
-        if (err instanceof InvalidTransitionError) {
-          return { error: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}` } as const;
+      const now = new Date();
+
+      // Create DispenseAudit — the partial unique index on (task_id WHERE result NOT IN ('hold'))
+      // provides a DB-level TOCTOU guard; catch the constraint violation here.
+      const audit = await (async () => {
+        try {
+          return await tx.dispenseAudit.create({
+            data: {
+              org_id: req.orgId,
+              task_id,
+              result,
+              reject_reason: reject_reason ?? null,
+              reject_reason_code: reject_reason_code ?? null,
+              reject_detail: mergeRejectDetail({
+                rejectDetail: reject_detail,
+                externalAudit: external_audit,
+              }),
+              audited_by: req.userId,
+              audited_at: now,
+            },
+          });
+        } catch (err) {
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+            return { error: 'already_audited' as const };
+          }
+          throw err;
         }
-        if (err instanceof VersionConflictError) {
-          return { error: err.message, conflict: true } as const;
+      })();
+      if ('error' in audit) return audit;
+
+      const transitionHelper = async (toStatus: string) => {
+        try {
+          await transitionCycleStatus(tx, task.cycle_id, req.orgId, toStatus, req.userId);
+        } catch (err) {
+          if (err instanceof InvalidTransitionError) {
+            return {
+              error: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}`,
+            } as const;
+          }
+          if (err instanceof VersionConflictError) {
+            return { error: err.message, conflict: true } as const;
+          }
+          throw err;
         }
-        throw err;
-      }
-      return null;
-    };
+        return null;
+      };
 
-    if (result === 'approved' || result === 'emergency_approved') {
-      // Two-step transition: audit_pending → audited → setting/visit_ready
-      const toAuditedErr = await transitionHelper('audited');
-      if (toAuditedErr) return toAuditedErr;
-      const nextStatus = task.cycle.set_plans.length > 0 ? 'setting' : 'visit_ready';
-      const transitionErr = await transitionHelper(nextStatus);
-      if (transitionErr) return transitionErr;
-      await tx.dispenseTask.update({
-        where: { id: task_id },
-        data: { status: 'completed' },
-      });
+      if (result === 'approved' || result === 'emergency_approved') {
+        // Two-step transition: audit_pending → audited → setting/visit_ready
+        const toAuditedErr = await transitionHelper('audited');
+        if (toAuditedErr) return toAuditedErr;
+        const nextStatus = task.cycle.set_plans.length > 0 ? 'setting' : 'visit_ready';
+        const transitionErr = await transitionHelper(nextStatus);
+        if (transitionErr) return transitionErr;
+        await tx.dispenseTask.update({
+          where: { id: task_id },
+          data: { status: 'completed' },
+        });
 
-      // B4: Auto-resolve open dispense_audit_rejected exceptions on approval
-      await tx.workflowException.updateMany({
-        where: {
-          cycle_id: task.cycle_id,
-          exception_type: 'dispense_audit_rejected',
-          status: 'open',
-        },
-        data: { status: 'resolved', resolved_by: req.userId, resolved_at: new Date() },
-      });
-    } else if (result === 'hold') {
-      const transitionErr = await transitionHelper('on_hold');
-      if (transitionErr) return transitionErr;
-    } else if (result === 'rejected') {
-      // Update MedicationCycle status back to dispensing for re-dispense
-      const transitionErr = await transitionHelper('dispensing');
-      if (transitionErr) return transitionErr;
-      await tx.dispenseTask.update({
-        where: { id: task_id },
-        data: { status: 'in_progress' },
-      });
-
-      // Auto-create WorkflowException
-      await tx.workflowException.create({
-        data: {
-          org_id: req.orgId,
-          cycle_id: task.cycle_id,
-          exception_type: 'dispense_audit_rejected',
-          description: `調剤鑑査差戻し: ${reject_reason ?? '理由未記入'}${reject_detail ? ` — ${reject_detail}` : ''}`,
-          severity: 'warning',
-          status: 'open',
-        },
-      });
-
-      const fallbackRecipients = await tx.membership.findMany({
-        where: {
-          org_id: req.orgId,
-          is_active: true,
-          role: { in: ['admin', 'pharmacist'] as never[] },
-          user: {
-            is_active: true,
+        // B4: Auto-resolve open dispense_audit_rejected exceptions on approval
+        await tx.workflowException.updateMany({
+          where: {
+            cycle_id: task.cycle_id,
+            exception_type: 'dispense_audit_rejected',
+            status: 'open',
           },
-        },
-        select: {
-          user_id: true,
-        },
-      });
+          data: { status: 'resolved', resolved_by: req.userId, resolved_at: new Date() },
+        });
+      } else if (result === 'hold') {
+        const transitionErr = await transitionHelper('on_hold');
+        if (transitionErr) return transitionErr;
+      } else if (result === 'rejected') {
+        // Update MedicationCycle status back to dispensing for re-dispense
+        const transitionErr = await transitionHelper('dispensing');
+        if (transitionErr) return transitionErr;
+        await tx.dispenseTask.update({
+          where: { id: task_id },
+          data: { status: 'in_progress' },
+        });
 
-      const explicitUserIds = Array.from(
-        new Set(
-          [
-            task.assigned_to ?? null,
-            task.cycle.case_?.primary_pharmacist_id ?? null,
-            ...fallbackRecipients.map((member) => member.user_id),
-          ].filter((value): value is string => Boolean(value))
-        )
-      );
+        // Auto-create WorkflowException
+        await tx.workflowException.create({
+          data: {
+            org_id: req.orgId,
+            cycle_id: task.cycle_id,
+            exception_type: 'dispense_audit_rejected',
+            description: `調剤鑑査差戻し: ${reject_reason ?? '理由未記入'}${reject_detail ? ` — ${reject_detail}` : ''}`,
+            severity: 'warning',
+            status: 'open',
+          },
+        });
 
-      await dispatchNotificationEvent(tx, {
-        orgId: req.orgId,
-        eventType: 'dispense_audit_rejected',
-        type: 'urgent',
-        title: '調剤鑑査で差戻しが発生しました',
-        message: `${task.cycle.case_.patient.name} の調剤結果が差戻しになりました${task.due_date ? `（期限 ${task.due_date.toISOString().slice(0, 10)}）` : ''}`,
-        link: `/dispensing/${task.id}`,
-        metadata: {
-          task_id,
-          cycle_id: task.cycle_id,
-          patient_id: task.cycle.patient_id,
-          reject_reason: reject_reason ?? null,
-          priority: task.priority,
-        },
-        explicitUserIds,
-        dedupeKey: `dispense-audit-rejected:${task_id}:${audit.id}`,
-      });
+        const fallbackRecipients = await tx.membership.findMany({
+          where: {
+            org_id: req.orgId,
+            is_active: true,
+            role: { in: ['admin', 'pharmacist'] as never[] },
+            user: {
+              is_active: true,
+            },
+          },
+          select: {
+            user_id: true,
+          },
+        });
+
+        const explicitUserIds = Array.from(
+          new Set(
+            [
+              task.assigned_to ?? null,
+              task.cycle.case_?.primary_pharmacist_id ?? null,
+              ...fallbackRecipients.map((member) => member.user_id),
+            ].filter((value): value is string => Boolean(value)),
+          ),
+        );
+
+        await dispatchNotificationEvent(tx, {
+          orgId: req.orgId,
+          eventType: 'dispense_audit_rejected',
+          type: 'urgent',
+          title: '調剤鑑査で差戻しが発生しました',
+          message: `${task.cycle.case_.patient.name} の調剤結果が差戻しになりました${task.due_date ? `（期限 ${task.due_date.toISOString().slice(0, 10)}）` : ''}`,
+          link: `/dispensing/${task.id}`,
+          metadata: {
+            task_id,
+            cycle_id: task.cycle_id,
+            patient_id: task.cycle.patient_id,
+            reject_reason: reject_reason ?? null,
+            priority: task.priority,
+          },
+          explicitUserIds,
+          dedupeKey: `dispense-audit-rejected:${task_id}:${audit.id}`,
+        });
+      }
+
+      return audit;
+    });
+
+    if (!auditResult) return notFound('指定された調剤タスクが見つかりません');
+    if ('error' in auditResult) {
+      const auditError = auditResult as DispenseAuditMutationError;
+      if (auditError.error === 'self_audit') {
+        return validationError('ご自身が調剤した処方の監査はできません');
+      }
+      if (auditError.error === 'already_audited') {
+        return conflict('この調剤タスクは既に監査済みです');
+      }
+      if ('conflict' in auditError && auditError.conflict) {
+        return conflict(auditError.error);
+      }
+      return validationError(auditError.error);
     }
 
-    return audit;
-  });
+    await notifyWorkflowMutation({
+      orgId: req.orgId,
+      eventType: 'cycle_transition',
+      payload: { source: 'dispense_audits', task_id },
+    });
 
-  if (!auditResult) return notFound('指定された調剤タスクが見つかりません');
-  if ('error' in auditResult) {
-    const auditError = auditResult as DispenseAuditMutationError;
-    if (auditError.error === 'self_audit') {
-      return validationError('ご自身が調剤した処方の監査はできません');
-    }
-    if (auditError.error === 'already_audited') {
-      return conflict('この調剤タスクは既に監査済みです');
-    }
-    if ('conflict' in auditError && auditError.conflict) {
-      return conflict(auditError.error);
-    }
-    return validationError(auditError.error);
-  }
-
-  await notifyWorkflowMutation({
-    orgId: req.orgId,
-    eventType: 'cycle_transition',
-    payload: { source: 'dispense_audits', task_id },
-  });
-
-  return success(auditResult, 201);
-}, {
-  permission: 'canAuditDispense',
-  message: '調剤鑑査の作成権限がありません',
-});
+    return success(auditResult, 201);
+  },
+  {
+    permission: 'canAuditDispense',
+    message: '調剤鑑査の作成権限がありません',
+  },
+);

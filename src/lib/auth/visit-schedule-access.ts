@@ -61,6 +61,31 @@ export function buildCareCaseAssignmentWhere(
   };
 }
 
+export function buildVisitScheduleProposalAssignmentWhere(
+  ctx: VisitScheduleAccessContext,
+): Prisma.VisitScheduleProposalWhereInput | null {
+  if (canBypassVisitScheduleAssignmentAccess(ctx)) return null;
+
+  return {
+    OR: [
+      { proposed_pharmacist_id: ctx.userId },
+      { case_: { primary_pharmacist_id: ctx.userId } },
+      { case_: { backup_pharmacist_id: ctx.userId } },
+      { case_: { visit_schedules: { some: { pharmacist_id: ctx.userId } } } },
+    ],
+  };
+}
+
+export function buildVisitScheduleProposalCaseAccessWhere(
+  ctx: VisitScheduleAccessContext,
+  proposedPharmacistId?: string | null,
+): Prisma.CareCaseWhereInput | null {
+  if (canBypassVisitScheduleAssignmentAccess(ctx)) return null;
+  if (proposedPharmacistId && proposedPharmacistId === ctx.userId) return null;
+
+  return buildCareCaseAssignmentWhere(ctx);
+}
+
 export function buildPatientAssignmentWhere(
   ctx: VisitScheduleAccessContext,
 ): Prisma.PatientWhereInput | null {

@@ -9,6 +9,7 @@ const {
   withAuthMock,
   withOrgContextMock,
   prescriptionIntakeFindManyMock,
+  prescriptionIntakeCountMock,
   validateOrgReferencesMock,
   upsertOperationalTaskMock,
   careCaseFindFirstMock,
@@ -25,6 +26,7 @@ const {
   ),
   withOrgContextMock: vi.fn(),
   prescriptionIntakeFindManyMock: vi.fn(),
+  prescriptionIntakeCountMock: vi.fn().mockResolvedValue(2),
   validateOrgReferencesMock: vi.fn().mockResolvedValue({ ok: true }),
   upsertOperationalTaskMock: vi.fn().mockResolvedValue({ id: 'task_operational_1' }),
   careCaseFindFirstMock: vi.fn().mockResolvedValue({ id: 'case_1' }),
@@ -51,6 +53,7 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     prescriptionIntake: {
       findMany: prescriptionIntakeFindManyMock,
+      count: prescriptionIntakeCountMock,
       findFirst: vi.fn().mockResolvedValue(null),
     },
     medicationProfile: {
@@ -1019,5 +1022,56 @@ describe('/api/prescription-intakes GET', () => {
         orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       }),
     );
+  });
+
+  it('passes status and source filters into the paginated query', async () => {
+    const response = await GET({
+      url: 'http://localhost/api/prescription-intakes?limit=25&status=inquiry_pending&source_type=fax',
+    } as NextRequest);
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(prescriptionIntakeFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 26,
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          source_type: 'fax',
+          cycle: {
+            overall_status: 'inquiry_pending',
+          },
+        }),
+      }),
+    );
+    expect(prescriptionIntakeCountMock).not.toHaveBeenCalled();
+  });
+
+  it('returns optional totalCount from the same assignment and filter where', async () => {
+    const response = await GET({
+      url: 'http://localhost/api/prescription-intakes?limit=1&status=ready_to_dispense&source_type=paper&include_total=1',
+    } as NextRequest);
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const findManyArgs = prescriptionIntakeFindManyMock.mock.calls[0]?.[0];
+    expect(findManyArgs).toEqual(
+      expect.objectContaining({
+        take: 2,
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          source_type: 'paper',
+          cycle: {
+            overall_status: 'ready_to_dispense',
+          },
+        }),
+      }),
+    );
+    expect(prescriptionIntakeCountMock).toHaveBeenCalledWith({ where: findManyArgs.where });
+    await expect(response.json()).resolves.toMatchObject({
+      data: [{ id: 'intake_2' }],
+      hasMore: true,
+      nextCursor: 'intake_2',
+      totalCount: 2,
+    });
   });
 });

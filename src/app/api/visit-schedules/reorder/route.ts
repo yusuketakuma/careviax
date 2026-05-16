@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
+import { buildVisitScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { validateScheduleTimeDatesFitShift } from '@/server/services/visit-schedule-shift';
 
@@ -16,7 +17,7 @@ const visitScheduleReorderSchema = z.object({
           .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
           .optional(),
         pharmacist_id: z.string().trim().min(1).optional(),
-      })
+      }),
     )
     .min(1),
 });
@@ -32,15 +33,17 @@ export const PATCH = withAuth(
     }
 
     const dedupedUpdates = Array.from(
-      new Map(parsed.data.updates.map((item) => [item.schedule_id, item])).values()
+      new Map(parsed.data.updates.map((item) => [item.schedule_id, item])).values(),
     );
     const uniqueScheduleIds = dedupedUpdates.map((item) => item.schedule_id);
 
     const result = await withOrgContext(req.orgId, async (tx) => {
+      const assignmentWhere = buildVisitScheduleAssignmentWhere(req);
       const schedules = await tx.visitSchedule.findMany({
         where: {
           org_id: req.orgId,
           id: { in: uniqueScheduleIds },
+          ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
         },
         select: {
           id: true,
@@ -61,8 +64,8 @@ export const PATCH = withAuth(
         new Set(
           dedupedUpdates
             .map((item) => item.pharmacist_id)
-            .filter((value): value is string => Boolean(value))
-        )
+            .filter((value): value is string => Boolean(value)),
+        ),
       );
 
       if (pharmacistIds.length > 0) {
@@ -83,17 +86,41 @@ export const PATCH = withAuth(
       }
 
       const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
-      const duplicateRouteOrders = dedupedUpdates.reduce((map, item) => {
+      const routeCellByKey = dedupedUpdates.reduce((map, item) => {
         const schedule = scheduleById.get(item.schedule_id);
         if (!schedule) return map;
-        const targetDate = item.scheduled_date ?? schedule.scheduled_date.toISOString().slice(0, 10);
+        const targetDate =
+          item.scheduled_date ?? schedule.scheduled_date.toISOString().slice(0, 10);
         const targetPharmacistId = item.pharmacist_id ?? schedule.pharmacist_id;
         const key = `${targetPharmacistId}:${targetDate}:${item.route_order}`;
-        map.set(key, (map.get(key) ?? 0) + 1);
+        const current = map.get(key);
+        map.set(key, {
+          pharmacistId: targetPharmacistId,
+          scheduledDate: targetDate,
+          routeOrder: item.route_order,
+          count: (current?.count ?? 0) + 1,
+        });
         return map;
-      }, new Map<string, number>());
+      }, new Map<string, { pharmacistId: string; scheduledDate: string; routeOrder: number; count: number }>());
 
-      if (Array.from(duplicateRouteOrders.values()).some((count) => count > 1)) {
+      const routeCells = Array.from(routeCellByKey.values());
+      if (routeCells.some((cell) => cell.count > 1)) {
+        return { error: 'duplicate_route_order' as const };
+      }
+
+      const existingRouteOrderConflict = await tx.visitSchedule.findFirst({
+        where: {
+          org_id: req.orgId,
+          id: { notIn: uniqueScheduleIds },
+          OR: routeCells.map((cell) => ({
+            pharmacist_id: cell.pharmacistId,
+            scheduled_date: new Date(cell.scheduledDate),
+            route_order: cell.routeOrder,
+          })),
+        },
+        select: { id: true },
+      });
+      if (existingRouteOrderConflict) {
         return { error: 'duplicate_route_order' as const };
       }
 
@@ -115,7 +142,8 @@ export const PATCH = withAuth(
         .map((item) => {
           const schedule = scheduleById.get(item.schedule_id);
           if (!schedule) return null;
-          const targetDate = item.scheduled_date ?? schedule.scheduled_date.toISOString().slice(0, 10);
+          const targetDate =
+            item.scheduled_date ?? schedule.scheduled_date.toISOString().slice(0, 10);
           const targetPharmacistId = item.pharmacist_id ?? schedule.pharmacist_id;
           const isMove =
             targetDate !== schedule.scheduled_date.toISOString().slice(0, 10) ||
@@ -124,7 +152,7 @@ export const PATCH = withAuth(
         })
         .filter((item): item is NonNullable<typeof item> => Boolean(item));
       const targetShiftKeys = Array.from(
-        new Set(moveTargets.map((item) => `${item.targetPharmacistId}:${item.targetDate}`))
+        new Set(moveTargets.map((item) => `${item.targetPharmacistId}:${item.targetDate}`)),
       );
       const targetShifts =
         targetShiftKeys.length === 0
@@ -153,7 +181,7 @@ export const PATCH = withAuth(
         targetShifts.map((shift) => [
           `${shift.user_id}:${shift.date.toISOString().slice(0, 10)}`,
           shift,
-        ])
+        ]),
       );
       const shiftConflict = moveTargets.find((item) => {
         const shift = shiftByTarget.get(`${item.targetPharmacistId}:${item.targetDate}`) ?? null;
@@ -164,9 +192,9 @@ export const PATCH = withAuth(
         );
       });
       if (shiftConflict) {
-        const shift = shiftByTarget.get(
-          `${shiftConflict.targetPharmacistId}:${shiftConflict.targetDate}`
-        ) ?? null;
+        const shift =
+          shiftByTarget.get(`${shiftConflict.targetPharmacistId}:${shiftConflict.targetDate}`) ??
+          null;
         return {
           error: 'shift_conflict' as const,
           message:
@@ -181,11 +209,12 @@ export const PATCH = withAuth(
       await Promise.all(
         dedupedUpdates.map((item) => {
           const schedule = scheduleById.get(item.schedule_id);
-          const targetDate = item.scheduled_date ?? schedule?.scheduled_date.toISOString().slice(0, 10);
+          const targetDate =
+            item.scheduled_date ?? schedule?.scheduled_date.toISOString().slice(0, 10);
           const targetPharmacistId = item.pharmacist_id ?? schedule?.pharmacist_id;
           const targetShift =
             targetDate && targetPharmacistId
-              ? shiftByTarget.get(`${targetPharmacistId}:${targetDate}`) ?? null
+              ? (shiftByTarget.get(`${targetPharmacistId}:${targetDate}`) ?? null)
               : null;
 
           return tx.visitSchedule.update({
@@ -198,7 +227,7 @@ export const PATCH = withAuth(
               version: { increment: 1 },
             },
           });
-        })
+        }),
       );
 
       await tx.auditLog.create({
@@ -248,8 +277,8 @@ export const PATCH = withAuth(
         notifyWorkflowMutation({
           orgId: req.orgId,
           payload: { source: 'visit_schedules_reorder', case_id: caseId },
-        })
-      )
+        }),
+      ),
     );
 
     return success(result);
@@ -257,5 +286,5 @@ export const PATCH = withAuth(
   {
     permission: 'canVisit',
     message: '訪問予定の更新権限がありません',
-  }
+  },
 );
