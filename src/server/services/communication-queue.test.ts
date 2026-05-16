@@ -205,6 +205,84 @@ describe('listCommunicationQueue', () => {
     );
   });
 
+  it('applies bulk patientIds and caseIds to dashboard communication queue sources', async () => {
+    emptyDbMocks();
+
+    await listCommunicationQueue(makeDb(), {
+      orgId: 'org-1',
+      patientIds: ['p-1', 'p-2'],
+      caseIds: ['case-1'],
+      limit: 3,
+    });
+
+    const patientScope = { patient_id: { in: ['p-1', 'p-2'] } };
+    const caseScope = {
+      OR: [{ case_id: null }, { case_id: { in: ['case-1'] } }],
+    };
+    expect(selfReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining(patientScope),
+      }),
+    );
+    expect(contactLogFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          ...patientScope,
+          case_id: { in: ['case-1'] },
+        }),
+      }),
+    );
+    expect(communicationRequestFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          ...patientScope,
+          AND: [caseScope],
+        }),
+      }),
+    );
+    expect(deliveryRecordFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          report: expect.objectContaining({
+            ...patientScope,
+            AND: [caseScope],
+          }),
+        }),
+      }),
+    );
+    expect(careReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          ...patientScope,
+          AND: [caseScope],
+        }),
+      }),
+    );
+    expect(tracingReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          ...patientScope,
+          AND: [caseScope],
+        }),
+      }),
+    );
+    expect(externalAccessGrantFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          ...patientScope,
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              AND: expect.arrayContaining([
+                { scope: { path: ['allowed_case_ids'], array_contains: ['case-1'] } },
+              ]),
+            }),
+          ]),
+        }),
+        take: 3,
+      }),
+    );
+  });
+
   it('builds emergency drafts when patientId is provided and patient has contacts', async () => {
     emptyDbMocks();
     patientFindFirstMock.mockResolvedValue({
@@ -281,5 +359,86 @@ describe('listCommunicationQueue', () => {
     });
 
     expect(result.items.length).toBeLessThanOrEqual(2);
+  });
+
+  it('filters external share visibility before applying the final queue item limit', async () => {
+    emptyDbMocks();
+    externalAccessGrantFindManyMock.mockResolvedValue([
+      {
+        id: 'visible-1',
+        patient_id: 'p-1',
+        granted_to_name: '担当内',
+        expires_at: new Date('2026-04-02T00:00:00Z'),
+        scope: { care_reports: true, allowed_case_ids: ['case-1'] },
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'p-1', name: '田中太郎' }]);
+
+    const result = await listCommunicationQueue(makeDb(), {
+      orgId: 'org-1',
+      patientIds: ['p-hidden', 'p-1'],
+      caseIds: ['case-1'],
+      limit: 1,
+    });
+
+    expect(externalAccessGrantFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 1,
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              AND: expect.arrayContaining([
+                { scope: { path: ['allowed_case_ids'], array_contains: ['case-1'] } },
+              ]),
+            }),
+          ]),
+        }),
+      }),
+    );
+    expect(externalAccessGrantFindManyMock.mock.calls[0][0]).not.toHaveProperty('skip');
+    expect(result.summary.expiring_external_shares).toBe(1);
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: 'external_share:visible-1',
+        patient_id: 'p-1',
+      }),
+    ]);
+  });
+
+  it('queries DB-visible external shares without offset paging hidden grants', async () => {
+    emptyDbMocks();
+    externalAccessGrantFindManyMock.mockResolvedValue([
+      {
+        id: 'visible-db-filtered',
+        patient_id: 'p-1',
+        granted_to_name: '担当内',
+        expires_at: new Date('2026-04-02T00:00:00Z'),
+        scope: { care_reports: true, allowed_case_ids: ['case-1'] },
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'p-1', name: '田中太郎' }]);
+
+    const result = await listCommunicationQueue(makeDb(), {
+      orgId: 'org-1',
+      patientIds: ['p-hidden', 'p-1'],
+      caseIds: ['case-1'],
+      limit: 1,
+    });
+
+    expect(externalAccessGrantFindManyMock).toHaveBeenCalledTimes(1);
+    expect(externalAccessGrantFindManyMock.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        take: 1,
+        orderBy: [{ expires_at: 'asc' }, { id: 'asc' }],
+      }),
+    );
+    expect(externalAccessGrantFindManyMock.mock.calls[0][0]).not.toHaveProperty('skip');
+    expect(result.summary.expiring_external_shares).toBe(1);
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: 'external_share:visible-db-filtered',
+        patient_id: 'p-1',
+      }),
+    ]);
   });
 });

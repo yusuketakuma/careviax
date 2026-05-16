@@ -28,11 +28,13 @@ const {
   userFindManyMock,
   communityActivityFindManyMock,
   careCaseCountMock,
+  careCaseFindManyMock,
   pharmacistShiftFindManyMock,
   businessHolidayFindManyMock,
   inquiryRecordFindManyMock,
   medicationIssueFindManyMock,
   firstVisitDocumentCountMock,
+  conferenceNoteFindManyMock,
   communicationQueueMock,
   patientRiskQueueMock,
   homeCareFeatureSummaryMock,
@@ -62,11 +64,13 @@ const {
   userFindManyMock: vi.fn(),
   communityActivityFindManyMock: vi.fn(),
   careCaseCountMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
   pharmacistShiftFindManyMock: vi.fn(),
   businessHolidayFindManyMock: vi.fn(),
   inquiryRecordFindManyMock: vi.fn(),
   medicationIssueFindManyMock: vi.fn(),
   firstVisitDocumentCountMock: vi.fn(),
+  conferenceNoteFindManyMock: vi.fn(),
   communicationQueueMock: vi.fn(),
   patientRiskQueueMock: vi.fn(),
   homeCareFeatureSummaryMock: vi.fn(),
@@ -142,6 +146,10 @@ vi.mock('@/lib/db/client', () => ({
     },
     careCase: {
       count: careCaseCountMock,
+      findMany: careCaseFindManyMock,
+    },
+    conferenceNote: {
+      findMany: conferenceNoteFindManyMock,
     },
     pharmacistShift: {
       findMany: pharmacistShiftFindManyMock,
@@ -165,7 +173,10 @@ vi.mock('@/server/services/home-care-ops', () => ({
   getHomeCareFeatureSummary: homeCareFeatureSummaryMock,
 }));
 
-import { buildWorkflowCacheKey } from '@/server/services/workflow-dashboard-cache';
+import {
+  buildWorkflowAssignmentScopeFingerprint,
+  buildWorkflowCacheKey,
+} from '@/server/services/workflow-dashboard-cache';
 import { GET } from './route';
 
 function createRequest(headers?: Record<string, string>) {
@@ -203,9 +214,7 @@ describe('/api/dashboard/workflow GET', () => {
         },
       },
     ]);
-    communicationRequestCountMock
-      .mockResolvedValueOnce(4)
-      .mockResolvedValueOnce(1);
+    communicationRequestCountMock.mockResolvedValueOnce(4).mockResolvedValueOnce(1);
     communicationRequestFindManyMock.mockResolvedValue([]);
     medicationCycleFindManyMock.mockResolvedValue([]);
     inquiryRecordFindManyMock.mockResolvedValue([]);
@@ -399,12 +408,8 @@ describe('/api/dashboard/workflow GET', () => {
         created_at: new Date('2026-03-26T01:00:00Z'),
       },
     ]);
-    patientFindManyMock.mockResolvedValue([
-      { id: 'patient_2', name: '山田 花子' },
-    ]);
-    userFindManyMock.mockResolvedValue([
-      { id: 'user_1', name: '田中 薬剤師' },
-    ]);
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_2', name: '山田 花子' }]);
+    userFindManyMock.mockResolvedValue([{ id: 'user_1', name: '田中 薬剤師' }]);
     taskCountMock.mockResolvedValue(3);
     communityActivityFindManyMock.mockResolvedValue([
       {
@@ -417,6 +422,8 @@ describe('/api/dashboard/workflow GET', () => {
       },
     ]);
     careCaseCountMock.mockResolvedValueOnce(2).mockResolvedValueOnce(1);
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
+    conferenceNoteFindManyMock.mockResolvedValue([]);
     pharmacistShiftFindManyMock.mockResolvedValue([
       {
         date: new Date('2026-03-27T00:00:00Z'),
@@ -531,10 +538,10 @@ describe('/api/dashboard/workflow GET', () => {
         },
         home_care_feature_summary: {
           totals: {
-            blocked: 1,
-            attention: 1,
-            monitoring: 1,
-            ready: 17,
+            blocked: 0,
+            attention: 0,
+            monitoring: 0,
+            ready: 0,
           },
         },
         patient_risk_queue: {
@@ -638,9 +645,101 @@ describe('/api/dashboard/workflow GET', () => {
       },
     });
     expect(payload).toMatchSnapshot();
-    expect(homeCareFeatureSummaryMock).toHaveBeenCalledWith(expect.anything(), {
+    expect(homeCareFeatureSummaryMock).not.toHaveBeenCalled();
+    expect(communicationQueueMock).toHaveBeenCalledWith(expect.anything(), {
       orgId: 'org_1',
+      caseIds: ['case_1'],
+      patientIds: ['patient_1'],
+      limit: expect.any(Number),
     });
+    expect(cycleGroupByMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          case_id: { in: ['case_1'] },
+        }),
+      }),
+    );
+    expect(visitScheduleFindManyMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          case_id: { in: ['case_1'] },
+        }),
+      }),
+    );
+    expect(taskFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          OR: expect.arrayContaining([
+            { assigned_to: 'user_1' },
+            { related_entity_type: 'patient', related_entity_id: { in: ['patient_1'] } },
+            { related_entity_type: 'case', related_entity_id: { in: ['case_1'] } },
+          ]),
+        }),
+      }),
+    );
+    expect(patientSelfReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: { in: ['patient_1'] },
+        }),
+      }),
+    );
+    expect(patientRiskQueueMock).toHaveBeenCalledWith(expect.anything(), {
+      orgId: 'org_1',
+      patientIds: ['patient_1'],
+      caseIdsByPatient: { patient_1: ['case_1'] },
+      limit: expect.any(Number),
+      candidateLimit: expect.any(Number),
+    });
+    expect(conferenceNoteFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps patient-level issue cycle fallback inside assigned cases', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
+    medicationIssueFindManyMock.mockResolvedValue([
+      {
+        id: 'issue_patient_level',
+        patient_id: 'patient_1',
+        case_id: null,
+        title: '服薬状況の確認が必要',
+        description: null,
+        status: 'open',
+        priority: 'high',
+        category: 'adherence',
+        identified_at: new Date('2026-03-25T00:00:00Z'),
+      },
+    ]);
+    medicationCycleFindManyMock.mockResolvedValue([
+      {
+        id: 'cycle_allowed',
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        prescription_intakes: [{ prescriber_name: '佐藤 医師' }],
+      },
+    ]);
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
+
+    expect(response.status).toBe(200);
+    expect(medicationCycleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          OR: [
+            {
+              patient_id: { in: ['patient_1'] },
+              case_id: { in: ['case_1'] },
+            },
+          ],
+        },
+      }),
+    );
   });
 
   it('keeps role-specific inbox state out of cross-role cache hits', async () => {
@@ -661,16 +760,70 @@ describe('/api/dashboard/workflow GET', () => {
     expect(secondPayload.data.role_inboxes.current_role).toBe('pharmacist');
   });
 
+  it('does not replay cached workflow PHI after the same user assignment scope changes', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
+    careCaseFindManyMock
+      .mockResolvedValueOnce([{ id: 'case_1', patient_id: 'patient_1' }])
+      .mockResolvedValueOnce([]);
+
+    const firstResponse = await GET(createRequest({ 'x-org-id': 'org_1' }));
+    visitScheduleFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    const secondResponse = await GET(createRequest({ 'x-org-id': 'org_1' }));
+
+    expect(firstResponse.status).toBe(200);
+    expect(secondResponse.status).toBe(200);
+    expect(careCaseFindManyMock).toHaveBeenCalledTimes(2);
+    expect(cycleGroupByMock).toHaveBeenCalledTimes(2);
+    expect(cycleGroupByMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          case_id: { in: [] },
+        }),
+      }),
+    );
+  });
+
   it('keys workflow cache by org, role, user, and local day', () => {
-    expect(
-      buildWorkflowCacheKey('org_1', 'clerk', 'user_1', new Date(2026, 2, 27, 12, 0, 0))
-    ).toBe(
-      'workflow:org_1:clerk:user_1:2026-03-27'
+    expect(buildWorkflowCacheKey('org_1', 'clerk', 'user_1', new Date(2026, 2, 27, 12, 0, 0))).toBe(
+      'workflow:org_1:clerk:user_1:2026-03-27',
     );
-    expect(
-      buildWorkflowCacheKey('org_1', 'clerk', 'user_1', new Date(2026, 2, 28, 12, 0, 0))
-    ).toBe(
-      'workflow:org_1:clerk:user_1:2026-03-28'
+    expect(buildWorkflowCacheKey('org_1', 'clerk', 'user_1', new Date(2026, 2, 28, 12, 0, 0))).toBe(
+      'workflow:org_1:clerk:user_1:2026-03-28',
     );
+  });
+
+  it('adds a stable assignment-scope fingerprint to scoped workflow cache keys', () => {
+    const fingerprint = buildWorkflowAssignmentScopeFingerprint({
+      assignedToUserId: 'user_1',
+      caseIds: ['case_2', 'case_1'],
+      patientIds: ['patient_1'],
+      caseIdsByPatient: {
+        patient_1: ['case_2', 'case_1'],
+      },
+    });
+
+    expect(fingerprint).toMatch(/^[A-Za-z0-9_-]{24}$/);
+    expect(
+      buildWorkflowCacheKey(
+        'org_1',
+        'clerk',
+        'user_1',
+        new Date(2026, 2, 27, 12, 0, 0),
+        fingerprint,
+      ),
+    ).toBe(`workflow:org_1:clerk:user_1:2026-03-27:${fingerprint}`);
+    expect(
+      buildWorkflowAssignmentScopeFingerprint({
+        assignedToUserId: 'user_1',
+        caseIds: ['case_1', 'case_2'],
+        patientIds: ['patient_1'],
+        caseIdsByPatient: {
+          patient_1: ['case_1', 'case_2'],
+        },
+      }),
+    ).toBe(fingerprint);
+    expect(buildWorkflowAssignmentScopeFingerprint({})).toBeUndefined();
   });
 });

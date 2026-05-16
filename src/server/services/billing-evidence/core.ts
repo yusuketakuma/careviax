@@ -1456,6 +1456,7 @@ export async function upsertBillingEvidenceForVisit(
       title: '請求根拠の確認が必要です',
       description: exclusionReason,
       priority: 'high',
+      assignedTo: visitRecord.schedule.pharmacist_id,
       dueDate: visitRecord.visit_date,
       slaDueAt: visitRecord.visit_date,
       relatedEntityType: 'visit_record',

@@ -144,11 +144,15 @@ export async function listAccessiblePatientIds(args: {
   db: PatientListDb;
   orgId: string;
   accessContext: VisitScheduleAccessContext;
+  candidatePatientIds?: string[];
 }) {
+  if (args.candidatePatientIds?.length === 0) return [];
+
   const patients = await args.db.patient.findMany({
     where: applyPatientAssignmentWhere(
       {
         org_id: args.orgId,
+        ...(args.candidatePatientIds ? { id: { in: args.candidatePatientIds } } : {}),
       },
       args.accessContext,
     ),

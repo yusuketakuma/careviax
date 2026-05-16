@@ -545,6 +545,80 @@ describe('/api/patients/[id]', () => {
     });
   });
 
+  it('filters external shares by assigned case boundary and strips stored boundary scope', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '患者A',
+      phone: '090-1234-5678',
+      medical_insurance_number: '1234567890',
+      care_insurance_number: '9988776655',
+      residences: [],
+      contacts: [],
+      conditions: [],
+      consents: [],
+      cases: [{ id: 'case_1' }],
+    });
+    externalAccessGrantFindManyMock.mockResolvedValue([
+      {
+        id: 'grant_visible',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: '09012345678',
+        scope: { care_reports: true, allowed_case_ids: ['case_1'] },
+        expires_at: new Date('2026-04-03T00:00:00.000Z'),
+        accessed_at: null,
+        created_at: new Date('2026-04-01T00:00:00.000Z'),
+      },
+      {
+        id: 'grant_patient_only',
+        granted_to_name: '患者家族',
+        granted_to_contact: null,
+        scope: { medication_list: true },
+        expires_at: new Date('2026-04-04T00:00:00.000Z'),
+        accessed_at: null,
+        created_at: new Date('2026-04-02T00:00:00.000Z'),
+      },
+    ]);
+
+    const response = await GET(
+      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(externalAccessGrantFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: 'patient_1',
+          revoked_at: null,
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              AND: expect.arrayContaining([
+                { scope: { path: ['allowed_case_ids'], array_contains: ['case_1'] } },
+              ]),
+            }),
+          ]),
+        }),
+        take: 8,
+      }),
+    );
+    expect(externalAccessGrantFindManyMock.mock.calls[0][0]).not.toHaveProperty('skip');
+    expect(payload.external_shares).toEqual([
+      expect.objectContaining({
+        id: 'grant_visible',
+        scope: { care_reports: true },
+      }),
+      expect.objectContaining({
+        id: 'grant_patient_only',
+        scope: { medication_list: true },
+      }),
+    ]);
+    expect(JSON.stringify(payload.external_shares)).not.toContain('grant_hidden');
+    expect(JSON.stringify(payload.external_shares)).not.toContain('allowed_case_ids');
+  });
+
   it('includes first-visit documents with normalized emergency contacts', async () => {
     patientFindFirstMock.mockResolvedValue({
       id: 'patient_1',

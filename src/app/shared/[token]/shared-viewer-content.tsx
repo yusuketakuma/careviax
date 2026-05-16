@@ -154,9 +154,8 @@ export function SharedViewerContent({ token }: { token: string }) {
     mutationFn: async () => {
       const response = await fetch(`/api/external-access/${token}/self-report`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-otp': activeOtp },
         body: JSON.stringify({
-          otp: activeOtp,
           reported_by_name: reporterName,
           relation: relation || undefined,
           category,

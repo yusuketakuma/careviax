@@ -2,21 +2,66 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { success } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { listCommunicationQueue } from '@/server/services/communication-queue';
+import {
+  buildDashboardTaskAssignmentWhere,
+  resolveDashboardAssignmentScope,
+} from '@/server/services/dashboard-assignment-scope';
 
-function isPreparationReady(preparation: {
-  medication_changes_reviewed: boolean;
-  carry_items_confirmed: boolean;
-  previous_issues_reviewed: boolean;
-  route_confirmed: boolean;
-  offline_synced: boolean;
-} | null) {
+function isPreparationReady(
+  preparation: {
+    medication_changes_reviewed: boolean;
+    carry_items_confirmed: boolean;
+    previous_issues_reviewed: boolean;
+    route_confirmed: boolean;
+    offline_synced: boolean;
+  } | null,
+) {
   return Boolean(
     preparation?.medication_changes_reviewed &&
-      preparation.carry_items_confirmed &&
-      preparation.previous_issues_reviewed &&
-      preparation.route_confirmed &&
-      preparation.offline_synced
+    preparation.carry_items_confirmed &&
+    preparation.previous_issues_reviewed &&
+    preparation.route_confirmed &&
+    preparation.offline_synced,
   );
+}
+
+function buildCaseScope(caseIds: string[] | undefined) {
+  return caseIds === undefined ? {} : { case_id: { in: caseIds } };
+}
+
+function buildPatientScope(patientIds: string[] | undefined) {
+  return patientIds === undefined ? {} : { patient_id: { in: patientIds } };
+}
+
+function buildNullableCaseBackedScope(args: { caseIds?: string[]; patientIds?: string[] }) {
+  if (args.caseIds === undefined && args.patientIds === undefined) return {};
+
+  const scopes = [
+    ...(args.caseIds && args.caseIds.length > 0 ? [{ case_id: { in: args.caseIds } }] : []),
+    ...(args.patientIds && args.patientIds.length > 0
+      ? [{ case_id: null, patient_id: { in: args.patientIds } }]
+      : []),
+  ];
+
+  return scopes.length > 0 ? { OR: scopes } : { id: { in: [] } };
+}
+
+function buildCycleAssignmentScope(args: { caseIds?: string[]; patientIds?: string[] }) {
+  if (args.caseIds === undefined) return {};
+  return args.caseIds.length > 0
+    ? { cycle: { case_id: { in: args.caseIds } } }
+    : { id: { in: [] } };
+}
+
+function buildOverrideAssignmentScope(caseIds: string[] | undefined) {
+  if (caseIds === undefined) return {};
+  if (caseIds.length === 0) return { id: { in: [] } };
+  return {
+    OR: [
+      { source_schedule: { case_id: { in: caseIds } } },
+      { replacement_schedule: { case_id: { in: caseIds } } },
+    ],
+  };
 }
 
 export const GET = withAuth(
@@ -27,6 +72,11 @@ export const GET = withAuth(
     tomorrow.setDate(tomorrow.getDate() + 1);
     const sevenDaysFromNow = new Date(today);
     sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+    const assignmentScope = await resolveDashboardAssignmentScope({
+      db: prisma,
+      orgId: req.orgId,
+      accessContext: req,
+    });
 
     const [
       totalVisits,
@@ -45,6 +95,7 @@ export const GET = withAuth(
       prisma.visitSchedule.count({
         where: {
           org_id: req.orgId,
+          ...buildCaseScope(assignmentScope.caseIds),
           scheduled_date: { gte: today, lt: tomorrow },
           schedule_status: { notIn: ['cancelled', 'rescheduled'] },
         },
@@ -52,6 +103,7 @@ export const GET = withAuth(
       prisma.visitSchedule.count({
         where: {
           org_id: req.orgId,
+          ...buildCaseScope(assignmentScope.caseIds),
           scheduled_date: { gte: today, lt: tomorrow },
           schedule_status: 'completed',
         },
@@ -59,6 +111,7 @@ export const GET = withAuth(
       prisma.visitSchedule.count({
         where: {
           org_id: req.orgId,
+          ...buildCaseScope(assignmentScope.caseIds),
           scheduled_date: { gte: today, lt: tomorrow },
           schedule_status: 'in_preparation',
         },
@@ -66,6 +119,7 @@ export const GET = withAuth(
       prisma.visitSchedule.count({
         where: {
           org_id: req.orgId,
+          ...buildCaseScope(assignmentScope.caseIds),
           scheduled_date: { gte: today, lt: tomorrow },
           schedule_status: 'ready',
         },
@@ -73,6 +127,7 @@ export const GET = withAuth(
       prisma.visitSchedule.count({
         where: {
           org_id: req.orgId,
+          ...buildCaseScope(assignmentScope.caseIds),
           scheduled_date: { gte: today, lt: tomorrow },
           schedule_status: 'cancelled',
         },
@@ -80,6 +135,7 @@ export const GET = withAuth(
       prisma.visitSchedule.findMany({
         where: {
           org_id: req.orgId,
+          ...buildCaseScope(assignmentScope.caseIds),
           scheduled_date: {
             gte: today,
             lt: tomorrow,
@@ -128,6 +184,7 @@ export const GET = withAuth(
       prisma.careReport.findMany({
         where: {
           org_id: req.orgId,
+          ...buildNullableCaseBackedScope(assignmentScope),
           status: { in: ['draft', 'failed', 'response_waiting'] },
         },
         orderBy: [{ updated_at: 'desc' }],
@@ -149,26 +206,27 @@ export const GET = withAuth(
       prisma.prescriptionIntake.findMany({
         where: {
           org_id: req.orgId,
+          ...buildCycleAssignmentScope(assignmentScope),
           OR: [
-          {
-            source_type: 'refill',
-            refill_remaining_count: { gt: 0 },
-            refill_next_dispense_date: {
-              gte: today,
-              lte: sevenDaysFromNow,
+            {
+              source_type: 'refill',
+              refill_remaining_count: { gt: 0 },
+              refill_next_dispense_date: {
+                gte: today,
+                lte: sevenDaysFromNow,
+              },
             },
-          },
-          {
-            split_next_dispense_date: {
-              gte: today,
-              lte: sevenDaysFromNow,
+            {
+              split_next_dispense_date: {
+                gte: today,
+                lte: sevenDaysFromNow,
+              },
             },
-          },
-          {
-            prescription_expiry_date: {
-              gte: today,
-              lte: sevenDaysFromNow,
-            },
+            {
+              prescription_expiry_date: {
+                gte: today,
+                lte: sevenDaysFromNow,
+              },
             },
           ],
         },
@@ -207,30 +265,33 @@ export const GET = withAuth(
         where: {
           org_id: req.orgId,
           status: { in: ['pending', 'in_progress'] },
+          ...buildDashboardTaskAssignmentWhere(assignmentScope),
         },
         _count: { id: true },
       }),
       prisma.billingCandidate.count({
         where: {
           org_id: req.orgId,
+          ...buildPatientScope(assignmentScope.patientIds),
           status: 'candidate',
         },
       }),
       prisma.visitScheduleOverride.count({
         where: {
           org_id: req.orgId,
+          ...buildOverrideAssignmentScope(assignmentScope.caseIds),
           status: 'pending',
         },
       }),
       listCommunicationQueue(prisma, {
         orgId: req.orgId,
+        caseIds: assignmentScope.caseIds,
+        patientIds: assignmentScope.patientIds,
         limit: 5,
       }),
     ]);
 
-    const reportPatientIds = Array.from(
-      new Set(reportBacklog.map((item) => item.patient_id))
-    );
+    const reportPatientIds = Array.from(new Set(reportBacklog.map((item) => item.patient_id)));
     const reportPatients =
       reportPatientIds.length === 0
         ? []
@@ -238,29 +299,46 @@ export const GET = withAuth(
             where: {
               org_id: req.orgId,
               id: { in: reportPatientIds },
+              ...buildPatientScope(assignmentScope.patientIds),
             },
             select: {
               id: true,
               name: true,
             },
           });
-    const reportPatientNameById = new Map(reportPatients.map((patient) => [patient.id, patient.name]));
+    const reportPatientNameById = new Map(
+      reportPatients.map((patient) => [patient.id, patient.name]),
+    );
 
     const pendingVisits = totalVisits - completedVisits;
-    const taskCountByType = Object.fromEntries(taskBuckets.map((bucket) => [bucket.task_type, bucket._count.id]));
+    const taskCountByType = Object.fromEntries(
+      taskBuckets.map((bucket) => [bucket.task_type, bucket._count.id]),
+    );
     const openTaskCount = taskBuckets.reduce((total, bucket) => total + bucket._count.id, 0);
 
     const roleFocusItems =
       req.role === 'pharmacist' || req.role === 'pharmacist_trainee'
         ? [
             { label: '本日の訪問', count: totalVisits, action_href: '/schedules' },
-            { label: '準備未完了', count: taskCountByType.visit_preparation ?? 0, action_href: '/schedules' },
+            {
+              label: '準備未完了',
+              count: taskCountByType.visit_preparation ?? 0,
+              action_href: '/schedules',
+            },
             { label: '報告送達待ち', count: reportBacklog.length, action_href: '/reports' },
           ]
         : req.role === 'clerk'
           ? [
-              { label: '再架電待ち', count: communicationQueue.summary.callback_followups, action_href: '/external' },
-              { label: '自己申告', count: communicationQueue.summary.self_reports, action_href: '/external' },
+              {
+                label: '再架電待ち',
+                count: communicationQueue.summary.callback_followups,
+                action_href: '/external',
+              },
+              {
+                label: '自己申告',
+                count: communicationQueue.summary.self_reports,
+                action_href: '/external',
+              },
               {
                 label: '請求レビュー',
                 count:
@@ -271,7 +349,11 @@ export const GET = withAuth(
             ]
           : [
               { label: '例外変更承認', count: overridePending, action_href: '/schedules' },
-              { label: '計画見直し', count: taskCountByType.management_plan_review ?? 0, action_href: '/workflow' },
+              {
+                label: '計画見直し',
+                count: taskCountByType.management_plan_review ?? 0,
+                action_href: '/workflow',
+              },
               { label: '締めブロック', count: billingBlocked, action_href: '/billing' },
             ];
 
@@ -305,7 +387,7 @@ export const GET = withAuth(
         status: report.status,
         created_at: report.created_at.toISOString(),
         delivery_pending_count: report.delivery_records.filter((item) =>
-          ['draft', 'failed', 'response_waiting'].includes(item.status)
+          ['draft', 'failed', 'response_waiting'].includes(item.status),
         ).length,
       })),
       medication_deadlines: intakeDeadlines.map((intake) => {
@@ -316,7 +398,7 @@ export const GET = withAuth(
           intake.prescribed_date;
         const daysLeft = Math.max(
           0,
-          Math.ceil((dueAt.getTime() - today.getTime()) / (24 * 60 * 60 * 1000))
+          Math.ceil((dueAt.getTime() - today.getTime()) / (24 * 60 * 60 * 1000)),
         );
         return {
           id: intake.id,
@@ -338,5 +420,5 @@ export const GET = withAuth(
   {
     permission: 'canViewDashboard',
     message: 'ダッシュボードの閲覧権限がありません',
-  }
+  },
 );

@@ -8,10 +8,20 @@ import { error, forbidden, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { SmsNotificationAdapter } from '@/server/adapters/sms';
 import {
+  attachExternalAccessCaseBoundary,
+  externalAccessScopeRequiresCaseBoundary,
+  buildExternalAccessGrantVisibilityWhere,
   issueExternalAccessToken,
   MissingExternalAccessSecretError,
+  toPublicExternalAccessScope,
   validateExternalAccessScopeForRole,
 } from '@/server/services/external-access';
+import {
+  buildCareCaseAssignmentWhere,
+  canBypassVisitScheduleAssignmentAccess,
+} from '@/lib/auth/visit-schedule-access';
+import { hasPermission } from '@/lib/auth/permissions';
+import { canAccessPatient, listAccessiblePatientCaseIds } from '@/server/services/patient-access';
 import { z } from 'zod';
 
 const createGrantSchema = z.object({
@@ -22,6 +32,7 @@ const createGrantSchema = z.object({
   expires_hours: z.number().int().min(1).max(720).default(72),
 });
 
+const EXTERNAL_ACCESS_LIST_PAGE_SIZE = 200;
 function looksLikePhoneNumber(value: string | null | undefined) {
   if (!value) return false;
   const normalized = value.replace(/[^\d+]/g, '');
@@ -34,16 +45,104 @@ function maskPhoneNumber(value: string) {
   return `${digitsOnly.slice(0, 3)}****${digitsOnly.slice(-4)}`;
 }
 
-export const GET = withAuthContext(
-  async (req: NextRequest, ctx) => {
-    const { searchParams } = new URL(req.url);
-    const patientId = searchParams.get('patient_id') ?? undefined;
+async function listExternalGrantsForContext(args: {
+  orgId: string;
+  patientId?: string;
+  accessContext: Parameters<typeof canAccessPatient>[0]['accessContext'];
+}) {
+  if (
+    !hasPermission(args.accessContext.role, 'canVisit') &&
+    !hasPermission(args.accessContext.role, 'canSendCareReport')
+  ) {
+    return [];
+  }
 
-    const grants = await prisma.externalAccessGrant.findMany({
+  const canBypassAssignment = canBypassVisitScheduleAssignmentAccess(args.accessContext);
+
+  if (args.patientId) {
+    const canAccessTargetPatient = await canAccessPatient({
+      db: prisma,
+      orgId: args.orgId,
+      patientId: args.patientId,
+      accessContext: args.accessContext,
+    });
+    if (!canAccessTargetPatient) return [];
+
+    const visibleCaseIds = canBypassAssignment
+      ? undefined
+      : await listAccessiblePatientCaseIds({
+          db: prisma,
+          orgId: args.orgId,
+          patientId: args.patientId,
+          accessContext: args.accessContext,
+        });
+
+    if (visibleCaseIds === undefined) {
+      return prisma.externalAccessGrant.findMany({
+        where: {
+          org_id: args.orgId,
+          revoked_at: null,
+          patient_id: args.patientId,
+        },
+        orderBy: { created_at: 'desc' },
+        select: {
+          id: true,
+          org_id: true,
+          patient_id: true,
+          granted_to_name: true,
+          granted_to_contact: true,
+          scope: true,
+          expires_at: true,
+          accessed_at: true,
+          created_at: true,
+        },
+        take: EXTERNAL_ACCESS_LIST_PAGE_SIZE,
+      });
+    }
+
+    return prisma.externalAccessGrant.findMany({
       where: {
-        org_id: ctx.orgId,
+        org_id: args.orgId,
         revoked_at: null,
-        ...(patientId ? { patient_id: patientId } : {}),
+        patient_id: args.patientId,
+        ...buildExternalAccessGrantVisibilityWhere(visibleCaseIds),
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        org_id: true,
+        patient_id: true,
+        granted_to_name: true,
+        granted_to_contact: true,
+        scope: true,
+        expires_at: true,
+        accessed_at: true,
+        created_at: true,
+      },
+      take: EXTERNAL_ACCESS_LIST_PAGE_SIZE,
+    });
+  }
+
+  const assignmentWhere = buildCareCaseAssignmentWhere(args.accessContext);
+  const accessibleCases = assignmentWhere
+    ? await prisma.careCase.findMany({
+        where: {
+          org_id: args.orgId,
+          AND: [assignmentWhere],
+        },
+        select: { id: true, patient_id: true },
+      })
+    : [];
+  const accessiblePatientIds = canBypassAssignment
+    ? undefined
+    : Array.from(new Set(accessibleCases.map((careCase) => careCase.patient_id)));
+  if (!canBypassAssignment && accessiblePatientIds?.length === 0) return [];
+
+  if (canBypassAssignment) {
+    return prisma.externalAccessGrant.findMany({
+      where: {
+        org_id: args.orgId,
+        revoked_at: null,
       },
       orderBy: { created_at: 'desc' },
       select: {
@@ -57,6 +156,52 @@ export const GET = withAuthContext(
         accessed_at: true,
         created_at: true,
       },
+      take: 200,
+    });
+  }
+
+  const caseIdsByPatient = new Map<string, string[]>();
+  for (const careCase of accessibleCases) {
+    caseIdsByPatient.set(careCase.patient_id, [
+      ...(caseIdsByPatient.get(careCase.patient_id) ?? []),
+      careCase.id,
+    ]);
+  }
+  const visibilityBranches = Array.from(caseIdsByPatient.entries()).map(([patientId, caseIds]) => ({
+    AND: [{ patient_id: patientId }, buildExternalAccessGrantVisibilityWhere(caseIds)],
+  }));
+  if (visibilityBranches.length === 0) return [];
+
+  return prisma.externalAccessGrant.findMany({
+    where: {
+      org_id: args.orgId,
+      revoked_at: null,
+      OR: visibilityBranches,
+    },
+    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    select: {
+      id: true,
+      org_id: true,
+      patient_id: true,
+      granted_to_name: true,
+      granted_to_contact: true,
+      scope: true,
+      expires_at: true,
+      accessed_at: true,
+      created_at: true,
+    },
+    take: EXTERNAL_ACCESS_LIST_PAGE_SIZE,
+  });
+}
+
+export const GET = withAuthContext(
+  async (req: NextRequest, ctx) => {
+    const { searchParams } = new URL(req.url);
+    const patientId = searchParams.get('patient_id') ?? undefined;
+    const grants = await listExternalGrantsForContext({
+      orgId: ctx.orgId,
+      patientId,
+      accessContext: ctx,
     });
 
     const patientMap =
@@ -118,6 +263,7 @@ export const GET = withAuthContext(
         const patient = patientMap.get(grant.patient_id);
         return {
           ...grant,
+          scope: toPublicExternalAccessScope(grant.scope),
           patient: {
             name: patient?.name ?? '不明な患者',
             name_kana: patient?.name_kana ?? null,
@@ -132,7 +278,7 @@ export const GET = withAuthContext(
     });
   },
   {
-    permission: 'canSendCareReport',
+    permission: 'canReport',
     message: '外部共有の閲覧権限がありません',
   },
 );
@@ -163,6 +309,30 @@ export const POST = withAuthContext(
 
     const refResult = await validateOrgReferences(ctx.orgId, { patient_id });
     if (!refResult.ok) return refResult.response;
+    const canAccessTargetPatient = await canAccessPatient({
+      db: prisma,
+      orgId: ctx.orgId,
+      patientId: patient_id,
+      accessContext: ctx,
+    });
+    if (!canAccessTargetPatient) {
+      return forbidden('患者への外部共有権限がありません');
+    }
+    const requiresCaseBoundary = externalAccessScopeRequiresCaseBoundary(scope);
+    const allowedCaseIds = requiresCaseBoundary
+      ? await listAccessiblePatientCaseIds({
+          db: prisma,
+          orgId: ctx.orgId,
+          patientId: patient_id,
+          accessContext: ctx,
+        })
+      : [];
+    if (requiresCaseBoundary && allowedCaseIds.length === 0) {
+      return forbidden('患者ケースへの外部共有権限がありません');
+    }
+    const storedScope = requiresCaseBoundary
+      ? attachExternalAccessCaseBoundary(scope, allowedCaseIds)
+      : scope;
 
     const rawOtp = randomInt(100000, 999999).toString();
     const otpHash = await bcrypt.hash(rawOtp, 12);
@@ -181,7 +351,7 @@ export const POST = withAuthContext(
             otp_hash: otpHash,
             granted_to_name,
             granted_to_contact: normalizedGrantedToContact,
-            scope: scope as import('@prisma/client').Prisma.InputJsonValue,
+            scope: storedScope as import('@prisma/client').Prisma.InputJsonValue,
             expires_at: expiresAt,
           },
           select: {
@@ -246,6 +416,7 @@ export const POST = withAuthContext(
       {
         data: {
           ...grant,
+          scope: toPublicExternalAccessScope(grant.scope),
           otp: rawOtp,
           otp_delivery: otpDelivery,
           otp_delivery_destination: otpDeliveryDestination,

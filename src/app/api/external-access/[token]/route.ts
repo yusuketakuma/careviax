@@ -17,10 +17,7 @@ import {
  * Validates token + OTP, returns scoped patient data.
  * OTP is read from the `x-otp` request header (not a URL query param).
  */
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ token: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const ip = getClientIp(req) ?? 'unknown';
   const rateLimit = await checkAuthRateLimit(
@@ -31,7 +28,7 @@ export async function GET(
     return error(
       'RATE_LIMIT_EXCEEDED',
       'リクエストが多すぎます。しばらく待ってから再試行してください。',
-      429
+      429,
     );
   }
 
@@ -47,10 +44,10 @@ export async function GET(
     return notFound(validation.message);
   }
 
-  await markExternalAccessViewed(validation.grant.id);
   const payload = await buildExternalAccessPayload(validation.grant);
 
   if (!payload) return notFound('患者情報が見つかりません');
 
+  await markExternalAccessViewed(validation.grant.id);
   return success({ data: payload });
 }

@@ -782,6 +782,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
       expect.objectContaining({
         taskType: 'billing_evidence_review',
         priority: 'high',
+        assignedTo: 'pharm_1',
       }),
     );
   });

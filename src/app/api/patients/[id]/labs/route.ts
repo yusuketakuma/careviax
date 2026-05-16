@@ -4,7 +4,10 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
-import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import {
+  applyPatientAssignmentWhere,
+  buildVisitRecordScheduleAssignmentWhere,
+} from '@/lib/auth/visit-schedule-access';
 
 const createLabSchema = z.object({
   analyte_code: z.enum([
@@ -42,6 +45,29 @@ const createLabSchema = z.object({
   source_visit_record_id: z.string().optional(),
   note: z.string().optional(),
 });
+
+async function validateSourceVisitRecord(args: {
+  orgId: string;
+  patientId: string;
+  userId: string;
+  role: Parameters<typeof buildVisitRecordScheduleAssignmentWhere>[0]['role'];
+  sourceVisitRecordId: string;
+}) {
+  const assignmentWhere = buildVisitRecordScheduleAssignmentWhere({
+    userId: args.userId,
+    role: args.role,
+  });
+
+  return prisma.visitRecord.findFirst({
+    where: {
+      id: args.sourceVisitRecordId,
+      org_id: args.orgId,
+      patient_id: args.patientId,
+      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+    },
+    select: { id: true },
+  });
+}
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
@@ -106,6 +132,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   });
   if (!patient) return notFound('患者が見つかりません');
 
+  const sourceVisitRecordId = parsed.data.source_visit_record_id?.trim() || undefined;
+  let normalizedSourceVisitRecordId: string | null = null;
+
+  if (parsed.data.source_type === 'visit_record') {
+    if (!sourceVisitRecordId) {
+      return validationError('訪問記録由来の検査値には訪問記録IDが必要です', {
+        source_visit_record_id: ['訪問記録IDを指定してください'],
+      });
+    }
+
+    const sourceVisitRecord = await validateSourceVisitRecord({
+      orgId: ctx.orgId,
+      patientId: id,
+      userId: ctx.userId,
+      role: ctx.role,
+      sourceVisitRecordId,
+    });
+    if (!sourceVisitRecord) {
+      return validationError('指定された訪問記録が見つかりません', {
+        source_visit_record_id: ['登録先患者でアクセス可能な訪問記録を指定してください'],
+      });
+    }
+
+    normalizedSourceVisitRecordId = sourceVisitRecord.id;
+  }
+
   const lab = await withOrgContext(
     ctx.orgId,
     async (tx) => {
@@ -122,7 +174,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           reference_low: parsed.data.reference_low ?? null,
           reference_high: parsed.data.reference_high ?? null,
           source_type: parsed.data.source_type,
-          source_visit_record_id: parsed.data.source_visit_record_id ?? null,
+          source_visit_record_id: normalizedSourceVisitRecordId,
           note: parsed.data.note ?? null,
         },
       });

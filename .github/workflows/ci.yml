@@ -191,7 +191,7 @@ jobs:
     name: Deploy to Production
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: ci
+    needs: [ci, medical-ui-e2e-gate]
     environment: production # ← requires reviewer approval
     timeout-minutes: 10
 
@@ -215,7 +215,7 @@ jobs:
 
           JOB_ID=$(jq -r '.jobSummary.jobId' amplify-job.json)
           echo "Amplify job started: $JOB_ID"
-          echo "AMPLIFY_JOB_ID=$JOB_ID" >> $GITHUB_ENV
+          echo "AMPLIFY_JOB_ID=$JOB_ID" >> "$GITHUB_ENV"
 
       - name: Wait for Amplify build to succeed
         run: |

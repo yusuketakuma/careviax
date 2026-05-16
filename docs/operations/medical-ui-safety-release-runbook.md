@@ -5,9 +5,11 @@ unit tests alone.
 
 ## Release Gate
 
-Run the local production-style gate before requesting release approval:
+Prepare the dedicated local E2E database, then run the production-style gate
+before requesting release approval:
 
 ```bash
+pnpm --config.verify-deps-before-run=false db:e2e:prepare
 pnpm --config.verify-deps-before-run=false medical-ui:e2e:gate:prod
 ```
 
@@ -19,6 +21,10 @@ The gate must prove:
 - Required package scripts and Playwright specs exist.
 - The local E2E CareReport duplicate precheck returns `duplicate_groups:0`.
 - Targeted Playwright/axe medical UI tests pass.
+
+Use `db:e2e:check-care-report-duplicates` only for local E2E release
+evidence. Use the generic `db:check-care-report-duplicates` command in the
+target database migration precheck below.
 
 ## Target Database Migration Precheck
 
@@ -38,6 +44,31 @@ the duplicate CareReport rows first, then rerun the precheck.
 The precheck intentionally prints only organization IDs, visit record IDs,
 report type, counts, and report IDs. It must not be changed to print patient
 names or report content.
+
+## External Access Case-Boundary Precheck
+
+Before releasing assignment-scoped external sharing, audit active legacy
+`ExternalAccessGrant` rows that have case-backed scopes but do not yet store
+`allowed_case_ids`:
+
+```bash
+DATABASE_URL='<target database url>' \
+pnpm --config.verify-deps-before-run=false db:external-access-case-boundary-audit
+```
+
+If the dry run reports only `backfillable_grants`, rerun with `--apply` to
+attach the single active case ID to each grant:
+
+```bash
+DATABASE_URL='<target database url>' \
+pnpm --config.verify-deps-before-run=false db:external-access-case-boundary-audit -- --apply
+```
+
+Stop release if the command reports blockers. `multiple_active_cases` requires
+an owner/clinical decision about which case the issued link may cover, while
+`no_active_case` and `unsupported_self_report_history_only` should be revoked
+or allowed to expire with audit notes. Do not broaden legacy grants to all
+patient cases to preserve compatibility.
 
 ## Medication-Safety Master Updates
 

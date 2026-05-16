@@ -39,6 +39,10 @@ import {
   applyPatientAssignmentWhere,
   buildCareCaseAssignmentWhere,
 } from '@/lib/auth/visit-schedule-access';
+import {
+  buildExternalAccessGrantVisibilityWhere,
+  toPublicExternalAccessScope,
+} from '@/server/services/external-access';
 
 type FirstVisitDocumentContact = {
   id?: string;
@@ -144,6 +148,7 @@ const OPEN_CASE_STATUSES = ['referral_received', 'assessment', 'active', 'on_hol
 
 type PatientRequesterPatch = NonNullable<UpdatePatientInput['requester']>;
 type PatientIntakePatch = NonNullable<UpdatePatientInput['intake']>;
+const PATIENT_EXTERNAL_SHARE_LIMIT = 8;
 
 function buildAssignedCareCaseWhere(ctx: {
   userId: string;
@@ -170,6 +175,32 @@ function buildNullableCaseScope(caseIds: string[]) {
   return {
     OR: [{ case_id: null }, { case_id: { in: caseIds } }],
   };
+}
+
+async function listVisibleExternalSharesForPatient(args: {
+  orgId: string;
+  patientId: string;
+  caseIds: string[];
+}) {
+  return prisma.externalAccessGrant.findMany({
+    where: {
+      org_id: args.orgId,
+      patient_id: args.patientId,
+      revoked_at: null,
+      ...buildExternalAccessGrantVisibilityWhere(args.caseIds),
+    },
+    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    take: PATIENT_EXTERNAL_SHARE_LIMIT,
+    select: {
+      id: true,
+      granted_to_name: true,
+      granted_to_contact: true,
+      scope: true,
+      expires_at: true,
+      accessed_at: true,
+      created_at: true,
+    },
+  });
 }
 
 async function listBillingCaseRefs(args: { orgId: string; patientId: string; caseIds: string[] }) {
@@ -841,23 +872,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         created_at: true,
       },
     }),
-    prisma.externalAccessGrant.findMany({
-      where: {
-        org_id: ctx.orgId,
-        patient_id: id,
-        revoked_at: null,
-      },
-      orderBy: [{ created_at: 'desc' }],
-      take: 8,
-      select: {
-        id: true,
-        granted_to_name: true,
-        granted_to_contact: true,
-        scope: true,
-        expires_at: true,
-        accessed_at: true,
-        created_at: true,
-      },
+    listVisibleExternalSharesForPatient({
+      orgId: ctx.orgId,
+      patientId: id,
+      caseIds,
     }),
     prisma.task.findMany({
       where: {
@@ -1469,6 +1487,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     self_reports: selfReports,
     external_shares: externalShares.map((item) => ({
       ...item,
+      scope: toPublicExternalAccessScope(item.scope),
       granted_to_contact: privacy.sensitiveFieldsMasked
         ? maskContactValue(item.granted_to_contact)
         : item.granted_to_contact,

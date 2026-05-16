@@ -57,6 +57,74 @@ describe('listPatientRiskSummaries', () => {
     expect(result).toEqual([]);
   });
 
+  it('returns empty array without PHI reads when an explicit patient scope is empty', async () => {
+    const result = await listPatientRiskSummaries(makeDb(), {
+      orgId: 'org-1',
+      patientIds: [],
+      caseIdsByPatient: {},
+    });
+
+    expect(result).toEqual([]);
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(selfReportFindManyMock).not.toHaveBeenCalled();
+    expect(medicationIssueFindManyMock).not.toHaveBeenCalled();
+    expect(taskFindManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+    expect(careReportFindManyMock).not.toHaveBeenCalled();
+    expect(consentRecordFindManyMock).not.toHaveBeenCalled();
+    expect(managementPlanFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('limits explicit patient scope before enrichment reads when a candidate limit is provided', async () => {
+    patientFindManyMock.mockResolvedValue([
+      { id: 'p-1', name: '田中太郎', billing_support_flag: false },
+    ]);
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case-1', patient_id: 'p-1' }]);
+    selfReportFindManyMock.mockResolvedValue([]);
+    medicationIssueFindManyMock.mockResolvedValue([]);
+    taskFindManyMock.mockResolvedValue([]);
+    visitScheduleFindManyMock.mockResolvedValue([]);
+    careReportFindManyMock.mockResolvedValue([]);
+    consentRecordFindManyMock.mockResolvedValue([]);
+    managementPlanFindManyMock.mockResolvedValue([{ case_id: 'case-1' }]);
+
+    const result = await listPatientRiskSummaries(makeDb(), {
+      orgId: 'org-1',
+      patientIds: ['p-1', 'p-2'],
+      caseIdsByPatient: { 'p-1': ['case-1'], 'p-2': ['case-2'] },
+      candidateLimit: 1,
+      includeStable: true,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(patientFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { in: ['p-1'] },
+        }),
+      }),
+    );
+    expect(careCaseFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: { in: ['p-1'] },
+          id: { in: ['case-1'] },
+        }),
+      }),
+    );
+    expect(medicationIssueFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            { patient_id: 'p-1', case_id: null },
+            { patient_id: 'p-1', case_id: { in: ['case-1'] } },
+          ],
+        }),
+      }),
+    );
+  });
+
   it('computes stable score for patient with no issues', async () => {
     patientFindManyMock.mockResolvedValue([
       { id: 'p-1', name: '田中太郎', billing_support_flag: false },
@@ -85,9 +153,7 @@ describe('listPatientRiskSummaries', () => {
     patientFindManyMock.mockResolvedValue([
       { id: 'p-1', name: '佐藤花子', billing_support_flag: false },
     ]);
-    careCaseFindManyMock.mockResolvedValue([
-      { id: 'case-1', patient_id: 'p-1' },
-    ]);
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case-1', patient_id: 'p-1' }]);
     selfReportFindManyMock.mockResolvedValue([]);
     medicationIssueFindManyMock.mockResolvedValue([]);
     taskFindManyMock.mockResolvedValue([]);
@@ -113,9 +179,7 @@ describe('listPatientRiskSummaries', () => {
       { id: 'p-1', name: '山田一郎', billing_support_flag: false },
     ]);
     careCaseFindManyMock.mockResolvedValue([]);
-    selfReportFindManyMock.mockResolvedValue([
-      { patient_id: 'p-1', requested_callback: true },
-    ]);
+    selfReportFindManyMock.mockResolvedValue([{ patient_id: 'p-1', requested_callback: true }]);
     medicationIssueFindManyMock.mockResolvedValue([]);
     taskFindManyMock.mockResolvedValue([]);
     visitScheduleFindManyMock.mockResolvedValue([]);

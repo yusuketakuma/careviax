@@ -12,6 +12,7 @@ type CheckResult = {
 };
 
 const PACKAGE_JSON_PATH = 'package.json';
+const E2E_DUPLICATE_CHECK_SCRIPT = 'db:e2e:check-care-report-duplicates';
 
 const REQUIRED_PLAYWRIGHT_SPECS = [
   'tools/tests/ui-audit-extensions.spec.ts',
@@ -138,10 +139,21 @@ function checkPackageScripts(scripts: Record<string, string>): CheckResult[] {
       };
     }
 
+    if (scriptName === 'medical-ui:e2e:gate' && !script.includes(E2E_DUPLICATE_CHECK_SCRIPT)) {
+      return {
+        name: `package-script:${scriptName}`,
+        status: 'fail',
+        detail: `script must run ${E2E_DUPLICATE_CHECK_SCRIPT}`,
+      };
+    }
+
     return {
       name: `package-script:${scriptName}`,
       status: 'pass',
-      detail: 'found',
+      detail:
+        scriptName === 'medical-ui:e2e:gate'
+          ? `found; runs ${E2E_DUPLICATE_CHECK_SCRIPT}`
+          : 'found',
     };
   });
 }
@@ -189,7 +201,7 @@ async function main() {
         '1. Start local PostgreSQL for careviax_e2e on localhost:5433.',
         '2. Run pnpm --config.verify-deps-before-run=false db:e2e:prepare.',
         '3. Start the app with pnpm dev:e2e:local or pnpm start:e2e:local on localhost:3012, or use pnpm medical-ui:e2e:gate:prod after preparing the database.',
-        '4. Run pnpm --config.verify-deps-before-run=false db:check-care-report-duplicates.',
+        '4. Run pnpm --config.verify-deps-before-run=false db:e2e:check-care-report-duplicates for local release evidence.',
         '5. Run targeted Playwright/axe specs listed above.',
       ].join('\n'),
     );

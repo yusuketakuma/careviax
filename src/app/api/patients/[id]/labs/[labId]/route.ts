@@ -4,7 +4,10 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
-import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import {
+  buildCareCaseAssignmentWhere,
+  buildVisitRecordScheduleAssignmentWhere,
+} from '@/lib/auth/visit-schedule-access';
 
 const patchLabSchema = z.object({
   abnormal_flag: z.string().optional(),
@@ -15,6 +18,29 @@ const patchLabSchema = z.object({
   reference_low: z.number().optional(),
   reference_high: z.number().optional(),
 });
+
+async function validateSourceVisitRecord(args: {
+  orgId: string;
+  patientId: string;
+  userId: string;
+  role: Parameters<typeof buildVisitRecordScheduleAssignmentWhere>[0]['role'];
+  sourceVisitRecordId: string;
+}) {
+  const assignmentWhere = buildVisitRecordScheduleAssignmentWhere({
+    userId: args.userId,
+    role: args.role,
+  });
+
+  return prisma.visitRecord.findFirst({
+    where: {
+      id: args.sourceVisitRecordId,
+      org_id: args.orgId,
+      patient_id: args.patientId,
+      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+    },
+    select: { id: true },
+  });
+}
 
 export async function PATCH(
   req: NextRequest,
@@ -49,12 +75,34 @@ export async function PATCH(
       id: labId,
       org_id: ctx.orgId,
       patient_id: id,
-      ...(caseAssignmentWhere
-        ? { patient: { cases: { some: caseAssignmentWhere } } }
-        : {}),
+      ...(caseAssignmentWhere ? { patient: { cases: { some: caseAssignmentWhere } } } : {}),
     },
   });
   if (!existing) return notFound('検査値が見つかりません');
+
+  if (existing.source_type === 'visit_record') {
+    if (!existing.source_visit_record_id) {
+      return validationError('訪問記録由来の検査値に訪問記録IDがありません', {
+        source_visit_record_id: ['訪問記録IDを確認してください'],
+      });
+    }
+
+    const sourceVisitRecord = await validateSourceVisitRecord({
+      orgId: ctx.orgId,
+      patientId: id,
+      userId: ctx.userId,
+      role: ctx.role,
+      sourceVisitRecordId: existing.source_visit_record_id,
+    });
+    if (!sourceVisitRecord) {
+      return validationError('指定された訪問記録が見つかりません', {
+        source_visit_record_id: ['登録先患者でアクセス可能な訪問記録を指定してください'],
+      });
+    }
+  }
+
+  const shouldClearInconsistentSourceVisitRecordId =
+    existing.source_type !== 'visit_record' && Boolean(existing.source_visit_record_id);
 
   const updated = await withOrgContext(
     ctx.orgId,
@@ -77,6 +125,7 @@ export async function PATCH(
           ...(parsed.data.reference_high !== undefined
             ? { reference_high: parsed.data.reference_high }
             : {}),
+          ...(shouldClearInconsistentSourceVisitRecordId ? { source_visit_record_id: null } : {}),
         },
       });
     },

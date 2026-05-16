@@ -33,18 +33,26 @@ export async function listPatientRiskSummaries(
     patientIds?: string[];
     caseIdsByPatient?: Record<string, string[]>;
     limit?: number;
+    candidateLimit?: number;
     includeStable?: boolean;
   },
 ): Promise<PatientRiskSummary[]> {
   const now = new Date();
   const recentWindow = addDays(now, -30);
   const activeCaseStatuses = ['assessment', 'active', 'on_hold'] as const;
+  if (args.patientIds !== undefined && args.patientIds.length === 0) return [];
+  const hasPatientFilter = args.patientIds !== undefined;
+  const scopedPatientIds =
+    hasPatientFilter && args.candidateLimit !== undefined
+      ? args.patientIds?.slice(0, Math.max(0, args.candidateLimit))
+      : args.patientIds;
+  if (scopedPatientIds !== undefined && scopedPatientIds.length === 0) return [];
 
   const patients = await db.patient.findMany({
     where: {
       org_id: args.orgId,
-      ...(args.patientIds?.length ? { id: { in: args.patientIds } } : {}),
-      ...(args.patientIds?.length
+      ...(hasPatientFilter ? { id: { in: scopedPatientIds } } : {}),
+      ...(hasPatientFilter
         ? {}
         : {
             cases: {
@@ -59,24 +67,29 @@ export async function listPatientRiskSummaries(
       name: true,
       billing_support_flag: true,
     },
-    take: args.patientIds?.length ? undefined : 80,
+    take: hasPatientFilter ? undefined : (args.candidateLimit ?? 80),
     orderBy: { name_kana: 'asc' },
   });
 
   if (patients.length === 0) return [];
 
   const patientIds = patients.map((patient) => patient.id);
-  const allowedCaseIds = args.caseIdsByPatient
+  const scopedCaseIdsByPatient = args.caseIdsByPatient
+    ? Object.fromEntries(
+        patientIds.map((patientId) => [patientId, args.caseIdsByPatient?.[patientId] ?? []]),
+      )
+    : null;
+  const allowedCaseIds = scopedCaseIdsByPatient
     ? Array.from(
         new Set(
-          Object.values(args.caseIdsByPatient)
+          Object.values(scopedCaseIdsByPatient)
             .flat()
             .filter((caseId) => caseId.length > 0),
         ),
       )
     : null;
-  const patientCaseScopes = args.caseIdsByPatient
-    ? Object.entries(args.caseIdsByPatient).flatMap(([patientId, caseIdsForPatient]) => [
+  const patientCaseScopes = scopedCaseIdsByPatient
+    ? Object.entries(scopedCaseIdsByPatient).flatMap(([patientId, caseIdsForPatient]) => [
         { patient_id: patientId, case_id: null },
         ...(caseIdsForPatient.length > 0
           ? [{ patient_id: patientId, case_id: { in: caseIdsForPatient } }]

@@ -265,4 +265,70 @@ describe('getPatientTimelineData', () => {
       }),
     );
   });
+
+  it('filters timeline external shares by assigned case boundary', async () => {
+    const externalAccessGrantFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'grant_visible',
+        granted_to_name: '田中ケアマネ',
+        expires_at: new Date('2026-04-03T00:00:00.000Z'),
+        accessed_at: null,
+        created_at: new Date('2026-04-01T00:00:00.000Z'),
+      },
+    ]);
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      visitSchedule: { findMany: vi.fn().mockResolvedValue([]) },
+      visitRecord: { findMany: vi.fn().mockResolvedValue([]) },
+      careReport: { findMany: vi.fn().mockResolvedValue([]) },
+      communicationEvent: { findMany: vi.fn().mockResolvedValue([]) },
+      patientSelfReport: { findMany: vi.fn().mockResolvedValue([]) },
+      externalAccessGrant: { findMany: externalAccessGrantFindManyMock },
+      inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
+      prescriptionIntake: { findMany: vi.fn().mockResolvedValue([]) },
+      dispenseResult: { findMany: vi.fn().mockResolvedValue([]) },
+      managementPlan: { findMany: vi.fn().mockResolvedValue([]) },
+      firstVisitDocument: { findMany: vi.fn().mockResolvedValue([]) },
+      conferenceNote: { findMany: vi.fn().mockResolvedValue([]) },
+      billingCandidate: { findMany: vi.fn().mockResolvedValue([]) },
+      medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
+    });
+
+    const result = await getPatientTimelineData(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(result?.timeline_events).toEqual([
+      expect.objectContaining({
+        id: 'external_share:grant_visible',
+      }),
+    ]);
+    expect(externalAccessGrantFindManyMock).toHaveBeenCalledTimes(1);
+    expect(externalAccessGrantFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: 'patient_1',
+          revoked_at: null,
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              AND: expect.arrayContaining([
+                { scope: { path: ['allowed_case_ids'], array_contains: ['case_1'] } },
+              ]),
+            }),
+          ]),
+        }),
+        take: 8,
+      }),
+    );
+    expect(externalAccessGrantFindManyMock.mock.calls[0][0]).not.toHaveProperty('skip');
+    expect(JSON.stringify(result?.timeline_events)).not.toContain('grant_hidden');
+  });
 });

@@ -2,6 +2,7 @@ import { addDays } from 'date-fns';
 import { isoOrNull } from '@/lib/utils/date';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { buildExternalAccessGrantVisibilityWhere } from './external-access';
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
 type QueuePriority = 'urgent' | 'high' | 'normal';
@@ -312,6 +313,7 @@ export async function listCommunicationQueue(
   args: {
     orgId: string;
     patientId?: string;
+    patientIds?: string[];
     caseIds?: string[];
     limit?: number;
   },
@@ -319,6 +321,12 @@ export async function listCommunicationQueue(
   const now = new Date();
   const shareWindow = addDays(now, 7);
   const limit = Math.max(args.limit ?? 8, 1);
+  const patientScope =
+    args.patientId !== undefined
+      ? { patient_id: args.patientId }
+      : args.patientIds !== undefined
+        ? { patient_id: { in: args.patientIds } }
+        : {};
   const caseScope =
     args.caseIds === undefined
       ? undefined
@@ -328,6 +336,34 @@ export async function listCommunicationQueue(
             ...(args.caseIds.length > 0 ? [{ case_id: { in: args.caseIds } }] : []),
           ],
         };
+
+  async function listVisibleExternalShares() {
+    const externalShareWhere = {
+      org_id: args.orgId,
+      ...patientScope,
+      revoked_at: null,
+      accessed_at: null,
+      expires_at: {
+        lte: shareWindow,
+      },
+    };
+
+    return db.externalAccessGrant.findMany({
+      where: {
+        ...externalShareWhere,
+        ...buildExternalAccessGrantVisibilityWhere(args.caseIds),
+      },
+      orderBy: [{ expires_at: 'asc' }, { id: 'asc' }],
+      take: limit,
+      select: {
+        id: true,
+        patient_id: true,
+        granted_to_name: true,
+        expires_at: true,
+        scope: true,
+      },
+    });
+  }
 
   const [
     selfReports,
@@ -342,7 +378,7 @@ export async function listCommunicationQueue(
     db.patientSelfReport.findMany({
       where: {
         org_id: args.orgId,
-        ...(args.patientId ? { patient_id: args.patientId } : {}),
+        ...patientScope,
         status: {
           in: ['submitted', 'triaged', 'converted_to_task'],
         },
@@ -368,42 +404,42 @@ export async function listCommunicationQueue(
     args.caseIds !== undefined && args.caseIds.length === 0
       ? Promise.resolve([])
       : db.visitScheduleContactLog.findMany({
-      where: {
-        org_id: args.orgId,
-        ...(args.patientId ? { patient_id: args.patientId } : {}),
-        // Outer fast-path already returned for empty caseIds; here caseIds is
-        // either undefined (no filter) or has at least one element.
-        ...(args.caseIds ? { case_id: { in: args.caseIds } } : {}),
-        OR: [
-          {
-            callback_due_at: {
-              not: null,
-            },
+          where: {
+            org_id: args.orgId,
+            ...patientScope,
+            // Outer fast-path already returned for empty caseIds; here caseIds is
+            // either undefined (no filter) or has at least one element.
+            ...(args.caseIds ? { case_id: { in: args.caseIds } } : {}),
+            OR: [
+              {
+                callback_due_at: {
+                  not: null,
+                },
+              },
+              {
+                outcome: {
+                  in: ['attempted', 'unreachable'],
+                },
+              },
+            ],
           },
-          {
-            outcome: {
-              in: ['attempted', 'unreachable'],
-            },
+          orderBy: [{ callback_due_at: 'asc' }, { called_at: 'desc' }],
+          take: limit,
+          select: {
+            id: true,
+            patient_id: true,
+            outcome: true,
+            contact_name: true,
+            contact_phone: true,
+            note: true,
+            callback_due_at: true,
+            called_at: true,
           },
-        ],
-      },
-      orderBy: [{ callback_due_at: 'asc' }, { called_at: 'desc' }],
-      take: limit,
-      select: {
-        id: true,
-        patient_id: true,
-        outcome: true,
-        contact_name: true,
-        contact_phone: true,
-        note: true,
-        callback_due_at: true,
-        called_at: true,
-      },
-    }),
+        }),
     db.communicationRequest.findMany({
       where: {
         org_id: args.orgId,
-        ...(args.patientId ? { patient_id: args.patientId } : {}),
+        ...patientScope,
         ...(caseScope ? { AND: [caseScope] } : {}),
         status: {
           in: ['draft', 'sent', 'received', 'in_progress', 'responded', 'escalated', 'closed'],
@@ -429,10 +465,10 @@ export async function listCommunicationQueue(
         status: {
           in: ['draft', 'failed', 'response_waiting', 'sent', 'confirmed'],
         },
-        ...(args.patientId
+        ...(args.patientId || args.patientIds !== undefined || caseScope
           ? {
               report: {
-                patient_id: args.patientId,
+                ...patientScope,
                 ...(caseScope ? { AND: [caseScope] } : {}),
               },
             }
@@ -458,29 +494,11 @@ export async function listCommunicationQueue(
         },
       },
     }),
-    db.externalAccessGrant.findMany({
-      where: {
-        org_id: args.orgId,
-        ...(args.patientId ? { patient_id: args.patientId } : {}),
-        revoked_at: null,
-        accessed_at: null,
-        expires_at: {
-          lte: shareWindow,
-        },
-      },
-      orderBy: [{ expires_at: 'asc' }],
-      take: limit,
-      select: {
-        id: true,
-        patient_id: true,
-        granted_to_name: true,
-        expires_at: true,
-      },
-    }),
+    listVisibleExternalShares(),
     db.careReport.findMany({
       where: {
         org_id: args.orgId,
-        ...(args.patientId ? { patient_id: args.patientId } : {}),
+        ...patientScope,
         ...(caseScope ? { AND: [caseScope] } : {}),
         status: {
           in: ['sent', 'failed', 'response_waiting', 'confirmed'],
@@ -500,7 +518,7 @@ export async function listCommunicationQueue(
     db.tracingReport.findMany({
       where: {
         org_id: args.orgId,
-        ...(args.patientId ? { patient_id: args.patientId } : {}),
+        ...patientScope,
         ...(caseScope ? { AND: [caseScope] } : {}),
         status: {
           in: ['sent', 'received', 'acknowledged'],
@@ -521,6 +539,8 @@ export async function listCommunicationQueue(
     buildEmergencyDrafts(db, args),
   ]);
 
+  const visibleExternalShares = externalShares;
+
   const patientIds = Array.from(
     new Set(
       [
@@ -532,7 +552,7 @@ export async function listCommunicationQueue(
         ...deliveryRecords
           .map((item) => item.report.patient_id)
           .filter((value): value is string => Boolean(value)),
-        ...externalShares.map((item) => item.patient_id),
+        ...visibleExternalShares.map((item) => item.patient_id),
         ...careReports
           .map((item) => item.patient_id)
           .filter((value): value is string => Boolean(value)),
@@ -629,7 +649,7 @@ export async function listCommunicationQueue(
       action_href: '/reports',
       action_label: '報告送達を確認',
     })),
-    ...externalShares.map((grant) => ({
+    ...visibleExternalShares.map((grant) => ({
       id: `external_share:${grant.id}`,
       queue_type: 'external_share' as const,
       title: `${patientNameById.get(grant.patient_id) ?? '患者'} の共有期限が近づいています`,
@@ -724,7 +744,7 @@ export async function listCommunicationQueue(
       callback_followups: callbackLogs.length,
       open_requests: actionableRequests.length,
       delivery_backlog: actionableDeliveries.length,
-      expiring_external_shares: externalShares.length,
+      expiring_external_shares: visibleExternalShares.length,
       unconfirmed_count: unconfirmedCount + requestDraftCount,
       reply_waiting_count: replyWaitingCount,
       failed_count: failedCount,

@@ -1,5 +1,7 @@
+import { createHash } from 'node:crypto';
 import { serverCache } from '@/lib/utils/server-cache';
 import { getRealtimeAdapter } from '@/server/adapters/realtime';
+import type { DashboardAssignmentScope } from './dashboard-assignment-scope';
 
 function formatCacheDay(value: Date) {
   const year = value.getFullYear();
@@ -12,9 +14,36 @@ export function buildWorkflowCacheKey(
   orgId: string,
   role: string,
   userId: string,
-  today: Date
+  today: Date,
+  assignmentScopeFingerprint?: string,
 ) {
-  return `workflow:${orgId}:${role}:${userId}:${formatCacheDay(today)}`;
+  const scopeKey = assignmentScopeFingerprint ? `:${assignmentScopeFingerprint}` : '';
+  return `workflow:${orgId}:${role}:${userId}:${formatCacheDay(today)}${scopeKey}`;
+}
+
+export function buildWorkflowAssignmentScopeFingerprint(scope: DashboardAssignmentScope) {
+  if (
+    scope.caseIds === undefined &&
+    scope.patientIds === undefined &&
+    scope.caseIdsByPatient === undefined &&
+    scope.assignedToUserId === undefined
+  ) {
+    return undefined;
+  }
+
+  const caseIdsByPatient = Object.fromEntries(
+    Object.entries(scope.caseIdsByPatient ?? {})
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([patientId, caseIds]) => [patientId, [...caseIds].sort()]),
+  );
+  const payload = JSON.stringify({
+    assignedToUserId: scope.assignedToUserId ?? null,
+    caseIds: scope.caseIds ? [...scope.caseIds].sort() : [],
+    patientIds: scope.patientIds ? [...scope.patientIds].sort() : [],
+    caseIdsByPatient,
+  });
+
+  return createHash('sha256').update(payload).digest('base64url').slice(0, 24);
 }
 
 export function invalidateWorkflowDashboardCache(orgId: string) {

@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import {
   WORKFLOW_COMMUNICATION_LIMIT,
   WORKFLOW_COMMUNITY_FOLLOWUP_LIMIT,
@@ -14,6 +14,10 @@ import { listCommunicationQueue } from '@/server/services/communication-queue';
 import { listPatientRiskSummaries } from '@/server/services/patient-risk';
 import { getHomeCareFeatureSummary } from '@/server/services/home-care-ops';
 import { buildVisitScheduleBillingPreviewBatch } from '@/server/services/visit-schedule-billing-preview';
+import {
+  buildDashboardTaskAssignmentWhere,
+  type DashboardAssignmentScope,
+} from './dashboard-assignment-scope';
 
 export type WorkflowCoreData = {
   cycleCounts: Array<{ overall_status: string; _count: { id: number } }>;
@@ -223,6 +227,124 @@ export type WorkflowCoreData = {
   homeCareFeatureSummary: Awaited<ReturnType<typeof getHomeCareFeatureSummary>>;
 };
 
+function buildCaseScope(caseIds: string[] | undefined) {
+  return caseIds === undefined ? {} : { case_id: { in: caseIds } };
+}
+
+function buildPatientScope(patientIds: string[] | undefined) {
+  return patientIds === undefined ? {} : { patient_id: { in: patientIds } };
+}
+
+function buildCareCaseScope(caseIds: string[] | undefined) {
+  return caseIds === undefined ? {} : { id: { in: caseIds } };
+}
+
+function buildNullableCaseBackedScope(args: { caseIds?: string[]; patientIds?: string[] }) {
+  if (args.caseIds === undefined && args.patientIds === undefined) return {};
+
+  const scopes = [
+    ...(args.caseIds && args.caseIds.length > 0 ? [{ case_id: { in: args.caseIds } }] : []),
+    ...(args.patientIds && args.patientIds.length > 0
+      ? [{ case_id: null, patient_id: { in: args.patientIds } }]
+      : []),
+  ];
+
+  return scopes.length > 0 ? { OR: scopes } : { id: { in: [] } };
+}
+
+function buildCycleRelationScope(args: { caseIds?: string[]; patientIds?: string[] }) {
+  if (args.caseIds === undefined) return {};
+  return args.caseIds.length > 0
+    ? { cycle: { case_id: { in: args.caseIds } } }
+    : { id: { in: [] } };
+}
+
+function buildReportRelationScope(args: { caseIds?: string[]; patientIds?: string[] }) {
+  if (args.caseIds === undefined && args.patientIds === undefined) return {};
+
+  const scopes = [
+    ...(args.caseIds && args.caseIds.length > 0 ? [{ case_id: { in: args.caseIds } }] : []),
+    ...(args.patientIds && args.patientIds.length > 0
+      ? [{ case_id: null, patient_id: { in: args.patientIds } }]
+      : []),
+  ];
+
+  return scopes.length > 0 ? { report: { OR: scopes } } : { id: { in: [] } };
+}
+
+function isDashboardAssignmentScoped(scope: DashboardAssignmentScope) {
+  return scope.caseIds !== undefined || scope.patientIds !== undefined;
+}
+
+const EMPTY_SCOPED_HOME_CARE_FEATURE_SUMMARY = {
+  totals: { blocked: 0, attention: 0, monitoring: 0, ready: 0 },
+  features: [],
+} satisfies Awaited<ReturnType<typeof getHomeCareFeatureSummary>>;
+
+async function countConferenceUndeliveredReports(
+  prisma: PrismaClient,
+  orgId: string,
+  assignmentScope: DashboardAssignmentScope,
+) {
+  const scoped = isDashboardAssignmentScoped(assignmentScope);
+  const scopedPredicates = [
+    ...(assignmentScope.caseIds && assignmentScope.caseIds.length > 0
+      ? [Prisma.sql`case_id IN (${Prisma.join(assignmentScope.caseIds)})`]
+      : []),
+    ...(assignmentScope.patientIds && assignmentScope.patientIds.length > 0
+      ? [
+          Prisma.sql`(case_id IS NULL AND patient_id IN (${Prisma.join(assignmentScope.patientIds)}))`,
+        ]
+      : []),
+  ];
+  if (scoped && scopedPredicates.length === 0) return 0;
+
+  if (typeof prisma.$queryRaw === 'function') {
+    const scopePredicate =
+      scopedPredicates.length > 0
+        ? Prisma.sql`AND (${Prisma.join(scopedPredicates, ' OR ')})`
+        : Prisma.empty;
+
+    return prisma.$queryRaw<[{ count: bigint }]>`
+      SELECT COUNT(*)::bigint AS count
+      FROM "ConferenceNote"
+      WHERE org_id = ${orgId}
+        ${scopePredicate}
+        AND action_items IS NOT NULL
+        AND action_items != 'null'::jsonb
+        AND jsonb_array_length(action_items) > 0
+        AND EXISTS (
+          SELECT 1 FROM jsonb_array_elements(action_items) AS item
+          WHERE item->>'converted_task_id' IS NULL
+        )
+    `.then((rows) => Number(rows[0]?.count ?? 0));
+  }
+
+  const notes = await prisma.conferenceNote.findMany({
+    where: {
+      org_id: orgId,
+      ...buildNullableCaseBackedScope(assignmentScope),
+    },
+    select: {
+      action_items: true,
+    },
+  });
+
+  return notes.filter((note) => {
+    const items = note.action_items;
+    return (
+      Array.isArray(items) &&
+      items.some(
+        (item) =>
+          typeof item === 'object' &&
+          item !== null &&
+          !('converted_task_id' in item) &&
+          !('convertedTaskId' in item),
+      )
+    );
+  }).length;
+}
+
 export async function fetchWorkflowCoreData(
   prisma: PrismaClient,
   orgId: string,
@@ -230,6 +352,7 @@ export async function fetchWorkflowCoreData(
   upcomingWindow: Date,
   sevenDaysFromNow: Date,
   recentOutcomeWindow: Date,
+  assignmentScope: DashboardAssignmentScope = {},
 ): Promise<WorkflowCoreData> {
   const [
     cycleCounts,
@@ -264,6 +387,7 @@ export async function fetchWorkflowCoreData(
       by: ['overall_status'],
       where: {
         org_id: orgId,
+        ...buildCaseScope(assignmentScope.caseIds),
         overall_status: {
           notIn: ['cancelled', 'reported'],
         },
@@ -273,12 +397,14 @@ export async function fetchWorkflowCoreData(
     prisma.workflowException.count({
       where: {
         org_id: orgId,
+        ...buildCycleRelationScope(assignmentScope),
         status: 'open',
       },
     }),
     prisma.workflowException.findMany({
       where: {
         org_id: orgId,
+        ...buildCycleRelationScope(assignmentScope),
         status: 'open',
       },
       orderBy: [{ created_at: 'asc' }],
@@ -309,12 +435,14 @@ export async function fetchWorkflowCoreData(
     prisma.communicationRequest.count({
       where: {
         org_id: orgId,
+        ...buildNullableCaseBackedScope(assignmentScope),
         status: { in: ['sent', 'received', 'in_progress'] },
       },
     }),
     prisma.communicationRequest.count({
       where: {
         org_id: orgId,
+        ...buildNullableCaseBackedScope(assignmentScope),
         status: { notIn: ['closed', 'cancelled', 'responded'] },
         due_date: { lt: new Date() },
       },
@@ -326,6 +454,7 @@ export async function fetchWorkflowCoreData(
         status: {
           in: ['pending', 'in_progress'],
         },
+        ...buildDashboardTaskAssignmentWhere(assignmentScope),
       },
       _count: { id: true },
     }),
@@ -335,6 +464,7 @@ export async function fetchWorkflowCoreData(
         status: {
           in: ['pending', 'in_progress'],
         },
+        ...buildDashboardTaskAssignmentWhere(assignmentScope),
       },
       orderBy: [{ sla_due_at: 'asc' }, { due_date: 'asc' }, { created_at: 'asc' }],
       take: WORKFLOW_TASK_LIMIT,
@@ -356,6 +486,7 @@ export async function fetchWorkflowCoreData(
     prisma.visitSchedule.count({
       where: {
         org_id: orgId,
+        ...buildCaseScope(assignmentScope.caseIds),
         scheduled_date: { lt: today },
         schedule_status: {
           notIn: ['completed', 'cancelled', 'postponed', 'rescheduled', 'no_show'],
@@ -366,12 +497,14 @@ export async function fetchWorkflowCoreData(
     prisma.medicationCycle.count({
       where: {
         org_id: orgId,
+        ...buildCaseScope(assignmentScope.caseIds),
         overall_status: 'visit_completed',
       },
     }),
     prisma.visitSchedule.findMany({
       where: {
         org_id: orgId,
+        ...buildCaseScope(assignmentScope.caseIds),
         scheduled_date: {
           gte: today,
           lte: upcomingWindow,
@@ -449,6 +582,7 @@ export async function fetchWorkflowCoreData(
     prisma.visitSchedule.findMany({
       where: {
         org_id: orgId,
+        ...buildCaseScope(assignmentScope.caseIds),
         scheduled_date: {
           gte: recentOutcomeWindow,
           lt: today,
@@ -466,6 +600,7 @@ export async function fetchWorkflowCoreData(
     prisma.visitScheduleProposal.findMany({
       where: {
         org_id: orgId,
+        ...buildCaseScope(assignmentScope.caseIds),
         proposal_status: {
           in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
         },
@@ -497,12 +632,14 @@ export async function fetchWorkflowCoreData(
     prisma.deliveryRecord.count({
       where: {
         org_id: orgId,
+        ...buildReportRelationScope(assignmentScope),
         status: 'failed',
       },
     }),
     prisma.prescriptionIntake.findMany({
       where: {
         org_id: orgId,
+        ...buildCycleRelationScope(assignmentScope),
         OR: [
           {
             source_type: 'refill',
@@ -584,6 +721,7 @@ export async function fetchWorkflowCoreData(
     prisma.inquiryRecord.findMany({
       where: {
         org_id: orgId,
+        ...buildCycleRelationScope(assignmentScope),
         resolved_at: null,
       },
       orderBy: [{ inquired_at: 'desc' }],
@@ -647,6 +785,7 @@ export async function fetchWorkflowCoreData(
     prisma.medicationIssue.findMany({
       where: {
         org_id: orgId,
+        ...buildNullableCaseBackedScope(assignmentScope),
         status: {
           in: ['open', 'in_progress'],
         },
@@ -668,6 +807,7 @@ export async function fetchWorkflowCoreData(
     prisma.patientSelfReport.findMany({
       where: {
         org_id: orgId,
+        ...buildPatientScope(assignmentScope.patientIds),
         status: { in: ['submitted', 'triaged'] },
       },
       orderBy: [{ created_at: 'asc' }],
@@ -704,6 +844,7 @@ export async function fetchWorkflowCoreData(
     prisma.careCase.count({
       where: {
         org_id: orgId,
+        ...buildCareCaseScope(assignmentScope.caseIds),
         status: { in: ['referral_received', 'assessment'] },
       },
     }),
@@ -744,11 +885,16 @@ export async function fetchWorkflowCoreData(
     }),
     listCommunicationQueue(prisma, {
       orgId,
+      caseIds: assignmentScope.caseIds,
+      patientIds: assignmentScope.patientIds,
       limit: WORKFLOW_COMMUNICATION_LIMIT,
     }),
     listPatientRiskSummaries(prisma, {
       orgId,
+      patientIds: assignmentScope.patientIds,
+      caseIdsByPatient: assignmentScope.caseIdsByPatient,
       limit: WORKFLOW_RISK_QUEUE_LIMIT,
+      candidateLimit: WORKFLOW_RISK_QUEUE_LIMIT * 10,
     }),
     prisma.task.count({
       where: {
@@ -759,6 +905,7 @@ export async function fetchWorkflowCoreData(
         status: {
           in: ['pending', 'in_progress'],
         },
+        ...buildDashboardTaskAssignmentWhere(assignmentScope),
       },
     }),
     prisma.task.count({
@@ -766,49 +913,15 @@ export async function fetchWorkflowCoreData(
         org_id: orgId,
         related_entity_type: 'conference_note',
         status: { notIn: ['completed', 'cancelled'] },
+        ...buildDashboardTaskAssignmentWhere(assignmentScope),
       },
     }),
-    typeof prisma.$queryRaw === 'function'
-      ? prisma.$queryRaw<[{ count: bigint }]>`
-          SELECT COUNT(*)::bigint AS count
-          FROM "ConferenceNote"
-          WHERE org_id = ${orgId}
-            AND action_items IS NOT NULL
-            AND action_items != 'null'::jsonb
-            AND jsonb_array_length(action_items) > 0
-            AND EXISTS (
-              SELECT 1 FROM jsonb_array_elements(action_items) AS item
-              WHERE item->>'converted_task_id' IS NULL
-            )
-        `.then((rows) => Number(rows[0]?.count ?? 0))
-      : prisma.conferenceNote
-          .findMany({
-            where: {
-              org_id: orgId,
-            },
-            select: {
-              action_items: true,
-            },
-          })
-          .then(
-            (notes) =>
-              notes.filter((note) => {
-                const items = note.action_items;
-                return (
-                  Array.isArray(items) &&
-                  items.some(
-                    (item) =>
-                      typeof item === 'object' &&
-                      item !== null &&
-                      !('converted_task_id' in item) &&
-                      !('convertedTaskId' in item),
-                  )
-                );
-              }).length,
-          ),
-    getHomeCareFeatureSummary(prisma, {
-      orgId,
-    }),
+    countConferenceUndeliveredReports(prisma, orgId, assignmentScope),
+    isDashboardAssignmentScoped(assignmentScope)
+      ? Promise.resolve(EMPTY_SCOPED_HOME_CARE_FEATURE_SUMMARY)
+      : getHomeCareFeatureSummary(prisma, {
+          orgId,
+        }),
   ]);
 
   const cadencePreviewByScheduleId = await buildVisitScheduleBillingPreviewBatch(
@@ -899,6 +1012,7 @@ export async function fetchWorkflowDependentData(
   orgId: string,
   today: Date,
   coreData: WorkflowCoreData,
+  assignmentScope: DashboardAssignmentScope = {},
 ): Promise<WorkflowDependentData> {
   const {
     unresolvedInquiryRecords,
@@ -927,6 +1041,31 @@ export async function fetchWorkflowDependentData(
   const unresolvedIssuePatientIds = Array.from(
     new Set(openMedicationIssues.map((item) => item.patient_id)),
   );
+  const scopedIssueCaseIds =
+    assignmentScope.caseIds === undefined
+      ? unresolvedIssueCaseIds
+      : unresolvedIssueCaseIds.filter((caseId) => assignmentScope.caseIds?.includes(caseId));
+  const latestCycleScopes =
+    assignmentScope.caseIds === undefined
+      ? [
+          ...(unresolvedIssueCaseIds.length > 0
+            ? [{ case_id: { in: unresolvedIssueCaseIds } }]
+            : []),
+          ...(unresolvedIssuePatientIds.length > 0
+            ? [{ patient_id: { in: unresolvedIssuePatientIds } }]
+            : []),
+        ]
+      : [
+          ...(scopedIssueCaseIds.length > 0 ? [{ case_id: { in: scopedIssueCaseIds } }] : []),
+          ...(unresolvedIssuePatientIds.length > 0 && assignmentScope.caseIds.length > 0
+            ? [
+                {
+                  patient_id: { in: unresolvedIssuePatientIds },
+                  case_id: { in: assignmentScope.caseIds },
+                },
+              ]
+            : []),
+        ];
 
   const upcomingPatientIds = Array.from(
     new Set(upcomingSchedules.map((schedule) => schedule.case_.patient.id)),
@@ -961,19 +1100,12 @@ export async function fetchWorkflowDependentData(
             requested_at: true,
           },
         }),
-    unresolvedIssueCaseIds.length === 0 && unresolvedIssuePatientIds.length === 0
+    latestCycleScopes.length === 0
       ? []
       : prisma.medicationCycle.findMany({
           where: {
             org_id: orgId,
-            OR: [
-              ...(unresolvedIssueCaseIds.length > 0
-                ? [{ case_id: { in: unresolvedIssueCaseIds } }]
-                : []),
-              ...(unresolvedIssuePatientIds.length > 0
-                ? [{ patient_id: { in: unresolvedIssuePatientIds } }]
-                : []),
-            ],
+            OR: latestCycleScopes,
           },
           orderBy: [{ updated_at: 'desc' }],
           select: {

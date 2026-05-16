@@ -135,6 +135,18 @@ describe('/api/external-access/[token]', () => {
     expect(buildExternalAccessPayloadMock).not.toHaveBeenCalled();
   });
 
+  it('does not mark viewed when a validated grant cannot build a safe payload', async () => {
+    buildExternalAccessPayloadMock.mockResolvedValue(null);
+
+    const response = await GET(makeRequest('1234'), {
+      params: Promise.resolve({ token: 'token_1' }),
+    });
+
+    expect(response.status).toBe(404);
+    expect(buildExternalAccessPayloadMock).toHaveBeenCalledWith({ id: 'grant_1' });
+    expect(markExternalAccessViewedMock).not.toHaveBeenCalled();
+  });
+
   it('rate limits OTP attempts by token and client IP', async () => {
     getClientIpMock.mockReturnValue('198.51.100.25');
 

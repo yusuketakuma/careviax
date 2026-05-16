@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError } from '@/lib/api/response';
+import { forbidden, success, validationError } from '@/lib/api/response';
+import { buildVisitScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 
 const upsertFacilityVisitBatchSchema = z
@@ -56,7 +57,7 @@ function buildFacilityLabel(schedule: {
 
 function compareUnitName(
   left: { case_: { patient: { residences: Array<{ unit_name: string | null }> } } },
-  right: { case_: { patient: { residences: Array<{ unit_name: string | null }> } } }
+  right: { case_: { patient: { residences: Array<{ unit_name: string | null }> } } },
 ) {
   const leftUnit = left.case_.patient.residences[0]?.unit_name ?? '';
   const rightUnit = right.case_.patient.residences[0]?.unit_name ?? '';
@@ -89,73 +90,90 @@ export const POST = withAuth(
     }
 
     const result = await withOrgContext(req.orgId, async (tx) => {
-      const schedules = await tx.visitSchedule.findMany({
-        where: {
-          org_id: req.orgId,
-          ...(requestedIds.length > 0
-            ? {
-                id: {
-                  in: requestedIds,
-                },
-              }
-            : {
-                scheduled_date: new Date(parsed.data.scheduled_date!),
-                pharmacist_id: parsed.data.pharmacist_id,
-                ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
-                case_: {
-                  patient: {
-                    residences: {
-                      some: {
-                        is_primary: true,
-                        facility_id: parsed.data.facility_id,
-                      },
+      const assignmentWhere = buildVisitScheduleAssignmentWhere(req);
+      const scheduleLookupWhere = {
+        org_id: req.orgId,
+        ...(requestedIds.length > 0
+          ? {
+              id: {
+                in: requestedIds,
+              },
+            }
+          : {
+              scheduled_date: new Date(parsed.data.scheduled_date!),
+              pharmacist_id: parsed.data.pharmacist_id,
+              ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
+              case_: {
+                patient: {
+                  residences: {
+                    some: {
+                      is_primary: true,
+                      facility_id: parsed.data.facility_id,
                     },
                   },
                 },
-              }),
-        },
-        select: {
-          id: true,
-          site_id: true,
-          pharmacist_id: true,
-          scheduled_date: true,
-          facility_batch_id: true,
-          case_id: true,
-          preparation: {
-            select: {
-              id: true,
-              checklist: true,
-              medication_changes_reviewed: true,
-              carry_items_confirmed: true,
-              previous_issues_reviewed: true,
-              route_confirmed: true,
-              offline_synced: true,
-              prepared_at: true,
+              },
+            }),
+      };
+      const scheduleWhere = {
+        ...scheduleLookupWhere,
+        ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+      };
+      const [schedules, totalMatchingSchedules] = await Promise.all([
+        tx.visitSchedule.findMany({
+          where: scheduleWhere,
+          select: {
+            id: true,
+            site_id: true,
+            pharmacist_id: true,
+            scheduled_date: true,
+            facility_batch_id: true,
+            case_id: true,
+            preparation: {
+              select: {
+                id: true,
+                checklist: true,
+                medication_changes_reviewed: true,
+                carry_items_confirmed: true,
+                previous_issues_reviewed: true,
+                route_confirmed: true,
+                offline_synced: true,
+                prepared_at: true,
+              },
             },
-          },
-          case_: {
-            select: {
-              patient: {
-                select: {
-                  id: true,
-                  name: true,
-                  residences: {
-                    where: { is_primary: true },
-                    take: 1,
-                    select: {
-                      facility_id: true,
-                      facility_unit_id: true,
-                      address: true,
-                      building_id: true,
-                      unit_name: true,
+            case_: {
+              select: {
+                patient: {
+                  select: {
+                    id: true,
+                    name: true,
+                    residences: {
+                      where: { is_primary: true },
+                      take: 1,
+                      select: {
+                        facility_id: true,
+                        facility_unit_id: true,
+                        address: true,
+                        building_id: true,
+                        unit_name: true,
+                      },
                     },
                   },
                 },
               },
             },
           },
-        },
-      });
+        }),
+        assignmentWhere
+          ? tx.visitSchedule.count({
+              where: scheduleLookupWhere,
+            })
+          : Promise.resolve(null),
+      ]);
+
+      if (assignmentWhere && totalMatchingSchedules !== schedules.length) {
+        return { error: 'forbidden' as const };
+      }
 
       if (requestedIds.length > 0 && schedules.length !== requestedIds.length) {
         return { error: 'missing_schedule' as const };
@@ -169,22 +187,19 @@ export const POST = withAuth(
       if (orderedIds && orderedIds.length !== targetScheduleIds.length) {
         return { error: 'ordered_length_mismatch' as const };
       }
-      if (
-        orderedIds &&
-        targetScheduleIds.some((scheduleId) => !orderedIds.includes(scheduleId))
-      ) {
+      if (orderedIds && targetScheduleIds.some((scheduleId) => !orderedIds.includes(scheduleId))) {
         return { error: 'ordered_contains_unknown' as const };
       }
 
       const siteIds = new Set(schedules.map((schedule) => schedule.site_id ?? 'site:none'));
       const pharmacistIds = new Set(schedules.map((schedule) => schedule.pharmacist_id));
       const dateKeys = new Set(
-        schedules.map((schedule) => schedule.scheduled_date.toISOString().slice(0, 10))
+        schedules.map((schedule) => schedule.scheduled_date.toISOString().slice(0, 10)),
       );
       const facilityLabels = new Set(
         schedules
           .map((schedule) => buildFacilityLabel(schedule))
-          .filter((value): value is string => value != null)
+          .filter((value): value is string => value != null),
       );
       if (siteIds.size > 1 || pharmacistIds.size > 1 || dateKeys.size > 1) {
         return { error: 'mixed_schedule_scope' as const };
@@ -197,10 +212,9 @@ export const POST = withAuth(
       }
 
       const facilityUnitIdSet = new Set(
-        schedules
-          .map(
-            (schedule) => schedule.case_.patient.residences[0]?.facility_unit_id ?? 'unit:none'
-          )
+        schedules.map(
+          (schedule) => schedule.case_.patient.residences[0]?.facility_unit_id ?? 'unit:none',
+        ),
       );
       if (facilityUnitIdSet.size > 1 && !parsed.data.allow_mixed_unit) {
         return { error: 'mixed_facility_unit' as const };
@@ -213,16 +227,37 @@ export const POST = withAuth(
         new Set(
           schedules
             .map((schedule) => schedule.facility_batch_id)
-            .filter((value): value is string => value != null)
-        )
+            .filter((value): value is string => value != null),
+        ),
       );
       if (existingBatchIds.length > 1) {
         return { error: 'mixed_existing_batch' as const };
       }
+      if (assignmentWhere && existingBatchIds.length === 1) {
+        const [totalBatchSchedules, accessibleBatchSchedules] = await Promise.all([
+          tx.visitSchedule.count({
+            where: { org_id: req.orgId, facility_batch_id: existingBatchIds[0] },
+          }),
+          tx.visitSchedule.count({
+            where: {
+              org_id: req.orgId,
+              facility_batch_id: existingBatchIds[0],
+              AND: [assignmentWhere],
+            },
+          }),
+        ]);
+        if (totalBatchSchedules !== accessibleBatchSchedules) {
+          return { error: 'forbidden' as const };
+        }
+      }
 
       const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
       const orderedSchedules = (
-        orderedIds ?? schedules.slice().sort(compareUnitName).map((schedule) => schedule.id)
+        orderedIds ??
+        schedules
+          .slice()
+          .sort(compareUnitName)
+          .map((schedule) => schedule.id)
       )
         .map((scheduleId) => scheduleById.get(scheduleId))
         .filter((schedule): schedule is NonNullable<typeof schedule> => schedule != null);
@@ -258,8 +293,8 @@ export const POST = withAuth(
               facility_batch_id: batch.id,
               route_order: index + 1,
             },
-          })
-        )
+          }),
+        ),
       );
 
       if (parsed.data.carry_items_confirmed) {
@@ -282,8 +317,7 @@ export const POST = withAuth(
                 medication_changes_reviewed:
                   currentPreparation?.medication_changes_reviewed ?? false,
                 carry_items_confirmed: true,
-                previous_issues_reviewed:
-                  currentPreparation?.previous_issues_reviewed ?? false,
+                previous_issues_reviewed: currentPreparation?.previous_issues_reviewed ?? false,
                 route_confirmed: currentPreparation?.route_confirmed ?? false,
                 offline_synced: currentPreparation?.offline_synced ?? false,
                 prepared_by: req.userId,
@@ -294,17 +328,16 @@ export const POST = withAuth(
                 medication_changes_reviewed:
                   currentPreparation?.medication_changes_reviewed ?? false,
                 carry_items_confirmed: true,
-                previous_issues_reviewed:
-                  currentPreparation?.previous_issues_reviewed ?? false,
+                previous_issues_reviewed: currentPreparation?.previous_issues_reviewed ?? false,
                 route_confirmed: currentPreparation?.route_confirmed ?? false,
                 offline_synced: currentPreparation?.offline_synced ?? false,
                 prepared_by: req.userId,
                 prepared_at: allChecklistComplete
-                  ? currentPreparation?.prepared_at ?? new Date()
+                  ? (currentPreparation?.prepared_at ?? new Date())
                   : null,
               },
             });
-          })
+          }),
         );
       }
 
@@ -327,6 +360,9 @@ export const POST = withAuth(
     if ('error' in result) {
       if (result.error === 'missing_schedule') {
         return validationError('施設一括訪問に含まれる訪問予定が見つかりません');
+      }
+      if (result.error === 'forbidden') {
+        return forbidden('施設一括訪問に含まれる訪問予定へのアクセス権限がありません');
       }
       if (result.error === 'mixed_schedule_scope') {
         return validationError('同日・同担当・同拠点の訪問予定のみを一括化できます');
@@ -363,5 +399,5 @@ export const POST = withAuth(
   {
     permission: 'canVisit',
     message: '施設一括訪問の更新権限がありません',
-  }
+  },
 );

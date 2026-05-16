@@ -5,6 +5,8 @@ const {
   authMock,
   membershipFindFirstMock,
   medicationCycleGroupByMock,
+  patientFindManyMock,
+  careCaseFindManyMock,
   taskFindManyMock,
   visitScheduleFindManyMock,
   communicationQueueMock,
@@ -14,6 +16,8 @@ const {
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   medicationCycleGroupByMock: vi.fn(),
+  patientFindManyMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
   taskFindManyMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   communicationQueueMock: vi.fn(),
@@ -32,6 +36,12 @@ vi.mock('@/lib/db/client', () => ({
     },
     medicationCycle: {
       groupBy: medicationCycleGroupByMock,
+    },
+    patient: {
+      findMany: patientFindManyMock,
+    },
+    careCase: {
+      findMany: careCaseFindManyMock,
     },
     task: {
       findMany: taskFindManyMock,
@@ -79,6 +89,8 @@ describe('/api/dashboard/home/actions GET', () => {
       { overall_status: 'setting', _count: { id: 3 } },
       { overall_status: 'set_audited', _count: { id: 2 } },
     ]);
+    patientFindManyMock.mockResolvedValue([]);
+    careCaseFindManyMock.mockResolvedValue([]);
     taskFindManyMock.mockResolvedValue([
       {
         id: 'task_1',
@@ -131,6 +143,20 @@ describe('/api/dashboard/home/actions GET', () => {
     expect(response.status).toBe(401);
   });
 
+  it('returns 403 before homepage PHI queries when role cannot view dashboard', async () => {
+    authMock.mockResolvedValue({ user: { id: 'driver_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'driver' });
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expect(medicationCycleGroupByMock).not.toHaveBeenCalled();
+    expect(taskFindManyMock).not.toHaveBeenCalled();
+    expect(communicationQueueMock).not.toHaveBeenCalled();
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('returns pipeline counts and sorted homepage actions', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
@@ -173,6 +199,72 @@ describe('/api/dashboard/home/actions GET', () => {
         ]),
       },
     });
+  });
+
+  it('allows dashboard-only roles while scoping homepage action PHI to assigned patients and cases', async () => {
+    authMock.mockResolvedValue({ user: { id: 'pharmacist_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist_trainee' });
+    careCaseFindManyMock.mockResolvedValue([
+      { id: 'case_assigned', patient_id: 'patient_assigned' },
+    ]);
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(careCaseFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        AND: [
+          {
+            OR: [
+              { primary_pharmacist_id: 'pharmacist_1' },
+              { backup_pharmacist_id: 'pharmacist_1' },
+              { visit_schedules: { some: { pharmacist_id: 'pharmacist_1' } } },
+            ],
+          },
+        ],
+      },
+      select: { id: true, patient_id: true },
+    });
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(medicationCycleGroupByMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          case_id: { in: ['case_assigned'] },
+        }),
+      }),
+    );
+    expect(taskFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            { assigned_to: 'pharmacist_1' },
+            {
+              related_entity_type: 'patient',
+              related_entity_id: { in: ['patient_assigned'] },
+            },
+            {
+              related_entity_type: 'case',
+              related_entity_id: { in: ['case_assigned'] },
+            },
+          ]),
+        }),
+      }),
+    );
+    expect(communicationQueueMock).toHaveBeenCalledWith(expect.anything(), {
+      orgId: 'org_1',
+      caseIds: ['case_assigned'],
+      patientIds: ['patient_assigned'],
+      limit: 6,
+    });
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          case_id: { in: ['case_assigned'] },
+        }),
+      }),
+    );
   });
 
   it('adds a cadence warning aggregate action when upcoming schedules have billing cadence alerts', async () => {

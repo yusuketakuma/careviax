@@ -11,6 +11,7 @@ const {
   taskGroupByMock,
   billingCandidateCountMock,
   visitScheduleOverrideCountMock,
+  careCaseFindManyMock,
   patientFindManyMock,
   communicationQueueMock,
 } = vi.hoisted(() => ({
@@ -23,6 +24,7 @@ const {
   taskGroupByMock: vi.fn(),
   billingCandidateCountMock: vi.fn(),
   visitScheduleOverrideCountMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
   patientFindManyMock: vi.fn(),
   communicationQueueMock: vi.fn(),
 }));
@@ -54,6 +56,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     visitScheduleOverride: {
       count: visitScheduleOverrideCountMock,
+    },
+    careCase: {
+      findMany: careCaseFindManyMock,
     },
     patient: {
       findMany: patientFindManyMock,
@@ -144,6 +149,7 @@ describe('/api/dashboard/today GET', () => {
     ]);
     billingCandidateCountMock.mockResolvedValue(4);
     visitScheduleOverrideCountMock.mockResolvedValue(1);
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
     patientFindManyMock.mockResolvedValue([{ id: 'patient_1', name: '山田 太郎' }]);
     communicationQueueMock.mockResolvedValue({
       summary: {
@@ -199,6 +205,75 @@ describe('/api/dashboard/today GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(communicationQueueMock).toHaveBeenCalledWith(expect.anything(), {
+      orgId: 'org_1',
+      caseIds: ['case_1'],
+      patientIds: ['patient_1'],
+      limit: 5,
+    });
+    expect(visitScheduleCountMock).toHaveBeenNthCalledWith(1, {
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        case_id: { in: ['case_1'] },
+        schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+      }),
+    });
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          case_id: { in: ['case_1'] },
+        }),
+      }),
+    );
+    expect(careReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          OR: [
+            { case_id: { in: ['case_1'] } },
+            { case_id: null, patient_id: { in: ['patient_1'] } },
+          ],
+        }),
+      }),
+    );
+    expect(prescriptionIntakeFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          cycle: { case_id: { in: ['case_1'] } },
+        }),
+      }),
+    );
+    expect(taskGroupByMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          OR: expect.arrayContaining([
+            { assigned_to: 'user_1' },
+            { related_entity_type: 'patient', related_entity_id: { in: ['patient_1'] } },
+            { related_entity_type: 'case', related_entity_id: { in: ['case_1'] } },
+          ]),
+        }),
+      }),
+    );
+    expect(billingCandidateCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: { in: ['patient_1'] },
+        status: 'candidate',
+      },
+    });
+    expect(visitScheduleOverrideCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        OR: [
+          { source_schedule: { case_id: { in: ['case_1'] } } },
+          { replacement_schedule: { case_id: { in: ['case_1'] } } },
+        ],
+        status: 'pending',
+      },
+    });
     await expect(response.json()).resolves.toMatchObject({
       visits: {
         total: 10,

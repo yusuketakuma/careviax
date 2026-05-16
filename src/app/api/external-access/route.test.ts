@@ -7,7 +7,9 @@ const {
   withOrgContextMock,
   issueExternalAccessTokenMock,
   sendSmsMock,
+  patientFindFirstMock,
   patientFindManyMock,
+  careCaseFindManyMock,
   externalAccessGrantFindManyMock,
   patientSelfReportFindManyMock,
   createMock,
@@ -20,7 +22,9 @@ const {
   withOrgContextMock: vi.fn(),
   issueExternalAccessTokenMock: vi.fn(),
   sendSmsMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
   patientFindManyMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
   externalAccessGrantFindManyMock: vi.fn(),
   patientSelfReportFindManyMock: vi.fn(),
   createMock: vi.fn(),
@@ -73,7 +77,11 @@ vi.mock('@/lib/db/rls', () => ({
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     patient: {
+      findFirst: patientFindFirstMock,
       findMany: patientFindManyMock,
+    },
+    careCase: {
+      findMany: careCaseFindManyMock,
     },
     externalAccessGrant: {
       findMany: externalAccessGrantFindManyMock,
@@ -84,11 +92,17 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
-vi.mock('@/server/services/external-access', () => ({
-  issueExternalAccessToken: issueExternalAccessTokenMock,
-  validateExternalAccessScopeForRole: validateExternalAccessScopeForRoleMock,
-  MissingExternalAccessSecretError: MissingExternalAccessSecretErrorMock,
-}));
+vi.mock('@/server/services/external-access', async () => {
+  const actual = await vi.importActual<typeof import('@/server/services/external-access')>(
+    '@/server/services/external-access',
+  );
+  return {
+    ...actual,
+    issueExternalAccessToken: issueExternalAccessTokenMock,
+    validateExternalAccessScopeForRole: validateExternalAccessScopeForRoleMock,
+    MissingExternalAccessSecretError: MissingExternalAccessSecretErrorMock,
+  };
+});
 
 vi.mock('@/server/adapters/sms', () => ({
   SmsNotificationAdapter: class SmsNotificationAdapter {
@@ -114,10 +128,60 @@ function createGetRequest(url = 'http://localhost/api/external-access') {
   } as unknown as NextRequest;
 }
 
+function expectPharmacistPatientAssignmentWhere(patientId?: string) {
+  return expect.objectContaining({
+    ...(patientId ? { id: patientId } : {}),
+    org_id: 'org_1',
+    AND: [
+      {
+        cases: {
+          some: {
+            OR: [
+              { primary_pharmacist_id: 'user_1' },
+              { backup_pharmacist_id: 'user_1' },
+              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+            ],
+          },
+        },
+      },
+    ],
+  });
+}
+
+function expectPharmacistCareCaseAssignmentWhere(patientId: string) {
+  return {
+    org_id: 'org_1',
+    patient_id: patientId,
+    AND: [
+      {
+        OR: [
+          { primary_pharmacist_id: 'user_1' },
+          { backup_pharmacist_id: 'user_1' },
+          { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+        ],
+      },
+    ],
+  };
+}
+
+function expectGrantVisibilityForCase(caseId: string) {
+  return expect.objectContaining({
+    OR: expect.arrayContaining([
+      expect.objectContaining({
+        AND: expect.arrayContaining([
+          { scope: { path: ['allowed_case_ids'], array_contains: [caseId] } },
+        ]),
+      }),
+    ]),
+  });
+}
+
 describe('/api/external-access GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     currentRole.value = 'pharmacist';
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
     externalAccessGrantFindManyMock.mockResolvedValue([
       {
         id: 'grant_1',
@@ -125,7 +189,7 @@ describe('/api/external-access GET', () => {
         patient_id: 'patient_1',
         granted_to_name: '田中ケアマネ',
         granted_to_contact: '09012345678',
-        scope: { care_reports: true },
+        scope: { care_reports: true, allowed_case_ids: ['case_1'] },
         expires_at: new Date('2026-04-03T00:00:00.000Z'),
         accessed_at: null,
         created_at: new Date('2026-04-01T00:00:00.000Z'),
@@ -147,8 +211,8 @@ describe('/api/external-access GET', () => {
     ]);
   });
 
-  it.each(['clerk', 'pharmacist_trainee'])(
-    'rejects %s before listing sensitive external sharing metadata',
+  it.each(['driver', 'external_viewer'])(
+    'rejects %s before listing external sharing metadata',
     async (role) => {
       currentRole.value = role;
 
@@ -163,6 +227,31 @@ describe('/api/external-access GET', () => {
     },
   );
 
+  it('returns an empty grant list for report-only clerks without grant metadata reads', async () => {
+    currentRole.value = 'clerk';
+
+    const response = await GET(createGetRequest(), routeContext);
+
+    expect(response.status).toBe(200);
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(externalAccessGrantFindManyMock).not.toHaveBeenCalled();
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(patientSelfReportFindManyMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({ data: [] });
+  });
+
+  it('lets a pharmacist trainee list visit-scope external sharing metadata through report access', async () => {
+    currentRole.value = 'pharmacist_trainee';
+
+    const response = await GET(createGetRequest(), routeContext);
+
+    expect(response.status).toBe(200);
+    expect(externalAccessGrantFindManyMock).toHaveBeenCalledTimes(1);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [expect.objectContaining({ id: 'grant_1' })],
+    });
+  });
+
   it('lists external access management metadata for a role allowed to send care reports', async () => {
     currentRole.value = 'pharmacist';
 
@@ -172,14 +261,39 @@ describe('/api/external-access GET', () => {
     );
 
     expect(response.status).toBe(200);
+    expect(externalAccessGrantFindManyMock).toHaveBeenCalledTimes(1);
     expect(externalAccessGrantFindManyMock).toHaveBeenCalledWith({
-      where: {
+      where: expect.objectContaining({
         org_id: 'org_1',
         revoked_at: null,
         patient_id: 'patient_1',
+        OR: expect.any(Array),
+      }),
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        org_id: true,
+        patient_id: true,
+        granted_to_name: true,
+        granted_to_contact: true,
+        scope: true,
+        expires_at: true,
+        accessed_at: true,
+        created_at: true,
       },
-      orderBy: { created_at: 'desc' },
-      select: expect.any(Object),
+      take: 200,
+    });
+    expect(externalAccessGrantFindManyMock.mock.calls[0][0].where).toEqual(
+      expectGrantVisibilityForCase('case_1'),
+    );
+    expect(externalAccessGrantFindManyMock.mock.calls[0][0]).not.toHaveProperty('skip');
+    expect(patientFindFirstMock).toHaveBeenCalledWith({
+      where: expectPharmacistPatientAssignmentWhere('patient_1'),
+      select: { id: true },
+    });
+    expect(careCaseFindManyMock).toHaveBeenCalledWith({
+      where: expectPharmacistCareCaseAssignmentWhere('patient_1'),
+      select: { id: true },
     });
     expect(patientFindManyMock).toHaveBeenCalledWith({
       where: {
@@ -199,6 +313,7 @@ describe('/api/external-access GET', () => {
           patient_id: 'patient_1',
           granted_to_name: '田中ケアマネ',
           granted_to_contact: '09012345678',
+          scope: { care_reports: true },
           patient: {
             name: '山田 太郎',
             name_kana: 'ヤマダ タロウ',
@@ -212,12 +327,191 @@ describe('/api/external-access GET', () => {
       ],
     });
   });
+
+  it('returns no grants for an inaccessible patient without grant or patient enrichment reads', async () => {
+    patientFindFirstMock.mockResolvedValue(null);
+
+    const response = await GET(
+      createGetRequest('http://localhost/api/external-access?patient_id=patient_denied'),
+      routeContext,
+    );
+
+    expect(response.status).toBe(200);
+    expect(externalAccessGrantFindManyMock).not.toHaveBeenCalled();
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(patientSelfReportFindManyMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({ data: [] });
+  });
+
+  it('pushes patient-specific grant case visibility into the listing query', async () => {
+    externalAccessGrantFindManyMock.mockResolvedValue([
+      {
+        id: 'grant_visible_patient',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: null,
+        scope: { care_reports: true, allowed_case_ids: ['case_1'] },
+        expires_at: new Date('2026-04-03T00:00:00.000Z'),
+        accessed_at: null,
+        created_at: new Date('2026-04-01T00:00:00.000Z'),
+      },
+    ]);
+
+    const response = await GET(
+      createGetRequest('http://localhost/api/external-access?patient_id=patient_1'),
+      routeContext,
+    );
+
+    expect(response.status).toBe(200);
+    expect(externalAccessGrantFindManyMock).toHaveBeenCalledTimes(1);
+    expect(externalAccessGrantFindManyMock.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: 'patient_1',
+          OR: expect.any(Array),
+        }),
+        take: 200,
+      }),
+    );
+    expect(externalAccessGrantFindManyMock.mock.calls[0][0].where).toEqual(
+      expectGrantVisibilityForCase('case_1'),
+    );
+    expect(externalAccessGrantFindManyMock.mock.calls[0][0]).not.toHaveProperty('skip');
+    await expect(response.json()).resolves.toMatchObject({
+      data: [expect.objectContaining({ id: 'grant_visible_patient' })],
+    });
+  });
+
+  it('filters unscoped grant listing to candidate patients and visible case boundaries', async () => {
+    externalAccessGrantFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'grant_visible',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: null,
+        scope: { care_reports: true, allowed_case_ids: ['case_1'] },
+        expires_at: new Date('2026-04-03T00:00:00.000Z'),
+        accessed_at: null,
+        created_at: new Date('2026-04-01T00:00:00.000Z'),
+      },
+    ]);
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
+    patientFindManyMock.mockResolvedValue([
+      {
+        id: 'patient_1',
+        name: '山田 太郎',
+        name_kana: 'ヤマダ タロウ',
+      },
+    ]);
+
+    const response = await GET(createGetRequest(), routeContext);
+
+    expect(response.status).toBe(200);
+    expect(externalAccessGrantFindManyMock).toHaveBeenCalledTimes(1);
+    expect(externalAccessGrantFindManyMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        revoked_at: null,
+        OR: expect.arrayContaining([
+          {
+            AND: [{ patient_id: 'patient_1' }, expectGrantVisibilityForCase('case_1')],
+          },
+        ]),
+      }),
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        org_id: true,
+        patient_id: true,
+        granted_to_name: true,
+        granted_to_contact: true,
+        scope: true,
+        expires_at: true,
+        accessed_at: true,
+        created_at: true,
+      },
+      take: 200,
+    });
+    expect(externalAccessGrantFindManyMock.mock.calls[0][0]).not.toHaveProperty('skip');
+    expect(careCaseFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        AND: [
+          {
+            OR: [
+              { primary_pharmacist_id: 'user_1' },
+              { backup_pharmacist_id: 'user_1' },
+              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+            ],
+          },
+        ],
+      },
+      select: { id: true, patient_id: true },
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        expect.objectContaining({
+          id: 'grant_visible',
+          patient_id: 'patient_1',
+          scope: { care_reports: true },
+        }),
+      ],
+    });
+  });
+
+  it('pushes unscoped grant case visibility into per-patient query branches', async () => {
+    externalAccessGrantFindManyMock.mockResolvedValue([
+      {
+        id: 'grant_visible_branch',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: null,
+        scope: { care_reports: true, allowed_case_ids: ['case_1'] },
+        expires_at: new Date('2026-04-03T00:00:00.000Z'),
+        accessed_at: null,
+        created_at: new Date('2026-04-01T00:00:00.000Z'),
+      },
+    ]);
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
+    patientFindManyMock.mockResolvedValue([
+      {
+        id: 'patient_1',
+        name: '山田 太郎',
+        name_kana: 'ヤマダ タロウ',
+      },
+    ]);
+
+    const response = await GET(createGetRequest(), routeContext);
+
+    expect(response.status).toBe(200);
+    expect(externalAccessGrantFindManyMock).toHaveBeenCalledTimes(1);
+    expect(externalAccessGrantFindManyMock.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            {
+              AND: [{ patient_id: 'patient_1' }, expectGrantVisibilityForCase('case_1')],
+            },
+          ]),
+        }),
+        take: 200,
+      }),
+    );
+    expect(externalAccessGrantFindManyMock.mock.calls[0][0]).not.toHaveProperty('skip');
+    await expect(response.json()).resolves.toMatchObject({
+      data: [expect.objectContaining({ id: 'grant_visible_branch' })],
+    });
+  });
 });
 
 describe('/api/external-access POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     currentRole.value = 'pharmacist';
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     validateOrgReferencesMock.mockResolvedValue({ ok: true, data: {} });
     issueExternalAccessTokenMock.mockResolvedValue('jwt-token');
     validateExternalAccessScopeForRoleMock.mockReturnValue({
@@ -242,6 +536,94 @@ describe('/api/external-access POST', () => {
         },
       }),
     );
+  });
+
+  it.each(['driver', 'external_viewer'])(
+    'rejects %s without report access before validating or creating a grant',
+    async (role) => {
+      currentRole.value = role;
+
+      const response = await POST(
+        createRequest({
+          patient_id: 'patient_1',
+          granted_to_name: '田中ケアマネ',
+          granted_to_contact: null,
+          scope: { medication_list: true },
+          expires_hours: 24,
+        }),
+        { params: Promise.resolve({}) },
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(403);
+      expect(validateExternalAccessScopeForRoleMock).not.toHaveBeenCalled();
+      expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+      expect(patientFindFirstMock).not.toHaveBeenCalled();
+      expect(createMock).not.toHaveBeenCalled();
+      expect(issueExternalAccessTokenMock).not.toHaveBeenCalled();
+      expect(sendSmsMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('allows a pharmacist trainee to create a medication-list grant through per-scope validation', async () => {
+    currentRole.value = 'pharmacist_trainee';
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: null,
+        scope: { medication_list: true },
+        expires_hours: 24,
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(validateExternalAccessScopeForRoleMock).toHaveBeenCalledWith(
+      { medication_list: true },
+      'pharmacist_trainee',
+    );
+    expect(createMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        scope: { medication_list: true },
+      }),
+      select: expect.any(Object),
+    });
+  });
+
+  it('rejects a clerk medication-list grant after scope validation and before side effects', async () => {
+    currentRole.value = 'clerk';
+    validateExternalAccessScopeForRoleMock.mockReturnValue({
+      ok: false,
+      kind: 'permission',
+      message: 'この共有範囲を発行する権限がありません',
+      details: { denied_scope_keys: ['medication_list'] },
+    });
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: null,
+        scope: { medication_list: true },
+        expires_hours: 24,
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expect(validateExternalAccessScopeForRoleMock).toHaveBeenCalledWith(
+      { medication_list: true },
+      'clerk',
+    );
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(createMock).not.toHaveBeenCalled();
+    expect(issueExternalAccessTokenMock).not.toHaveBeenCalled();
+    expect(sendSmsMock).not.toHaveBeenCalled();
   });
 
   it('issues a JWT-backed grant and sends the OTP by SMS when the contact is a phone number', async () => {
@@ -285,6 +667,80 @@ describe('/api/external-access POST', () => {
         otp_delivery_destination: '090****5678',
       },
     });
+  });
+
+  it('stores a hidden case boundary for case-backed external sharing scopes', async () => {
+    validateExternalAccessScopeForRoleMock.mockReturnValue({
+      ok: true,
+      scope: { care_reports: true, visit_schedule: true },
+    });
+    createMock.mockResolvedValue({
+      id: 'grant_1',
+      patient_id: 'patient_1',
+      granted_to_name: '田中ケアマネ',
+      granted_to_contact: null,
+      scope: { care_reports: true, visit_schedule: true, allowed_case_ids: ['case_1'] },
+      expires_at: new Date('2026-04-01T00:00:00.000Z'),
+      created_at: new Date('2026-03-29T00:00:00.000Z'),
+    });
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: null,
+        scope: { care_reports: true, visit_schedule: true },
+        expires_hours: 24,
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(careCaseFindManyMock).toHaveBeenCalledWith({
+      where: expectPharmacistCareCaseAssignmentWhere('patient_1'),
+      select: { id: true },
+    });
+    expect(createMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        scope: {
+          care_reports: true,
+          visit_schedule: true,
+          allowed_case_ids: ['case_1'],
+        },
+      }),
+      select: expect.any(Object),
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        scope: { care_reports: true, visit_schedule: true },
+      },
+    });
+  });
+
+  it('rejects case-backed external sharing when no assigned case remains', async () => {
+    validateExternalAccessScopeForRoleMock.mockReturnValue({
+      ok: true,
+      scope: { care_reports: true },
+    });
+    careCaseFindManyMock.mockResolvedValue([]);
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: null,
+        scope: { care_reports: true },
+        expires_hours: 24,
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expect(createMock).not.toHaveBeenCalled();
+    expect(issueExternalAccessTokenMock).not.toHaveBeenCalled();
+    expect(sendSmsMock).not.toHaveBeenCalled();
   });
 
   it('keeps OTP delivery manual when the contact is not a phone number', async () => {
@@ -353,6 +809,35 @@ describe('/api/external-access POST', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'EXTERNAL_ACCESS_SECRET_MISSING',
     });
+  });
+
+  it('rejects an inaccessible patient before OTP, token, grant, or SMS side effects', async () => {
+    patientFindFirstMock.mockResolvedValue(null);
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_denied',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: '090-1234-5678',
+        scope: { medication_list: true },
+        expires_hours: 24,
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
+      patient_id: 'patient_denied',
+    });
+    expect(patientFindFirstMock).toHaveBeenCalledWith({
+      where: expectPharmacistPatientAssignmentWhere('patient_denied'),
+      select: { id: true },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createMock).not.toHaveBeenCalled();
+    expect(issueExternalAccessTokenMock).not.toHaveBeenCalled();
+    expect(sendSmsMock).not.toHaveBeenCalled();
   });
 
   it('rejects invalid scope keys before creating a grant', async () => {

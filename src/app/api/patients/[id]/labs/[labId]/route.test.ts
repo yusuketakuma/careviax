@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const { patientLabObservationFindFirstMock, patientLabObservationUpdateMock } = vi.hoisted(() => ({
+const {
+  patientLabObservationFindFirstMock,
+  patientLabObservationUpdateMock,
+  visitRecordFindFirstMock,
+} = vi.hoisted(() => ({
   patientLabObservationFindFirstMock: vi.fn(),
   patientLabObservationUpdateMock: vi.fn(),
+  visitRecordFindFirstMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -32,6 +37,9 @@ vi.mock('@/lib/db/client', () => ({
     patientLabObservation: {
       findFirst: patientLabObservationFindFirstMock,
     },
+    visitRecord: {
+      findFirst: visitRecordFindFirstMock,
+    },
   },
 }));
 
@@ -43,6 +51,16 @@ function createPatchRequest(body: Record<string, unknown>) {
   } as NextRequest;
 }
 
+const expectedVisitRecordAssignmentWhere = {
+  schedule: {
+    OR: [
+      { pharmacist_id: 'pharmacist_1' },
+      { case_: { primary_pharmacist_id: 'pharmacist_1' } },
+      { case_: { backup_pharmacist_id: 'pharmacist_1' } },
+    ],
+  },
+};
+
 describe('/api/patients/[id]/labs/[labId] PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -50,11 +68,14 @@ describe('/api/patients/[id]/labs/[labId] PATCH', () => {
       id: 'lab_1',
       org_id: 'org_1',
       patient_id: 'patient_1',
+      source_type: 'manual',
+      source_visit_record_id: null,
     });
     patientLabObservationUpdateMock.mockResolvedValue({
       id: 'lab_1',
       note: '再確認済み',
     });
+    visitRecordFindFirstMock.mockResolvedValue({ id: 'visit_1' });
   });
 
   it('folds assignment-scope into the lab resource lookup before updating', async () => {
@@ -96,5 +117,53 @@ describe('/api/patients/[id]/labs/[labId] PATCH', () => {
 
     expect(response.status).toBe(404);
     expect(patientLabObservationUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('does not update a visit-record sourced lab when the source visit is inaccessible', async () => {
+    patientLabObservationFindFirstMock.mockResolvedValue({
+      id: 'lab_1',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      source_type: 'visit_record',
+      source_visit_record_id: 'visit_unassigned',
+    });
+    visitRecordFindFirstMock.mockResolvedValue(null);
+
+    const response = (await PATCH(createPatchRequest({ note: '再確認済み' }), {
+      params: Promise.resolve({ id: 'patient_1', labId: 'lab_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expect(visitRecordFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'visit_unassigned',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        AND: [expectedVisitRecordAssignmentWhere],
+      },
+      select: { id: true },
+    });
+    expect(patientLabObservationUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('clears inconsistent visit record IDs from non-visit sourced labs during updates', async () => {
+    patientLabObservationFindFirstMock.mockResolvedValue({
+      id: 'lab_1',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      source_type: 'manual',
+      source_visit_record_id: 'visit_stale',
+    });
+
+    const response = (await PATCH(createPatchRequest({ note: '再確認済み' }), {
+      params: Promise.resolve({ id: 'patient_1', labId: 'lab_1' }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(patientLabObservationUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'lab_1' },
+      data: { note: '再確認済み', source_visit_record_id: null },
+    });
   });
 });

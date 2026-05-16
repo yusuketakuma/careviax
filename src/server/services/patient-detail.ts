@@ -41,6 +41,7 @@ import {
   applyPatientAssignmentWhere,
   buildCareCaseAssignmentWhere,
 } from '@/lib/auth/visit-schedule-access';
+import { buildExternalAccessGrantVisibilityWhere } from '@/server/services/external-access';
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
 
@@ -50,6 +51,8 @@ type DetailArgs = {
   role: MemberRole;
   userId: string;
 };
+
+const PATIENT_TIMELINE_EXTERNAL_SHARE_LIMIT = 8;
 
 type FirstVisitDocumentContact = {
   id?: string;
@@ -212,6 +215,30 @@ function buildNullableCaseScope(caseIds: string[]) {
   return {
     OR: [{ case_id: null }, { case_id: { in: caseIds } }],
   };
+}
+
+async function listVisibleTimelineExternalShares(
+  db: DbClient,
+  args: DetailArgs,
+  caseIds: string[],
+) {
+  return db.externalAccessGrant.findMany({
+    where: {
+      org_id: args.orgId,
+      patient_id: args.patientId,
+      revoked_at: null,
+      ...buildExternalAccessGrantVisibilityWhere(caseIds),
+    },
+    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    take: PATIENT_TIMELINE_EXTERNAL_SHARE_LIMIT,
+    select: {
+      id: true,
+      granted_to_name: true,
+      expires_at: true,
+      accessed_at: true,
+      created_at: true,
+    },
+  });
 }
 
 async function listBillingCaseRefs(db: DbClient, args: DetailArgs, caseIds: string[]) {
@@ -954,22 +981,7 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
         created_at: true,
       },
     }),
-    db.externalAccessGrant.findMany({
-      where: {
-        org_id: args.orgId,
-        patient_id: args.patientId,
-        revoked_at: null,
-      },
-      orderBy: [{ created_at: 'desc' }],
-      take: 8,
-      select: {
-        id: true,
-        granted_to_name: true,
-        expires_at: true,
-        accessed_at: true,
-        created_at: true,
-      },
-    }),
+    listVisibleTimelineExternalShares(db, args, caseIds),
     caseIds.length === 0
       ? Promise.resolve([])
       : db.inquiryRecord.findMany({

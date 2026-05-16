@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'crypto';
 import bcrypt from 'bcryptjs';
-import type { MemberRole } from '@prisma/client';
+import type { MemberRole, Prisma } from '@prisma/client';
 import { startOfDay } from 'date-fns';
 import { decode, encode } from 'next-auth/jwt';
 import { hasPermission, type PermissionKey } from '@/lib/auth/permissions';
@@ -13,7 +13,7 @@ type ExternalGrantRecord = {
   otp_hash: string | null;
   expires_at: Date;
   revoked_at: Date | null;
-  scope: ExternalAccessScope;
+  scope: StoredExternalAccessScope;
 };
 
 export const EXTERNAL_ACCESS_SCOPE_KEYS = [
@@ -26,6 +26,9 @@ export const EXTERNAL_ACCESS_SCOPE_KEYS = [
 
 export type ExternalAccessScopeKey = (typeof EXTERNAL_ACCESS_SCOPE_KEYS)[number];
 export type ExternalAccessScope = Partial<Record<ExternalAccessScopeKey, boolean>>;
+export type StoredExternalAccessScope = ExternalAccessScope & {
+  allowed_case_ids?: string[];
+};
 
 type ExternalAccessScopeCheckResult =
   | {
@@ -40,6 +43,19 @@ type ExternalAccessScopeCheckResult =
     };
 
 const EXTERNAL_ACCESS_SCOPE_KEY_SET = new Set<string>(EXTERNAL_ACCESS_SCOPE_KEYS);
+const EXTERNAL_ACCESS_ALLOWED_CASE_IDS_KEY = 'allowed_case_ids';
+const CASE_BACKED_EXTERNAL_ACCESS_SCOPE_KEYS = [
+  'visit_schedule',
+  'care_reports',
+  'self_report_history',
+] as const satisfies ExternalAccessScopeKey[];
+const PATIENT_LEVEL_EXTERNAL_ACCESS_SCOPE_KEYS = [
+  'allergy_info',
+  'medication_list',
+] as const satisfies ExternalAccessScopeKey[];
+const UNSUPPORTED_EXTERNAL_ACCESS_SCOPE_KEYS = [
+  'self_report_history',
+] as const satisfies ExternalAccessScopeKey[];
 
 const SENSITIVE_SCOPE_PERMISSIONS = {
   allergy_info: 'canVisit',
@@ -105,12 +121,158 @@ export function normalizeExternalAccessScope(scope: unknown): ExternalAccessScop
   return { ok: true, scope: normalized };
 }
 
+function normalizeAllowedCaseIds(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  if (!value.every((item): item is string => typeof item === 'string' && item.length > 0)) {
+    return null;
+  }
+  return Array.from(new Set(value));
+}
+
+export function normalizeStoredExternalAccessScope(
+  scope: unknown,
+): ExternalAccessScopeCheckResult & { scope?: StoredExternalAccessScope } {
+  if (!isRecord(scope)) {
+    return {
+      ok: false,
+      kind: 'validation',
+      message: '共有範囲が不正です',
+      details: { scope: ['共有範囲はオブジェクトで指定してください'] },
+    };
+  }
+
+  const publicScope = Object.fromEntries(
+    Object.entries(scope).filter(([key]) => key !== EXTERNAL_ACCESS_ALLOWED_CASE_IDS_KEY),
+  );
+  const normalized = normalizeExternalAccessScope(publicScope);
+  if (!normalized.ok) return normalized;
+
+  const rawAllowedCaseIds = scope[EXTERNAL_ACCESS_ALLOWED_CASE_IDS_KEY];
+  if (rawAllowedCaseIds === undefined) return normalized;
+
+  const allowedCaseIds = normalizeAllowedCaseIds(rawAllowedCaseIds);
+  if (!allowedCaseIds) {
+    return {
+      ok: false,
+      kind: 'validation',
+      message: '共有範囲が不正です',
+      details: { allowed_case_ids: ['許可ケースIDの形式が不正です'] },
+    };
+  }
+
+  return {
+    ok: true,
+    scope: {
+      ...normalized.scope,
+      allowed_case_ids: allowedCaseIds,
+    },
+  };
+}
+
+export function externalAccessScopeRequiresCaseBoundary(scope: ExternalAccessScope) {
+  return CASE_BACKED_EXTERNAL_ACCESS_SCOPE_KEYS.some((scopeKey) => scope[scopeKey] === true);
+}
+
+export function externalAccessGrantVisibleForCaseIds(scope: unknown, caseIds: string[]) {
+  const normalized = normalizeStoredExternalAccessScope(scope);
+  if (!normalized.ok) return false;
+  if (!externalAccessScopeRequiresCaseBoundary(normalized.scope)) return true;
+
+  const allowedCaseIds = normalized.scope.allowed_case_ids;
+  if (!allowedCaseIds) return false;
+  const visibleCaseIds = new Set(caseIds);
+  return allowedCaseIds.some((caseId) => visibleCaseIds.has(caseId));
+}
+
+function externalAccessScopeEnabledWhere(
+  scopeKey: ExternalAccessScopeKey,
+): Prisma.ExternalAccessGrantWhereInput {
+  return { scope: { path: [scopeKey], equals: true } };
+}
+
+export function buildExternalAccessGrantVisibilityWhere(
+  caseIds: readonly string[] | undefined,
+): Prisma.ExternalAccessGrantWhereInput {
+  if (caseIds === undefined) return {};
+
+  const caseBackedScopeIsEnabled: Prisma.ExternalAccessGrantWhereInput = {
+    OR: CASE_BACKED_EXTERNAL_ACCESS_SCOPE_KEYS.map((scopeKey) =>
+      externalAccessScopeEnabledWhere(scopeKey),
+    ),
+  };
+  const patientLevelOnlyScope: Prisma.ExternalAccessGrantWhereInput = {
+    AND: [
+      {
+        OR: PATIENT_LEVEL_EXTERNAL_ACCESS_SCOPE_KEYS.map((scopeKey) =>
+          externalAccessScopeEnabledWhere(scopeKey),
+        ),
+      },
+      ...CASE_BACKED_EXTERNAL_ACCESS_SCOPE_KEYS.map((scopeKey) => ({
+        NOT: externalAccessScopeEnabledWhere(scopeKey),
+      })),
+    ],
+  };
+  const uniqueCaseIds = Array.from(new Set(caseIds.filter(Boolean))).sort();
+
+  return {
+    OR: [
+      patientLevelOnlyScope,
+      ...uniqueCaseIds.map(
+        (caseId): Prisma.ExternalAccessGrantWhereInput => ({
+          AND: [
+            caseBackedScopeIsEnabled,
+            {
+              scope: {
+                path: [EXTERNAL_ACCESS_ALLOWED_CASE_IDS_KEY],
+                array_contains: [caseId],
+              },
+            },
+          ],
+        }),
+      ),
+    ],
+  };
+}
+
+export function attachExternalAccessCaseBoundary(
+  scope: ExternalAccessScope,
+  allowedCaseIds: string[],
+): StoredExternalAccessScope {
+  return {
+    ...scope,
+    allowed_case_ids: Array.from(new Set(allowedCaseIds)),
+  };
+}
+
+export function toPublicExternalAccessScope(scope: unknown): ExternalAccessScope {
+  const normalized = normalizeStoredExternalAccessScope(scope);
+  if (!normalized.ok) return {};
+  const publicScope = { ...normalized.scope };
+  delete publicScope.allowed_case_ids;
+  for (const scopeKey of UNSUPPORTED_EXTERNAL_ACCESS_SCOPE_KEYS) {
+    delete publicScope[scopeKey];
+  }
+  return publicScope;
+}
+
 export function validateExternalAccessScopeForRole(
   scope: unknown,
   role: MemberRole,
 ): ExternalAccessScopeCheckResult {
   const normalized = normalizeExternalAccessScope(scope);
   if (!normalized.ok) return normalized;
+
+  const unsupportedScopes = UNSUPPORTED_EXTERNAL_ACCESS_SCOPE_KEYS.filter(
+    (scopeKey) => normalized.scope[scopeKey] === true,
+  );
+  if (unsupportedScopes.length > 0) {
+    return {
+      ok: false,
+      kind: 'validation',
+      message: 'この共有範囲は現在サポートされていません',
+      details: { unsupported_scope_keys: unsupportedScopes },
+    };
+  }
 
   const deniedScopes = Object.entries(SENSITIVE_SCOPE_PERMISSIONS)
     .filter(([scopeKey]) => normalized.scope[scopeKey as ExternalAccessScopeKey] === true)
@@ -296,7 +458,7 @@ export async function validateExternalAccessGrant(
     };
   }
 
-  const scopeResult = normalizeExternalAccessScope(grant.scope);
+  const scopeResult = normalizeStoredExternalAccessScope(grant.scope);
   if (!scopeResult.ok) {
     return {
       ok: false,
@@ -399,9 +561,20 @@ function buildExternalSharedSummary(args: {
 }
 
 export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
-  const scopeResult = normalizeExternalAccessScope(grant.scope);
+  const scopeResult = normalizeStoredExternalAccessScope(grant.scope);
   if (!scopeResult.ok) return null;
   const scope = scopeResult.scope;
+  if (
+    externalAccessScopeRequiresCaseBoundary(scope) &&
+    (!scope.allowed_case_ids || scope.allowed_case_ids.length === 0)
+  ) {
+    return null;
+  }
+  const publicScope = toPublicExternalAccessScope(scope);
+  if (!Object.values(publicScope).some((enabled) => enabled === true)) {
+    return null;
+  }
+  const allowedCaseIds = scope.allowed_case_ids ?? null;
 
   const patient = await prisma.patient.findFirst({
     where: { id: grant.patient_id, org_id: grant.org_id },
@@ -464,6 +637,7 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
         patient_id: grant.patient_id,
         org_id: grant.org_id,
         status: 'active',
+        ...(allowedCaseIds ? { id: { in: allowedCaseIds } } : {}),
       },
       select: { id: true },
     });
@@ -494,46 +668,52 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
 
   let careReports = null;
   if (scope.care_reports === true) {
-    careReports = await prisma.careReport.findMany({
-      where: {
-        patient_id: grant.patient_id,
-        org_id: grant.org_id,
-        status: { in: ['sent', 'confirmed'] },
-      },
-      select: {
-        id: true,
-        report_type: true,
-        status: true,
-        created_at: true,
-      },
-      orderBy: { created_at: 'desc' },
-      take: 3,
-    });
+    careReports =
+      allowedCaseIds?.length === 0
+        ? []
+        : await prisma.careReport.findMany({
+            where: {
+              patient_id: grant.patient_id,
+              org_id: grant.org_id,
+              ...(allowedCaseIds ? { case_id: { in: allowedCaseIds } } : {}),
+              status: { in: ['sent', 'confirmed'] },
+            },
+            select: {
+              id: true,
+              report_type: true,
+              status: true,
+              created_at: true,
+            },
+            orderBy: { created_at: 'desc' },
+            take: 3,
+          });
   }
 
   let selfReportHistory: Array<Record<string, unknown>> = [];
   if ((scope as Record<string, unknown>).self_report_history === true) {
-    selfReportHistory = await prisma.patientSelfReport.findMany({
-      where: {
-        patient_id: grant.patient_id,
-        org_id: grant.org_id,
-      },
-      select: {
-        id: true,
-        reported_by_name: true,
-        relation: true,
-        category: true,
-        subject: true,
-        content: true,
-        requested_callback: true,
-        preferred_contact_time: true,
-        status: true,
-        created_at: true,
-        triaged_at: true,
-      },
-      orderBy: { created_at: 'desc' },
-      take: 8,
-    });
+    selfReportHistory = allowedCaseIds
+      ? []
+      : await prisma.patientSelfReport.findMany({
+          where: {
+            patient_id: grant.patient_id,
+            org_id: grant.org_id,
+          },
+          select: {
+            id: true,
+            reported_by_name: true,
+            relation: true,
+            category: true,
+            subject: true,
+            content: true,
+            requested_callback: true,
+            preferred_contact_time: true,
+            status: true,
+            created_at: true,
+            triaged_at: true,
+          },
+          orderBy: { created_at: 'desc' },
+          take: 8,
+        });
   }
 
   return {
@@ -550,7 +730,7 @@ export async function buildExternalAccessPayload(grant: ExternalGrantRecord) {
       visitSchedules,
       careReports,
     }),
-    scope,
+    scope: publicScope,
     expires_at: grant.expires_at,
   };
 }

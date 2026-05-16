@@ -118,7 +118,27 @@ pnpm test:e2e:local    # Run Playwright against http://localhost:3012
 pnpm test:e2e:list     # List Playwright tests without executing
 pnpm test:e2e:audit    # Run the audit-focused Playwright config
 pnpm test:e2e:audit:list
+pnpm db:e2e:prepare    # Sync and seed the dedicated local careviax_e2e database
+pnpm db:e2e:check-care-report-duplicates
+pnpm medical-ui:e2e:preflight
+pnpm medical-ui:e2e:targeted
+pnpm medical-ui:e2e:gate
+pnpm medical-ui:e2e:gate:prod
 ```
+
+For medical UI/UX release evidence, prepare the local `careviax_e2e` database
+on `localhost:5433` with `pnpm --config.verify-deps-before-run=false
+db:e2e:prepare`, then prefer `pnpm --config.verify-deps-before-run=false
+medical-ui:e2e:gate:prod`. The production gate builds the E2E bundle, starts
+`next start` on `localhost:3012`, runs preflight, runs the local E2E CareReport
+duplicate precheck, executes the targeted Playwright/axe specs, and shuts the
+server down.
+
+Use `pnpm --config.verify-deps-before-run=false
+db:e2e:check-care-report-duplicates` for local E2E evidence. Use the generic
+`pnpm --config.verify-deps-before-run=false db:check-care-report-duplicates`
+only when intentionally following the active target database before applying
+the CareReport unique-index migration.
 
 ## Coverage
 

@@ -136,10 +136,20 @@ async function readOfflineVisitDraftState(page: Page, scheduleId: string) {
 }
 
 async function installSharedViewerRouteMock(page: Page) {
-  const requests: CapturedRequest[] = [];
+  const viewerRequests: CapturedRequest[] = [];
+  const selfReportRequests: CapturedRequest[] = [];
+
+  await page.route(`**/api/external-access/${SHARED_TOKEN}/self-report`, async (route) => {
+    selfReportRequests.push(captureRouteRequest(route));
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { id: 'shared_route_mock_self_report' } }),
+    });
+  });
 
   await page.route(`**/api/external-access/${SHARED_TOKEN}`, async (route) => {
-    requests.push(captureRouteRequest(route));
+    viewerRequests.push(captureRouteRequest(route));
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -186,7 +196,7 @@ async function installSharedViewerRouteMock(page: Page) {
     });
   });
 
-  return requests;
+  return { selfReportRequests, viewerRequests };
 }
 
 async function installBillingWorkbenchRouteMocks(page: Page) {
@@ -355,7 +365,7 @@ test.describe('shared external viewer route-mocked smoke', () => {
     context,
   }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    const sharedRequests = await installSharedViewerRouteMock(page);
+    const { selfReportRequests, viewerRequests } = await installSharedViewerRouteMock(page);
 
     await page.goto(`/shared/${SHARED_TOKEN}?otp=${SHARED_OTP}`);
     await waitForStableUi(page);
@@ -363,21 +373,41 @@ test.describe('shared external viewer route-mocked smoke', () => {
     await expect(page).toHaveURL(new RegExp(`/shared/${SHARED_TOKEN}$`));
     expect(new URL(page.url()).search).toBe('');
     await expect(page.getByLabel('OTP')).toHaveValue('');
-    expect(sharedRequests).toHaveLength(0);
+    expect(viewerRequests).toHaveLength(0);
 
     await page.getByLabel('OTP').fill(SHARED_OTP);
     await page.getByRole('button', { name: '閲覧する' }).click();
 
     await expect
-      .poll(() => sharedRequests.length, {
+      .poll(() => viewerRequests.length, {
         message: 'shared viewer should fetch with route-mocked OTP header',
         timeout: 10_000,
       })
       .toBe(1);
     await expect(page.getByText('共有E2E 患者')).toBeVisible();
     await expect(page.getByText('血圧と服薬状況を家族と共有')).toBeVisible();
-    expect(sharedRequests[0]?.headers['x-otp']).toBe(SHARED_OTP);
-    expect(new URL(sharedRequests[0]!.url).searchParams.has('otp')).toBe(false);
+    expect(viewerRequests[0]?.headers['x-otp']).toBe(SHARED_OTP);
+    expect(new URL(viewerRequests[0]!.url).searchParams.has('otp')).toBe(false);
+
+    await page.getByLabel('報告者氏名').fill('共有E2E 家族');
+    await page.getByLabel('件名').fill('残薬が増えてきた');
+    await page.getByLabel('内容').fill('夕食後の薬が残っています。');
+    await page.getByRole('button', { name: '薬局へ送信' }).click();
+
+    await expect
+      .poll(() => selfReportRequests.length, {
+        message: 'shared viewer should submit self-report with OTP header only',
+        timeout: 10_000,
+      })
+      .toBe(1);
+    expect(selfReportRequests[0]?.headers['x-otp']).toBe(SHARED_OTP);
+    expect(new URL(selfReportRequests[0]!.url).searchParams.has('otp')).toBe(false);
+    expect(selfReportRequests[0]?.body).toMatchObject({
+      reported_by_name: '共有E2E 家族',
+      subject: '残薬が増えてきた',
+      content: '夕食後の薬が残っています。',
+    });
+    expect(selfReportRequests[0]?.body).not.toHaveProperty('otp');
     expect(page.url()).not.toContain(SHARED_OTP);
     expect(errors).toEqual([]);
   });
