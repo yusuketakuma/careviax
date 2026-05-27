@@ -209,6 +209,13 @@ vi.mock('@tanstack/react-query', () => ({
                 days_ago: 2,
               },
               last_failure: null,
+              recent_runs_30d: {
+                total: 3,
+                failed: 0,
+                failure_streak: 0,
+                latest_status: 'completed',
+                latest_imported_at: '2026-04-20T00:00:00.000Z',
+              },
               freshness: 'fresh',
             },
             {
@@ -220,6 +227,13 @@ vi.mock('@tanstack/react-query', () => ({
               last_failure: {
                 imported_at: '2026-04-21T00:00:00.000Z',
                 error: 'URL未設定',
+              },
+              recent_runs_30d: {
+                total: 2,
+                failed: 2,
+                failure_streak: 2,
+                latest_status: 'failed',
+                latest_imported_at: '2026-04-21T00:00:00.000Z',
               },
               freshness: 'never',
             },
@@ -278,6 +292,8 @@ describe('DrugMasterContent', () => {
     expect(screen.getByText(/相互作用: 0件/)).toBeTruthy();
     expect(screen.getByText('外部設定')).toBeTruthy();
     expect(screen.getByText(/直近失敗: URL未設定/)).toBeTruthy();
+    expect(screen.getByText('直近30日: 2回 / 失敗 2回')).toBeTruthy();
+    expect(screen.getByText('連続失敗 2回')).toBeTruthy();
     expect(screen.getByRole('button', { name: '鮮度チェック' })).toBeTruthy();
   });
 

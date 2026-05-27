@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { success } from '@/lib/api/response';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
-import type { ImportSource } from '@prisma/client';
+import type { ImportSource, ImportStatus } from '@prisma/client';
 
 /**
  * GET /api/drug-master-imports/status
@@ -49,6 +49,13 @@ export type DrugMasterImportStatusResponse = {
       imported_at: string;
       error: string | null;
     } | null;
+    recent_runs_30d: {
+      total: number;
+      failed: number;
+      failure_streak: number;
+      latest_status: ImportStatus | null;
+      latest_imported_at: string | null;
+    };
     freshness: DrugMasterImportFreshnessLevel;
   }>;
   totals: {
@@ -69,15 +76,35 @@ function assessFreshness(daysSinceImport: number | null, threshold: number): Dru
   return 'stale';
 }
 
+function countFailureStreak(statuses: ImportStatus[]) {
+  let streak = 0;
+  for (const status of statuses) {
+    if (status !== 'failed') break;
+    streak += 1;
+  }
+  return streak;
+}
+
 export async function GET(req: NextRequest) {
   const authResult = await requireAuthContext(req);
   if ('response' in authResult) return authResult.response as NextResponse;
 
   const sources: ImportSource[] = ['ssk', 'mhlw_price', 'mhlw_generic', 'hot', 'pmda', 'manual_clinical'];
   const now = new Date();
+  const recentSince = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
   // Fetch latest successful import per source + latest failed
-  const [latestSuccessful, latestFailed, totalDrugCount, hotCodeCount, packageInsertCount, interactionCount, alertRuleCount, genericMappingCount] = await Promise.all([
+  const [
+    latestSuccessful,
+    latestFailed,
+    recentRuns,
+    totalDrugCount,
+    hotCodeCount,
+    packageInsertCount,
+    interactionCount,
+    alertRuleCount,
+    genericMappingCount,
+  ] = await Promise.all([
     prisma.drugMasterImportLog.findMany({
       where: { status: 'completed' },
       orderBy: { imported_at: 'desc' },
@@ -90,6 +117,12 @@ export async function GET(req: NextRequest) {
       distinct: ['source'],
       select: { source: true, imported_at: true, error_log: true },
     }),
+    prisma.drugMasterImportLog.findMany({
+      where: { imported_at: { gte: recentSince } },
+      orderBy: [{ imported_at: 'desc' }, { created_at: 'desc' }],
+      take: 300,
+      select: { source: true, imported_at: true, status: true },
+    }),
     prisma.drugMaster.count(),
     prisma.drugMaster.count({ where: { hot_code: { not: null } } }),
     prisma.drugPackageInsert.count(),
@@ -100,10 +133,17 @@ export async function GET(req: NextRequest) {
 
   const successBySource = new Map(latestSuccessful.map((r) => [r.source, r]));
   const failedBySource = new Map(latestFailed.map((r) => [r.source, r]));
+  const recentRunsBySource = new Map<ImportSource, typeof recentRuns>();
+  for (const run of recentRuns) {
+    const runs = recentRunsBySource.get(run.source) ?? [];
+    runs.push(run);
+    recentRunsBySource.set(run.source, runs);
+  }
 
   const sourceStatuses = sources.map((source) => {
     const lastSuccess = successBySource.get(source);
     const lastFailure = failedBySource.get(source);
+    const sourceRecentRuns = recentRunsBySource.get(source) ?? [];
     const threshold = FRESHNESS_THRESHOLDS[source];
 
     const daysSinceImport = lastSuccess
@@ -128,6 +168,13 @@ export async function GET(req: NextRequest) {
             error: lastFailure.error_log?.slice(0, 200) ?? null,
           }
         : null,
+      recent_runs_30d: {
+        total: sourceRecentRuns.length,
+        failed: sourceRecentRuns.filter((run) => run.status === 'failed').length,
+        failure_streak: countFailureStreak(sourceRecentRuns.map((run) => run.status)),
+        latest_status: sourceRecentRuns[0]?.status ?? null,
+        latest_imported_at: sourceRecentRuns[0]?.imported_at.toISOString() ?? null,
+      },
       freshness: assessFreshness(daysSinceImport, threshold),
     };
   });

@@ -3015,6 +3015,23 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                       ? ` / 直近失敗: ${source.last_failure.error ?? '詳細なし'}`
                       : ''}
                   </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span>
+                      {source.recent_runs_30d.total > 0
+                        ? `直近30日: ${source.recent_runs_30d.total}回 / 失敗 ${source.recent_runs_30d.failed}回`
+                        : '直近30日の実行なし'}
+                    </span>
+                    {source.recent_runs_30d.latest_status && (
+                      <Badge variant="outline" className="text-[10px]">
+                        最新実行 {statusLabel(source.recent_runs_30d.latest_status)}
+                      </Badge>
+                    )}
+                    {source.recent_runs_30d.failure_streak > 0 && (
+                      <Badge variant="destructive" className="text-[10px]">
+                        連続失敗 {source.recent_runs_30d.failure_streak}回
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <Badge
                   variant={

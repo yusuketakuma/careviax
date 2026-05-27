@@ -222,6 +222,40 @@ describe('GET /api/drug-master-imports/status', () => {
     });
   });
 
+  it('summarizes recent run volume and failure streak by source', async () => {
+    const now = new Date();
+    const recentDate = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
+
+    drugMasterImportLogFindManyMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { source: 'pmda', imported_at: recentDate, status: 'failed' },
+        { source: 'pmda', imported_at: recentDate, status: 'failed' },
+        { source: 'ssk', imported_at: recentDate, status: 'completed' },
+      ]);
+
+    const response = await GET(createRequest());
+    const body = await response.json();
+
+    const pmda = body.sources.find((s: { source: string }) => s.source === 'pmda');
+    expect(pmda.recent_runs_30d).toMatchObject({
+      total: 2,
+      failed: 2,
+      failure_streak: 2,
+      latest_status: 'failed',
+      latest_imported_at: expect.any(String),
+    });
+
+    const ssk = body.sources.find((s: { source: string }) => s.source === 'ssk');
+    expect(ssk.recent_runs_30d).toMatchObject({
+      total: 1,
+      failed: 0,
+      failure_streak: 0,
+      latest_status: 'completed',
+    });
+  });
+
   it('calculates hot_code_coverage as percentage of drugs with hot_code', async () => {
     drugMasterImportLogFindManyMock
       .mockResolvedValueOnce([])
