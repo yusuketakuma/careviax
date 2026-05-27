@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260528-001430
+
+- current task: expose formulary template search in the admin UI
+- files inspected: `git status --short`, `git log --oneline`, `docs/ui-ux-design-guidelines.md`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`
+- files changed: `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the template listing API supported search and limit, but the formulary admin screen still showed only the fixed returned list without an operator-facing search control, making larger template libraries hard to navigate
+- security risks found: no authorization boundary changed; the UI continues to call the existing admin-only org-scoped template API and clears selected template/preview when the search changes to avoid applying a stale selection
+- performance issues found: template query cache key now includes the search string and sends bounded `limit=50` plus optional `q`, avoiding client-side filtering of unrelated template pages
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for formulary admin UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 1 file / 5 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice exposes template search but does not add server-side pagination UI
+- next action: commit the template search UI slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260528-001140
 
 - current task: add search and limit controls to formulary template listing API
