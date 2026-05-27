@@ -1011,6 +1011,49 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     },
   });
 
+  const stockRequestDecisionMutation = useMutation({
+    mutationFn: async (payload: {
+      request_id: string;
+      decision: 'approve' | 'reject';
+      decision_note?: string | null;
+    }) => {
+      const res = await fetch(`/api/pharmacy-drug-stock-requests/${payload.request_id}`, {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          decision: payload.decision,
+          decision_note: payload.decision_note ?? null,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(json?.message ?? '採用品変更申請の決裁に失敗しました');
+      }
+      return json as { request: FormularyChangeRequestItem; stock: PharmacyDrugStockConfig | null };
+    },
+    onSuccess: async (result) => {
+      toast.success(
+        result.request.status === 'approved'
+          ? '採用品変更申請を承認しました'
+          : '採用品変更申請を却下しました',
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock-requests'] }),
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock'] }),
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks'] }),
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks-impact'] }),
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock-history'] }),
+        queryClient.invalidateQueries({ queryKey: ['drug-masters'] }),
+      ]);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '採用品変更申請の決裁に失敗しました');
+    },
+  });
+
   const runBulkCsvMutation = async (dryRun: boolean) => {
       if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
       const res = await fetch('/api/pharmacy-drug-stocks/bulk', {
@@ -1416,6 +1459,18 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
         return action;
     }
   };
+  const formularyRequestActionLabel = (actionType: string) => {
+    switch (actionType) {
+      case 'adopt':
+        return '採用追加';
+      case 'deactivate':
+        return '採用解除';
+      case 'update_settings':
+        return '設定変更';
+      default:
+        return actionType;
+    }
+  };
 
   return (
     <PageScaffold>
@@ -1592,23 +1647,69 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   <p className="text-sm text-muted-foreground">未承認の変更申請はありません。</p>
                 ) : (
                   pendingFormularyRequests.slice(0, 3).map((request) => (
-                    <button
+                    <div
                       key={request.id}
-                      type="button"
-                      className="w-full rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
-                      onClick={() => {
-                        setSelectedDrugId(request.drug_master_id);
-                        setPreferredGenericId(null);
-                      }}
+                      className="rounded-md border border-border/60 bg-background px-3 py-2"
                     >
-                      <span className="block text-sm font-medium text-foreground">
-                        {request.action_type}
-                      </span>
-                      <span className="mt-1 text-xs text-muted-foreground">
-                        {new Date(request.created_at).toLocaleDateString('ja-JP')}
-                        {request.reason ? ` / ${request.reason}` : ''}
-                      </span>
-                    </button>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <button
+                          type="button"
+                          className="min-w-0 flex-1 text-left"
+                          onClick={() => {
+                            setSelectedDrugId(request.drug_master_id);
+                            setPreferredGenericId(null);
+                          }}
+                        >
+                          <span className="block text-sm font-medium text-foreground">
+                            {formularyRequestActionLabel(request.action_type)}
+                          </span>
+                          <span className="mt-1 block text-xs text-muted-foreground">
+                            {new Date(request.created_at).toLocaleDateString('ja-JP')}
+                            {request.reason ? ` / ${request.reason}` : ''}
+                          </span>
+                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          <LoadingButton
+                            type="button"
+                            size="sm"
+                            loading={
+                              stockRequestDecisionMutation.isPending &&
+                              stockRequestDecisionMutation.variables?.request_id === request.id &&
+                              stockRequestDecisionMutation.variables?.decision === 'approve'
+                            }
+                            loadingLabel="承認中"
+                            onClick={() =>
+                              stockRequestDecisionMutation.mutate({
+                                request_id: request.id,
+                                decision: 'approve',
+                              })
+                            }
+                          >
+                            承認
+                          </LoadingButton>
+                          <LoadingButton
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            loading={
+                              stockRequestDecisionMutation.isPending &&
+                              stockRequestDecisionMutation.variables?.request_id === request.id &&
+                              stockRequestDecisionMutation.variables?.decision === 'reject'
+                            }
+                            loadingLabel="却下中"
+                            onClick={() =>
+                              stockRequestDecisionMutation.mutate({
+                                request_id: request.id,
+                                decision: 'reject',
+                                decision_note: '画面から却下',
+                              })
+                            }
+                          >
+                            却下
+                          </LoadingButton>
+                        </div>
+                      </div>
+                    </div>
                   ))
                 )}
               </div>

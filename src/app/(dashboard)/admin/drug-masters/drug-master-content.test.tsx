@@ -7,7 +7,10 @@ import { DrugMasterContent } from './drug-master-content';
 
 setupDomTestEnv();
 
-const useOrgIdMock = vi.hoisted(() => vi.fn());
+const { useOrgIdMock, pendingRequestsMock } = vi.hoisted(() => ({
+  useOrgIdMock: vi.fn(),
+  pendingRequestsMock: vi.fn(),
+}));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -41,7 +44,7 @@ vi.mock('@tanstack/react-query', () => ({
       return { data: { data: [] }, isLoading: false };
     }
     if (key === 'pharmacy-drug-stock-requests') {
-      return { data: { data: [] }, isLoading: false };
+      return { data: { data: pendingRequestsMock() }, isLoading: false };
     }
     if (key === 'pharmacy-drug-stocks-impact') {
       return {
@@ -153,6 +156,7 @@ describe('DrugMasterContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useOrgIdMock.mockReturnValue('org_1');
+    pendingRequestsMock.mockReturnValue([]);
   });
 
   it('shows PMDA and other externally configured sources in master status', () => {
@@ -194,5 +198,27 @@ describe('DrugMasterContent', () => {
     expect(screen.getByRole('button', { name: /一括登録/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /CSVテンプレート/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /CSV出力/ })).toBeTruthy();
+  });
+
+  it('shows approve and reject actions for pending formulary requests', () => {
+    pendingRequestsMock.mockReturnValue([
+      {
+        id: 'request_1',
+        site_id: 'site_1',
+        drug_master_id: 'drug_1',
+        status: 'pending',
+        action_type: 'adopt',
+        requested_payload: { is_stocked: true },
+        reason: '新規採用候補',
+        created_at: '2026-05-27T00:00:00.000Z',
+      },
+    ]);
+
+    render(<DrugMasterContent variant="formulary" />);
+
+    expect(screen.getByText('未承認 1件')).toBeTruthy();
+    expect(screen.getByText('採用追加')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '承認' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '却下' })).toBeTruthy();
   });
 });
