@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-220145
+
+- current task: add database indexes for adopted-drug impact review counts and queues
+- files inspected: `git status --short`, `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `prisma/schema/drug.prisma`, generated migration SQL, local `ph_os_dev` index catalog via Prisma raw query
+- files changed: `prisma/schema/drug.prisma`, `prisma/migrations/20260527220000_add_formulary_impact_indexes/migration.sql`, `.codex/ralph-state.md`
+- bugs found: no functional bug in this slice; after moving impact review totals to DB-side counts, the schema did not yet expose matching indexes for common filters such as stocked site review due, reorder point, follow-up status, safety flags, and transitional expiry
+- security risks found: no authorization or data exposure changes; indexes are scoped to existing tables and query predicates only
+- performance issues found: added composite PharmacyDrugStock indexes for `org_id/site_id/is_stocked` plus `last_reviewed_at`, `reorder_point`, and `follow_up_status`; added DrugMaster indexes for `is_narcotic`, `is_psychotropic`, and `transitional_expiry_date`
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prisma format --schema=prisma/schema`; `pnpm --config.verify-deps-before-run=false exec prisma validate --schema=prisma/schema`; `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/impact/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec prisma db push --schema=prisma/schema`; Prisma raw `pg_indexes` verification against local `ph_os_dev`; targeted ESLint; TypeScript; `git diff --check`
+- validation results: Prisma format and validate passed; targeted Vitest passed 1 file / 3 tests; local db push passed; raw index verification found all 6 new indexes; targeted ESLint passed; TypeScript passed; whitespace check passed; `psql` was unavailable locally, so Prisma raw query was used instead
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice completes schema/index support for the current impact review query pattern
+- next action: commit the formulary impact index migration and continue the next high-value item
+
 ### 20260527-215810
 
 - current task: optimize adopted-drug impact review API so exact totals do not require loading every formulary row
