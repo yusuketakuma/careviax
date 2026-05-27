@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260528-001140
+
+- current task: add search and limit controls to formulary template listing API
+- files inspected: `src/app/api/pharmacy-drug-stock-templates/route.ts`, `src/app/api/pharmacy-drug-stock-templates/route.test.ts`
+- files changed: `src/app/api/pharmacy-drug-stock-templates/route.ts`, `src/app/api/pharmacy-drug-stock-templates/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: formulary template listing was hard-coded to the latest 50 rows and had no search parameter, so growing template libraries could become hard to manage while the API still looked like a complete list
+- security risks found: no authorization boundary changed; listing remains admin-only and org-scoped before applying optional name/description search
+- performance issues found: added bounded `limit` validation up to 100 and server-side name/description filtering instead of requiring clients to fetch and filter a fixed page
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stock-templates/route.test.ts`; targeted ESLint for template route files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 1 file / 3 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice adds API search/limit but not a dedicated UI search box for templates
+- next action: commit the template listing search slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260528-000940
 
 - current task: enforce unique formulary template names at the database layer
