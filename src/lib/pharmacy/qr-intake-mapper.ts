@@ -58,6 +58,8 @@ export interface FormularyMatch {
   drugName: string;
   drugCode: string | null;
   inFormulary: boolean;
+  warningLevel: 'none' | 'warning';
+  warningReason: 'not_stocked' | 'stocked_generic_available' | null;
   preferredGenericId: string | null;
   preferredGenericName: string | null;
   stockQty: number | null;
@@ -663,6 +665,12 @@ function mapMedicationLine(
     drugName: med.drugName,
     drugCode: med.drugCode ?? null,
     inFormulary,
+    warningLevel: !inFormulary && drugMaster ? 'warning' : 'none',
+    warningReason: !inFormulary && drugMaster
+      ? preferredGenericId
+        ? 'stocked_generic_available'
+        : 'not_stocked'
+      : null,
     preferredGenericId,
     preferredGenericName,
     stockQty,

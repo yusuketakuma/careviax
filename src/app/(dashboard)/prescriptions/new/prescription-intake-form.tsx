@@ -818,6 +818,8 @@ export function PrescriptionIntakeForm() {
         drugName: string;
         drugCode: string | null;
         inFormulary: boolean;
+        warningLevel?: 'none' | 'warning';
+        warningReason?: 'not_stocked' | 'stocked_generic_available' | null;
         preferredGenericName: string | null;
         stockQty: number | null;
       }>;
@@ -1401,9 +1403,16 @@ export function PrescriptionIntakeForm() {
                       key={`${item.lineIndex}-${item.drugName}`}
                       className="rounded-md border border-border/70 bg-background px-3 py-2 text-xs"
                     >
-                      <p className="font-medium text-foreground">{item.drugName}</p>
+                      <p className="font-medium text-foreground">
+                        {item.warningLevel === 'warning' ? '未採用品警告: ' : ''}
+                        {item.drugName}
+                      </p>
                       <p className="mt-1 text-muted-foreground">
                         {item.inFormulary ? '採用薬' : '採用外'}
+                        {item.warningReason === 'not_stocked' ? ' / 施設採用品ではありません' : ''}
+                        {item.warningReason === 'stocked_generic_available'
+                          ? ' / 採用品の後発候補あり'
+                          : ''}
                         {item.preferredGenericName
                           ? ` / 推奨後発: ${item.preferredGenericName}`
                           : ''}

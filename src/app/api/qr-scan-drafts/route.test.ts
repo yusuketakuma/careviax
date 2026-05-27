@@ -182,6 +182,8 @@ describe('/api/qr-scan-drafts POST', () => {
           drugName: 'アムロジピン錠5mg',
           drugCode: '2149001',
           inFormulary: false,
+          warningLevel: 'warning',
+          warningReason: 'stocked_generic_available',
           preferredGenericId: null,
           preferredGenericName: 'アムロジピン錠5mg「GE」',
           stockQty: 0,
@@ -225,7 +227,14 @@ describe('/api/qr-scan-drafts POST', () => {
             patientName: '山田 太郎',
             prescriberInstitutionId: 'inst_1',
             unmatchedDrugs: expect.any(Array),
-            formularyStatus: expect.any(Array),
+            formularyStatus: [
+              expect.objectContaining({
+                drugName: 'アムロジピン錠5mg',
+                inFormulary: false,
+                warningLevel: 'warning',
+                warningReason: 'stocked_generic_available',
+              }),
+            ],
             lines: [
               expect.objectContaining({
                 drugName: 'アムロジピン錠5mg',
