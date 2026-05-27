@@ -311,6 +311,7 @@ describe('DrugMasterContent', () => {
     expect(screen.getByText(/薬価影響額推計/)).toBeTruthy();
     expect(screen.getByText('拠点間コピー')).toBeTruthy();
     expect(screen.getByText('施設別採用品テンプレート')).toBeTruthy();
+    expect(screen.getByLabelText('採用品テンプレート検索')).toBeTruthy();
     expect(screen.getByLabelText('採用品テンプレート名')).toBeTruthy();
     expect(screen.getByRole('button', { name: /適用差分確認/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /テンプレートを適用/ })).toBeTruthy();

@@ -720,6 +720,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const [copyOverwrite, setCopyOverwrite] = useState(false);
   const [copyPreview, setCopyPreview] = useState<FormularyCopyPreviewResponse | null>(null);
   const [templateName, setTemplateName] = useState('');
+  const [templateSearchQuery, setTemplateSearchQuery] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [templatePreview, setTemplatePreview] = useState<FormularyTemplatePreviewResponse | null>(
     null,
@@ -957,9 +958,12 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   });
 
   const formularyTemplatesQuery = useQuery({
-    queryKey: ['pharmacy-drug-stock-templates', orgId],
+    queryKey: ['pharmacy-drug-stock-templates', orgId, templateSearchQuery],
     queryFn: async () => {
-      const res = await fetch('/api/pharmacy-drug-stock-templates', {
+      const params = new URLSearchParams({ limit: '50' });
+      const query = templateSearchQuery.trim();
+      if (query) params.set('q', query);
+      const res = await fetch(`/api/pharmacy-drug-stock-templates?${params}`, {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('採用品テンプレートの取得に失敗しました');
@@ -2570,6 +2574,18 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   <Badge variant="outline" className="text-[10px]">
                     {formularyTemplates.length.toLocaleString()}件
                   </Badge>
+                </div>
+                <div className="mt-3">
+                  <Input
+                    value={templateSearchQuery}
+                    onChange={(event) => {
+                      setTemplateSearchQuery(event.target.value);
+                      setSelectedTemplateId('');
+                      setTemplatePreview(null);
+                    }}
+                    placeholder="テンプレート名・説明で検索"
+                    aria-label="採用品テンプレート検索"
+                  />
                 </div>
                 <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(160px,1fr)_auto]">
                   <Input
