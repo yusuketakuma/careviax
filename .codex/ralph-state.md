@@ -2892,3 +2892,16 @@ Backup directory:
 - validation results: targeted Vitest passed with 1 file / 5 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
 - remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include mobile/formulary E2E coverage, safety follow-up automation, and final completion audit
 - next action: commit this CSV export safety slice, then continue with safety follow-up automation or mobile/formulary E2E coverage
+
+### 20260528-005622
+
+- current task: automate safety follow-up creation for formulary safety queues
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/api/pharmacy-drug-stocks/route.ts`, `src/app/api/pharmacy-drug-stocks/review/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/lib/api/rate-limit.ts`, related route/UI tests
+- files changed: `src/app/api/pharmacy-drug-stocks/safety-follow-up/route.ts`, `src/app/api/pharmacy-drug-stocks/safety-follow-up/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `src/lib/api/rate-limit.ts`, `.codex/ralph-state.md`
+- bugs found: safety queues could identify high-risk/LASA/controlled adopted drugs, but there was no bounded admin action to convert untracked safety rows into due follow-up work without opening each drug detail
+- security risks found: new route requires `canAdmin`, validates the site belongs to the current org, scopes updates by org/site/is_stocked, ignores rows that already have unresolved follow-up, and is added to the canonical rate-limit path list
+- performance issues found: target lookup is bounded to 1000 rows and uses existing stock/follow-up/safety predicates; no drug-master import or external fetch is involved
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/safety-follow-up/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for new route/tests, formulary UI/tests, and `src/lib/api/rate-limit.ts`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed with 2 files / 8 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include mobile/formulary E2E coverage and final completion audit
+- next action: commit this safety follow-up automation slice and leave the goal active for the next turn
