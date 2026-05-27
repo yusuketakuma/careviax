@@ -235,4 +235,31 @@ describe('/api/drug-masters GET', () => {
       }),
     );
   });
+
+  it('searches practical drug identifiers and display aliases', async () => {
+    const response = await GET(
+      createRequest('http://localhost/api/drug-masters?q=1234567&limit=5'),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(drugMasterFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            { drug_name: { contains: '1234567', mode: 'insensitive' } },
+            { drug_name_kana: { contains: '1234567', mode: 'insensitive' } },
+            { generic_name: { contains: '1234567', mode: 'insensitive' } },
+            { tall_man_name: { contains: '1234567', mode: 'insensitive' } },
+            { manufacturer: { contains: '1234567', mode: 'insensitive' } },
+            { yj_code: { startsWith: '1234567' } },
+            { receipt_code: { startsWith: '1234567' } },
+            { hot_code: { startsWith: '1234567' } },
+            { jan_code: { startsWith: '1234567' } },
+          ]),
+        }),
+      }),
+    );
+  });
 });

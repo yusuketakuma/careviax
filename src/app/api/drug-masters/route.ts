@@ -63,6 +63,8 @@ export const GET = withAuthContext(async (req: NextRequest, authCtx) => {
     'drug_name',
     'drug_name_kana',
     'generic_name',
+    'tall_man_name',
+    'manufacturer',
   ]) as Prisma.DrugMasterWhereInput;
   const orClauses: Prisma.DrugMasterWhereInput[] = [
     ...(textSearch.OR ?? []),
@@ -70,6 +72,7 @@ export const GET = withAuthContext(async (req: NextRequest, authCtx) => {
       ? [
           { yj_code: { startsWith: q } },
           { receipt_code: { startsWith: q } },
+          { hot_code: { startsWith: q } },
           { jan_code: { startsWith: q } },
         ]
       : []),

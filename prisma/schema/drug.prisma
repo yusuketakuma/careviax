@@ -84,7 +84,10 @@ model DrugMaster {
 
   @@index([yj_code])
   @@index([receipt_code])
+  @@index([hot_code])
+  @@index([jan_code])
   @@index([drug_name_kana])
+  @@index([generic_name])
   @@index([therapeutic_category])
   @@index([is_high_risk])
   @@index([is_lasa_risk])
