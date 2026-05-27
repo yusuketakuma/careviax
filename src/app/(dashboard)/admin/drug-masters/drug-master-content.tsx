@@ -745,6 +745,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const [bulkCsv, setBulkCsv] = useState('');
   const [exportPurpose, setExportPurpose] = useState<FormularyExportPurpose>('operations');
   const [bulkPreview, setBulkPreview] = useState<BulkPreviewResponse | null>(null);
+  const [bulkPreviewExpanded, setBulkPreviewExpanded] = useState(false);
   const [impactQueue, setImpactQueue] = useState<ImpactQueueKey>('action_required');
   const [expiryReferenceTime] = useState(() => Date.now());
   const reorderPointInputRef = useRef<HTMLInputElement | null>(null);
@@ -1301,6 +1302,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     onSuccess: (result) => {
       if (!result.preview) {
         setBulkPreview(null);
+        setBulkPreviewExpanded(false);
         toast.warning('プレビュー結果が返りませんでした');
         return;
       }
@@ -1311,6 +1313,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
         preview: result.preview,
       };
       setBulkPreview(previewResult);
+      setBulkPreviewExpanded(false);
       const blockingCount =
         result.preview.summary.unmatchedCount + result.preview.summary.invalidCount;
       toast.success(
@@ -1321,6 +1324,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     },
     onError: (error) => {
       setBulkPreview(null);
+      setBulkPreviewExpanded(false);
       toast.error(error instanceof Error ? error.message : '採用薬CSVの確認に失敗しました');
     },
   });
@@ -1339,6 +1343,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       }
       setBulkCsv('');
       setBulkPreview(null);
+      setBulkPreviewExpanded(false);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks'] }),
         queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock-history'] }),
@@ -1697,6 +1702,9 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     const bBlocking = ['invalid', 'unmatched'].includes(b.status) ? 0 : 1;
     return aBlocking - bBlocking || a.rowNumber - b.rowNumber;
   });
+  const visibleBulkPreviewRows = bulkPreviewExpanded
+    ? bulkPreviewRowsForDisplay
+    : bulkPreviewRowsForDisplay.slice(0, 6);
   const canApplyBulkPreview =
     !!effectiveSelectedSiteId &&
     bulkCsv.trim().length > 0 &&
@@ -2880,7 +2888,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   </div>
                 </div>
                 <div className="mt-3 space-y-2">
-                  {bulkPreviewRowsForDisplay.slice(0, 6).map((row) => (
+                  {visibleBulkPreviewRows.map((row) => (
                     <div
                       key={`${row.rowNumber}-${row.status}`}
                       className="rounded-md border border-border/60 bg-background px-3 py-2"
@@ -2935,6 +2943,20 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                     </div>
                   ))}
                 </div>
+                {bulkPreviewRowsForDisplay.length > 6 && (
+                  <div className="mt-3 flex justify-end">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setBulkPreviewExpanded((expanded) => !expanded)}
+                    >
+                      {bulkPreviewExpanded
+                        ? 'プレビューを6件に絞る'
+                        : `全${bulkPreviewRowsForDisplay.length.toLocaleString()}件を表示`}
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
