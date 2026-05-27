@@ -4,7 +4,7 @@ import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-
 import { SetPlanEditContent } from './set-plan-edit-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
-export const metadata: Metadata = { title: 'セット計画編集 — CareViaX' };
+export const metadata: Metadata = { title: 'セット計画編集 — PH-OS' };
 
 export default async function SetPlanEditPage({ params }: { params: Promise<{ planId: string }> }) {
   const { planId } = await params;

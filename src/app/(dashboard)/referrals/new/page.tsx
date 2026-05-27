@@ -5,7 +5,7 @@ import { ReferralForm } from './referral-form';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '紹介受付 — CareViaX',
+  title: '紹介受付 — PH-OS',
 };
 
 export default function NewReferralPage() {

@@ -347,7 +347,7 @@ export default function DashboardPreviewPage() {
               {todayLabel}
             </div>
             <h1 className="mt-3 text-2xl font-bold tracking-tight text-foreground">
-              CareViaX ダッシュボード
+              PH-OS ダッシュボード
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
               mock データでログイン後ダッシュボードを preview しています。

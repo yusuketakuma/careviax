@@ -5,7 +5,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { PatientEditContent } from './patient-edit-content';
 
 export const metadata: Metadata = {
-  title: '患者情報編集 — CareViaX',
+  title: '患者情報編集 — PH-OS',
 };
 
 export default async function PatientEditPage({ params }: { params: Promise<{ id: string }> }) {

@@ -7,7 +7,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { MedicationCalendarContent } from './medication-calendar-content';
 
 export const metadata: Metadata = {
-  title: '服薬カレンダー — CareViaX',
+  title: '服薬カレンダー — PH-OS',
 };
 
 export default async function MedicationCalendarPage({

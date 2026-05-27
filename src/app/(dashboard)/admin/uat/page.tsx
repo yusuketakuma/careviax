@@ -5,7 +5,7 @@ import { UatContent } from './uat-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: 'パイロット UAT — CareViaX',
+  title: 'パイロット UAT — PH-OS',
 };
 
 export default function UatPage() {

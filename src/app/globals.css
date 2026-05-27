@@ -48,7 +48,7 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* CareViaX Medical Theme - Blue-grey, high contrast, professional */
+/* PH-OS Medical Theme - Blue-grey, high contrast, professional */
 :root {
   /* Base */
   --background: oklch(1 0 0);

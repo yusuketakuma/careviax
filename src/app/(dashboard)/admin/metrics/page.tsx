@@ -7,7 +7,7 @@ import { MetricsDashboardContent } from './metrics-dashboard-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '経営指標 — CareViaX',
+  title: '経営指標 — PH-OS',
 };
 
 export default function MetricsDashboardPage() {

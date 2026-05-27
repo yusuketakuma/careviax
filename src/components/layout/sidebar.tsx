@@ -153,7 +153,7 @@ export function Sidebar({ className, closeOnNavigate = false }: SidebarProps) {
             href="/dashboard"
             className="flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span className="text-base font-bold tracking-tight text-primary">CareViaX</span>
+            <span className="text-base font-bold tracking-tight text-primary">PH-OS</span>
           </Link>
         )}
         <Button

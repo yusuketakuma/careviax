@@ -7,7 +7,7 @@ import { ContactProfilesContent } from './contact-profiles-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '連携先プロファイル — CareViaX',
+  title: '連携先プロファイル — PH-OS',
 };
 
 export default function ContactProfilesPage() {

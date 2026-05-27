@@ -5,7 +5,7 @@ import { PatientMcsContent } from './mcs-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: 'MCS連携 — CareViaX',
+  title: 'MCS連携 — PH-OS',
 };
 
 export default async function PatientMcsPage({ params }: { params: Promise<{ id: string }> }) {

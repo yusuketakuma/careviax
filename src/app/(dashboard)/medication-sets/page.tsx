@@ -7,7 +7,7 @@ import { MedicationSetsContent } from './medication-sets-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: 'セット管理 — CareViaX',
+  title: 'セット管理 — PH-OS',
 };
 
 export default function MedicationSetsPage() {

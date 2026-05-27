@@ -5,7 +5,7 @@ import { PatientForm } from '@/components/features/patients/patient-form';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '患者新規登録 — CareViaX',
+  title: '患者新規登録 — PH-OS',
 };
 
 export default function NewPatientPage() {

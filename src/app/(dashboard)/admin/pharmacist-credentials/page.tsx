@@ -7,7 +7,7 @@ import { PharmacistCredentialsContent } from './pharmacist-credentials-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: 'かかりつけ薬剤師管理 — CareViaX',
+  title: 'かかりつけ薬剤師管理 — PH-OS',
 };
 
 export default function PharmacistCredentialsPage() {

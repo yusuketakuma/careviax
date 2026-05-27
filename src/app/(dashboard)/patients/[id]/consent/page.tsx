@@ -5,7 +5,7 @@ import { ConsentRecordsContent } from './consent-records-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '同意記録 — CareViaX',
+  title: '同意記録 — PH-OS',
 };
 
 export default async function ConsentPage({ params }: { params: Promise<{ id: string }> }) {

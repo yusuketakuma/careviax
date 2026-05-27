@@ -9,7 +9,7 @@ import { StaffKpiPanel } from './staff-kpi-panel';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: 'スタッフ運用管理 — CareViaX',
+  title: 'スタッフ運用管理 — PH-OS',
 };
 
 export default function StaffPage() {

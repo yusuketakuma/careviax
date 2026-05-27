@@ -544,7 +544,7 @@ function NotificationsTab() {
       return defaults;
     }
 
-    const raw = window.localStorage.getItem('careviax:user-notification-settings');
+    const raw = window.localStorage.getItem('ph-os:user-notification-settings');
     if (!raw) {
       return defaults;
     }
@@ -580,7 +580,7 @@ function NotificationsTab() {
 
   async function handleSave() {
     window.localStorage.setItem(
-      'careviax:user-notification-settings',
+      'ph-os:user-notification-settings',
       JSON.stringify(settings)
     );
     setSaved(true);

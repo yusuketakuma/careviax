@@ -209,7 +209,7 @@ export default function MfaSetupPage() {
     if (recoveryCodes.length === 0) return;
 
     const content = [
-      'CareViaX MFA Recovery Codes',
+      'PH-OS MFA Recovery Codes',
       'このコードは1回のみ使用できます。安全な場所に保存してください。',
       '',
       ...recoveryCodes,
@@ -219,7 +219,7 @@ export default function MfaSetupPage() {
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = objectUrl;
-    link.download = 'careviax-mfa-recovery-codes.txt';
+    link.download = 'ph-os-mfa-recovery-codes.txt';
     document.body.appendChild(link);
     link.click();
     link.remove();

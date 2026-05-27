@@ -13,6 +13,7 @@ interface CollaborativeTextareaProps {
   className?: string;
   disabled?: boolean;
   id?: string;
+  onValueChange?: (value: string, meta: { local: boolean }) => void;
 }
 
 /**
@@ -26,6 +27,7 @@ export function CollaborativeTextarea({
   className,
   disabled,
   id,
+  onValueChange,
 }: CollaborativeTextareaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isLocalChange = useRef(false);
@@ -44,8 +46,9 @@ export function CollaborativeTextarea({
       // Restore cursor position as best we can
       textarea.selectionStart = Math.min(selectionStart, yjsValue.length);
       textarea.selectionEnd = Math.min(selectionEnd, yjsValue.length);
+      onValueChange?.(yjsValue, { local: false });
     }
-  }, [yText]);
+  }, [onValueChange, yText]);
 
   // Observe Y.Text changes (remote edits)
   useEffect(() => {
@@ -97,11 +100,12 @@ export function CollaborativeTextarea({
             yText.insert(start, insertText);
           }
         });
+        onValueChange?.(newValue, { local: true });
       } finally {
         isLocalChange.current = false;
       }
     },
-    [yText],
+    [onValueChange, yText],
   );
 
   // Broadcast cursor position via Awareness

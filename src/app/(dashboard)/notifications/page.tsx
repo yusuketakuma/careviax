@@ -8,7 +8,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { readNotificationsState } from './notifications-query-state';
 
 export const metadata: Metadata = {
-  title: '通知 — CareViaX',
+  title: '通知 — PH-OS',
 };
 
 type NotificationsPageProps = {

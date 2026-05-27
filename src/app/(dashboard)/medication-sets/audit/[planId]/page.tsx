@@ -6,7 +6,7 @@ import { SetAuditContent } from './set-audit-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: 'セット鑑査 — CareViaX',
+  title: 'セット鑑査 — PH-OS',
 };
 
 export default async function SetAuditPage({ params }: { params: Promise<{ planId: string }> }) {

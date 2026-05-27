@@ -24,7 +24,7 @@ export default function AuthLayout({
             </svg>
           </div>
         </div>
-        <h1 className="text-xl font-semibold text-slate-800">CareViaX</h1>
+        <h1 className="text-xl font-semibold text-slate-800">PH-OS</h1>
         <p className="mt-1 text-sm text-slate-500">在宅訪問薬局プラットフォーム</p>
       </div>
       {children}

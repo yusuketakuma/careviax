@@ -7,7 +7,7 @@ import { InstitutionsContent } from './institutions-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '医療機関マスター — CareViaX',
+  title: '医療機関マスター — PH-OS',
 };
 
 export default function InstitutionsPage() {

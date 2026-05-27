@@ -7,7 +7,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { Loading } from '@/components/ui/loading';
 
 export const metadata: Metadata = {
-  title: '患者詳細 — CareViaX',
+  title: '患者詳細 — PH-OS',
 };
 
 export default async function PatientDetailPage({ params }: { params: Promise<{ id: string }> }) {

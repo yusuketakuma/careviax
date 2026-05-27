@@ -108,7 +108,7 @@ export default function ManagementPlanPrintPage() {
         shortcuts={getManagementPlanPrintShortcutLinks(patientId)}
       />
 
-      <PrintLayout pharmacyName="CareViaX薬局">
+      <PrintLayout pharmacyName="PH-OS薬局">
         <div className="space-y-4 text-sm">
           <div className="border-b-2 border-black pb-2">
             <h1 className="text-center text-xl font-bold">訪問薬剤管理指導計画書</h1>

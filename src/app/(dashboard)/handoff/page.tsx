@@ -8,7 +8,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { readHandoffState } from './handoff-query-state';
 
 export const metadata: Metadata = {
-  title: '申し送り — CareViaX',
+  title: '申し送り — PH-OS',
 };
 
 type HandoffPageProps = {

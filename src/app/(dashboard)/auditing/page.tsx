@@ -7,7 +7,7 @@ import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '調剤鑑査 — CareViaX',
+  title: '調剤鑑査 — PH-OS',
 };
 
 export default function AuditingPage() {

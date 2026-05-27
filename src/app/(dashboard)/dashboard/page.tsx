@@ -55,7 +55,7 @@ export default async function DashboardPage() {
         <WorkflowPageHeader
           className="mb-0 space-y-0"
           eyebrow="Daily Operations Home"
-          title="CareViaX ホーム"
+          title="PH-OS ホーム"
           description={`今日の優先対応、予定、担当別の入口を最初に確認するための運用トップです。現在は ${viewer.roleLabel} 向けの見方を強調しています。`}
           supportingContent={
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">

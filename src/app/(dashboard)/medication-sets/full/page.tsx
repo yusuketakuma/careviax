@@ -7,7 +7,7 @@ import { MedicationSetFullContent } from './medication-set-full-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: 'セット計画（詳細） — CareViaX',
+  title: 'セット計画（詳細） — PH-OS',
 };
 
 type MedicationSetFullPageProps = {

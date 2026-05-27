@@ -7,7 +7,7 @@ import { FacilityStandardsContent } from './facility-standards-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '施設基準管理 — CareViaX',
+  title: '施設基準管理 — PH-OS',
 };
 
 export default function FacilityStandardsPage() {

@@ -4,7 +4,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { AuditDetail } from './audit-detail';
 
 export const metadata: Metadata = {
-  title: '調剤鑑査詳細 — CareViaX',
+  title: '調剤鑑査詳細 — PH-OS',
 };
 
 export default async function AuditDetailPage({ params }: { params: Promise<{ taskId: string }> }) {

@@ -2,7 +2,7 @@ import { Metadata } from 'next';
 import { NotificationSettingsContent } from './notification-settings-content';
 
 export const metadata: Metadata = {
-  title: '通知設定 — CareViaX',
+  title: '通知設定 — PH-OS',
 };
 
 export default function NotificationSettingsPage() {

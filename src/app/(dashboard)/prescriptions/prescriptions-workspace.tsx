@@ -24,7 +24,11 @@ import { PrescriptionInlineDetail } from './prescription-inline-detail';
 type FilterKey = 'all' | string;
 
 const PRESCRIPTION_INTAKE_PAGE_SIZE = 50;
-const REALTIME_INVALIDATE_EVENTS = new Set(['cycle_transition', 'prescription_intake_created']);
+const REALTIME_INVALIDATE_EVENTS = new Set([
+  'cycle_transition',
+  'prescription_intake_created',
+  'qr_draft_confirmed',
+]);
 
 const STATUS_FILTER_OPTIONS: Array<{ value: FilterKey; label: string }> = [
   { value: 'all', label: '全' },

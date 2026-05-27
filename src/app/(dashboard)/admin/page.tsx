@@ -7,7 +7,7 @@ import { AdminDashboardContent } from './admin-dashboard-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '管理者ダッシュボード — CareViaX',
+  title: '管理者ダッシュボード — PH-OS',
 };
 
 export default function AdminDashboardPage() {

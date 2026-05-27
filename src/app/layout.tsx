@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'CareViaX Pharmacy',
+  title: 'PH-OS Pharmacy',
   description: '在宅訪問に強い保険薬局向け業務・連携プラットフォーム',
   manifest: '/manifest.json',
   icons: {

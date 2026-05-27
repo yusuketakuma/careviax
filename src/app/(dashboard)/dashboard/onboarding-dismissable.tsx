@@ -4,8 +4,8 @@ import { useSyncExternalStore } from 'react';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-const STORAGE_KEY = 'careviax-onboarding-dismissed';
-const STORAGE_EVENT = 'careviax-onboarding-dismissed-change';
+const STORAGE_KEY = 'ph-os-onboarding-dismissed';
+const STORAGE_EVENT = 'ph-os-onboarding-dismissed-change';
 
 function readDismissedSnapshot() {
   if (typeof window === 'undefined') return null;

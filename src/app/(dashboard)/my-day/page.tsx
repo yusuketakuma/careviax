@@ -6,7 +6,7 @@ import { MyDayContent } from './my-day-content';
 import { readMyDayState } from './my-day-query-state';
 
 export const metadata: Metadata = {
-  title: 'My Day — CareViaX',
+  title: 'My Day — PH-OS',
 };
 
 type MyDayPageProps = {

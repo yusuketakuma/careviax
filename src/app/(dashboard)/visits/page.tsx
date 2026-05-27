@@ -7,7 +7,7 @@ import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '訪問記録一覧 — CareViaX',
+  title: '訪問記録一覧 — PH-OS',
 };
 
 export default function VisitsPage() {

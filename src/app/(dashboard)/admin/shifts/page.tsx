@@ -7,7 +7,7 @@ import { ShiftsContent } from './shifts-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '薬剤師シフト管理 — CareViaX',
+  title: '薬剤師シフト管理 — PH-OS',
 };
 
 export default function ShiftsPage() {

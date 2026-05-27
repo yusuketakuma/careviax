@@ -27,6 +27,7 @@ type IntegrationJobRun = {
   id: string;
   job_type: string;
   status: string;
+  output: unknown;
   error_log: string | null;
   retry_count: number;
   max_retries: number;
@@ -40,6 +41,7 @@ type JobDefinitionEntry = {
   schedule_hint: string;
   endpoint: string;
   latest_run: IntegrationJobRun | null;
+  latest_export_run?: IntegrationJobRun | null;
 };
 
 // --- Constants ---
@@ -70,9 +72,44 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   failed:    { label: '失敗',   className: 'bg-red-100 text-red-800 border-red-200' },
 };
 
+type BulkExportRunSummary = {
+  requestedCount: number | null;
+  successfulCount: number | null;
+  failedCount: number;
+};
+
 function formatDateTime(value: string | null) {
   if (!value) return '—';
   return format(parseISO(value), 'MM/dd HH:mm', { locale: ja });
+}
+
+function readNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+export function getBulkExportRunSummary(run: IntegrationJobRun | null): BulkExportRunSummary | null {
+  if (!run || !run.job_type.startsWith('medication-history-bulk-export')) return null;
+  if (!run.output || typeof run.output !== 'object' || Array.isArray(run.output)) return null;
+
+  const output = run.output as Record<string, unknown>;
+  const failedCount = readNumber(output.failedCount);
+  if (!failedCount || failedCount <= 0) return null;
+
+  return {
+    requestedCount: readNumber(output.requestedCount),
+    successfulCount: readNumber(output.patientCount) ?? readNumber(output.successfulCount),
+    failedCount,
+  };
+}
+
+function getJobBulkExportRunSummary(entry: JobDefinitionEntry) {
+  return getBulkExportRunSummary(entry.latest_export_run ?? entry.latest_run);
+}
+
+function formatBulkExportSummary(summary: BulkExportRunSummary) {
+  const successfulText = summary.successfulCount == null ? null : `成功 ${summary.successfulCount}件`;
+  const totalText = summary.requestedCount == null ? null : `対象 ${summary.requestedCount}件`;
+  return [totalText, successfulText, `失敗 ${summary.failedCount}件`].filter(Boolean).join(' / ');
 }
 
 function matchesSourceFilter(jobType: string, source: string): boolean {
@@ -209,9 +246,21 @@ export function JobsDashboardContent() {
       },
       {
         id: 'error',
-        header: 'エラー',
+        header: '警告/エラー',
         cell: ({ row }) => {
-          const err = row.original.latest_run?.error_log;
+          const run = row.original.latest_run;
+          const summary = getJobBulkExportRunSummary(row.original);
+          const err = run?.error_log;
+          if (summary) {
+            return (
+              <span
+                className="max-w-[220px] truncate text-xs text-amber-700"
+                title={formatBulkExportSummary(summary)}
+              >
+                一部失敗 {summary.failedCount}件
+              </span>
+            );
+          }
           if (!err) return <span className="text-xs text-muted-foreground">—</span>;
           return (
             <span className="max-w-[200px] truncate text-xs text-red-600" title={err}>
@@ -248,24 +297,39 @@ export function JobsDashboardContent() {
 
   function renderExpandedRow(row: Row<JobDefinitionEntry>) {
     const run = row.original.latest_run;
-    if (!run?.error_log) return null;
+    const bulkExportSummary = getJobBulkExportRunSummary(row.original);
+    if (!run?.error_log && !bulkExportSummary) return null;
     return (
-      <div className="bg-red-50 px-4 py-3">
-        <p className="mb-1 text-xs font-semibold text-red-700">エラーログ</p>
-        <pre className="overflow-x-auto whitespace-pre-wrap break-all text-xs text-red-800">
-          {run.error_log}
-        </pre>
+      <div className="space-y-3 bg-red-50 px-4 py-3">
+        {bulkExportSummary && (
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-amber-800">一括出力の部分失敗</p>
+            <p className="text-xs text-amber-800">{formatBulkExportSummary(bulkExportSummary)}</p>
+            <p className="text-xs text-amber-900">詳細は監査ログと保管元ジョブを確認してください。</p>
+          </div>
+        )}
+        {run?.error_log && (
+          <div>
+            <p className="mb-1 text-xs font-semibold text-red-700">エラーログ</p>
+            <pre className="overflow-x-auto whitespace-pre-wrap break-all text-xs text-red-800">
+              {run.error_log}
+            </pre>
+          </div>
+        )}
       </div>
     );
   }
 
   const failedCount = (data?.data ?? []).filter((e) => e.latest_run?.status === 'failed').length;
   const runningCount = (data?.data ?? []).filter((e) => e.latest_run?.status === 'running').length;
+  const partialWarningCount = (data?.data ?? []).filter((e) =>
+    Boolean(getJobBulkExportRunSummary(e))
+  ).length;
 
   return (
     <div className="space-y-4">
       {/* Summary cards */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">登録ジョブ数</CardTitle>
@@ -289,6 +353,16 @@ export function JobsDashboardContent() {
           <CardContent>
             <p className={`text-2xl font-semibold ${failedCount > 0 ? 'text-red-600' : ''}`}>
               {isLoading ? '—' : failedCount}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">一部失敗</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className={`text-2xl font-semibold ${partialWarningCount > 0 ? 'text-amber-700' : ''}`}>
+              {isLoading ? '—' : partialWarningCount}
             </p>
           </CardContent>
         </Card>

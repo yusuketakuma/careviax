@@ -4,7 +4,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { DispenseForm } from './dispense-form';
 
 export const metadata: Metadata = {
-  title: '調剤入力 — CareViaX',
+  title: '調剤入力 — PH-OS',
 };
 
 export default async function DispenseTaskPage({

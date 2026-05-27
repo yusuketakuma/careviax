@@ -5,7 +5,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { VisitRecordDetail } from './visit-record-detail';
 
 export const metadata: Metadata = {
-  title: '訪問記録詳細 — CareViaX',
+  title: '訪問記録詳細 — PH-OS',
 };
 
 export default async function VisitRecordDetailPage({

@@ -7,7 +7,7 @@ import { BillingDashboardContent } from './billing-dashboard-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '請求支援ダッシュボード — CareViaX',
+  title: '請求支援ダッシュボード — PH-OS',
 };
 
 export default function BillingPage() {

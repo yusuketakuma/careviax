@@ -7,7 +7,7 @@ import { AuditLogsContent } from './audit-logs-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '監査ログ — CareViaX',
+  title: '監査ログ — PH-OS',
 };
 
 export default function AuditLogsPage() {

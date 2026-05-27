@@ -7,7 +7,7 @@ import { FacilitiesContent } from './facilities-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '施設マスター — CareViaX',
+  title: '施設マスター — PH-OS',
 };
 
 export default function FacilitiesPage() {

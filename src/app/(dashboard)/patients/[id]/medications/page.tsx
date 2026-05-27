@@ -15,7 +15,7 @@ const introActionLinkClassName =
   'inline-flex h-7 items-center justify-center gap-1 rounded-[min(var(--radius-md),12px)] border border-border bg-background px-2.5 text-[0.8rem] font-medium whitespace-nowrap transition-all outline-none hover:bg-muted hover:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50';
 
 export const metadata: Metadata = {
-  title: '服薬管理 — CareViaX',
+  title: '服薬管理 — PH-OS',
 };
 
 export default async function MedicationsPage({ params }: { params: Promise<{ id: string }> }) {

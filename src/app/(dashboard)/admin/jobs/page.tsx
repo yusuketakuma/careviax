@@ -6,7 +6,7 @@ import { Loading } from '@/components/ui/loading';
 import { JobsDashboardContent } from './jobs-dashboard-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
-export const metadata: Metadata = { title: 'ジョブ監視 — CareViaX' };
+export const metadata: Metadata = { title: 'ジョブ監視 — PH-OS' };
 
 export default function JobsDashboardPage() {
   return (

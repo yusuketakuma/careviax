@@ -6,7 +6,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { PrescriptionsWorkspace } from './prescriptions-workspace';
 
 export const metadata: Metadata = {
-  title: '処方箋受付 — CareViaX',
+  title: '処方箋受付 — PH-OS',
 };
 
 export default function PrescriptionsPage() {

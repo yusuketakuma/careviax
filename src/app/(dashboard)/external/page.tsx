@@ -9,7 +9,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { readExternalState } from './external-query-state';
 
 export const metadata: Metadata = {
-  title: '外部連携ビュー — CareViaX',
+  title: '外部連携ビュー — PH-OS',
 };
 
 type ExternalViewerPageProps = {

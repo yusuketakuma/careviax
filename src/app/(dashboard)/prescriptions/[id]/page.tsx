@@ -4,7 +4,7 @@ import { type Metadata } from 'next';
 import { PrescriptionDetailContent } from './prescription-detail-content';
 
 export const metadata: Metadata = {
-  title: '処方受付詳細 — CareViaX',
+  title: '処方受付詳細 — PH-OS',
 };
 
 export default async function PrescriptionDetailPage({

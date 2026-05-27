@@ -7,7 +7,7 @@ import { AnalyticsContent } from './analytics-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: 'KPI分析 — CareViaX',
+  title: 'KPI分析 — PH-OS',
 };
 
 export default function AnalyticsPage() {

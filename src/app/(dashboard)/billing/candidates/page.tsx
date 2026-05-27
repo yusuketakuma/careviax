@@ -6,7 +6,7 @@ import { BillingCandidatesContent } from './billing-candidates-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '月次請求候補 — CareViaX',
+  title: '月次請求候補 — PH-OS',
 };
 
 type BillingCandidatesPageProps = {

@@ -8,7 +8,7 @@ import { ExternalShareContent } from './external-share-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '外部共有 — CareViaX',
+  title: '外部共有 — PH-OS',
 };
 
 export default async function ExternalSharePage({ params }: { params: Promise<{ id: string }> }) {

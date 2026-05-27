@@ -8,7 +8,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { readWorkflowState } from './workflow-query-state';
 
 export const metadata: Metadata = {
-  title: 'ワークフローダッシュボード — CareViaX',
+  title: 'ワークフローダッシュボード — PH-OS',
 };
 
 type WorkflowDashboardPageProps = {

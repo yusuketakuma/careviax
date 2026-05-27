@@ -7,7 +7,7 @@ import { UsersContent } from './users-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: 'ユーザー管理 — CareViaX',
+  title: 'ユーザー管理 — PH-OS',
 };
 
 export default function UsersPage() {

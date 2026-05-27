@@ -7,7 +7,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { PrescriptionHistoryContent } from './prescription-history-content';
 
 export const metadata: Metadata = {
-  title: '処方内容一覧 — CareViaX',
+  title: '処方内容一覧 — PH-OS',
 };
 
 export default async function PatientPrescriptionsPage({

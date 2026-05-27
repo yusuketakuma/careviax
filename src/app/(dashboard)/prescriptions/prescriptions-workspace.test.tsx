@@ -232,6 +232,15 @@ describe('PrescriptionsWorkspace', () => {
     realtimeOptions.onEvent({ type: 'workflow_refresh' });
     expect(invalidateQueriesMock).not.toHaveBeenCalled();
 
+    realtimeOptions.onEvent({ type: 'qr_draft_created' });
+    expect(invalidateQueriesMock).not.toHaveBeenCalled();
+
+    realtimeOptions.onEvent({ type: 'qr_draft_confirmed' });
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({
+      queryKey: ['prescription-intakes', 'org_1'],
+    });
+
+    invalidateQueriesMock.mockClear();
     realtimeOptions.onEvent({ type: 'prescription_intake_created' });
     expect(invalidateQueriesMock).toHaveBeenCalledWith({
       queryKey: ['prescription-intakes', 'org_1'],

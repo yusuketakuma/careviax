@@ -7,7 +7,7 @@ import { BusinessHolidaysContent } from './business-holidays-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '休日カレンダー — CareViaX',
+  title: '休日カレンダー — PH-OS',
 };
 
 export default function BusinessHolidaysPage() {

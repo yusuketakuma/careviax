@@ -7,7 +7,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { PackagingMethodsContent } from './packaging-methods-content';
 
 export const metadata: Metadata = {
-  title: '配薬方法マスター — CareViaX',
+  title: '配薬方法マスター — PH-OS',
 };
 
 export default function PackagingMethodsPage() {

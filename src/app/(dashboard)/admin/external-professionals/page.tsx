@@ -8,7 +8,7 @@ import { ExternalProfessionalsContent } from './external-professionals-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '他職種マスター — CareViaX',
+  title: '他職種マスター — PH-OS',
 };
 
 export default function ExternalProfessionalsPage() {

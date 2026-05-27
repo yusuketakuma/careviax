@@ -4,7 +4,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { VisitRecordForm } from './visit-record-form';
 
 export const metadata: Metadata = {
-  title: '訪問記録入力 — CareViaX',
+  title: '訪問記録入力 — PH-OS',
 };
 
 export default async function VisitRecordPage({ params }: { params: Promise<{ id: string }> }) {

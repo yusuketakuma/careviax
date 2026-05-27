@@ -9,7 +9,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { readCommunicationRequestsState } from './requests-query-state';
 
 export const metadata: Metadata = {
-  title: '依頼・照会一覧 — CareViaX',
+  title: '依頼・照会一覧 — PH-OS',
 };
 
 type CommunicationRequestsPageProps = {

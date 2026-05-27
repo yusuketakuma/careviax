@@ -9,7 +9,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { readConferencesState } from './conferences-query-state';
 
 export const metadata: Metadata = {
-  title: 'カンファレンス — CareViaX',
+  title: 'カンファレンス — PH-OS',
 };
 
 type ConferencesPageProps = {

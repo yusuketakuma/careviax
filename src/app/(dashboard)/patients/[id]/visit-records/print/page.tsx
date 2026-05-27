@@ -160,7 +160,7 @@ export default function PatientVisitRecordsPrintPage() {
         shortcuts={getPatientVisitRecordPrintShortcutLinks(patientId)}
       />
 
-      <PrintLayout pharmacyName={orgQuery.data?.name || 'CareViaX薬局'}>
+      <PrintLayout pharmacyName={orgQuery.data?.name || 'PH-OS薬局'}>
         <div className="space-y-4 text-sm">
           <div className="border-b-2 border-black pb-2">
             <h1 className="text-center text-xl font-bold">訪問記録一覧（薬歴）</h1>

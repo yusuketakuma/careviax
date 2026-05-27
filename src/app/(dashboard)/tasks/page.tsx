@@ -7,7 +7,7 @@ import { TasksContent } from './tasks-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { readTasksState } from './tasks-query-state';
 
-export const metadata: Metadata = { title: 'タスク — CareViaX' };
+export const metadata: Metadata = { title: 'タスク — PH-OS' };
 
 type TasksPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;

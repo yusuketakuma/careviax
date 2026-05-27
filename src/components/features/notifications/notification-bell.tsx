@@ -60,7 +60,7 @@ export function NotificationBell() {
 
     for (const item of items) {
       await showBrowserNotification({
-        title: item.title ?? 'CareViaX 通知',
+        title: item.title ?? 'PH-OS 通知',
         body: item.message,
         tag: item.id,
         url: item.link,

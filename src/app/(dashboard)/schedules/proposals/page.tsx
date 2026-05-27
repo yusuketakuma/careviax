@@ -13,7 +13,7 @@ import {
 import { ScheduleProposalWorkspaceTabs } from './schedule-proposal-workspace-tabs';
 
 export const metadata: Metadata = {
-  title: '訪問候補ダッシュボード — CareViaX',
+  title: '訪問候補ダッシュボード — PH-OS',
 };
 
 type ScheduleProposalsPageProps = {

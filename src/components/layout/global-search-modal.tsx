@@ -76,7 +76,7 @@ type GlobalSearchModalProps = {
   pathname: string;
 };
 
-const RECENT_OPERATIONS_KEY = 'careviax:recent-operations';
+const RECENT_OPERATIONS_KEY = 'ph-os:recent-operations';
 
 function readRecentOperations() {
   if (typeof window === 'undefined') {

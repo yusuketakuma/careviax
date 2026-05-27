@@ -7,7 +7,7 @@ import { SettingsContent } from './settings-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '管理設定 — CareViaX',
+  title: '管理設定 — PH-OS',
 };
 
 export default function SettingsPage() {

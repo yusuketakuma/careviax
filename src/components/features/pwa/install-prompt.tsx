@@ -12,7 +12,7 @@ interface BeforeInstallPromptEvent extends Event {
 
 /**
  * Captures the browser's beforeinstallprompt event and shows a banner
- * allowing the user to add CareViaX to their home screen.
+ * allowing the user to add PH-OS to their home screen.
  */
 export function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -61,7 +61,7 @@ export function InstallPrompt() {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-card-foreground">
-          CareViaX をホーム画面に追加
+          PH-OS をホーム画面に追加
         </p>
         <p className="mt-0.5 text-xs text-muted-foreground">
           オフラインでも使えるアプリとして利用できます。

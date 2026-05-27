@@ -1568,6 +1568,12 @@ export function DispenseForm({ taskId }: DispenseFormProps) {
                       className="min-h-[60px] text-sm"
                       placeholder="例: 冷所保管"
                       disabled={!!blockedInquiry || cycleLevelInquiries.length > 0}
+                      onValueChange={(value, { local }) => {
+                        form.setValue(`lines.${index}.special_notes`, value, {
+                          shouldDirty: local,
+                          shouldValidate: false,
+                        });
+                      }}
                     />
                   ) : (
                     <Textarea

@@ -5,7 +5,7 @@ import { PrescriptionIntakeForm } from './prescription-intake-form';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '新規処方受付 — CareViaX',
+  title: '新規処方受付 — PH-OS',
 };
 
 export default function NewPrescriptionPage() {

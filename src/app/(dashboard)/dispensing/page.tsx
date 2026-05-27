@@ -7,7 +7,7 @@ import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
-  title: '調剤キュー — CareViaX',
+  title: '調剤キュー — PH-OS',
 };
 
 export default function DispensingPage() {
