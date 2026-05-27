@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-235040
+
+- current task: add purpose-specific CSV exports for adopted-drug lists
+- files inspected: `git status --short`, `docs/ui-ux-design-guidelines.md`, Next.js route handler docs, `src/app/api/pharmacy-drug-stocks/export/route.ts`, `src/app/api/pharmacy-drug-stocks/export/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`
+- files changed: `src/app/api/pharmacy-drug-stocks/export/route.ts`, `src/app/api/pharmacy-drug-stocks/export/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: adopted-drug export had one fixed operational CSV shape, so audit, posting, and pharmacist review use cases required manual column cleanup after every export
+- security risks found: export purpose is validated by enum, export remains admin-only, site lookup stays org-scoped before stock reads, and the audit log now records the selected export purpose
+- performance issues found: purpose-specific rows are projected from the existing bounded adopted-stock query; no additional per-row database calls were added
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/export/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for export API/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 2 files / 9 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice adds export presets but not scheduled automatic delivery
+- next action: commit the purpose-specific export slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260527-234434
 
 - current task: add facility-specific formulary templates for reusing adopted-drug sets
