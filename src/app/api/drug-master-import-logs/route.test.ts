@@ -37,8 +37,36 @@ describe('/api/drug-master-import-logs', () => {
 
     expect(response.status).toBe(200);
     expect(drugMasterImportLogFindManyMock).toHaveBeenCalledWith({
+      where: {},
       orderBy: [{ imported_at: 'desc' }, { created_at: 'desc' }],
       take: 50,
+      select: expect.any(Object),
+    });
+  });
+
+  it('filters import logs by valid source and status', async () => {
+    const response = (await GET({
+      url: 'http://localhost/api/drug-master-import-logs?source=pmda&status=failed&limit=20',
+    } as NextRequest, { params: Promise.resolve({}) }))!;
+
+    expect(response.status).toBe(200);
+    expect(drugMasterImportLogFindManyMock).toHaveBeenCalledWith({
+      where: { source: 'pmda', status: 'failed' },
+      orderBy: [{ imported_at: 'desc' }, { created_at: 'desc' }],
+      take: 20,
+      select: expect.any(Object),
+    });
+  });
+
+  it('ignores invalid filter values', async () => {
+    await GET({
+      url: 'http://localhost/api/drug-master-import-logs?source=unknown&status=deleted',
+    } as NextRequest, { params: Promise.resolve({}) });
+
+    expect(drugMasterImportLogFindManyMock).toHaveBeenCalledWith({
+      where: {},
+      orderBy: [{ imported_at: 'desc' }, { created_at: 'desc' }],
+      take: 10,
       select: expect.any(Object),
     });
   });

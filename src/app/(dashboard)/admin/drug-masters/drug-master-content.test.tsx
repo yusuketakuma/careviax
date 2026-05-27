@@ -295,6 +295,8 @@ describe('DrugMasterContent', () => {
     expect(screen.getByText('直近30日: 2回 / 失敗 2回')).toBeTruthy();
     expect(screen.getByText('連続失敗 2回')).toBeTruthy();
     expect(screen.getByRole('button', { name: '鮮度チェック' })).toBeTruthy();
+    expect(screen.getByLabelText('取込履歴ソース')).toBeTruthy();
+    expect(screen.getByLabelText('取込履歴状態')).toBeTruthy();
   });
 
   it('shows medication-safety filters for high-risk and LASA review', () => {

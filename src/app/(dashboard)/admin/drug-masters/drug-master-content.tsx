@@ -658,6 +658,24 @@ const IMPORT_SOURCE_LABEL: Record<DrugMasterImportLog['source'], string> = {
   manual_clinical: '手動臨床ルール',
 };
 
+const IMPORT_LOG_SOURCE_OPTIONS: Array<{ value: 'all' | DrugMasterImportLog['source']; label: string }> = [
+  { value: 'all', label: 'すべてのソース' },
+  { value: 'ssk', label: IMPORT_SOURCE_LABEL.ssk },
+  { value: 'mhlw_price', label: IMPORT_SOURCE_LABEL.mhlw_price },
+  { value: 'mhlw_generic', label: IMPORT_SOURCE_LABEL.mhlw_generic },
+  { value: 'hot', label: IMPORT_SOURCE_LABEL.hot },
+  { value: 'pmda', label: IMPORT_SOURCE_LABEL.pmda },
+  { value: 'manual_clinical', label: IMPORT_SOURCE_LABEL.manual_clinical },
+];
+
+const IMPORT_LOG_STATUS_OPTIONS: Array<{ value: 'all' | DrugMasterImportLog['status']; label: string }> = [
+  { value: 'all', label: 'すべての状態' },
+  { value: 'failed', label: '失敗のみ' },
+  { value: 'running', label: '実行中' },
+  { value: 'completed', label: '完了' },
+  { value: 'pending', label: '待機' },
+];
+
 function DrugNameCell({ drug }: { drug: DrugMasterRow }) {
   const displayName = drug.tall_man_name?.trim() || drug.drug_name;
   const hasTallMan = displayName !== drug.drug_name;
@@ -738,6 +756,10 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const [templateName, setTemplateName] = useState('');
   const [templateSearchQuery, setTemplateSearchQuery] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [importLogSourceFilter, setImportLogSourceFilter] =
+    useState<'all' | DrugMasterImportLog['source']>('all');
+  const [importLogStatusFilter, setImportLogStatusFilter] =
+    useState<'all' | DrugMasterImportLog['status']>('all');
   const [templatePreview, setTemplatePreview] = useState<FormularyTemplatePreviewResponse | null>(
     null,
   );
@@ -818,9 +840,12 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   });
 
   const { data: importLogsData, isLoading: isLoadingLogs } = useQuery({
-    queryKey: ['drug-master-import-logs'],
+    queryKey: ['drug-master-import-logs', importLogSourceFilter, importLogStatusFilter],
     queryFn: async () => {
-      const res = await fetch('/api/drug-master-import-logs?limit=10', {
+      const logParams = new URLSearchParams({ limit: '10' });
+      if (importLogSourceFilter !== 'all') logParams.set('source', importLogSourceFilter);
+      if (importLogStatusFilter !== 'all') logParams.set('status', importLogStatusFilter);
+      const res = await fetch(`/api/drug-master-import-logs?${logParams}`, {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('取込履歴の取得に失敗しました');
@@ -3078,6 +3103,42 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-muted-foreground">ソース</span>
+              <select
+                aria-label="取込履歴ソース"
+                value={importLogSourceFilter}
+                onChange={(event) =>
+                  setImportLogSourceFilter(event.target.value as 'all' | DrugMasterImportLog['source'])
+                }
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+              >
+                {IMPORT_LOG_SOURCE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-muted-foreground">状態</span>
+              <select
+                aria-label="取込履歴状態"
+                value={importLogStatusFilter}
+                onChange={(event) =>
+                  setImportLogStatusFilter(event.target.value as 'all' | DrugMasterImportLog['status'])
+                }
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+              >
+                {IMPORT_LOG_STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           {isLoadingLogs ? (
             <p className="text-sm text-muted-foreground">履歴を読み込み中です…</p>
           ) : importLogs.length === 0 ? (
