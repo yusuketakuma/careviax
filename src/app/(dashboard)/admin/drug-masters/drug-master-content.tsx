@@ -123,6 +123,23 @@ type GenericCandidateOption = {
   drug_name: string;
 };
 
+type GenericRecommendation = GenericCandidateOption & {
+  generic_name: string | null;
+  drug_price: number | null;
+  unit: string | null;
+  manufacturer: string | null;
+  is_generic: boolean;
+  transitional_expiry_date: string | null;
+  price_delta: number | null;
+  price_delta_percent: number | null;
+  site_stock: {
+    drug_master_id: string;
+    is_stocked: boolean;
+    preferred_generic_id: string | null;
+    reorder_point: number | null;
+  } | null;
+};
+
 type PharmacyDrugStockConfig = {
   id: string;
   site_id: string;
@@ -609,6 +626,25 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     staleTime: 300_000,
   });
 
+  const genericRecommendationsQuery = useQuery({
+    queryKey: ['generic-recommendations', orgId, effectiveSelectedSiteId, selectedDrugId],
+    queryFn: async () => {
+      if (!selectedDrugId) return { recommendations: [] as GenericRecommendation[] };
+      const params = new URLSearchParams({ limit: '8' });
+      if (effectiveSelectedSiteId) params.set('site_id', effectiveSelectedSiteId);
+      const res = await fetch(
+        `/api/drug-masters/${selectedDrugId}/generic-recommendations?${params}`,
+        {
+          headers: { 'x-org-id': orgId },
+        },
+      );
+      if (!res.ok) throw new Error('推奨後発品の取得に失敗しました');
+      return res.json() as Promise<{ recommendations: GenericRecommendation[] }>;
+    },
+    enabled: !!orgId && !!selectedDrugId && !!detailQuery.data?.generic_name,
+    staleTime: 300_000,
+  });
+
   const importMutation = useMutation({
     mutationFn: async (action: ImportAction) => {
       const definition = IMPORT_ACTIONS.find((item) => item.key === action);
@@ -711,6 +747,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock'] }),
         queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks'] }),
+        queryClient.invalidateQueries({ queryKey: ['generic-recommendations'] }),
         queryClient.invalidateQueries({ queryKey: ['drug-masters'] }),
       ]);
     },
@@ -911,6 +948,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       ]
     : [];
   const preferredGenericCandidates = preferredGenericCandidatesQuery.data?.data ?? [];
+  const genericRecommendations = genericRecommendationsQuery.data?.recommendations ?? [];
   const headerTitle = variant === 'formulary' ? '採用薬マスター' : '医薬品マスター';
   const headerDescription =
     variant === 'formulary'
@@ -1425,6 +1463,52 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                               </option>
                             ))}
                           </select>
+                          {genericRecommendations.length > 0 && (
+                            <div className="space-y-2">
+                              <p className="text-xs font-medium text-muted-foreground">
+                                薬価順の推奨候補
+                              </p>
+                              <div className="space-y-2">
+                                {genericRecommendations.slice(0, 3).map((candidate) => (
+                                  <button
+                                    key={candidate.id}
+                                    type="button"
+                                    className="w-full rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-left hover:bg-muted/50"
+                                    onClick={() => setPreferredGenericId(candidate.id)}
+                                  >
+                                    <span className="block text-sm font-medium text-foreground">
+                                      {candidate.drug_name}
+                                    </span>
+                                    <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                      <span>{candidate.yj_code}</span>
+                                      <span>
+                                        {candidate.drug_price != null
+                                          ? `¥${Number(candidate.drug_price).toFixed(1)}/${candidate.unit ?? ''}`
+                                          : '薬価未設定'}
+                                      </span>
+                                      {candidate.price_delta != null && (
+                                        <span
+                                          className={
+                                            candidate.price_delta < 0
+                                              ? 'font-medium text-emerald-700'
+                                              : 'font-medium text-amber-700'
+                                          }
+                                        >
+                                          {candidate.price_delta < 0 ? '差額' : '増額'} ¥
+                                          {Math.abs(candidate.price_delta).toFixed(1)}
+                                        </span>
+                                      )}
+                                      {candidate.site_stock?.is_stocked && (
+                                        <span className="font-medium text-emerald-700">
+                                          採用済み
+                                        </span>
+                                      )}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="text-xs text-muted-foreground">
                               現在: {stockConfig?.preferred_generic?.drug_name ?? '未設定'}
