@@ -2866,3 +2866,16 @@ Backup directory:
 - validation results: targeted Vitest passed with 2 files / 8 tests after correcting mock count order; targeted ESLint passed; TypeScript passed; whitespace check passed
 - remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include browser/E2E verification of formulary workflows, richer safety follow-up automation, and final completion audit
 - next action: commit this safety queue slice, then continue with browser/E2E verification or safety follow-up automation
+
+### 20260528-004906
+
+- current task: extend route-mocked browser verification for formulary impact and import-health workflows
+- files inspected: `git status --short`, `playwright.local.config.ts`, `playwright.config.ts`, `tools/tests/helpers/local-auth.ts`, `tools/tests/ui-route-mocked-smoke.spec.ts`, existing Playwright test scripts in `package.json`
+- files changed: `tools/tests/ui-route-mocked-smoke.spec.ts`, `.codex/ralph-state.md`
+- bugs found: the formulary route-mocked smoke did not mock newer formulary templates, usage-mismatch, and change-request endpoints, causing unrelated 403s when exercising the page; it also did not cover the new import-health payload or safety queue buttons
+- security risks found: no product auth boundary changed; route-mocked test now avoids live protected endpoints and verifies the UI through mocked same-origin API responses
+- performance issues found: route-mocked browser test remains one Chromium test and does not require live MHLW import or real drug-master database data
+- validation commands: `pnpm --config.verify-deps-before-run=false exec eslint tools/tests/ui-route-mocked-smoke.spec.ts`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`; `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3000 pnpm --config.verify-deps-before-run=false exec playwright test --config playwright.local.config.ts tools/tests/ui-route-mocked-smoke.spec.ts -g "formulary route-mocked management smoke" --project=chromium`
+- validation results: targeted ESLint passed; TypeScript passed; whitespace check passed; first Playwright run against `localhost:3012` failed because an existing Next dev server lock on `localhost:3000` stopped the 3012 server; rerun against existing `localhost:3000` first exposed missing route mocks, then passed after adding mocks and assertions
+- remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include fuller mobile/browser coverage, safety follow-up automation, and final completion audit
+- next action: commit this browser-verification slice, then continue with safety follow-up automation or mobile/formulary E2E coverage
