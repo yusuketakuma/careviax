@@ -1,7 +1,5 @@
 -- Rename DB-side audit logging functions to the PH-OS runtime namespace.
--- Historical migrations keep the old function names; this forward migration
--- moves live trigger dependencies to ph_os_* functions before dropping legacy
--- careviax_* functions.
+-- This forward migration makes live trigger dependencies use ph_os_* functions.
 
 CREATE OR REPLACE FUNCTION ph_os_to_snake_case(input_text TEXT)
 RETURNS TEXT
@@ -171,7 +169,3 @@ DROP TRIGGER IF EXISTS audit_log_set_audit ON "SetAudit";
 CREATE TRIGGER audit_log_set_audit
 AFTER INSERT OR UPDATE OR DELETE ON "SetAudit"
 FOR EACH ROW EXECUTE FUNCTION ph_os_write_audit_log();
-
-DROP FUNCTION IF EXISTS careviax_write_audit_log();
-DROP FUNCTION IF EXISTS careviax_generate_audit_log_id();
-DROP FUNCTION IF EXISTS careviax_to_snake_case(TEXT);

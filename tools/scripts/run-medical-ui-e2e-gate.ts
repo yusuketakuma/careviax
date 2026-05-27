@@ -7,8 +7,8 @@ const STARTUP_TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_MS = 500;
 const E2E_ENV = {
   ...process.env,
-  DATABASE_URL: 'postgresql://ph-os:ph-os@localhost:5433/ph-os_e2e?schema=public',
-  DIRECT_URL: 'postgresql://ph-os:ph-os@localhost:5433/ph-os_e2e?schema=public',
+  DATABASE_URL: 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public',
+  DIRECT_URL: 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public',
   PLAYWRIGHT: '1',
   AUTH_SECRET: 'ph-os-local-auth-secret',
   NEXTAUTH_SECRET: 'ph-os-local-auth-secret',

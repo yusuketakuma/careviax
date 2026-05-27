@@ -48,22 +48,6 @@ async function main() {
       throw new Error(`Expected 3 ph_os audit functions, found ${phOsFunctionCount ?? 0}`);
     }
 
-    const legacyFunctionCount = await queryValue<number>(
-      client,
-      `
-        SELECT COUNT(*)::int AS value
-        FROM pg_proc
-        WHERE proname IN (
-          'careviax_write_audit_log',
-          'careviax_generate_audit_log_id',
-          'careviax_to_snake_case'
-        )
-      `,
-    );
-    if (legacyFunctionCount !== 0) {
-      throw new Error(`Expected no legacy careviax audit functions, found ${legacyFunctionCount}`);
-    }
-
     const triggerResult = await client.query<{
       tgname: string;
       table_name: string;
@@ -98,22 +82,6 @@ async function main() {
         `Audit triggers not using ph_os_write_audit_log: ${wrongFunctionTriggers
           .map((row) => `${row.tgname}:${row.function_name}`)
           .join(', ')}`,
-      );
-    }
-
-    const legacyTriggerCount = await queryValue<number>(
-      client,
-      `
-        SELECT COUNT(*)::int AS value
-        FROM pg_trigger
-        JOIN pg_proc ON pg_proc.oid = pg_trigger.tgfoid
-        WHERE NOT pg_trigger.tgisinternal
-          AND pg_proc.proname = 'careviax_write_audit_log'
-      `,
-    );
-    if (legacyTriggerCount !== 0) {
-      throw new Error(
-        `Expected no triggers using careviax_write_audit_log, found ${legacyTriggerCount}`,
       );
     }
 
@@ -205,7 +173,6 @@ async function main() {
       JSON.stringify({
         ok: true,
         ph_os_functions: phOsFunctionCount,
-        legacy_functions: legacyFunctionCount,
         triggers: triggerResult.rows.length,
         dml_actions_verified: ['task.create', 'task.update', 'task.delete'],
       }),

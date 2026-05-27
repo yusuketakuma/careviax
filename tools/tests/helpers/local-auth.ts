@@ -5,7 +5,7 @@ import { Client } from 'pg';
 export const AUTH_SECRET = 'ph-os-local-auth-secret';
 const DB_CONNECTION_STRING = (
   process.env.DATABASE_URL ??
-  'postgresql://ph-os:ph-os@localhost:5433/ph-os_e2e?schema=public'
+  'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public'
 ).replace(/\?.*$/, '');
 const NOTIFICATION_STREAM_PATH = '/api/notifications/stream';
 let cachedLocalUserId: string | null = null;
@@ -25,8 +25,8 @@ function assertSafeE2eDatabase() {
   const url = new URL(DB_CONNECTION_STRING);
   const databaseName = url.pathname.replace(/^\//, '');
   const isLocalHost = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
-  if (!isLocalHost || databaseName !== 'ph-os_e2e') {
-    throw new Error('Playwright local auth requires a local ph-os_e2e DATABASE_URL');
+  if (!isLocalHost || databaseName !== 'ph_os_e2e') {
+    throw new Error('Playwright local auth requires a local ph_os_e2e DATABASE_URL');
   }
 }
 

@@ -22,7 +22,7 @@
 
 ### Seed verification status
 
-- Verification DB: `ph-os_seed_check`
+- Verification DB: `ph_os_seed_check`
 - Migration on empty DB: passed with `pnpm prisma migrate deploy`
 - Seed on empty DB: passed with `pnpm prisma db seed`
 - Public tables checked: `76`
@@ -148,6 +148,6 @@
 
 - `pnpm exec eslint prisma/seed.ts`
 - `pnpm exec tsc --noEmit`
-- `DATABASE_URL='postgresql://ph-os:ph-os@localhost:5433/ph-os_seed_check?schema=public' DIRECT_URL='postgresql://ph-os:ph-os@localhost:5433/ph-os_seed_check?schema=public' pnpm prisma migrate deploy`
-- `DATABASE_URL='postgresql://ph-os:ph-os@localhost:5433/ph-os_seed_check?schema=public' DIRECT_URL='postgresql://ph-os:ph-os@localhost:5433/ph-os_seed_check?schema=public' pnpm prisma db seed`
-- `docker exec ph-os-db sh -lc "psql -U ph-os -d ph-os_seed_check -At <<'SQL' ... \\gexec SQL"`
+- `DATABASE_URL='postgresql://ph_os:ph_os@localhost:5433/ph_os_seed_check?schema=public' DIRECT_URL='postgresql://ph_os:ph_os@localhost:5433/ph_os_seed_check?schema=public' pnpm prisma migrate deploy`
+- `DATABASE_URL='postgresql://ph_os:ph_os@localhost:5433/ph_os_seed_check?schema=public' DIRECT_URL='postgresql://ph_os:ph_os@localhost:5433/ph_os_seed_check?schema=public' pnpm prisma db seed`
+- `docker exec ph-os-db sh -lc "psql -U ph-os -d ph_os_seed_check -At <<'SQL' ... \\gexec SQL"`

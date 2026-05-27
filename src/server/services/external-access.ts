@@ -334,7 +334,6 @@ async function verifyExternalAccessOtp(otp: string, storedHash: string) {
 }
 
 const EXTERNAL_ACCESS_TOKEN_SALT = 'ph-os-external-access';
-const LEGACY_EXTERNAL_ACCESS_TOKEN_SALTS = ['careviax-external-access'] as const;
 
 type ExternalAccessTokenPayload = {
   grant_id: string;
@@ -398,23 +397,20 @@ async function decodeExternalAccessToken(token: string) {
   } catch {
     return null;
   }
-  const salts = [EXTERNAL_ACCESS_TOKEN_SALT, ...LEGACY_EXTERNAL_ACCESS_TOKEN_SALTS];
 
-  for (const salt of salts) {
-    let payload: Awaited<ReturnType<typeof decode>> | null = null;
-    try {
-      payload = await decode({
-        token,
-        secret,
-        salt,
-      });
-    } catch {
-      continue;
-    }
+  let payload: Awaited<ReturnType<typeof decode>> | null = null;
+  try {
+    payload = await decode({
+      token,
+      secret,
+      salt: EXTERNAL_ACCESS_TOKEN_SALT,
+    });
+  } catch {
+    return null;
+  }
 
-    if (payload && isExternalAccessTokenPayload(payload as Record<string, unknown>)) {
-      return payload as Record<string, unknown> & ExternalAccessTokenPayload;
-    }
+  if (payload && isExternalAccessTokenPayload(payload as Record<string, unknown>)) {
+    return payload as Record<string, unknown> & ExternalAccessTokenPayload;
   }
 
   return null;

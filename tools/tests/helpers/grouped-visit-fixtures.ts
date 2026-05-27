@@ -2,7 +2,7 @@ import { Client } from 'pg';
 
 const DB_CONNECTION_STRING = (
   process.env.DATABASE_URL ??
-  'postgresql://ph-os:ph-os@localhost:5433/ph-os_e2e?schema=public'
+  'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public'
 ).replace(/\?.*$/, '');
 
 export const GROUPED_VISIT_IDS = {
@@ -28,8 +28,8 @@ function assertSafeE2eDatabase() {
   const allowedHosts = new Set(['localhost', '127.0.0.1', '::1']);
   const databaseName = url.pathname.replace(/^\//, '');
 
-  if (!allowedHosts.has(url.hostname) || databaseName !== 'ph-os_e2e') {
-    throw new Error('Grouped visit fixtures can only run against local ph-os_e2e');
+  if (!allowedHosts.has(url.hostname) || databaseName !== 'ph_os_e2e') {
+    throw new Error('Grouped visit fixtures can only run against local ph_os_e2e');
   }
 }
 

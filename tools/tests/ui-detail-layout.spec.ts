@@ -4,7 +4,7 @@ import { attachLocalSession, createInstrumentedPage, waitForStableUi } from './h
 
 const DB_CONNECTION_STRING = (
   process.env.DATABASE_URL ??
-  'postgresql://ph-os:ph-os@localhost:5433/ph-os_e2e?schema=public'
+  'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public'
 ).replace(/\?.*$/, '');
 
 const VISIT_WORKFLOW_IDS = {
@@ -28,9 +28,9 @@ function assertSafeE2eDatabase() {
   const databaseName = url.pathname.replace(/^\//, '');
   if (
     !['localhost', '127.0.0.1', '::1'].includes(url.hostname) ||
-    databaseName !== 'ph-os_e2e'
+    databaseName !== 'ph_os_e2e'
   ) {
-    throw new Error('Visit workflow fixtures can only run against local ph-os_e2e');
+    throw new Error('Visit workflow fixtures can only run against local ph_os_e2e');
   }
 }
 

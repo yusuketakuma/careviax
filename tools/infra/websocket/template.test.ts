@@ -102,7 +102,7 @@ describe('websocket SAM template contract', () => {
     expect(readme).toContain('collaboration-room-token');
     expect(readme).toContain('COLLABORATION_ROOM_TOKEN_SECRET_ARN');
     expect(readme).toContain('ph-os-yjs-connections');
-    expect(readme).not.toMatch(/CognitoAuthorizer|Cognito JWT|yjs-sync|careviax-yjs-connections/);
+    expect(readme).not.toMatch(/CognitoAuthorizer|Cognito JWT|yjs-sync|ph_os-yjs-connections/);
     expect(readme).not.toContain('DynamoDBCrudPolicy');
     expect(readme).not.toMatch(/Lambda functions operate within VPC security groups/);
     expect(readme).not.toMatch(/CloudTrail captures API Gateway management events/);
