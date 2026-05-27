@@ -48,6 +48,14 @@ vi.mock('@tanstack/react-query', () => ({
             rows: [],
             total_count: 0,
           },
+          master_change_report: {
+            cutoff: '2026-04-01T00:00:00.000Z',
+            total_count: 0,
+            sampled_count: 0,
+            is_truncated: false,
+            change_type_counts: [],
+            rows: [],
+          },
           samples: {
             review_due: [],
             missing_reorder_point: [],
@@ -164,6 +172,7 @@ describe('DrugMasterContent', () => {
 
     expect(screen.getByText('採用薬リスト運用')).toBeTruthy();
     expect(screen.getByText('影響レビューキュー')).toBeTruthy();
+    expect(screen.getByText('薬価改定差分レポート')).toBeTruthy();
     expect(screen.getByLabelText('CSV一括登録')).toBeTruthy();
     expect(screen.getByRole('button', { name: /差分確認/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /一括登録/ })).toBeTruthy();

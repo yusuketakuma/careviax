@@ -60,6 +60,8 @@ const stockImpactSelect = {
   },
 } satisfies Prisma.PharmacyDrugStockSelect;
 
+const CHANGE_REPORT_LIMIT = 50;
+
 export const GET = withAuthContext(
   async (req: NextRequest, authCtx) => {
     const parsed = parseSearchParams(impactQuerySchema, new URL(req.url).searchParams);
@@ -167,6 +169,7 @@ export const GET = withAuthContext(
       actionRequiredCount,
       recentMasterChangeCount,
       selectedQueueRows,
+      masterChangeReportRows,
       reviewDueSample,
       missingReorderPointSample,
       safetyFlaggedSample,
@@ -185,6 +188,12 @@ export const GET = withAuthContext(
         where: queueWhereByKey[parsed.data.queue],
         orderBy: queueOrderBy,
         take: parsed.data.queue_limit,
+        select: stockImpactSelect,
+      }),
+      prisma.pharmacyDrugStock.findMany({
+        where: recentlyChangedWhere,
+        orderBy: queueOrderBy,
+        take: CHANGE_REPORT_LIMIT,
         select: stockImpactSelect,
       }),
       prisma.pharmacyDrugStock.findMany({
@@ -225,7 +234,9 @@ export const GET = withAuthContext(
       }),
     ]);
     const adoptedChangedYjCodes = new Set(
-      [...selectedQueueRows, ...recentlyChangedSample].map((stock) => stock.drug_master.yj_code),
+      [...selectedQueueRows, ...recentlyChangedSample, ...masterChangeReportRows].map(
+        (stock) => stock.drug_master.yj_code,
+      ),
     );
     const recentChanges =
       adoptedChangedYjCodes.size > 0
@@ -247,6 +258,14 @@ export const GET = withAuthContext(
             },
           })
         : [];
+    const recentChangesByYjCode = new Map<string, typeof recentChanges>();
+    const changeTypeCounts = new Map<string, number>();
+    for (const change of recentChanges) {
+      const changes = recentChangesByYjCode.get(change.yj_code) ?? [];
+      changes.push(change);
+      recentChangesByYjCode.set(change.yj_code, changes);
+      changeTypeCounts.set(change.change_type, (changeTypeCounts.get(change.change_type) ?? 0) + 1);
+    }
 
     return success({
       site,
@@ -275,6 +294,19 @@ export const GET = withAuthContext(
         transitional_expiry_count: transitionalExpiryCount,
         action_required_count: actionRequiredCount,
         recent_master_change_count: recentMasterChangeCount,
+      },
+      master_change_report: {
+        cutoff: recentChangeCutoff.toISOString(),
+        total_count: recentMasterChangeCount,
+        sampled_count: masterChangeReportRows.length,
+        is_truncated: recentMasterChangeCount > masterChangeReportRows.length,
+        change_type_counts: [...changeTypeCounts.entries()]
+          .map(([change_type, count]) => ({ change_type, count }))
+          .sort((a, b) => b.count - a.count || a.change_type.localeCompare(b.change_type)),
+        rows: masterChangeReportRows.map((stock) => ({
+          stock,
+          changes: recentChangesByYjCode.get(stock.drug_master.yj_code) ?? [],
+        })),
       },
       recent_changes: recentChanges,
       samples: {

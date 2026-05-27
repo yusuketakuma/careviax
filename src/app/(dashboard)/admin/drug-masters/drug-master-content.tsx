@@ -177,15 +177,17 @@ type FormularyStockSummaryRow = PharmacyDrugStockConfig & {
   };
 };
 
-type FormularyImpactResponse = {
-  recent_changes: Array<{
+type FormularyRecentChange = {
     id: string;
     yj_code: string;
     change_type: string;
     previous_value: unknown;
     current_value: unknown;
     created_at: string;
-  }>;
+};
+
+type FormularyImpactResponse = {
+  recent_changes: FormularyRecentChange[];
   totals: {
     stocked_count: number;
     review_due_count: number;
@@ -199,6 +201,17 @@ type FormularyImpactResponse = {
     key: ImpactQueueKey;
     rows: FormularyStockSummaryRow[];
     total_count: number;
+  };
+  master_change_report?: {
+    cutoff: string;
+    total_count: number;
+    sampled_count: number;
+    is_truncated: boolean;
+    change_type_counts: Array<{ change_type: string; count: number }>;
+    rows: Array<{
+      stock: FormularyStockSummaryRow;
+      changes: FormularyRecentChange[];
+    }>;
   };
   samples: {
     review_due: FormularyStockSummaryRow[];
@@ -1089,6 +1102,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     formularyImpact?.selected_queue.key === impactQueue
       ? formularyImpact.selected_queue.rows
       : (formularyImpact?.samples[impactQueue] ?? []);
+  const masterChangeReport = formularyImpact?.master_change_report ?? null;
   const impactQueueTotalCount =
     formularyImpact?.selected_queue.key === impactQueue
       ? formularyImpact.selected_queue.total_count
@@ -1171,6 +1185,16 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
         return '無効';
       default:
         return '変更なし';
+    }
+  };
+  const masterChangeTypeLabel = (changeType: string) => {
+    switch (changeType) {
+      case 'price_changed':
+        return '薬価変更';
+      case 'transitional_expiry_changed':
+        return '経過措置変更';
+      default:
+        return changeType;
     }
   };
 
@@ -1389,6 +1413,71 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                 )}
               </div>
             </div>
+            {masterChangeReport && (
+              <div className="rounded-md border border-border/60 bg-muted/20 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <History className="size-4" aria-hidden="true" />
+                    薬価改定差分レポート
+                  </h2>
+                  <Badge variant={masterChangeReport.total_count > 0 ? 'secondary' : 'outline'}>
+                    採用品差分 {masterChangeReport.total_count.toLocaleString()}件
+                  </Badge>
+                </div>
+                <div className="mt-3 grid gap-2 md:grid-cols-3">
+                  {masterChangeReport.change_type_counts.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      直近30日のMHLW薬価マスター差分に該当する採用品はありません。
+                    </p>
+                  ) : (
+                    masterChangeReport.change_type_counts.slice(0, 3).map((item) => (
+                      <div
+                        key={item.change_type}
+                        className="rounded-md border border-border/60 bg-background px-3 py-2"
+                      >
+                        <p className="text-xs text-muted-foreground">
+                          {masterChangeTypeLabel(item.change_type)}
+                        </p>
+                        <p className="text-lg font-semibold tabular-nums">
+                          {item.count.toLocaleString()}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+                {masterChangeReport.rows.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {masterChangeReport.rows.slice(0, 5).map((row) => (
+                      <button
+                        key={row.stock.id}
+                        type="button"
+                        className="w-full rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
+                        onClick={() => {
+                          setSelectedDrugId(row.stock.drug_master_id);
+                          setPreferredGenericId(null);
+                        }}
+                      >
+                        <span className="block text-sm font-medium text-foreground">
+                          {row.stock.drug_master.drug_name}
+                        </span>
+                        <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <span className="font-mono">{row.stock.drug_master.yj_code}</span>
+                          {row.stock.drug_master.drug_price != null && (
+                            <span>
+                              ¥{Number(row.stock.drug_master.drug_price).toFixed(1)}/
+                              {row.stock.drug_master.unit ?? ''}
+                            </span>
+                          )}
+                          {row.changes.slice(0, 2).map((change) => (
+                            <span key={change.id}>{masterChangeTypeLabel(change.change_type)}</span>
+                          ))}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
               <label className="space-y-1">
                 <span className="text-xs font-medium text-muted-foreground">

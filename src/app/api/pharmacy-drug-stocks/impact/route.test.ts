@@ -82,6 +82,7 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
       .mockResolvedValueOnce(0);
     prismaMock.pharmacyDrugStock.findMany
       .mockResolvedValueOnce([stock])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([stock])
       .mockResolvedValueOnce([stock])
       .mockResolvedValueOnce([stock])
@@ -110,6 +111,12 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
         transitional_expiry_count: 1,
         action_required_count: 1,
         recent_master_change_count: 0,
+      },
+      master_change_report: {
+        total_count: 0,
+        sampled_count: 0,
+        is_truncated: false,
+        change_type_counts: [],
       },
     });
   });
@@ -168,6 +175,7 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
       .mockResolvedValueOnce(1);
     prismaMock.pharmacyDrugStock.findMany
       .mockResolvedValueOnce([changedStock])
+      .mockResolvedValueOnce([changedStock])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
@@ -206,6 +214,18 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
           change_type: 'price_changed',
         },
       ],
+      master_change_report: {
+        total_count: 1,
+        sampled_count: 1,
+        is_truncated: false,
+        change_type_counts: [{ change_type: 'price_changed', count: 1 }],
+        rows: [
+          {
+            stock: { id: 'stock_changed' },
+            changes: [{ yj_code: '123456789012', change_type: 'price_changed' }],
+          },
+        ],
+      },
     });
   });
 
@@ -250,6 +270,7 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
       .mockResolvedValueOnce(0);
     prismaMock.pharmacyDrugStock.findMany
       .mockResolvedValueOnce(stocks)
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce(stocks.slice(0, 10))
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
