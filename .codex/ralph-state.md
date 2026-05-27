@@ -2203,3 +2203,16 @@ Backup directory:
 - validation results: targeted Vitest passed with 2 files / 5 tests; targeted ESLint passed; TypeScript passed; whitespace check passed; local DB has 5 adopted demo stocks and 1 recent change event for a sample adopted YJ code
 - remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include browser/E2E verification, richer action queue filters, scheduled import history/audit UX, and clinical safety enrichment
 - next action: commit this drill-down/freshness slice, then continue with Playwright/browser verification or scheduled import UX hardening
+
+### 20260527-213700
+
+- current task: make formulary impact queue server-selectable with bounded row return
+- files inspected: `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, related tests
+- files changed: `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: UI queue switching still depended on precomputed 10-row samples instead of requesting the selected queue with an explicit limit
+- security risks found: no additional exposure; queue rows remain derived from org/site-scoped adopted stock lookup
+- performance issues found: added `queue_limit` max 100 and UI requests 25 rows for the active queue only; no extra request per row
+- validation commands: targeted Vitest for impact route and formulary UI tests; targeted ESLint for changed impact/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`; local Prisma/tsx count for action-required candidate and follow-up rows
+- validation results: targeted Vitest passed with 2 files / 5 tests; targeted ESLint passed; TypeScript passed; whitespace check passed; local DB reports one demo action-required/follow-up candidate
+- remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include browser/E2E verification, scheduled import history/audit UX, clinical safety enrichment, and final completion audit
+- next action: commit this queue selection slice, then continue with browser/E2E verification or import history UX
