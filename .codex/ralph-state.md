@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260528-002650
+
+- current task: reject oversized formulary CSV imports instead of silently truncating rows
+- files inspected: `git status --short`, `git log --oneline`, `.codex/ralph-state.md`, `src/app/api/pharmacy-drug-stocks/bulk/route.ts`, `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`
+- files changed: `src/app/api/pharmacy-drug-stocks/bulk/route.ts`, `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: CSV and JSON row inputs were merged and then sliced to 1000 rows, so rows beyond the limit could be silently ignored while the operator believed the full adopted-drug list was processed
+- security risks found: no authorization boundary changed; oversize rejection occurs after same-org site validation and before drug-master lookup, stock reads, writes, or audit writes
+- performance issues found: oversized payloads now stop before batched drug lookups and stock queries instead of doing partial processing
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`; targeted ESLint for bulk route files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 1 file / 8 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice prevents silent truncation but does not add multi-file import batching
+- next action: commit the oversized CSV guard and continue the next high-value formulary/drug-master improvement
+
 ### 20260528-002410
 
 - current task: add expand/collapse control for formulary CSV preview rows
