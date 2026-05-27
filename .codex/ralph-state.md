@@ -2164,3 +2164,16 @@ Backup directory:
 - validation results: targeted Vitest passed with 2 files / 5 tests; targeted ESLint passed; TypeScript passed; whitespace check passed; local demo DB returned an adopted target with 3 same-generic candidates sorted by price
 - remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include action-state workflow for discontinuation/経過措置 handling, browser E2E verification of the formulary screen, scheduled freshness controls, and richer import diff surfacing
 - next action: commit this recommendation slice, then continue with formulary action-state workflow for 経過措置 and master-change follow-up
+
+### 20260527-212610
+
+- current task: add formulary follow-up state for master-change and transitional-expiry actions
+- files inspected: `prisma/schema/drug.prisma`, `src/app/api/pharmacy-drug-stocks/route.ts`, `src/app/api/drug-masters/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, related tests
+- files changed: `prisma/schema/drug.prisma`, `prisma/migrations/20260527212500_add_formulary_follow_up_status/migration.sql`, `src/app/api/pharmacy-drug-stocks/route.ts`, `src/app/api/drug-masters/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: 経過措置期限接近やマスター変更の影響を見つけても、採用品ごとに「要確認」「切替予定」「経過観察」「対応済み」を永続化できなかった
+- security risks found: follow-up state is updated only through the existing admin-only stock upsert path after org/site validation, and is exposed only with site-scoped stock configuration
+- performance issues found: added `follow_up_status` index for operational queues; impact API includes action-required counts without broadening beyond the existing 500 adopted-stock cap
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prisma format --schema=prisma/schema`; `pnpm --config.verify-deps-before-run=false exec prisma generate`; `pnpm --config.verify-deps-before-run=false exec prisma db push`; targeted Vitest for pharmacy stock, impact, and formulary UI tests; targeted ESLint for changed stock/impact/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`; local Prisma/tsx update of one demo adopted stock to `monitoring`
+- validation results: Prisma schema formatted/generated and local DB synced; targeted Vitest passed with 3 files / 7 tests; targeted ESLint passed; TypeScript passed; whitespace check passed; demo DB has 1 adopted stock with follow-up status
+- remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include browser E2E verification, scheduled freshness controls, import diff surfacing with previous-price snapshots, stronger action queues, and broader clinical safety master enrichment
+- next action: commit this follow-up slice, then continue with browser verification and import diff/freshness controls
