@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-221220
+
+- current task: harden preferred-generic validation for individual adopted-drug stock settings
+- files inspected: `git status --short`, `src/app/api/pharmacy-drug-stocks/route.ts`, `src/app/api/pharmacy-drug-stocks/route.test.ts`, related generic recommendation and bulk import references
+- files changed: `src/app/api/pharmacy-drug-stocks/route.ts`, `src/app/api/pharmacy-drug-stocks/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: individual stock upsert accepted a missing `preferred_generic_id` as if no preferred generic had been requested, silently saving `null`; it also allowed the target drug itself to be submitted as the preferred generic when the target was generic
+- security risks found: no authorization boundary changed; reduced unsafe formulary substitution configuration by rejecting invalid preferred-generic settings before mutation and audit side effects
+- performance issues found: none; validation reuses the existing preferred generic lookup
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec eslint src/app/api/pharmacy-drug-stocks/route.ts src/app/api/pharmacy-drug-stocks/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 1 file / 4 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice hardens individual stock preference validation only
+- next action: commit the preferred-generic validation fix and continue the next high-value formulary/drug-master item
+
 ### 20260527-220940
 
 - current task: add safety and contract coverage for adopted-drug CSV export
