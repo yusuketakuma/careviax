@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-224325
+
+- current task: add per-drug formulary change history from audit logs
+- files inspected: `git status --short`, `prisma/schema/admin.prisma`, `src/app/api/pharmacy-drug-stocks/route.ts`, `src/app/api/pharmacy-drug-stocks/review/route.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `docs/ui-ux-design-guidelines.md`, Next.js route handler docs
+- files changed: `src/app/api/pharmacy-drug-stocks/history/route.ts`, `src/app/api/pharmacy-drug-stocks/history/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found:採用品の作成・更新・CSV反映・レビューは監査ログに残っていたが、薬剤詳細から対象薬の履歴を直接確認できず、運用上の変更経緯を追うには全体監査ログを手作業で探す必要があった
+- security risks found: history API validates the selected site belongs to the authenticated org and only returns logs for that site's stock row or matching site-level review events
+- performance issues found: history lookup is bounded by `limit`, and site-level review logs are over-fetched by a small bounded multiplier before filtering to the target drug
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/history/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for changed history API/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 2 files / 7 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice adds per-drug formulary history only
+- next action: commit the history slice and continue the next high-value formulary/drug-master item
+
 ### 20260527-223742
 
 - current task: add adopted-drug-only MHLW master change report to the formulary impact dashboard
