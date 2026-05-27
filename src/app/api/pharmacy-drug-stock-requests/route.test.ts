@@ -8,7 +8,7 @@ const { authMock, prismaMock } = vi.hoisted(() => ({
     pharmacySite: { findFirst: vi.fn() },
     drugMaster: { findFirst: vi.fn() },
     pharmacyDrugStock: { findFirst: vi.fn() },
-    formularyChangeRequest: { create: vi.fn(), findMany: vi.fn() },
+    formularyChangeRequest: { count: vi.fn(), create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn() },
     auditLog: { create: vi.fn() },
     $transaction: vi.fn(),
   },
@@ -57,6 +57,8 @@ describe('/api/pharmacy-drug-stock-requests', () => {
       id: 'request_1',
       status: 'pending',
     });
+    prismaMock.formularyChangeRequest.count.mockResolvedValue(0);
+    prismaMock.formularyChangeRequest.findFirst.mockResolvedValue(null);
     prismaMock.auditLog.create.mockResolvedValue({ id: 'audit_1' });
   });
 
@@ -109,9 +111,13 @@ describe('/api/pharmacy-drug-stock-requests', () => {
     prismaMock.formularyChangeRequest.findMany.mockResolvedValue([
       { id: 'request_1', status: 'pending' },
     ]);
+    prismaMock.formularyChangeRequest.count.mockResolvedValueOnce(3).mockResolvedValueOnce(1);
+    prismaMock.formularyChangeRequest.findFirst.mockResolvedValue({
+      created_at: new Date('2026-05-10T00:00:00.000Z'),
+    });
 
     const response = await GET(
-      createRequest('http://localhost/api/pharmacy-drug-stock-requests?site_id=site_1'),
+      createRequest('http://localhost/api/pharmacy-drug-stock-requests?site_id=site_1&overdue_days=7'),
       { params: Promise.resolve({}) },
     );
 
@@ -119,10 +125,29 @@ describe('/api/pharmacy-drug-stock-requests', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'request_1', status: 'pending' }],
+      summary: {
+        status: 'pending',
+        total_count: 3,
+        overdue_count: 1,
+        overdue_days: 7,
+        oldest_pending_created_at: '2026-05-10T00:00:00.000Z',
+        notification_level: 'overdue',
+      },
     });
     expect(prismaMock.formularyChangeRequest.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ org_id: 'org_1', site_id: 'site_1', status: 'pending' }),
+      }),
+    );
+    expect(prismaMock.formularyChangeRequest.count).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          site_id: 'site_1',
+          status: 'pending',
+          created_at: expect.objectContaining({ lt: expect.any(Date) }),
+        }),
       }),
     );
   });

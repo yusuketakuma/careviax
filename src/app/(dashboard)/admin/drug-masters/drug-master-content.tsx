@@ -410,6 +410,18 @@ type FormularyChangeRequestItem = {
   created_at: string;
 };
 
+type FormularyChangeRequestListResponse = {
+  data: FormularyChangeRequestItem[];
+  summary: {
+    status: 'pending' | 'approved' | 'rejected';
+    total_count: number;
+    overdue_count: number;
+    overdue_days: number;
+    oldest_pending_created_at: string | null;
+    notification_level: 'clear' | 'pending' | 'overdue';
+  };
+};
+
 type ImpactQueueKey =
   | 'action_required'
   | 'recently_changed'
@@ -881,13 +893,14 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       const params = new URLSearchParams({
         site_id: effectiveSelectedSiteId,
         status: 'pending',
+        overdue_days: '7',
         limit: '50',
       });
       const res = await fetch(`/api/pharmacy-drug-stock-requests?${params}`, {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('採用品変更申請の取得に失敗しました');
-      return res.json() as Promise<{ data: FormularyChangeRequestItem[] }>;
+      return res.json() as Promise<FormularyChangeRequestListResponse>;
     },
     enabled: variant === 'formulary' && !!orgId && !!effectiveSelectedSiteId,
     staleTime: 60_000,
@@ -1448,6 +1461,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const formularyImpact = formularyImpactQuery.data;
   const formularyUsageMismatch = formularyUsageMismatchQuery.data;
   const pendingFormularyRequests = formularyRequestsQuery.data?.data ?? [];
+  const formularyRequestSummary = formularyRequestsQuery.data?.summary;
   const safetyReviewCount = reviewDueStocks.filter(
     (stock) =>
       stock.drug_master.is_high_risk ||
@@ -1779,10 +1793,48 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   <ClipboardCheck className="size-4" aria-hidden="true" />
                   採用品変更申請
                 </h2>
-                <Badge variant={pendingFormularyRequests.length > 0 ? 'secondary' : 'outline'}>
-                  未承認 {pendingFormularyRequests.length.toLocaleString()}件
+                <Badge
+                  variant={
+                    (formularyRequestSummary?.overdue_count ?? 0) > 0
+                      ? 'destructive'
+                      : pendingFormularyRequests.length > 0
+                        ? 'secondary'
+                        : 'outline'
+                  }
+                >
+                  未承認{' '}
+                  {(
+                    formularyRequestSummary?.total_count ?? pendingFormularyRequests.length
+                  ).toLocaleString()}
+                  件
                 </Badge>
               </div>
+              {formularyRequestSummary && formularyRequestSummary.total_count > 0 && (
+                <div className="mt-3 grid gap-2 md:grid-cols-3">
+                  <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+                    <p className="text-xs text-muted-foreground">未承認</p>
+                    <p className="mt-1 text-lg font-semibold tabular-nums">
+                      {formularyRequestSummary.total_count.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+                    <p className="text-xs text-muted-foreground">7日超過</p>
+                    <p className="mt-1 text-lg font-semibold tabular-nums">
+                      {formularyRequestSummary.overdue_count.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+                    <p className="text-xs text-muted-foreground">最古申請</p>
+                    <p className="mt-1 text-sm font-medium">
+                      {formularyRequestSummary.oldest_pending_created_at
+                        ? new Date(
+                            formularyRequestSummary.oldest_pending_created_at,
+                          ).toLocaleDateString('ja-JP')
+                        : '—'}
+                    </p>
+                  </div>
+                </div>
+              )}
               <div className="mt-3 space-y-2">
                 {pendingFormularyRequests.length === 0 ? (
                   <p className="text-sm text-muted-foreground">未承認の変更申請はありません。</p>

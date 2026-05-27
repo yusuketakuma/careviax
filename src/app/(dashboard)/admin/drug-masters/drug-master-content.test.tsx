@@ -44,7 +44,22 @@ vi.mock('@tanstack/react-query', () => ({
       return { data: { data: [] }, isLoading: false };
     }
     if (key === 'pharmacy-drug-stock-requests') {
-      return { data: { data: pendingRequestsMock() }, isLoading: false };
+      const requests = pendingRequestsMock();
+      return {
+        data: {
+          data: requests,
+          summary: {
+            status: 'pending',
+            total_count: requests.length,
+            overdue_count: requests.length > 0 ? 1 : 0,
+            overdue_days: 7,
+            oldest_pending_created_at:
+              requests.length > 0 ? '2026-05-20T00:00:00.000Z' : null,
+            notification_level: requests.length > 0 ? 'overdue' : 'clear',
+          },
+        },
+        isLoading: false,
+      };
     }
     if (key === 'pharmacy-drug-stock-usage-mismatch') {
       return {
@@ -297,6 +312,8 @@ describe('DrugMasterContent', () => {
     render(<DrugMasterContent variant="formulary" />);
 
     expect(screen.getByText('未承認 1件')).toBeTruthy();
+    expect(screen.getByText('7日超過')).toBeTruthy();
+    expect(screen.getByText('最古申請')).toBeTruthy();
     expect(screen.getByText('採用追加')).toBeTruthy();
     expect(screen.getByRole('button', { name: '承認' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '却下' })).toBeTruthy();

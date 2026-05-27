@@ -9,6 +9,7 @@ const requestQuerySchema = z.object({
   site_id: z.string().trim().min(1).optional(),
   drug_master_id: z.string().trim().min(1).optional(),
   status: z.enum(['pending', 'approved', 'rejected']).default('pending'),
+  overdue_days: z.coerce.number().int().min(1).max(90).default(7),
   limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
@@ -40,18 +41,52 @@ export const GET = withAuthContext(
       if (!site) return notFound('対象の薬局拠点が見つかりません');
     }
 
-    const requests = await prisma.formularyChangeRequest.findMany({
-      where: {
-        org_id: authCtx.orgId,
-        status: parsed.data.status,
-        ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
-        ...(parsed.data.drug_master_id ? { drug_master_id: parsed.data.drug_master_id } : {}),
-      },
-      orderBy: [{ created_at: 'desc' }],
-      take: parsed.data.limit,
-    });
+    const baseWhere = {
+      org_id: authCtx.orgId,
+      status: parsed.data.status,
+      ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
+      ...(parsed.data.drug_master_id ? { drug_master_id: parsed.data.drug_master_id } : {}),
+    };
+    const overdueCutoff = new Date();
+    overdueCutoff.setDate(overdueCutoff.getDate() - parsed.data.overdue_days);
+    const [requests, totalCount, overdueCount, oldestPending] = await Promise.all([
+      prisma.formularyChangeRequest.findMany({
+        where: baseWhere,
+        orderBy: [{ created_at: 'desc' }],
+        take: parsed.data.limit,
+      }),
+      prisma.formularyChangeRequest.count({
+        where: baseWhere,
+      }),
+      parsed.data.status === 'pending'
+        ? prisma.formularyChangeRequest.count({
+            where: {
+              ...baseWhere,
+              created_at: { lt: overdueCutoff },
+            },
+          })
+        : Promise.resolve(0),
+      parsed.data.status === 'pending'
+        ? prisma.formularyChangeRequest.findFirst({
+            where: baseWhere,
+            orderBy: [{ created_at: 'asc' }],
+            select: { created_at: true },
+          })
+        : Promise.resolve(null),
+    ]);
 
-    return success({ data: requests });
+    return success({
+      data: requests,
+      summary: {
+        status: parsed.data.status,
+        total_count: totalCount,
+        overdue_count: overdueCount,
+        overdue_days: parsed.data.overdue_days,
+        oldest_pending_created_at: oldestPending?.created_at?.toISOString() ?? null,
+        notification_level:
+          overdueCount > 0 ? 'overdue' : totalCount > 0 ? 'pending' : 'clear',
+      },
+    });
   },
   { permission: 'canAdmin' },
 );
