@@ -2138,3 +2138,16 @@ Backup directory:
 - validation results: Prisma client generated; local PostgreSQL schema synced; targeted Vitest passed with 3 files / 7 tests; targeted ESLint passed; TypeScript passed; whitespace check passed; local demo DB has 5 adopted stocks, 5 reviewed stocks, and 5 reorder-point-configured stocks for `cmnhseedorg0000amq9ph-os`
 - remaining work: the 20-item drug master/formulary upgrade goal is still active. Remaining high-ROI items include richer formulary diff against latest MHLW import, preferred generic recommendation UI, discontinuation/経過措置 warning workflow, master freshness scheduled job controls, advanced duplicate/LASA review queues, and broader end-to-end browser verification
 - next action: continue with MHLW差分レビュー and 経過措置/採用薬影響リスト, then add stronger UI/browser verification for formulary workflows
+
+### 20260527-211730
+
+- current task: add formulary impact review for latest master changes and operational risk queues
+- files inspected: `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `src/app/api/pharmacy-drug-stocks/route.ts`, route handler docs already read this turn
+- files changed: `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: 採用薬に対してレビュー期限超過、発注点未設定、安全属性、経過措置期限接近をまとめて返すAPIがなく、UI側で複数の部分的な一覧から判断していた
+- security risks found: impact APIはorg/siteスコープで拠点存在確認を行い、最大500件に制限して返却; cross-site/tenant採用薬の参照を防ぐ
+- performance issues found: 影響レビューは採用品のみ最大500件に限定し、必要なDrugMaster項目だけselectする
+- validation commands: targeted `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/impact/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for impact route and formulary UI/test; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed with 2 files / 5 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include richer browser verification, preferred generic recommendation workflow, discontinuation/経過措置 action states, scheduled import freshness control, and broader E2E coverage
+- next action: commit this impact-review slice, then continue with preferred generic recommendation and action-state workflow
