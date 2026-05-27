@@ -41,11 +41,23 @@ export const POST = withAuthContext(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const site = await prisma.pharmacySite.findFirst({
-      where: { id: parsed.data.source_site_id, org_id: authCtx.orgId },
-      select: { id: true, name: true },
-    });
+    const [site, existingTemplate] = await Promise.all([
+      prisma.pharmacySite.findFirst({
+        where: { id: parsed.data.source_site_id, org_id: authCtx.orgId },
+        select: { id: true, name: true },
+      }),
+      prisma.formularyTemplate.findFirst({
+        where: { org_id: authCtx.orgId, name: parsed.data.name },
+        select: { id: true, name: true },
+      }),
+    ]);
     if (!site) return notFound('対象の薬局拠点が見つかりません');
+    if (existingTemplate) {
+      return conflict('同じ名前の採用品テンプレートがすでに存在します', {
+        template_id: existingTemplate.id,
+        name: existingTemplate.name,
+      });
+    }
 
     const sourceStocks = await prisma.pharmacyDrugStock.findMany({
       where: {

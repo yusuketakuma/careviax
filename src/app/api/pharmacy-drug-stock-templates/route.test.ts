@@ -7,7 +7,7 @@ const { authMock, prismaMock } = vi.hoisted(() => ({
     membership: { findFirst: vi.fn() },
     pharmacySite: { findFirst: vi.fn() },
     pharmacyDrugStock: { findMany: vi.fn() },
-    formularyTemplate: { create: vi.fn(), findMany: vi.fn() },
+    formularyTemplate: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn() },
     auditLog: { create: vi.fn() },
     $transaction: vi.fn(),
   },
@@ -51,6 +51,7 @@ describe('/api/pharmacy-drug-stock-templates', () => {
       name: '在宅内科 標準セット',
       item_count: 1,
     });
+    prismaMock.formularyTemplate.findFirst.mockResolvedValue(null);
     prismaMock.auditLog.create.mockResolvedValue({ id: 'audit_1' });
   });
 
@@ -107,5 +108,34 @@ describe('/api/pharmacy-drug-stock-templates', () => {
         }),
       }),
     );
+  });
+
+  it('rejects duplicate template names in the same org before reading source stocks', async () => {
+    prismaMock.formularyTemplate.findFirst.mockResolvedValue({
+      id: 'template_existing',
+      name: '在宅内科 標準セット',
+    });
+
+    const response = await POST(
+      createRequest('http://localhost/api/pharmacy-drug-stock-templates', {
+        name: '在宅内科 標準セット',
+        source_site_id: 'site_1',
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同じ名前の採用品テンプレートがすでに存在します',
+      details: {
+        template_id: 'template_existing',
+        name: '在宅内科 標準セット',
+      },
+    });
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.formularyTemplate.create).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });
 });
