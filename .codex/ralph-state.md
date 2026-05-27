@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-220620
+
+- current task: harden adopted-drug CSV bulk import against silent preferred-generic and ambiguous-name mistakes
+- files inspected: `git status --short`, `src/app/api/pharmacy-drug-stocks/bulk/route.ts`, `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`, `src/app/api/pharmacy-drug-stocks/export/route.ts`, relevant formulary UI call sites
+- files changed: `src/app/api/pharmacy-drug-stocks/bulk/route.ts`, `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: CSV import silently dropped an unresolved or non-generic preferred generic YJ code by importing the row with `preferred_generic_id: null`; name-only import could collapse multiple matching DrugMaster rows to one arbitrary map entry instead of requiring an unambiguous YJ code
+- security risks found: no authorization boundary changed; prevented silent data-quality mistakes that could steer formulary substitution decisions incorrectly
+- performance issues found: no runtime hot path issue; name matching now groups already-fetched matches in memory without extra DB calls
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec eslint src/app/api/pharmacy-drug-stocks/bulk/route.ts src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 1 file / 3 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice improves CSV import integrity only
+- next action: commit the CSV import hardening and continue the next high-value formulary/drug-master improvement
+
 ### 20260527-220145
 
 - current task: add database indexes for adopted-drug impact review counts and queues
