@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260528-001950
+
+- current task: add copy action for ambiguous CSV candidate YJ codes
+- files inspected: `git status --short`, `git log --oneline`, `.codex/ralph-state.md`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`
+- files changed: `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `.codex/ralph-state.md`
+- bugs found: ambiguous CSV candidates were visible in the preview, but operators still had to manually select and copy the YJ code from dense candidate rows
+- security risks found: no authorization boundary changed; the copy button only writes the displayed candidate YJ code to the local clipboard and does not call any API
+- performance issues found: no data fetches or recomputation added; each rendered candidate receives a lightweight icon button
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for formulary admin UI; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 1 file / 5 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice adds YJ-code copy but not one-click CSV row rewriting
+- next action: commit the CSV candidate copy UI slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260528-001650
 
 - current task: render ambiguous CSV candidate drugs in the formulary bulk preview UI
