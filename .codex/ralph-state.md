@@ -2814,3 +2814,16 @@ Backup directory:
 - validation results: targeted Vitest passed with 2 files / 5 tests; targeted ESLint passed; TypeScript passed; whitespace check passed; local DB reports one demo action-required/follow-up candidate
 - remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include browser/E2E verification, scheduled import history/audit UX, clinical safety enrichment, and final completion audit
 - next action: commit this queue selection slice, then continue with browser/E2E verification or import history UX
+
+### 20260528-003233
+
+- current task: report field-specific CSV bulk validation reasons
+- files inspected: `git status --short`, `git diff --stat`, `.codex/ralph-state.md`, `src/app/api/pharmacy-drug-stocks/bulk/route.ts`, `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`
+- files changed: `src/app/api/pharmacy-drug-stocks/bulk/route.ts`, `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: invalid CSV field values such as a non-numeric reorder point were reported as missing YJ code or drug name, making bulk import repair misleading
+- security risks found: no auth boundary changed; invalid dry-run rows stop before drug lookup, stock mutation, and audit write paths
+- performance issues found: invalid rows now stop before drug-master lookup or stock upsert work
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec eslint src/app/api/pharmacy-drug-stocks/bulk/route.ts src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed with 1 file / 10 tests; targeted ESLint passed; TypeScript passed after switching Zod error inspection to `issues[].path`; whitespace check passed
+- remaining work: the 20-item drug master/formulary upgrade goal remains active. This improves CSV error reasons, but broader column-level guidance, browser verification, scheduled import history/audit UX, and final completion audit remain
+- next action: commit this CSV validation slice, then continue with the next high-ROI formulary/drug-master item
