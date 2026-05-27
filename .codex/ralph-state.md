@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-233436
+
+- current task: add dashboard counts for unresolved adopted-drug follow-ups
+- files inspected: `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`
+- files changed: `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the impact dashboard exposed an action-required queue, but it did not separately show unresolved follow-up, overdue follow-up, or missing due-date counts, making follow-up workload harder to triage
+- security risks found: no authorization boundary changed; all follow-up counts reuse the existing authenticated org/site/is_stocked filter
+- performance issues found: added DB-side count queries for follow-up summary buckets instead of deriving counts from bounded sample rows
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/impact/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for changed impact API/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 2 files / 8 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice adds follow-up dashboard counts but not proactive scheduled reminders
+- next action: commit the follow-up dashboard slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260527-233159
 
 - current task: add notification-style summary signals for pending formulary change requests
