@@ -99,4 +99,110 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
       },
     });
   });
+
+  it('returns recently changed adopted drugs and excludes resolved follow-ups from action-required', async () => {
+    const now = new Date();
+    const changedAt = new Date(now);
+    changedAt.setDate(changedAt.getDate() - 3);
+    const futureReview = new Date(now);
+    futureReview.setDate(futureReview.getDate() + 10);
+
+    prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([
+      {
+        id: 'stock_changed',
+        drug_master_id: 'drug_changed',
+        reorder_point: 10,
+        last_reviewed_at: futureReview,
+        follow_up_status: 'resolved',
+        follow_up_reason: '切替済み',
+        follow_up_due_date: null,
+        follow_up_resolved_at: now,
+        updated_at: now,
+        drug_master: {
+          id: 'drug_changed',
+          yj_code: '123456789012',
+          receipt_code: null,
+          drug_name: '改定薬',
+          generic_name: null,
+          drug_price: 120,
+          unit: '錠',
+          is_generic: false,
+          is_narcotic: false,
+          is_psychotropic: false,
+          is_high_risk: false,
+          is_lasa_risk: false,
+          transitional_expiry_date: null,
+        },
+      },
+      {
+        id: 'stock_unchanged',
+        drug_master_id: 'drug_unchanged',
+        reorder_point: 5,
+        last_reviewed_at: futureReview,
+        follow_up_status: null,
+        follow_up_reason: null,
+        follow_up_due_date: null,
+        follow_up_resolved_at: null,
+        updated_at: now,
+        drug_master: {
+          id: 'drug_unchanged',
+          yj_code: '999999999999',
+          receipt_code: null,
+          drug_name: '未改定薬',
+          generic_name: null,
+          drug_price: 80,
+          unit: '錠',
+          is_generic: false,
+          is_narcotic: false,
+          is_psychotropic: false,
+          is_high_risk: false,
+          is_lasa_risk: false,
+          transitional_expiry_date: null,
+        },
+      },
+    ]);
+    prismaMock.drugMasterChangeEvent.findMany.mockResolvedValue([
+      {
+        id: 'change_1',
+        yj_code: '123456789012',
+        change_type: 'price_changed',
+        previous_value: { drug_price: '100.00' },
+        current_value: { drug_price: '120.00' },
+        created_at: changedAt,
+      },
+    ]);
+
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/pharmacy-drug-stocks/impact?site_id=site_1&queue=recently_changed&queue_limit=1',
+      ),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      selected_queue: {
+        key: 'recently_changed',
+        total_count: 1,
+        rows: [
+          {
+            id: 'stock_changed',
+            drug_master: { yj_code: '123456789012', drug_name: '改定薬' },
+          },
+        ],
+      },
+      totals: {
+        stocked_count: 2,
+        action_required_count: 0,
+        recent_master_change_count: 1,
+      },
+      recent_changes: [
+        {
+          yj_code: '123456789012',
+          change_type: 'price_changed',
+        },
+      ],
+    });
+  });
 });
