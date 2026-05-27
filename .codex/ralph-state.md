@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-233717
+
+- current task: add explicit non-formulary warnings to QR prescription intake
+- files inspected: `git status --short`, `src/lib/pharmacy/qr-intake-mapper.ts`, `src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts`, `src/app/api/qr-scan-drafts/route.test.ts`, `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`
+- files changed: `src/lib/pharmacy/qr-intake-mapper.ts`, `src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts`, `src/app/api/qr-scan-drafts/route.test.ts`, `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`, `.codex/ralph-state.md`
+- bugs found: QR intake already showed adopted/non-adopted status, but it did not carry structured warning level/reason fields, so UI and downstream draft data could not distinguish ordinary formulary metadata from actionable non-formulary warnings
+- security risks found: no authorization boundary changed; warning generation reuses existing same-org site validation and PharmacyDrugStock lookups
+- performance issues found: no new database lookups; warning fields are derived from the existing DrugMaster/formulary lookup context
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts src/app/api/qr-scan-drafts/route.test.ts`; targeted ESLint for QR mapper/API/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 2 files / 47 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice adds QR-time non-formulary warning surfacing but not a blocking workflow or override reason capture
+- next action: commit the QR warning slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260527-233436
 
 - current task: add dashboard counts for unresolved adopted-drug follow-ups
