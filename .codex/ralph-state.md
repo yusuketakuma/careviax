@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-215810
+
+- current task: optimize adopted-drug impact review API so exact totals do not require loading every formulary row
+- files inspected: `git status --short`, `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `prisma/schema/drug.prisma`, and current Ralph state
+- files changed: `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: after removing the 500-row cap for correctness, the endpoint would load every adopted drug row with nested drug master data before filtering all queues in memory; large formularies could make the admin impact dashboard slower and more memory-heavy than necessary
+- security risks found: no authorization boundary changed; all count and row queries keep the existing authenticated org, selected site, and `is_stocked` filters
+- performance issues found: moved stocked, review-due, missing-reorder, safety, transitional-expiry, action-required, and recently-changed totals to DB-side `count` queries; selected queue rows and sample rows remain bounded by `queue_limit` or 10 rows
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/impact/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec eslint src/app/api/pharmacy-drug-stocks/impact/route.ts src/app/api/pharmacy-drug-stocks/impact/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 1 file / 3 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice completes the immediate performance follow-up for the impact review endpoint
+- next action: commit this API performance improvement and continue the next high-value drug-master/formulary item
+
 ### 20260527-215220
 
 - current task: make adopted-drug impact review totals cover all stocked formulary items instead of only the first 500 rows
