@@ -118,6 +118,35 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
     );
   });
 
+  it('rejects CSV input over 1000 rows instead of silently truncating it', async () => {
+    const csvRows = [
+      'YJコード,医薬品名,採用,発注点',
+      ...Array.from({ length: 1001 }, (_, index) => `123456789${String(index).padStart(3, '0')},薬${index},採用,10`),
+    ].join('\n');
+
+    const response = await POST(
+      createRequest({
+        site_id: 'site_1',
+        csv: csvRows,
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '一度に登録できる採用薬データは1000行までです',
+      details: {
+        rows: ['1000行以内に分割して登録してください'],
+      },
+    });
+    expect(prismaMock.drugMaster.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
   it('previews CSV differences without mutating stock rows or writing audit logs', async () => {
     prismaMock.drugMaster.findMany
       .mockResolvedValueOnce([

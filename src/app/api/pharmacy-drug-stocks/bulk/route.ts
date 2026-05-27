@@ -20,6 +20,8 @@ const bulkImportSchema = z.object({
   dry_run: z.boolean().optional(),
 });
 
+const MAX_BULK_ROWS = 1000;
+
 type BulkRow = z.infer<typeof bulkRowSchema> & {
   rowNumber: number;
 };
@@ -268,14 +270,22 @@ export const POST = withAuthContext(
     });
     if (!site) return notFound('対象の薬局拠点が見つかりません');
 
-    const rows = [
+    const parsedRows = [
       ...(parsed.data.rows ?? []).map((row, index) => ({
         ...row,
         is_stocked: parseBoolean(row.is_stocked),
         rowNumber: index + 1,
       })),
       ...(parsed.data.csv ? parseCsv(parsed.data.csv) : []),
-    ].slice(0, 1000);
+    ];
+
+    if (parsedRows.length > MAX_BULK_ROWS) {
+      return validationError('一度に登録できる採用薬データは1000行までです', {
+        rows: [`${MAX_BULK_ROWS}行以内に分割して登録してください`],
+      });
+    }
+
+    const rows = parsedRows;
 
     if (rows.length === 0) {
       return validationError('登録する採用薬データがありません');
