@@ -907,6 +907,38 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     },
   });
 
+  const templateMutation = useMutation({
+    mutationFn: async () => {
+      const params = new URLSearchParams();
+      if (effectiveSelectedSiteId) params.set('site_id', effectiveSelectedSiteId);
+      const query = params.toString();
+      const res = await fetch(`/api/pharmacy-drug-stocks/template${query ? `?${query}` : ''}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        throw new Error(json?.message ?? '採用薬CSVテンプレートの取得に失敗しました');
+      }
+      return res.blob();
+    },
+    onSuccess: (blob) => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = effectiveSelectedSiteId
+        ? `formulary-template-${effectiveSelectedSiteId}.csv`
+        : 'formulary-template.csv';
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success('採用薬CSVテンプレートを取得しました');
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : '採用薬CSVテンプレートの取得に失敗しました',
+      );
+    },
+  });
+
   const tableColumns = useMemo<ColumnDef<DrugMasterRow>[]>(
     () => [
       ...baseColumns,
@@ -1289,6 +1321,18 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                 >
                   <Upload className="size-3.5" aria-hidden="true" />
                   一括登録
+                </LoadingButton>
+                <LoadingButton
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  loading={templateMutation.isPending}
+                  loadingLabel="取得中"
+                  onClick={() => templateMutation.mutate()}
+                  className="gap-1"
+                >
+                  <Download className="size-3.5" aria-hidden="true" />
+                  CSVテンプレート
                 </LoadingButton>
                 <LoadingButton
                   type="button"
