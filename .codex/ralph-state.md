@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-223742
+
+- current task: add adopted-drug-only MHLW master change report to the formulary impact dashboard
+- files inspected: `git status --short`, `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `prisma/schema/drug.prisma`
+- files changed: `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the impact endpoint exposed recent-change counts and queue rows, but did not return an adopted-drug-only change report grouped by MHLW change type; operators could not quickly see whether recent adopted-drug impact was mostly price changes or transitional-expiry changes
+- security risks found: no authorization boundary changed; the report uses the existing authenticated org/site/is_stocked filters and only includes adopted drugs for the selected site
+- performance issues found: report rows are capped at 50 and reuse the existing recently-changed stock predicate; exact total count remains DB-side
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/impact/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for changed impact API/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 2 files / 7 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice adds the adopted-only MHLW change report only
+- next action: commit the master-change report slice and continue the next high-value formulary/drug-master item
+
 ### 20260527-223344
 
 - current task: add dry-run CSV diff preview before adopted-drug bulk import
