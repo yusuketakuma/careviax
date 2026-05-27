@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-225207
+
+- current task: add same-org site-to-site formulary copy for adopted drug setup
+- files inspected: `git status --short`, `src/app/api/pharmacy-drug-stocks/route.ts`, `src/app/api/pharmacy-sites/route.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `docs/ui-ux-design-guidelines.md`
+- files changed: `src/app/api/pharmacy-drug-stocks/copy/route.ts`, `src/app/api/pharmacy-drug-stocks/copy/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: new or secondary sites had no way to initialize their adopted-drug list from an existing site; staff had to use CSV export/import or manual toggles even within the same organization
+- security risks found: copy API validates both source and target sites are in the authenticated org, rejects same-site copy, and does not expose cross-org site stock rows
+- performance issues found: source stocks and existing target rows are loaded in two bounded batch queries; writes are scoped to the copied operation set and audited once per copy operation
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/copy/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for changed copy API/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 2 files / 8 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice adds same-org formulary copy only
+- next action: commit the site-copy slice and continue the next high-value formulary/drug-master item
+
 ### 20260527-224759
 
 - current task: add same-ingredient grouping for formulary review and generic consolidation
