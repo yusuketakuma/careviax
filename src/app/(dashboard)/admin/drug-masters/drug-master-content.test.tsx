@@ -40,6 +40,9 @@ vi.mock('@tanstack/react-query', () => ({
     if (key === 'pharmacy-drug-stock-history') {
       return { data: { data: [] }, isLoading: false };
     }
+    if (key === 'pharmacy-drug-stock-requests') {
+      return { data: { data: [] }, isLoading: false };
+    }
     if (key === 'pharmacy-drug-stocks-impact') {
       return {
         data: {
@@ -181,6 +184,7 @@ describe('DrugMasterContent', () => {
     render(<DrugMasterContent variant="formulary" />);
 
     expect(screen.getByText('採用薬リスト運用')).toBeTruthy();
+    expect(screen.getByText('採用品変更申請')).toBeTruthy();
     expect(screen.getByText('影響レビューキュー')).toBeTruthy();
     expect(screen.getByText('薬価改定差分レポート')).toBeTruthy();
     expect(screen.getByText('拠点間コピー')).toBeTruthy();

@@ -299,6 +299,17 @@ type PharmacyDrugStockHistoryItem = {
   created_at: string;
 };
 
+type FormularyChangeRequestItem = {
+  id: string;
+  site_id: string;
+  drug_master_id: string;
+  status: 'pending' | 'approved' | 'rejected';
+  action_type: string;
+  requested_payload: unknown;
+  reason: string | null;
+  created_at: string;
+};
+
 type ImpactQueueKey =
   | 'action_required'
   | 'recently_changed'
@@ -744,6 +755,24 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     staleTime: 60_000,
   });
 
+  const formularyRequestsQuery = useQuery({
+    queryKey: ['pharmacy-drug-stock-requests', orgId, effectiveSelectedSiteId, 'pending'],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        site_id: effectiveSelectedSiteId,
+        status: 'pending',
+        limit: '50',
+      });
+      const res = await fetch(`/api/pharmacy-drug-stock-requests?${params}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('採用品変更申請の取得に失敗しました');
+      return res.json() as Promise<{ data: FormularyChangeRequestItem[] }>;
+    },
+    enabled: variant === 'formulary' && !!orgId && !!effectiveSelectedSiteId,
+    staleTime: 60_000,
+  });
+
   const preferredGenericCandidatesQuery = useQuery({
     queryKey: [
       'preferred-generic-candidates',
@@ -943,6 +972,42 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '採用品設定の保存に失敗しました');
+    },
+  });
+
+  const stockRequestMutation = useMutation({
+    mutationFn: async (payload: {
+      site_id: string;
+      drug_master_id: string;
+      action_type: 'adopt' | 'deactivate' | 'update_settings';
+      requested_payload: {
+        is_stocked: boolean;
+        reorder_point?: number | null;
+        preferred_generic_id?: string | null;
+        adoption_note?: string | null;
+      };
+      reason?: string | null;
+    }) => {
+      const res = await fetch('/api/pharmacy-drug-stock-requests', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(json?.message ?? '採用品変更申請の作成に失敗しました');
+      }
+      return json as { data: FormularyChangeRequestItem };
+    },
+    onSuccess: async () => {
+      toast.success('採用品変更申請を作成しました');
+      await queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock-requests'] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '採用品変更申請の作成に失敗しました');
     },
   });
 
@@ -1209,6 +1274,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const reviewDueStocks = formularyReviewQuery.data?.data ?? [];
   const missingReorderStocks = formularyMissingReorderQuery.data?.data ?? [];
   const formularyImpact = formularyImpactQuery.data;
+  const pendingFormularyRequests = formularyRequestsQuery.data?.data ?? [];
   const safetyReviewCount = reviewDueStocks.filter(
     (stock) =>
       stock.drug_master.is_high_risk ||
@@ -1257,6 +1323,9 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const latestPackageInsert = detailQuery.data?.package_inserts[0] ?? null;
   const stockConfig = stockConfigQuery.data?.data ?? null;
   const stockHistory = stockHistoryQuery.data?.data ?? [];
+  const selectedPendingRequest = selectedDrugId
+    ? pendingFormularyRequests.find((request) => request.drug_master_id === selectedDrugId)
+    : null;
   const effectivePreferredGenericId = preferredGenericId ?? stockConfig?.preferred_generic_id ?? '';
   const relatedInteractions = detailQuery.data
     ? [
@@ -1507,6 +1576,42 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   {recentMasterChangeCount.toLocaleString()}
                 </p>
               </button>
+            </div>
+            <div className="rounded-md border border-border/60 bg-muted/20 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <ClipboardCheck className="size-4" aria-hidden="true" />
+                  採用品変更申請
+                </h2>
+                <Badge variant={pendingFormularyRequests.length > 0 ? 'secondary' : 'outline'}>
+                  未承認 {pendingFormularyRequests.length.toLocaleString()}件
+                </Badge>
+              </div>
+              <div className="mt-3 space-y-2">
+                {pendingFormularyRequests.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">未承認の変更申請はありません。</p>
+                ) : (
+                  pendingFormularyRequests.slice(0, 3).map((request) => (
+                    <button
+                      key={request.id}
+                      type="button"
+                      className="w-full rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
+                      onClick={() => {
+                        setSelectedDrugId(request.drug_master_id);
+                        setPreferredGenericId(null);
+                      }}
+                    >
+                      <span className="block text-sm font-medium text-foreground">
+                        {request.action_type}
+                      </span>
+                      <span className="mt-1 text-xs text-muted-foreground">
+                        {new Date(request.created_at).toLocaleDateString('ja-JP')}
+                        {request.reason ? ` / ${request.reason}` : ''}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
             </div>
             <div className="rounded-md border border-border/60 bg-muted/20 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2115,6 +2220,11 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                               ? '採用品として登録済みです。必要に応じて採用後発薬を指定してください。'
                               : 'この薬を採用品として登録できます。'}
                           </p>
+                          {selectedPendingRequest && (
+                            <p className="mt-1 text-xs font-medium text-amber-700">
+                              未承認の変更申請があります。
+                            </p>
+                          )}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                           {stockConfig?.is_stocked ? (
@@ -2145,6 +2255,36 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                             }
                           >
                             {stockConfig?.is_stocked ? '採用品から外す' : '採用品に登録'}
+                          </LoadingButton>
+                          <LoadingButton
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            loading={stockRequestMutation.isPending}
+                            loadingLabel="申請中"
+                            disabled={!effectiveSelectedSiteId || !!selectedPendingRequest}
+                            onClick={() =>
+                              stockRequestMutation.mutate({
+                                site_id: effectiveSelectedSiteId,
+                                drug_master_id: detailQuery.data.id,
+                                action_type: stockConfig?.is_stocked ? 'deactivate' : 'adopt',
+                                requested_payload: {
+                                  is_stocked: !(stockConfig?.is_stocked ?? false),
+                                  preferred_generic_id: stockConfig?.is_stocked
+                                    ? null
+                                    : effectivePreferredGenericId || null,
+                                  reorder_point: stockConfig?.is_stocked
+                                    ? null
+                                    : (stockConfig?.reorder_point ?? null),
+                                  adoption_note: stockConfig?.adoption_note ?? null,
+                                },
+                                reason: stockConfig?.is_stocked
+                                  ? '採用品解除の承認依頼'
+                                  : '採用品追加の承認依頼',
+                              })
+                            }
+                          >
+                            変更申請
                           </LoadingButton>
                         </div>
                       </div>

@@ -182,6 +182,28 @@ model PharmacyDrugStock {
   @@index([follow_up_status])
 }
 
+model FormularyChangeRequest {
+  id                String    @id @default(cuid())
+  org_id            String
+  site_id           String
+  drug_master_id    String
+  requested_by_id   String
+  decided_by_id     String?
+  status            String    @default("pending")
+  action_type       String
+  requested_payload Json
+  current_snapshot  Json?
+  reason            String?
+  decision_note     String?
+  decided_at        DateTime?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+
+  @@index([org_id, site_id, status])
+  @@index([org_id, drug_master_id, status])
+  @@index([status, created_at])
+}
+
 // グローバルマスタ（org_id なし）
 model GenericDrugMapping {
   id               String   @id @default(cuid())
