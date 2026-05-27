@@ -20,6 +20,32 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-205800
+
+- current task: add formulary flagging to drug master management so site-used drugs can be marked from the master list
+- files inspected: `git status --short`, `docs/ui-ux-design-guidelines.md`, Next.js local route-handler and server/client component docs, `prisma/schema/drug.prisma`, `src/app/api/drug-masters/route.ts`, `src/app/api/pharmacy-drug-stocks/route.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, related tests, and local demo DB adoption rows
+- files changed: `src/app/api/drug-masters/route.ts`, `src/app/api/drug-masters/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, and this progress file
+- bugs found: the master list did not expose site-specific adoption state, so users had to open individual drug details to understand or change adoption; the existing stock mutation response type in the UI understated the API envelope shape
+- security risks found: preserved org/site ownership validation before exposing site-specific stock status; the list API only attaches `PharmacyDrugStock` rows for the authenticated org and selected site
+- performance issues found: avoided per-row stock lookups by batch-fetching `PharmacyDrugStock` for the current page of drug master IDs
+- validation commands: targeted Vitest for drug master API, pharmacy drug stock API, and drug master content; targeted ESLint; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`; local SQL verification for demo adoption rows
+- validation results: targeted Vitest passed 3 files / 11 tests; targeted ESLint passed; TypeScript passed; whitespace check passed; local demo DB has 5 adopted drugs for the seeded site
+- remaining work: no known blocker; full build/browser smoke can be run if a visual acceptance pass is needed
+- next action: start the app locally for manual review or commit the accumulated drug master/formulary work if requested
+
+### 20260527-205120
+
+- current task: load the current MHLW-listed drug price master into the local demo database
+- files inspected: `git status --short`, `prisma/schema/drug.prisma`, `prisma/seed.ts`, `package.json`, MHLW official drug price page for 2026-05-20 applicability, existing drug-master import services/routes/tests, `.env`, local PostgreSQL port state, and `docker-compose.yml`
+- files changed: `src/server/services/drug-master-import/mhlw.ts`, `src/server/services/drug-master-import/mhlw.test.ts`, `src/app/api/drug-master-imports/mhlw-price/route.ts`, `tools/scripts/import-mhlw-price-master.ts`, `package.json`, `prisma/schema/drug.prisma`, `prisma/migrations/20260527205034_expand_drug_master_price_precision/migration.sql`, and local `.env`
+- bugs found: MHLW price import resolved only the first workbook and assumed Excel links were on the top-level index page; actual official structure links to a dated detail page containing the workbook links; `DrugMaster.drug_price` `DECIMAL(10,2)` could not store current high-cost listed products
+- security risks found: retained official-host HTTPS URL validation for MHLW fetches; local DB setup used only local Postgres and did not touch production data
+- performance issues found: no runtime hot path changed; import remains chunked at 200 upserts
+- validation commands: targeted MHLW import Vitest; targeted ESLint for changed import code/script/route; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; local Postgres role/database creation; `prisma db push`; `prisma db seed`; `pnpm --config.verify-deps-before-run=false db:import:mhlw-price`; SQL count/category/top-price/import-log checks
+- validation results: tests passed 2 files / 12 tests; targeted ESLint passed; TypeScript passed; local `ph_os_dev` schema sync passed; seed passed; MHLW import completed with 12,343 records from 4 official workbooks; DB verification showed 6,994 internal, 3,464 injection, 1,857 external, and 28 dental records
+- remaining work: none for local demo drug price master loading
+- next action: commit if requested, or use `/admin/drug-masters` and drug lookup flows against local `ph_os_dev`
+
 ### 20260527-204050
 
 - current task: verify no legacy product-name spelling remains and align remaining repo artifacts to PH-OS naming
@@ -2099,3 +2125,16 @@ Backup directory:
 - validation results: Prettier completed with no formatting changes; sync handler Vitest passed with 1 file / 18 tests; related WebSocket suite passed with 8 files / 58 tests; targeted ESLint passed; TypeScript passed; targeted whitespace check passed; full Vitest passed with 543 files / 2714 tests; full ESLint passed; production build passed on Next 16.2.6 with 217 app routes; dependency audit reported no known vulnerabilities
 - remaining work: broader PH-OS Bug Ledger remains active. Remaining collaboration follow-ups include server-side revocation/session-version checks for already-open sockets, per-room/per-user WebSocket connection caps or soft limits, provider candidate timeout/connection-error handling beyond status `disconnected`, in-flight room-token request dedupe across simultaneous hook instances, stable identity for field-array collaboration keys, and initial Yjs default-value seeding
 - next action: continue with server-side revocation/session-version design or the smaller room/user connection cap, depending on acceptable infrastructure scope
+
+### 20260527-211420
+
+- current task: continue high-ROI drug master/formulary upgrades with adoption-list operations, review tracking, CSV bulk import/export, and audit logging
+- files inspected: `git status --short --untracked-files=all`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, Next.js route handler and server/client component docs under `node_modules/next/dist/docs/`, `prisma/schema/drug.prisma`, `prisma/schema/admin.prisma`, `src/app/api/pharmacy-drug-stocks/route.ts`, `src/app/api/pharmacy-drug-stocks/route.test.ts`, `src/app/api/drug-masters/route.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, and auth/audit route examples
+- files changed: `prisma/schema/drug.prisma`, `prisma/migrations/20260527211500_expand_formulary_management/migration.sql`, `src/app/api/pharmacy-drug-stocks/route.ts`, `src/app/api/pharmacy-drug-stocks/route.test.ts`, `src/app/api/pharmacy-drug-stocks/bulk/route.ts`, `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`, `src/app/api/pharmacy-drug-stocks/export/route.ts`, `src/app/api/pharmacy-drug-stocks/review/route.ts`, `src/app/api/drug-masters/route.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found:採用薬設定にレビュー日時・登録由来・メモがなく、施設内採用品の棚卸・一括登録・CSV出力・変更監査が単票更新以外で扱えなかった; 採用品一覧APIがレビュー期限超過や在庫下限未設定を直接抽出できなかった
+- security risks found: 採用薬の追加/解除/一括登録/レビュー/CSV出力をorg/siteスコープで検証し、変更と出力をAuditLogに記録; CSV出力では先頭が数式扱いされるセルを無害化
+- performance issues found: 採用品一覧に`org_id, site_id, is_stocked`複合indexを追加し、運用フィルタの最大取得数を200件に制限; 一括登録は最大1000行に制限
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prisma generate`; `pnpm --config.verify-deps-before-run=false exec prisma db push`; targeted `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/route.test.ts src/app/api/pharmacy-drug-stocks/bulk/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for changed formulary API/UI/tests; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`; Prisma/tsx local DB verification and demo stock review update
+- validation results: Prisma client generated; local PostgreSQL schema synced; targeted Vitest passed with 3 files / 7 tests; targeted ESLint passed; TypeScript passed; whitespace check passed; local demo DB has 5 adopted stocks, 5 reviewed stocks, and 5 reorder-point-configured stocks for `cmnhseedorg0000amq9ph-os`
+- remaining work: the 20-item drug master/formulary upgrade goal is still active. Remaining high-ROI items include richer formulary diff against latest MHLW import, preferred generic recommendation UI, discontinuation/経過措置 warning workflow, master freshness scheduled job controls, advanced duplicate/LASA review queues, and broader end-to-end browser verification
+- next action: continue with MHLW差分レビュー and 経過措置/採用薬影響リスト, then add stronger UI/browser verification for formulary workflows
