@@ -46,6 +46,70 @@ vi.mock('@tanstack/react-query', () => ({
     if (key === 'pharmacy-drug-stock-requests') {
       return { data: { data: pendingRequestsMock() }, isLoading: false };
     }
+    if (key === 'pharmacy-drug-stock-usage-mismatch') {
+      return {
+        data: {
+          period: {
+            since: '2026-02-26T00:00:00.000Z',
+            until: '2026-05-27T00:00:00.000Z',
+          },
+          thresholds: {
+            days: 90,
+            frequent_threshold: 2,
+            draft_limit: 500,
+            limit: 10,
+          },
+          totals: {
+            scanned_draft_count: 2,
+            used_drug_count: 2,
+            medication_line_count: 3,
+            matched_drug_count: 2,
+            unmatched_drug_count: 0,
+            stocked_count: 1,
+            frequent_unstocked_count: 1,
+            unused_stocked_count: 1,
+            displayed_frequent_unstocked_count: 1,
+            displayed_unused_stocked_count: 1,
+          },
+          frequent_unstocked: [
+            {
+              drug_code: '111111111111',
+              drug_name: '頻出未採用薬',
+              count: 2,
+              last_seen_at: '2026-05-26T00:00:00.000Z',
+              matched_drug: {
+                id: 'drug_unstocked',
+                yj_code: '111111111111',
+                drug_name: '頻出未採用薬',
+                generic_name: null,
+                drug_price: 10,
+                unit: '錠',
+                is_generic: true,
+              },
+            },
+          ],
+          unused_stocked: [
+            {
+              id: 'stock_unused',
+              drug_master_id: 'drug_unused',
+              reorder_point: 10,
+              updated_at: '2026-05-21T00:00:00.000Z',
+              drug_master: {
+                id: 'drug_unused',
+                yj_code: '333333333333',
+                drug_name: '未使用採用品',
+                generic_name: null,
+                drug_price: 20,
+                unit: '錠',
+                is_generic: false,
+              },
+            },
+          ],
+          unmatched_prescribed: [],
+        },
+        isLoading: false,
+      };
+    }
     if (key === 'pharmacy-drug-stocks-impact') {
       return {
         data: {
@@ -189,6 +253,9 @@ describe('DrugMasterContent', () => {
 
     expect(screen.getByText('採用薬リスト運用')).toBeTruthy();
     expect(screen.getByText('採用品変更申請')).toBeTruthy();
+    expect(screen.getByText('処方・採用品不一致')).toBeTruthy();
+    expect(screen.getByText('頻出未採用薬')).toBeTruthy();
+    expect(screen.getByText('未使用採用品')).toBeTruthy();
     expect(screen.getByText('影響レビューキュー')).toBeTruthy();
     expect(screen.getByText('薬価改定差分レポート')).toBeTruthy();
     expect(screen.getByText('拠点間コピー')).toBeTruthy();

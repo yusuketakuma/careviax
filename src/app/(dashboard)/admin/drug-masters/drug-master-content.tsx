@@ -16,6 +16,7 @@ import {
   Building2,
   ClipboardCheck,
   ListChecks,
+  FileWarning,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
@@ -262,6 +263,55 @@ type FormularyImpactResponse = {
     action_required: FormularyStockSummaryRow[];
     recently_changed: FormularyStockSummaryRow[];
   };
+};
+
+type FormularyUsageMismatchResponse = {
+  period: {
+    since: string;
+    until: string;
+  };
+  thresholds: {
+    days: number;
+    frequent_threshold: number;
+    draft_limit: number;
+    limit: number;
+  };
+  totals: {
+    scanned_draft_count: number;
+    used_drug_count: number;
+    medication_line_count: number;
+    matched_drug_count: number;
+    unmatched_drug_count: number;
+    stocked_count: number;
+    frequent_unstocked_count: number;
+    unused_stocked_count: number;
+    displayed_frequent_unstocked_count: number;
+    displayed_unused_stocked_count: number;
+  };
+  frequent_unstocked: Array<{
+    drug_code: string | null;
+    drug_name: string | null;
+    count: number;
+    last_seen_at: string;
+    matched_drug: Pick<
+      DrugMasterRow,
+      'id' | 'yj_code' | 'drug_name' | 'generic_name' | 'drug_price' | 'unit' | 'is_generic'
+    > | null;
+  }>;
+  unused_stocked: Array<
+    Pick<PharmacyDrugStockConfig, 'id' | 'drug_master_id' | 'reorder_point' | 'updated_at'> & {
+      drug_master: Pick<
+        DrugMasterRow,
+        'id' | 'yj_code' | 'drug_name' | 'generic_name' | 'drug_price' | 'unit' | 'is_generic'
+      >;
+    }
+  >;
+  unmatched_prescribed: Array<{
+    drug_code: string | null;
+    drug_name: string | null;
+    count: number;
+    last_seen_at: string;
+  }>;
 };
 
 type BulkPreviewResponse = {
@@ -750,6 +800,25 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       });
       if (!res.ok) throw new Error('採用薬影響レビューの取得に失敗しました');
       return res.json() as Promise<FormularyImpactResponse>;
+    },
+    enabled: variant === 'formulary' && !!orgId && !!effectiveSelectedSiteId,
+    staleTime: 60_000,
+  });
+
+  const formularyUsageMismatchQuery = useQuery({
+    queryKey: ['pharmacy-drug-stock-usage-mismatch', orgId, effectiveSelectedSiteId],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        site_id: effectiveSelectedSiteId,
+        days: '90',
+        frequent_threshold: '2',
+        limit: '10',
+      });
+      const res = await fetch(`/api/pharmacy-drug-stocks/usage-mismatch?${params}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('処方・採用品不一致の取得に失敗しました');
+      return res.json() as Promise<FormularyUsageMismatchResponse>;
     },
     enabled: variant === 'formulary' && !!orgId && !!effectiveSelectedSiteId,
     staleTime: 60_000,
@@ -1317,6 +1386,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const reviewDueStocks = formularyReviewQuery.data?.data ?? [];
   const missingReorderStocks = formularyMissingReorderQuery.data?.data ?? [];
   const formularyImpact = formularyImpactQuery.data;
+  const formularyUsageMismatch = formularyUsageMismatchQuery.data;
   const pendingFormularyRequests = formularyRequestsQuery.data?.data ?? [];
   const safetyReviewCount = reviewDueStocks.filter(
     (stock) =>
@@ -1338,6 +1408,9 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     formularyImpact?.totals.transitional_expiry_count ?? expiryWatchCount;
   const actionRequiredCount = formularyImpact?.totals.action_required_count ?? 0;
   const recentMasterChangeCount = formularyImpact?.totals.recent_master_change_count ?? 0;
+  const frequentUnstockedMismatchCount =
+    formularyUsageMismatch?.totals.frequent_unstocked_count ?? 0;
+  const unusedStockedMismatchCount = formularyUsageMismatch?.totals.unused_stocked_count ?? 0;
   const recentChangesByYjCode = new Map(
     (formularyImpact?.recent_changes ?? []).map((change) => [change.yj_code, change]),
   );
@@ -1713,6 +1786,119 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   ))
                 )}
               </div>
+            </div>
+            <div className="rounded-md border border-border/60 bg-muted/20 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <FileWarning className="size-4" aria-hidden="true" />
+                  処方・採用品不一致
+                </h2>
+                <Badge
+                  variant={
+                    frequentUnstockedMismatchCount + unusedStockedMismatchCount > 0
+                      ? 'secondary'
+                      : 'outline'
+                  }
+                >
+                  要確認{' '}
+                  {(frequentUnstockedMismatchCount + unusedStockedMismatchCount).toLocaleString()}
+                  件
+                </Badge>
+              </div>
+              <div className="mt-3 grid gap-2 md:grid-cols-3">
+                <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+                  <p className="text-xs text-muted-foreground">90日QR処方行</p>
+                  <p className="mt-1 text-2xl font-semibold tabular-nums">
+                    {(formularyUsageMismatch?.totals.medication_line_count ?? 0).toLocaleString()}
+                  </p>
+                </div>
+                <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+                  <p className="text-xs text-muted-foreground">頻出だが未採用</p>
+                  <p className="mt-1 text-2xl font-semibold tabular-nums">
+                    {frequentUnstockedMismatchCount.toLocaleString()}
+                  </p>
+                </div>
+                <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+                  <p className="text-xs text-muted-foreground">採用品だが未使用</p>
+                  <p className="mt-1 text-2xl font-semibold tabular-nums">
+                    {unusedStockedMismatchCount.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">採用検討候補</p>
+                  {(formularyUsageMismatch?.frequent_unstocked ?? []).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      頻出している未採用品はありません。
+                    </p>
+                  ) : (
+                    formularyUsageMismatch?.frequent_unstocked.slice(0, 3).map((item) => (
+                      <button
+                        key={`${item.drug_code ?? item.drug_name}-${item.last_seen_at}`}
+                        type="button"
+                        className="w-full rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
+                        onClick={() => {
+                          if (!item.matched_drug) return;
+                          setSelectedDrugId(item.matched_drug.id);
+                          setPreferredGenericId(null);
+                        }}
+                      >
+                        <span className="block text-sm font-medium text-foreground">
+                          {item.drug_name ?? item.matched_drug?.drug_name ?? '名称未取得'}
+                        </span>
+                        <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          {item.drug_code && <span className="font-mono">{item.drug_code}</span>}
+                          <span>{item.count.toLocaleString()}回</span>
+                          <span>
+                            最終 {new Date(item.last_seen_at).toLocaleDateString('ja-JP')}
+                          </span>
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">整理検討候補</p>
+                  {(formularyUsageMismatch?.unused_stocked ?? []).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      直近QR処方で未使用の採用品はありません。
+                    </p>
+                  ) : (
+                    formularyUsageMismatch?.unused_stocked.slice(0, 3).map((stock) => (
+                      <button
+                        key={stock.id}
+                        type="button"
+                        className="w-full rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
+                        onClick={() => {
+                          setSelectedDrugId(stock.drug_master_id);
+                          setPreferredGenericId(null);
+                        }}
+                      >
+                        <span className="block text-sm font-medium text-foreground">
+                          {stock.drug_master.drug_name}
+                        </span>
+                        <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <span className="font-mono">{stock.drug_master.yj_code}</span>
+                          {stock.reorder_point != null && (
+                            <span>発注点 {stock.reorder_point.toLocaleString()}</span>
+                          )}
+                          <span>
+                            更新 {new Date(stock.updated_at).toLocaleDateString('ja-JP')}
+                          </span>
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+              {formularyUsageMismatch?.totals.unmatched_drug_count ? (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  マスター未照合の処方候補{' '}
+                  {formularyUsageMismatch.totals.unmatched_drug_count.toLocaleString()}件は、
+                  名称またはYJコードの確認が必要です。
+                </p>
+              ) : null}
             </div>
             <div className="rounded-md border border-border/60 bg-muted/20 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
