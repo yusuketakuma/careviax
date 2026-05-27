@@ -116,6 +116,16 @@ function parseBoolean(value: unknown): boolean {
   return true;
 }
 
+function readBulkRowValidationReason(error: z.ZodError): string {
+  const hasFieldError = (field: keyof BulkRow) => error.issues.some((issue) => issue.path[0] === field);
+  if (hasFieldError('reorder_point')) return '発注点は0以上の整数で入力してください';
+  if (hasFieldError('adoption_note')) return 'メモは500文字以内で入力してください';
+  if (hasFieldError('preferred_generic_yj_code')) {
+    return '優先後発品YJコードの形式を確認してください';
+  }
+  return 'CSV行の入力値が不正です';
+}
+
 function parseCsv(csv: string): BulkRow[] {
   const lines = csv
     .split(/\r?\n/)
@@ -297,7 +307,14 @@ export const POST = withAuthContext(
     const invalidRows: InvalidRow[] = [];
     for (const row of rows) {
       const rowParsed = bulkRowSchema.safeParse(row);
-      if (!rowParsed.success || (!row.yj_code && !row.drug_name)) {
+      if (!rowParsed.success) {
+        invalidRows.push({
+          rowNumber: row.rowNumber,
+          reason: readBulkRowValidationReason(rowParsed.error),
+        });
+        continue;
+      }
+      if (!row.yj_code && !row.drug_name) {
         invalidRows.push({ rowNumber: row.rowNumber, reason: 'YJコードまたは医薬品名が必要です' });
         continue;
       }

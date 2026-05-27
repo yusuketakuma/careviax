@@ -194,6 +194,46 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
     expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });
 
+  it('reports invalid reorder point values with a field-specific reason', async () => {
+    const response = await POST(
+      createRequest({
+        site_id: 'site_1',
+        dry_run: true,
+        csv: 'YJコード,医薬品名,採用,発注点\n123456789012,アムロジピン錠5mg,採用,abc',
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      importedCount: 0,
+      invalidRows: [
+        {
+          rowNumber: 2,
+          reason: '発注点は0以上の整数で入力してください',
+        },
+      ],
+      preview: {
+        summary: {
+          totalRows: 1,
+          processableRows: 0,
+          invalidCount: 1,
+        },
+        rows: [
+          {
+            rowNumber: 2,
+            status: 'invalid',
+            reason: '発注点は0以上の整数で入力してください',
+          },
+        ],
+      },
+    });
+    expect(prismaMock.drugMaster.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
   it('previews CSV differences without mutating stock rows or writing audit logs', async () => {
     prismaMock.drugMaster.findMany
       .mockResolvedValueOnce([
