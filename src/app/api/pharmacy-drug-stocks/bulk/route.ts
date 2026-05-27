@@ -321,7 +321,7 @@ export const POST = withAuthContext(
     }
     const genericByYj = new Map(preferredGenerics.map((drug) => [drug.yj_code, drug]));
     const unmatchedRows: Array<{ rowNumber: number; yj_code?: string; drug_name?: string }> = [];
-    const operations: BulkOperation[] = safeRows.flatMap((row) => {
+    const resolvedOperations: BulkOperation[] = safeRows.flatMap((row) => {
       const nameMatches = row.yj_code ? [] : (drugsByName.get(row.drug_name ?? '') ?? []);
       if (!row.yj_code && nameMatches.length > 1) {
         invalidRows.push({
@@ -377,6 +377,28 @@ export const POST = withAuthContext(
         },
       ];
     });
+    const operationCountsByDrugId = new Map<string, number>();
+    for (const operation of resolvedOperations) {
+      operationCountsByDrugId.set(
+        operation.drug.id,
+        (operationCountsByDrugId.get(operation.drug.id) ?? 0) + 1,
+      );
+    }
+    const duplicatedDrugIds = new Set(
+      [...operationCountsByDrugId.entries()]
+        .filter(([, count]) => count > 1)
+        .map(([drugId]) => drugId),
+    );
+    for (const operation of resolvedOperations) {
+      if (!duplicatedDrugIds.has(operation.drug.id)) continue;
+      invalidRows.push({
+        rowNumber: operation.row.rowNumber,
+        reason: '同一医薬品がCSV内で重複しています。1行にまとめてください',
+      });
+    }
+    const operations = resolvedOperations.filter(
+      (operation) => !duplicatedDrugIds.has(operation.drug.id),
+    );
 
     const currentStocks =
       operations.length > 0

@@ -260,6 +260,61 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
     );
   });
 
+  it('rejects duplicate rows for the same drug before applying CSV changes', async () => {
+    prismaMock.drugMaster.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'drug_1',
+          yj_code: '123456789012',
+          drug_name: 'アムロジピン錠5mg',
+          generic_name: 'アムロジピン',
+        },
+      ])
+      .mockResolvedValueOnce([]);
+
+    const response = await POST(
+      createRequest({
+        site_id: 'site_1',
+        dry_run: true,
+        csv: [
+          'YJコード,医薬品名,採用,発注点',
+          '123456789012,アムロジピン錠5mg,採用,10',
+          '123456789012,アムロジピン錠5mg,解除,0',
+        ].join('\n'),
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    await expect(response.json()).resolves.toMatchObject({
+      importedCount: 0,
+      invalidRows: [
+        {
+          rowNumber: 2,
+          reason: '同一医薬品がCSV内で重複しています。1行にまとめてください',
+        },
+        {
+          rowNumber: 3,
+          reason: '同一医薬品がCSV内で重複しています。1行にまとめてください',
+        },
+      ],
+      preview: {
+        summary: {
+          totalRows: 2,
+          processableRows: 0,
+          invalidCount: 2,
+        },
+        rows: [
+          { rowNumber: 2, status: 'invalid' },
+          { rowNumber: 3, status: 'invalid' },
+        ],
+      },
+    });
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
   it('rejects name-only rows when the drug name matches multiple masters', async () => {
     prismaMock.drugMaster.findMany
       .mockResolvedValueOnce([
