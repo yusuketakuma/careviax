@@ -2,13 +2,13 @@
 
 ## Overview
 
-CareViaX uses Amazon ElastiCache for Redis as the Pub/Sub backbone for realtime event delivery (SSE notifications, workflow status updates). When the `REDIS_URL` environment variable is not set, the application falls back to an in-memory adapter suitable for local development.
+PH-OS uses Amazon ElastiCache for Redis as the Pub/Sub backbone for realtime event delivery (SSE notifications, workflow status updates). When the `REDIS_URL` environment variable is not set, the application falls back to an in-memory adapter suitable for local development.
 
 ## Recommended Configuration
 
 ### Serverless Mode (5–15 concurrent users)
 
-ElastiCache Serverless automatically scales capacity based on usage, eliminating the need to provision or manage individual cache nodes. This is the recommended mode for CareViaX's initial user base.
+ElastiCache Serverless automatically scales capacity based on usage, eliminating the need to provision or manage individual cache nodes. This is the recommended mode for PH-OS's initial user base.
 
 | Setting | Value |
 |---|---|

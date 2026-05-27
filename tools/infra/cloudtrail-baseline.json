@@ -1,11 +1,11 @@
 {
-  "trailName": "careviax-org-trail",
+  "trailName": "ph-os-org-trail",
   "isMultiRegionTrail": true,
   "includeGlobalServiceEvents": true,
   "enableLogFileValidation": true,
-  "s3BucketName": "careviax-cloudtrail-logs",
+  "s3BucketName": "ph-os-cloudtrail-logs",
   "s3KeyPrefix": "cloudtrail/",
-  "kmsKeyAlias": "alias/careviax-cloudtrail",
+  "kmsKeyAlias": "alias/ph-os-cloudtrail",
   "eventSelectors": [
     {
       "readWriteType": "All",
@@ -14,9 +14,9 @@
         {
           "type": "AWS::S3::Object",
           "values": [
-            "arn:aws:s3:::careviax-main-bucket/reports/",
-            "arn:aws:s3:::careviax-main-bucket/prescriptions/",
-            "arn:aws:s3:::careviax-audit-archive/audit-logs/"
+            "arn:aws:s3:::ph-os-main-bucket/reports/",
+            "arn:aws:s3:::ph-os-main-bucket/prescriptions/",
+            "arn:aws:s3:::ph-os-audit-archive/audit-logs/"
           ]
         }
       ]
@@ -24,7 +24,7 @@
   ],
   "cloudWatchLogs": {
     "enabled": true,
-    "logGroupName": "/careviax/cloudtrail",
+    "logGroupName": "/ph-os/cloudtrail",
     "retentionInDays": 365
   }
 }

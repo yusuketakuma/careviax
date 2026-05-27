@@ -5,7 +5,7 @@ async function main() {
   const token = await createSessionToken();
   const baseUrl = process.env.APP_URL ?? 'http://localhost:3000';
 
-  const context = await chromium.launchPersistentContext('/tmp/careviax-chrome-profile', {
+  const context = await chromium.launchPersistentContext('/tmp/ph-os-chrome-profile', {
     channel: 'chrome',
     headless: false,
     viewport: { width: 1440, height: 960 },

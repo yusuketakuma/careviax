@@ -1,10 +1,10 @@
 {
-  "description": "CloudWatch alarms for CareViaX production baseline.",
+  "description": "CloudWatch alarms for PH-OS production baseline.",
   "alarms": [
     {
-      "name": "careviax-api-health-down",
+      "name": "ph-os-api-health-down",
       "metric": "HealthStatusDown",
-      "namespace": "CareViaX/Application",
+      "namespace": "PH-OS/Application",
       "comparisonOperator": "GreaterThanOrEqualToThreshold",
       "threshold": 1,
       "evaluationPeriods": 1,
@@ -16,7 +16,7 @@
       "alarmDescription": "Triggered when /api/health returns down."
     },
     {
-      "name": "careviax-api-5xx-rate",
+      "name": "ph-os-api-5xx-rate",
       "metric": "5XXError",
       "namespace": "AWS/ApplicationELB",
       "comparisonOperator": "GreaterThanThreshold",
@@ -27,7 +27,18 @@
       "alarmDescription": "Triggered when ALB returns repeated 5xx responses."
     },
     {
-      "name": "careviax-rds-cpu-high",
+      "name": "ph-os-rate-limit-unavailable",
+      "metric": "RateLimitUnavailable",
+      "namespace": "PH-OS/Application",
+      "comparisonOperator": "GreaterThanOrEqualToThreshold",
+      "threshold": 1,
+      "evaluationPeriods": 1,
+      "periodSeconds": 60,
+      "statistic": "Sum",
+      "alarmDescription": "A production API request failed closed because the distributed rate-limit backend was unavailable or misconfigured."
+    },
+    {
+      "name": "ph-os-rds-cpu-high",
       "metric": "CPUUtilization",
       "namespace": "AWS/RDS",
       "comparisonOperator": "GreaterThanThreshold",
@@ -38,7 +49,7 @@
       "alarmDescription": "RDS CPU has been above 80 percent for 15 minutes."
     },
     {
-      "name": "careviax-rds-free-storage-low",
+      "name": "ph-os-rds-free-storage-low",
       "metric": "FreeStorageSpace",
       "namespace": "AWS/RDS",
       "comparisonOperator": "LessThanThreshold",
@@ -49,9 +60,9 @@
       "alarmDescription": "RDS free storage under 10 GiB."
     },
     {
-      "name": "careviax-audit-archive-lifecycle-warning",
+      "name": "ph-os-audit-archive-lifecycle-warning",
       "metric": "BackupMonitorWarning",
-      "namespace": "CareViaX/Operations",
+      "namespace": "PH-OS/Operations",
       "comparisonOperator": "GreaterThanOrEqualToThreshold",
       "threshold": 1,
       "evaluationPeriods": 1,

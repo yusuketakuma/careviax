@@ -4,7 +4,7 @@ import { attachLocalSession, createInstrumentedPage, waitForStableUi } from './h
 
 const DB_CONNECTION_STRING = (
   process.env.DATABASE_URL ??
-  'postgresql://careviax:careviax@localhost:5433/careviax_e2e?schema=public'
+  'postgresql://ph-os:ph-os@localhost:5433/ph-os_e2e?schema=public'
 ).replace(/\?.*$/, '');
 
 const VISIT_WORKFLOW_IDS = {
@@ -28,9 +28,9 @@ function assertSafeE2eDatabase() {
   const databaseName = url.pathname.replace(/^\//, '');
   if (
     !['localhost', '127.0.0.1', '::1'].includes(url.hostname) ||
-    databaseName !== 'careviax_e2e'
+    databaseName !== 'ph-os_e2e'
   ) {
-    throw new Error('Visit workflow fixtures can only run against local careviax_e2e');
+    throw new Error('Visit workflow fixtures can only run against local ph-os_e2e');
   }
 }
 
@@ -66,7 +66,7 @@ async function ensureVisitWorkflowFixture() {
         SELECT u.org_id, u.id AS user_id, m.site_id
         FROM "User" u
         LEFT JOIN "Membership" m ON m.user_id = u.id AND m.org_id = u.org_id
-        WHERE lower(u.email) = lower('demo@careviax.example.com')
+        WHERE lower(u.email) = lower('demo@ph-os.example.com')
         ORDER BY m.created_at DESC NULLS LAST, u.created_at DESC
         LIMIT 1
       `,

@@ -11,7 +11,7 @@ import {
 } from './helpers/local-auth';
 const SCREENSHOT_DIR = PLAYWRIGHT_UI_SCREENSHOT_DIR;
 const DB_CONNECTION_STRING = (
-  process.env.DATABASE_URL ?? 'postgresql://careviax:careviax@localhost:5433/careviax_dev?schema=public'
+  process.env.DATABASE_URL ?? 'postgresql://ph-os:ph-os@localhost:5433/ph-os_dev?schema=public'
 ).replace(/\?.*$/, '');
 
 const ROOT_ROUTES = [

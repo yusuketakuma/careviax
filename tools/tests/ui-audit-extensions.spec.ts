@@ -274,7 +274,7 @@ test.describe('locale and timezone audit', () => {
     );
 
     await expect(page.getByTestId('app-shell-main')).toBeVisible();
-    await expect(page.locator('main').getByText(/CareViaX.*ダッシュボード/)).toBeVisible();
+    await expect(page.locator('main').getByText(/PH-OS.*ダッシュボード/)).toBeVisible();
     await writeScreenshot(page, 'dashboard-locale-timezone');
     expect(runtimeLocale).toBe('en-US');
     expect(runtimeTimezone).toBe('America/Los_Angeles');

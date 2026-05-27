@@ -10,6 +10,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 env:
   NODE_VERSION: '24'
   PNPM_VERSION: '10'
@@ -72,14 +75,63 @@ jobs:
           JWT_SIGNING_SECRET: 'test-jwt-secret'
           NEXT_PUBLIC_APP_URL: 'http://localhost:3000'
           AWS_REGION: 'ap-northeast-1'
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          NEXT_PUBLIC_COGNITO_USER_POOL_ID: ${{ secrets.NEXT_PUBLIC_COGNITO_USER_POOL_ID }}
-          NEXT_PUBLIC_COGNITO_CLIENT_ID: ${{ secrets.NEXT_PUBLIC_COGNITO_CLIENT_ID }}
-          NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          AWS_ACCESS_KEY_ID: 'test'
+          AWS_SECRET_ACCESS_KEY: 'test'
+          NEXT_PUBLIC_COGNITO_USER_POOL_ID: 'ap-northeast-1_test'
+          NEXT_PUBLIC_COGNITO_CLIENT_ID: 'test-client-id'
+          NEXT_PUBLIC_SENTRY_DSN: ''
+          SENTRY_AUTH_TOKEN: ''
+          SENTRY_ORG: ''
+          SENTRY_PROJECT: ''
+
+  # ─────────────────────────────────────────────────────────────
+  # Migration gate: execute raw SQL migrations and verify DB audit triggers
+  # ─────────────────────────────────────────────────────────────
+  migration-gate:
+    name: Migration Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: ci
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: ph-os
+          POSTGRES_PASSWORD: ph-os
+          POSTGRES_DB: ph-os_migration
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U ph-os -d ph-os_migration"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql://ph-os:ph-os@localhost:5434/ph-os_migration?schema=public
+      DIRECT_URL: postgresql://ph-os:ph-os@localhost:5434/ph-os_migration?schema=public
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply Prisma migrations
+        run: pnpm --config.verify-deps-before-run=false exec prisma migrate deploy --schema=prisma/schema/
+
+      - name: Verify PH-OS audit migration
+        run: pnpm --config.verify-deps-before-run=false db:verify-ph-os-audit-migration
 
   # ─────────────────────────────────────────────────────────────
   # Medical UI/UX gate: production build + local E2E DB + Playwright/axe
@@ -88,29 +140,29 @@ jobs:
     name: Medical UI E2E Gate
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    needs: ci
+    needs: [ci, migration-gate]
 
     services:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_USER: careviax
-          POSTGRES_PASSWORD: careviax
-          POSTGRES_DB: careviax_e2e
+          POSTGRES_USER: ph-os
+          POSTGRES_PASSWORD: ph-os
+          POSTGRES_DB: ph-os_e2e
         ports:
           - 5433:5432
         options: >-
-          --health-cmd "pg_isready -U careviax -d careviax_e2e"
+          --health-cmd "pg_isready -U ph-os -d ph-os_e2e"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
 
     env:
-      DATABASE_URL: postgresql://careviax:careviax@localhost:5433/careviax_e2e?schema=public
-      DIRECT_URL: postgresql://careviax:careviax@localhost:5433/careviax_e2e?schema=public
+      DATABASE_URL: postgresql://ph-os:ph-os@localhost:5433/ph-os_e2e?schema=public
+      DIRECT_URL: postgresql://ph-os:ph-os@localhost:5433/ph-os_e2e?schema=public
       PLAYWRIGHT: '1'
-      AUTH_SECRET: careviax-local-auth-secret
-      NEXTAUTH_SECRET: careviax-local-auth-secret
+      AUTH_SECRET: ph-os-local-auth-secret
+      NEXTAUTH_SECRET: ph-os-local-auth-secret
       NEXTAUTH_URL: http://localhost:3012
       NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM: '1'
       NEXT_FONT_GOOGLE_MOCKED_RESPONSES: ${{ github.workspace }}/tools/tests/helpers/next-font-google-mocked-responses.cjs

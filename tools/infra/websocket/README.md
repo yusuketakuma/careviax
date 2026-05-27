@@ -15,205 +15,101 @@ In production, clients connect to the API Gateway WebSocket endpoint.
 Client (Yjs WebsocketProvider)
   |
   | wss://xxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod
-  |   ?token=<cognito-jwt>&room=<entityType:entityId>
+  |   ?token=<collaboration-room-token>
   v
 API Gateway WebSocket API (ap-northeast-1)
   |
-  +-- $connect   -> Lambda Authorizer (Cognito JWT validation)
+  +-- $connect   -> Lambda Authorizer (collaboration room token validation)
   |                  -> connect-handler Lambda (store connectionId in DynamoDB)
   |
   +-- $disconnect -> disconnect-handler Lambda (remove connectionId from DynamoDB)
   |
-  +-- yjs-sync   -> sync-handler Lambda (broadcast Yjs sync messages to room peers)
+  +-- $default   -> sync-handler Lambda (broadcast binary Yjs sync messages to room peers)
 ```
 
-## SAM Template Structure
+## SAM Template
 
-```yaml
-AWSTemplateFormatVersion: '2010-09-09'
-Transform: AWS::Serverless-2016-10-31
+The deployable SAM contract lives in `template.yaml`. Keep the README as narrative
+guidance only; route keys, Lambda paths, IAM actions, access-log fields, DynamoDB
+TTL/GSI settings, and secret wiring are validated by `template.test.ts`.
 
-Globals:
-  Function:
-    Runtime: nodejs20.x
-    Timeout: 30
-    MemorySize: 256
-    Environment:
-      Variables:
-        CONNECTIONS_TABLE: !Ref ConnectionsTable
+Security invariants enforced by the template:
 
-Resources:
-  # --- WebSocket API ---
-  YjsWebSocketApi:
-    Type: AWS::ApiGatewayV2::Api
-    Properties:
-      Name: careviax-yjs-websocket
-      ProtocolType: WEBSOCKET
-      RouteSelectionExpression: "$request.body.action"
-
-  # --- Cognito JWT Authorizer ---
-  CognitoAuthorizer:
-    Type: AWS::ApiGatewayV2::Authorizer
-    Properties:
-      ApiId: !Ref YjsWebSocketApi
-      AuthorizerType: REQUEST
-      AuthorizerUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthorizerFunction.Arn}/invocations"
-      IdentitySource:
-        - "route.request.querystring.token"
-
-  AuthorizerFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: authorizer.handler
-      CodeUri: ./lambdas/authorizer/
-      Description: Validate Cognito JWT from query string token parameter
-      Environment:
-        Variables:
-          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
-          COGNITO_CLIENT_ID: !Ref CognitoClientId
-
-  # --- Routes ---
-  ConnectRoute:
-    Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref YjsWebSocketApi
-      RouteKey: $connect
-      AuthorizationType: CUSTOM
-      AuthorizerId: !Ref CognitoAuthorizer
-      Target: !Sub "integrations/${ConnectIntegration}"
-
-  DisconnectRoute:
-    Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref YjsWebSocketApi
-      RouteKey: $disconnect
-      Target: !Sub "integrations/${DisconnectIntegration}"
-
-  YjsSyncRoute:
-    Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref YjsWebSocketApi
-      RouteKey: yjs-sync
-      Target: !Sub "integrations/${SyncIntegration}"
-
-  # --- Lambda Handlers ---
-  ConnectFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: connect.handler
-      CodeUri: ./lambdas/connect/
-      Description: Store WebSocket connectionId and room in DynamoDB
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ConnectionsTable
-
-  DisconnectFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: disconnect.handler
-      CodeUri: ./lambdas/disconnect/
-      Description: Remove connectionId from DynamoDB on disconnect
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ConnectionsTable
-
-  SyncFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: sync.handler
-      CodeUri: ./lambdas/sync/
-      Description: Broadcast Yjs sync/awareness messages to room peers
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ConnectionsTable
-        - Statement:
-            - Effect: Allow
-              Action: execute-api:ManageConnections
-              Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${YjsWebSocketApi}/*"
-
-  # --- DynamoDB Connection Store ---
-  ConnectionsTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: careviax-yjs-connections
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: connectionId
-          AttributeType: S
-        - AttributeName: room
-          AttributeType: S
-      KeySchema:
-        - AttributeName: connectionId
-          KeyType: HASH
-      GlobalSecondaryIndexes:
-        - IndexName: room-index
-          KeySchema:
-            - AttributeName: room
-              KeyType: HASH
-            - AttributeName: connectionId
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-      TimeToLiveSpecification:
-        AttributeName: ttl
-        Enabled: true
-
-Parameters:
-  CognitoUserPoolId:
-    Type: String
-  CognitoClientId:
-    Type: String
-```
+- `$connect` uses a request authorizer with `route.request.querystring.token`.
+- Binary Yjs frames route to `$default`; handlers must not require a JSON `action`.
+- Access logs include request metadata only and must not include query strings or tokens.
+- WebSocket routes use explicit throttling, detailed metrics, and `DataTraceEnabled: false`
+  so CRDT payloads are not captured in API Gateway execution traces.
+- Lambda IAM is handler-specific; broad generated DynamoDB policies are not allowed.
+- `execute-api:ManageConnections` is scoped to the stage `POST @connections` resource.
+- `COLLABORATION_ROOM_TOKEN_SECRET_ARN` is passed to the authorizer; the signing secret
+  value is fetched from Secrets Manager at runtime and must be distinct from the
+  application auth secret in production.
 
 ## DynamoDB Connection Store Schema
 
-| Attribute      | Type   | Description                                      |
-|----------------|--------|--------------------------------------------------|
-| connectionId   | S (PK) | API Gateway WebSocket connection ID              |
-| room           | S (GSI) | Room name (`entityType:entityId`)               |
-| userId         | S      | Cognito user sub from JWT                        |
-| orgId          | S      | Organization ID from JWT custom claim            |
-| connectedAt    | N      | Unix timestamp of connection                     |
-| ttl            | N      | DynamoDB TTL (connectedAt + 24h)                 |
+The SAM template creates the connection table as `ph-os-yjs-connections`.
+
+| Attribute    | Type    | Description                                       |
+| ------------ | ------- | ------------------------------------------------- |
+| connectionId | S (PK)  | API Gateway WebSocket connection ID               |
+| room         | S (GSI) | Verified room name (`orgId:entityType:entityId`)  |
+| userId       | S       | Local user ID from the verified room token        |
+| orgId        | S       | Organization ID from the verified room token      |
+| entityType   | S       | Collaboration entity type from the verified token |
+| entityId     | S       | Collaboration entity ID from the verified token   |
+| connectedAt  | N       | Unix timestamp of connection                      |
+| expiresAt    | N       | Room token expiry timestamp                       |
+| ttl          | N       | DynamoDB TTL, equal to `expiresAt`                |
 
 **GSI: room-index** -- Query all connections in a room for message broadcast.
 
 ## Lambda Authorizer Flow
 
-1. Client connects with `?token=<jwt>` query parameter
-2. Authorizer Lambda extracts token, verifies against Cognito JWKS
-3. On success: returns Allow policy with userId/orgId in context
-4. On failure: returns Deny policy (WebSocket connection rejected)
+1. Browser requests `POST /api/collaboration/room-token` for the target entity.
+2. The application verifies organization membership and entity-level assignment before issuing a 5-minute room token.
+3. Client connects with `?token=<collaboration-room-token>` query parameter.
+4. Authorizer Lambda extracts and verifies the room token with the dedicated secret referenced by `COLLABORATION_ROOM_TOKEN_SECRET_ARN` and the same salt as `issueCollaborationRoomToken`, including `purpose`, `org_id`, `user_id`, `entity_type`, `entity_id`, `room`, and expiry.
+5. On success: returns Allow policy with userId/orgId/room in context.
+6. The connect handler stores only the verified token context; it must not trust a client-supplied room query parameter.
+7. On failure: returns Deny policy (WebSocket connection rejected)
 
 Token is passed via query string because WebSocket API does not support
-Authorization headers during the upgrade handshake.
+Authorization headers during the upgrade handshake. The token must be scoped to
+one collaboration room and must not be a general Cognito/API bearer token.
 
 ## ISMAP Compliance Notes
 
 All services used are ISMAP-certified and deployed in ap-northeast-1 (Tokyo):
 
-| Service              | ISMAP Status | Notes                                           |
-|----------------------|-------------|--------------------------------------------------|
-| API Gateway          | Certified   | WebSocket API with TLS 1.2+ enforcement          |
-| Lambda               | Certified   | Stateless compute, no PHI persisted in function   |
-| DynamoDB             | Certified   | Connection metadata only (no PHI), TTL-enabled    |
-| CloudWatch Logs      | Certified   | Lambda execution logs, 90-day retention           |
+| Service         | ISMAP Status | Notes                                           |
+| --------------- | ------------ | ----------------------------------------------- |
+| API Gateway     | Certified    | WebSocket API with TLS 1.2+ enforcement         |
+| Lambda          | Certified    | Stateless compute, no PHI persisted in function |
+| DynamoDB        | Certified    | Connection metadata only (no PHI), TTL-enabled  |
+| CloudWatch Logs | Certified    | Lambda execution logs, 90-day retention         |
 
 ### Data Classification
 
 - **Connection store**: Contains connectionId, room name, userId, orgId only.
   No PHI (Protected Health Information) is stored in DynamoDB.
-- **WebSocket messages**: Yjs binary sync protocol (CRDT operations).
+- **WebSocket messages**: Yjs binary sync protocol (CRDT operations). API Gateway routes these
+  frames to `$default`; the sync handler must not require a JSON `action` field.
+  The handler accepts base64-encoded binary frames only and rejects text frames before
+  reading the connection store.
   Content is opaque binary data transiting through Lambda.
   PHI may be present in CRDT payloads -- TLS encrypts in transit.
 - **Encryption at rest**: DynamoDB table uses AWS-managed encryption (default).
 
 ### Access Controls
 
-- WebSocket connections require valid Cognito JWT
-- Lambda functions operate within VPC security groups (same as RDS)
+- WebSocket connections require a valid short-lived collaboration room token
+- The room token is issued only after the normal application authz and entity assignment checks pass
+- Sync handlers load the sender connection record by `connectionId` and broadcast only to the stored verified room
+- Client-supplied room values in query strings, paths, or message bodies must be ignored or rejected
+- Deploy Lambda functions with VPC configuration only if the chosen environment needs private egress; this template does not require RDS access.
 - API Gateway access logging enabled via CloudWatch
-- CloudTrail captures API Gateway management events
+- Organization CloudTrail baseline is managed separately in `tools/infra/cloudtrail-baseline.json`.
 
 ## Local Development
 

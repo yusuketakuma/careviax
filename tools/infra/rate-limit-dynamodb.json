@@ -1,0 +1,98 @@
+{
+  "description": "DynamoDB table and least-privilege IAM contract for PH-OS distributed API rate limiting.",
+  "environment": {
+    "RATE_LIMIT_STORE": "dynamodb",
+    "RATE_LIMIT_DDB_TABLE_NAME": "ph-os-rate-limit",
+    "RATE_LIMIT_DDB_REGION": "${AWS_REGION}",
+    "RATE_LIMIT_DDB_TIMEOUT_MS": "1500"
+  },
+  "table": {
+    "tableName": "${RATE_LIMIT_DDB_TABLE_NAME}",
+    "billingMode": "PAY_PER_REQUEST",
+    "attributeDefinitions": [
+      {
+        "attributeName": "pk",
+        "attributeType": "S"
+      }
+    ],
+    "keySchema": [
+      {
+        "attributeName": "pk",
+        "keyType": "HASH"
+      }
+    ],
+    "timeToLiveSpecification": {
+      "attributeName": "expires_at",
+      "enabled": true
+    },
+    "pointInTimeRecoverySpecification": {
+      "pointInTimeRecoveryEnabled": false
+    },
+    "sseSpecification": {
+      "enabled": true,
+      "sseType": "KMS",
+      "kmsMasterKeyId": "${DDB_KMS_KEY_ID}"
+    },
+    "tags": {
+      "System": "PH-OS",
+      "DataClass": "operational-rate-limit",
+      "PHI": "false"
+    }
+  },
+  "itemSchema": {
+    "pk": "string: `${bucketStart}:${methodBucket}:${identifier}:${canonicalRoute}`",
+    "hit_count": "number: atomic ADD counter for the current fixed window",
+    "reset_at": "number: epoch milliseconds when the client budget resets",
+    "expires_at": "number: epoch seconds for DynamoDB TTL cleanup",
+    "created_at": "string: ISO timestamp, first writer wins",
+    "updated_at": "string: ISO timestamp, latest increment"
+  },
+  "applicationRolePolicy": {
+    "version": "2012-10-17",
+    "statements": [
+      {
+        "sid": "AllowRateLimitCounterUpdates",
+        "effect": "Allow",
+        "actions": [
+          "dynamodb:UpdateItem"
+        ],
+        "resources": [
+          "arn:aws:dynamodb:${AWS_REGION}:${AWS_ACCOUNT_ID}:table/${RATE_LIMIT_DDB_TABLE_NAME}"
+        ]
+      }
+    ]
+  },
+  "deploymentVerifierPolicy": {
+    "version": "2012-10-17",
+    "statements": [
+      {
+        "sid": "VerifyRateLimitTableShapeAndTtl",
+        "effect": "Allow",
+        "actions": [
+          "dynamodb:DescribeTable",
+          "dynamodb:DescribeTimeToLive"
+        ],
+        "resources": [
+          "arn:aws:dynamodb:${AWS_REGION}:${AWS_ACCOUNT_ID}:table/${RATE_LIMIT_DDB_TABLE_NAME}"
+        ]
+      },
+      {
+        "sid": "VerifyRateLimitWritePath",
+        "effect": "Allow",
+        "actions": [
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem"
+        ],
+        "resources": [
+          "arn:aws:dynamodb:${AWS_REGION}:${AWS_ACCOUNT_ID}:table/${RATE_LIMIT_DDB_TABLE_NAME}"
+        ]
+      }
+    ]
+  },
+  "deploymentNotes": [
+    "Prefer the runtime IAM role or container task role over static AWS access keys.",
+    "The application signs DynamoDB UpdateItem requests from the runtime role credentials and fails closed in production when no distributed credential source is available.",
+    "Do not store PHI in rate-limit identifiers. Use user IDs or trusted client IP buckets plus canonical route templates.",
+    "TTL deletion is eventually consistent; authorization must not depend on the physical deletion timing of expired counter rows."
+  ]
+}

@@ -1,7 +1,7 @@
 /**
  * CloudWatch Alarms Setup Script
  *
- * Creates an SNS topic and sets up CloudWatch alarms for CareViaX production.
+ * Creates an SNS topic and sets up CloudWatch alarms for PH-OS production.
  *
  * Usage:
  *   npx ts-node tools/infra/cloudwatch-alarms.ts
@@ -11,7 +11,7 @@
  *   AWS_ACCESS_KEY_ID
  *   AWS_SECRET_ACCESS_KEY
  *   ALERT_EMAIL        Email address to receive alarm notifications
- *   DB_INSTANCE_ID     RDS instance identifier (e.g. careviax-prod)
+ *   DB_INSTANCE_ID     RDS instance identifier (e.g. ph-os-prod)
  *   COGNITO_USER_POOL_ID
  */
 
@@ -35,7 +35,7 @@ type SnsModule = {
 
 const REGION = process.env.AWS_REGION ?? 'ap-northeast-1';
 const ALERT_EMAIL = process.env.ALERT_EMAIL;
-const DB_INSTANCE_ID = process.env.DB_INSTANCE_ID ?? 'careviax-prod';
+const DB_INSTANCE_ID = process.env.DB_INSTANCE_ID ?? 'ph-os-prod';
 const COGNITO_USER_POOL_ID = process.env.COGNITO_USER_POOL_ID ?? '';
 
 const cloudwatch = new CloudWatchClient({ region: REGION });
@@ -86,7 +86,7 @@ async function ensureSnsTopic(): Promise<string> {
   const sns = new snsModule.SNSClient({ region: REGION });
 
   const res = await sns.send(
-    new snsModule.CreateTopicCommand({ Name: 'careviax-prod-alerts' }),
+    new snsModule.CreateTopicCommand({ Name: 'ph-os-prod-alerts' }),
   );
   const topicArn = res.TopicArn;
   if (!topicArn) throw new Error('Failed to create SNS topic');
@@ -120,7 +120,7 @@ function buildAlarms(topicArn: string): PutMetricAlarmCommandInput[] {
     // --- RDS ---
     {
       ...common,
-      AlarmName: 'careviax-rds-connections-high',
+      AlarmName: 'ph-os-rds-connections-high',
       AlarmDescription:
         'RDS database connection count has exceeded the threshold. Review connection pool settings.',
       Namespace: 'AWS/RDS',
@@ -134,7 +134,7 @@ function buildAlarms(topicArn: string): PutMetricAlarmCommandInput[] {
     },
     {
       ...common,
-      AlarmName: 'careviax-rds-cpu-high',
+      AlarmName: 'ph-os-rds-cpu-high',
       AlarmDescription: 'RDS CPU utilization above 80% for 15 minutes.',
       Namespace: 'AWS/RDS',
       MetricName: 'CPUUtilization',
@@ -147,7 +147,7 @@ function buildAlarms(topicArn: string): PutMetricAlarmCommandInput[] {
     },
     {
       ...common,
-      AlarmName: 'careviax-rds-free-storage-low',
+      AlarmName: 'ph-os-rds-free-storage-low',
       AlarmDescription: 'RDS free storage space is below 10 GiB.',
       Namespace: 'AWS/RDS',
       MetricName: 'FreeStorageSpace',
@@ -160,7 +160,7 @@ function buildAlarms(topicArn: string): PutMetricAlarmCommandInput[] {
     },
     {
       ...common,
-      AlarmName: 'careviax-rds-replica-lag-high',
+      AlarmName: 'ph-os-rds-replica-lag-high',
       AlarmDescription: 'RDS replica lag exceeds 30 seconds.',
       Namespace: 'AWS/RDS',
       MetricName: 'ReplicaLag',
@@ -177,7 +177,7 @@ function buildAlarms(topicArn: string): PutMetricAlarmCommandInput[] {
       ? ([
           {
             ...common,
-            AlarmName: 'careviax-cognito-signin-failures',
+            AlarmName: 'ph-os-cognito-signin-failures',
             AlarmDescription:
               'Elevated Cognito sign-in failure rate. Possible brute-force or credential-stuffing attack.',
             Namespace: 'AWS/Cognito',
@@ -195,7 +195,7 @@ function buildAlarms(topicArn: string): PutMetricAlarmCommandInput[] {
           },
           {
             ...common,
-            AlarmName: 'careviax-cognito-token-refresh-errors',
+            AlarmName: 'ph-os-cognito-token-refresh-errors',
             AlarmDescription: 'Cognito token refresh error rate is elevated.',
             Namespace: 'AWS/Cognito',
             MetricName: 'TokenRefreshSuccesses',
@@ -213,7 +213,7 @@ function buildAlarms(topicArn: string): PutMetricAlarmCommandInput[] {
     // --- SES ---
     {
       ...common,
-      AlarmName: 'careviax-ses-bounce-rate-high',
+      AlarmName: 'ph-os-ses-bounce-rate-high',
       AlarmDescription:
         'SES bounce rate is above 5%. Continued bounces risk sending reputation.',
       Namespace: 'AWS/SES',
@@ -226,7 +226,7 @@ function buildAlarms(topicArn: string): PutMetricAlarmCommandInput[] {
     },
     {
       ...common,
-      AlarmName: 'careviax-ses-complaint-rate-high',
+      AlarmName: 'ph-os-ses-complaint-rate-high',
       AlarmDescription:
         'SES complaint rate is above 0.1%. Risk of account suspension.',
       Namespace: 'AWS/SES',
@@ -241,9 +241,9 @@ function buildAlarms(topicArn: string): PutMetricAlarmCommandInput[] {
     // --- Application health ---
     {
       ...common,
-      AlarmName: 'careviax-api-health-down',
+      AlarmName: 'ph-os-api-health-down',
       AlarmDescription: '/api/health is reporting down status.',
-      Namespace: 'CareViaX/Application',
+      Namespace: 'PH-OS/Application',
       MetricName: 'HealthStatusDown',
       Dimensions: [{ Name: 'route', Value: '/api/health' }],
       Statistic: 'Maximum',
@@ -254,7 +254,7 @@ function buildAlarms(topicArn: string): PutMetricAlarmCommandInput[] {
     },
     {
       ...common,
-      AlarmName: 'careviax-api-5xx-rate',
+      AlarmName: 'ph-os-api-5xx-rate',
       AlarmDescription: 'API 5xx error count exceeded threshold.',
       Namespace: 'AWS/ApplicationELB',
       MetricName: '5XXError',

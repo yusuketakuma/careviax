@@ -1,5 +1,5 @@
 {
-  "vpcName": "careviax-prod",
+  "vpcName": "ph-os-prod",
   "cidr": "10.40.0.0/16",
   "subnets": [
     {
@@ -47,38 +47,38 @@
   ],
   "securityGroups": [
     {
-      "name": "careviax-alb-sg",
+      "name": "ph-os-alb-sg",
       "ingress": [
         { "protocol": "tcp", "port": 443, "source": "0.0.0.0/0" }
       ],
       "egress": [
-        { "protocol": "tcp", "port": 3000, "destinationSecurityGroup": "careviax-app-sg" }
+        { "protocol": "tcp", "port": 3000, "destinationSecurityGroup": "ph-os-app-sg" }
       ]
     },
     {
-      "name": "careviax-app-sg",
+      "name": "ph-os-app-sg",
       "ingress": [
-        { "protocol": "tcp", "port": 3000, "sourceSecurityGroup": "careviax-alb-sg" }
+        { "protocol": "tcp", "port": 3000, "sourceSecurityGroup": "ph-os-alb-sg" }
       ],
       "egress": [
-        { "protocol": "tcp", "port": 5432, "destinationSecurityGroup": "careviax-rds-sg" },
+        { "protocol": "tcp", "port": 5432, "destinationSecurityGroup": "ph-os-rds-sg" },
         { "protocol": "tcp", "port": 443, "destinationPrefixListEnv": "S3_VPC_ENDPOINT_PREFIX_LIST_ID" },
         { "protocol": "tcp", "port": 443, "destinationPrefixListEnv": "SECRETS_MANAGER_PREFIX_LIST_ID" }
       ]
     },
     {
-      "name": "careviax-rds-sg",
+      "name": "ph-os-rds-sg",
       "ingress": [
-        { "protocol": "tcp", "port": 5432, "sourceSecurityGroup": "careviax-app-sg" },
-        { "protocol": "tcp", "port": 5432, "sourceSecurityGroup": "careviax-ssm-bastion-sg" }
+        { "protocol": "tcp", "port": 5432, "sourceSecurityGroup": "ph-os-app-sg" },
+        { "protocol": "tcp", "port": 5432, "sourceSecurityGroup": "ph-os-ssm-bastion-sg" }
       ],
       "egress": []
     },
     {
-      "name": "careviax-ssm-bastion-sg",
+      "name": "ph-os-ssm-bastion-sg",
       "ingress": [],
       "egress": [
-        { "protocol": "tcp", "port": 5432, "destinationSecurityGroup": "careviax-rds-sg" },
+        { "protocol": "tcp", "port": 5432, "destinationSecurityGroup": "ph-os-rds-sg" },
         { "protocol": "tcp", "port": 443, "destination": "0.0.0.0/0" }
       ]
     }

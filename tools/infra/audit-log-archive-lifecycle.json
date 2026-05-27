@@ -1,8 +1,8 @@
 {
-  "bucketName": "careviax-audit-archive",
+  "bucketName": "ph-os-audit-archive",
   "rules": [
     {
-      "id": "careviax-audit-logs-five-year-retention",
+      "id": "ph-os-audit-logs-five-year-retention",
       "status": "Enabled",
       "filter": {
         "prefix": "audit-logs/"

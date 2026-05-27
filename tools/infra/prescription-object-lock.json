@@ -1,14 +1,10 @@
 {
-  "bucket": "careviax-files",
+  "bucket": "ph-os-files",
   "objectLockConfiguration": {
-    "ObjectLockEnabled": "Enabled",
-    "Rule": {
-      "DefaultRetention": {
-        "Mode": "COMPLIANCE",
-        "Years": 5
-      }
-    }
+    "ObjectLockEnabled": "Enabled"
   },
+  "defaultRetention": null,
+  "note": "Do not configure bucket-level DefaultRetention on the shared file bucket. Prescription uploads set per-object COMPLIANCE retention headers in application code; temporary bulk-exports/ artifacts must remain deletable by lifecycle cleanup.",
   "scopes": [
     {
       "prefix": "prescriptions/",

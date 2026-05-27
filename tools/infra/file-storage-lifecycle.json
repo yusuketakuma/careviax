@@ -1,0 +1,17 @@
+{
+  "Rules": [
+    {
+      "ID": "expire-bulk-export-artifacts",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "bulk-exports/"
+      },
+      "Expiration": {
+        "Days": 7
+      },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 1
+      }
+    }
+  ]
+}

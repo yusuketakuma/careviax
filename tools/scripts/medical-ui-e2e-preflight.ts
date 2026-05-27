@@ -86,20 +86,20 @@ async function checkTcpPort(name: string, port: number): Promise<CheckResult> {
 function checkDatabaseUrl(envName: 'DATABASE_URL' | 'DIRECT_URL'): CheckResult {
   const databaseUrl =
     process.env[envName] ??
-    'postgresql://careviax:careviax@localhost:5433/careviax_e2e?schema=public';
+    'postgresql://ph-os:ph-os@localhost:5433/ph-os_e2e?schema=public';
 
   try {
     const url = new URL(databaseUrl);
     const databaseName = url.pathname.replace(/^\//, '');
     const isLocalHost = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
-    const isE2eDatabase = databaseName === 'careviax_e2e';
+    const isE2eDatabase = databaseName === 'ph-os_e2e';
     return {
       name: envName,
       status: isLocalHost && isE2eDatabase ? 'pass' : 'fail',
       detail:
         isLocalHost && isE2eDatabase
           ? `local ${databaseName} database target`
-          : `expected local careviax_e2e, got host=${url.hostname} database=${databaseName}`,
+          : `expected local ph-os_e2e, got host=${url.hostname} database=${databaseName}`,
     };
   } catch (error) {
     return {
@@ -131,11 +131,11 @@ function checkPackageScripts(scripts: Record<string, string>): CheckResult[] {
 
     const shouldPinE2eDatabase =
       scriptName.startsWith('db:e2e:') || scriptName.startsWith('medical-ui:e2e:');
-    if (shouldPinE2eDatabase && !script.includes('careviax_e2e')) {
+    if (shouldPinE2eDatabase && !script.includes('ph-os_e2e')) {
       return {
         name: `package-script:${scriptName}`,
         status: 'fail',
-        detail: 'script does not pin local careviax_e2e',
+        detail: 'script does not pin local ph-os_e2e',
       };
     }
 
@@ -198,7 +198,7 @@ async function main() {
         '',
         'Medical UI/UX E2E gate is not ready.',
         'Required next steps:',
-        '1. Start local PostgreSQL for careviax_e2e on localhost:5433.',
+        '1. Start local PostgreSQL for ph-os_e2e on localhost:5433.',
         '2. Run pnpm --config.verify-deps-before-run=false db:e2e:prepare.',
         '3. Start the app with pnpm dev:e2e:local or pnpm start:e2e:local on localhost:3012, or use pnpm medical-ui:e2e:gate:prod after preparing the database.',
         '4. Run pnpm --config.verify-deps-before-run=false db:e2e:check-care-report-duplicates for local release evidence.',

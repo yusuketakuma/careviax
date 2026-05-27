@@ -1,19 +1,25 @@
 {
-  "name": "careviax-prod-web-acl",
+  "name": "ph-os-prod-web-acl",
   "scope": "REGIONAL",
   "defaultAction": {
     "allow": {}
   },
   "visibilityConfig": {
     "cloudWatchMetricsEnabled": true,
-    "metricName": "careviax-prod-web-acl",
-    "sampledRequestsEnabled": true
+    "metricName": "ph-os-prod-web-acl",
+    "sampledRequestsEnabled": false
   },
   "loggingConfiguration": {
     "logDestinationConfigs": [
-      "arn:aws:logs:ap-northeast-1:${AWS_ACCOUNT_ID}:log-group:/aws/waf/careviax-prod"
+      "arn:aws:logs:ap-northeast-1:${AWS_ACCOUNT_ID}:log-group:/aws/waf/ph-os-prod"
     ],
     "redactedFields": [
+      {
+        "uriPath": {}
+      },
+      {
+        "queryString": {}
+      },
       {
         "singleHeader": {
           "name": "authorization"
@@ -111,7 +117,7 @@
       "visibilityConfig": {
         "cloudWatchMetricsEnabled": true,
         "metricName": "rate-limit-api",
-        "sampledRequestsEnabled": true
+        "sampledRequestsEnabled": false
       }
     },
     {

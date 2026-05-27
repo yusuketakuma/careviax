@@ -1,9 +1,9 @@
 {
-  "description": "CareViaX Job Scheduler — Amazon EventBridge Schedules",
+  "description": "PH-OS Job Scheduler — Amazon EventBridge Schedules",
   "region": "ap-northeast-1",
   "schedules": [
     {
-      "name": "careviax-daily-morning",
+      "name": "ph-os-daily-morning",
       "description": "Daily morning jobs: demand generation, evidence refresh, planning reminders",
       "scheduleExpression": "cron(0 21 * * ? *)",
       "scheduleExpressionTimezone": "UTC",
@@ -24,7 +24,7 @@
       "state": "ENABLED"
     },
     {
-      "name": "careviax-evening",
+      "name": "ph-os-evening",
       "description": "Evening job: medication record reminder for pharmacists",
       "scheduleExpression": "cron(0 9 * * ? *)",
       "scheduleExpressionTimezone": "UTC",
@@ -45,7 +45,7 @@
       "state": "ENABLED"
     },
     {
-      "name": "careviax-next-day",
+      "name": "ph-os-next-day",
       "description": "Next-business-day job: remind pharmacists about unsent care reports",
       "scheduleExpression": "cron(0 0 * * ? *)",
       "scheduleExpressionTimezone": "UTC",
@@ -66,7 +66,7 @@
       "state": "ENABLED"
     },
     {
-      "name": "careviax-callback-followup",
+      "name": "ph-os-callback-followup",
       "description": "Hourly callback follow-up task refresh for pending patient contact",
       "scheduleExpression": "cron(0 * * * ? *)",
       "scheduleExpressionTimezone": "UTC",
@@ -87,7 +87,7 @@
       "state": "ENABLED"
     },
     {
-      "name": "careviax-monthly-operations",
+      "name": "ph-os-monthly-operations",
       "description": "Monthly aggregation jobs: visit report and management metrics snapshot",
       "scheduleExpression": "cron(0 22 1 * ? *)",
       "scheduleExpressionTimezone": "UTC",
@@ -108,7 +108,7 @@
       "state": "ENABLED"
     },
     {
-      "name": "careviax-drug-master-refresh",
+      "name": "ph-os-drug-master-refresh",
       "description": "Monthly SSK drug master refresh with ZIP diff check before full upsert",
       "scheduleExpression": "cron(0 6 1 * ? *)",
       "scheduleExpressionTimezone": "Asia/Tokyo",
@@ -129,7 +129,7 @@
       "state": "ENABLED"
     },
     {
-      "name": "careviax-drug-reference-refresh",
+      "name": "ph-os-drug-reference-refresh",
       "description": "Monthly MHLW price / generic-name / generic-flag reference refresh",
       "scheduleExpression": "cron(30 6 1 * ? *)",
       "scheduleExpressionTimezone": "Asia/Tokyo",
@@ -150,7 +150,7 @@
       "state": "ENABLED"
     },
     {
-      "name": "careviax-pmda-package-insert-refresh",
+      "name": "ph-os-pmda-package-insert-refresh",
       "description": "Daily PMDA package-insert delta refresh using a pre-downloaded or mirrored ZIP URL",
       "scheduleExpression": "cron(0 5 * * ? *)",
       "scheduleExpressionTimezone": "Asia/Tokyo",
@@ -171,7 +171,7 @@
       "state": "ENABLED"
     },
     {
-      "name": "careviax-medication-history-bulk-export-drain",
+      "name": "ph-os-medication-history-bulk-export-drain",
       "description": "Drain queued medication-history ZIP exports for inspection-ready bundles",
       "scheduleExpression": "cron(0/15 * * * ? *)",
       "scheduleExpressionTimezone": "UTC",
@@ -190,16 +190,37 @@
         "maximumEventAgeInSeconds": 1800
       },
       "state": "ENABLED"
+    },
+    {
+      "name": "ph-os-bulk-export-artifact-cleanup",
+      "description": "Delete expired medication-history ZIP export artifacts and metadata",
+      "scheduleExpression": "cron(30 3 * * ? *)",
+      "scheduleExpressionTimezone": "Asia/Tokyo",
+      "comment": "Run daily at 03:30 JST; app cleanup is backed by S3 lifecycle for bulk-exports/",
+      "target": {
+        "type": "HTTP",
+        "method": "POST",
+        "url": "${APP_URL}/api/jobs/bulk-export-artifact-cleanup",
+        "headers": {
+          "x-api-key": "${JOB_API_KEY}",
+          "Content-Type": "application/json"
+        }
+      },
+      "retryPolicy": {
+        "maximumRetryAttempts": 2,
+        "maximumEventAgeInSeconds": 21600
+      },
+      "state": "ENABLED"
     }
   ],
   "setup": {
     "steps": [
-      "1. Create an EventBridge Scheduler schedule group: careviax-jobs",
+      "1. Create an EventBridge Scheduler schedule group: ph-os-jobs",
       "2. Set JOB_API_KEY in AWS Secrets Manager and reference in the schedule",
       "3. Create IAM role with eventbridge-scheduler:CreateSchedule permissions",
       "4. Deploy via AWS CDK or CLI:",
-      "   aws scheduler create-schedule --name careviax-daily-morning --schedule-expression 'cron(0 21 * * ? *)' --target '{...}' --flexible-time-window '{\"Mode\":\"OFF\"}'",
-      "5. Verify: aws scheduler get-schedule --name careviax-daily-morning"
+      "   aws scheduler create-schedule --name ph-os-daily-morning --schedule-expression 'cron(0 21 * * ? *)' --target '{...}' --flexible-time-window '{\"Mode\":\"OFF\"}'",
+      "5. Verify: aws scheduler get-schedule --name ph-os-daily-morning"
     ]
   }
 }

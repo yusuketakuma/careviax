@@ -5,7 +5,7 @@ import {
   PLAYWRIGHT_REPORT_DIR,
 } from './tools/tests/helpers/artifacts';
 
-const LOCAL_PLAYWRIGHT_AUTH_SECRET = 'careviax-local-auth-secret';
+const LOCAL_PLAYWRIGHT_AUTH_SECRET = 'ph-os-local-auth-secret';
 const shouldReuseExistingServer = !process.env.CI && process.env.PLAYWRIGHT_REUSE_SERVER === '1';
 const NEXT_FONT_GOOGLE_MOCKED_RESPONSES = path.join(
   process.cwd(),

@@ -2,16 +2,16 @@ import { encode } from 'next-auth/jwt';
 import type { BrowserContext, Page } from '@playwright/test';
 import { Client } from 'pg';
 
-export const AUTH_SECRET = 'careviax-local-auth-secret';
+export const AUTH_SECRET = 'ph-os-local-auth-secret';
 const DB_CONNECTION_STRING = (
   process.env.DATABASE_URL ??
-  'postgresql://careviax:careviax@localhost:5433/careviax_e2e?schema=public'
+  'postgresql://ph-os:ph-os@localhost:5433/ph-os_e2e?schema=public'
 ).replace(/\?.*$/, '');
 const NOTIFICATION_STREAM_PATH = '/api/notifications/stream';
 let cachedLocalUserId: string | null = null;
 
 export const LOCAL_USER = {
-  email: 'demo@careviax.example.com',
+  email: 'demo@ph-os.example.com',
   name: '山田 太郎',
   cognitoSub: 'demo-cognito-sub-001',
   sessionVersion: 0,
@@ -25,8 +25,8 @@ function assertSafeE2eDatabase() {
   const url = new URL(DB_CONNECTION_STRING);
   const databaseName = url.pathname.replace(/^\//, '');
   const isLocalHost = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
-  if (!isLocalHost || databaseName !== 'careviax_e2e') {
-    throw new Error('Playwright local auth requires a local careviax_e2e DATABASE_URL');
+  if (!isLocalHost || databaseName !== 'ph-os_e2e') {
+    throw new Error('Playwright local auth requires a local ph-os_e2e DATABASE_URL');
   }
 }
 

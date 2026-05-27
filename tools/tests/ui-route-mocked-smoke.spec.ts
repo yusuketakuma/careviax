@@ -7,8 +7,8 @@ const BILLING_MONTH = '2026-04-01';
 const BILLING_PATIENT_ID = 'billing_route_mock_patient';
 const OFFLINE_SCHEDULE_ID = 'offline_route_mock_schedule';
 const OFFLINE_PATIENT_ID = 'offline_route_mock_patient';
-const OFFLINE_DB_NAME = 'CareViaXOffline';
-const OFFLINE_KEY_DB_NAME = 'careviax-offline-keys';
+const OFFLINE_DB_NAME = 'PH-OSOffline';
+const OFFLINE_KEY_DB_NAME = 'ph-os-offline-keys';
 const OFFLINE_KEY_STORE_NAME = 'crypto-keys';
 const OFFLINE_KEY_RECORD_ID = 'offline-enc-key-v2';
 

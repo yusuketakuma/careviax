@@ -16,7 +16,7 @@ test.describe('dashboard page', () => {
     await waitForStableUi(page);
 
     // Dashboard header
-    await expect(page.getByRole('heading', { name: 'CareViaX ホーム', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'PH-OS ホーム', level: 1 })).toBeVisible();
 
     // Main content area should have meaningful content
     const main = page.locator('main');
@@ -192,7 +192,7 @@ test.describe('breadcrumb navigation', () => {
       breadcrumb.getByRole('link', { name: 'ホームへ' }).click(),
     ]);
 
-    await expect(page.getByRole('heading', { name: 'CareViaX ホーム', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'PH-OS ホーム', level: 1 })).toBeVisible();
     expect(errors).toEqual([]);
   });
 });

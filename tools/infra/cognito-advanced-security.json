@@ -14,7 +14,7 @@
   "accountTakeoverRiskConfiguration": {
     "notifyConfiguration": {
       "sourceArnEnv": "SES_FROM_EMAIL",
-      "replyTo": "security@careviax.example"
+      "replyTo": "security@ph-os.example"
     },
     "actions": {
       "highAction": "BLOCK",
