@@ -1,0 +1,108 @@
+import { NextRequest } from 'next/server';
+import { z } from 'zod';
+import { withAuthContext } from '@/lib/auth/context';
+import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { prisma } from '@/lib/db/client';
+
+const createTemplateSchema = z.object({
+  name: z.string().trim().min(1, 'テンプレート名は必須です').max(100),
+  description: z.string().trim().max(500).nullable().optional(),
+  source_site_id: z.string().trim().min(1, 'source_site_id は必須です'),
+});
+
+export const GET = withAuthContext(
+  async (_req: NextRequest, authCtx) => {
+    const templates = await prisma.formularyTemplate.findMany({
+      where: { org_id: authCtx.orgId },
+      orderBy: [{ created_at: 'desc' }],
+      take: 50,
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        source_site_id: true,
+        item_count: true,
+        created_at: true,
+      },
+    });
+
+    return success({ data: templates });
+  },
+  { permission: 'canAdmin' },
+);
+
+export const POST = withAuthContext(
+  async (req: NextRequest, authCtx) => {
+    const body = await req.json().catch(() => null);
+    if (!body) return validationError('リクエストボディが不正です');
+
+    const parsed = createTemplateSchema.safeParse(body);
+    if (!parsed.success) {
+      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    }
+
+    const site = await prisma.pharmacySite.findFirst({
+      where: { id: parsed.data.source_site_id, org_id: authCtx.orgId },
+      select: { id: true, name: true },
+    });
+    if (!site) return notFound('対象の薬局拠点が見つかりません');
+
+    const sourceStocks = await prisma.pharmacyDrugStock.findMany({
+      where: {
+        org_id: authCtx.orgId,
+        site_id: site.id,
+        is_stocked: true,
+      },
+      orderBy: [{ updated_at: 'desc' }],
+      select: {
+        drug_master_id: true,
+        reorder_point: true,
+        preferred_generic_id: true,
+        adoption_note: true,
+      },
+    });
+    if (sourceStocks.length === 0) {
+      return conflict('テンプレート化する採用品がありません', { source_site_id: site.id });
+    }
+
+    const template = await prisma.$transaction(async (tx) => {
+      const created = await tx.formularyTemplate.create({
+        data: {
+          org_id: authCtx.orgId,
+          name: parsed.data.name,
+          description: parsed.data.description ?? null,
+          source_site_id: site.id,
+          created_by_id: authCtx.userId,
+          item_count: sourceStocks.length,
+          items: sourceStocks.map((stock) => ({
+            drug_master_id: stock.drug_master_id,
+            reorder_point: stock.reorder_point,
+            preferred_generic_id: stock.preferred_generic_id,
+            adoption_note: stock.adoption_note,
+          })),
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          org_id: authCtx.orgId,
+          actor_id: authCtx.userId,
+          action: 'formulary_template_created',
+          target_type: 'FormularyTemplate',
+          target_id: created.id,
+          changes: {
+            source_site_id: site.id,
+            item_count: sourceStocks.length,
+          },
+          ip_address: authCtx.ipAddress,
+          user_agent: authCtx.userAgent,
+        },
+      });
+
+      return created;
+    });
+
+    return success({ site, data: template }, 201);
+  },
+  { permission: 'canAdmin' },
+);

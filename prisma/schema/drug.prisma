@@ -207,6 +207,22 @@ model FormularyChangeRequest {
   @@index([status, created_at])
 }
 
+model FormularyTemplate {
+  id             String   @id @default(cuid())
+  org_id         String
+  name           String
+  description    String?
+  source_site_id String?
+  created_by_id  String
+  items          Json
+  item_count     Int      @default(0)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@index([org_id, created_at])
+  @@index([org_id, name])
+}
+
 // グローバルマスタ（org_id なし）
 model GenericDrugMapping {
   id               String   @id @default(cuid())

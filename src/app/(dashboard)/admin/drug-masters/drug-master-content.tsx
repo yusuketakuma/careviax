@@ -388,6 +388,15 @@ type FormularyCopyPreviewResponse = {
   };
 };
 
+type FormularyTemplateItem = {
+  id: string;
+  name: string;
+  description: string | null;
+  source_site_id: string | null;
+  item_count: number;
+  created_at: string;
+};
+
 type PharmacyDrugStockHistoryItem = {
   id: string;
   actor_id: string;
@@ -680,6 +689,8 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const [copySourceSiteId, setCopySourceSiteId] = useState('');
   const [copyOverwrite, setCopyOverwrite] = useState(false);
   const [copyPreview, setCopyPreview] = useState<FormularyCopyPreviewResponse | null>(null);
+  const [templateName, setTemplateName] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [preferredGenericId, setPreferredGenericId] = useState<string | null>(null);
   const [bulkCsv, setBulkCsv] = useState('');
   const [bulkPreview, setBulkPreview] = useState<BulkPreviewResponse | null>(null);
@@ -908,6 +919,19 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       return res.json() as Promise<FormularyChangeRequestListResponse>;
     },
     enabled: variant === 'formulary' && !!orgId && !!effectiveSelectedSiteId,
+    staleTime: 60_000,
+  });
+
+  const formularyTemplatesQuery = useQuery({
+    queryKey: ['pharmacy-drug-stock-templates', orgId],
+    queryFn: async () => {
+      const res = await fetch('/api/pharmacy-drug-stock-templates', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('採用品テンプレートの取得に失敗しました');
+      return res.json() as Promise<{ data: FormularyTemplateItem[] }>;
+    },
+    enabled: variant === 'formulary' && !!orgId,
     staleTime: 60_000,
   });
 
@@ -1320,6 +1344,71 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     },
   });
 
+  const createTemplateMutation = useMutation({
+    mutationFn: async () => {
+      if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
+      const name = templateName.trim();
+      if (!name) throw new Error('テンプレート名を入力してください');
+      const res = await fetch('/api/pharmacy-drug-stock-templates', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          name,
+          source_site_id: effectiveSelectedSiteId,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.message ?? '採用品テンプレートの作成に失敗しました');
+      return json as { data: FormularyTemplateItem };
+    },
+    onSuccess: async () => {
+      toast.success('採用品テンプレートを作成しました');
+      setTemplateName('');
+      await queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock-templates'] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '採用品テンプレートの作成に失敗しました');
+    },
+  });
+
+  const applyTemplateMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedTemplateId) throw new Error('テンプレートを選択してください');
+      if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
+      const res = await fetch(`/api/pharmacy-drug-stock-templates/${selectedTemplateId}/apply`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          target_site_id: effectiveSelectedSiteId,
+          overwrite: copyOverwrite,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.message ?? '採用品テンプレートの適用に失敗しました');
+      return json as { appliedCount: number; skippedCount: number };
+    },
+    onSuccess: async (result) => {
+      toast.success(
+        `採用品テンプレートを適用しました（反映 ${result.appliedCount.toLocaleString()}件 / スキップ ${result.skippedCount.toLocaleString()}件）`,
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock'] }),
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks'] }),
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks-impact'] }),
+        queryClient.invalidateQueries({ queryKey: ['drug-masters'] }),
+      ]);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '採用品テンプレートの適用に失敗しました');
+    },
+  });
+
   const reviewMutation = useMutation({
     mutationFn: async () => {
       if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
@@ -1459,6 +1548,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
 
   const drugs = data?.data ?? [];
   const sites = sitesData?.data ?? [];
+  const formularyTemplates = formularyTemplatesQuery.data?.data ?? [];
   const copySourceSites = sites.filter((site) => site.id !== effectiveSelectedSiteId);
   const importLogs = importLogsData?.data ?? [];
   const reviewDueStocks = formularyReviewQuery.data?.data ?? [];
@@ -2404,6 +2494,58 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   </div>
                 </div>
               )}
+              <div className="mt-3 rounded-md border border-border/60 bg-background p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="text-sm font-semibold text-foreground">施設別採用品テンプレート</h4>
+                  <Badge variant="outline" className="text-[10px]">
+                    {formularyTemplates.length.toLocaleString()}件
+                  </Badge>
+                </div>
+                <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(160px,1fr)_auto]">
+                  <Input
+                    value={templateName}
+                    onChange={(event) => setTemplateName(event.target.value)}
+                    placeholder="例: 在宅内科 標準セット"
+                    aria-label="採用品テンプレート名"
+                  />
+                  <LoadingButton
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    loading={createTemplateMutation.isPending}
+                    loadingLabel="作成中"
+                    disabled={!effectiveSelectedSiteId || templateName.trim().length === 0}
+                    onClick={() => createTemplateMutation.mutate()}
+                  >
+                    現在の拠点から作成
+                  </LoadingButton>
+                </div>
+                <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(160px,1fr)_auto]">
+                  <select
+                    value={selectedTemplateId}
+                    onChange={(event) => setSelectedTemplateId(event.target.value)}
+                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    aria-label="適用する採用品テンプレート"
+                  >
+                    <option value="">テンプレートを選択</option>
+                    {formularyTemplates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}（{template.item_count.toLocaleString()}件）
+                      </option>
+                    ))}
+                  </select>
+                  <LoadingButton
+                    type="button"
+                    size="sm"
+                    loading={applyTemplateMutation.isPending}
+                    loadingLabel="適用中"
+                    disabled={!effectiveSelectedSiteId || !selectedTemplateId}
+                    onClick={() => applyTemplateMutation.mutate()}
+                  >
+                    テンプレートを適用
+                  </LoadingButton>
+                </div>
+              </div>
             </div>
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
               <label className="space-y-1">

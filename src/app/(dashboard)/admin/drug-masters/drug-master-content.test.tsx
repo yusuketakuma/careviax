@@ -61,6 +61,23 @@ vi.mock('@tanstack/react-query', () => ({
         isLoading: false,
       };
     }
+    if (key === 'pharmacy-drug-stock-templates') {
+      return {
+        data: {
+          data: [
+            {
+              id: 'template_1',
+              name: '在宅内科 標準セット',
+              description: null,
+              source_site_id: 'site_1',
+              item_count: 12,
+              created_at: '2026-05-27T00:00:00.000Z',
+            },
+          ],
+        },
+        isLoading: false,
+      };
+    }
     if (key === 'pharmacy-drug-stock-usage-mismatch') {
       return {
         data: {
@@ -293,6 +310,9 @@ describe('DrugMasterContent', () => {
     expect(screen.getByText('薬価改定差分レポート')).toBeTruthy();
     expect(screen.getByText(/薬価影響額推計/)).toBeTruthy();
     expect(screen.getByText('拠点間コピー')).toBeTruthy();
+    expect(screen.getByText('施設別採用品テンプレート')).toBeTruthy();
+    expect(screen.getByLabelText('採用品テンプレート名')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /テンプレートを適用/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /コピー差分確認/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /採用品をコピー/ })).toBeTruthy();
     expect(screen.getByLabelText('CSV一括登録')).toBeTruthy();
