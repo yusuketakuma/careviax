@@ -30,6 +30,9 @@ vi.mock('@tanstack/react-query', () => ({
     if (key === 'pharmacy-drug-stocks') {
       return { data: { data: [] }, isLoading: false };
     }
+    if (key === 'pharmacy-drug-stock-history') {
+      return { data: { data: [] }, isLoading: false };
+    }
     if (key === 'pharmacy-drug-stocks-impact') {
       return {
         data: {

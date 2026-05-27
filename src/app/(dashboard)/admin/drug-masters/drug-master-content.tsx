@@ -248,6 +248,16 @@ type BulkPreviewResponse = {
   };
 };
 
+type PharmacyDrugStockHistoryItem = {
+  id: string;
+  actor_id: string;
+  action: string;
+  target_type: string;
+  target_id: string;
+  changes: unknown;
+  created_at: string;
+};
+
 type ImpactQueueKey =
   | 'action_required'
   | 'recently_changed'
@@ -617,6 +627,24 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     staleTime: 300_000,
   });
 
+  const stockHistoryQuery = useQuery({
+    queryKey: ['pharmacy-drug-stock-history', orgId, effectiveSelectedSiteId, selectedDrugId],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        site_id: effectiveSelectedSiteId,
+        drug_master_id: selectedDrugId ?? '',
+        limit: '10',
+      });
+      const res = await fetch(`/api/pharmacy-drug-stocks/history?${params}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('採用品履歴の取得に失敗しました');
+      return res.json() as Promise<{ data: PharmacyDrugStockHistoryItem[] }>;
+    },
+    enabled: !!orgId && !!effectiveSelectedSiteId && !!selectedDrugId,
+    staleTime: 60_000,
+  });
+
   const formularyReviewQuery = useQuery({
     queryKey: ['pharmacy-drug-stocks', orgId, effectiveSelectedSiteId, 'review-due'],
     queryFn: async () => {
@@ -847,6 +875,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock'] }),
         queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks'] }),
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock-history'] }),
         queryClient.invalidateQueries({ queryKey: ['generic-recommendations'] }),
         queryClient.invalidateQueries({ queryKey: ['drug-masters'] }),
       ]);
@@ -927,6 +956,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       setBulkPreview(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks'] }),
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock-history'] }),
         queryClient.invalidateQueries({ queryKey: ['drug-masters'] }),
       ]);
     },
@@ -952,7 +982,10 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     },
     onSuccess: async (result) => {
       toast.success(`採用薬レビューを記録しました（${result.reviewedCount.toLocaleString()}件）`);
-      await queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks'] }),
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock-history'] }),
+      ]);
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : '採用薬レビューの記録に失敗しました');
@@ -1122,6 +1155,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     : undefined;
   const latestPackageInsert = detailQuery.data?.package_inserts[0] ?? null;
   const stockConfig = stockConfigQuery.data?.data ?? null;
+  const stockHistory = stockHistoryQuery.data?.data ?? [];
   const effectivePreferredGenericId = preferredGenericId ?? stockConfig?.preferred_generic_id ?? '';
   const relatedInteractions = detailQuery.data
     ? [
@@ -1195,6 +1229,20 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
         return '経過措置変更';
       default:
         return changeType;
+    }
+  };
+  const stockHistoryActionLabel = (action: string) => {
+    switch (action) {
+      case 'pharmacy_drug_stock_created':
+        return '採用登録';
+      case 'pharmacy_drug_stock_updated':
+        return '採用品設定更新';
+      case 'pharmacy_drug_stock_bulk_imported':
+        return 'CSV一括反映';
+      case 'pharmacy_drug_stock_reviewed':
+        return 'レビュー記録';
+      default:
+        return action;
     }
   };
 
@@ -2188,6 +2236,45 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                             : '未設定'}
                         </p>
                       </div>
+                    </div>
+                  )}
+                </section>
+
+                <section className="space-y-3">
+                  <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <History className="size-4" aria-hidden="true" />
+                    採用品変更履歴
+                  </h2>
+                  {!effectiveSelectedSiteId ? (
+                    <p className="text-sm text-muted-foreground">
+                      対象拠点を選択すると採用品の変更履歴を確認できます。
+                    </p>
+                  ) : stockHistoryQuery.isLoading ? (
+                    <p className="text-sm text-muted-foreground">採用品履歴を読み込み中です…</p>
+                  ) : stockHistory.length === 0 ? (
+                    <p className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                      この薬剤の採用品変更履歴はまだありません。
+                    </p>
+                  ) : (
+                    <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
+                      {stockHistory.slice(0, 5).map((item) => (
+                        <div
+                          key={item.id}
+                          className="rounded-md border border-border/60 bg-background px-3 py-2"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-medium text-foreground">
+                              {stockHistoryActionLabel(item.action)}
+                            </p>
+                            <Badge variant="outline" className="text-[10px]">
+                              {new Date(item.created_at).toLocaleDateString('ja-JP')}
+                            </Badge>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            操作者: {item.actor_id}
+                          </p>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </section>
