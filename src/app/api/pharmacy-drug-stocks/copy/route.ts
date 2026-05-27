@@ -8,7 +8,10 @@ const copyFormularySchema = z.object({
   source_site_id: z.string().trim().min(1, 'source_site_id は必須です'),
   target_site_id: z.string().trim().min(1, 'target_site_id は必須です'),
   overwrite: z.boolean().default(false),
+  dry_run: z.boolean().default(false),
 });
+
+type CopyPreviewAction = 'create' | 'update' | 'skip_existing';
 
 export const POST = withAuthContext(
   async (req: NextRequest, authCtx) => {
@@ -20,7 +23,7 @@ export const POST = withAuthContext(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const { source_site_id, target_site_id, overwrite } = parsed.data;
+    const { source_site_id, target_site_id, overwrite, dry_run } = parsed.data;
     if (source_site_id === target_site_id) {
       return validationError('コピー元とコピー先には別の拠点を指定してください', {
         target_site_id: ['コピー元と異なる拠点を選択してください'],
@@ -51,6 +54,13 @@ export const POST = withAuthContext(
         reorder_point: true,
         preferred_generic_id: true,
         adoption_note: true,
+        drug_master: {
+          select: {
+            id: true,
+            yj_code: true,
+            drug_name: true,
+          },
+        },
       },
     });
 
@@ -73,9 +83,44 @@ export const POST = withAuthContext(
     const existingTargetDrugIds = new Set(
       existingTargetStocks.map((stock) => stock.drug_master_id),
     );
-    const operations = overwrite
-      ? sourceStocks
-      : sourceStocks.filter((stock) => !existingTargetDrugIds.has(stock.drug_master_id));
+    const previewRows = sourceStocks.map((stock) => {
+      const exists = existingTargetDrugIds.has(stock.drug_master_id);
+      const action: CopyPreviewAction = exists ? (overwrite ? 'update' : 'skip_existing') : 'create';
+      return {
+        action,
+        drug_master_id: stock.drug_master_id,
+        reorder_point: stock.reorder_point,
+        preferred_generic_id: stock.preferred_generic_id,
+        drug_master: stock.drug_master,
+      };
+    });
+    const operations = sourceStocks.filter((stock) => {
+      const exists = existingTargetDrugIds.has(stock.drug_master_id);
+      return overwrite || !exists;
+    });
+    const preview = {
+      summary: {
+        source_count: sourceStocks.length,
+        create_count: previewRows.filter((row) => row.action === 'create').length,
+        update_count: previewRows.filter((row) => row.action === 'update').length,
+        skip_existing_count: previewRows.filter((row) => row.action === 'skip_existing').length,
+        apply_count: operations.length,
+      },
+      rows: previewRows,
+    };
+
+    if (dry_run) {
+      return success({
+        sourceSite,
+        targetSite,
+        sourceCount: sourceStocks.length,
+        copiedCount: 0,
+        skippedCount: sourceStocks.length - operations.length,
+        overwrite,
+        dryRun: true,
+        preview,
+      });
+    }
 
     const copiedCount = await prisma.$transaction(async (tx) => {
       let count = 0;
@@ -141,6 +186,8 @@ export const POST = withAuthContext(
       copiedCount,
       skippedCount: sourceStocks.length - copiedCount,
       overwrite,
+      dryRun: false,
+      preview,
     });
   },
   { permission: 'canAdmin' },

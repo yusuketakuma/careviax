@@ -259,9 +259,10 @@ describe('DrugMasterContent', () => {
     expect(screen.getByText('影響レビューキュー')).toBeTruthy();
     expect(screen.getByText('薬価改定差分レポート')).toBeTruthy();
     expect(screen.getByText('拠点間コピー')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /コピー差分確認/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /採用品をコピー/ })).toBeTruthy();
     expect(screen.getByLabelText('CSV一括登録')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /差分確認/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^差分確認$/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /一括登録/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /CSVテンプレート/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /CSV出力/ })).toBeTruthy();

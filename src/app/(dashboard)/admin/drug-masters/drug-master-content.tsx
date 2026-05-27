@@ -339,6 +339,34 @@ type BulkPreviewResponse = {
   };
 };
 
+type FormularyCopyPreviewResponse = {
+  sourceCount: number;
+  copiedCount: number;
+  skippedCount: number;
+  overwrite: boolean;
+  dryRun: boolean;
+  preview: {
+    summary: {
+      source_count: number;
+      create_count: number;
+      update_count: number;
+      skip_existing_count: number;
+      apply_count: number;
+    };
+    rows: Array<{
+      action: 'create' | 'update' | 'skip_existing';
+      drug_master_id: string;
+      reorder_point: number | null;
+      preferred_generic_id: string | null;
+      drug_master: {
+        id: string;
+        yj_code: string;
+        drug_name: string;
+      };
+    }>;
+  };
+};
+
 type PharmacyDrugStockHistoryItem = {
   id: string;
   actor_id: string;
@@ -612,6 +640,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const [selectedSiteId, setSelectedSiteId] = useState('');
   const [copySourceSiteId, setCopySourceSiteId] = useState('');
   const [copyOverwrite, setCopyOverwrite] = useState(false);
+  const [copyPreview, setCopyPreview] = useState<FormularyCopyPreviewResponse | null>(null);
   const [preferredGenericId, setPreferredGenericId] = useState<string | null>(null);
   const [bulkCsv, setBulkCsv] = useState('');
   const [bulkPreview, setBulkPreview] = useState<BulkPreviewResponse | null>(null);
@@ -1204,7 +1233,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   });
 
   const copyFormularyMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async ({ dryRun }: { dryRun: boolean }) => {
       if (!copySourceSiteId) throw new Error('コピー元拠点を選択してください');
       if (!effectiveSelectedSiteId) throw new Error('コピー先拠点を選択してください');
       const res = await fetch('/api/pharmacy-drug-stocks/copy', {
@@ -1217,18 +1246,27 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
           source_site_id: copySourceSiteId,
           target_site_id: effectiveSelectedSiteId,
           overwrite: copyOverwrite,
+          dry_run: dryRun,
         }),
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
         throw new Error(json?.message ?? '採用薬リストのコピーに失敗しました');
       }
-      return json as { copiedCount: number; skippedCount: number };
+      return json as FormularyCopyPreviewResponse;
     },
     onSuccess: async (result) => {
+      if (result.dryRun) {
+        setCopyPreview(result);
+        toast.success(
+          `コピー差分を確認しました（反映予定 ${result.preview.summary.apply_count.toLocaleString()}件）`,
+        );
+        return;
+      }
       toast.success(
         `採用薬リストをコピーしました（反映 ${result.copiedCount.toLocaleString()}件 / スキップ ${result.skippedCount.toLocaleString()}件）`,
       );
+      setCopyPreview(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock'] }),
         queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks'] }),
@@ -2027,7 +2065,8 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   拠点間コピー
                 </h3>
                 <Badge variant="outline" className="text-[10px]">
-                  コピー先: {sites.find((site) => site.id === effectiveSelectedSiteId)?.name ?? '未選択'}
+                  コピー先:{' '}
+                  {sites.find((site) => site.id === effectiveSelectedSiteId)?.name ?? '未選択'}
                 </Badge>
               </div>
               <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(180px,260px)_auto_auto] lg:items-end">
@@ -2035,7 +2074,10 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   <span className="text-xs font-medium text-muted-foreground">コピー元拠点</span>
                   <select
                     value={copySourceSiteId}
-                    onChange={(event) => setCopySourceSiteId(event.target.value)}
+                    onChange={(event) => {
+                      setCopySourceSiteId(event.target.value);
+                      setCopyPreview(null);
+                    }}
                     className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
                   >
                     <option value="">選択してください</option>
@@ -2050,25 +2092,100 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   <input
                     type="checkbox"
                     checked={copyOverwrite}
-                    onChange={(event) => setCopyOverwrite(event.target.checked)}
+                    onChange={(event) => {
+                      setCopyOverwrite(event.target.checked);
+                      setCopyPreview(null);
+                    }}
                     className="size-4 rounded border-input"
                   />
                   既存の採用品設定を上書き
                 </label>
-                <LoadingButton
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  loading={copyFormularyMutation.isPending}
-                  loadingLabel="コピー中"
-                  disabled={!effectiveSelectedSiteId || !copySourceSiteId}
-                  onClick={() => copyFormularyMutation.mutate()}
-                  className="gap-1"
-                >
-                  <ClipboardCheck className="size-3.5" aria-hidden="true" />
-                  採用品をコピー
-                </LoadingButton>
+                <div className="flex flex-wrap gap-2">
+                  <LoadingButton
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    loading={
+                      copyFormularyMutation.isPending &&
+                      copyFormularyMutation.variables?.dryRun === true
+                    }
+                    loadingLabel="確認中"
+                    disabled={!effectiveSelectedSiteId || !copySourceSiteId}
+                    onClick={() => copyFormularyMutation.mutate({ dryRun: true })}
+                    className="gap-1"
+                  >
+                    <ListChecks className="size-3.5" aria-hidden="true" />
+                    コピー差分確認
+                  </LoadingButton>
+                  <LoadingButton
+                    type="button"
+                    size="sm"
+                    loading={
+                      copyFormularyMutation.isPending &&
+                      copyFormularyMutation.variables?.dryRun === false
+                    }
+                    loadingLabel="コピー中"
+                    disabled={!effectiveSelectedSiteId || !copySourceSiteId}
+                    onClick={() => copyFormularyMutation.mutate({ dryRun: false })}
+                    className="gap-1"
+                  >
+                    <ClipboardCheck className="size-3.5" aria-hidden="true" />
+                    採用品をコピー
+                  </LoadingButton>
+                </div>
               </div>
+              {copyPreview && (
+                <div className="mt-3 rounded-md border border-border/60 bg-background p-3">
+                  <div className="grid gap-2 md:grid-cols-4">
+                    <div>
+                      <p className="text-xs text-muted-foreground">追加</p>
+                      <p className="text-lg font-semibold tabular-nums">
+                        {copyPreview.preview.summary.create_count.toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">上書き</p>
+                      <p className="text-lg font-semibold tabular-nums">
+                        {copyPreview.preview.summary.update_count.toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">既存スキップ</p>
+                      <p className="text-lg font-semibold tabular-nums">
+                        {copyPreview.preview.summary.skip_existing_count.toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">反映予定</p>
+                      <p className="text-lg font-semibold tabular-nums">
+                        {copyPreview.preview.summary.apply_count.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 space-y-1">
+                    {copyPreview.preview.rows.slice(0, 3).map((row) => (
+                      <div
+                        key={`${row.action}-${row.drug_master_id}`}
+                        className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2 text-xs"
+                      >
+                        <span className="min-w-0 font-medium text-foreground">
+                          {row.drug_master.drug_name}
+                        </span>
+                        <span className="flex items-center gap-2 text-muted-foreground">
+                          <span className="font-mono">{row.drug_master.yj_code}</span>
+                          <Badge variant="outline" className="text-[10px]">
+                            {row.action === 'create'
+                              ? '追加'
+                              : row.action === 'update'
+                                ? '上書き'
+                                : '既存スキップ'}
+                          </Badge>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
               <label className="space-y-1">
