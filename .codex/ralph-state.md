@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-221805
+
+- current task: align CSV bulk formulary import preferred-generic rules with the individual stock API
+- files inspected: `git status --short`, `src/app/api/pharmacy-drug-stocks/bulk/route.ts`, `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`, `src/app/api/pharmacy-drug-stocks/route.ts`
+- files changed: `src/app/api/pharmacy-drug-stocks/bulk/route.ts`, `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: CSV import validated preferred generic existence and generic status but did not reject a different generic-name ingredient or self-reference; this meant CSV import could bypass preferred-generic constraints already enforced by the individual stock API
+- security risks found: no authorization boundary changed; reduced unsafe bulk formulary configuration that could affect substitution decisions across many adopted drugs at once
+- performance issues found: no additional DB calls; the existing DrugMaster lookups now select `generic_name` and validate in memory
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec eslint src/app/api/pharmacy-drug-stocks/bulk/route.ts src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 1 file / 5 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice aligns CSV preferred-generic integrity only
+- next action: commit this bulk preferred-generic validation fix and continue the next high-value item
+
 ### 20260527-221220
 
 - current task: harden preferred-generic validation for individual adopted-drug stock settings
