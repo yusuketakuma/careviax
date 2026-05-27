@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260528-000830
+
+- current task: prevent duplicate formulary template names
+- files inspected: `git status --short`, Next.js route handler docs, `src/app/api/pharmacy-drug-stock-templates/route.ts`, `src/app/api/pharmacy-drug-stock-templates/route.test.ts`
+- files changed: `src/app/api/pharmacy-drug-stock-templates/route.ts`, `src/app/api/pharmacy-drug-stock-templates/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: multiple same-org formulary templates could share the same display name, making the admin selection UI ambiguous and increasing stale-template misapplication risk
+- security risks found: duplicate-name check remains scoped to the authenticated org and admin-only route; duplicate conflicts stop before stock reads, template writes, or audit writes
+- performance issues found: duplicate check uses the existing org/name index and avoids loading source stocked rows when a conflicting template already exists
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stock-templates/route.test.ts`; targeted ESLint for template route files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 1 file / 3 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice prevents duplicate template names but does not yet add rename/update flows
+- next action: commit the duplicate template-name guard and continue the next high-value formulary/drug-master improvement
+
 ### 20260528-000705
 
 - current task: add a database index for duplicate pending formulary request checks
