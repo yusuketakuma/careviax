@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-231445
+
+- current task: add dry-run difference preview before copying adopted-drug lists between sites
+- files inspected: `git status --short`, `src/app/api/pharmacy-drug-stocks/copy/route.ts`, `src/app/api/pharmacy-drug-stocks/copy/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`
+- files changed: `src/app/api/pharmacy-drug-stocks/copy/route.ts`, `src/app/api/pharmacy-drug-stocks/copy/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the existing site-to-site copy flow could apply changes without showing whether the target site would receive new rows, overwritten rows, or skipped existing rows
+- security risks found: no authorization boundary changed; dry-run uses the same org-scoped source/target site validation as the actual copy path and performs no transaction, audit write, or stock upsert
+- performance issues found: preview reuses the existing two bounded stock queries and computes create/update/skip counts in memory without additional per-drug queries
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/copy/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for changed copy API/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 2 files / 10 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice prevents blind site-copy application but does not yet enforce mandatory preview before actual copy
+- next action: commit the copy preview slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260527-231104
 
 - current task: add prescription/formulary mismatch detection from recent site QR drafts
