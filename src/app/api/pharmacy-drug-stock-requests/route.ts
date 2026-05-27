@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
-import { notFound, success, validationError } from '@/lib/api/response';
+import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 
@@ -102,7 +102,7 @@ export const POST = withAuthContext(
     }
 
     const { site_id, drug_master_id, requested_payload } = parsed.data;
-    const [site, drug, preferredGeneric, currentStock] = await Promise.all([
+    const [site, drug, preferredGeneric, currentStock, pendingRequest] = await Promise.all([
       prisma.pharmacySite.findFirst({
         where: { id: site_id, org_id: authCtx.orgId },
         select: { id: true, name: true },
@@ -127,10 +127,25 @@ export const POST = withAuthContext(
           adoption_note: true,
         },
       }),
+      prisma.formularyChangeRequest.findFirst({
+        where: {
+          org_id: authCtx.orgId,
+          site_id,
+          drug_master_id,
+          status: 'pending',
+        },
+        select: { id: true, created_at: true },
+      }),
     ]);
 
     if (!site) return notFound('対象の薬局拠点が見つかりません');
     if (!drug) return notFound('対象の医薬品が見つかりません');
+    if (pendingRequest) {
+      return conflict('同じ拠点・医薬品の未決裁申請がすでに存在します', {
+        request_id: pendingRequest.id,
+        created_at: pendingRequest.created_at.toISOString(),
+      });
+    }
     if (requested_payload.preferred_generic_id && !preferredGeneric) {
       return validationError('採用後発薬が見つかりません', {
         preferred_generic_id: ['存在する後発品を選択してください'],

@@ -107,6 +107,41 @@ describe('/api/pharmacy-drug-stock-requests', () => {
     );
   });
 
+  it('rejects duplicate pending requests for the same site and drug', async () => {
+    prismaMock.formularyChangeRequest.findFirst.mockResolvedValue({
+      id: 'request_existing',
+      created_at: new Date('2026-05-27T00:00:00.000Z'),
+    });
+
+    const response = await POST(
+      createRequest('http://localhost/api/pharmacy-drug-stock-requests', {
+        site_id: 'site_1',
+        drug_master_id: 'drug_1',
+        action_type: 'adopt',
+        requested_payload: {
+          is_stocked: true,
+          reorder_point: 10,
+          preferred_generic_id: null,
+          adoption_note: '委員会承認待ち',
+        },
+        reason: '新規採用候補',
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        request_id: 'request_existing',
+        created_at: '2026-05-27T00:00:00.000Z',
+      },
+    });
+    expect(prismaMock.formularyChangeRequest.create).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
   it('lists pending requests scoped by site after validating same org site', async () => {
     prismaMock.formularyChangeRequest.findMany.mockResolvedValue([
       { id: 'request_1', status: 'pending' },
