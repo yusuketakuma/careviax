@@ -195,6 +195,11 @@ type FormularyImpactResponse = {
     action_required_count: number;
     recent_master_change_count: number;
   };
+  selected_queue: {
+    key: ImpactQueueKey;
+    rows: FormularyStockSummaryRow[];
+    total_count: number;
+  };
   samples: {
     review_due: FormularyStockSummaryRow[];
     missing_reorder_point: FormularyStockSummaryRow[];
@@ -610,12 +615,14 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   });
 
   const formularyImpactQuery = useQuery({
-    queryKey: ['pharmacy-drug-stocks-impact', orgId, effectiveSelectedSiteId],
+    queryKey: ['pharmacy-drug-stocks-impact', orgId, effectiveSelectedSiteId, impactQueue],
     queryFn: async () => {
       const params = new URLSearchParams({
         site_id: effectiveSelectedSiteId,
         expiry_within_days: '90',
         review_overdue_days: '180',
+        queue: impactQueue,
+        queue_limit: '25',
       });
       const res = await fetch(`/api/pharmacy-drug-stocks/impact?${params}`, {
         headers: { 'x-org-id': orgId },
@@ -980,7 +987,14 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const recentChangesByYjCode = new Map(
     (formularyImpact?.recent_changes ?? []).map((change) => [change.yj_code, change]),
   );
-  const impactQueueRows = formularyImpact?.samples[impactQueue] ?? [];
+  const impactQueueRows =
+    formularyImpact?.selected_queue.key === impactQueue
+      ? formularyImpact.selected_queue.rows
+      : (formularyImpact?.samples[impactQueue] ?? []);
+  const impactQueueTotalCount =
+    formularyImpact?.selected_queue.key === impactQueue
+      ? formularyImpact.selected_queue.total_count
+      : impactQueueRows.length;
   const selectedRowIndex = selectedDrugId
     ? drugs.findIndex((drug) => drug.id === selectedDrugId)
     : undefined;
@@ -1203,6 +1217,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   影響レビューキュー
                 </h2>
                 <Badge variant="outline" className="text-[10px]">
+                  {impactQueueTotalCount.toLocaleString()}件中
                   {impactQueueRows.length.toLocaleString()}件表示
                 </Badge>
               </div>

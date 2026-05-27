@@ -43,6 +43,11 @@ vi.mock('@tanstack/react-query', () => ({
             action_required_count: 0,
             recent_master_change_count: 0,
           },
+          selected_queue: {
+            key: 'action_required',
+            rows: [],
+            total_count: 0,
+          },
           samples: {
             review_due: [],
             missing_reorder_point: [],

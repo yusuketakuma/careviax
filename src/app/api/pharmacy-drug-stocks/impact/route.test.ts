@@ -84,6 +84,10 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       site: { id: 'site_1' },
+      selected_queue: {
+        key: 'action_required',
+        total_count: 1,
+      },
       totals: {
         stocked_count: 1,
         review_due_count: 1,

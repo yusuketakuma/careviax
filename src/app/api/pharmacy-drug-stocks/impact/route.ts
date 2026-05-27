@@ -9,6 +9,17 @@ const impactQuerySchema = z.object({
   site_id: z.string().trim().min(1, 'site_id は必須です'),
   expiry_within_days: z.coerce.number().int().min(1).max(365).default(90),
   review_overdue_days: z.coerce.number().int().min(30).max(730).default(180),
+  queue: z
+    .enum([
+      'action_required',
+      'recently_changed',
+      'transitional_expiry',
+      'missing_reorder_point',
+      'safety_flagged',
+      'review_due',
+    ])
+    .default('action_required'),
+  queue_limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
 function addDays(date: Date, days: number) {
@@ -119,6 +130,15 @@ export const GET = withAuthContext(
       );
     });
     const recentlyChanged = stocks.filter((stock) => changedYjCodes.has(stock.drug_master.yj_code));
+    const queueRowsByKey = {
+      action_required: actionRequired,
+      recently_changed: recentlyChanged,
+      transitional_expiry: transitionalExpiry,
+      missing_reorder_point: missingReorderPoint,
+      safety_flagged: safetyFlagged,
+      review_due: reviewDue,
+    };
+    const selectedQueueRows = queueRowsByKey[parsed.data.queue].slice(0, parsed.data.queue_limit);
 
     return success({
       site,
@@ -126,6 +146,11 @@ export const GET = withAuthContext(
       thresholds: {
         expiry_within_days: parsed.data.expiry_within_days,
         review_overdue_days: parsed.data.review_overdue_days,
+      },
+      selected_queue: {
+        key: parsed.data.queue,
+        rows: selectedQueueRows,
+        total_count: queueRowsByKey[parsed.data.queue].length,
       },
       totals: {
         stocked_count: stocks.length,
