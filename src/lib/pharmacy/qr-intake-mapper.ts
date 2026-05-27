@@ -92,9 +92,17 @@ export interface QrToIntakeResult {
 const DRUG_MASTER_LOOKUP_BATCH_SIZE = 50;
 const FORMULARY_LOOKUP_BATCH_SIZE = 100;
 
+type FormularyStock = Pick<
+  PharmacyDrugStock,
+  'drug_master_id' | 'preferred_generic_id' | 'stock_qty'
+> & {
+  drug_master?: Pick<DrugMaster, 'id' | 'drug_name' | 'generic_name' | 'is_generic'> | null;
+};
+
 interface DrugLookupContext {
   drugMasterByLine: Array<DrugMaster | null>;
-  stockByDrugMasterId: Map<string, PharmacyDrugStock>;
+  stockByDrugMasterId: Map<string, FormularyStock>;
+  alternativeGenericStockByGenericName: Map<string, FormularyStock>;
   preferredGenericNameById: Map<string, string>;
 }
 
@@ -241,6 +249,7 @@ async function buildDrugLookupContext(
     return {
       drugMasterByLine: [],
       stockByDrugMasterId: new Map(),
+      alternativeGenericStockByGenericName: new Map(),
       preferredGenericNameById: new Map(),
     };
   }
@@ -258,7 +267,7 @@ async function buildDrugLookupContext(
     drugMasterByLine.map((drugMaster) => drugMaster?.id ?? null),
   );
   const stocks = await fetchFormularyStocks(orgId, siteId, drugMasterIds);
-  const stockByDrugMasterId = new Map<string, PharmacyDrugStock>();
+  const stockByDrugMasterId = new Map<string, FormularyStock>();
 
   for (const stock of stocks) {
     if (!stockByDrugMasterId.has(stock.drug_master_id)) {
@@ -266,12 +275,35 @@ async function buildDrugLookupContext(
     }
   }
 
-  const preferredGenericIds = uniqueNonNullable(stocks.map((stock) => stock.preferred_generic_id));
+  const alternativeGenericNames = uniqueNonNullable(
+    drugMasterByLine
+      .filter((drugMaster) => drugMaster && !stockByDrugMasterId.has(drugMaster.id))
+      .map((drugMaster) => drugMaster?.generic_name ?? null),
+  );
+  const alternativeGenericStocks = await fetchAlternativeGenericStocks(
+    orgId,
+    siteId,
+    alternativeGenericNames,
+    drugMasterIds,
+  );
+  const alternativeGenericStockByGenericName = new Map<string, FormularyStock>();
+  for (const stock of alternativeGenericStocks) {
+    const genericName = stock.drug_master?.generic_name;
+    if (genericName && !alternativeGenericStockByGenericName.has(genericName)) {
+      alternativeGenericStockByGenericName.set(genericName, stock);
+    }
+  }
+
+  const preferredGenericIds = uniqueNonNullable([
+    ...stocks.map((stock) => stock.preferred_generic_id),
+    ...alternativeGenericStocks.map((stock) => stock.drug_master_id),
+  ]);
   const preferredGenericNameById = await fetchPreferredGenericNames(preferredGenericIds);
 
   return {
     drugMasterByLine,
     stockByDrugMasterId,
+    alternativeGenericStockByGenericName,
     preferredGenericNameById,
   };
 }
@@ -370,6 +402,52 @@ async function fetchFormularyStocks(orgId: string, siteId: string, drugMasterIds
           site_id: siteId,
           drug_master_id: { in: batch },
           is_stocked: true,
+        },
+      })),
+    );
+  }
+
+  return stocks;
+}
+
+async function fetchAlternativeGenericStocks(
+  orgId: string,
+  siteId: string,
+  genericNames: string[],
+  excludedDrugMasterIds: string[],
+) {
+  if (genericNames.length === 0) {
+    return [];
+  }
+
+  const stocks: FormularyStock[] = [];
+
+  for (const batch of chunk(genericNames, FORMULARY_LOOKUP_BATCH_SIZE)) {
+    stocks.push(
+      ...(await prisma.pharmacyDrugStock.findMany({
+        where: {
+          org_id: orgId,
+          site_id: siteId,
+          is_stocked: true,
+          drug_master: {
+            generic_name: { in: batch },
+            is_generic: true,
+            id: { notIn: excludedDrugMasterIds },
+          },
+        },
+        orderBy: [{ updated_at: 'desc' }],
+        select: {
+          drug_master_id: true,
+          preferred_generic_id: true,
+          stock_qty: true,
+          drug_master: {
+            select: {
+              id: true,
+              drug_name: true,
+              generic_name: true,
+              is_generic: true,
+            },
+          },
         },
       })),
     );
@@ -565,6 +643,17 @@ function mapMedicationLine(
       if (stock.preferred_generic_id) {
         preferredGenericName =
           drugLookupContext.preferredGenericNameById.get(stock.preferred_generic_id) ?? null;
+      }
+    } else if (drugMaster.generic_name) {
+      const alternativeGeneric =
+        drugLookupContext.alternativeGenericStockByGenericName.get(drugMaster.generic_name) ?? null;
+      if (alternativeGeneric) {
+        preferredGenericId = alternativeGeneric.drug_master_id;
+        preferredGenericName =
+          alternativeGeneric.drug_master?.drug_name ??
+          drugLookupContext.preferredGenericNameById.get(alternativeGeneric.drug_master_id) ??
+          null;
+        stockQty = alternativeGeneric.stock_qty;
       }
     }
   }

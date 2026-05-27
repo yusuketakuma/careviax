@@ -29,6 +29,11 @@ type PharmacyDrugStockFindManyArgs = {
     site_id?: string;
     drug_master_id?: string | { in?: string[] };
     is_stocked?: boolean;
+    drug_master?: {
+      generic_name?: { in?: string[] };
+      is_generic?: boolean;
+      id?: { notIn?: string[] };
+    };
   };
 };
 
@@ -89,6 +94,7 @@ const mockDrugMaster = {
   receipt_code: '123456789',
   hot_code: null,
   drug_name: 'アムロジピン錠5mg',
+  generic_name: 'アムロジピン',
   dosage_form: '錠',
   is_generic: false,
 };
@@ -99,6 +105,7 @@ const mockDrugMasterGeneric = {
   receipt_code: '987654321',
   hot_code: null,
   drug_name: 'アムロジピン錠5mg「GE」',
+  generic_name: 'アムロジピン',
   dosage_form: '錠',
   is_generic: true,
 };
@@ -151,6 +158,10 @@ describe('mapJahisToIntake', () => {
             : drugMasterIdFilter
               ? [drugMasterIdFilter]
               : [];
+
+        if (args.where?.drug_master) {
+          return [];
+        }
 
         if (drugMasterIds.length === 0) {
           const match = await prismaMock.pharmacyDrugStock.findFirst(args);
@@ -550,8 +561,9 @@ describe('mapJahisToIntake', () => {
           }),
         }),
       );
-      expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenCalledTimes(1);
-      expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenCalledWith(
+      expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenCalledTimes(2);
+      expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenNthCalledWith(
+        1,
         expect.objectContaining({
           where: {
             org_id: 'org_1',
@@ -559,6 +571,20 @@ describe('mapJahisToIntake', () => {
             drug_master_id: { in: ['drug_a', 'drug_b'] },
             is_stocked: true,
           },
+        }),
+      );
+      expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          where: expect.objectContaining({
+            org_id: 'org_1',
+            site_id: 'site_1',
+            is_stocked: true,
+            drug_master: expect.objectContaining({
+              generic_name: { in: ['アムロジピン'] },
+              is_generic: true,
+            }),
+          }),
         }),
       );
       expect(prismaMock.drugMaster.findFirst).not.toHaveBeenCalled();
@@ -719,6 +745,61 @@ describe('mapJahisToIntake', () => {
         preferredGenericName: null,
         stockQty: null,
       });
+    });
+
+    it('suggests a stocked generic alternative when the prescribed drug is not in formulary', async () => {
+      prismaMock.drugMaster.findMany
+        .mockResolvedValueOnce([mockDrugMaster])
+        .mockResolvedValueOnce([{ id: 'drug_generic_1', drug_name: 'アムロジピン錠5mg「GE」' }]);
+      prismaMock.pharmacyDrugStock.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          {
+            id: 'stock_generic_1',
+            site_id: 'site_1',
+            drug_master_id: 'drug_generic_1',
+            is_stocked: true,
+            preferred_generic_id: null,
+            stock_qty: 50,
+            drug_master: mockDrugMasterGeneric,
+          },
+        ]);
+
+      const qrData = makeQrData({
+        medications: [
+          makeMed({
+            drugCode: '123456789012',
+            drugName: 'アムロジピン錠5mg',
+            dose: '5',
+            unit: 'mg',
+          }),
+        ],
+      });
+
+      const result = await mapJahisToIntake(qrData, baseInput);
+
+      expect(result.formularyStatus[0]).toMatchObject({
+        lineIndex: 0,
+        drugName: 'アムロジピン錠5mg',
+        inFormulary: false,
+        preferredGenericId: 'drug_generic_1',
+        preferredGenericName: 'アムロジピン錠5mg「GE」',
+        stockQty: 50,
+      });
+      expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            org_id: 'org_1',
+            site_id: 'site_1',
+            is_stocked: true,
+            drug_master: {
+              generic_name: { in: ['アムロジピン'] },
+              is_generic: true,
+              id: { notIn: ['drug_1'] },
+            },
+          }),
+        }),
+      );
     });
 
     it('sets preferredGenericName to null when stock has no preferred_generic_id', async () => {
