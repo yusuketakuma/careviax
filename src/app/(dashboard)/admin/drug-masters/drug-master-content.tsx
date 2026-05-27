@@ -340,7 +340,16 @@ type FormularyUsageMismatchResponse = {
 type BulkPreviewResponse = {
   importedCount: number;
   unmatchedRows: Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>;
-  invalidRows: Array<{ rowNumber: number; reason: string }>;
+  invalidRows: Array<{
+    rowNumber: number;
+    reason: string;
+    candidates?: Array<{
+      id: string;
+      yj_code: string;
+      drug_name: string;
+      generic_name: string | null;
+    }>;
+  }>;
   preview: {
     summary: {
       totalRows: number;
@@ -358,6 +367,12 @@ type BulkPreviewResponse = {
       yj_code?: string;
       drug_name?: string;
       reason?: string;
+      candidates?: Array<{
+        id: string;
+        yj_code: string;
+        drug_name: string;
+        generic_name: string | null;
+      }>;
     }>;
   };
 };
@@ -2862,21 +2877,41 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   {(bulkPreview?.preview.rows ?? []).slice(0, 6).map((row) => (
                     <div
                       key={`${row.rowNumber}-${row.status}`}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 bg-background px-3 py-2"
+                      className="rounded-md border border-border/60 bg-background px-3 py-2"
                     >
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
-                          {row.drug_name ?? row.yj_code ?? `行 ${row.rowNumber}`}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          行 {row.rowNumber}
-                          {row.yj_code ? ` / ${row.yj_code}` : ''}
-                          {row.reason ? ` / ${row.reason}` : ''}
-                        </p>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">
+                            {row.drug_name ?? row.yj_code ?? `行 ${row.rowNumber}`}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            行 {row.rowNumber}
+                            {row.yj_code ? ` / ${row.yj_code}` : ''}
+                            {row.reason ? ` / ${row.reason}` : ''}
+                          </p>
+                        </div>
+                        <Badge variant={['invalid', 'unmatched'].includes(row.status) ? 'destructive' : 'outline'}>
+                          {bulkPreviewStatusLabel(row.status)}
+                        </Badge>
                       </div>
-                      <Badge variant={['invalid', 'unmatched'].includes(row.status) ? 'destructive' : 'outline'}>
-                        {bulkPreviewStatusLabel(row.status)}
-                      </Badge>
+                      {row.candidates && row.candidates.length > 0 && (
+                        <div className="mt-2 space-y-1 border-t border-border/60 pt-2">
+                          {row.candidates.map((candidate) => (
+                            <div
+                              key={candidate.id}
+                              className="flex flex-wrap items-center justify-between gap-2 text-xs"
+                            >
+                              <span className="min-w-0 font-medium text-foreground">
+                                {candidate.drug_name}
+                              </span>
+                              <span className="flex items-center gap-2 text-muted-foreground">
+                                <span className="font-mono">{candidate.yj_code}</span>
+                                {candidate.generic_name && <span>{candidate.generic_name}</span>}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
