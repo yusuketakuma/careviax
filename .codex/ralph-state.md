@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-232615
+
+- current task: add stronger auditability for adopted-drug CSV bulk imports
+- files inspected: `git status --short`, `src/app/api/pharmacy-drug-stocks/bulk/route.ts`, `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`, `src/app/api/pharmacy-drug-stocks/history/route.ts`, `src/app/api/pharmacy-drug-stocks/history/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`
+- files changed: `src/app/api/pharmacy-drug-stocks/bulk/route.ts`, `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`, `src/app/api/pharmacy-drug-stocks/history/route.ts`, `src/app/api/pharmacy-drug-stocks/history/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `.codex/ralph-state.md`
+- bugs found: CSV bulk import wrote per-stock audit logs, but did not persist a batch-level summary with row statuses, unmatched rows, invalid rows, and before/after context that matched the preview users saw before applying
+- security risks found: no authorization boundary changed; audit records remain scoped to the authenticated org/site and dry-run imports still do not write stock rows or audit logs
+- performance issues found: no new per-row database reads; batch summary is built from the already-computed preview and written once per non-dry-run import
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/bulk/route.test.ts src/app/api/pharmacy-drug-stocks/history/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for changed bulk/history/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 3 files / 14 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice improves CSV auditability but does not yet add a separate site-wide audit inbox view
+- next action: commit the CSV audit slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260527-232118
 
 - current task: strengthen transitional-expiry alerting with 30/60/90 day urgency buckets
