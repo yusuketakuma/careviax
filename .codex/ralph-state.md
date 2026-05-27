@@ -2177,3 +2177,16 @@ Backup directory:
 - validation results: Prisma schema formatted/generated and local DB synced; targeted Vitest passed with 3 files / 7 tests; targeted ESLint passed; TypeScript passed; whitespace check passed; demo DB has 1 adopted stock with follow-up status
 - remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include browser E2E verification, scheduled freshness controls, import diff surfacing with previous-price snapshots, stronger action queues, and broader clinical safety master enrichment
 - next action: commit this follow-up slice, then continue with browser verification and import diff/freshness controls
+
+### 20260527-213020
+
+- current task: persist MHLW import-time drug master change events and surface recent adopted-drug diffs
+- files inspected: `src/server/services/drug-master-import/mhlw.ts`, `src/server/services/drug-master-import/shared.ts`, `src/server/services/drug-master-import/mhlw.test.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, package/e2e scripts
+- files changed: `prisma/schema/drug.prisma`, `prisma/migrations/20260527213500_add_drug_master_change_events/migration.sql`, `src/server/services/drug-master-import/shared.ts`, `src/server/services/drug-master-import/mhlw.ts`, `src/server/services/drug-master-import/mhlw.test.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: MHLW薬価取込は最新値へ上書きするだけで、薬価変更や経過措置期限変更を後から採用薬へ突合できなかった; 採用薬影響レビューに最近のマスター差分件数が出なかった
+- security risks found: no tenant data is written to the global change table; adopted-drug impact surfacing still filters through org/site-scoped PharmacyDrugStock before matching recent global change events
+- performance issues found: change event capture is chunk-scoped and only compares existing records in the current import chunk; impact API limits recent change lookup to adopted drug YJ codes from the 500-row adopted-stock cap
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prisma format --schema=prisma/schema`; `pnpm --config.verify-deps-before-run=false exec prisma generate`; `pnpm --config.verify-deps-before-run=false exec prisma db push`; targeted Vitest for MHLW import, impact route, and formulary UI tests; targeted ESLint for changed import/impact/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`; local Prisma/tsx insert of one demo DrugMasterChangeEvent for an adopted stock
+- validation results: Prisma schema formatted/generated and local DB synced; targeted Vitest passed with 3 files / 15 tests; targeted ESLint passed; TypeScript passed; whitespace check passed; demo DB has one `price_changed` event for an adopted YJ code
+- remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include full browser/E2E verification, scheduled freshness controls UI, richer action queue drill-down, and broader clinical safety enrichment
+- next action: commit this import-diff slice, then continue with browser verification or scheduled freshness controls
