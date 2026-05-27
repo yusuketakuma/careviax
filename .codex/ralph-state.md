@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-220940
+
+- current task: add safety and contract coverage for adopted-drug CSV export
+- files inspected: `git status --short`, `src/app/api/pharmacy-drug-stocks/export/route.ts`, related CSV export tests for billing/patient routes, formulary UI export call sites
+- files changed: `src/app/api/pharmacy-drug-stocks/export/route.ts`, `src/app/api/pharmacy-drug-stocks/export/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: the formulary CSV export had no dedicated route test, so BOM/header/audit/scoping behavior and spreadsheet formula neutralization were not locked; formula neutralization missed tab and carriage-return prefixes that Excel/Sheets can interpret dangerously
+- security risks found: expanded CSV formula-injection neutralization from `= + - @` to include leading tab and carriage return; added regression coverage proving another-org site export stops before stock query and audit side effects
+- performance issues found: none in runtime code; tests are targeted to one route
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/export/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec eslint src/app/api/pharmacy-drug-stocks/export/route.ts src/app/api/pharmacy-drug-stocks/export/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 1 file / 3 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice hardens CSV export only
+- next action: commit the CSV export hardening and continue the next high-value formulary/drug-master improvement
+
 ### 20260527-220620
 
 - current task: harden adopted-drug CSV bulk import against silent preferred-generic and ambiguous-name mistakes
