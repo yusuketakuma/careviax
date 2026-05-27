@@ -52,7 +52,12 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
   it('imports CSV rows by YJ code and reports unmatched rows', async () => {
     prismaMock.drugMaster.findMany
       .mockResolvedValueOnce([
-        { id: 'drug_1', yj_code: '123456789012', drug_name: 'アムロジピン錠5mg' },
+        {
+          id: 'drug_1',
+          yj_code: '123456789012',
+          drug_name: 'アムロジピン錠5mg',
+          generic_name: 'アムロジピン',
+        },
       ])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
@@ -87,7 +92,12 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
   it('rejects rows with unresolved preferred generic codes without importing the drug', async () => {
     prismaMock.drugMaster.findMany
       .mockResolvedValueOnce([
-        { id: 'drug_1', yj_code: '123456789012', drug_name: 'アムロジピン錠5mg' },
+        {
+          id: 'drug_1',
+          yj_code: '123456789012',
+          drug_name: 'アムロジピン錠5mg',
+          generic_name: 'アムロジピン',
+        },
       ])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
@@ -119,8 +129,8 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
   it('rejects name-only rows when the drug name matches multiple masters', async () => {
     prismaMock.drugMaster.findMany
       .mockResolvedValueOnce([
-        { id: 'drug_1', yj_code: '111111111111', drug_name: '同名薬' },
-        { id: 'drug_2', yj_code: '222222222222', drug_name: '同名薬' },
+        { id: 'drug_1', yj_code: '111111111111', drug_name: '同名薬', generic_name: '成分A' },
+        { id: 'drug_2', yj_code: '222222222222', drug_name: '同名薬', generic_name: '成分B' },
       ])
       .mockResolvedValueOnce([]);
 
@@ -141,6 +151,90 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
         {
           rowNumber: 2,
           reason: '医薬品名に複数候補があります。YJコードを指定してください',
+        },
+      ],
+    });
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects preferred generic rows with a different generic name', async () => {
+    prismaMock.drugMaster.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'drug_1',
+          yj_code: '123456789012',
+          drug_name: '先発薬A錠',
+          generic_name: '成分A',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'generic_1',
+          yj_code: '999999999999',
+          drug_name: '後発薬B錠',
+          generic_name: '成分B',
+        },
+      ]);
+
+    const response = await POST(
+      createRequest({
+        site_id: 'site_1',
+        csv: 'YJコード,医薬品名,採用,優先後発品YJコード\n123456789012,先発薬A錠,採用,999999999999',
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      importedCount: 0,
+      invalidRows: [
+        {
+          rowNumber: 2,
+          reason: '優先後発品は同一一般名から選択してください',
+        },
+      ],
+    });
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects the target drug itself as a preferred generic in CSV rows', async () => {
+    prismaMock.drugMaster.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'drug_1',
+          yj_code: '123456789012',
+          drug_name: 'アムロジピン後発錠',
+          generic_name: 'アムロジピン',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'drug_1',
+          yj_code: '123456789012',
+          drug_name: 'アムロジピン後発錠',
+          generic_name: 'アムロジピン',
+        },
+      ]);
+
+    const response = await POST(
+      createRequest({
+        site_id: 'site_1',
+        csv: 'YJコード,医薬品名,採用,優先後発品YJコード\n123456789012,アムロジピン後発錠,採用,123456789012',
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      importedCount: 0,
+      invalidRows: [
+        {
+          rowNumber: 2,
+          reason: '優先後発品に対象薬自身は指定できません',
         },
       ],
     });

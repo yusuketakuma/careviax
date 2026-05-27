@@ -158,19 +158,19 @@ export const POST = withAuthContext(
       yjCodes.length
         ? prisma.drugMaster.findMany({
             where: { yj_code: { in: yjCodes } },
-            select: { id: true, yj_code: true, drug_name: true },
+            select: { id: true, yj_code: true, drug_name: true, generic_name: true },
           })
         : Promise.resolve([]),
       drugNames.length
         ? prisma.drugMaster.findMany({
             where: { drug_name: { in: drugNames } },
-            select: { id: true, yj_code: true, drug_name: true },
+            select: { id: true, yj_code: true, drug_name: true, generic_name: true },
           })
         : Promise.resolve([]),
       preferredYjCodes.length
         ? prisma.drugMaster.findMany({
             where: { yj_code: { in: preferredYjCodes }, is_generic: true },
-            select: { id: true, yj_code: true, drug_name: true },
+            select: { id: true, yj_code: true, drug_name: true, generic_name: true },
           })
         : Promise.resolve([]),
     ]);
@@ -210,13 +210,33 @@ export const POST = withAuthContext(
         });
         return [];
       }
+      const preferredGeneric = row.preferred_generic_yj_code
+        ? (genericByYj.get(row.preferred_generic_yj_code) ?? null)
+        : null;
+      if (preferredGeneric?.id === drug.id) {
+        invalidRows.push({
+          rowNumber: row.rowNumber,
+          reason: '優先後発品に対象薬自身は指定できません',
+        });
+        return [];
+      }
+      if (
+        preferredGeneric &&
+        drug.generic_name &&
+        preferredGeneric.generic_name &&
+        drug.generic_name !== preferredGeneric.generic_name
+      ) {
+        invalidRows.push({
+          rowNumber: row.rowNumber,
+          reason: '優先後発品は同一一般名から選択してください',
+        });
+        return [];
+      }
       return [
         {
           row,
           drug,
-          preferredGeneric: row.preferred_generic_yj_code
-            ? (genericByYj.get(row.preferred_generic_yj_code) ?? null)
-            : null,
+          preferredGeneric,
         },
       ];
     });
