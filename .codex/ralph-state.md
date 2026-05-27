@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-231856
+
+- current task: estimate drug price revision impact amounts for adopted drugs using recent QR prescription usage
+- files inspected: `git status --short`, `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `prisma/schema/prescription.prisma`, `src/server/services/drug-master-import/mhlw.ts`
+- files changed: `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the adopted-drug master change report listed recent MHLW price changes, but it did not estimate operational cost impact from actual site QR prescription usage
+- security risks found: price impact QR usage reads are scoped to the authenticated org and selected site, exclude discarded QR drafts, and run only after org-scoped site validation and adopted-drug filtering
+- performance issues found: QR usage analysis is bounded by `price_impact_draft_limit`, limited to changed YJ codes, and keeps price-impact rows capped in the response while preserving aggregate totals for the bounded window
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/impact/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for changed impact API/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 2 files / 8 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice adds bounded QR-derived drug-price impact estimates but does not yet add threshold notifications or month-normalized dispensing volume
+- next action: commit the price-impact slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260527-231445
 
 - current task: add dry-run difference preview before copying adopted-drug lists between sites
