@@ -401,6 +401,15 @@ export const POST = withAuthContext(
       unmatchedRows,
       invalidRows,
     });
+    const previewRowByDrugId = new Map(
+      preview.rows
+        .filter((row) => row.status !== 'unmatched' && row.status !== 'invalid' && row.drug_name)
+        .map((row) => {
+          const operation = operations.find((item) => item.row.rowNumber === row.rowNumber);
+          return operation ? [operation.drug.id, row] : null;
+        })
+        .filter((entry): entry is [string, (typeof preview.rows)[number]] => entry != null),
+    );
 
     if (parsed.data.dry_run) {
       return success({
@@ -415,6 +424,7 @@ export const POST = withAuthContext(
     const imported = await prisma.$transaction(async (tx) => {
       let count = 0;
       for (const operation of operations) {
+        const previewRow = previewRowByDrugId.get(operation.drug.id);
         const stock = await tx.pharmacyDrugStock.upsert({
           where: {
             site_id_drug_master_id: {
@@ -451,18 +461,51 @@ export const POST = withAuthContext(
             target_type: 'PharmacyDrugStock',
             target_id: stock.id,
             changes: {
+              row_number: operation.row.rowNumber,
+              status: previewRow?.status ?? null,
               site_id: site.id,
               drug_master_id: operation.drug.id,
               yj_code: operation.drug.yj_code,
+              drug_name: operation.drug.drug_name,
               is_stocked: operation.row.is_stocked,
               reorder_point: operation.row.reorder_point ?? null,
               preferred_generic_yj_code: operation.row.preferred_generic_yj_code ?? null,
+              before: previewRow?.before ?? null,
+              after: previewRow?.after ?? null,
             },
             ip_address: authCtx.ipAddress,
             user_agent: authCtx.userAgent,
           },
         });
       }
+      await tx.auditLog.create({
+        data: {
+          org_id: authCtx.orgId,
+          actor_id: authCtx.userId,
+          action: 'pharmacy_drug_stock_bulk_import_summary',
+          target_type: 'PharmacySite',
+          target_id: site.id,
+          changes: {
+            site_id: site.id,
+            imported_count: count,
+            summary: preview.summary,
+            unmatched_rows: unmatchedRows,
+            invalid_rows: invalidRows,
+            rows: preview.rows.map((row) => ({
+              row_number: row.rowNumber,
+              status: row.status,
+              yj_code: row.yj_code ?? null,
+              drug_name: row.drug_name ?? null,
+              reason: row.reason ?? null,
+              drug_master_id:
+                operations.find((operation) => operation.row.rowNumber === row.rowNumber)?.drug
+                  .id ?? null,
+            })),
+          },
+          ip_address: authCtx.ipAddress,
+          user_agent: authCtx.userAgent,
+        },
+      });
       return count;
     });
 

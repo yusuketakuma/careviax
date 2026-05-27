@@ -393,6 +393,12 @@ type PharmacyDrugStockHistoryItem = {
   created_at: string;
 };
 
+function readAuditObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
 type FormularyChangeRequestItem = {
   id: string;
   site_id: string;
@@ -1586,6 +1592,8 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
         return '採用品設定更新';
       case 'pharmacy_drug_stock_bulk_imported':
         return 'CSV一括反映';
+      case 'pharmacy_drug_stock_bulk_import_summary':
+        return 'CSV一括登録サマリー';
       case 'pharmacy_drug_stock_reviewed':
         return 'レビュー記録';
       default:
@@ -3142,24 +3150,46 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                     </p>
                   ) : (
                     <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
-                      {stockHistory.slice(0, 5).map((item) => (
-                        <div
-                          key={item.id}
-                          className="rounded-md border border-border/60 bg-background px-3 py-2"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-sm font-medium text-foreground">
-                              {stockHistoryActionLabel(item.action)}
-                            </p>
-                            <Badge variant="outline" className="text-[10px]">
-                              {new Date(item.created_at).toLocaleDateString('ja-JP')}
-                            </Badge>
-                          </div>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            操作者: {item.actor_id}
-                          </p>
-                        </div>
-                      ))}
+                      {stockHistory.slice(0, 5).map((item) => {
+                          const changes = readAuditObject(item.changes);
+                          return (
+                            <div
+                              key={item.id}
+                              className="rounded-md border border-border/60 bg-background px-3 py-2"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-sm font-medium text-foreground">
+                                  {stockHistoryActionLabel(item.action)}
+                                </p>
+                                <Badge variant="outline" className="text-[10px]">
+                                  {new Date(item.created_at).toLocaleDateString('ja-JP')}
+                                </Badge>
+                              </div>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                操作者: {item.actor_id}
+                              </p>
+                              {Boolean(changes.row_number || changes.status) && (
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  行 {String(changes.row_number ?? '—')} / 状態{' '}
+                                  {bulkPreviewStatusLabel(
+                                    String(
+                                      changes.status ?? '',
+                                    ) as BulkPreviewResponse['preview']['rows'][number]['status'],
+                                  )}
+                                </p>
+                              )}
+                              {Boolean(changes.summary) && (
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  反映 {String(readAuditObject(changes.summary).processableRows ?? 0)}
+                                  件 / 未照合{' '}
+                                  {String(readAuditObject(changes.summary).unmatchedCount ?? 0)}件
+                                  / 無効{' '}
+                                  {String(readAuditObject(changes.summary).invalidCount ?? 0)}件
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
                     </div>
                   )}
                 </section>

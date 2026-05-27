@@ -87,7 +87,35 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
         }),
       }),
     );
-    expect(prismaMock.auditLog.create).toHaveBeenCalledOnce();
+    expect(prismaMock.auditLog.create).toHaveBeenCalledTimes(2);
+    expect(prismaMock.auditLog.create).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'pharmacy_drug_stock_bulk_import_summary',
+          target_type: 'PharmacySite',
+          target_id: 'site_1',
+          changes: expect.objectContaining({
+            imported_count: 1,
+            summary: expect.objectContaining({
+              createCount: 1,
+              unmatchedCount: 1,
+            }),
+            rows: expect.arrayContaining([
+              expect.objectContaining({
+                row_number: 2,
+                status: 'create',
+                drug_master_id: 'drug_1',
+              }),
+              expect.objectContaining({
+                row_number: 3,
+                status: 'unmatched',
+                drug_master_id: null,
+              }),
+            ]),
+          }),
+        }),
+      }),
+    );
   });
 
   it('previews CSV differences without mutating stock rows or writing audit logs', async () => {
@@ -213,7 +241,23 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
       ],
     });
     expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
-    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).toHaveBeenCalledOnce();
+    expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'pharmacy_drug_stock_bulk_import_summary',
+          changes: expect.objectContaining({
+            imported_count: 0,
+            invalid_rows: [
+              {
+                rowNumber: 2,
+                reason: '優先後発品YJコードが見つからないか、後発品ではありません',
+              },
+            ],
+          }),
+        }),
+      }),
+    );
   });
 
   it('rejects name-only rows when the drug name matches multiple masters', async () => {
@@ -245,7 +289,7 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
       ],
     });
     expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
-    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).toHaveBeenCalledOnce();
   });
 
   it('rejects preferred generic rows with a different generic name', async () => {
@@ -287,7 +331,7 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
       ],
     });
     expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
-    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).toHaveBeenCalledOnce();
   });
 
   it('rejects the target drug itself as a preferred generic in CSV rows', async () => {
@@ -329,6 +373,6 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
       ],
     });
     expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
-    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).toHaveBeenCalledOnce();
   });
 });

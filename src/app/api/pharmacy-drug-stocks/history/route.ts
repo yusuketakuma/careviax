@@ -21,7 +21,12 @@ function includesDrugMasterId(changes: unknown, drugMasterId: string) {
   const data = readObject(changes);
   if (data.drug_master_id === drugMasterId) return true;
   const drugMasterIds = data.drug_master_ids;
-  return Array.isArray(drugMasterIds) && drugMasterIds.includes(drugMasterId);
+  if (Array.isArray(drugMasterIds) && drugMasterIds.includes(drugMasterId)) return true;
+  const rows = data.rows;
+  return (
+    Array.isArray(rows) &&
+    rows.some((row) => readObject(row).drug_master_id === drugMasterId)
+  );
 }
 
 export const GET = withAuthContext(
@@ -62,7 +67,7 @@ export const GET = withAuthContext(
           {
             target_type: 'PharmacySite',
             target_id: site.id,
-            action: 'pharmacy_drug_stock_reviewed',
+            action: { in: ['pharmacy_drug_stock_reviewed', 'pharmacy_drug_stock_bulk_import_summary'] },
           },
         ],
       },

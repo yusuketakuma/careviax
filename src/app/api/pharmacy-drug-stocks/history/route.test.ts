@@ -65,6 +65,20 @@ describe('/api/pharmacy-drug-stocks/history', () => {
         created_at: new Date('2026-05-26T00:00:00.000Z'),
       },
       {
+        id: 'audit_bulk_summary_match',
+        actor_id: 'user_1',
+        action: 'pharmacy_drug_stock_bulk_import_summary',
+        target_type: 'PharmacySite',
+        target_id: 'site_1',
+        changes: {
+          rows: [
+            { row_number: 2, drug_master_id: 'drug_1', status: 'update' },
+            { row_number: 3, drug_master_id: 'drug_other', status: 'create' },
+          ],
+        },
+        created_at: new Date('2026-05-25T12:00:00.000Z'),
+      },
+      {
         id: 'audit_review_other',
         actor_id: 'user_1',
         action: 'pharmacy_drug_stock_reviewed',
@@ -85,6 +99,7 @@ describe('/api/pharmacy-drug-stocks/history', () => {
       data: [
         { id: 'audit_stock', action: 'pharmacy_drug_stock_updated' },
         { id: 'audit_review_match', action: 'pharmacy_drug_stock_reviewed' },
+        { id: 'audit_bulk_summary_match', action: 'pharmacy_drug_stock_bulk_import_summary' },
       ],
     });
     expect(prismaMock.auditLog.findMany).toHaveBeenCalledWith(
@@ -96,7 +111,9 @@ describe('/api/pharmacy-drug-stocks/history', () => {
             {
               target_type: 'PharmacySite',
               target_id: 'site_1',
-              action: 'pharmacy_drug_stock_reviewed',
+              action: {
+                in: ['pharmacy_drug_stock_reviewed', 'pharmacy_drug_stock_bulk_import_summary'],
+              },
             },
           ]),
         }),
