@@ -6,6 +6,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { buildSetPlanPackagingSummary } from '@/lib/prescription/set-plan-packaging';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+import { buildSetPlanAssignmentWhere } from '@/server/services/prescription-access';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
@@ -146,17 +147,15 @@ const setPlanSelect = {
 } satisfies Prisma.SetPlanSelect;
 
 export const GET = withAuthContext<{ id: string }>(
-  async (
-    _req: NextRequest,
-    ctx: AuthContext,
-    routeContext: AuthRouteContext<{ id: string }>
-  ) => {
+  async (_req: NextRequest, ctx: AuthContext, routeContext: AuthRouteContext<{ id: string }>) => {
     const { id } = await routeContext.params;
+    const assignmentWhere = buildSetPlanAssignmentWhere(ctx);
 
     const plan = await prisma.setPlan.findFirst({
       where: {
         id,
         org_id: ctx.orgId,
+        ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
       },
       select: setPlanSelect,
     });
@@ -174,8 +173,8 @@ export const GET = withAuthContext<{ id: string }>(
           new Set(
             plan.cycle.prescription_intakes
               .filter((intake) => intake.updated_at.toISOString() > latestBatchUpdatedAt)
-              .flatMap((intake) => intake.lines.map((line) => line.id))
-          )
+              .flatMap((intake) => intake.lines.map((line) => line.id)),
+          ),
         )
       : [];
 
@@ -186,15 +185,11 @@ export const GET = withAuthContext<{ id: string }>(
       },
     });
   },
-  { permission: 'canSet' }
+  { permission: 'canSet' },
 );
 
 export const PATCH = withAuthContext<{ id: string }>(
-  async (
-    req: NextRequest,
-    ctx: AuthContext,
-    routeContext: AuthRouteContext<{ id: string }>
-  ) => {
+  async (req: NextRequest, ctx: AuthContext, routeContext: AuthRouteContext<{ id: string }>) => {
     const { id } = await routeContext.params;
     const body = await req.json().catch(() => null);
     if (!body) return validationError('リクエストボディが不正です');
@@ -210,10 +205,12 @@ export const PATCH = withAuthContext<{ id: string }>(
     }
 
     const result = await withOrgContext(ctx.orgId, async (tx) => {
+      const assignmentWhere = buildSetPlanAssignmentWhere(ctx);
       const existing = await tx.setPlan.findFirst({
         where: {
           id,
           org_id: ctx.orgId,
+          ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
         },
         select: {
           id: true,
@@ -347,5 +344,5 @@ export const PATCH = withAuthContext<{ id: string }>(
 
     return success({ data: result.data });
   },
-  { permission: 'canSet' }
+  { permission: 'canSet' },
 );

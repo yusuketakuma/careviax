@@ -1,20 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const { authMock, prismaMock, withOrgContextMock, txMock, notifyWorkflowMutationMock } = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  prismaMock: {
-    membership: { findFirst: vi.fn() },
-  },
-  withOrgContextMock: vi.fn(),
-  notifyWorkflowMutationMock: vi.fn(),
-  txMock: {
-    setPlan: { findFirst: vi.fn() },
-    prescriptionLine: { findFirst: vi.fn() },
-    setBatch: { findFirst: vi.fn(), create: vi.fn() },
-    setBatchChangeLog: { create: vi.fn() },
-  },
-}));
+const { authMock, prismaMock, withOrgContextMock, txMock, notifyWorkflowMutationMock } = vi.hoisted(
+  () => ({
+    authMock: vi.fn(),
+    prismaMock: {
+      membership: { findFirst: vi.fn() },
+      setBatch: { findMany: vi.fn() },
+    },
+    withOrgContextMock: vi.fn(),
+    notifyWorkflowMutationMock: vi.fn(),
+    txMock: {
+      setPlan: { findFirst: vi.fn() },
+      prescriptionLine: { findFirst: vi.fn() },
+      setBatch: { findFirst: vi.fn(), create: vi.fn() },
+      setBatchChangeLog: { create: vi.fn() },
+    },
+  }),
+);
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -32,12 +35,12 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
   notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
-import { POST } from './route';
+import { GET, POST } from './route';
 
 function createRequest(body: unknown) {
   return {
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
     },
     json: vi.fn().mockResolvedValue(body),
   } as unknown as NextRequest;
@@ -49,6 +52,48 @@ describe('set-batches POST', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'admin' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
+  });
+
+  it('returns an empty batch list for trainee users when the plan belongs to an unassigned case', async () => {
+    prismaMock.membership.findFirst.mockResolvedValue({ role: 'pharmacist_trainee' });
+    prismaMock.setBatch.findMany.mockResolvedValue([]);
+
+    const response = await GET(
+      {
+        url: 'http://localhost/api/set-batches?plan_id=plan_1',
+        headers: {
+          get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
+        },
+      } as unknown as NextRequest,
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ data: [] });
+    expect(prismaMock.setBatch.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          plan_id: 'plan_1',
+          org_id: 'org_1',
+          AND: [
+            {
+              plan: {
+                cycle: {
+                  case_: expect.objectContaining({
+                    OR: expect.arrayContaining([
+                      { primary_pharmacist_id: 'user_1' },
+                      { backup_pharmacist_id: 'user_1' },
+                      { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+                    ]),
+                  }),
+                },
+              },
+            },
+          ],
+        },
+      }),
+    );
   });
 
   it('rejects lines that do not belong to the plan cycle', async () => {
@@ -82,11 +127,55 @@ describe('set-batches POST', () => {
         quantity: 1,
         carry_type: 'carry',
       }),
-      { params: Promise.resolve({}) }
+      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+  });
+
+  it('returns 404 for unassigned pharmacist batch creation before line lookup or writes', async () => {
+    prismaMock.membership.findFirst.mockResolvedValue({ role: 'pharmacist' });
+    txMock.setPlan.findFirst.mockResolvedValue(null);
+
+    const response = await POST(
+      createRequest({
+        plan_id: 'plan_1',
+        line_id: 'line_1',
+        slot: 'morning',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expect(txMock.setPlan.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'plan_1',
+        org_id: 'org_1',
+        AND: [
+          {
+            cycle: {
+              case_: expect.objectContaining({
+                OR: expect.arrayContaining([
+                  { primary_pharmacist_id: 'user_1' },
+                  { backup_pharmacist_id: 'user_1' },
+                  { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+                ]),
+              }),
+            },
+          },
+        ],
+      },
+      select: expect.any(Object),
+    });
+    expect(txMock.prescriptionLine.findFirst).not.toHaveBeenCalled();
+    expect(txMock.setBatch.create).not.toHaveBeenCalled();
+    expect(txMock.setBatchChangeLog.create).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects duplicate plan-line-slot-day combinations', async () => {
@@ -121,7 +210,7 @@ describe('set-batches POST', () => {
         quantity: 1,
         carry_type: 'carry',
       }),
-      { params: Promise.resolve({}) }
+      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');
@@ -173,7 +262,7 @@ describe('set-batches POST', () => {
         quantity: 1,
         carry_type: 'carry',
       }),
-      { params: Promise.resolve({}) }
+      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');

@@ -8,7 +8,7 @@ const {
   cycleTransitionLogCreateMock,
   notificationCreateMock,
   withOrgContextMock,
-  broadcastStatusUpdateMock,
+  notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   medicationCycleFindFirstMock: vi.fn(),
@@ -16,7 +16,7 @@ const {
   cycleTransitionLogCreateMock: vi.fn(),
   notificationCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
-  broadcastStatusUpdateMock: vi.fn(),
+  notifyWorkflowMutationMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -35,15 +35,18 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-vi.mock('@/server/adapters/realtime', () => ({
-  getRealtimeAdapter: () => ({
-    broadcastStatusUpdate: broadcastStatusUpdateMock,
-  }),
+vi.mock('@/server/services/workflow-dashboard-cache', () => ({
+  notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
 import { PATCH } from './route';
 
 describe('/api/medication-cycles/[id]/transition', () => {
+  const createPatchRequest = (body: unknown) =>
+    ({
+      json: async () => body,
+    }) as NextRequest;
+
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue({
@@ -61,6 +64,7 @@ describe('/api/medication-cycles/[id]/transition', () => {
       case_id: 'case_1',
     });
     medicationCycleUpdateManyMock.mockResolvedValue({ count: 1 });
+    notifyWorkflowMutationMock.mockResolvedValue(undefined);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         medicationCycle: {
@@ -79,12 +83,10 @@ describe('/api/medication-cycles/[id]/transition', () => {
 
   it('rejects transition requests with a stale version', async () => {
     const response = (await PATCH(
-      {
-        json: async () => ({
-          to: 'dispensing',
-          version: 1,
-        }),
-      } as NextRequest,
+      createPatchRequest({
+        to: 'dispensing',
+        version: 1,
+      }),
       {
         params: Promise.resolve({ id: 'cycle_1' }),
       },
@@ -96,13 +98,11 @@ describe('/api/medication-cycles/[id]/transition', () => {
 
   it('transitions the cycle and creates a notification best-effort', async () => {
     const response = (await PATCH(
-      {
-        json: async () => ({
-          to: 'dispensing',
-          version: 2,
-          note: '調剤開始',
-        }),
-      } as NextRequest,
+      createPatchRequest({
+        to: 'dispensing',
+        version: 2,
+        note: '調剤開始',
+      }),
       {
         params: Promise.resolve({ id: 'cycle_1' }),
       },
@@ -126,24 +126,129 @@ describe('/api/medication-cycles/[id]/transition', () => {
       }),
     });
     expect(notificationCreateMock).toHaveBeenCalled();
-    expect(broadcastStatusUpdateMock).toHaveBeenCalledWith(
-      'org:org_1',
-      expect.objectContaining({
-        type: 'cycle_transition',
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      eventType: 'cycle_transition',
+      payload: { source: 'medication_cycles_transition' },
+    });
+    const notifyPayload = notifyWorkflowMutationMock.mock.calls[0]?.[0]?.payload;
+    expect(notifyPayload).not.toHaveProperty('cycleId');
+    expect(notifyPayload).not.toHaveProperty('from');
+    expect(notifyPayload).not.toHaveProperty('to');
+  });
+
+  it('rejects dispense audit transitions when a trainee lacks audit permission', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist_trainee',
+      },
+    });
+    medicationCycleFindFirstMock.mockResolvedValue({
+      id: 'cycle_1',
+      overall_status: 'audit_pending',
+      version: 2,
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+    });
+
+    const response = (await PATCH(
+      createPatchRequest({
+        to: 'audited',
+        version: 2,
       }),
-    );
+      {
+        params: Promise.resolve({ id: 'cycle_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(403);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects set audit transitions when a trainee lacks set audit permission', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist_trainee',
+      },
+    });
+    medicationCycleFindFirstMock.mockResolvedValue({
+      id: 'cycle_1',
+      overall_status: 'setting',
+      version: 2,
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+    });
+
+    const response = (await PATCH(
+      createPatchRequest({
+        to: 'set_audited',
+        version: 2,
+      }),
+      {
+        params: Promise.resolve({ id: 'cycle_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(403);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('allows a report role to transition completed visits to reported', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'clerk',
+      },
+    });
+    medicationCycleFindFirstMock.mockResolvedValue({
+      id: 'cycle_1',
+      overall_status: 'visit_completed',
+      version: 2,
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+    });
+
+    const response = (await PATCH(
+      createPatchRequest({
+        to: 'reported',
+        version: 2,
+      }),
+      {
+        params: Promise.resolve({ id: 'cycle_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(medicationCycleUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'cycle_1', version: 2 },
+      data: expect.objectContaining({
+        overall_status: 'reported',
+        version: { increment: 1 },
+      }),
+    });
   });
 
   it('does not transition an unassigned cycle', async () => {
     medicationCycleFindFirstMock.mockResolvedValue(null);
 
     const response = (await PATCH(
-      {
-        json: async () => ({
-          to: 'dispensing',
-          version: 2,
-        }),
-      } as NextRequest,
+      createPatchRequest({
+        to: 'dispensing',
+        version: 2,
+      }),
       {
         params: Promise.resolve({ id: 'cycle_2' }),
       },
@@ -152,6 +257,6 @@ describe('/api/medication-cycles/[id]/transition', () => {
     expect(response.status).toBe(404);
     expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
     expect(notificationCreateMock).not.toHaveBeenCalled();
-    expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 });

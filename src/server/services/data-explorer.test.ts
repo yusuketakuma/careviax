@@ -42,7 +42,7 @@ describe('data explorer service hardening', () => {
       tableName: 'Organization',
       row: {
         id: 'org_1',
-        name: 'CareViaX Pharmacy',
+        name: 'PH-OS Pharmacy',
         email: 'owner@example.test',
       },
       deniedFields: ['email'],
@@ -53,7 +53,7 @@ describe('data explorer service hardening', () => {
       row: {
         id: 'webhook_1',
         org_id: 'org_1',
-        url: 'https://hooks.example.test/careviax',
+        url: 'https://hooks.example.test/ph-os',
         secret: 'whsec_plaintext',
       },
       deniedFields: ['secret'],
@@ -402,7 +402,7 @@ describe('data explorer service hardening', () => {
       {
         row: {
           id: 'org_1',
-          name: 'CareViaX Pharmacy',
+          name: 'PH-OS Pharmacy',
           email: 'should-not-return@example.test',
         },
       },
@@ -410,7 +410,7 @@ describe('data explorer service hardening', () => {
 
     const updated = await updateDataExplorerRow('org_1', 'Organization', 'org_1', {
       email: 'owner@example.test',
-      name: 'CareViaX Pharmacy',
+      name: 'PH-OS Pharmacy',
     });
 
     const call = tx.$queryRawUnsafe.mock.calls[0];
@@ -420,13 +420,13 @@ describe('data explorer service hardening', () => {
     expect(sql).not.toContain('"email"');
     expect(sql).not.toContain("'email'");
     expect(call?.slice(1)).toEqual([
-      JSON.stringify({ name: 'CareViaX Pharmacy' }),
+      JSON.stringify({ name: 'PH-OS Pharmacy' }),
       'org_1',
       'org_1',
     ]);
     expect(updated).toMatchObject({
       id: 'org_1',
-      name: 'CareViaX Pharmacy',
+      name: 'PH-OS Pharmacy',
     });
     expect(Object.keys(updated)).not.toContain('email');
   });

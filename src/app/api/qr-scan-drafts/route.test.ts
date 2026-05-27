@@ -267,7 +267,13 @@ describe('/api/qr-scan-drafts POST', () => {
         }),
       ],
     });
-    expect(broadcastStatusUpdateMock).toHaveBeenCalled();
+    expect(broadcastStatusUpdateMock).toHaveBeenCalledWith('org:org_1', {
+      type: 'qr_draft_created',
+    });
+    const event = broadcastStatusUpdateMock.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(JSON.stringify(event)).not.toContain('draft_1');
+    expect(JSON.stringify(event)).not.toContain('session_1');
+    expect(JSON.stringify(event)).not.toContain('patient_1');
   });
 
   it('rejects patient_id outside the current org before saving the draft', async () => {

@@ -26,12 +26,12 @@ describe('sendCareReportEmail', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getLabelDictionaryValuesMock.mockResolvedValue({
-      'mail.care_report.subject': '【CareViaX】{{reportType}}をお送りします',
+      'mail.care_report.subject': '【PH-OS】{{reportType}}をお送りします',
       'mail.care_report.intro':
-        '{{recipientName}} 様\n\nCareViaXより {{reportType}} をお送りします。報告書ID: {{reportId}}',
+        '{{recipientName}} 様\n\nPH-OSより {{reportType}} をお送りします。報告書ID: {{reportId}}',
       'mail.care_report.pdf_line': 'PDF参照: {{pdfUrl}}',
       'mail.care_report.footer':
-        '本メールは CareViaX から自動送信されています。ご不明点があれば送信元薬局へご連絡ください。',
+        '本メールは PH-OS から自動送信されています。ご不明点があれば送信元薬局へご連絡ください。',
     });
     sendEmailMock.mockResolvedValue({ messageId: 'msg-1' });
   });
@@ -48,7 +48,7 @@ describe('sendCareReportEmail', () => {
     expect(sendEmailMock).toHaveBeenCalledOnce();
     const call = sendEmailMock.mock.calls[0][0];
     expect(call.to).toBe('doctor@example.com');
-    expect(call.subject).toBe('【CareViaX】医師向け報告書をお送りします');
+    expect(call.subject).toBe('【PH-OS】医師向け報告書をお送りします');
     expect(call.textBody).toContain('山田医師 様');
     expect(call.textBody).toContain('report-1');
     expect(call.textBody).toContain('https://example.com/report.pdf');
@@ -90,6 +90,6 @@ describe('sendCareReportEmail', () => {
     });
 
     const call = sendEmailMock.mock.calls[0][0];
-    expect(call.subject).toBe('【CareViaX】unknown_typeをお送りします');
+    expect(call.subject).toBe('【PH-OS】unknown_typeをお送りします');
   });
 });

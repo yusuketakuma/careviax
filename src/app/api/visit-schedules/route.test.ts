@@ -353,6 +353,30 @@ describe('/api/visit-schedules', () => {
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects malformed visit time windows before service-side schedule creation', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '9:00',
+        time_window_end: '10:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        time_window_start: ['時刻形式が不正です（HH:mm）'],
+      },
+    });
+    expect(pharmacistShiftFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects unsupported visit schedule notes instead of dropping them silently', async () => {
     const response = (await POST(
       createRequest('http://localhost/api/visit-schedules', {

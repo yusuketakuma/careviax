@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   ensureHomeCareBillingSsotMock,
@@ -32,7 +32,7 @@ vi.mock('../operational-tasks', () => ({
   resolveOperationalTasks: resolveOperationalTasksMock,
 }));
 
-import { upsertBillingEvidenceForVisit } from './core';
+import { endOfMonth, monthLabel, startOfMonth, upsertBillingEvidenceForVisit } from './core';
 
 // ── Test Helpers ──
 
@@ -139,6 +139,35 @@ function makeTx(overrides: Record<string, unknown> = {}) {
   return baseTx;
 }
 
+describe('billing-evidence/core: billing month date helpers', () => {
+  const originalTimeZone = process.env.TZ;
+
+  afterEach(() => {
+    if (originalTimeZone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTimeZone;
+    }
+  });
+
+  it('keeps canonical UTC billing months stable in Asia/Tokyo', () => {
+    process.env.TZ = 'Asia/Tokyo';
+
+    const billingMonth = new Date('2026-06-01T00:00:00.000Z');
+
+    expect(startOfMonth(billingMonth).toISOString()).toBe('2026-06-01T00:00:00.000Z');
+    expect(endOfMonth(billingMonth).toISOString()).toBe('2026-06-30T23:59:59.999Z');
+    expect(monthLabel(startOfMonth(billingMonth))).toBe('2026-06');
+  });
+
+  it('handles December to January month boundaries in UTC', () => {
+    const billingMonth = new Date('2026-12-01T00:00:00.000Z');
+
+    expect(startOfMonth(billingMonth).toISOString()).toBe('2026-12-01T00:00:00.000Z');
+    expect(endOfMonth(billingMonth).toISOString()).toBe('2026-12-31T23:59:59.999Z');
+  });
+});
+
 describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -182,6 +211,64 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
         exclusionReason: null,
       }),
     );
+  });
+
+  it('keeps generated billing evidence and monthly count bounds on the UTC billing month', async () => {
+    const originalTimeZone = process.env.TZ;
+    process.env.TZ = 'Asia/Tokyo';
+    try {
+      const tx = makeTx();
+      tx.visitRecord.findFirst = vi.fn().mockResolvedValue(
+        makeVisitRecord({
+          visit_date: new Date('2026-03-01T00:00:00.000Z'),
+        }),
+      );
+
+      await upsertBillingEvidenceForVisit(tx as never, {
+        orgId: 'org_1',
+        visitRecordId: 'visit_1',
+      });
+
+      expect(tx.visitRecord.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            org_id: 'org_1',
+            patient_id: 'patient_1',
+            visit_date: {
+              gte: new Date('2026-02-28T15:00:00.000Z'),
+              lt: new Date('2026-03-31T15:00:00.000Z'),
+            },
+          }),
+        }),
+      );
+      expect(tx.billingCandidate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            org_id: 'org_1',
+            patient_id: 'patient_1',
+            billing_month: new Date('2026-03-01T00:00:00.000Z'),
+          },
+          select: {
+            billing_code: true,
+            status: true,
+            source_snapshot: true,
+          },
+        }),
+      );
+      expect(tx.billingEvidence.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            billing_month: new Date('2026-03-01T00:00:00.000Z'),
+          }),
+        }),
+      );
+    } finally {
+      if (originalTimeZone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimeZone;
+      }
+    }
   });
 
   it('passes completed 2026 home-visit evidence flags to billing candidate derivation', async () => {

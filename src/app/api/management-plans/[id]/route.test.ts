@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
+  careCaseFindManyMock,
   managementPlanFindFirstMock,
   managementPlanUpdateMock,
   managementPlanUpdateManyMock,
@@ -11,6 +12,7 @@ const {
   scheduleManagementPlanReviewAlertMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
   managementPlanFindFirstMock: vi.fn(),
   managementPlanUpdateMock: vi.fn(),
   managementPlanUpdateManyMock: vi.fn(),
@@ -25,6 +27,9 @@ vi.mock('@/lib/auth/context', () => ({
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
+    careCase: {
+      findMany: careCaseFindManyMock,
+    },
     managementPlan: {
       findFirst: managementPlanFindFirstMock,
     },
@@ -63,6 +68,7 @@ describe('/api/management-plans/[id]', () => {
         primary_pharmacist_id: 'user_2',
       },
     });
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
     managementPlanUpdateMock.mockResolvedValue({
       id: 'plan_1',
       status: 'approved',
@@ -85,11 +91,41 @@ describe('/api/management-plans/[id]', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expect(managementPlanFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'plan_1',
+        org_id: 'org_1',
+        case_: {
+          OR: [
+            { primary_pharmacist_id: 'user_1' },
+            { backup_pharmacist_id: 'user_1' },
+            { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+          ],
+        },
+      },
+    });
     await expect(response.json()).resolves.toMatchObject({
       data: {
         id: 'plan_1',
       },
     });
+  });
+
+  it('does not update an unassigned management plan', async () => {
+    managementPlanFindFirstMock.mockResolvedValue(null);
+
+    const response = (await PATCH({
+      json: async () => ({
+        action: 'approve',
+      }),
+    } as NextRequest, {
+      params: Promise.resolve({ id: 'plan_unassigned' }),
+    }))!;
+
+    expect(response.status).toBe(404);
+    expect(managementPlanUpdateMock).not.toHaveBeenCalled();
+    expect(managementPlanUpdateManyMock).not.toHaveBeenCalled();
+    expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
   });
 
   it('approves a draft plan and schedules a review alert', async () => {

@@ -28,7 +28,7 @@ describe('/api/health GET', () => {
     getAuthContextMock.mockResolvedValue(null);
   });
 
-  it('returns only sanitized check statuses for unauthenticated callers', async () => {
+  it('keeps unauthenticated public liveness cheap', async () => {
     queryRawMock.mockResolvedValue([{ '?column?': 1 }]);
     runBackupMonitorChecksMock.mockResolvedValue({
       overall: 'ok',
@@ -41,13 +41,15 @@ describe('/api/health GET', () => {
       headers: { get: vi.fn() },
     } as never);
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(payload).toMatchObject({
       status: 'ok',
-      checks: {
-        database: { status: 'ok' },
-        backups: { status: 'ok' },
-      },
+      checks: {},
     });
+    expect(payload.checks.database).toBeUndefined();
+    expect(payload.checks.backups).toBeUndefined();
+    expect(queryRawMock).not.toHaveBeenCalled();
+    expect(runBackupMonitorChecksMock).not.toHaveBeenCalled();
   });
 
   it('returns detailed checks for authenticated admins', async () => {
@@ -74,9 +76,15 @@ describe('/api/health GET', () => {
         backups: { status: 'warning' },
       },
     });
+    expect(runBackupMonitorChecksMock).toHaveBeenCalledOnce();
   });
 
-  it('returns down when the database check fails', async () => {
+  it('returns down for authenticated admins when the database check fails', async () => {
+    getAuthContextMock.mockResolvedValue({
+      userId: 'user_1',
+      orgId: 'org_1',
+      role: 'admin',
+    });
     queryRawMock.mockRejectedValue(new Error('db down'));
     runBackupMonitorChecksMock.mockResolvedValue({
       overall: 'ok',
@@ -91,7 +99,29 @@ describe('/api/health GET', () => {
       status: 'down',
       checks: {
         database: { status: 'down' },
-        backups: { status: 'ok' },
+      },
+    });
+    expect(runBackupMonitorChecksMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps backup monitor errors private to authenticated admins', async () => {
+    getAuthContextMock.mockResolvedValue({
+      userId: 'user_1',
+      orgId: 'org_1',
+      role: 'admin',
+    });
+    queryRawMock.mockResolvedValue([{ '?column?': 1 }]);
+    runBackupMonitorChecksMock.mockRejectedValue(new Error('backup secret detail'));
+
+    const response = await GET({
+      headers: { get: vi.fn() },
+    } as never);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: 'degraded',
+      checks: {
+        database: { status: 'ok' },
+        backups: { status: 'error', message: 'backup secret detail' },
       },
     });
   });

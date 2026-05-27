@@ -25,6 +25,27 @@ export function buildPrescriptionIntakeAssignmentWhere(
   return cycleWhere ? { cycle: cycleWhere } : null;
 }
 
+export function buildSetPlanAssignmentWhere(
+  ctx: PrescriptionAccessContext,
+): Prisma.SetPlanWhereInput | null {
+  const cycleWhere = buildMedicationCycleAssignmentWhere(ctx);
+  return cycleWhere ? { cycle: cycleWhere } : null;
+}
+
+export function buildSetBatchAssignmentWhere(
+  ctx: PrescriptionAccessContext,
+): Prisma.SetBatchWhereInput | null {
+  const planWhere = buildSetPlanAssignmentWhere(ctx);
+  return planWhere ? { plan: planWhere } : null;
+}
+
+export function buildSetAuditAssignmentWhere(
+  ctx: PrescriptionAccessContext,
+): Prisma.SetAuditWhereInput | null {
+  const planWhere = buildSetPlanAssignmentWhere(ctx);
+  return planWhere ? { plan: planWhere } : null;
+}
+
 export function buildQrDraftAssignmentWhere(
   ctx: PrescriptionAccessContext,
   patientIds: string[],

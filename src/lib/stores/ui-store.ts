@@ -45,7 +45,7 @@ export const useUIStore = create<UIState>()(
       toggleGlobalSearch: () => set((s) => ({ globalSearchOpen: !s.globalSearchOpen })),
     }),
     {
-      name: 'careviax-ui',
+      name: 'ph-os-ui',
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         sidebarOpen: state.sidebarOpen,

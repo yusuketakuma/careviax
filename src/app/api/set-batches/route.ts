@@ -13,6 +13,10 @@ import {
   resolvePackagingSettings,
 } from '@/lib/prescription/packaging';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+import {
+  buildSetBatchAssignmentWhere,
+  buildSetPlanAssignmentWhere,
+} from '@/server/services/prescription-access';
 import { z } from 'zod';
 
 const createSetBatchSchema = z.object({
@@ -37,8 +41,13 @@ export const GET = withAuthContext<Record<string, string>>(
       return validationError('plan_id は必須パラメータです');
     }
 
+    const assignmentWhere = buildSetBatchAssignmentWhere(ctx);
     const batches = await prisma.setBatch.findMany({
-      where: { plan_id: planId, org_id: ctx.orgId },
+      where: {
+        plan_id: planId,
+        org_id: ctx.orgId,
+        ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+      },
       orderBy: [{ day_number: 'asc' }, { slot: 'asc' }],
       include: {
         line: {
@@ -61,7 +70,7 @@ export const GET = withAuthContext<Record<string, string>>(
 
     return success({ data: batches });
   },
-  { permission: 'canSet' }
+  { permission: 'canSet' },
 );
 
 export const POST = withAuthContext<Record<string, string>>(
@@ -77,8 +86,13 @@ export const POST = withAuthContext<Record<string, string>>(
     const { plan_id, line_id, slot, day_number, quantity, carry_type } = parsed.data;
 
     const result = await withOrgContext(ctx.orgId, async (tx) => {
+      const planAssignmentWhere = buildSetPlanAssignmentWhere(ctx);
       const plan = await tx.setPlan.findFirst({
-        where: { id: plan_id, org_id: ctx.orgId },
+        where: {
+          id: plan_id,
+          org_id: ctx.orgId,
+          ...(planAssignmentWhere ? { AND: [planAssignmentWhere] } : {}),
+        },
         select: {
           id: true,
           cycle_id: true,
@@ -229,5 +243,5 @@ export const POST = withAuthContext<Record<string, string>>(
 
     return success({ data: result.batch }, 201);
   },
-  { permission: 'canSet' }
+  { permission: 'canSet' },
 );

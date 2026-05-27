@@ -186,7 +186,13 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
         prescription_intake_id: 'intake_1',
       },
     });
-    expect(broadcastStatusUpdateMock).toHaveBeenCalled();
+    expect(broadcastStatusUpdateMock).toHaveBeenCalledWith('org:org_1', {
+      type: 'qr_draft_confirmed',
+    });
+    const event = broadcastStatusUpdateMock.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(JSON.stringify(event)).not.toContain('draft_1');
+    expect(JSON.stringify(event)).not.toContain('intake_1');
+    expect(JSON.stringify(event)).not.toContain('cycle_1');
   });
 
   it('rejects confirmation when the draft patient does not match the target patient', async () => {

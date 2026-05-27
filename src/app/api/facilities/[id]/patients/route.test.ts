@@ -66,6 +66,17 @@ describe('/api/facilities/[id]/patients GET', () => {
         org_id: 'org_1',
         facility_id: 'facility_1',
         is_primary: true,
+        patient: {
+          cases: {
+            some: {
+              OR: [
+                { primary_pharmacist_id: 'user_1' },
+                { backup_pharmacist_id: 'user_1' },
+                { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+              ],
+            },
+          },
+        },
       },
       orderBy: [{ unit_name: 'asc' }, { created_at: 'asc' }],
       select: expect.any(Object),

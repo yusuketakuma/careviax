@@ -3,7 +3,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
-import { getRealtimeAdapter } from '@/server/adapters/realtime';
+import { broadcastOrgRealtimeEvent } from '@/server/services/org-realtime';
 import { Prisma } from '@prisma/client';
 import {
   isJahisQR,
@@ -271,15 +271,10 @@ export const POST = withAuth(
     });
 
     // Emit SSE event (best-effort)
-    try {
-      const adapter = getRealtimeAdapter();
-      adapter.broadcastStatusUpdate(`org:${req.orgId}:qr-drafts`, {
-        type: 'qr_draft_created',
-        payload: { draftId: draft.id, sessionId: session_id, patientId: patient_id ?? null },
-      });
-    } catch {
-      // Realtime broadcast is best-effort
-    }
+    await broadcastOrgRealtimeEvent({
+      orgId: req.orgId,
+      type: 'qr_draft_created',
+    });
 
     return success(
       {

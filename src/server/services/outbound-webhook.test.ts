@@ -95,7 +95,7 @@ describe('outbound-webhook', () => {
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({
-          'X-CareViaX-Event': 'patient.created',
+          'X-PH-OS-Event': 'patient.created',
         }),
       })
     );

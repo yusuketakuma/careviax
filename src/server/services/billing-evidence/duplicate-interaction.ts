@@ -3,7 +3,7 @@ import { HOME_CARE_BILLING_RULESET_VERSION } from '../home-care-billing-ssot';
 import type { Tx, AdditionalBillingRuleDefinition } from './core';
 import {
   startOfMonth,
-  endOfMonth,
+  japanMonthRangeForBillingMonth,
   monthLabel,
   readBillingCandidateWorkflowState,
   writeBillingCandidateWorkflowState,
@@ -148,11 +148,11 @@ export async function generateHomeDuplicateInteractionCandidates(
   },
 ) {
   const monthStart = startOfMonth(args.billingMonth);
-  const monthEnd = endOfMonth(args.billingMonth);
+  const monthRange = japanMonthRangeForBillingMonth(monthStart);
   const inquiries = await tx.inquiryRecord.findMany({
     where: {
       org_id: args.orgId,
-      inquired_at: { gte: monthStart, lte: monthEnd },
+      inquired_at: { gte: monthRange.start, lt: monthRange.nextStart },
       OR: [{ reason: { in: ['相互作用', '重複'] } }, { residual_adjustment: true }],
     },
     select: {

@@ -672,12 +672,13 @@ describe('/api/conference-notes', () => {
           where: {
             org_id_dedupe_key: {
               org_id: 'org_1',
-              dedupe_key: 'conference-billing:org_1:patient_1:B011-6:2026-02-28:note_pre1',
+              dedupe_key: 'conference-billing:org_1:patient_1:B011-6:2026-03-01:note_pre1',
             },
           },
           create: expect.objectContaining({
             org_id: 'org_1',
             patient_id: 'patient_1',
+            billing_month: new Date('2026-03-01T00:00:00.000Z'),
             billing_code: 'B011-6',
             billing_name: '退院時共同指導料（薬局）',
             points: 600,
@@ -1147,12 +1148,13 @@ describe('/api/conference-notes', () => {
           where: {
             org_id_dedupe_key: {
               org_id: 'org_1',
-              dedupe_key: 'conference-billing:org_1:patient_1:C013:2026-02-28:note_death1',
+              dedupe_key: 'conference-billing:org_1:patient_1:C013:2026-03-01:note_death1',
             },
           },
           create: expect.objectContaining({
             org_id: 'org_1',
             patient_id: 'patient_1',
+            billing_month: new Date('2026-03-01T00:00:00.000Z'),
             billing_code: 'C013',
             billing_name: 'ターミナルケア管理料（在宅ターミナルケア加算）',
             points: 2500,

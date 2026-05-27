@@ -4,6 +4,7 @@ import type { NextRequest } from 'next/server';
 const {
   authMock,
   membershipFindFirstMock,
+  careCaseFindManyMock,
   visitScheduleFindManyMock,
   careReportFindManyMock,
   taskFindManyMock,
@@ -11,6 +12,7 @@ const {
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   careReportFindManyMock: vi.fn(),
   taskFindManyMock: vi.fn(),
@@ -25,6 +27,9 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     membership: {
       findFirst: membershipFindFirstMock,
+    },
+    careCase: {
+      findMany: careCaseFindManyMock,
     },
     visitSchedule: {
       findMany: visitScheduleFindManyMock,
@@ -54,6 +59,7 @@ function createRequest(headers?: Record<string, string>) {
 describe('/api/dashboard/overdue GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
   });
 
   it('returns 403 when the role lacks dashboard permission', async () => {
@@ -116,6 +122,55 @@ describe('/api/dashboard/overdue GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(careCaseFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        AND: [
+          {
+            OR: [
+              { primary_pharmacist_id: 'user_1' },
+              { backup_pharmacist_id: 'user_1' },
+              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+            ],
+          },
+        ],
+      },
+      select: { id: true, patient_id: true },
+    });
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          case_id: { in: ['case_1'] },
+        }),
+      }),
+    );
+    expect(careReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: { in: ['patient_1'] },
+        }),
+      }),
+    );
+    expect(taskFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            {
+              OR: expect.arrayContaining([
+                {
+                  related_entity_type: 'patient',
+                  related_entity_id: { in: ['patient_1'] },
+                },
+                {
+                  related_entity_type: 'case',
+                  related_entity_id: { in: ['case_1'] },
+                },
+              ]),
+            },
+          ]),
+        }),
+      }),
+    );
     await expect(response.json()).resolves.toMatchObject({
       summary: {
         unrecorded_visits: 1,
@@ -138,6 +193,53 @@ describe('/api/dashboard/overdue GET', () => {
           title: '訪問準備が未完了です',
         }),
       ],
+    });
+  });
+
+  it('returns empty buckets when a scoped user has no assigned patients or cases', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
+    careCaseFindManyMock.mockResolvedValue([]);
+    visitScheduleFindManyMock.mockResolvedValue([]);
+    careReportFindManyMock.mockResolvedValue([]);
+    taskFindManyMock.mockResolvedValue([]);
+    patientFindManyMock.mockResolvedValue([]);
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          case_id: { in: [] },
+        }),
+      }),
+    );
+    expect(careReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: { in: [] },
+        }),
+      }),
+    );
+    expect(taskFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([{ id: { in: [] } }]),
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      summary: {
+        unrecorded_visits: 0,
+        unsent_reports: 0,
+        overdue_tasks: 0,
+        total: 0,
+      },
+      unrecorded_visits: [],
+      unsent_reports: [],
+      overdue_tasks: [],
     });
   });
 });

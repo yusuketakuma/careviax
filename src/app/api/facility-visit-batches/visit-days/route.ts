@@ -4,6 +4,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { upsertFacilityVisitDaysSchema } from '@/lib/validations/visit-constraints';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+import { buildVisitScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 
 function toTimeValue(value?: string | null) {
   return value ? new Date(`1970-01-01T${value}`) : null;
@@ -20,6 +21,7 @@ export const POST = withAuth(
     }
 
     const scheduleIds = Array.from(new Set(parsed.data.schedule_ids));
+    const assignmentWhere = buildVisitScheduleAssignmentWhere(req);
 
     const result = await withOrgContext(req.orgId, async (tx) => {
       const schedules = await tx.visitSchedule.findMany({
@@ -28,6 +30,7 @@ export const POST = withAuth(
           id: {
             in: scheduleIds,
           },
+          ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
         },
         select: {
           id: true,
@@ -62,9 +65,12 @@ export const POST = withAuth(
       const facilityLabels = Array.from(
         new Set(
           schedules
-            .map((schedule) => deriveVisitPlaceGroup(schedule.case_.patient.residences[0] ?? null)?.label ?? null)
-            .filter((value): value is string => value != null)
-        )
+            .map(
+              (schedule) =>
+                deriveVisitPlaceGroup(schedule.case_.patient.residences[0] ?? null)?.label ?? null,
+            )
+            .filter((value): value is string => value != null),
+        ),
       );
 
       if (facilityLabels.length !== 1 || facilityLabels[0] !== parsed.data.facility_label) {
@@ -82,8 +88,8 @@ export const POST = withAuth(
               id: schedule.case_.patient.id,
               name: schedule.case_.patient.name,
             },
-          ])
-        ).values()
+          ]),
+        ).values(),
       );
 
       await Promise.all(
@@ -112,8 +118,8 @@ export const POST = withAuth(
               visit_buffer_minutes: parsed.data.visit_buffer_minutes ?? null,
               notes: parsed.data.notes ?? null,
             },
-          })
-        )
+          }),
+        ),
       );
 
       return {
@@ -151,5 +157,5 @@ export const POST = withAuth(
   {
     permission: 'canVisit',
     message: '訪問先グループ定期訪問日の更新権限がありません',
-  }
+  },
 );

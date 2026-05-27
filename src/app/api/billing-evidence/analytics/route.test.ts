@@ -45,7 +45,7 @@ describe('/api/billing-evidence/analytics GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-03-26T09:00:00.000Z'));
+    vi.setSystemTime(new Date('2026-02-28T15:30:00.000Z'));
     requireAuthContextMock.mockResolvedValue({
       ctx: {
         orgId: 'org_1',
@@ -112,6 +112,7 @@ describe('/api/billing-evidence/analytics GET', () => {
       data: {
         summary: {
           ssot_rule_count: 16,
+          current_month: '2026-03',
           current_month_candidates: expect.any(Number),
           current_month_review_pending: expect.any(Number),
           current_month_claimable_rate: expect.any(Number),
@@ -122,8 +123,34 @@ describe('/api/billing-evidence/analytics GET', () => {
         },
         blocker_reasons: expect.any(Array),
         top_codes: expect.any(Array),
-        monthly_trend: expect.any(Array),
+        monthly_trend: [
+          expect.objectContaining({ month: '2025-10' }),
+          expect.objectContaining({ month: '2025-11' }),
+          expect.objectContaining({ month: '2025-12' }),
+          expect.objectContaining({ month: '2026-01' }),
+          expect.objectContaining({ month: '2026-02' }),
+          expect.objectContaining({ month: '2026-03' }),
+        ],
       },
     });
+    const rangeStart = new Date('2025-10-01T00:00:00.000Z');
+    expect(billingCandidateFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          billing_month: {
+            gte: rangeStart,
+          },
+        }),
+      }),
+    );
+    expect(billingEvidenceFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          billing_month: {
+            gte: rangeStart,
+          },
+        }),
+      }),
+    );
   });
 });

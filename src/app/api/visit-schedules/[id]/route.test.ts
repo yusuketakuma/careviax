@@ -238,6 +238,36 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects reversed time windows before loading or mutating the schedule', async () => {
+    const response = await PATCH(
+      {
+        url: 'http://localhost/api/visit-schedules/schedule_1',
+        headers: {
+          get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
+        },
+        json: vi.fn().mockResolvedValue({
+          time_window_start: '11:00',
+          time_window_end: '10:00',
+        }),
+      } as unknown as NextRequest,
+      {
+        params: Promise.resolve({ id: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        time_window_end: ['終了時刻は開始時刻より後にしてください'],
+      },
+    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('returns 403 when a trainee deletes a schedule they are not assigned to', async () => {
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist_trainee' });
     visitScheduleFindFirstMock.mockResolvedValue({

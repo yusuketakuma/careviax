@@ -101,11 +101,17 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       case_: {
         select: {
           primary_pharmacist_id: true,
+          backup_pharmacist_id: true,
           patient: {
             select: {
               name: true,
             },
           },
+        },
+      },
+      visit_schedules: {
+        select: {
+          pharmacist_id: true,
         },
       },
     },
@@ -141,11 +147,11 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     }
 
     if (priority === 'emergency') {
-      const fallbackRecipients = await tx.membership.findMany({
+      const bypassRecipients = await tx.membership.findMany({
         where: {
           org_id: req.orgId,
           is_active: true,
-          role: { in: ['admin', 'pharmacist'] as never[] },
+          role: { in: ['owner', 'admin'] as never[] },
           user: {
             is_active: true,
           },
@@ -158,9 +164,18 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       const explicitUserIds = Array.from(
         new Set(
           [
-            assigned_to ?? null,
+            assigned_to &&
+            [
+              cycle.case_?.primary_pharmacist_id,
+              cycle.case_?.backup_pharmacist_id,
+              ...cycle.visit_schedules.map((schedule) => schedule.pharmacist_id),
+            ].includes(assigned_to)
+              ? assigned_to
+              : null,
             cycle.case_?.primary_pharmacist_id ?? null,
-            ...fallbackRecipients.map((member) => member.user_id),
+            cycle.case_?.backup_pharmacist_id ?? null,
+            ...cycle.visit_schedules.map((schedule) => schedule.pharmacist_id),
+            ...bypassRecipients.map((member) => member.user_id),
           ].filter((value): value is string => Boolean(value)),
         ),
       );
@@ -187,4 +202,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   });
 
   return success(created, 201);
+}, {
+  permission: 'canDispense',
+  message: '調剤タスクの作成権限がありません',
 });

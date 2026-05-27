@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db/client';
 import {
   getBillingCandidateWorkbenchSummary,
   generateBillingCandidatesForMonth,
+  japanMonthRangeForBillingMonth,
   upsertBillingEvidenceForVisit,
 } from '@/server/services/billing-evidence';
 import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from './billing-month';
@@ -121,12 +122,13 @@ export const POST = withAuth(
       return validationError(BILLING_MONTH_FORMAT_MESSAGE);
     }
 
+    const billingMonthRange = japanMonthRangeForBillingMonth(billingMonth.start);
     const visitRecords = await prisma.visitRecord.findMany({
       where: {
         org_id: req.orgId,
         visit_date: {
-          gte: billingMonth.start,
-          lt: billingMonth.nextStart,
+          gte: billingMonthRange.start,
+          lt: billingMonthRange.nextStart,
         },
       },
       select: {

@@ -402,7 +402,7 @@ export const POST = withAuthContext(
         const smsAdapter = new SmsNotificationAdapter();
         await smsAdapter.sendSms(
           normalizedGrantedToContact,
-          `CareViaX共有OTP: ${rawOtp} 有効期限 ${expiresAt.toLocaleString('ja-JP')}`,
+          `PH-OS共有OTP: ${rawOtp} 有効期限 ${expiresAt.toLocaleString('ja-JP')}`,
         );
         otpDelivery = 'sms';
         otpDeliveryDestination = maskPhoneNumber(normalizedGrantedToContact);

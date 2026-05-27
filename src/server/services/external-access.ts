@@ -333,7 +333,8 @@ async function verifyExternalAccessOtp(otp: string, storedHash: string) {
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
-const EXTERNAL_ACCESS_TOKEN_SALT = 'careviax-external-access';
+const EXTERNAL_ACCESS_TOKEN_SALT = 'ph-os-external-access';
+const LEGACY_EXTERNAL_ACCESS_TOKEN_SALTS = ['careviax-external-access'] as const;
 
 type ExternalAccessTokenPayload = {
   grant_id: string;
@@ -391,22 +392,32 @@ export async function issueExternalAccessToken(args: {
 }
 
 async function decodeExternalAccessToken(token: string) {
-  let payload: Awaited<ReturnType<typeof decode>> | null = null;
+  let secret: string;
   try {
-    payload = await decode({
-      token,
-      secret: getExternalAccessSecret(),
-      salt: EXTERNAL_ACCESS_TOKEN_SALT,
-    });
+    secret = getExternalAccessSecret();
   } catch {
     return null;
   }
+  const salts = [EXTERNAL_ACCESS_TOKEN_SALT, ...LEGACY_EXTERNAL_ACCESS_TOKEN_SALTS];
 
-  if (!payload || !isExternalAccessTokenPayload(payload as Record<string, unknown>)) {
-    return null;
+  for (const salt of salts) {
+    let payload: Awaited<ReturnType<typeof decode>> | null = null;
+    try {
+      payload = await decode({
+        token,
+        secret,
+        salt,
+      });
+    } catch {
+      continue;
+    }
+
+    if (payload && isExternalAccessTokenPayload(payload as Record<string, unknown>)) {
+      return payload as Record<string, unknown> & ExternalAccessTokenPayload;
+    }
   }
 
-  return payload as Record<string, unknown> & ExternalAccessTokenPayload;
+  return null;
 }
 
 export async function validateExternalAccessGrant(

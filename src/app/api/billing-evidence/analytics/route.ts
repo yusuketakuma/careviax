@@ -1,11 +1,11 @@
 import { NextRequest } from 'next/server';
-import { subMonths } from 'date-fns';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { success } from '@/lib/api/response';
+import { billingMonthForJapanTimestamp } from '@/server/services/billing-evidence';
 
-function startOfMonth(value: Date) {
-  return new Date(value.getFullYear(), value.getMonth(), 1);
+function addUtcMonths(value: Date, months: number) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + months, 1));
 }
 
 function formatMonth(value: Date) {
@@ -20,8 +20,8 @@ export async function GET(req: NextRequest) {
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
-  const currentMonth = startOfMonth(new Date());
-  const rangeStart = startOfMonth(subMonths(currentMonth, 5));
+  const currentMonth = billingMonthForJapanTimestamp(new Date());
+  const rangeStart = addUtcMonths(currentMonth, -5);
 
   const [candidates, evidences, ssotRuleCount] = await Promise.all([
     prisma.billingCandidate.findMany({
@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
   ]);
 
   const monthlyTrend = Array.from({ length: 6 }, (_, index) => {
-    const month = startOfMonth(subMonths(currentMonth, 5 - index));
+    const month = addUtcMonths(currentMonth, index - 5);
     return {
       month: formatMonth(month),
       total_candidates: 0,

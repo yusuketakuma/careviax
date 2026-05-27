@@ -1,4 +1,4 @@
-export const LOCAL_FALLBACK_AUTH_SECRET = 'careviax-local-auth-secret';
+export const LOCAL_FALLBACK_AUTH_SECRET = 'ph-os-local-auth-secret';
 export const LOCAL_FALLBACK_AUTH_URL = 'http://localhost:3000';
 
 function isLocalFallbackAllowed() {

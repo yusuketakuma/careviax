@@ -85,7 +85,7 @@ export type OfflinePrescriptionDraft = {
   updatedAt: Date;
 };
 
-class CareViaXOfflineDB extends Dexie {
+class PhOsOfflineDB extends Dexie {
   visitDrafts!: Table<OfflineVisitDraft, number>;
   residualDrafts!: Table<OfflineResidualDraft, number>;
   syncQueue!: Table<OfflineSyncQueue, number>;
@@ -93,7 +93,7 @@ class CareViaXOfflineDB extends Dexie {
   prescriptionDrafts!: Table<OfflinePrescriptionDraft, number>;
 
   constructor() {
-    super('CareViaXOffline');
+    super('PH-OSOffline');
 
     this.version(1).stores({
       visitDrafts: '++id, scheduleId, patientId, synced',
@@ -158,4 +158,4 @@ class CareViaXOfflineDB extends Dexie {
   }
 }
 
-export const offlineDb = new CareViaXOfflineDB();
+export const offlineDb = new PhOsOfflineDB();

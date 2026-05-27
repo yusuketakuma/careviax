@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { buildSearchFilter, buildSort } from '@/lib/api/search';
+import { parsePaginationParams } from '@/lib/api/pagination';
 import { parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 
@@ -31,9 +32,10 @@ export const GET = withAuthContext(async (req: NextRequest) => {
   if (!parsed.ok) {
     return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
   }
-  const limit = parsed.data.limit ?? 50;
+  const pagination = parsePaginationParams(searchParams);
+  const limit = parsed.data.limit ?? pagination.limit;
   const cursor = parsed.data.cursor;
-  const offset = cursor ? parseInt(cursor, 10) : 0;
+  const offset = cursor ? pagination.offset : 0;
 
   const q = parsed.data.q ?? '';
   const category = parsed.data.category;

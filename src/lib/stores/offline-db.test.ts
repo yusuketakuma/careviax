@@ -6,17 +6,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 describe('offline DB migrations', () => {
   beforeEach(async () => {
     vi.resetModules();
-    await indexedDB.deleteDatabase('CareViaXOffline');
+    await indexedDB.deleteDatabase('PH-OSOffline');
   });
 
   afterEach(async () => {
     const { offlineDb } = await import('./offline-db');
     offlineDb.close();
-    await indexedDB.deleteDatabase('CareViaXOffline');
+    await indexedDB.deleteDatabase('PH-OSOffline');
   });
 
   it('purges legacy plaintext SOAP draft fields when upgrading to v6', async () => {
-    const legacyDb = new Dexie('CareViaXOffline');
+    const legacyDb = new Dexie('PH-OSOffline');
     legacyDb.version(5).stores({
       visitDrafts: '++id, scheduleId, patientId, synced',
       residualDrafts: '++id, patientId, synced',

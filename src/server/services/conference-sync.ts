@@ -4,6 +4,7 @@ import {
   type ConferenceReportType,
 } from '@/lib/conferences/conference-report-disclosure';
 import { logger } from '@/lib/utils/logger';
+import { billingMonthForJapanTimestamp } from './billing-evidence/core';
 
 type TransactionClient = Prisma.TransactionClient;
 
@@ -457,7 +458,7 @@ export class ConferenceSyncService {
     // Billing month is anchored to the conference_date if available,
     // otherwise falls back to the current month.
     const referenceDate = note.conference_date ? new Date(note.conference_date) : new Date();
-    const billingMonth = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 1);
+    const billingMonth = billingMonthForJapanTimestamp(referenceDate);
 
     const participants = parseParticipants(note.participants);
     const sections = parseStructuredSections(note.structured_content);

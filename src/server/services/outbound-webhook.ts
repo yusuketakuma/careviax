@@ -191,9 +191,9 @@ async function dispatchToEndpoint(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-CareViaX-Event': payload.event,
-        'X-CareViaX-Delivery': payload.id,
-        'X-CareViaX-Signature': buildSignatureHeader(registration.secret, body),
+        'X-PH-OS-Event': payload.event,
+        'X-PH-OS-Delivery': payload.id,
+        'X-PH-OS-Signature': buildSignatureHeader(registration.secret, body),
       },
       body,
       signal: AbortSignal.timeout(10_000),

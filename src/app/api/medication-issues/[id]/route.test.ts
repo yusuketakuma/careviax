@@ -118,6 +118,36 @@ describe('/api/medication-issues/[id]', () => {
     });
   });
 
+  it('clears resolver metadata when an issue is reopened', async () => {
+    medicationIssueFindFirstMock.mockResolvedValue({
+      id: 'issue_1',
+      status: 'resolved',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+    });
+
+    const response = (await PATCH(
+      {
+        json: async () => ({
+          status: 'in_progress',
+        }),
+      } as NextRequest,
+      {
+        params: Promise.resolve({ id: 'issue_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(medicationIssueUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'issue_1' },
+      data: expect.objectContaining({
+        status: 'in_progress',
+        resolved_by: null,
+        resolved_at: null,
+      }),
+    });
+  });
+
   it('returns 404 before updating an inaccessible medication issue', async () => {
     medicationIssueFindFirstMock.mockResolvedValue(null);
 

@@ -4,6 +4,10 @@ import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { updateTaskSchema } from '@/lib/validations/task';
+import {
+  buildDashboardTaskAssignmentWhere,
+  resolveDashboardAssignmentScope,
+} from '@/server/services/dashboard-assignment-scope';
 
 export async function PATCH(
   req: NextRequest,
@@ -25,13 +29,27 @@ export async function PATCH(
   }
 
   const { id } = await params;
+  const assignmentScope = await resolveDashboardAssignmentScope({
+    db: prisma,
+    orgId: ctx.orgId,
+    accessContext: ctx,
+  });
   const existing = await prisma.task.findFirst({
     where: {
       id,
       org_id: ctx.orgId,
+      ...buildDashboardTaskAssignmentWhere(assignmentScope),
     },
   });
   if (!existing) return notFound('タスクが見つかりません');
+
+  if (
+    assignmentScope.assignedToUserId &&
+    parsed.data.assigned_to !== undefined &&
+    parsed.data.assigned_to !== existing.assigned_to
+  ) {
+    return validationError('担当者の変更権限がありません');
+  }
 
   const task = await withOrgContext(ctx.orgId, async (tx) => {
     return tx.task.update({

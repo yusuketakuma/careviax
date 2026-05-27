@@ -7,7 +7,7 @@ import {
 function stripRequestSearch(urlValue: string): string {
   try {
     const isAbsolute = /^[a-z][a-z\d+\-.]*:/iu.test(urlValue);
-    const url = new URL(urlValue, isAbsolute ? undefined : 'https://careviax.local');
+    const url = new URL(urlValue, isAbsolute ? undefined : 'https://ph-os.local');
     url.search = '';
     return isAbsolute ? url.toString() : `${url.pathname}${url.hash}`;
   } catch {

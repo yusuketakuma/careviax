@@ -2,13 +2,13 @@ const OFFLINE_ENCRYPTION_PREFIX = 'encv1:';
 const AES_GCM_IV_LENGTH = 12;
 
 // IndexedDB settings for key storage
-const IDB_DB_NAME = 'careviax-offline-keys';
+const IDB_DB_NAME = 'ph-os-offline-keys';
 const IDB_DB_VERSION = 1;
 const IDB_STORE_NAME = 'crypto-keys';
 const IDB_KEY_RECORD_ID = 'offline-enc-key-v2';
 
 // Salt stored in localStorage (salt is not secret; only raw key bytes must be protected)
-const OFFLINE_SALT_STORAGE_KEY = 'careviax.offline.salt.v2';
+const OFFLINE_SALT_STORAGE_KEY = 'ph-os.offline.salt.v2';
 let cachedOfflineEncryptionKey: CryptoKey | null = null;
 
 // OWASP recommends 600,000 iterations for PBKDF2-SHA-256 (2023 guidance).

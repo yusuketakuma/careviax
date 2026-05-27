@@ -35,7 +35,7 @@ function compareDateAsc(left: Date, right: Date) {
 }
 
 /**
- * Supports the subset used in CareViaX MVP:
+ * Supports the subset used in PH-OS MVP:
  * - FREQ=WEEKLY;INTERVAL=n;BYDAY=MO,WE
  * - FREQ=MONTHLY;INTERVAL=n;BYDAY=1WE / -1FR / 1TU,3TU
  */

@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
@@ -20,6 +21,8 @@ const DOWNLOAD_EXPIRY_SECONDS = 60 * 15;
 const PRESCRIPTION_OBJECT_LOCK_YEARS = 5;
 const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const DOCUMENT_MAX_BYTES = 50 * 1024 * 1024;
+const DEFAULT_BULK_EXPORT_RETENTION_HOURS = 72;
+const MAX_BULK_EXPORT_CLEANUP_BATCH_SIZE = 100;
 
 const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const DOCUMENT_MIME_TYPES = new Set([...IMAGE_MIME_TYPES, 'application/pdf']);
@@ -58,6 +61,7 @@ export type StoredFileRecord = {
   createdAt: string;
   updatedAt: string;
   completedAt?: string | null;
+  expiresAt?: string | null;
   downloadDisposition?: DownloadDisposition;
 };
 
@@ -115,7 +119,9 @@ export class FileStorageError extends Error {
       | 'FILE_UPLOAD_INVALID_MIME'
       | 'FILE_UPLOAD_TOO_LARGE'
       | 'FILE_COMPLETE_FORBIDDEN'
-      | 'FILE_DOWNLOAD_FORBIDDEN',
+      | 'FILE_DOWNLOAD_FORBIDDEN'
+      | 'FILE_DELETE_FORBIDDEN'
+      | 'FILE_EXPIRED',
     message: string,
     readonly status: number,
   ) {
@@ -143,6 +149,19 @@ function getRequiredStorageConfig() {
 
 function getServerSideEncryptionMode(): SupportedServerSideEncryption {
   return process.env.S3_SERVER_SIDE_ENCRYPTION === 'aws:kms' ? 'aws:kms' : 'AES256';
+}
+
+function resolveBulkExportRetentionHours() {
+  const configured = Number.parseInt(process.env.BULK_EXPORT_FILE_RETENTION_HOURS ?? '', 10);
+  if (Number.isFinite(configured) && configured > 0) {
+    return configured;
+  }
+
+  return DEFAULT_BULK_EXPORT_RETENTION_HOURS;
+}
+
+function resolveBulkExportExpiresAt(base: Date) {
+  return new Date(base.getTime() + resolveBulkExportRetentionHours() * 60 * 60 * 1000);
 }
 
 function resolveKmsKeyId(purpose: AnyFilePurpose) {
@@ -328,8 +347,24 @@ function parseStoredFileRecord(value: unknown): StoredFileRecord | null {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     completedAt: typeof record.completedAt === 'string' ? record.completedAt : null,
+    expiresAt: typeof record.expiresAt === 'string' ? record.expiresAt : null,
     downloadDisposition: record.downloadDisposition === 'attachment' ? 'attachment' : 'inline',
   };
+}
+
+function resolveStoredFileExpiresAt(record: StoredFileRecord, opts?: { includeLegacyFallback?: boolean }) {
+  if (record.purpose !== 'bulk-export') return null;
+
+  const explicitExpiry = record.expiresAt ? new Date(record.expiresAt) : null;
+  if (explicitExpiry && Number.isFinite(explicitExpiry.getTime())) {
+    return explicitExpiry;
+  }
+
+  if (!opts?.includeLegacyFallback) return null;
+
+  const base = new Date(record.completedAt ?? record.createdAt);
+  if (!Number.isFinite(base.getTime())) return null;
+  return resolveBulkExportExpiresAt(base);
 }
 
 async function readStoredFileRecord(orgId: string, fileId: string) {
@@ -803,29 +838,139 @@ export async function storeGeneratedFile(args: StoreGeneratedFileArgs) {
     createdAt: now,
     updatedAt: now,
     completedAt: now,
+    expiresAt:
+      args.purpose === 'bulk-export'
+        ? resolveBulkExportExpiresAt(new Date(now)).toISOString()
+        : null,
     downloadDisposition: args.downloadDisposition ?? 'inline',
   };
 
-  await prisma.setting.upsert({
-    where: {
-      scope_scope_id_key: {
+  try {
+    await prisma.setting.upsert({
+      where: {
+        scope_scope_id_key: {
+          scope: 'organization',
+          scope_id: args.orgId,
+          key: toSettingKey(fileId),
+        },
+      },
+      create: {
         scope: 'organization',
         scope_id: args.orgId,
         key: toSettingKey(fileId),
+        value: record,
       },
-    },
-    create: {
-      scope: 'organization',
-      scope_id: args.orgId,
-      key: toSettingKey(fileId),
-      value: record,
-    },
-    update: {
-      value: record,
-    },
-  });
+      update: {
+        value: record,
+      },
+    });
+  } catch (error) {
+    await getClient()
+      .send(
+        new DeleteObjectCommand({
+          Bucket: bucketName,
+          Key: storageKey,
+        }),
+      )
+      .catch((cleanupError) => {
+        console.error('[file-storage] failed to clean up generated file after metadata failure', {
+          fileId,
+          storageKey,
+          error: cleanupError,
+        });
+      });
+    throw error;
+  }
 
   return record;
+}
+
+export async function deleteGeneratedFile(record: StoredFileRecord) {
+  if (record.purpose !== 'bulk-export') {
+    throw new FileStorageError(
+      'FILE_DELETE_FORBIDDEN',
+      '一括出力ファイル以外はこの削除処理の対象外です',
+      403,
+    );
+  }
+
+  const { bucketName } = getRequiredStorageConfig();
+  await getClient().send(
+    new DeleteObjectCommand({
+      Bucket: bucketName,
+      Key: record.storageKey,
+    }),
+  );
+  await prisma.setting.deleteMany({
+    where: {
+      scope: 'organization',
+      scope_id: record.orgId,
+      key: toSettingKey(record.id),
+    },
+  });
+}
+
+export async function cleanupExpiredGeneratedFiles(args?: {
+  orgId?: string;
+  now?: Date;
+  batchSize?: number;
+  maxPages?: number;
+}) {
+  const now = args?.now ?? new Date();
+  const batchSize = Math.min(
+    Math.max(args?.batchSize ?? MAX_BULK_EXPORT_CLEANUP_BATCH_SIZE, 1),
+    MAX_BULK_EXPORT_CLEANUP_BATCH_SIZE,
+  );
+  const maxPages = Math.max(args?.maxPages ?? 10, 1);
+
+  const errors: string[] = [];
+  let processedCount = 0;
+  let scannedCount = 0;
+  let cursor: { id: string } | undefined;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const settings = await prisma.setting.findMany({
+      where: {
+        scope: 'organization',
+        ...(args?.orgId ? { scope_id: args.orgId } : {}),
+        key: { startsWith: FILE_SETTING_PREFIX },
+      },
+      select: {
+        id: true,
+        value: true,
+      },
+      orderBy: {
+        id: 'asc',
+      },
+      take: batchSize,
+      ...(cursor ? { cursor, skip: 1 } : {}),
+    });
+
+    if (settings.length === 0) break;
+    scannedCount += settings.length;
+    cursor = { id: settings[settings.length - 1].id };
+
+    for (const setting of settings) {
+      const record = parseStoredFileRecord(setting.value);
+      const expiresAt = record
+        ? resolveStoredFileExpiresAt(record, { includeLegacyFallback: true })
+        : null;
+      if (!record || record.purpose !== 'bulk-export' || !expiresAt || expiresAt > now) {
+        continue;
+      }
+
+      try {
+        await deleteGeneratedFile(record);
+        processedCount += 1;
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : String(error));
+      }
+    }
+
+    if (settings.length < batchSize) break;
+  }
+
+  return { processedCount, scannedCount, errors };
 }
 
 export async function completeUploadedFile({
@@ -910,6 +1055,11 @@ export async function createPresignedDownload({
 
   if (record.status !== 'uploaded') {
     throw new FileStorageError('FILE_NOT_READY', 'ファイルアップロードがまだ完了していません', 409);
+  }
+
+  const expiresAt = resolveStoredFileExpiresAt(record);
+  if (expiresAt && expiresAt <= new Date()) {
+    throw new FileStorageError('FILE_EXPIRED', 'ファイルの保存期限が切れています', 410);
   }
 
   const downloadUrl = await getSignedUrl(

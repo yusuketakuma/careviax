@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
-import { checkRateLimit } from '@/lib/api/rate-limit';
+import { canonicalizeRateLimitPath, checkAuthRateLimit, checkRateLimit } from '@/lib/api/rate-limit';
 import { logSecurityEvent } from '@/lib/auth/security-events';
-import { getClientIp } from '@/lib/api/request-ip';
+import { getClientIp, isProductionLikeRuntime } from '@/lib/api/request-ip';
 import { getAuthSecret } from '@/lib/auth/secret';
 
 /**
@@ -65,6 +65,14 @@ const PROTECTED_ROUTE_PREFIXES = [
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
+function hasValidServerToServerApiKey(request: NextRequest) {
+  return (
+    request.nextUrl.pathname.startsWith('/api/jobs/') &&
+    Boolean(process.env.JOB_API_KEY) &&
+    request.headers.get('x-api-key') === process.env.JOB_API_KEY
+  );
+}
+
 function isValidOrigin(request: NextRequest): boolean {
   if (SAFE_METHODS.has(request.method)) return true;
 
@@ -93,8 +101,8 @@ function isValidOrigin(request: NextRequest): boolean {
     }
   }
 
-  // Allow requests with API key (server-to-server, e.g., EventBridge jobs)
-  if (request.headers.get('x-api-key')) return true;
+  // Allow only verified server-to-server job requests (e.g., EventBridge).
+  if (hasValidServerToServerApiKey(request)) return true;
 
   return false;
 }
@@ -103,6 +111,28 @@ function isProtectedAppRoute(pathname: string) {
   return PROTECTED_ROUTE_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
+}
+
+function normalizeProxyPathname(pathname: string) {
+  const collapsed = (pathname || '/').replace(/\/{2,}/g, '/');
+  return collapsed.length > 1 ? collapsed.replace(/\/+$/, '') : collapsed;
+}
+
+function isApiPath(pathname: string) {
+  return pathname === '/api' || pathname.startsWith('/api/');
+}
+
+function isStrictAuthRateLimitPath(pathname: string) {
+  return normalizeProxyPathname(pathname) === '/api/auth/callback/credentials';
+}
+
+function isRateLimitExemptApiPath(pathname: string) {
+  const normalized = normalizeProxyPathname(pathname);
+  return normalized === '/api/health';
+}
+
+function isRateLimitStoreUnavailable(reason: unknown) {
+  return reason === 'store_misconfigured' || reason === 'store_unavailable';
 }
 
 // ---------------------------------------------------------------------------
@@ -135,6 +165,14 @@ async function resolveRateLimitIdentity(request: NextRequest) {
     }
   }
 
+  if (ipAddress === 'unknown' && isProductionLikeRuntime()) {
+    return {
+      identifier: null,
+      userId: undefined,
+      ipAddress: undefined,
+    };
+  }
+
   return {
     identifier: `ip:${ipAddress}`,
     userId: undefined,
@@ -143,18 +181,18 @@ async function resolveRateLimitIdentity(request: NextRequest) {
 }
 
 export async function proxy(request: NextRequest) {
+  const normalizedPathname = normalizeProxyPathname(request.nextUrl.pathname);
+
   // --- Step 1: API-only checks (CSRF + rate limit) ---
-  if (
-    request.nextUrl.pathname.startsWith('/api') &&
-    !request.nextUrl.pathname.endsWith('/stream') &&
-    !IS_E2E
-  ) {
+  if (isApiPath(normalizedPathname) && !IS_E2E) {
+    const auditPath = canonicalizeRateLimitPath(normalizedPathname);
+
     // CSRF protection: validate Origin/Referer for state-changing methods
     if (!isValidOrigin(request)) {
       logSecurityEvent({
         event_type: 'csrf_rejected',
         ip_address: getClientIp(request),
-        path: request.nextUrl.pathname,
+        path: auditPath,
         method: request.method,
         details: {
           origin: request.headers.get('origin') ?? undefined,
@@ -167,29 +205,56 @@ export async function proxy(request: NextRequest) {
       );
     }
 
+    if (isRateLimitExemptApiPath(normalizedPathname)) {
+      return buildResponse(request, null);
+    }
+
     const identity = await resolveRateLimitIdentity(request);
-    const result = await checkRateLimit(
-      identity.identifier,
-      request.nextUrl.pathname,
-      request.method,
-    );
+    if (!identity.identifier) {
+      logSecurityEvent({
+        event_type: 'rate_limit_exceeded',
+        path: auditPath,
+        method: request.method,
+        details: {
+          reason: 'client_ip_unavailable',
+        },
+      });
+      return NextResponse.json(
+        {
+          code: 'RATE_LIMIT_CLIENT_IP_UNAVAILABLE',
+          message: 'レート制限に必要なクライアントIPを特定できません',
+        },
+        { status: 503 },
+      );
+    }
+
+    const result = isStrictAuthRateLimitPath(normalizedPathname)
+      ? await checkAuthRateLimit(identity.identifier, normalizedPathname)
+      : await checkRateLimit(identity.identifier, normalizedPathname, request.method);
 
     if (!result.allowed) {
+      const storeUnavailable = isRateLimitStoreUnavailable(result.reason);
       logSecurityEvent({
         event_type: 'rate_limit_exceeded',
         ip_address: identity.ipAddress,
         user_id: identity.userId,
-        path: request.nextUrl.pathname,
+        path: auditPath,
         method: request.method,
         details: {
           reset_at: result.resetAt,
           rate_limited_identifier: identity.identifier,
+          reason: result.reason,
         },
       });
       return NextResponse.json(
-        { code: 'RATE_LIMIT_EXCEEDED', message: 'リクエスト数が上限に達しました' },
+        storeUnavailable
+          ? {
+              code: 'RATE_LIMIT_UNAVAILABLE',
+              message: 'レート制限システムを利用できません',
+            }
+          : { code: 'RATE_LIMIT_EXCEEDED', message: 'リクエスト数が上限に達しました' },
         {
-          status: 429,
+          status: storeUnavailable ? 503 : 429,
           headers: {
             'Retry-After': String(Math.ceil((result.resetAt - Date.now()) / 1000)),
             'X-RateLimit-Remaining': '0',

@@ -83,10 +83,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const updateData: Record<string, unknown> = { ...parsed.data };
 
-  // resolved / dismissed になる場合は resolved_by / resolved_at を自動セット
   if (parsed.data.status === 'resolved' || parsed.data.status === 'dismissed') {
     updateData.resolved_by = ctx.userId;
     updateData.resolved_at = new Date();
+  } else if (parsed.data.status === 'open' || parsed.data.status === 'in_progress') {
+    updateData.resolved_by = null;
+    updateData.resolved_at = null;
   }
 
   const issue = await withOrgContext(ctx.orgId, async (tx) => {

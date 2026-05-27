@@ -71,7 +71,7 @@ describe('/api/settings', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     organizationFindFirstMock.mockResolvedValue({
-      name: 'CareViaX薬局',
+      name: 'PH-OS薬局',
       corporate_number: '1234567890123',
     });
     userFindFirstMock.mockResolvedValue({ id: 'user_1' });
@@ -122,7 +122,7 @@ describe('/api/settings', () => {
   it('updates site-backed fields and setting-backed values for the selected site scope', async () => {
     pharmacySiteFindFirstMock.mockResolvedValue({
       id: 'site_1',
-      name: 'CareViaX薬局 本店',
+      name: 'PH-OS薬局 本店',
       dispensing_fee_category: '1',
       is_health_support_pharmacy: false,
     });
@@ -136,7 +136,7 @@ describe('/api/settings', () => {
         scope: 'site',
         scope_id: 'site_1',
         values: {
-          site_name: 'CareViaX薬局 東店',
+          site_name: 'PH-OS薬局 東店',
           dispensing_fee_category: '3',
           is_health_support_pharmacy: 'true',
           opening_hours: '08:30-18:30',
@@ -150,7 +150,7 @@ describe('/api/settings', () => {
     expect(pharmacySiteUpdateMock).toHaveBeenCalledWith({
       where: { id: 'site_1' },
       data: {
-        name: 'CareViaX薬局 東店',
+        name: 'PH-OS薬局 東店',
         dispensing_fee_category: '3',
         is_health_support_pharmacy: true,
       },

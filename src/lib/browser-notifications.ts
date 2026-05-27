@@ -1,7 +1,7 @@
 'use client';
 
 export const BROWSER_NOTIFICATION_PREFERENCE_KEY =
-  'careviax.browserNotificationsEnabled';
+  'ph-os.browserNotificationsEnabled';
 const BROWSER_NOTIFICATION_SW_URL = '/browser-notifications-sw.js';
 
 export function isBrowserNotificationSupported() {

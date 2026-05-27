@@ -27,5 +27,8 @@ export {
   refreshAllFreeDrugMasters,
   checkDrugMasterFreshness,
 } from './drug-master';
-export { drainMedicationHistoryBulkExportJobs } from './pdf-bulk-export';
+export {
+  cleanupExpiredBulkExportArtifacts,
+  drainMedicationHistoryBulkExportJobs,
+} from './pdf-bulk-export';
 export { runJob } from './runner';

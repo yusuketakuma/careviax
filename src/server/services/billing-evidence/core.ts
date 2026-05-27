@@ -97,11 +97,39 @@ function resolveAfterHoursVisitCategory(args: {
 }
 
 export function startOfMonth(value: Date) {
-  return new Date(value.getFullYear(), value.getMonth(), 1);
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
 }
 
 export function endOfMonth(value: Date) {
-  return new Date(value.getFullYear(), value.getMonth() + 1, 0, 23, 59, 59, 999);
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+}
+
+const JAPAN_TIME_ZONE_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+function japanCivilMonthParts(value: Date) {
+  const japanDate = new Date(value.getTime() + JAPAN_TIME_ZONE_OFFSET_MS);
+  return {
+    year: japanDate.getUTCFullYear(),
+    monthIndex: japanDate.getUTCMonth(),
+  };
+}
+
+export function billingMonthForJapanTimestamp(value: Date) {
+  const { year, monthIndex } = japanCivilMonthParts(value);
+  return new Date(Date.UTC(year, monthIndex, 1));
+}
+
+export function japanMonthRangeForBillingMonth(value: Date) {
+  const monthStart = startOfMonth(value);
+  const year = monthStart.getUTCFullYear();
+  const monthIndex = monthStart.getUTCMonth();
+  const start = new Date(Date.UTC(year, monthIndex, 1) - JAPAN_TIME_ZONE_OFFSET_MS);
+  const nextStart = new Date(Date.UTC(year, monthIndex + 1, 1) - JAPAN_TIME_ZONE_OFFSET_MS);
+  return {
+    start,
+    nextStart,
+    end: new Date(nextStart.getTime() - 1),
+  };
 }
 
 function startOfWeek(value: Date) {
@@ -803,7 +831,8 @@ export async function upsertBillingEvidenceForVisit(
   const visitDateOnly = new Date(
     Date.UTC(visitDate.getUTCFullYear(), visitDate.getUTCMonth(), visitDate.getUTCDate()),
   );
-  const billingMonth = startOfMonth(visitRecord.visit_date);
+  const billingMonth = billingMonthForJapanTimestamp(visitRecord.visit_date);
+  const billingMonthRange = japanMonthRangeForBillingMonth(billingMonth);
   const weekStart = startOfWeek(visitRecord.visit_date);
   const weekEnd = endOfWeek(weekStart);
   const primaryResidence = await fetchPrimaryResidenceForBilling(tx, {
@@ -840,8 +869,8 @@ export async function upsertBillingEvidenceForVisit(
         org_id: args.orgId,
         patient_id: visitRecord.patient_id,
         visit_date: {
-          gte: billingMonth,
-          lte: endOfMonth(visitRecord.visit_date),
+          gte: billingMonthRange.start,
+          lt: billingMonthRange.nextStart,
         },
         outcome_status: {
           in: ['completed', 'completed_with_issue', 'revisit_needed', 'delivery_only'],

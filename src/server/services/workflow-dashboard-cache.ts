@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto';
 import { serverCache } from '@/lib/utils/server-cache';
-import { getRealtimeAdapter } from '@/server/adapters/realtime';
+import {
+  broadcastOrgRealtimeEvent,
+  type WorkflowRealtimePayload,
+} from '@/server/services/org-realtime';
 import type { DashboardAssignmentScope } from './dashboard-assignment-scope';
+
+export { sanitizeWorkflowRealtimeSource } from '@/server/services/org-realtime';
 
 function formatCacheDay(value: Date) {
   const year = value.getFullYear();
@@ -53,17 +58,13 @@ export function invalidateWorkflowDashboardCache(orgId: string) {
 export async function notifyWorkflowMutation(args: {
   orgId: string;
   eventType?: 'cycle_transition' | 'workflow_refresh';
-  payload?: Record<string, unknown>;
+  payload?: WorkflowRealtimePayload;
 }) {
   invalidateWorkflowDashboardCache(args.orgId);
 
-  try {
-    const adapter = getRealtimeAdapter();
-    await adapter.broadcastStatusUpdate(`org:${args.orgId}`, {
-      type: args.eventType ?? 'workflow_refresh',
-      ...(args.payload ? { payload: args.payload } : {}),
-    });
-  } catch {
-    // Realtime broadcast is best-effort.
-  }
+  await broadcastOrgRealtimeEvent({
+    orgId: args.orgId,
+    type: args.eventType,
+    payload: args.payload,
+  });
 }

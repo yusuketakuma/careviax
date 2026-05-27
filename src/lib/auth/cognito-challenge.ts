@@ -7,7 +7,7 @@ export type CognitoChallengePayload = {
 };
 
 const CHALLENGE_PREFIX = 'COGNITO_CHALLENGE:';
-export const COGNITO_CHALLENGE_STORAGE_KEY = 'careviax.cognito.challenge';
+export const COGNITO_CHALLENGE_STORAGE_KEY = 'ph-os.cognito.challenge';
 
 export function encodeCognitoChallenge(payload: CognitoChallengePayload): string {
   return `${CHALLENGE_PREFIX}${encodeURIComponent(JSON.stringify(payload))}`;

@@ -15,43 +15,45 @@ export async function GET(req: NextRequest) {
     }
   > = {};
   let overall: 'ok' | 'degraded' | 'down' = 'ok';
-
-  // DB check
-  try {
-    const start = Date.now();
-    await prisma.$queryRaw`SELECT 1`;
-    checks.database = { status: 'ok', latencyMs: Date.now() - start };
-  } catch {
-    checks.database = { status: 'down' };
-    overall = 'down';
-  }
-
-  // Backup monitor check
-  try {
-    const backupResult = await runBackupMonitorChecks();
-    checks.backups = {
-      status: backupResult.overall,
-      details: backupResult.checks as Record<string, unknown>,
-    };
-
-    if (overall !== 'down' && backupResult.overall !== 'ok') {
-      overall = 'degraded';
-    }
-  } catch (error) {
-    checks.backups = {
-      status: 'error',
-      message: error instanceof Error ? error.message : 'backup monitor failed',
-    };
-
-    if (overall !== 'down') {
-      overall = 'degraded';
-    }
-  }
-
   const authContext = await getAuthContext(req).catch(() => null);
   const includeDetailedChecks = Boolean(
     authContext && hasPermission(authContext.role, 'canAdmin'),
   );
+
+  if (includeDetailedChecks) {
+    // DB readiness is admin-only; public liveness must remain cheap.
+    try {
+      const start = Date.now();
+      await prisma.$queryRaw`SELECT 1`;
+      checks.database = { status: 'ok', latencyMs: Date.now() - start };
+    } catch {
+      checks.database = { status: 'down' };
+      overall = 'down';
+    }
+
+    if (overall !== 'down') {
+      // Backup monitor checks touch AWS APIs; keep public health cheap.
+      try {
+        const backupResult = await runBackupMonitorChecks();
+        checks.backups = {
+          status: backupResult.overall,
+          details: backupResult.checks as Record<string, unknown>,
+        };
+
+        if (backupResult.overall !== 'ok') {
+          overall = 'degraded';
+        }
+      } catch (error) {
+        checks.backups = {
+          status: 'error',
+          message: error instanceof Error ? error.message : 'backup monitor failed',
+        };
+
+        overall = 'degraded';
+      }
+    }
+  }
+
   const publicChecks = Object.fromEntries(
     Object.entries(checks).map(([key, value]) => [key, { status: value.status }]),
   );

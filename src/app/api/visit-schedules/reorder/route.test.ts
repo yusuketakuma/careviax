@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
+type TestRole = 'owner' | 'admin' | 'pharmacist' | 'pharmacist_trainee' | 'clerk';
 type AuthenticatedTestRequest = NextRequest & {
   orgId: string;
   userId: string;
-  role: 'pharmacist';
+  role: TestRole;
 };
 
 const {
+  authRoleRef,
   withAuthMock,
   withOrgContextMock,
   scheduleFindManyMock,
@@ -17,25 +19,30 @@ const {
   pharmacistShiftFindManyMock,
   auditLogCreateMock,
   notifyWorkflowMutationMock,
-} = vi.hoisted(() => ({
-  withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
-    return (req: NextRequest) =>
-      handler({
-        ...req,
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'pharmacist',
-      } as AuthenticatedTestRequest);
-  }),
-  withOrgContextMock: vi.fn(),
-  scheduleFindManyMock: vi.fn(),
-  scheduleFindFirstMock: vi.fn(),
-  scheduleUpdateMock: vi.fn(),
-  membershipFindManyMock: vi.fn(),
-  pharmacistShiftFindManyMock: vi.fn(),
-  auditLogCreateMock: vi.fn(),
-  notifyWorkflowMutationMock: vi.fn(),
-}));
+} = vi.hoisted(() => {
+  const authRoleRef = { current: 'pharmacist' as TestRole };
+
+  return {
+    authRoleRef,
+    withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
+      return (req: NextRequest) =>
+        handler({
+          ...req,
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: authRoleRef.current,
+        } as AuthenticatedTestRequest);
+    }),
+    withOrgContextMock: vi.fn(),
+    scheduleFindManyMock: vi.fn(),
+    scheduleFindFirstMock: vi.fn(),
+    scheduleUpdateMock: vi.fn(),
+    membershipFindManyMock: vi.fn(),
+    pharmacistShiftFindManyMock: vi.fn(),
+    auditLogCreateMock: vi.fn(),
+    notifyWorkflowMutationMock: vi.fn(),
+  };
+});
 
 vi.mock('@/lib/auth/middleware', () => ({
   withAuth: withAuthMock,
@@ -66,6 +73,7 @@ function expectNoWriteAuditOrNotify() {
 describe('/api/visit-schedules/reorder PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authRoleRef.current = 'pharmacist';
     const schedules = [
       {
         id: 'schedule_1',
@@ -270,7 +278,45 @@ describe('/api/visit-schedules/reorder PATCH', () => {
     expectNoWriteAuditOrNotify();
   });
 
+  it('denies non-bypass assigned users from reassigning to another pharmacist before side effects', async () => {
+    scheduleFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        pharmacist_id: 'user_1',
+        scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+        time_window_start: new Date('1970-01-01T09:00:00'),
+        time_window_end: new Date('1970-01-01T10:00:00'),
+        confirmed_at: null,
+      },
+    ]);
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [
+          {
+            schedule_id: 'schedule_1',
+            route_order: 1,
+            pharmacist_id: 'pharmacist_2',
+          },
+        ],
+      }),
+    ))!;
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: '訪問予定のケースまたは担当薬剤師を変更する権限がありません',
+    });
+    expect(membershipFindManyMock).not.toHaveBeenCalled();
+    expect(scheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+    expectNoWriteAuditOrNotify();
+  });
+
   it('updates multiple schedules in one batch', async () => {
+    authRoleRef.current = 'admin';
+
     const response = (await PATCH(
       createRequest({
         updates: [
@@ -302,6 +348,8 @@ describe('/api/visit-schedules/reorder PATCH', () => {
   });
 
   it('rejects moving a schedule outside the target pharmacist shift', async () => {
+    authRoleRef.current = 'admin';
+
     scheduleFindManyMock.mockResolvedValueOnce([
       {
         id: 'schedule_1',

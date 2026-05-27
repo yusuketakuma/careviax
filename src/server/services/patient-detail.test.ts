@@ -333,6 +333,26 @@ describe('getPatientTimelineData', () => {
   });
 
   it('adds self reports to timeline and avoids duplicate self-report communication events', async () => {
+    const communicationEventFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'comm_self_report',
+        event_type: 'patient_self_report',
+        channel: 'phone',
+        direction: 'inbound',
+        subject: '夕方にふらつきあり',
+        counterpart_name: '山田花子',
+        occurred_at: new Date('2026-04-03T09:01:00.000Z'),
+      },
+      {
+        id: 'comm_family_call',
+        event_type: 'family_call',
+        channel: 'phone',
+        direction: 'inbound',
+        subject: '服薬時間を相談',
+        counterpart_name: '長女',
+        occurred_at: new Date('2026-04-03T10:00:00.000Z'),
+      },
+    ]);
     const db = buildDb({
       patient: {
         findFirst: vi.fn().mockResolvedValue({
@@ -344,26 +364,7 @@ describe('getPatientTimelineData', () => {
       visitRecord: { findMany: vi.fn().mockResolvedValue([]) },
       careReport: { findMany: vi.fn().mockResolvedValue([]) },
       communicationEvent: {
-        findMany: vi.fn().mockResolvedValue([
-          {
-            id: 'comm_self_report',
-            event_type: 'patient_self_report',
-            channel: 'phone',
-            direction: 'inbound',
-            subject: '夕方にふらつきあり',
-            counterpart_name: '山田花子',
-            occurred_at: new Date('2026-04-03T09:01:00.000Z'),
-          },
-          {
-            id: 'comm_family_call',
-            event_type: 'family_call',
-            channel: 'phone',
-            direction: 'inbound',
-            subject: '服薬時間を相談',
-            counterpart_name: '長女',
-            occurred_at: new Date('2026-04-03T10:00:00.000Z'),
-          },
-        ]),
+        findMany: communicationEventFindManyMock,
       },
       patientSelfReport: {
         findMany: vi.fn().mockResolvedValue([
@@ -416,6 +417,14 @@ describe('getPatientTimelineData', () => {
           status_label: '受信',
         }),
       ]),
+    );
+    expect(communicationEventFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          event_type: { not: 'patient_self_report' },
+        }),
+        take: 8,
+      }),
     );
     expect(result?.timeline_events.map((item) => item.id)).not.toContain(
       'communication:comm_self_report',

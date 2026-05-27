@@ -941,6 +941,93 @@ describe('/api/patients/[id]', () => {
     });
   });
 
+  it('updates requester and intake fields only on an assigned care case when the latest case is unassigned', async () => {
+    careCaseFindFirstMock.mockImplementation(
+      async (args: { where: { AND?: unknown }; select: unknown }) => {
+        if (args.where.AND) {
+          return {
+            id: 'case_assigned_old',
+            required_visit_support: {
+              home_visit_intake: {
+                requester: {
+                  organization_name: '旧紹介元',
+                },
+              },
+            },
+          };
+        }
+
+        return {
+          id: 'case_unassigned_latest',
+          required_visit_support: {
+            home_visit_intake: {
+              requester: {
+                organization_name: '未割当紹介元',
+              },
+            },
+          },
+        };
+      },
+    );
+
+    const response = await PATCH(
+      createRequest(
+        {
+          requester: {
+            organization_name: '新しい紹介元',
+          },
+          intake: {
+            primary_disease: '慢性心不全',
+          },
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(careCaseFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'corg1234567890123456789012',
+        patient_id: 'patient_1',
+        AND: [
+          {
+            OR: [
+              { primary_pharmacist_id: 'user_1' },
+              { backup_pharmacist_id: 'user_1' },
+              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+            ],
+          },
+        ],
+        status: { in: ['referral_received', 'assessment', 'active', 'on_hold'] },
+      },
+      orderBy: [{ updated_at: 'desc' }],
+      select: {
+        id: true,
+        required_visit_support: true,
+      },
+    });
+    expect(careCaseUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'case_assigned_old' },
+      data: {
+        referral_source: '新しい紹介元',
+        required_visit_support: {
+          home_visit_intake: expect.objectContaining({
+            requester: expect.objectContaining({
+              organization_name: '新しい紹介元',
+            }),
+            primary_disease: '慢性心不全',
+          }),
+        },
+      },
+    });
+    expect(careCaseUpdateMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'case_unassigned_latest' },
+      }),
+    );
+  });
+
   it('does not close or recreate insurance when submitted number is identical to existing', async () => {
     // idempotence: same number → no close, no create
     patientInsuranceFindFirstMock.mockResolvedValue({

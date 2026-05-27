@@ -13,8 +13,7 @@ import { canAccessCareCase } from '@/server/services/patient-access';
 export const GET = withAuthContext(
   async (req: NextRequest, ctx) => {
     const { searchParams } = new URL(req.url);
-    const { limit, cursor } = parsePaginationParams(searchParams);
-    const offset = cursor ? parseInt(cursor, 10) : 0;
+    const { limit, offset } = parsePaginationParams(searchParams);
 
     const statusFilter = (searchParams.get('status') ?? undefined) as
       | MedicationCycleStatus

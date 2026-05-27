@@ -9,6 +9,8 @@ const {
   getPatientTimelineDataMock,
   getPatientReadinessDataMock,
   getPatientWorkflowPreviewDataMock,
+  authContextMock,
+  authRejectionMock,
 } = vi.hoisted(() => ({
   getPatientOverviewMock: vi.fn(),
   getPatientVisitsDataMock: vi.fn(),
@@ -17,21 +19,23 @@ const {
   getPatientTimelineDataMock: vi.fn(),
   getPatientReadinessDataMock: vi.fn(),
   getPatientWorkflowPreviewDataMock: vi.fn(),
+  authContextMock: vi.fn(() => ({
+    orgId: 'org_1',
+    role: 'pharmacist',
+    userId: 'user_1',
+  })),
+  authRejectionMock: vi.fn<() => Response | null>(() => null),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext:
     (handler: (...args: unknown[]) => Promise<Response>) =>
-    (req: Request, routeContext: { params: Promise<{ id: string }> }) =>
-      handler(
-        req,
-        {
-          orgId: 'org_1',
-          role: 'pharmacist',
-          userId: 'user_1',
-        },
-        routeContext,
-      ),
+    (req: Request, routeContext: { params: Promise<{ id: string }> }) => {
+      const rejection = authRejectionMock();
+      if (rejection) return Promise.resolve(rejection);
+
+      return handler(req, authContextMock(), routeContext);
+    },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -56,13 +60,130 @@ import { GET as timelineGet } from './timeline/route';
 import { GET as readinessGet } from './readiness/route';
 import { GET as workflowPreviewGet } from './workflow-preview/route';
 
+type SliceRoute = (
+  req: NextRequest,
+  routeContext: { params: Promise<{ id: string }> },
+) => Promise<Response>;
+
 function createRequest(url: string) {
   return { url } as unknown as NextRequest;
+}
+
+const sliceRoutes = [
+  {
+    name: 'overview',
+    path: 'overview',
+    get: overviewGet,
+    serviceMock: getPatientOverviewMock,
+    successData: { id: 'patient_1', name: '患者A' },
+    expectedBody: { id: 'patient_1' },
+  },
+  {
+    name: 'visits',
+    path: 'visits',
+    get: visitsGet,
+    serviceMock: getPatientVisitsDataMock,
+    successData: { monthly_visit_count: 2 },
+    expectedBody: { monthly_visit_count: 2 },
+  },
+  {
+    name: 'communications',
+    path: 'communications',
+    get: communicationsGet,
+    serviceMock: getPatientCommunicationsDataMock,
+    successData: {
+      communication_queue: { summary: { pending_count: 1 } },
+    },
+    expectedBody: {
+      communication_queue: { summary: { pending_count: 1 } },
+    },
+  },
+  {
+    name: 'documents',
+    path: 'documents',
+    get: documentsGet,
+    serviceMock: getPatientDocumentsDataMock,
+    successData: {
+      first_visit_documents: [],
+    },
+    expectedBody: { first_visit_documents: [] },
+  },
+  {
+    name: 'timeline',
+    path: 'timeline',
+    get: timelineGet,
+    serviceMock: getPatientTimelineDataMock,
+    successData: {
+      timeline_events: [],
+      self_reports: [],
+    },
+    expectedBody: {
+      timeline_events: [],
+      self_reports: [],
+    },
+  },
+  {
+    name: 'readiness',
+    path: 'readiness',
+    get: readinessGet,
+    serviceMock: getPatientReadinessDataMock,
+    successData: {
+      applicable: true,
+      overall_status: 'ready',
+      completed_count: 6,
+      total_count: 6,
+      current_case: { id: 'case_1', status: 'active' },
+      items: [],
+    },
+    expectedBody: {
+      overall_status: 'ready',
+      completed_count: 6,
+    },
+  },
+  {
+    name: 'workflow-preview',
+    path: 'workflow-preview',
+    get: workflowPreviewGet,
+    serviceMock: getPatientWorkflowPreviewDataMock,
+    successData: {
+      visit_preparation: { blockers: [] },
+      report_targets: [],
+      communication_priority: { targets: [], warnings: [] },
+    },
+    expectedBody: {
+      visit_preparation: { blockers: [] },
+    },
+  },
+] satisfies Array<{
+  name: string;
+  path: string;
+  get: SliceRoute;
+  serviceMock: typeof getPatientOverviewMock;
+  successData: unknown;
+  expectedBody: unknown;
+}>;
+
+function callSliceRoute({ get, path }: (typeof sliceRoutes)[number], patientId = 'patient_1') {
+  return get(createRequest(`http://localhost/api/patients/${patientId}/${path}`), {
+    params: Promise.resolve({ id: patientId }),
+  });
+}
+
+function expectNoServiceCalls() {
+  for (const { serviceMock } of sliceRoutes) {
+    expect(serviceMock).not.toHaveBeenCalled();
+  }
 }
 
 describe('patient detail slice routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authContextMock.mockReturnValue({
+      orgId: 'org_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+    authRejectionMock.mockReturnValue(null);
   });
 
   it('returns patient overview data', async () => {
@@ -196,4 +317,60 @@ describe('patient detail slice routes', () => {
       visit_preparation: { blockers: [] },
     });
   });
+
+  it.each(sliceRoutes)(
+    'returns 404 for $name when the patient detail service returns null',
+    async (routeCase) => {
+      routeCase.serviceMock.mockResolvedValue(null);
+
+      const response = await callSliceRoute(routeCase);
+
+      expect(response.status).toBe(404);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'WORKFLOW_NOT_FOUND',
+        message: '患者が見つかりません',
+      });
+      expect(routeCase.serviceMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(sliceRoutes)(
+    'passes auth context arguments to the $name service',
+    async (routeCase) => {
+      routeCase.serviceMock.mockResolvedValue(routeCase.successData);
+      authContextMock.mockReturnValue({
+        orgId: 'org_custom',
+        role: 'admin',
+        userId: 'user_custom',
+      });
+
+      const response = await callSliceRoute(routeCase, 'patient_custom');
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject(routeCase.expectedBody as object);
+      expect(routeCase.serviceMock).toHaveBeenCalledWith(
+        {},
+        {
+          orgId: 'org_custom',
+          patientId: 'patient_custom',
+          role: 'admin',
+          userId: 'user_custom',
+        },
+      );
+    },
+  );
+
+  it.each(sliceRoutes)(
+    'does not call the $name service when auth rejects the request',
+    async (routeCase) => {
+      authRejectionMock.mockImplementation(() =>
+        Response.json({ code: 'AUTH_FORBIDDEN', message: 'forbidden' }, { status: 403 }),
+      );
+
+      const response = await callSliceRoute(routeCase);
+
+      expect(response.status).toBe(403);
+      expectNoServiceCalls();
+    },
+  );
 });

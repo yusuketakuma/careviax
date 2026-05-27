@@ -4,11 +4,17 @@ import type { NextRequest } from 'next/server';
 const {
   authMock,
   membershipFindFirstMock,
+  patientFindFirstMock,
+  patientFindManyMock,
+  medicationIssueFindFirstMock,
   interventionFindManyMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
+  patientFindManyMock: vi.fn(),
+  medicationIssueFindFirstMock: vi.fn(),
   interventionFindManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
@@ -21,6 +27,13 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     membership: {
       findFirst: membershipFindFirstMock,
+    },
+    patient: {
+      findFirst: patientFindFirstMock,
+      findMany: patientFindManyMock,
+    },
+    medicationIssue: {
+      findFirst: medicationIssueFindFirstMock,
     },
     intervention: {
       findMany: interventionFindManyMock,
@@ -39,7 +52,7 @@ function createRequest(url: string, body?: unknown) {
     url,
     method: body === undefined ? 'GET' : 'POST',
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
     },
     nextUrl: new URL(url),
     json: vi.fn().mockResolvedValue(body),
@@ -51,6 +64,9 @@ describe('/api/interventions', () => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+    patientFindManyMock.mockResolvedValue([{ id: 'patient_1' }]);
+    medicationIssueFindFirstMock.mockResolvedValue({ id: 'issue_1' });
     interventionFindManyMock.mockResolvedValue([
       {
         id: 'int_1',
@@ -84,9 +100,38 @@ describe('/api/interventions', () => {
 
   describe('GET', () => {
     it('returns 200 with interventions', async () => {
-      const response = (await GET(createRequest('http://localhost/api/interventions?patient_id=patient_1')))!;
+      const response = (await GET(
+        createRequest('http://localhost/api/interventions?patient_id=patient_1'),
+      ))!;
 
       expect(response.status).toBe(200);
+      expect(patientFindFirstMock).toHaveBeenCalledWith({
+        where: {
+          id: 'patient_1',
+          org_id: 'org_1',
+          AND: [
+            {
+              cases: {
+                some: {
+                  OR: [
+                    { primary_pharmacist_id: 'user_1' },
+                    { backup_pharmacist_id: 'user_1' },
+                    { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+        select: { id: true },
+      });
+      expect(interventionFindManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            patient_id: 'patient_1',
+          }),
+        }),
+      );
       const body = await response.json();
       expect(body.data).toHaveLength(1);
     });
@@ -104,6 +149,55 @@ describe('/api/interventions', () => {
       ))!;
 
       expect(response.status).toBe(201);
+      expect(patientFindFirstMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: 'patient_1',
+            org_id: 'org_1',
+          }),
+        }),
+      );
+    });
+
+    it('returns 404 without creating when the patient is outside assignment scope', async () => {
+      patientFindFirstMock.mockResolvedValue(null);
+
+      const response = (await POST(
+        createRequest('http://localhost/api/interventions', {
+          patient_id: 'patient_other',
+          type: 'dose_adjustment',
+          description: '用量調整',
+          performed_at: '2026-04-01T10:00:00.000Z',
+        }),
+      ))!;
+
+      expect(response.status).toBe(404);
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 without creating when the medication issue is outside patient scope', async () => {
+      medicationIssueFindFirstMock.mockResolvedValue(null);
+
+      const response = (await POST(
+        createRequest('http://localhost/api/interventions', {
+          patient_id: 'patient_1',
+          issue_id: 'issue_other',
+          type: 'dose_adjustment',
+          description: '用量調整',
+          performed_at: '2026-04-01T10:00:00.000Z',
+        }),
+      ))!;
+
+      expect(response.status).toBe(404);
+      expect(medicationIssueFindFirstMock).toHaveBeenCalledWith({
+        where: {
+          id: 'issue_other',
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+        },
+        select: { id: true },
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
     });
 
     it('returns 400 with invalid body', async () => {

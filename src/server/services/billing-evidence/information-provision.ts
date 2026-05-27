@@ -6,7 +6,7 @@ import type {
 } from './core';
 import {
   startOfMonth,
-  endOfMonth,
+  japanMonthRangeForBillingMonth,
   monthLabel,
   asRecord,
   readBillingCandidateWorkflowState,
@@ -102,14 +102,14 @@ export async function generateInformationProvisionCandidates(
   }
 ) {
   const monthStart = startOfMonth(args.billingMonth);
-  const monthEnd = endOfMonth(args.billingMonth);
+  const monthRange = japanMonthRangeForBillingMonth(monthStart);
 
   const [tracingReports, careManagerReports] = await Promise.all([
     tx.tracingReport.findMany({
       where: {
         org_id: args.orgId,
         status: { in: ['sent', 'received', 'acknowledged'] },
-        sent_at: { gte: monthStart, lte: monthEnd },
+        sent_at: { gte: monthRange.start, lt: monthRange.nextStart },
       },
       select: {
         id: true,
@@ -130,7 +130,7 @@ export async function generateInformationProvisionCandidates(
             delivery_records: {
               some: {
                 status: { in: ['sent', 'confirmed'] },
-                sent_at: { gte: monthStart, lte: monthEnd },
+                sent_at: { gte: monthRange.start, lt: monthRange.nextStart },
               },
             },
           },
@@ -138,7 +138,7 @@ export async function generateInformationProvisionCandidates(
             delivery_records: {
               none: {},
             },
-            updated_at: { gte: monthStart, lte: monthEnd },
+            updated_at: { gte: monthRange.start, lt: monthRange.nextStart },
           },
         ],
       },

@@ -4,6 +4,7 @@ import type { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   managementPlanFindManyMock,
+  careCaseFindManyMock,
   careCaseFindFirstMock,
   managementPlanFindFirstMock,
   managementPlanCreateMock,
@@ -11,6 +12,7 @@ const {
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   managementPlanFindManyMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   managementPlanFindFirstMock: vi.fn(),
   managementPlanCreateMock: vi.fn(),
@@ -25,8 +27,10 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     managementPlan: {
       findMany: managementPlanFindManyMock,
+      findFirst: managementPlanFindFirstMock,
     },
     careCase: {
+      findMany: careCaseFindManyMock,
       findFirst: careCaseFindFirstMock,
     },
   },
@@ -51,6 +55,7 @@ describe('/api/management-plans', () => {
     managementPlanFindManyMock.mockResolvedValue([
       { id: 'plan_1', case_id: 'case_1', title: '訪問薬剤管理指導計画書' },
     ]);
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
     managementPlanFindFirstMock.mockResolvedValue({ version: 2 });
     managementPlanCreateMock.mockResolvedValue({
@@ -78,9 +83,77 @@ describe('/api/management-plans', () => {
       where: {
         org_id: 'org_1',
         case_id: 'case_1',
+        case_: {
+          OR: [
+            { primary_pharmacist_id: 'user_1' },
+            { backup_pharmacist_id: 'user_1' },
+            { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+          ],
+        },
       },
       orderBy: [{ updated_at: 'desc' }],
     });
+  });
+
+  it('denies management plan creation for an unassigned case before write', async () => {
+    careCaseFindFirstMock.mockResolvedValue(null);
+
+    const response = (await POST({
+      json: async () => ({
+        case_id: 'case_unassigned',
+        title: '訪問薬剤管理指導計画書',
+        content: { summary: '内容' },
+      }),
+    } as NextRequest))!;
+
+    expect(response.status).toBe(404);
+    expect(careCaseFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'case_unassigned',
+        org_id: 'org_1',
+        OR: [
+          { primary_pharmacist_id: 'user_1' },
+          { backup_pharmacist_id: 'user_1' },
+          { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+        ],
+      },
+      select: {
+        id: true,
+      },
+    });
+    expect(managementPlanCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an inaccessible or cross-case source plan before cloning', async () => {
+    managementPlanFindFirstMock.mockResolvedValue(null);
+
+    const response = (await POST({
+      json: async () => ({
+        case_id: 'case_1',
+        title: '訪問薬剤管理指導計画書',
+        content: { summary: '内容' },
+        source_plan_id: 'plan_unassigned',
+      }),
+    } as NextRequest))!;
+
+    expect(response.status).toBe(404);
+    expect(managementPlanFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'plan_unassigned',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        case_: {
+          OR: [
+            { primary_pharmacist_id: 'user_1' },
+            { backup_pharmacist_id: 'user_1' },
+            { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+          ],
+        },
+      },
+      select: { id: true },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(managementPlanCreateMock).not.toHaveBeenCalled();
   });
 
   it('creates a new management plan with incremented version', async () => {

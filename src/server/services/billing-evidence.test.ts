@@ -57,7 +57,7 @@ describe('billing-evidence service', () => {
   });
 
   it('skips candidate creation for unclaimable billing evidence and removes stale non-exported rows', async () => {
-    const billingMonth = new Date(2026, 2, 1);
+    const billingMonth = new Date(Date.UTC(2026, 2, 1));
     const upsertMock = vi.fn().mockResolvedValue({ id: 'candidate_1', status: 'confirmed' });
     const deleteManyMock = vi.fn().mockResolvedValue({ count: 1 });
 
@@ -168,6 +168,8 @@ describe('billing-evidence service', () => {
     expect(upsertMock).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
+          billing_month: new Date('2026-03-01T00:00:00.000Z'),
+          dedupe_key: '2026-03-01:evidence_ok:MED_HOME_VISIT_SINGLE',
           source_snapshot: expect.objectContaining({
             billing_assignment: expect.objectContaining({
               building_id: 'building_b',
@@ -192,7 +194,7 @@ describe('billing-evidence service', () => {
   });
 
   it('reuses persisted calculation context when regenerating monthly billing candidates', async () => {
-    const billingMonth = new Date(2026, 2, 1);
+    const billingMonth = new Date(Date.UTC(2026, 2, 1));
 
     buildBillingCandidateSpecsMock.mockResolvedValue([]);
 
@@ -313,6 +315,23 @@ describe('billing-evidence service', () => {
       { reason: '訪問薬剤管理の有効同意がありません', count: 2 },
       { reason: '承認済み管理計画書がありません', count: 1 },
     ]);
+    expect(tx.billingCandidate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          billing_month: new Date('2026-03-01T00:00:00.000Z'),
+        },
+      }),
+    );
+    expect(tx.billingEvidence.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          billing_month: new Date('2026-03-01T00:00:00.000Z'),
+          claimable: false,
+        },
+      }),
+    );
   });
 
   it('blocks monthly close when unclaimable billing evidence remains even if no candidate is pending', async () => {
@@ -340,18 +359,42 @@ describe('billing-evidence service', () => {
 
     const result = await closeBillingCandidatesForMonth(tx as never, {
       orgId: 'org_1',
-      billingMonth: new Date(2026, 2, 1),
+      billingMonth: new Date(Date.UTC(2026, 2, 1)),
       actorId: 'user_1',
     });
 
     expect(result.blocked).toBe(true);
     expect(result.blockingCount).toBe(2);
     expect(result.summary.blocked_from_close).toBe(2);
+    expect(tx.billingCandidate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          billing_month: new Date('2026-03-01T00:00:00.000Z'),
+        },
+      }),
+    );
+    expect(tx.billingEvidence.count).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        billing_month: new Date('2026-03-01T00:00:00.000Z'),
+        claimable: false,
+      },
+    });
+    expect(tx.billingEvidence.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          billing_month: new Date('2026-03-01T00:00:00.000Z'),
+          claimable: false,
+        },
+      }),
+    );
     expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
   it('generates information provision and duplicate-interaction candidates with validation layers', async () => {
-    const billingMonth = new Date(2026, 2, 1);
+    const billingMonth = new Date(Date.UTC(2026, 2, 1));
     const upsertMock = vi.fn().mockImplementation(({ create }) => Promise.resolve({
       id: create.dedupe_key,
       status: create.status,
@@ -451,10 +494,32 @@ describe('billing-evidence service', () => {
     });
 
     expect(created).toHaveLength(4);
+    expect(tx.tracingReport.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          sent_at: {
+            gte: new Date('2026-02-28T15:00:00.000Z'),
+            lt: new Date('2026-03-31T15:00:00.000Z'),
+          },
+        }),
+      }),
+    );
+    expect(tx.inquiryRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          inquired_at: {
+            gte: new Date('2026-02-28T15:00:00.000Z'),
+            lt: new Date('2026-03-31T15:00:00.000Z'),
+          },
+        }),
+      }),
+    );
     expect(upsertMock).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
           billing_code: 'MED_INFO_PROVISION_2_I',
+          billing_month: new Date('2026-03-01T00:00:00.000Z'),
+          dedupe_key: '2026-03:info:trace_1:2_i',
           exclusion_reason: null,
           source_snapshot: expect.objectContaining({
             validation_layers: expect.objectContaining({
@@ -470,6 +535,8 @@ describe('billing-evidence service', () => {
         create: expect.objectContaining({
           patient_id: 'patient_home',
           billing_code: 'MED_INFO_PROVISION_2_I',
+          billing_month: new Date('2026-03-01T00:00:00.000Z'),
+          dedupe_key: '2026-03:info:trace_2:2_i',
           exclusion_reason:
             '同月に在宅患者訪問薬剤管理指導料等を算定しているため服薬情報等提供料は算定できません',
         }),
@@ -480,6 +547,8 @@ describe('billing-evidence service', () => {
         create: expect.objectContaining({
           patient_id: 'patient_other',
           billing_code: 'MED_HOME_DUPLICATE_CHANGE_OTHER',
+          billing_month: new Date('2026-03-01T00:00:00.000Z'),
+          dedupe_key: '2026-03:home-dup:inq_1:1_i',
           exclusion_reason: null,
         }),
       })
@@ -489,9 +558,80 @@ describe('billing-evidence service', () => {
         create: expect.objectContaining({
           patient_id: 'patient_other',
           billing_code: 'MED_HOME_DUPLICATE_PROPOSAL_RESIDUAL',
+          billing_month: new Date('2026-03-01T00:00:00.000Z'),
+          dedupe_key: '2026-03:home-dup:inq_2:2_ro',
           exclusion_reason: null,
         }),
       })
+    );
+  });
+
+  it('generates 2026 duplicate-interaction candidates for the canonical UTC June billing month', async () => {
+    const upsertMock = vi.fn().mockImplementation(({ create }) => Promise.resolve(create));
+
+    buildBillingCandidateSpecsMock.mockResolvedValue([]);
+
+    const tx = {
+      billingEvidence: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      billingRule: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 'rule_adverse_2026', ssot_key: 'medical.adverse_event_prevention.home_change' },
+        ]),
+      },
+      billingCandidate: {
+        findMany: vi.fn().mockResolvedValue([]),
+        upsert: upsertMock,
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      tracingReport: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      careReport: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      inquiryRecord: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'inq_2026',
+            cycle_id: 'cycle_2026',
+            reason: '相互作用',
+            result: 'changed',
+            change_detail: '疑義照会後変更',
+            proposal_origin: null,
+            residual_adjustment: false,
+            cycle: { patient_id: 'patient_2026' },
+            issue: { category: 'interaction' },
+          },
+        ]),
+      },
+    };
+
+    await generateBillingCandidatesForMonth(tx as never, {
+      orgId: 'org_1',
+      billingMonth: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    expect(tx.inquiryRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          inquired_at: {
+            gte: new Date('2026-05-31T15:00:00.000Z'),
+            lt: new Date('2026-06-30T15:00:00.000Z'),
+          },
+        }),
+      }),
+    );
+    expect(upsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          billing_month: new Date('2026-06-01T00:00:00.000Z'),
+          billing_code: 'MED_ADVERSE_EVENT_HOME_CHANGE',
+          dedupe_key: '2026-06:home-dup:inq_2026:1_i',
+          rule_id: 'rule_adverse_2026',
+        }),
+      }),
     );
   });
 
@@ -906,7 +1046,7 @@ describe('billing-evidence service', () => {
   });
 
   it('uses delivery sent_at month when collecting care manager report candidates', async () => {
-    const billingMonth = new Date(2026, 2, 1);
+    const billingMonth = new Date(Date.UTC(2026, 2, 1));
 
     buildBillingCandidateSpecsMock.mockResolvedValue([]);
 
@@ -949,7 +1089,10 @@ describe('billing-evidence service', () => {
             delivery_records: {
               some: {
                 status: { in: ['sent', 'confirmed'] },
-                sent_at: { gte: billingMonth, lte: new Date(2026, 2, 31, 23, 59, 59, 999) },
+                sent_at: {
+                  gte: new Date('2026-02-28T15:00:00.000Z'),
+                  lt: new Date('2026-03-31T15:00:00.000Z'),
+                },
               },
             },
           },
@@ -957,7 +1100,10 @@ describe('billing-evidence service', () => {
             delivery_records: {
               none: {},
             },
-            updated_at: { gte: billingMonth, lte: new Date(2026, 2, 31, 23, 59, 59, 999) },
+            updated_at: {
+              gte: new Date('2026-02-28T15:00:00.000Z'),
+              lt: new Date('2026-03-31T15:00:00.000Z'),
+            },
           },
         ],
       },

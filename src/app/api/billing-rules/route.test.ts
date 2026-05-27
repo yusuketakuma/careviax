@@ -55,7 +55,7 @@ describe('/api/billing-rules', () => {
     ensureHomeCareBillingSsotMock.mockResolvedValue({ seeded: 16 });
     getHomeCareBillingSsotSummaryMock.mockResolvedValue({
       source: {
-        source_of_truth: 'careviax',
+        source_of_truth: 'ph-os',
         sync_direction: 'push',
       },
       rules: new Array(16).fill(null).map((_, index) => ({ id: `system_${index}` })),

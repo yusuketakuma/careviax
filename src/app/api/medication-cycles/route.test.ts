@@ -97,6 +97,23 @@ describe('/api/medication-cycles', () => {
     );
   });
 
+  it.each(['abc', '-10'])('uses a safe offset for malformed cursor %s', async (cursor) => {
+    const response = (await GET(
+      {
+        url: `http://localhost/api/medication-cycles?cursor=${encodeURIComponent(cursor)}`,
+      } as NextRequest,
+      { params: Promise.resolve({}) },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(medicationCycleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 0,
+        take: 51,
+      }),
+    );
+  });
+
   it('creates a medication cycle after org reference validation', async () => {
     const response = (await POST(
       {

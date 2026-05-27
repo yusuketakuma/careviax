@@ -3,16 +3,14 @@ import type { NextRequest } from 'next/server';
 
 const { withAuthMock, withOrgContextMock } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
-    (
-      handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>
-    ) => {
+    (handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>) => {
       return (req: NextRequest) =>
         handler({
           ...req,
           orgId: 'org_1',
           userId: 'user_1',
         } as NextRequest & { orgId: string; userId: string });
-    }
+    },
   ),
   withOrgContextMock: vi.fn(),
 }));
@@ -68,7 +66,7 @@ describe('/api/facility-visit-batches/visit-days POST', () => {
         patientSchedulePreference: {
           upsert: vi.fn(),
         },
-      })
+      }),
     );
 
     const response = await POST(
@@ -76,7 +74,7 @@ describe('/api/facility-visit-batches/visit-days POST', () => {
         facility_label: 'facility_a',
         schedule_ids: ['schedule_1', 'schedule_2'],
         preferred_weekdays: [1, 3],
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -121,7 +119,7 @@ describe('/api/facility-visit-batches/visit-days POST', () => {
         patientSchedulePreference: {
           upsert: upsertMock,
         },
-      })
+      }),
     );
 
     const response = await POST(
@@ -135,7 +133,7 @@ describe('/api/facility-visit-batches/visit-days POST', () => {
         facility_time_to: '15:30',
         visit_buffer_minutes: 30,
         notes: '毎月第1・第3週を優先',
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');

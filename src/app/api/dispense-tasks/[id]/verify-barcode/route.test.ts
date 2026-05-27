@@ -52,7 +52,7 @@ describe('/api/dispense-tasks/[id]/verify-barcode', () => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
-    dispenseTaskFindFirstMock.mockResolvedValue({ id: 'task_1' });
+    dispenseTaskFindFirstMock.mockResolvedValue({ id: 'task_1', cycle_id: 'cycle_1' });
     prescriptionLineFindFirstMock.mockResolvedValue({
       id: 'line_1',
       drug_code: '1234567A',
@@ -84,9 +84,118 @@ describe('/api/dispense-tasks/[id]/verify-barcode', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expect(dispenseTaskFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'task_1',
+        org_id: 'org_1',
+        cycle: {
+          case_: {
+            OR: [
+              { primary_pharmacist_id: 'user_1' },
+              { backup_pharmacist_id: 'user_1' },
+              { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+            ],
+          },
+        },
+      },
+      select: { id: true, cycle_id: true },
+    });
+    expect(prescriptionLineFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'line_1',
+        org_id: 'org_1',
+        intake: {
+          cycle_id: 'cycle_1',
+        },
+      },
+      select: {
+        id: true,
+        drug_code: true,
+        drug_name: true,
+      },
+    });
     await expect(response.json()).resolves.toMatchObject({
       match: true,
       warnings: [],
     });
+  });
+
+  it('requires dispense permission before task lookup', async () => {
+    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
+
+    const response = (await POST({
+      url: 'http://localhost/api/dispense-tasks/task_1/verify-barcode',
+      method: 'POST',
+      headers: {
+        get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      },
+      nextUrl: new URL('http://localhost/api/dispense-tasks/task_1/verify-barcode'),
+      json: async () => ({
+        barcode: '0101234567890123',
+        line_id: 'line_1',
+      }),
+    } as NextRequest, {
+      params: Promise.resolve({ id: 'task_1' }),
+    }))!;
+
+    expect(response.status).toBe(403);
+    expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+    expect(prescriptionLineFindFirstMock).not.toHaveBeenCalled();
+    expect(parseGS1BarcodeMock).not.toHaveBeenCalled();
+  });
+
+  it('does not parse barcode or disclose expected drug data when the task is outside assignment scope', async () => {
+    dispenseTaskFindFirstMock.mockResolvedValue(null);
+
+    const response = (await POST({
+      url: 'http://localhost/api/dispense-tasks/task_unassigned/verify-barcode',
+      method: 'POST',
+      headers: {
+        get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      },
+      nextUrl: new URL('http://localhost/api/dispense-tasks/task_unassigned/verify-barcode'),
+      json: async () => ({
+        barcode: '0101234567890123',
+        line_id: 'line_1',
+      }),
+    } as NextRequest, {
+      params: Promise.resolve({ id: 'task_unassigned' }),
+    }))!;
+
+    expect(response.status).toBe(404);
+    expect(prescriptionLineFindFirstMock).not.toHaveBeenCalled();
+    expect(parseGS1BarcodeMock).not.toHaveBeenCalled();
+  });
+
+  it('does not parse barcode or disclose expected drug data when the line is not in the task cycle', async () => {
+    prescriptionLineFindFirstMock.mockResolvedValue(null);
+
+    const response = (await POST({
+      url: 'http://localhost/api/dispense-tasks/task_1/verify-barcode',
+      method: 'POST',
+      headers: {
+        get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      },
+      nextUrl: new URL('http://localhost/api/dispense-tasks/task_1/verify-barcode'),
+      json: async () => ({
+        barcode: '0101234567890123',
+        line_id: 'line_other_cycle',
+      }),
+    } as NextRequest, {
+      params: Promise.resolve({ id: 'task_1' }),
+    }))!;
+
+    expect(response.status).toBe(404);
+    expect(prescriptionLineFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'line_other_cycle',
+          intake: {
+            cycle_id: 'cycle_1',
+          },
+        }),
+      }),
+    );
+    expect(parseGS1BarcodeMock).not.toHaveBeenCalled();
   });
 });

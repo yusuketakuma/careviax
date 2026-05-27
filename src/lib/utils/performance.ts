@@ -57,19 +57,19 @@ export type PerformanceSnapshot = {
 };
 
 declare global {
-  var __careviaxRoutePerformanceStore: RoutePerformanceStore | undefined;
+  var __phOsRoutePerformanceStore: RoutePerformanceStore | undefined;
 }
 
 function getStore(): RoutePerformanceStore {
-  if (!globalThis.__careviaxRoutePerformanceStore) {
-    globalThis.__careviaxRoutePerformanceStore = {
+  if (!globalThis.__phOsRoutePerformanceStore) {
+    globalThis.__phOsRoutePerformanceStore = {
       started_at: Date.now(),
       max_samples_per_route: DEFAULT_MAX_SAMPLES_PER_ROUTE,
       routes: new Map(),
     };
   }
 
-  return globalThis.__careviaxRoutePerformanceStore;
+  return globalThis.__phOsRoutePerformanceStore;
 }
 
 function toPercentage(numerator: number, denominator: number): number {
@@ -227,7 +227,7 @@ export async function withRoutePerformance<T extends NextResponse | Response>(
 }
 
 export function resetPerformanceMetrics(): void {
-  globalThis.__careviaxRoutePerformanceStore = {
+  globalThis.__phOsRoutePerformanceStore = {
     started_at: Date.now(),
     max_samples_per_route: DEFAULT_MAX_SAMPLES_PER_ROUTE,
     routes: new Map(),

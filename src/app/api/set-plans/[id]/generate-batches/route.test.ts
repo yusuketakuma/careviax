@@ -1,30 +1,33 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const { authMock, prismaMock, withOrgContextMock, txMock } = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  prismaMock: {
-    membership: { findFirst: vi.fn() },
-    setPlan: { findFirst: vi.fn() },
-    prescriptionIntake: { findMany: vi.fn() },
-  },
-  withOrgContextMock: vi.fn(),
-  txMock: {
-    setPlan: {
-      update: vi.fn(),
+const { authMock, prismaMock, withOrgContextMock, txMock, notifyWorkflowMutationMock } = vi.hoisted(
+  () => ({
+    authMock: vi.fn(),
+    prismaMock: {
+      membership: { findFirst: vi.fn() },
+      setPlan: { findFirst: vi.fn() },
+      prescriptionIntake: { findMany: vi.fn() },
     },
-    setBatch: {
-      count: vi.fn(),
-      findFirst: vi.fn(),
-      findMany: vi.fn(),
-      deleteMany: vi.fn(),
-      createMany: vi.fn(),
+    withOrgContextMock: vi.fn(),
+    txMock: {
+      setPlan: {
+        update: vi.fn(),
+      },
+      setBatch: {
+        count: vi.fn(),
+        findFirst: vi.fn(),
+        findMany: vi.fn(),
+        deleteMany: vi.fn(),
+        createMany: vi.fn(),
+      },
+      setBatchChangeLog: {
+        create: vi.fn(),
+      },
     },
-    setBatchChangeLog: {
-      create: vi.fn(),
-    },
-  },
-}));
+    notifyWorkflowMutationMock: vi.fn(),
+  }),
+);
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -38,12 +41,16 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/server/services/workflow-dashboard-cache', () => ({
+  notifyWorkflowMutation: notifyWorkflowMutationMock,
+}));
+
 import { POST } from './route';
 
 function createRequest(body: unknown) {
   return {
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
     },
     json: vi.fn().mockResolvedValue(body),
   } as unknown as NextRequest;
@@ -153,5 +160,41 @@ describe('set-plans/[id]/generate-batches POST', () => {
     await expect(response.json()).resolves.toMatchObject({
       message: '鑑査未承認のサイクルはセットできません',
     });
+  });
+
+  it('returns 404 for unassigned pharmacist generation before intake reads or writes', async () => {
+    prismaMock.membership.findFirst.mockResolvedValue({ role: 'pharmacist' });
+    prismaMock.setPlan.findFirst.mockResolvedValue(null);
+
+    const response = await POST(createRequest({ force: true }), {
+      params: Promise.resolve({ id: 'plan_1' }),
+    });
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(404);
+    expect(prismaMock.setPlan.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'plan_1',
+        org_id: 'org_1',
+        AND: [
+          {
+            cycle: {
+              case_: expect.objectContaining({
+                OR: expect.arrayContaining([
+                  { primary_pharmacist_id: 'user_1' },
+                  { backup_pharmacist_id: 'user_1' },
+                  { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+                ]),
+              }),
+            },
+          },
+        ],
+      },
+      select: expect.any(Object),
+    });
+    expect(prismaMock.prescriptionIntake.findMany).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.setBatch.createMany).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 });

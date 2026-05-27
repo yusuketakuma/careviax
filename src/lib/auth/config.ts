@@ -26,7 +26,7 @@ export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
       id: 'credentials',
-      name: 'CareViaX Credentials',
+      name: 'PH-OS Credentials',
       credentials: {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },

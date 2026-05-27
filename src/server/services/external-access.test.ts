@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import bcrypt from 'bcryptjs';
+import { encode } from 'next-auth/jwt';
 import type { MemberRole } from '@prisma/client';
 
 const { prismaMock } = vi.hoisted(() => ({
@@ -526,6 +527,40 @@ describe('validateExternalAccessGrant', () => {
       ok: true,
       grant: expect.objectContaining({
         id: 'grant_legacy',
+      }),
+    });
+  });
+
+  it('accepts unexpired tokens issued with the legacy CareViaX salt', async () => {
+    const token = await encode({
+      secret: 'test-secret',
+      salt: 'careviax-external-access',
+      maxAge: 72 * 60 * 60,
+      token: {
+        sub: 'grant_legacy_salt',
+        grant_id: 'grant_legacy_salt',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        purpose: 'external_access_grant',
+      },
+    });
+
+    prismaMock.externalAccessGrant.findUnique.mockResolvedValue({
+      id: 'grant_legacy_salt',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      otp_hash: bcrypt.hashSync('123456', 4),
+      expires_at: new Date('2026-04-01T00:00:00.000Z'),
+      revoked_at: null,
+      scope: { medication_list: true },
+    });
+
+    const result = await validateExternalAccessGrant(token, '123456');
+
+    expect(result).toMatchObject({
+      ok: true,
+      grant: expect.objectContaining({
+        id: 'grant_legacy_salt',
       }),
     });
   });

@@ -56,6 +56,8 @@ describe('/api/patients/medications/bulk-export POST', () => {
         userId: 'user_1',
         orgId: 'org_1',
         role: 'admin',
+        ipAddress: '127.0.0.1',
+        userAgent: 'vitest',
       },
     });
     queueMedicationHistoryBulkExportMock.mockResolvedValue({
@@ -88,6 +90,10 @@ describe('/api/patients/medications/bulk-export POST', () => {
       accessContext: {
         userId: 'user_1',
         role: 'admin',
+      },
+      auditContext: {
+        ipAddress: '127.0.0.1',
+        userAgent: 'vitest',
       },
     });
     expect(drainMedicationHistoryBulkExportQueueMock).toHaveBeenCalledWith({

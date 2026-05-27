@@ -28,7 +28,7 @@ export const usePatientListStore = create<PatientListState>()(
         })),
     }),
     {
-      name: 'careviax-patient-list',
+      name: 'ph-os-patient-list',
       storage: createJSONStorage(() => localStorage),
     }
   )

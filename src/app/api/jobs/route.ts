@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { success } from '@/lib/api/response';
@@ -24,11 +25,92 @@ const JOB_DEFINITIONS = [
   { job_type: 'drug-reference-refresh', schedule_hint: '毎月', endpoint: '/api/jobs/drug-reference-refresh' },
   { job_type: 'pmda-package-insert-refresh', schedule_hint: '毎日', endpoint: '/api/jobs/pmda-package-insert-refresh' },
   { job_type: 'medication-history-bulk-export-drain', schedule_hint: '15分毎 + 要求時', endpoint: '/api/jobs/medication-history-bulk-export-drain' },
+  { job_type: 'bulk-export-artifact-cleanup', schedule_hint: '毎日', endpoint: '/api/jobs/bulk-export-artifact-cleanup' },
   { job_type: 'evening', schedule_hint: '毎夕', endpoint: '/api/jobs/evening' },
   { job_type: 'evening-unrecorded-visits', schedule_hint: '毎夕', endpoint: '/api/jobs/evening-unrecorded-visits' },
   { job_type: 'next-day', schedule_hint: '翌営業日朝', endpoint: '/api/jobs/next-day' },
   { job_type: 'monthly', schedule_hint: '毎月初', endpoint: '/api/jobs/monthly' },
 ];
+
+type LatestRun = {
+  id: string;
+  job_type: string;
+  status: string;
+  output: Prisma.JsonValue;
+  error_log: string | null;
+  retry_count: number;
+  max_retries: number;
+  started_at: Date | null;
+  completed_at: Date | null;
+  created_at: Date;
+};
+
+type JobRunDto = {
+  id: string;
+  job_type: string;
+  status: string;
+  output: Record<string, number> | null;
+  error_log: string | null;
+  retry_count: number;
+  max_retries: number;
+  started_at: Date | null;
+  completed_at: Date | null;
+  created_at: Date;
+};
+
+function findLatestRunForDefinition(latestRuns: LatestRun[], definitionJobType: string) {
+  return latestRuns.find((job) => job.job_type === definitionJobType) ?? null;
+}
+
+function findLatestExportRunForDefinition(latestRuns: LatestRun[], definitionJobType: string) {
+  if (definitionJobType !== 'medication-history-bulk-export-drain') return null;
+  return latestRuns.find((job) => job.job_type === 'medication-history-bulk-export') ?? null;
+}
+
+function readFiniteNumber(payload: Record<string, unknown>, key: string) {
+  const value = payload[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function sanitizeOutput(job: LatestRun): Record<string, number> | null {
+  if (
+    job.job_type !== 'medication-history-bulk-export' ||
+    !job.output ||
+    typeof job.output !== 'object' ||
+    Array.isArray(job.output)
+  ) {
+    return null;
+  }
+
+  const payload = job.output as Record<string, unknown>;
+  return {
+    ...(readFiniteNumber(payload, 'requestedCount') !== undefined
+      ? { requestedCount: readFiniteNumber(payload, 'requestedCount')! }
+      : {}),
+    ...(readFiniteNumber(payload, 'patientCount') !== undefined
+      ? { patientCount: readFiniteNumber(payload, 'patientCount')! }
+      : {}),
+    ...(readFiniteNumber(payload, 'failedCount') !== undefined
+      ? { failedCount: readFiniteNumber(payload, 'failedCount')! }
+      : {}),
+  };
+}
+
+function toJobRunDto(job: LatestRun | null): JobRunDto | null {
+  if (!job) return null;
+  return {
+    id: job.id,
+    job_type: job.job_type,
+    status: job.status,
+    output: sanitizeOutput(job),
+    error_log: job.error_log ? 'エラーが記録されています' : null,
+    retry_count: job.retry_count,
+    max_retries: job.max_retries,
+    started_at: job.started_at,
+    completed_at: job.completed_at,
+    created_at: job.created_at,
+  };
+}
 
 export async function GET(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
@@ -45,6 +127,18 @@ export async function GET(req: NextRequest) {
         { org_id: null },
       ],
     },
+    select: {
+      id: true,
+      job_type: true,
+      status: true,
+      output: true,
+      error_log: true,
+      retry_count: true,
+      max_retries: true,
+      started_at: true,
+      completed_at: true,
+      created_at: true,
+    },
     orderBy: { created_at: 'desc' },
     take: 50,
   });
@@ -52,7 +146,8 @@ export async function GET(req: NextRequest) {
   return success({
     data: JOB_DEFINITIONS.map((definition) => ({
       ...definition,
-      latest_run: latestRuns.find((job) => job.job_type === definition.job_type) ?? null,
+      latest_run: toJobRunDto(findLatestRunForDefinition(latestRuns, definition.job_type)),
+      latest_export_run: toJobRunDto(findLatestExportRunForDefinition(latestRuns, definition.job_type)),
     })),
   });
 }

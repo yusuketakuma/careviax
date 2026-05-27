@@ -15,7 +15,7 @@ function buildEntry(level: LogLevel, message: string, ctx?: LogContext) {
     level,
     message,
     timestamp: new Date().toISOString(),
-    service: 'careviax',
+    service: 'ph-os',
     ...(ctx ?? {}),
   };
 }

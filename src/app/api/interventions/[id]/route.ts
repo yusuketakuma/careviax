@@ -4,11 +4,29 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { updateInterventionSchema } from '@/lib/validations/intervention';
 import { prisma } from '@/lib/db/client';
+import {
+  canBypassVisitScheduleAssignmentAccess,
+  type VisitScheduleAccessContext,
+} from '@/lib/auth/visit-schedule-access';
+import { listAccessiblePatientIds } from '@/server/services/patient-access';
+import type { Prisma } from '@prisma/client';
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+async function buildInterventionAssignmentWhere(args: {
+  orgId: string;
+  accessContext: VisitScheduleAccessContext;
+}): Promise<Prisma.InterventionWhereInput | null> {
+  if (canBypassVisitScheduleAssignmentAccess(args.accessContext)) return null;
+
+  const patientIds = await listAccessiblePatientIds({
+    db: prisma,
+    orgId: args.orgId,
+    accessContext: args.accessContext,
+  });
+
+  return { patient_id: { in: patientIds } };
+}
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '介入記録の閲覧権限がありません',
@@ -17,19 +35,24 @@ export async function GET(
   const ctx = authResult.ctx;
 
   const { id } = await params;
+  const assignmentWhere = await buildInterventionAssignmentWhere({
+    orgId: ctx.orgId,
+    accessContext: { userId: ctx.userId, role: ctx.role },
+  });
 
   const intervention = await prisma.intervention.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: {
+      id,
+      org_id: ctx.orgId,
+      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+    },
   });
   if (!intervention) return notFound('介入記録が見つかりません');
 
   return success({ data: intervention });
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '介入記録の更新権限がありません',
@@ -47,8 +70,17 @@ export async function PATCH(
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
+  const assignmentWhere = await buildInterventionAssignmentWhere({
+    orgId: ctx.orgId,
+    accessContext: { userId: ctx.userId, role: ctx.role },
+  });
+
   const existing = await prisma.intervention.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: {
+      id,
+      org_id: ctx.orgId,
+      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+    },
     select: { id: true },
   });
   if (!existing) return notFound('介入記録が見つかりません');

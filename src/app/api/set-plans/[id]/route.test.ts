@@ -1,23 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const { authMock, prismaMock, withOrgContextMock, txMock } = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  prismaMock: {
-    membership: { findFirst: vi.fn() },
-    setPlan: { findFirst: vi.fn() },
-  },
-  withOrgContextMock: vi.fn(),
-  txMock: {
-    packagingMethodMaster: {
-      findFirst: vi.fn(),
+const { authMock, prismaMock, withOrgContextMock, txMock, notifyWorkflowMutationMock } = vi.hoisted(
+  () => ({
+    authMock: vi.fn(),
+    prismaMock: {
+      membership: { findFirst: vi.fn() },
+      setPlan: { findFirst: vi.fn() },
     },
-    setPlan: {
-      findFirst: vi.fn(),
-      update: vi.fn(),
+    withOrgContextMock: vi.fn(),
+    txMock: {
+      packagingMethodMaster: {
+        findFirst: vi.fn(),
+      },
+      setPlan: {
+        findFirst: vi.fn(),
+        update: vi.fn(),
+      },
     },
-  },
-}));
+    notifyWorkflowMutationMock: vi.fn(),
+  }),
+);
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -31,12 +34,16 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/server/services/workflow-dashboard-cache', () => ({
+  notifyWorkflowMutation: notifyWorkflowMutationMock,
+}));
+
 import { GET, PATCH } from './route';
 
 function createRequest(body?: unknown) {
   return {
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
     },
     json: vi.fn().mockResolvedValue(body),
   } as unknown as NextRequest;
@@ -94,6 +101,45 @@ describe('/api/set-plans/[id]', () => {
         id: 'plan_1',
       },
     });
+    expect(prismaMock.setPlan.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'plan_1',
+        org_id: 'org_1',
+      },
+      select: expect.any(Object),
+    });
+  });
+
+  it('returns 404 for unassigned pharmacist set-plan detail', async () => {
+    prismaMock.membership.findFirst.mockResolvedValue({ role: 'pharmacist' });
+    prismaMock.setPlan.findFirst.mockResolvedValue(null);
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'plan_1' }),
+    });
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(404);
+    expect(prismaMock.setPlan.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'plan_1',
+        org_id: 'org_1',
+        AND: [
+          {
+            cycle: {
+              case_: expect.objectContaining({
+                OR: expect.arrayContaining([
+                  { primary_pharmacist_id: 'user_1' },
+                  { backup_pharmacist_id: 'user_1' },
+                  { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+                ]),
+              }),
+            },
+          },
+        ],
+      },
+      select: expect.any(Object),
+    });
   });
 
   it('updates set plan metadata', async () => {
@@ -104,7 +150,7 @@ describe('/api/set-plans/[id]', () => {
       }),
       {
         params: Promise.resolve({ id: 'plan_1' }),
-      }
+      },
     );
     if (!response) throw new Error('response is required');
 
@@ -117,6 +163,49 @@ describe('/api/set-plans/[id]', () => {
       }),
       select: expect.any(Object),
     });
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      payload: { source: 'set_plans_update', plan_id: 'plan_1' },
+    });
+  });
+
+  it('returns 404 for unassigned pharmacist set-plan updates before side effects', async () => {
+    prismaMock.membership.findFirst.mockResolvedValue({ role: 'pharmacist' });
+    txMock.setPlan.findFirst.mockResolvedValue(null);
+
+    const response = await PATCH(
+      createRequest({
+        set_method: 'bedtime_only',
+      }),
+      {
+        params: Promise.resolve({ id: 'plan_1' }),
+      },
+    );
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(404);
+    expect(txMock.setPlan.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'plan_1',
+        org_id: 'org_1',
+        AND: [
+          {
+            cycle: {
+              case_: expect.objectContaining({
+                OR: expect.arrayContaining([
+                  { primary_pharmacist_id: 'user_1' },
+                  { backup_pharmacist_id: 'user_1' },
+                  { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+                ]),
+              }),
+            },
+          },
+        ],
+      },
+      select: expect.any(Object),
+    });
+    expect(txMock.setPlan.update).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects an invalid target period update', async () => {
@@ -127,7 +216,7 @@ describe('/api/set-plans/[id]', () => {
       }),
       {
         params: Promise.resolve({ id: 'plan_1' }),
-      }
+      },
     );
     if (!response) throw new Error('response is required');
 

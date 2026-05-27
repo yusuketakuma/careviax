@@ -5,6 +5,7 @@ import { success, validationError, notFound } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { updateCaseSchema } from '@/lib/validations/case';
 import { prisma } from '@/lib/db/client';
+import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import type { Prisma } from '@prisma/client';
 
 function normalizeOptionalText(value: string | undefined) {
@@ -27,9 +28,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const ctx = authResult.ctx;
 
   const { id } = await params;
+  const caseAssignmentWhere = buildCareCaseAssignmentWhere(ctx);
 
   const careCase = await prisma.careCase.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: {
+      id,
+      org_id: ctx.orgId,
+      ...(caseAssignmentWhere ? { AND: [caseAssignmentWhere] } : {}),
+    },
     include: {
       patient: {
         select: {
@@ -86,8 +92,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
+  const caseAssignmentWhere = buildCareCaseAssignmentWhere(ctx);
   const existing = await prisma.careCase.findFirst({
-    where: { id, org_id: ctx.orgId },
+    where: {
+      id,
+      org_id: ctx.orgId,
+      ...(caseAssignmentWhere ? { AND: [caseAssignmentWhere] } : {}),
+    },
   });
   if (!existing) return notFound('ケースが見つかりません');
 

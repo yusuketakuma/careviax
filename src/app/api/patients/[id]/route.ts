@@ -1891,11 +1891,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
 
         if (requester || intake) {
+          const assignedCareCaseWhere = buildAssignedCareCaseWhere(ctx);
+          const activeCaseBaseWhere: Prisma.CareCaseWhereInput = {
+            org_id: ctx.orgId,
+            patient_id: id,
+            ...(assignedCareCaseWhere ? { AND: [assignedCareCaseWhere] } : {}),
+          };
           const activeCase =
             (await tx.careCase.findFirst({
               where: {
-                org_id: ctx.orgId,
-                patient_id: id,
+                ...activeCaseBaseWhere,
                 status: { in: [...OPEN_CASE_STATUSES] },
               },
               orderBy: [{ updated_at: 'desc' }],
@@ -1905,10 +1910,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               },
             })) ??
             (await tx.careCase.findFirst({
-              where: {
-                org_id: ctx.orgId,
-                patient_id: id,
-              },
+              where: activeCaseBaseWhere,
               orderBy: [{ updated_at: 'desc' }],
               select: {
                 id: true,

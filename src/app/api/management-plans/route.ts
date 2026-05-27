@@ -4,6 +4,7 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
+import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { createManagementPlanSchema } from '@/lib/validations/management-plan';
 
 export async function GET(req: NextRequest) {
@@ -16,11 +17,13 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const caseId = searchParams.get('case_id') ?? undefined;
+  const assignmentWhere = buildCareCaseAssignmentWhere(ctx);
 
   const plans = await prisma.managementPlan.findMany({
     where: {
       org_id: ctx.orgId,
       ...(caseId ? { case_id: caseId } : {}),
+      ...(assignmentWhere ? { case_: assignmentWhere } : {}),
     },
     orderBy: [{ updated_at: 'desc' }],
   });
@@ -44,16 +47,31 @@ export async function POST(req: NextRequest) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
+  const assignmentWhere = buildCareCaseAssignmentWhere(ctx);
   const careCase = await prisma.careCase.findFirst({
     where: {
       id: parsed.data.case_id,
       org_id: ctx.orgId,
+      ...(assignmentWhere ?? {}),
     },
     select: {
       id: true,
     },
   });
   if (!careCase) return notFound('ケースが見つかりません');
+
+  if (parsed.data.source_plan_id) {
+    const sourcePlan = await prisma.managementPlan.findFirst({
+      where: {
+        id: parsed.data.source_plan_id,
+        org_id: ctx.orgId,
+        case_id: parsed.data.case_id,
+        ...(assignmentWhere ? { case_: assignmentWhere } : {}),
+      },
+      select: { id: true },
+    });
+    if (!sourcePlan) return notFound('複製元の管理計画書が見つかりません');
+  }
 
   const plan = await withOrgContext(ctx.orgId, async (tx) => {
     const latest = await tx.managementPlan.findFirst({

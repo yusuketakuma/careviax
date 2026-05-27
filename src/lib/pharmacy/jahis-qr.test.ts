@@ -12,7 +12,7 @@ describe('buildJahisQRText', () => {
       },
       prescribingInstitution: {
         institutionCode: '1234567',
-        name: 'Careviax Clinic',
+        name: 'PH-OS Clinic',
       },
       prescribingDoctor: '田中 医師',
       prescribingDepartment: '内科',
@@ -42,7 +42,7 @@ describe('buildJahisQRText', () => {
       gender: 'male',
       birthDate: '1945-02-03',
     });
-    expect(parsed.prescribingInstitution.name).toBe('Careviax Clinic');
+    expect(parsed.prescribingInstitution.name).toBe('PH-OS Clinic');
     expect(parsed.prescribingDoctor).toBe('田中 医師');
     expect(parsed.dispensingDate).toBe('2026-03-29');
     expect(parsed.medications[0]).toMatchObject({

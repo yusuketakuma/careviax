@@ -4,7 +4,9 @@ const {
   getSignedUrlMock,
   settingUpsertMock,
   settingFindFirstMock,
+  settingFindManyMock,
   settingUpdateMock,
+  settingDeleteManyMock,
   patientFindFirstMock,
   visitScheduleFindFirstMock,
   careCaseFindFirstMock,
@@ -16,7 +18,9 @@ const {
   getSignedUrlMock: vi.fn(),
   settingUpsertMock: vi.fn(),
   settingFindFirstMock: vi.fn(),
+  settingFindManyMock: vi.fn(),
   settingUpdateMock: vi.fn(),
+  settingDeleteManyMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   visitScheduleFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
@@ -37,6 +41,13 @@ vi.mock('@aws-sdk/client-s3', () => ({
     send = s3SendMock;
   },
   PutObjectCommand: class PutObjectCommand {
+    input: Record<string, unknown>;
+
+    constructor(input: Record<string, unknown>) {
+      this.input = input;
+    }
+  },
+  DeleteObjectCommand: class DeleteObjectCommand {
     input: Record<string, unknown>;
 
     constructor(input: Record<string, unknown>) {
@@ -68,7 +79,9 @@ vi.mock('@/lib/db/client', () => ({
     setting: {
       upsert: settingUpsertMock,
       findFirst: settingFindFirstMock,
+      findMany: settingFindManyMock,
       update: settingUpdateMock,
+      deleteMany: settingDeleteManyMock,
     },
     patient: {
       findFirst: patientFindFirstMock,
@@ -90,9 +103,12 @@ vi.mock('@/lib/db/client', () => ({
 
 import {
   completeUploadedFile,
+  cleanupExpiredGeneratedFiles,
   createPresignedDownload,
   createPresignedUpload,
+  deleteGeneratedFile,
   storeGeneratedFile,
+  type StoredFileRecord,
 } from './file-storage';
 
 const assignedAccessContext = {
@@ -105,7 +121,7 @@ const unassignedAccessContext = {
   role: 'pharmacist' as const,
 };
 
-function buildStoredFileRecord(overrides: Record<string, unknown> = {}) {
+function buildStoredFileRecord(overrides: Partial<StoredFileRecord> = {}): StoredFileRecord {
   return {
     version: 1,
     id: 'file_1',
@@ -127,7 +143,7 @@ function buildStoredFileRecord(overrides: Record<string, unknown> = {}) {
     completedAt: '2026-03-28T00:00:00.000Z',
     downloadDisposition: 'inline',
     ...overrides,
-  };
+  } satisfies StoredFileRecord;
 }
 
 function mockStoredFile(overrides: Record<string, unknown> = {}) {
@@ -224,18 +240,21 @@ const fileAccessCases: AccessCase[] = [
 describe('file-storage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.S3_BUCKET_NAME = 'careviax-files';
+    process.env.S3_BUCKET_NAME = 'ph-os-files';
     process.env.S3_BUCKET_REGION = 'ap-northeast-1';
     delete process.env.S3_SERVER_SIDE_ENCRYPTION;
     delete process.env.S3_KMS_KEY_ID;
     delete process.env.S3_KMS_KEY_ID_PHI;
     delete process.env.S3_KMS_KEY_ID_REPORT;
     delete process.env.S3_KMS_KEY_ID_EXPORT;
+    delete process.env.BULK_EXPORT_FILE_RETENTION_HOURS;
     randomUuidMock.mockReturnValue('file-uuid-1');
     getSignedUrlMock.mockResolvedValue('https://example.com/upload');
     settingUpsertMock.mockResolvedValue(undefined);
     settingFindFirstMock.mockResolvedValue(null);
+    settingFindManyMock.mockResolvedValue([]);
     settingUpdateMock.mockResolvedValue(undefined);
+    settingDeleteManyMock.mockResolvedValue({ count: 1 });
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     visitScheduleFindFirstMock.mockResolvedValue({ id: 'schedule_1' });
     careCaseFindFirstMock.mockResolvedValue(null);
@@ -263,7 +282,7 @@ describe('file-storage', () => {
       input: Record<string, unknown>;
     };
     expect(putObjectCommand.input).toMatchObject({
-      Bucket: 'careviax-files',
+      Bucket: 'ph-os-files',
       Key: 'reports/org_1/report_1/file-uuid-1-report.pdf',
       ContentType: 'application/pdf',
       ServerSideEncryption: 'AES256',
@@ -343,7 +362,7 @@ describe('file-storage', () => {
       input: Record<string, unknown>;
     };
     expect(putObjectCommand.input).toMatchObject({
-      Bucket: 'careviax-files',
+      Bucket: 'ph-os-files',
       Key: 'bulk-exports/org_1/job_1/file-uuid-1-medication-history.zip',
       ContentType: 'application/zip',
       ServerSideEncryption: 'AES256',
@@ -357,11 +376,216 @@ describe('file-storage', () => {
             status: 'uploaded',
             jobId: 'job_1',
             uploadedBy: 'user_1',
+            expiresAt: expect.any(String),
           }),
         }),
       }),
     );
     expect(result.storageKey).toBe('bulk-exports/org_1/job_1/file-uuid-1-medication-history.zip');
+  });
+
+  it('cleans up the S3 object when generated file metadata cannot be written', async () => {
+    settingUpsertMock.mockRejectedValueOnce(new Error('metadata unavailable'));
+
+    await expect(
+      storeGeneratedFile({
+        orgId: 'org_1',
+        purpose: 'bulk-export',
+        fileName: 'medication-history.zip',
+        mimeType: 'application/zip',
+        buffer: Buffer.from('zip-bytes'),
+        uploadedBy: 'user_1',
+        jobId: 'job_1',
+      }),
+    ).rejects.toThrow('metadata unavailable');
+
+    expect(s3SendMock).toHaveBeenCalledTimes(2);
+    expect((s3SendMock.mock.calls[1]?.[0] as { input: Record<string, unknown> }).input).toEqual({
+      Bucket: 'ph-os-files',
+      Key: 'bulk-exports/org_1/job_1/file-uuid-1-medication-history.zip',
+    });
+  });
+
+  it('deletes generated bulk export files and their metadata', async () => {
+    const record = buildStoredFileRecord({
+      purpose: 'bulk-export',
+      storageKey: 'bulk-exports/org_1/job_1/file_1-medication-history.zip',
+      jobId: 'job_1',
+      uploadedBy: 'user_1',
+    });
+
+    await deleteGeneratedFile(record);
+
+    expect(s3SendMock).toHaveBeenCalledOnce();
+    expect((s3SendMock.mock.calls[0]?.[0] as { input: Record<string, unknown> }).input).toEqual({
+      Bucket: 'ph-os-files',
+      Key: 'bulk-exports/org_1/job_1/file_1-medication-history.zip',
+    });
+    expect(settingDeleteManyMock).toHaveBeenCalledWith({
+      where: {
+        scope: 'organization',
+        scope_id: 'org_1',
+        key: 'file_asset:file_1',
+      },
+    });
+  });
+
+  it('does not delete non-generated bulk export files through the generated cleanup path', async () => {
+    await expect(deleteGeneratedFile(buildStoredFileRecord())).rejects.toMatchObject({
+      code: 'FILE_DELETE_FORBIDDEN',
+      status: 403,
+    });
+    expect(s3SendMock).not.toHaveBeenCalled();
+    expect(settingDeleteManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects expired generated bulk export downloads before signing', async () => {
+    mockStoredFile({
+      purpose: 'bulk-export',
+      storageKey: 'bulk-exports/org_1/job_1/file_1-medication-history.zip',
+      jobId: 'job_1',
+      uploadedBy: 'user_1',
+      downloadDisposition: 'attachment',
+      expiresAt: '2026-03-27T23:59:59.000Z',
+    });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-28T00:00:00.000Z'));
+
+    await expect(
+      createPresignedDownload({
+        orgId: 'org_1',
+        fileId: 'file_1',
+        accessContext: assignedAccessContext,
+      }),
+    ).rejects.toMatchObject({
+      code: 'FILE_EXPIRED',
+      status: 410,
+    });
+    expect(getSignedUrlMock).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('allows generated bulk export downloads before expiry', async () => {
+    mockStoredFile({
+      purpose: 'bulk-export',
+      storageKey: 'bulk-exports/org_1/job_1/file_1-medication-history.zip',
+      jobId: 'job_1',
+      uploadedBy: 'user_1',
+      downloadDisposition: 'attachment',
+      expiresAt: '2026-03-28T00:00:01.000Z',
+    });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-28T00:00:00.000Z'));
+
+    const result = await createPresignedDownload({
+      orgId: 'org_1',
+      fileId: 'file_1',
+      accessContext: assignedAccessContext,
+    });
+
+    expect(result.downloadUrl).toBe('https://example.com/upload');
+    expect(getSignedUrlMock).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
+  it('cleans up expired generated bulk export files and skips unexpired artifacts', async () => {
+    const expiredRecord = buildStoredFileRecord({
+      id: 'expired_file',
+      purpose: 'bulk-export',
+      storageKey: 'bulk-exports/org_1/job_1/expired_file-medication-history.zip',
+      jobId: 'job_1',
+      expiresAt: '2026-03-27T23:59:59.000Z',
+    });
+    const activeRecord = buildStoredFileRecord({
+      id: 'active_file',
+      purpose: 'bulk-export',
+      storageKey: 'bulk-exports/org_1/job_2/active_file-medication-history.zip',
+      jobId: 'job_2',
+      expiresAt: '2026-03-28T00:00:01.000Z',
+    });
+    const prescriptionRecord = buildStoredFileRecord({
+      id: 'prescription_file',
+      purpose: 'prescription',
+      storageKey: 'prescriptions/org_1/patient_1/prescription_file.pdf',
+      patientId: 'patient_1',
+      visitRecordId: null,
+    });
+    settingFindManyMock.mockResolvedValue([
+      { value: expiredRecord },
+      { value: activeRecord },
+      { value: prescriptionRecord },
+    ]);
+
+    const result = await cleanupExpiredGeneratedFiles({
+      orgId: 'org_1',
+      now: new Date('2026-03-28T00:00:00.000Z'),
+    });
+
+    expect(result).toEqual({ processedCount: 1, scannedCount: 3, errors: [] });
+    expect(settingFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          scope: 'organization',
+          scope_id: 'org_1',
+          key: { startsWith: 'file_asset:' },
+        }),
+      }),
+    );
+    expect(s3SendMock).toHaveBeenCalledOnce();
+    expect((s3SendMock.mock.calls[0]?.[0] as { input: Record<string, unknown> }).input).toEqual({
+      Bucket: 'ph-os-files',
+      Key: 'bulk-exports/org_1/job_1/expired_file-medication-history.zip',
+    });
+    expect(settingDeleteManyMock).toHaveBeenCalledWith({
+      where: {
+        scope: 'organization',
+        scope_id: 'org_1',
+        key: 'file_asset:expired_file',
+      },
+    });
+  });
+
+  it('continues scanning later pages for expired generated bulk export files', async () => {
+    const activeRecord = buildStoredFileRecord({
+      id: 'active_file',
+      purpose: 'bulk-export',
+      storageKey: 'bulk-exports/org_1/job_1/active_file-medication-history.zip',
+      jobId: 'job_1',
+      expiresAt: '2026-03-28T00:00:01.000Z',
+    });
+    const expiredRecord = buildStoredFileRecord({
+      id: 'expired_file',
+      purpose: 'bulk-export',
+      storageKey: 'bulk-exports/org_1/job_2/expired_file-medication-history.zip',
+      jobId: 'job_2',
+      expiresAt: '2026-03-27T23:59:59.000Z',
+    });
+    settingFindManyMock
+      .mockResolvedValueOnce([{ id: 'setting_1', value: activeRecord }])
+      .mockResolvedValueOnce([{ id: 'setting_2', value: expiredRecord }])
+      .mockResolvedValueOnce([]);
+
+    const result = await cleanupExpiredGeneratedFiles({
+      now: new Date('2026-03-28T00:00:00.000Z'),
+      batchSize: 1,
+      maxPages: 3,
+    });
+
+    expect(result).toEqual({ processedCount: 1, scannedCount: 2, errors: [] });
+    expect(settingFindManyMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        cursor: { id: 'setting_1' },
+        skip: 1,
+      }),
+    );
+    expect(settingDeleteManyMock).toHaveBeenCalledWith({
+      where: {
+        scope: 'organization',
+        scope_id: 'org_1',
+        key: 'file_asset:expired_file',
+      },
+    });
   });
 
   it('uses KMS encryption when the bucket is configured for aws:kms', async () => {
@@ -405,7 +629,7 @@ describe('file-storage', () => {
       input: Record<string, unknown>;
     };
     expect(putObjectCommand.input).toMatchObject({
-      Bucket: 'careviax-files',
+      Bucket: 'ph-os-files',
       Key: 'prescriptions/org_1/patient_1/file-uuid-1-prescription.pdf',
       ObjectLockMode: 'COMPLIANCE',
     });
@@ -428,7 +652,7 @@ describe('file-storage', () => {
       input: Record<string, unknown>;
     };
     expect(putObjectCommand.input).toMatchObject({
-      Bucket: 'careviax-files',
+      Bucket: 'ph-os-files',
       Key: 'visit-photos/org_1/visit_1/file-uuid-1-visit-note.pdf',
       ContentType: 'application/pdf',
       ServerSideEncryption: 'AES256',
@@ -761,7 +985,7 @@ describe('file-storage', () => {
       input: Record<string, unknown>;
     };
     expect(headObjectCommand.input).toMatchObject({
-      Bucket: 'careviax-files',
+      Bucket: 'ph-os-files',
       Key: 'visit-photos/org_1/visit_1/file_1-note.pdf',
     });
     expect(settingUpdateMock).toHaveBeenCalledWith(

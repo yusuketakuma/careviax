@@ -1,8 +1,11 @@
 import { z } from 'zod';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound } from '@/lib/api/response';
-import { buildVisitScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { success, validationError, notFound, forbiddenResponse } from '@/lib/api/response';
+import {
+  buildVisitScheduleAssignmentWhere,
+  canBypassVisitScheduleAssignmentAccess,
+} from '@/lib/auth/visit-schedule-access';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { validateScheduleTimeDatesFitShift } from '@/server/services/visit-schedule-shift';
 
@@ -60,6 +63,21 @@ export const PATCH = withAuth(
         return { error: 'not_found' as const };
       }
 
+      const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
+      if (!canBypassVisitScheduleAssignmentAccess(req)) {
+        const pharmacistChange = dedupedUpdates.find((item) => {
+          const schedule = scheduleById.get(item.schedule_id);
+          return (
+            item.pharmacist_id !== undefined &&
+            schedule !== undefined &&
+            item.pharmacist_id !== schedule.pharmacist_id
+          );
+        });
+        if (pharmacistChange) {
+          return { error: 'pharmacist_change_forbidden' as const };
+        }
+      }
+
       const pharmacistIds = Array.from(
         new Set(
           dedupedUpdates
@@ -85,7 +103,6 @@ export const PATCH = withAuth(
         }
       }
 
-      const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
       const routeCellByKey = dedupedUpdates.reduce((map, item) => {
         const schedule = scheduleById.get(item.schedule_id);
         if (!schedule) return map;
@@ -257,6 +274,9 @@ export const PATCH = withAuth(
     if ('error' in result) {
       if (result.error === 'not_found') {
         return notFound('対象の訪問予定が見つかりません');
+      }
+      if (result.error === 'pharmacist_change_forbidden') {
+        return forbiddenResponse('訪問予定のケースまたは担当薬剤師を変更する権限がありません');
       }
       if (result.error === 'invalid_pharmacist') {
         return validationError('指定された薬剤師はこの組織に所属していません');

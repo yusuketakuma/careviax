@@ -34,12 +34,12 @@ export async function ensureHomeCareBillingSsot(
     create: {
       org_id: orgId,
       entity_type: 'billing',
-      source_of_truth: 'careviax',
+      source_of_truth: 'ph-os',
       sync_direction: 'push',
       recovery_procedure: 'BillingRule home_care_ssot を唯一の算定SSOTとして運用',
     },
     update: {
-      source_of_truth: 'careviax',
+      source_of_truth: 'ph-os',
       sync_direction: 'push',
       recovery_procedure: 'BillingRule home_care_ssot を唯一の算定SSOTとして運用',
     },

@@ -49,7 +49,7 @@ function createRequest(url: string, body?: unknown) {
     url,
     method: body === undefined ? 'GET' : 'POST',
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
     },
     nextUrl: new URL(url),
     json: vi.fn().mockResolvedValue(body),
@@ -92,6 +92,8 @@ describe('/api/set-plans', () => {
   });
 
   it('lists set plans filtered by cycle', async () => {
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
     const response = (await GET(createRequest('http://localhost/api/set-plans?cycle_id=cycle_1')))!;
 
     expect(response.status).toBe(200);
@@ -101,7 +103,38 @@ describe('/api/set-plans', () => {
           org_id: 'org_1',
           cycle_id: 'cycle_1',
         },
-      })
+      }),
+    );
+  });
+
+  it('returns an empty list for trainee users when the cycle belongs to an unassigned case', async () => {
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist_trainee' });
+    setPlanFindManyMock.mockResolvedValue([]);
+
+    const response = (await GET(createRequest('http://localhost/api/set-plans?cycle_id=cycle_1')))!;
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ data: [] });
+    expect(setPlanFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          cycle_id: 'cycle_1',
+          AND: [
+            {
+              cycle: {
+                case_: expect.objectContaining({
+                  OR: expect.arrayContaining([
+                    { primary_pharmacist_id: 'user_1' },
+                    { backup_pharmacist_id: 'user_1' },
+                    { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+                  ]),
+                }),
+              },
+            },
+          ],
+        },
+      }),
     );
   });
 
@@ -112,7 +145,7 @@ describe('/api/set-plans', () => {
         target_period_start: '2026-04-01',
         target_period_end: '2026-04-07',
         set_method: 'custom',
-      })
+      }),
     ))!;
 
     expect(response.status).toBe(201);
@@ -124,6 +157,43 @@ describe('/api/set-plans', () => {
     expect(cycleTransitionLogCreateMock).toHaveBeenCalled();
   });
 
+  it('rejects unassigned pharmacist set-plan creation before writes or cycle transition', async () => {
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    medicationCycleFindFirstMock.mockResolvedValue(null);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/set-plans', {
+        cycle_id: 'cycle_1',
+        target_period_start: '2026-04-01',
+        target_period_end: '2026-04-07',
+        set_method: 'custom',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(medicationCycleFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'cycle_1',
+        org_id: 'org_1',
+        AND: [
+          {
+            case_: expect.objectContaining({
+              OR: expect.arrayContaining([
+                { primary_pharmacist_id: 'user_1' },
+                { backup_pharmacist_id: 'user_1' },
+                { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+              ]),
+            }),
+          },
+        ],
+      },
+      select: expect.any(Object),
+    });
+    expect(setPlanCreateMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects a target period whose end date is before the start date', async () => {
     const response = (await POST(
       createRequest('http://localhost/api/set-plans', {
@@ -131,7 +201,7 @@ describe('/api/set-plans', () => {
         target_period_start: '2026-04-07',
         target_period_end: '2026-04-01',
         set_method: 'custom',
-      })
+      }),
     ))!;
 
     expect(response.status).toBe(400);

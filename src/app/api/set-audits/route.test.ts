@@ -15,6 +15,7 @@ const {
   visitScheduleUpdateManyMock,
   taskCreateMock,
   workflowExceptionCreateMock,
+  notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -29,6 +30,7 @@ const {
   visitScheduleUpdateManyMock: vi.fn(),
   taskCreateMock: vi.fn(),
   workflowExceptionCreateMock: vi.fn(),
+  notifyWorkflowMutationMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -45,6 +47,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/server/services/workflow-dashboard-cache', () => ({
+  notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
 import { POST } from './route';
@@ -87,7 +93,11 @@ describe('/api/set-audits POST', () => {
     setAuditCreateMock.mockResolvedValue({ id: 'audit_1' });
     setAuditFindFirstMock.mockResolvedValue(null);
     // Default cycle state: 'setting' (valid source for approved/partial_approved → set_audited)
-    medicationCycleFindFirstMock.mockResolvedValue({ id: 'cycle_1', overall_status: 'setting', version: 1 });
+    medicationCycleFindFirstMock.mockResolvedValue({
+      id: 'cycle_1',
+      overall_status: 'setting',
+      version: 1,
+    });
     medicationCycleUpdateManyMock.mockResolvedValue({ count: 1 });
     cycleTransitionLogCreateMock.mockResolvedValue({});
     visitScheduleUpdateManyMock.mockResolvedValue({ count: 1 });
@@ -108,7 +118,9 @@ describe('/api/set-audits POST', () => {
         },
         medicationCycle: {
           findFirst: medicationCycleFindFirstMock,
-          findFirstOrThrow: vi.fn().mockResolvedValue({ id: 'cycle_1', overall_status: 'set_audited' }),
+          findFirstOrThrow: vi
+            .fn()
+            .mockResolvedValue({ id: 'cycle_1', overall_status: 'set_audited' }),
           updateMany: medicationCycleUpdateManyMock,
         },
         cycleTransitionLog: {
@@ -124,7 +136,7 @@ describe('/api/set-audits POST', () => {
           create: workflowExceptionCreateMock,
           updateMany: vi.fn().mockResolvedValue({ count: 0 }),
         },
-      })
+      }),
     );
   });
 
@@ -135,8 +147,8 @@ describe('/api/set-audits POST', () => {
           plan_id: 'plan_1',
           result: 'approved',
         },
-        { 'x-org-id': 'org_1' }
-      )
+        { 'x-org-id': 'org_1' },
+      ),
     );
 
     if (!response) throw new Error('response is required');
@@ -158,6 +170,51 @@ describe('/api/set-audits POST', () => {
     });
   });
 
+  it('returns 404 for unassigned pharmacist set audits before writes or downstream side effects', async () => {
+    setPlanFindFirstMock.mockResolvedValue(null);
+
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expect(setPlanFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'plan_1',
+        org_id: 'org_1',
+        AND: [
+          {
+            cycle: {
+              case_: expect.objectContaining({
+                OR: expect.arrayContaining([
+                  { primary_pharmacist_id: 'user_1' },
+                  { backup_pharmacist_id: 'user_1' },
+                  { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+                ]),
+              }),
+            },
+          },
+        ],
+      },
+      select: { id: true, cycle_id: true },
+    });
+    expect(setBatchFindManyMock).not.toHaveBeenCalled();
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(taskCreateMock).not.toHaveBeenCalled();
+    expect(workflowExceptionCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('marks visit schedules partial and creates a rework task on partial approval', async () => {
     const response = await POST(
       createRequest(
@@ -168,8 +225,8 @@ describe('/api/set-audits POST', () => {
             '1-morning': true,
           },
         },
-        { 'x-org-id': 'org_1' }
-      )
+        { 'x-org-id': 'org_1' },
+      ),
     );
 
     if (!response) throw new Error('response is required');
@@ -242,8 +299,8 @@ describe('/api/set-audits POST', () => {
             '2-evening': true,
           },
         },
-        { 'x-org-id': 'org_1' }
-      )
+        { 'x-org-id': 'org_1' },
+      ),
     );
 
     if (!response) throw new Error('response is required');
@@ -272,7 +329,11 @@ describe('/api/set-audits POST', () => {
 
   it('blocks visit schedules on rejected audits', async () => {
     // rejected transitions set_audited → setting
-    medicationCycleFindFirstMock.mockResolvedValue({ id: 'cycle_1', overall_status: 'set_audited', version: 1 });
+    medicationCycleFindFirstMock.mockResolvedValue({
+      id: 'cycle_1',
+      overall_status: 'set_audited',
+      version: 1,
+    });
     const response = await POST(
       createRequest(
         {
@@ -280,8 +341,8 @@ describe('/api/set-audits POST', () => {
           result: 'rejected',
           reject_reason: '数量誤り',
         },
-        { 'x-org-id': 'org_1' }
-      )
+        { 'x-org-id': 'org_1' },
+      ),
     );
 
     if (!response) throw new Error('response is required');

@@ -17,9 +17,9 @@
  *   "JOB_API_KEY": "..."
  * }
  *
- * Secret name convention: careviax/{env}/app-secrets
- *   e.g. careviax/production/app-secrets
- *        careviax/staging/app-secrets
+ * Secret name convention: ph-os/{env}/app-secrets
+ *   e.g. ph-os/production/app-secrets
+ *        ph-os/staging/app-secrets
  */
 
 import { APP_ENV } from './app-env';
@@ -59,7 +59,7 @@ const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 // ---------------------------------------------------------------------------
 
 function secretName(): string {
-  return `careviax/${APP_ENV}/app-secrets`;
+  return `ph-os/${APP_ENV}/app-secrets`;
 }
 
 // ---------------------------------------------------------------------------

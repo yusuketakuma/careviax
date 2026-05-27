@@ -15,6 +15,7 @@ import {
   attachJahisSupplementalRecordsToIntake,
   readJahisSupplementalRecords,
 } from '@/server/services/jahis-supplemental-records';
+import { broadcastOrgRealtimeEvent } from '@/server/services/org-realtime';
 
 function validateSplitDispense(input: {
   split_dispense_total?: number;
@@ -275,6 +276,11 @@ export const POST = withAuth(
             confirmed_intake_id: result.intake.id,
           },
         });
+      });
+
+      await broadcastOrgRealtimeEvent({
+        orgId: req.orgId,
+        type: 'qr_draft_confirmed',
       });
     }
 

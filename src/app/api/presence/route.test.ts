@@ -4,12 +4,16 @@ import type { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   userFindUniqueMock,
+  visitRecordFindFirstMock,
+  dispenseTaskFindFirstMock,
   setPresenceMock,
   getPresenceMock,
   broadcastStatusUpdateMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   userFindUniqueMock: vi.fn(),
+  visitRecordFindFirstMock: vi.fn(),
+  dispenseTaskFindFirstMock: vi.fn(),
   setPresenceMock: vi.fn(),
   getPresenceMock: vi.fn(),
   broadcastStatusUpdateMock: vi.fn(),
@@ -22,6 +26,8 @@ vi.mock('@/lib/auth/context', () => ({
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     user: { findUnique: userFindUniqueMock },
+    visitRecord: { findFirst: visitRecordFindFirstMock },
+    dispenseTask: { findFirst: dispenseTaskFindFirstMock },
   },
 }));
 
@@ -56,6 +62,8 @@ describe('/api/presence', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue(authCtx);
+    visitRecordFindFirstMock.mockResolvedValue({ id: 'vr_1' });
+    dispenseTaskFindFirstMock.mockResolvedValue({ id: 'dt_1' });
   });
 
   describe('POST', () => {
@@ -70,9 +78,41 @@ describe('/api/presence', () => {
       });
       const res = await POST(req);
       expect(res!.status).toBe(200);
+      expect(visitRecordFindFirstMock).toHaveBeenCalledWith({
+        where: {
+          id: 'vr_1',
+          org_id: 'org_1',
+          AND: [
+            {
+              schedule: {
+                OR: [
+                  { pharmacist_id: 'user_1' },
+                  { case_: { primary_pharmacist_id: 'user_1' } },
+                  { case_: { backup_pharmacist_id: 'user_1' } },
+                ],
+              },
+            },
+          ],
+        },
+        select: { id: true },
+      });
       expect(setPresenceMock).toHaveBeenCalledWith(
-        'org_1', 'visit_record', 'vr_1', 'user_1', 'Taro', 'soap_plan'
+        'org_1',
+        'visit_record',
+        'vr_1',
+        'user_1',
+        'Taro',
+        'soap_plan',
       );
+      expect(broadcastStatusUpdateMock).toHaveBeenCalledWith('presence:org_1:visit_record:vr_1', {
+        type: 'presence_update',
+        entity_type: 'visit_record',
+        entity_id: 'vr_1',
+        user_id: 'user_1',
+        display_name: 'Taro',
+        active_field: 'soap_plan',
+        updated_at: expect.any(String),
+      });
     });
 
     it('returns 400 on invalid body', async () => {
@@ -81,6 +121,101 @@ describe('/api/presence', () => {
       });
       const res = await POST(req);
       expect(res!.status).toBe(400);
+      expect(setPresenceMock).not.toHaveBeenCalled();
+      expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 before writing or broadcasting when the entity is inaccessible', async () => {
+      visitRecordFindFirstMock.mockResolvedValue(null);
+
+      const req = createRequest('http://localhost/api/presence', {
+        entity_type: 'visit_record',
+        entity_id: 'vr_unassigned',
+        active_field: 'soap_plan',
+      });
+      const res = await POST(req);
+
+      expect(res!.status).toBe(404);
+      expect(userFindUniqueMock).not.toHaveBeenCalled();
+      expect(setPresenceMock).not.toHaveBeenCalled();
+      expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
+    });
+
+    it('authorizes dispense task presence through medication-cycle assignment scope', async () => {
+      userFindUniqueMock.mockResolvedValue({ name: 'Taro' });
+      broadcastStatusUpdateMock.mockResolvedValue(undefined);
+
+      const req = createRequest('http://localhost/api/presence', {
+        entity_type: 'dispense_task',
+        entity_id: 'dt_1',
+        active_field: null,
+      });
+      const res = await POST(req);
+
+      expect(res!.status).toBe(200);
+      expect(dispenseTaskFindFirstMock).toHaveBeenCalledWith({
+        where: {
+          id: 'dt_1',
+          org_id: 'org_1',
+          cycle: {
+            case_: {
+              OR: [
+                { primary_pharmacist_id: 'user_1' },
+                { backup_pharmacist_id: 'user_1' },
+                { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+              ],
+            },
+          },
+        },
+        select: { id: true },
+      });
+      expect(setPresenceMock).toHaveBeenCalledWith(
+        'org_1',
+        'dispense_task',
+        'dt_1',
+        'user_1',
+        'Taro',
+        null,
+      );
+      expect(broadcastStatusUpdateMock).toHaveBeenCalledWith('presence:org_1:dispense_task:dt_1', {
+        type: 'presence_update',
+        entity_type: 'dispense_task',
+        entity_id: 'dt_1',
+        user_id: 'user_1',
+        display_name: 'Taro',
+        active_field: null,
+        updated_at: expect.any(String),
+      });
+    });
+
+    it('keeps the heartbeat successful when realtime broadcast fails', async () => {
+      userFindUniqueMock.mockResolvedValue({ name: 'Taro' });
+      broadcastStatusUpdateMock.mockRejectedValue(new Error('redis unavailable'));
+
+      const req = createRequest('http://localhost/api/presence', {
+        entity_type: 'visit_record',
+        entity_id: 'vr_1',
+        active_field: 'soap_plan',
+      });
+      const res = await POST(req);
+
+      expect(res!.status).toBe(200);
+      expect(setPresenceMock).toHaveBeenCalledWith(
+        'org_1',
+        'visit_record',
+        'vr_1',
+        'user_1',
+        'Taro',
+        'soap_plan',
+      );
+      expect(broadcastStatusUpdateMock).toHaveBeenCalledWith(
+        'presence:org_1:visit_record:vr_1',
+        expect.objectContaining({
+          type: 'presence_update',
+          entity_type: 'visit_record',
+          entity_id: 'vr_1',
+        }),
+      );
     });
   });
 
@@ -89,17 +224,59 @@ describe('/api/presence', () => {
       const entries = [{ user_id: 'user_1', display_name: 'Taro' }];
       getPresenceMock.mockReturnValue(entries);
 
-      const req = createRequest('http://localhost/api/presence?entity_type=visit_record&entity_id=vr_1');
+      const req = createRequest(
+        'http://localhost/api/presence?entity_type=visit_record&entity_id=vr_1',
+      );
       const res = await GET(req);
       expect(res!.status).toBe(200);
       const json = await res!.json();
       expect(json).toHaveLength(1);
+      expect(visitRecordFindFirstMock).toHaveBeenCalledWith({
+        where: {
+          id: 'vr_1',
+          org_id: 'org_1',
+          AND: [
+            {
+              schedule: {
+                OR: [
+                  { pharmacist_id: 'user_1' },
+                  { case_: { primary_pharmacist_id: 'user_1' } },
+                  { case_: { backup_pharmacist_id: 'user_1' } },
+                ],
+              },
+            },
+          ],
+        },
+        select: { id: true },
+      });
     });
 
     it('returns 400 when params missing', async () => {
       const req = createRequest('http://localhost/api/presence');
       const res = await GET(req);
       expect(res!.status).toBe(400);
+      expect(getPresenceMock).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for unsupported entity types before reading presence', async () => {
+      const req = createRequest(
+        'http://localhost/api/presence?entity_type=patient&entity_id=patient_1',
+      );
+      const res = await GET(req);
+      expect(res!.status).toBe(400);
+      expect(getPresenceMock).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 before reading presence entries when the entity is inaccessible', async () => {
+      visitRecordFindFirstMock.mockResolvedValue(null);
+
+      const req = createRequest(
+        'http://localhost/api/presence?entity_type=visit_record&entity_id=vr_unassigned',
+      );
+      const res = await GET(req);
+
+      expect(res!.status).toBe(404);
+      expect(getPresenceMock).not.toHaveBeenCalled();
     });
   });
 });

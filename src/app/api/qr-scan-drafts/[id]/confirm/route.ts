@@ -6,7 +6,7 @@ import {
   attachJahisSupplementalRecordsToIntake,
   readJahisSupplementalRecords,
 } from '@/server/services/jahis-supplemental-records';
-import { getRealtimeAdapter } from '@/server/adapters/realtime';
+import { broadcastOrgRealtimeEvent } from '@/server/services/org-realtime';
 import { z } from 'zod';
 import {
   buildQrDraftAssignmentWhere,
@@ -204,15 +204,10 @@ export const POST = withAuth(
     }
 
     // Broadcast realtime event (best-effort)
-    try {
-      const adapter = getRealtimeAdapter();
-      adapter.broadcastStatusUpdate(`org:${req.orgId}:qr-drafts`, {
-        type: 'qr_draft_confirmed',
-        payload: { draftId: id, intakeId: result.intake.id, cycleId: result.cycle.id },
-      });
-    } catch {
-      // Realtime broadcast is best-effort
-    }
+    await broadcastOrgRealtimeEvent({
+      orgId: req.orgId,
+      type: 'qr_draft_confirmed',
+    });
 
     return success(
       {

@@ -44,7 +44,7 @@ describe('EPrescriptionAdapter', () => {
               patientExternalId: 'patient-ext-1',
               patientName: '患者一郎',
               prescriberName: '医師太郎',
-              prescriberInstitution: 'CareViaX Clinic',
+              prescriberInstitution: 'PH-OS Clinic',
               status: 'issued',
               items: [],
             },

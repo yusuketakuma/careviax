@@ -72,4 +72,37 @@ describe('Sentry redaction', () => {
       },
     });
   });
+
+  it('removes collaboration room tokens from WebSocket URLs', () => {
+    expect(
+      redactSharedUrl('wss://abc.execute-api.ap-northeast-1.amazonaws.com/prod?token=room-token'),
+    ).toBe('wss://abc.execute-api.ap-northeast-1.amazonaws.com/prod');
+    expect(
+      redactSharedUrl(
+        'WebSocket failed: ws://localhost:1234/org_1:dispense_task:dt_1?token=room-token&retry=1',
+      ),
+    ).toBe('WebSocket failed: ws://localhost:1234/org_1:dispense_task:dt_1?retry=1');
+  });
+
+  it('redacts collaboration token fields and generic token payload fields', () => {
+    const breadcrumb = sanitizeSentryBreadcrumb({
+      category: 'websocket',
+      data: {
+        url: 'wss://abc.execute-api.ap-northeast-1.amazonaws.com/prod?token=room-token',
+        token: 'room-token',
+        room_token: 'room-token',
+        collaboration_token: 'collaboration-token',
+      },
+    });
+
+    expect(breadcrumb).toEqual({
+      category: 'websocket',
+      data: {
+        url: 'wss://abc.execute-api.ap-northeast-1.amazonaws.com/prod',
+        token: '[REDACTED]',
+        room_token: '[REDACTED]',
+        collaboration_token: '[REDACTED]',
+      },
+    });
+  });
 });

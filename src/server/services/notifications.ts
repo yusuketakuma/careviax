@@ -5,7 +5,7 @@ import { SmsNotificationAdapter } from '@/server/adapters/sms';
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? 'mailto:noreply@careviax.jp';
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? 'mailto:noreply@ph-os.jp';
 
 function getWebPushEnabled() {
   return Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);

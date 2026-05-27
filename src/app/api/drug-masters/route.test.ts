@@ -139,4 +139,20 @@ describe('/api/drug-masters GET', () => {
       }),
     );
   });
+
+  it.each(['abc', '-10', '25abc'])('uses a safe offset for malformed cursor %s', async (cursor) => {
+    const response = await GET(
+      createRequest(`http://localhost/api/drug-masters?cursor=${encodeURIComponent(cursor)}`),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(drugMasterFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 0,
+        take: 51,
+      }),
+    );
+  });
 });

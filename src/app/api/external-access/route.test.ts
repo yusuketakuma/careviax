@@ -654,7 +654,7 @@ describe('/api/external-access POST', () => {
     });
     expect(sendSmsMock).toHaveBeenCalledWith(
       '090-1234-5678',
-      expect.stringContaining('CareViaX共有OTP:'),
+      expect.stringContaining('PH-OS共有OTP:'),
     );
     expect(validateExternalAccessScopeForRoleMock).toHaveBeenCalledWith(
       { medication_list: true },

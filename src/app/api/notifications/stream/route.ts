@@ -3,6 +3,7 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { acquireSseConnection, releaseSseConnection } from '@/lib/api/rate-limit';
 import { getRealtimeAdapter } from '@/server/adapters/realtime';
+import { sanitizeOrgRealtimeEvent } from '@/server/services/org-realtime';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -10,7 +11,6 @@ export const runtime = 'nodejs';
 const KEEPALIVE_INTERVAL_MS = 30_000;
 const POLL_INTERVAL_MS = 5_000;
 const MAX_STREAM_DURATION_MS = 5 * 60_000;
-
 export async function GET(req: NextRequest) {
   const authResult = await requireAuthContext(req);
   if ('response' in authResult) return authResult.response;
@@ -21,11 +21,12 @@ export async function GET(req: NextRequest) {
   if (!sseResult.allowed) {
     return new Response(
       JSON.stringify({ code: 'SSE_CONNECTION_LIMIT', message: '同時接続数の上限に達しました' }),
-      { status: 429, headers: { 'Content-Type': 'application/json' } }
+      { status: 429, headers: { 'Content-Type': 'application/json' } },
     );
   }
 
   const encoder = new TextEncoder();
+  let teardownStream: (() => void) | null = null;
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -34,8 +35,14 @@ export async function GET(req: NextRequest) {
       let stopped = false;
       let keepaliveTimer: ReturnType<typeof setTimeout> | null = null;
       let pollTimer: ReturnType<typeof setTimeout> | null = null;
-      let realtimeActive = false;
       let lastCheckAt = new Date();
+      let adapter: ReturnType<typeof getRealtimeAdapter> | null = null;
+      const subscribedChannels = new Map<string, (data: unknown) => void>();
+      const orgChannel = `org:${orgId}`;
+      const userChannel = `user:${userId}`;
+      const orgListener = (data: unknown) => sendEvent(sanitizeOrgRealtimeEvent(data));
+      const userListener = (data: unknown) => sendEvent(data);
+      let abortHandler: (() => void) | null = null;
 
       const teardown = () => {
         if (stopped) return;
@@ -43,10 +50,13 @@ export async function GET(req: NextRequest) {
         if (keepaliveTimer) clearTimeout(keepaliveTimer);
         if (pollTimer) clearTimeout(pollTimer);
         clearTimeout(lifetime);
+        if (abortHandler) req.signal.removeEventListener('abort', abortHandler);
         // Unsubscribe realtime listeners to prevent memory leaks
-        if (adapter && realtimeActive) {
-          adapter.unsubscribeFromChannel(`org:${orgId}`, listener);
-          adapter.unsubscribeFromChannel(`user:${userId}`, listener);
+        if (adapter) {
+          for (const [channel, listener] of subscribedChannels) {
+            adapter.unsubscribeFromChannel(channel, listener);
+          }
+          subscribedChannels.clear();
         }
         releaseSseConnection(userId);
         try {
@@ -55,8 +65,15 @@ export async function GET(req: NextRequest) {
           // Already closed
         }
       };
+      teardownStream = teardown;
 
       const lifetime = setTimeout(teardown, MAX_STREAM_DURATION_MS);
+      abortHandler = teardown;
+      req.signal.addEventListener('abort', abortHandler, { once: true });
+      if (req.signal.aborted) {
+        teardown();
+        return;
+      }
 
       const sendEvent = (data: unknown) => {
         if (stopped) return;
@@ -81,19 +98,33 @@ export async function GET(req: NextRequest) {
       keepaliveTimer = setTimeout(heartbeat, KEEPALIVE_INTERVAL_MS);
 
       // Try realtime adapter subscription
-      let adapter: ReturnType<typeof getRealtimeAdapter> | null = null;
-      const listener = (data: unknown) => sendEvent(data);
-
       try {
         adapter = getRealtimeAdapter();
-        await Promise.all([
-          adapter.subscribeToChannel(`org:${orgId}`, listener),
-          adapter.subscribeToChannel(`user:${userId}`, listener),
+        const subscribeToTrackedChannel = async (
+          channel: string,
+          listener: (data: unknown) => void,
+        ) => {
+          subscribedChannels.set(channel, listener);
+          try {
+            await adapter?.subscribeToChannel(channel, listener);
+          } catch (error) {
+            adapter?.unsubscribeFromChannel(channel, listener);
+            subscribedChannels.delete(channel);
+            throw error;
+          }
+          if (stopped) {
+            adapter?.unsubscribeFromChannel(channel, listener);
+            subscribedChannels.delete(channel);
+          }
+        };
+        await Promise.allSettled([
+          subscribeToTrackedChannel(orgChannel, orgListener),
+          subscribeToTrackedChannel(userChannel, userListener),
         ]);
-        realtimeActive = true;
       } catch {
-        realtimeActive = false;
+        // Fall back to polling when the realtime adapter cannot be created.
       }
+      if (stopped) return;
 
       // Poll unread notifications regardless of adapter availability.
       const poll = async () => {
@@ -128,8 +159,9 @@ export async function GET(req: NextRequest) {
       };
 
       pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
-
-      req.signal.addEventListener('abort', teardown);
+    },
+    cancel() {
+      teardownStream?.();
     },
   });
 

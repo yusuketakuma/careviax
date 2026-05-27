@@ -29,12 +29,12 @@ export async function sendCareReportEmail({
   const labels = await getLabelDictionaryValues([
     {
       key: 'mail.care_report.subject',
-      fallback: '【CareViaX】{{reportType}}をお送りします',
+      fallback: '【PH-OS】{{reportType}}をお送りします',
     },
     {
       key: 'mail.care_report.intro',
       fallback:
-        '{{recipientName}} 様\n\nCareViaXより {{reportType}} をお送りします。報告書ID: {{reportId}}',
+        '{{recipientName}} 様\n\nPH-OSより {{reportType}} をお送りします。報告書ID: {{reportId}}',
     },
     {
       key: 'mail.care_report.pdf_line',
@@ -43,7 +43,7 @@ export async function sendCareReportEmail({
     {
       key: 'mail.care_report.footer',
       fallback:
-        '本メールは CareViaX から自動送信されています。ご不明点があれば送信元薬局へご連絡ください。',
+        '本メールは PH-OS から自動送信されています。ご不明点があれば送信元薬局へご連絡ください。',
     },
   ]);
 

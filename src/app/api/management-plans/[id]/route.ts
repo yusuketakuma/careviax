@@ -4,6 +4,7 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
+import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { updateManagementPlanSchema } from '@/lib/validations/management-plan';
 import {
   resolveManagementPlanReviewAlert,
@@ -22,10 +23,12 @@ export async function GET(
   const { ctx } = authResult;
 
   const { id } = await params;
+  const assignmentWhere = buildCareCaseAssignmentWhere(ctx);
   const plan = await prisma.managementPlan.findFirst({
     where: {
       id,
       org_id: ctx.orgId,
+      ...(assignmentWhere ? { case_: assignmentWhere } : {}),
     },
   });
 
@@ -53,10 +56,12 @@ export async function PATCH(
   }
 
   const { id } = await params;
+  const assignmentWhere = buildCareCaseAssignmentWhere(ctx);
   const existing = await prisma.managementPlan.findFirst({
     where: {
       id,
       org_id: ctx.orgId,
+      ...(assignmentWhere ? { case_: assignmentWhere } : {}),
     },
     include: {
       case_: {

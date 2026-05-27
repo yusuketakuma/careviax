@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
 const {
@@ -72,6 +72,8 @@ function createRequest() {
 describe('/api/billing-evidence/stats GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-02-28T15:30:00.000Z'));
     requireAuthContextMock.mockResolvedValue({
       ctx: {
         orgId: 'org_1',
@@ -125,6 +127,10 @@ describe('/api/billing-evidence/stats GET', () => {
     careReportCountMock.mockResolvedValue(5);
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('returns SSOT-aware billing evidence stats', async () => {
     const response = await GET(createRequest());
 
@@ -158,5 +164,30 @@ describe('/api/billing-evidence/stats GET', () => {
         undrafted_reports: 5,
       },
     });
+    const marchBillingMonth = new Date('2026-03-01T00:00:00.000Z');
+    expect(billingEvidenceFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          billing_month: marchBillingMonth,
+        }),
+      }),
+    );
+    expect(billingCandidateCountMock).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          billing_month: marchBillingMonth,
+        }),
+      }),
+    );
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          scheduled_date: {
+            gte: marchBillingMonth,
+          },
+        }),
+      }),
+    );
   });
 });

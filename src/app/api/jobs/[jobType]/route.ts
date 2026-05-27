@@ -29,9 +29,21 @@ import {
   refreshAllFreeDrugMasters,
   checkDrugMasterFreshness,
   drainMedicationHistoryBulkExportJobs,
+  cleanupExpiredBulkExportArtifacts,
 } from '@/server/jobs';
 
-const JOB_HANDLERS: Record<string, () => Promise<{ processedCount: number; errors?: string[] }>> = {
+type JobExecutionContext = {
+  orgId?: string;
+  authType: 'apiKey' | 'auth';
+};
+
+type JobHandler = (context: JobExecutionContext) => Promise<{
+  processedCount: number;
+  scannedCount?: number;
+  errors?: string[];
+}>;
+
+const JOB_HANDLERS: Record<string, JobHandler> = {
   daily: runDailyOperations,
   evening: runEveningOperations,
   'daily-medication-check': checkMedicationDeadlines,
@@ -47,13 +59,20 @@ const JOB_HANDLERS: Record<string, () => Promise<{ processedCount: number; error
   'daily-visit-support-sync': syncVisitSupportFeatureTasks,
   'evening-unrecorded-visits': checkUnrecordedVisits,
   'next-day': runNextDayOperations,
-  'monthly': runMonthlyOperations,
+  monthly: runMonthlyOperations,
   'drug-master-refresh': refreshSskDrugMaster,
   'drug-reference-refresh': refreshMhlwDrugReferences,
   'drug-master-auto-refresh': refreshAllFreeDrugMasters,
   'drug-master-freshness-check': checkDrugMasterFreshness,
   'pmda-package-insert-refresh': refreshPmdaPackageInsertsDelta,
-  'medication-history-bulk-export-drain': drainMedicationHistoryBulkExportJobs,
+  'medication-history-bulk-export-drain': (context) =>
+    drainMedicationHistoryBulkExportJobs(
+      context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
+    ),
+  'bulk-export-artifact-cleanup': (context) =>
+    cleanupExpiredBulkExportArtifacts(
+      context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
+    ),
   'daily-facility-standard-expiry': checkFacilityStandardExpiry,
   'daily-credential-expiry': checkCredentialExpiry,
   'daily-consent-expiry': checkConsentExpiry,
@@ -61,10 +80,7 @@ const JOB_HANDLERS: Record<string, () => Promise<{ processedCount: number; error
   'daily-prescription-original-retention': checkPrescriptionOriginalRetention,
 };
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ jobType: string }> }
-) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ jobType: string }> }) {
   const { jobType } = await params;
 
   const authResult = await requireApiKeyOrAuthContext(req, {
@@ -76,11 +92,26 @@ export async function POST(
 
   const handler = JOB_HANDLERS[jobType];
   if (!handler) {
-    return error('WORKFLOW_NOT_FOUND', `ジョブタイプ '${jobType}' は存在しません`, 404) as NextResponse;
+    return error(
+      'WORKFLOW_NOT_FOUND',
+      `ジョブタイプ '${jobType}' は存在しません`,
+      404,
+    ) as NextResponse;
   }
 
   try {
-    const result = await handler();
+    const result = await handler({
+      authType: authResult.authType,
+      orgId: authResult.authType === 'auth' ? authResult.ctx.orgId : undefined,
+    });
+    if (jobType === 'bulk-export-artifact-cleanup') {
+      return success({
+        jobType,
+        processedCount: result.processedCount,
+        scannedCount: result.scannedCount,
+        errorCount: result.errors?.length ?? 0,
+      }) as NextResponse;
+    }
     return success({ jobType, ...result }) as NextResponse;
   } catch (err) {
     console.error(`[job:${jobType}]`, err);

@@ -96,7 +96,7 @@ describe('/api/me/mfa/verify POST', () => {
     expect(verifyTotpForAccessTokenMock).toHaveBeenCalledWith({
       accessToken: 'access-token',
       code: '123456',
-      deviceName: 'CareViaX TOTP',
+      deviceName: 'PH-OS TOTP',
     });
     expect(issueMfaRecoveryCodesMock).toHaveBeenCalledWith('user_1');
     await expect(response.json()).resolves.toEqual({

@@ -18,9 +18,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       secretCode: result.SecretCode,
-      otpauthUri: `otpauth://totp/CareViaX:${encodeURIComponent(
+      otpauthUri: `otpauth://totp/PH-OS:${encodeURIComponent(
         session.user.email
-      )}?secret=${result.SecretCode}&issuer=${encodeURIComponent('CareViaX')}`,
+      )}?secret=${result.SecretCode}&issuer=${encodeURIComponent('PH-OS')}`,
     });
   } catch {
     return externalError(

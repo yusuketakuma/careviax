@@ -967,6 +967,7 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
+        event_type: { not: 'patient_self_report' },
         ...buildNullableCaseScope(caseIds),
       },
       orderBy: [{ occurred_at: 'desc' }],

@@ -38,6 +38,8 @@ export const RATE_LIMIT_AUTH_MAX = 5;
  */
 export const RATE_LIMIT_CLEANUP_INTERVAL_MS = 5 * 60_000; // 5 minutes
 
+export const RATE_LIMIT_DDB_TIMEOUT_MS = 1_500;
+
 // ---------------------------------------------------------------------------
 // Internal store
 // ---------------------------------------------------------------------------
@@ -55,46 +57,35 @@ type RateLimitStore = {
 type DynamoRateLimitConfig = {
   tableName: string;
   region: string;
-  credentials: AwsCredentials;
+};
+
+type ContainerCredentialsPayload = {
+  AccessKeyId?: string;
+  SecretAccessKey?: string;
+  Token?: string;
+  Expiration?: string;
 };
 
 const store = new Map<string, RateLimitEntry>();
 let cachedRateLimitStore: RateLimitStore | null = null;
-
-// Periodic cleanup — runs inside the process; safe to skip in test environments.
-// Fix 7: Use NodeJS.Timeout directly; .unref() is always present on Node.js intervals.
-let cleanupTimer: NodeJS.Timeout | null = null;
-
-function startCleanup() {
-  if (cleanupTimer !== null) return;
-  cleanupTimer = setInterval(() => {
-    const now = Date.now();
-    for (const [key, entry] of store.entries()) {
-      if (now > entry.resetAt) {
-        store.delete(key);
-      }
-    }
-  }, RATE_LIMIT_CLEANUP_INTERVAL_MS);
-
-  // Allow the process to exit without waiting for the interval.
-  cleanupTimer.unref();
-}
-
-// Start cleanup unless we are in a test environment where explicit resets are used.
-if (process.env.NODE_ENV !== 'test') {
-  startCleanup();
-}
+let cachedAwsCredentials: { credentials: AwsCredentials; expiresAt: number | null } | null = null;
+let lastCleanupAt = 0;
 
 // ---------------------------------------------------------------------------
 // Core sliding window checker
 // ---------------------------------------------------------------------------
 
-function checkLimit(
-  key: string,
-  maxRequests: number,
-  windowMs: number,
-): { allowed: boolean; remaining: number; resetAt: number } {
+function checkLimit(key: string, maxRequests: number, windowMs: number): RateLimitResult {
   const now = Date.now();
+  if (now - lastCleanupAt > RATE_LIMIT_CLEANUP_INTERVAL_MS) {
+    for (const [entryKey, entry] of store.entries()) {
+      if (now > entry.resetAt) {
+        store.delete(entryKey);
+      }
+    }
+    lastCleanupAt = now;
+  }
+
   const entry = store.get(key);
 
   if (!entry || now > entry.resetAt) {
@@ -105,10 +96,12 @@ function checkLimit(
 
   entry.count += 1;
   const remaining = Math.max(0, maxRequests - entry.count);
+  const allowed = entry.count <= maxRequests;
   return {
-    allowed: entry.count <= maxRequests,
+    allowed,
     remaining,
     resetAt: entry.resetAt,
+    reason: allowed ? undefined : 'quota_exceeded',
   };
 }
 
@@ -122,6 +115,18 @@ class MemoryRateLimitStore implements RateLimitStore {
   }
 }
 
+class DenyAllRateLimitStore implements RateLimitStore {
+  async increment(_key: string, windowMs: number, maxRequests: number): Promise<RateLimitResult> {
+    void maxRequests;
+    return {
+      allowed: false,
+      remaining: 0,
+      resetAt: Date.now() + windowMs,
+      reason: 'store_misconfigured',
+    };
+  }
+}
+
 function resolveDynamoRateLimitConfig(): DynamoRateLimitConfig | null {
   if (process.env.RATE_LIMIT_STORE !== 'dynamodb') {
     return null;
@@ -129,28 +134,144 @@ function resolveDynamoRateLimitConfig(): DynamoRateLimitConfig | null {
 
   const tableName = process.env.RATE_LIMIT_DDB_TABLE_NAME;
   const region = process.env.RATE_LIMIT_DDB_REGION ?? process.env.AWS_REGION;
-  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
 
-  if (!tableName || !region || !accessKeyId || !secretAccessKey) {
+  if (!tableName || !region || !hasRateLimitCredentialSource()) {
     return null;
   }
 
   return {
     tableName,
     region,
-    credentials: {
-      accessKeyId,
-      secretAccessKey,
-      sessionToken: process.env.AWS_SESSION_TOKEN,
-    },
   };
+}
+
+function hasRateLimitCredentialSource() {
+  if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+    return true;
+  }
+  return Boolean(resolveContainerCredentialsUrl());
+}
+
+function resolveStaticAwsCredentials(): AwsCredentials | null {
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+  if (!accessKeyId || !secretAccessKey) return null;
+
+  return {
+    accessKeyId,
+    secretAccessKey,
+    sessionToken: process.env.AWS_SESSION_TOKEN,
+  };
+}
+
+function resolveContainerCredentialsUrl(): string | null {
+  const relativeUri =
+    process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI ??
+    process.env.AWS_ECS_CONTAINER_CREDENTIALS_RELATIVE_URI;
+  if (relativeUri) {
+    if (!relativeUri.startsWith('/')) return null;
+    return `http://169.254.170.2${relativeUri}`;
+  }
+
+  const fullUri = process.env.AWS_CONTAINER_CREDENTIALS_FULL_URI;
+  if (!fullUri) return null;
+
+  try {
+    const parsed = new URL(fullUri);
+    const allowedHosts = new Set(['127.0.0.1', 'localhost', '169.254.170.2']);
+    if (parsed.protocol !== 'http:' || !allowedHosts.has(parsed.hostname)) {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function parseContainerCredentials(payload: ContainerCredentialsPayload): {
+  credentials: AwsCredentials;
+  expiresAt: number | null;
+} | null {
+  if (!payload.AccessKeyId || !payload.SecretAccessKey) return null;
+  const expiresAt = payload.Expiration ? Date.parse(payload.Expiration) : Number.NaN;
+  return {
+    credentials: {
+      accessKeyId: payload.AccessKeyId,
+      secretAccessKey: payload.SecretAccessKey,
+      sessionToken: payload.Token,
+    },
+    expiresAt: Number.isFinite(expiresAt) ? expiresAt : null,
+  };
+}
+
+async function resolveAwsCredentials(): Promise<AwsCredentials> {
+  const now = Date.now();
+  if (
+    cachedAwsCredentials &&
+    (cachedAwsCredentials.expiresAt == null || cachedAwsCredentials.expiresAt - now > 60_000)
+  ) {
+    return cachedAwsCredentials.credentials;
+  }
+
+  const credentialsUrl = resolveContainerCredentialsUrl();
+  if (credentialsUrl) {
+    const headers: Record<string, string> = {};
+    const authToken = process.env.AWS_CONTAINER_AUTHORIZATION_TOKEN;
+    if (authToken) {
+      headers.Authorization = authToken;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), resolveDynamoTimeoutMs());
+    try {
+      const response = await fetch(credentialsUrl, {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(`AWS container credentials request failed: ${response.status}`);
+      }
+      const parsed = parseContainerCredentials(
+        (await response.json()) as ContainerCredentialsPayload,
+      );
+      if (!parsed) {
+        throw new Error('AWS container credentials response is missing required fields');
+      }
+      cachedAwsCredentials = parsed;
+      return parsed.credentials;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  const staticCredentials = resolveStaticAwsCredentials();
+  if (staticCredentials) return staticCredentials;
+
+  throw new Error('AWS credentials are not configured for the DynamoDB rate-limit store');
+}
+
+function resolveDynamoTimeoutMs() {
+  const configured = Number.parseInt(process.env.RATE_LIMIT_DDB_TIMEOUT_MS ?? '', 10);
+  if (Number.isFinite(configured) && configured > 0) {
+    return configured;
+  }
+
+  return RATE_LIMIT_DDB_TIMEOUT_MS;
+}
+
+function isProductionRuntime() {
+  return (
+    process.env.NODE_ENV === 'production' ||
+    process.env.APP_ENV === 'production' ||
+    process.env.NEXT_PUBLIC_APP_ENV === 'production'
+  );
 }
 
 class DynamoRateLimitStore implements RateLimitStore {
   constructor(
     private readonly config: DynamoRateLimitConfig,
-    private readonly fallback: MemoryRateLimitStore
+    private readonly fallback: MemoryRateLimitStore,
   ) {}
 
   async increment(key: string, windowMs: number, maxRequests: number): Promise<RateLimitResult> {
@@ -182,13 +303,21 @@ class DynamoRateLimitStore implements RateLimitStore {
         region: this.config.region,
         body: requestBody,
         target: 'DynamoDB_20120810.UpdateItem',
-        credentials: this.config.credentials,
+        credentials: await resolveAwsCredentials(),
       });
-      const response = await fetch(`https://${signedRequest.host}/`, {
-        method: 'POST',
-        headers: signedRequest.headers,
-        body: requestBody,
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), resolveDynamoTimeoutMs());
+      let response: Response;
+      try {
+        response = await fetch(`https://${signedRequest.host}/`, {
+          method: 'POST',
+          headers: signedRequest.headers,
+          body: requestBody,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
 
       if (!response.ok) {
         throw new Error(`DynamoDB rate limit request failed: ${response.status}`);
@@ -207,8 +336,19 @@ class DynamoRateLimitStore implements RateLimitStore {
         allowed: count <= maxRequests,
         remaining: Math.max(0, maxRequests - count),
         resetAt: resolvedResetAt,
+        reason: count <= maxRequests ? undefined : 'quota_exceeded',
       };
     } catch (error) {
+      if (isProductionRuntime()) {
+        console.error('[rate-limit] DynamoDB store unavailable; denying request', error);
+        return {
+          allowed: false,
+          remaining: 0,
+          resetAt,
+          reason: 'store_unavailable',
+        };
+      }
+
       console.error('[rate-limit] Falling back to in-memory store', error);
       return this.fallback.increment(key, windowMs, maxRequests);
     }
@@ -229,12 +369,14 @@ function getRateLimitStore(): RateLimitStore {
 
   // Production guard: in-memory store is not safe for multi-instance deployments.
   // RATE_LIMIT_STORE=dynamodb must be configured in production to prevent bypass.
-  if (process.env.NODE_ENV === 'production' && !dynamoConfig) {
+  if (isProductionRuntime() && !dynamoConfig) {
     console.error(
-      '[rate-limit] CRITICAL: RATE_LIMIT_STORE is not set to "dynamodb" in production. ' +
-        'In-memory rate limiting is per-process and can be bypassed across instances. ' +
-        'Set RATE_LIMIT_STORE=dynamodb and RATE_LIMIT_DDB_TABLE_NAME to enable distributed limiting.'
+      '[rate-limit] CRITICAL: distributed rate limiting is not fully configured in production. ' +
+        'Denying API requests instead of falling back to per-process memory. ' +
+        'Set RATE_LIMIT_STORE=dynamodb, RATE_LIMIT_DDB_TABLE_NAME, and an AWS role/credential source.',
     );
+    cachedRateLimitStore = new DenyAllRateLimitStore();
+    return cachedRateLimitStore;
   }
 
   cachedRateLimitStore = dynamoConfig
@@ -255,6 +397,338 @@ function isReadMethod(method: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Route canonicalization
+// ---------------------------------------------------------------------------
+
+const UNKNOWN_API_RATE_LIMIT_PATH = '/api/__unknown__';
+
+export const API_ROUTE_TEMPLATES = [
+  '/api/admin/data-explorer/:id',
+  '/api/admin/data-explorer/:id/:id',
+  '/api/admin/data-explorer/models',
+  '/api/admin/escalation-rules',
+  '/api/admin/escalation-rules/:id',
+  '/api/admin/external-professionals',
+  '/api/admin/external-professionals/:id',
+  '/api/admin/external-professionals/:id/communications',
+  '/api/admin/external-professionals/:id/patients',
+  '/api/admin/facilities',
+  '/api/admin/facilities/:id',
+  '/api/admin/facilities/:id/contacts',
+  '/api/admin/facilities/:id/patients',
+  '/api/admin/facilities/:id/units',
+  '/api/admin/facilities/:id/units/:id',
+  '/api/admin/facilities/:id/visit-batches',
+  '/api/admin/facility-standards',
+  '/api/admin/flush-metrics',
+  '/api/admin/master-readiness',
+  '/api/admin/metrics',
+  '/api/admin/organizations',
+  '/api/admin/performance-metrics',
+  '/api/admin/pharmacist-credentials',
+  '/api/admin/pharmacist-credentials/:id',
+  '/api/admin/pilot-launch-dossier',
+  '/api/admin/pilot-org-audit',
+  '/api/admin/pilot-readiness',
+  '/api/admin/reject-reason-stats',
+  '/api/admin/staff-metrics',
+  '/api/admin/uat-feedback',
+  '/api/admin/uat-feedback/:id',
+  '/api/admin/uat-feedback/summary',
+  '/api/admin/webhooks',
+  '/api/audit-logs',
+  '/api/audit-logs/export',
+  '/api/auth/:path*',
+  '/api/auth/mfa/recovery',
+  '/api/auth/password/reset/confirm',
+  '/api/auth/password/reset/request',
+  '/api/billing-candidates',
+  '/api/billing-candidates/:id',
+  '/api/billing-candidates/close',
+  '/api/billing-candidates/export',
+  '/api/billing-evidence/analytics',
+  '/api/billing-evidence/stats',
+  '/api/billing-rules',
+  '/api/billing-rules/:id',
+  '/api/business-holidays',
+  '/api/business-holidays/:id',
+  '/api/care-reports',
+  '/api/care-reports/:id',
+  '/api/care-reports/:id/pdf',
+  '/api/care-reports/:id/send',
+  '/api/care-reports/analytics',
+  '/api/care-reports/generate-from-visit',
+  '/api/care-reports/reminders',
+  '/api/cases',
+  '/api/cases/:id',
+  '/api/cases/:id/transition',
+  '/api/cds/check',
+  '/api/collaboration/room-token',
+  '/api/comments',
+  '/api/comments/:id',
+  '/api/communication-events',
+  '/api/communication-requests',
+  '/api/communication-requests/:id',
+  '/api/communication-requests/:id/responses',
+  '/api/communication-requests/export',
+  '/api/community-activities',
+  '/api/community-activities/:id',
+  '/api/conference-notes',
+  '/api/conference-notes/:id',
+  '/api/conference-notes/:id/generate-report',
+  '/api/conference-notes/:id/pdf',
+  '/api/conference-notes/:id/tasks',
+  '/api/conference-notes/participant-suggestions',
+  '/api/consent-records',
+  '/api/consent-records/:id',
+  '/api/consent-records/:id/revoke',
+  '/api/contact-profiles',
+  '/api/dashboard/dispensing-stats',
+  '/api/dashboard/home/actions',
+  '/api/dashboard/home/patients',
+  '/api/dashboard/medication-deadlines',
+  '/api/dashboard/monthly-stats',
+  '/api/dashboard/overdue',
+  '/api/dashboard/today',
+  '/api/dashboard/workflow',
+  '/api/dispense-audits',
+  '/api/dispense-queue',
+  '/api/dispense-results',
+  '/api/dispense-results/:id',
+  '/api/dispense-tasks',
+  '/api/dispense-tasks/:id',
+  '/api/dispense-tasks/:id/verify-barcode',
+  '/api/document-delivery-rules',
+  '/api/document-delivery-rules/:id',
+  '/api/drug-alert-rules',
+  '/api/drug-alert-rules/:id',
+  '/api/drug-master-import-logs',
+  '/api/drug-master-imports/hot',
+  '/api/drug-master-imports/manual-clinical',
+  '/api/drug-master-imports/mhlw-generic',
+  '/api/drug-master-imports/mhlw-price',
+  '/api/drug-master-imports/pmda',
+  '/api/drug-master-imports/ssk',
+  '/api/drug-master-imports/status',
+  '/api/drug-masters',
+  '/api/drug-masters/:id',
+  '/api/drug-masters/:id/package-insert',
+  '/api/drug-masters/batch',
+  '/api/external-access',
+  '/api/external-access/:id',
+  '/api/external-access/:id/self-report',
+  '/api/external-professionals',
+  '/api/external-professionals/:id',
+  '/api/external-professionals/:id/communications',
+  '/api/external-professionals/:id/patients',
+  '/api/external-professionals/suggestions',
+  '/api/facilities',
+  '/api/facilities/:id',
+  '/api/facilities/:id/contacts',
+  '/api/facilities/:id/patients',
+  '/api/facility-visit-batches',
+  '/api/facility-visit-batches/:id',
+  '/api/facility-visit-batches/visit-days',
+  '/api/files/:id/download',
+  '/api/files/:id/presigned-download',
+  '/api/files/complete',
+  '/api/files/presigned-upload',
+  '/api/first-visit-documents',
+  '/api/handoff-board',
+  '/api/handoff-board/items',
+  '/api/handoff-board/items/:id/read',
+  '/api/health',
+  '/api/inquiry-records',
+  '/api/inquiry-records/:id',
+  '/api/interventions',
+  '/api/interventions/:id',
+  '/api/jobs',
+  '/api/jobs/:id',
+  '/api/management-plans',
+  '/api/management-plans/:id',
+  '/api/management-plans/:id/pdf',
+  '/api/me/activity-summary',
+  '/api/me/logout-all',
+  '/api/me/mfa/disable',
+  '/api/me/mfa/setup',
+  '/api/me/mfa/verify',
+  '/api/me/org',
+  '/api/me/password',
+  '/api/me/profile',
+  '/api/medication-cycles',
+  '/api/medication-cycles/:id/history',
+  '/api/medication-cycles/:id/transition',
+  '/api/medication-issues',
+  '/api/medication-issues/:id',
+  '/api/medication-profiles',
+  '/api/meta/route-catalog',
+  '/api/notification-rules',
+  '/api/notification-rules/:id',
+  '/api/notifications',
+  '/api/notifications/stream',
+  '/api/packaging-methods',
+  '/api/packaging-methods/:id',
+  '/api/patient-self-reports',
+  '/api/patient-self-reports/:id',
+  '/api/patients',
+  '/api/patients/:id',
+  '/api/patients/:id/archive',
+  '/api/patients/:id/care-team',
+  '/api/patients/:id/communications',
+  '/api/patients/:id/conditions',
+  '/api/patients/:id/contacts',
+  '/api/patients/:id/documents',
+  '/api/patients/:id/insurance',
+  '/api/patients/:id/insurance/:id',
+  '/api/patients/:id/labs',
+  '/api/patients/:id/labs/:id',
+  '/api/patients/:id/mcs',
+  '/api/patients/:id/mcs-sync',
+  '/api/patients/:id/medication-calendar/pdf',
+  '/api/patients/:id/medications/pdf',
+  '/api/patients/:id/overview',
+  '/api/patients/:id/packaging',
+  '/api/patients/:id/prescriptions',
+  '/api/patients/:id/prescriptions/e-prescription',
+  '/api/patients/:id/prescriptions/export',
+  '/api/patients/:id/qualification-check',
+  '/api/patients/:id/readiness',
+  '/api/patients/:id/restore',
+  '/api/patients/:id/timeline',
+  '/api/patients/:id/visit-brief',
+  '/api/patients/:id/visit-constraints',
+  '/api/patients/:id/visit-records/pdf',
+  '/api/patients/:id/visits',
+  '/api/patients/:id/workflow-preview',
+  '/api/patients/check-duplicate',
+  '/api/patients/export',
+  '/api/patients/medications/bulk-export',
+  '/api/pharmacist-shift-templates',
+  '/api/pharmacist-shift-templates/:id',
+  '/api/pharmacist-shift-templates/apply',
+  '/api/pharmacist-shifts',
+  '/api/pharmacist-shifts/available',
+  '/api/pharmacist-shifts/bulk',
+  '/api/pharmacists',
+  '/api/pharmacists/:id',
+  '/api/pharmacists/import',
+  '/api/pharmacy-drug-stocks',
+  '/api/pharmacy-sites',
+  '/api/pharmacy-sites/:id',
+  '/api/pharmacy-sites/:id/insurance-configs',
+  '/api/pharmacy-sites/:id/insurance-configs/:id',
+  '/api/prescriber-institutions',
+  '/api/prescriber-institutions/:id',
+  '/api/prescriber-institutions/suggestion',
+  '/api/prescription-intakes',
+  '/api/prescription-intakes/:id',
+  '/api/prescription-intakes/facility-batch',
+  '/api/presence',
+  '/api/push-subscription',
+  '/api/qr-scan-drafts',
+  '/api/qr-scan-drafts/:id',
+  '/api/qr-scan-drafts/:id/confirm',
+  '/api/residual-medications',
+  '/api/service-areas',
+  '/api/service-areas/:id',
+  '/api/set-audits',
+  '/api/set-batches',
+  '/api/set-batches/:id',
+  '/api/set-plans',
+  '/api/set-plans/:id',
+  '/api/set-plans/:id/generate-batches',
+  '/api/settings',
+  '/api/tasks',
+  '/api/tasks/:id',
+  '/api/templates',
+  '/api/templates/:id',
+  '/api/tracing-reports',
+  '/api/tracing-reports/:id',
+  '/api/tracing-reports/:id/pdf',
+  '/api/visit-brief-feedback',
+  '/api/visit-preparations/:id',
+  '/api/visit-preparations/:id/brief',
+  '/api/visit-preparations/brief-batch',
+  '/api/visit-records',
+  '/api/visit-records/:id',
+  '/api/visit-records/:id/handoff',
+  '/api/visit-records/:id/handoff/extract',
+  '/api/visit-records/:id/pdf',
+  '/api/visit-routes',
+  '/api/visit-schedule-proposals',
+  '/api/visit-schedule-proposals/:id',
+  '/api/visit-schedule-proposals/billing-preview',
+  '/api/visit-schedule-proposals/billing-preview-batch',
+  '/api/visit-schedule-proposals/reorder',
+  '/api/visit-schedules',
+  '/api/visit-schedules/:id',
+  '/api/visit-schedules/:id/reschedule',
+  '/api/visit-schedules/:id/reschedule/approve',
+  '/api/visit-schedules/generate',
+  '/api/visit-schedules/reorder',
+  '/api/visit-schedules/today',
+  '/api/workflow-exceptions/:id',
+] as const;
+
+type CompiledRouteTemplate = {
+  template: string;
+  segments: string[];
+  staticSegmentCount: number;
+};
+
+const compiledApiRouteTemplates: CompiledRouteTemplate[] = API_ROUTE_TEMPLATES.map((template) => {
+  const segments = template.split('/').filter(Boolean);
+  return {
+    template,
+    segments,
+    staticSegmentCount: segments.filter(
+      (segment) => !segment.startsWith(':') && !segment.endsWith('*'),
+    ).length,
+  };
+}).sort((left, right) => {
+  if (right.staticSegmentCount !== left.staticSegmentCount) {
+    return right.staticSegmentCount - left.staticSegmentCount;
+  }
+  return right.segments.length - left.segments.length;
+});
+
+function normalizePathname(pathname: string) {
+  const [pathWithoutQuery] = pathname.split('?');
+  const collapsed = (pathWithoutQuery || '/').replace(/\/{2,}/g, '/');
+  return collapsed.length > 1 ? collapsed.replace(/\/+$/, '') : collapsed;
+}
+
+function routeTemplateMatches(template: CompiledRouteTemplate, pathname: string) {
+  const pathSegments = pathname.split('/').filter(Boolean);
+  const catchAllIndex = template.segments.findIndex((segment) => segment.endsWith('*'));
+
+  if (catchAllIndex === -1 && pathSegments.length !== template.segments.length) {
+    return false;
+  }
+  if (catchAllIndex !== -1 && pathSegments.length < catchAllIndex) {
+    return false;
+  }
+
+  return template.segments.every((segment, index) => {
+    if (segment.endsWith('*')) return true;
+    if (segment.startsWith(':')) return Boolean(pathSegments[index]);
+    return segment === pathSegments[index];
+  });
+}
+
+export function canonicalizeRateLimitPath(pathname: string) {
+  const normalized = normalizePathname(pathname);
+  if (normalized !== '/api' && !normalized.startsWith('/api/')) {
+    return normalized;
+  }
+
+  const matched = compiledApiRouteTemplates.find((template) =>
+    routeTemplateMatches(template, normalized),
+  );
+  return matched?.template ?? UNKNOWN_API_RATE_LIMIT_PATH;
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -263,6 +737,7 @@ export interface RateLimitResult {
   remaining: number;
   /** Epoch milliseconds when the current window resets */
   resetAt: number;
+  reason?: 'quota_exceeded' | 'store_misconfigured' | 'store_unavailable';
 }
 
 /**
@@ -280,7 +755,7 @@ export async function checkRateLimit(
   const read = isReadMethod(method);
   const maxRequests = read ? RATE_LIMIT_READ_MAX : RATE_LIMIT_WRITE_MAX;
   const methodBucket = read ? 'read' : 'write';
-  const key = `${methodBucket}:${identifier}:${pathname}`;
+  const key = `${methodBucket}:${identifier}:${canonicalizeRateLimitPath(pathname)}`;
 
   return getRateLimitStore().increment(key, RATE_LIMIT_WINDOW_MS, maxRequests);
 }
@@ -296,7 +771,7 @@ export async function checkAuthRateLimit(
   identifier: string,
   pathname: string,
 ): Promise<RateLimitResult> {
-  const key = `auth:${identifier}:${pathname}`;
+  const key = `auth:${identifier}:${canonicalizeRateLimitPath(pathname)}`;
   return getRateLimitStore().increment(key, RATE_LIMIT_WINDOW_MS, RATE_LIMIT_AUTH_MAX);
 }
 
@@ -305,16 +780,14 @@ export async function checkAuthRateLimit(
  * Returns a function that accepts a string key and returns the limit result.
  */
 export function createRateLimiter(opts: { windowMs: number; maxRequests: number }) {
-  return async (identifier: string): Promise<{
+  return async (
+    identifier: string,
+  ): Promise<{
     allowed: boolean;
     remaining: number;
     resetAt: Date;
   }> => {
-    const result = await getRateLimitStore().increment(
-      identifier,
-      opts.windowMs,
-      opts.maxRequests
-    );
+    const result = await getRateLimitStore().increment(identifier, opts.windowMs, opts.maxRequests);
     return {
       allowed: result.allowed,
       remaining: result.remaining,
@@ -375,4 +848,6 @@ export function resetRateLimitStoreForTests() {
   store.clear();
   sseConnections.clear();
   cachedRateLimitStore = null;
+  cachedAwsCredentials = null;
+  lastCleanupAt = 0;
 }

@@ -13,6 +13,7 @@ const {
   validateOrgReferencesMock,
   upsertOperationalTaskMock,
   careCaseFindFirstMock,
+  broadcastOrgRealtimeEventMock,
 } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
     (handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>) => {
@@ -30,6 +31,7 @@ const {
   validateOrgReferencesMock: vi.fn().mockResolvedValue({ ok: true }),
   upsertOperationalTaskMock: vi.fn().mockResolvedValue({ id: 'task_operational_1' }),
   careCaseFindFirstMock: vi.fn().mockResolvedValue({ id: 'case_1' }),
+  broadcastOrgRealtimeEventMock: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
@@ -47,6 +49,10 @@ vi.mock('@/lib/api/org-reference', () => ({
 vi.mock('@/server/services/operational-tasks', () => ({
   upsertOperationalTask: upsertOperationalTaskMock,
   resolveOperationalTasks: vi.fn(),
+}));
+
+vi.mock('@/server/services/org-realtime', () => ({
+  broadcastOrgRealtimeEvent: broadcastOrgRealtimeEventMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -713,6 +719,10 @@ describe('/api/prescription-intakes POST', () => {
         status: 'confirmed',
         confirmed_intake_id: 'intake_qr',
       },
+    });
+    expect(broadcastOrgRealtimeEventMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      type: 'qr_draft_confirmed',
     });
   });
 

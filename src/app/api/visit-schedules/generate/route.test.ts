@@ -192,6 +192,32 @@ describe('/api/visit-schedules/generate POST', () => {
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects reversed recurring time windows before loading the case', async () => {
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-07',
+        end_date: '2026-04-07',
+        time_window_start: '12:00',
+        time_window_end: '11:00',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        time_window_end: ['終了時刻は開始時刻より後にしてください'],
+      },
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects schedules when patient and facility windows do not overlap', async () => {
     careCaseFindFirstMock.mockResolvedValue(
       buildCareCase({

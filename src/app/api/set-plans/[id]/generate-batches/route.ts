@@ -18,23 +18,24 @@ import {
 } from '@/lib/prescription/packaging';
 import { parseFrequencyToSlots } from '@/lib/dispensing/packaging-group';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+import { buildSetPlanAssignmentWhere } from '@/server/services/prescription-access';
 import { z } from 'zod';
 
 const generateBatchesSchema = z.object({
   force: z.boolean().optional().default(false),
 });
 
-function resolveCarryType(notes: string | null | undefined, packagingInstructions: string | null | undefined) {
+function resolveCarryType(
+  notes: string | null | undefined,
+  packagingInstructions: string | null | undefined,
+) {
   const detail = `${notes ?? ''} ${packagingInstructions ?? ''}`;
   if (/施設預け|施設保管|預け/.test(detail)) return 'facility_deposit';
   if (/後送|配送|後日持参/.test(detail)) return 'deferred';
   return 'carry';
 }
 
-function resolveSlotsForMethod(args: {
-  frequency: string;
-  setMethod: string;
-}) {
+function resolveSlotsForMethod(args: { frequency: string; setMethod: string }) {
   const baseSlots = parseFrequencyToSlots(args.frequency);
   if (baseSlots.includes('prn')) return ['prn'];
   if (args.setMethod === 'bedtime_only') return ['bedtime'];
@@ -50,11 +51,7 @@ function diffInDays(start: Date, end: Date): number {
 }
 
 export const POST = withAuthContext<{ id: string }>(
-  async (
-    req: NextRequest,
-    ctx: AuthContext,
-    routeContext: AuthRouteContext<{ id: string }>
-  ) => {
+  async (req: NextRequest, ctx: AuthContext, routeContext: AuthRouteContext<{ id: string }>) => {
     const { id } = await routeContext.params;
 
     const body = await req.json().catch(() => ({}));
@@ -64,9 +61,14 @@ export const POST = withAuthContext<{ id: string }>(
     }
 
     const { force } = parsed.data;
+    const assignmentWhere = buildSetPlanAssignmentWhere(ctx);
 
     const plan = await prisma.setPlan.findFirst({
-      where: { id: id, org_id: ctx.orgId },
+      where: {
+        id,
+        org_id: ctx.orgId,
+        ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+      },
       select: {
         id: true,
         cycle_id: true,
@@ -142,7 +144,7 @@ export const POST = withAuthContext<{ id: string }>(
     const lineWithoutFrequency = allLines.find((line) => line.frequency.trim().length === 0);
     if (lineWithoutFrequency) {
       return validationError(
-        `投与タイミング未定義の処方があります: ${lineWithoutFrequency.drug_name}`
+        `投与タイミング未定義の処方があります: ${lineWithoutFrequency.drug_name}`,
       );
     }
 
@@ -166,7 +168,11 @@ export const POST = withAuthContext<{ id: string }>(
           orderBy: { updated_at: 'desc' },
           select: { updated_at: true },
         });
-        if (latestBatch && latestIntakeUpdatedAt && latestIntakeUpdatedAt > latestBatch.updated_at) {
+        if (
+          latestBatch &&
+          latestIntakeUpdatedAt &&
+          latestIntakeUpdatedAt > latestBatch.updated_at
+        ) {
           return {
             kind: 'error' as const,
             message: '処方変更があるため、影響セットを再確認して再生成してください',
@@ -223,7 +229,7 @@ export const POST = withAuthContext<{ id: string }>(
           },
         });
         regenerationBeforeSnapshots = existingBatches.map((batch) =>
-          buildSetBatchHistorySnapshot(batch)
+          buildSetBatchHistorySnapshot(batch),
         );
         await tx.setBatch.deleteMany({
           where: { plan_id: id, org_id: ctx.orgId },
@@ -249,9 +255,7 @@ export const POST = withAuthContext<{ id: string }>(
           setMethod: plan.set_method,
         });
         const quantityPerSlot =
-          line.quantity != null && slots.length > 0
-            ? Math.ceil(line.quantity / slots.length)
-            : 1;
+          line.quantity != null && slots.length > 0 ? Math.ceil(line.quantity / slots.length) : 1;
         const carryType = resolveCarryType(line.notes, line.packaging_instructions);
         const resolvedPackaging = resolvePackagingSettings({
           packagingMethod: line.packaging_method ?? undefined,
@@ -343,5 +347,5 @@ export const POST = withAuthContext<{ id: string }>(
 
     return success({ data: result }, result.reused ? 200 : 201);
   },
-  { permission: 'canSet' }
+  { permission: 'canSet' },
 );

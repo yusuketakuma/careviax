@@ -111,10 +111,12 @@ describe('/api/dispense-tasks POST', () => {
       overall_status: 'ready_to_dispense',
       case_: {
         primary_pharmacist_id: 'pharmacist_1',
+        backup_pharmacist_id: 'backup_1',
         patient: {
           name: '山田 太郎',
         },
       },
+      visit_schedules: [{ pharmacist_id: 'schedule_pharmacist_1' }],
     });
   });
 
@@ -134,7 +136,7 @@ describe('/api/dispense-tasks POST', () => {
     });
     const membershipFindManyMock = vi
       .fn()
-      .mockResolvedValue([{ user_id: 'admin_1' }, { user_id: 'pharmacist_1' }]);
+      .mockResolvedValue([{ user_id: 'admin_1' }, { user_id: 'owner_1' }]);
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -177,10 +179,23 @@ describe('/api/dispense-tasks POST', () => {
         eventType: 'dispense_task_emergency_created',
         type: 'urgent',
         link: '/dispensing/task_1',
-        explicitUserIds: expect.arrayContaining(['user_urgent', 'pharmacist_1', 'admin_1']),
+        explicitUserIds: expect.arrayContaining([
+          'pharmacist_1',
+          'backup_1',
+          'schedule_pharmacist_1',
+          'admin_1',
+          'owner_1',
+        ]),
         dedupeKey: 'dispense-task-emergency:task_1',
       }),
     );
+    const notificationInput = dispatchNotificationEventMock.mock.calls[0][1];
+    expect(notificationInput.explicitUserIds).not.toContain('user_urgent');
+    expect(notificationInput.explicitUserIds).not.toContain('unrelated_pharmacist_1');
+    expect(notificationInput.metadata).toMatchObject({
+      patient_id: 'patient_1',
+      task_id: 'task_1',
+    });
   });
 
   it('denies unassigned cycles before creating dispense tasks', async () => {
@@ -215,11 +230,17 @@ describe('/api/dispense-tasks POST', () => {
         case_: {
           select: {
             primary_pharmacist_id: true,
+            backup_pharmacist_id: true,
             patient: {
               select: {
                 name: true,
               },
             },
+          },
+        },
+        visit_schedules: {
+          select: {
+            pharmacist_id: true,
           },
         },
       },

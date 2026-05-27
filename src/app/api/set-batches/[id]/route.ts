@@ -9,6 +9,7 @@ import {
   createSetBatchChangeLog,
 } from '@/lib/prescription/set-batch-history';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+import { buildSetBatchAssignmentWhere } from '@/server/services/prescription-access';
 import { z } from 'zod';
 
 const updateSetBatchSchema = z.object({
@@ -25,9 +26,14 @@ const updateSetBatchSchema = z.object({
 export const GET = withAuthContext<{ id: string }>(
   async (req: NextRequest, ctx: AuthContext, routeContext: AuthRouteContext<{ id: string }>) => {
     const { id } = await routeContext.params;
+    const assignmentWhere = buildSetBatchAssignmentWhere(ctx);
 
     const batch = await prisma.setBatch.findFirst({
-      where: { id, org_id: ctx.orgId },
+      where: {
+        id,
+        org_id: ctx.orgId,
+        ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+      },
       include: {
         line: {
           select: {
@@ -51,7 +57,7 @@ export const GET = withAuthContext<{ id: string }>(
 
     return success({ data: batch });
   },
-  { permission: 'canSet' }
+  { permission: 'canSet' },
 );
 
 export const PATCH = withAuthContext<{ id: string }>(
@@ -69,8 +75,13 @@ export const PATCH = withAuthContext<{ id: string }>(
     const { version, ...updates } = parsed.data;
 
     const result = await withOrgContext(ctx.orgId, async (tx) => {
+      const assignmentWhere = buildSetBatchAssignmentWhere(ctx);
       const existing = await tx.setBatch.findFirst({
-        where: { id, org_id: ctx.orgId },
+        where: {
+          id,
+          org_id: ctx.orgId,
+          ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+        },
         include: {
           line: {
             select: {
@@ -84,7 +95,10 @@ export const PATCH = withAuthContext<{ id: string }>(
       if (!existing) return null;
 
       if (existing.version !== version) {
-        return { error: '他のユーザーによって更新されています。再読み込みしてください', conflict: true } as const;
+        return {
+          error: '他のユーザーによって更新されています。再読み込みしてください',
+          conflict: true,
+        } as const;
       }
 
       const beforeSnapshot = buildSetBatchHistorySnapshot(existing);
@@ -143,15 +157,20 @@ export const PATCH = withAuthContext<{ id: string }>(
 
     return success({ data: result });
   },
-  { permission: 'canSet' }
+  { permission: 'canSet' },
 );
 
 export const DELETE = withAuthContext<{ id: string }>(
   async (req: NextRequest, ctx: AuthContext, routeContext: AuthRouteContext<{ id: string }>) => {
     const { id } = await routeContext.params;
+    const assignmentWhere = buildSetBatchAssignmentWhere(ctx);
 
     const existing = await prisma.setBatch.findFirst({
-      where: { id, org_id: ctx.orgId },
+      where: {
+        id,
+        org_id: ctx.orgId,
+        ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+      },
       include: {
         line: {
           select: {
@@ -187,5 +206,5 @@ export const DELETE = withAuthContext<{ id: string }>(
 
     return success({ data: { id } });
   },
-  { permission: 'canSet' }
+  { permission: 'canSet' },
 );

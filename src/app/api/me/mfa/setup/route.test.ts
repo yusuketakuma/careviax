@@ -38,7 +38,7 @@ describe('/api/me/mfa/setup POST', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       secretCode: 'ABC123',
-      otpauthUri: expect.stringContaining('otpauth://totp/CareViaX:user%40example.com'),
+      otpauthUri: expect.stringContaining('otpauth://totp/PH-OS:user%40example.com'),
     });
   });
 });

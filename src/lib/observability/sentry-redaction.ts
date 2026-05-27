@@ -1,8 +1,8 @@
 const REDACTED = '[REDACTED]';
 const REDACTED_PATH_SEGMENT = '[redacted]';
-const RELATIVE_URL_BASE = 'https://careviax.local';
-// Keys that always carry secret material. We avoid the bare key `token` because
-// the codebase also uses non-secret share / link tokens that are safe to log.
+const RELATIVE_URL_BASE = 'https://ph-os.local';
+// Keys that commonly carry bearer material. Prefer redacting generic `token`
+// fields and keep diagnostics on non-secret links via already-redacted URLs.
 const SENSITIVE_KEYS = new Set([
   'otp',
   'x-otp',
@@ -11,12 +11,15 @@ const SENSITIVE_KEYS = new Set([
   // `set-cookie` is a response header; included for breadcrumbs that capture responses.
   'set-cookie',
   'password',
+  'token',
   'token_hash',
   'otp_hash',
   'auth_token',
   'access_token',
   'refresh_token',
   'session_token',
+  'room_token',
+  'collaboration_token',
   'session_secret',
   'jwt',
   'recovery_code',
@@ -54,6 +57,21 @@ function redactOtpText(value: string): string {
     .replace(/(\b(?:x-otp|otp):\s*)[^\s,}]+/giu, `$1${REDACTED}`);
 }
 
+function redactWebSocketTokenUrl(value: string): string {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') return value;
+    parsed.searchParams.delete('token');
+    return parsed.toString();
+  } catch {
+    return value.replace(/([?&])token=[^&#\s"']*/giu, '$1token=[REDACTED]');
+  }
+}
+
+function redactWebSocketTokenText(value: string): string {
+  return value.replace(/\bwss?:\/\/[^\s"'<>]+/giu, (url) => redactWebSocketTokenUrl(url));
+}
+
 export function redactSharedUrl(value: string): string {
   const trimmed = value.trimStart();
   const isAbsolute = /^[a-z][a-z\d+\-.]*:/iu.test(trimmed);
@@ -61,19 +79,28 @@ export function redactSharedUrl(value: string): string {
     trimmed.startsWith('/') || trimmed.startsWith('?') || trimmed.startsWith('#');
 
   if (!isAbsolute && !isRootRelative) {
-    return redactSharedPathSegments(value).replace(/([?&])otp=[^&#\s]*/giu, `$1otp=${REDACTED}`);
+    return redactWebSocketTokenText(redactSharedPathSegments(value)).replace(
+      /([?&])otp=[^&#\s]*/giu,
+      `$1otp=${REDACTED}`,
+    );
   }
 
   try {
     const parsed = new URL(value, isAbsolute ? undefined : RELATIVE_URL_BASE);
     parsed.searchParams.delete('otp');
+    if (parsed.protocol === 'ws:' || parsed.protocol === 'wss:') {
+      parsed.searchParams.delete('token');
+    }
     const serialized = isAbsolute
       ? parsed.toString()
       : `${parsed.pathname}${parsed.search}${parsed.hash}`;
 
     return redactSharedPathSegments(serialized);
   } catch {
-    return redactSharedPathSegments(value).replace(/([?&])otp=[^&#\s]*/giu, `$1otp=${REDACTED}`);
+    return redactWebSocketTokenText(redactSharedPathSegments(value)).replace(
+      /([?&])otp=[^&#\s]*/giu,
+      `$1otp=${REDACTED}`,
+    );
   }
 }
 

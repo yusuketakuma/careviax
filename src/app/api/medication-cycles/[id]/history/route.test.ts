@@ -63,9 +63,43 @@ describe('/api/medication-cycles/[id]/history', () => {
     const req = createRequest('http://localhost/api/medication-cycles/cycle_1/history');
     const res = await GET(req, { params: Promise.resolve({ id: 'cycle_1' }) });
     expect(res!.status).toBe(200);
+    expect(medicationCycleFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'cycle_1',
+        org_id: 'org_1',
+        case_: {
+          OR: [
+            { primary_pharmacist_id: 'user_1' },
+            { backup_pharmacist_id: 'user_1' },
+            { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+          ],
+        },
+      },
+      select: { id: true },
+    });
     const json = await res!.json();
     expect(json).toHaveLength(1);
     expect(json[0].actor_name).toBe('Taro');
+  });
+
+  it('omits the assignment predicate for admin cycle history lookups', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: { orgId: 'org_1', userId: 'admin_1', role: 'admin' },
+    });
+    medicationCycleFindFirstMock.mockResolvedValue({ id: 'cycle_1' });
+    cycleTransitionLogFindManyMock.mockResolvedValue([]);
+
+    const req = createRequest('http://localhost/api/medication-cycles/cycle_1/history');
+    const res = await GET(req, { params: Promise.resolve({ id: 'cycle_1' }) });
+
+    expect(res!.status).toBe(200);
+    expect(medicationCycleFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'cycle_1',
+        org_id: 'org_1',
+      },
+      select: { id: true },
+    });
   });
 
   it('returns 404 when cycle not found', async () => {
@@ -74,5 +108,7 @@ describe('/api/medication-cycles/[id]/history', () => {
     const req = createRequest('http://localhost/api/medication-cycles/missing/history');
     const res = await GET(req, { params: Promise.resolve({ id: 'missing' }) });
     expect(res!.status).toBe(404);
+    expect(cycleTransitionLogFindManyMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
   });
 });

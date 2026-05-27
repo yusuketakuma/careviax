@@ -60,9 +60,20 @@ export class FormYjsBridge {
    * Initialize the Y.Map with form default values without overwriting
    * existing CRDT state (e.g., from a reconnecting peer).
    */
-  initializeDefaults(defaults: Record<string, unknown>): void {
+  initializeDefaults(defaults: Record<string, unknown>, textFieldNames: string[] = []): void {
+    const flattenedDefaults = flattenFormValues(defaults);
+    const textFields = new Set(textFieldNames);
+
     this.doc.transact(() => {
-      for (const [key, value] of Object.entries(defaults)) {
+      for (const [key, value] of Object.entries(flattenedDefaults)) {
+        if (value === undefined) continue;
+        if (textFields.has(key)) {
+          const yText = this.getTextField(key);
+          if (yText.length === 0 && value != null) {
+            yText.insert(0, String(value));
+          }
+          continue;
+        }
         if (!this.formMap.has(key)) {
           this.formMap.set(key, value);
         }
@@ -76,9 +87,7 @@ export class FormYjsBridge {
    *
    * Returns an unsubscribe function.
    */
-  observeChanges(
-    onFieldChange: (name: string, value: unknown) => void,
-  ): () => void {
+  observeChanges(onFieldChange: (name: string, value: unknown) => void): () => void {
     const handler = (event: Y.YMapEvent<unknown>, tx: Y.Transaction) => {
       // Skip changes triggered by local setFieldValue
       if (this.suppressRemote || tx.origin === 'local') return;
@@ -101,4 +110,27 @@ export class FormYjsBridge {
     this.textFields.clear();
     this.doc.destroy();
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function flattenFormValues(value: unknown, prefix = ''): Record<string, unknown> {
+  if (Array.isArray(value)) {
+    return value.reduce<Record<string, unknown>>((acc, item, index) => {
+      Object.assign(acc, flattenFormValues(item, prefix ? `${prefix}.${index}` : String(index)));
+      return acc;
+    }, {});
+  }
+
+  if (isRecord(value)) {
+    return Object.entries(value).reduce<Record<string, unknown>>((acc, [key, item]) => {
+      Object.assign(acc, flattenFormValues(item, prefix ? `${prefix}.${key}` : key));
+      return acc;
+    }, {});
+  }
+
+  if (!prefix) return {};
+  return { [prefix]: value };
 }

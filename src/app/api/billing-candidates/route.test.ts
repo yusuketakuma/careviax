@@ -9,6 +9,7 @@ const {
   workbenchSummaryMock,
   upsertBillingEvidenceForVisitMock,
   generateBillingCandidatesForMonthMock,
+  japanMonthRangeForBillingMonthMock,
 } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
   visitRecordFindManyMock: vi.fn(),
@@ -17,6 +18,15 @@ const {
   workbenchSummaryMock: vi.fn(),
   upsertBillingEvidenceForVisitMock: vi.fn(),
   generateBillingCandidatesForMonthMock: vi.fn(),
+  japanMonthRangeForBillingMonthMock: vi.fn((billingMonth: Date) => {
+    const year = billingMonth.getUTCFullYear();
+    const monthIndex = billingMonth.getUTCMonth();
+    return {
+      start: new Date(Date.UTC(year, monthIndex, 1) - 9 * 60 * 60 * 1000),
+      nextStart: new Date(Date.UTC(year, monthIndex + 1, 1) - 9 * 60 * 60 * 1000),
+      end: new Date(Date.UTC(year, monthIndex + 1, 1) - 9 * 60 * 60 * 1000 - 1),
+    };
+  }),
 }));
 
 type AuthenticatedRouteHandler = ((req: NextRequest & { orgId: string }) => Promise<Response>) & {
@@ -49,6 +59,7 @@ vi.mock('@/server/services/billing-evidence', () => ({
   getBillingCandidateWorkbenchSummary: workbenchSummaryMock,
   upsertBillingEvidenceForVisit: upsertBillingEvidenceForVisitMock,
   generateBillingCandidatesForMonth: generateBillingCandidatesForMonthMock,
+  japanMonthRangeForBillingMonth: japanMonthRangeForBillingMonthMock,
 }));
 
 import { GET, POST } from './route';
@@ -226,8 +237,8 @@ describe('/api/billing-candidates', () => {
       where: {
         org_id: 'org_1',
         visit_date: {
-          gte: new Date('2026-03-01T00:00:00.000Z'),
-          lt: new Date('2026-04-01T00:00:00.000Z'),
+          gte: new Date('2026-02-28T15:00:00.000Z'),
+          lt: new Date('2026-03-31T15:00:00.000Z'),
         },
       },
       select: {

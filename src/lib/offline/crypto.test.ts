@@ -42,7 +42,7 @@ function installBrowserCryptoEnvironment() {
 describe('offline PHI encryption guard', () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
-    await indexedDB.deleteDatabase('careviax-offline-keys');
+    await indexedDB.deleteDatabase('ph-os-offline-keys');
   });
 
   afterEach(async () => {

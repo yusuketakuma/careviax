@@ -5,7 +5,7 @@ import {
   StandardUnit,
 } from '@aws-sdk/client-cloudwatch';
 
-const NAMESPACE = 'CareViaX/Application';
+const NAMESPACE = 'PH-OS/Application';
 const REGION = process.env.AWS_REGION ?? 'ap-northeast-1';
 
 let _client: CloudWatchClient | null = null;

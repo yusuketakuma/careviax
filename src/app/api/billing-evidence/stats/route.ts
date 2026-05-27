@@ -2,10 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { success } from '@/lib/api/response';
-
-function startOfMonth(value: Date) {
-  return new Date(value.getFullYear(), value.getMonth(), 1);
-}
+import { billingMonthForJapanTimestamp } from '@/server/services/billing-evidence';
 
 export async function GET(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
@@ -14,7 +11,7 @@ export async function GET(req: NextRequest) {
   });
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
-  const monthStart = startOfMonth(new Date());
+  const monthStart = billingMonthForJapanTimestamp(new Date());
 
   const [
     notClaimable,

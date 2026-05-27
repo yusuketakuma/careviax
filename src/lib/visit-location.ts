@@ -1,5 +1,5 @@
 export const VISIT_LOCATION_TRACKING_STORAGE_KEY =
-  'careviax:user-visit-location-tracking-enabled';
+  'ph-os:user-visit-location-tracking-enabled';
 
 export type VisitLocationPermissionState =
   | 'granted'

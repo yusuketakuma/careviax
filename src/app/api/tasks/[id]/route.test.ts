@@ -3,11 +3,13 @@ import type { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
+  careCaseFindManyMock,
   taskFindFirstMock,
   taskUpdateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
   taskFindFirstMock: vi.fn(),
   taskUpdateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -19,6 +21,9 @@ vi.mock('@/lib/auth/context', () => ({
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
+    careCase: {
+      findMany: careCaseFindManyMock,
+    },
     task: {
       findFirst: taskFindFirstMock,
     },
@@ -41,8 +46,10 @@ describe('/api/tasks/[id]', () => {
         role: 'pharmacist',
       },
     });
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
     taskFindFirstMock.mockResolvedValue({
       id: 'task_1',
+      assigned_to: 'user_1',
       completed_at: null,
     });
     taskUpdateMock.mockResolvedValue({
@@ -56,6 +63,19 @@ describe('/api/tasks/[id]', () => {
         },
       }),
     );
+  });
+
+  it('does not let a scoped user reassign a PHI-backed task to another user', async () => {
+    const response = (await PATCH({
+      json: async () => ({
+        assigned_to: 'user_2',
+      }),
+    } as NextRequest, {
+      params: Promise.resolve({ id: 'task_1' }),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expect(taskUpdateMock).not.toHaveBeenCalled();
   });
 
   it('updates a task and sets completed_at when marking it completed', async () => {
@@ -75,5 +95,37 @@ describe('/api/tasks/[id]', () => {
         completed_at: expect.any(Date),
       }),
     });
+  });
+
+  it('does not update tasks outside the assignment scope', async () => {
+    taskFindFirstMock.mockResolvedValue(null);
+
+    const response = (await PATCH({
+      json: async () => ({
+        status: 'completed',
+      }),
+    } as NextRequest, {
+      params: Promise.resolve({ id: 'task_unassigned' }),
+    }))!;
+
+    expect(response.status).toBe(404);
+    expect(taskFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'task_unassigned',
+        org_id: 'org_1',
+        OR: [
+          { assigned_to: 'user_1' },
+          {
+            related_entity_type: 'patient',
+            related_entity_id: { in: ['patient_1'] },
+          },
+          {
+            related_entity_type: 'case',
+            related_entity_id: { in: ['case_1'] },
+          },
+        ],
+      },
+    });
+    expect(taskUpdateMock).not.toHaveBeenCalled();
   });
 });

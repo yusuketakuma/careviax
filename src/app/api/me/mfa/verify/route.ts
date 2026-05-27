@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     await verifyTotpForAccessToken({
       accessToken,
       code,
-      deviceName: 'CareViaX TOTP',
+      deviceName: 'PH-OS TOTP',
     });
   } catch {
     return externalError('EXTERNAL_MFA_VERIFY_FAILED', '確認コードが正しくありません', 400);

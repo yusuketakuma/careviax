@@ -504,7 +504,7 @@ function sanitizeFileName(value: string) {
 }
 
 function inferPharmacyName(orgName?: string | null, siteName?: string | null) {
-  return siteName?.trim() || orgName?.trim() || 'CareViaX薬局';
+  return siteName?.trim() || orgName?.trim() || 'PH-OS薬局';
 }
 
 function flattenJson(value: unknown, labelPrefix = ''): KeyValueRow[] {
@@ -665,7 +665,7 @@ function PdfShell({
   children,
 }: PdfShellProps) {
   return (
-    <Document title={title} author="CareViaX" subject={subtitle}>
+    <Document title={title} author="PH-OS" subject={subtitle}>
       <Page size="A4" orientation={orientation} style={styles.page}>
         <View fixed style={styles.header}>
           <View style={styles.headerTitleWrap}>
@@ -680,7 +680,7 @@ function PdfShell({
         </View>
 
         <Text fixed style={styles.footerLeft}>
-          CareViaX PDF
+          PH-OS PDF
         </Text>
         <Text
           fixed

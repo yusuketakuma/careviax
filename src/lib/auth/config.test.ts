@@ -45,7 +45,7 @@ describe('authOptions session callback', () => {
     const session = await sessionCallback!({
       session: {
         user: {
-          name: 'CareViaX User',
+          name: 'PH-OS User',
           email: 'user@example.com',
         },
         expires: '2026-04-04T00:00:00.000Z',

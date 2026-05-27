@@ -1,26 +1,28 @@
 import { NextRequest } from 'next/server';
-import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
 import { parseGS1Barcode, isExpired } from '@/lib/pharmacy/barcode';
+import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 
 const verifyBarcodeSchema = z.object({
   barcode: z.string().min(1, 'バーコードは必須です'),
   line_id: z.string().min(1, '処方明細IDは必須です'),
 });
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  return withAuth(async (authReq: AuthenticatedRequest) => {
+export const POST = withAuthContext<{ id: string }>(
+  async (req: NextRequest, ctx, { params }) => {
     const { id } = await params;
+    const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
 
-    // タスクの org_id 検証
     const task = await prisma.dispenseTask.findFirst({
-      where: { id, org_id: authReq.orgId },
-      select: { id: true },
+      where: {
+        id,
+        org_id: ctx.orgId,
+        ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
+      },
+      select: { id: true, cycle_id: true },
     });
     if (!task) return notFound('タスクが見つかりません');
 
@@ -34,12 +36,14 @@ export async function POST(
 
     const { barcode, line_id } = parsed.data;
 
-    // バーコードをパース
-    const decoded = parseGS1Barcode(barcode);
-
-    // 処方明細の取得（org_id フィルタ付き）
     const line = await prisma.prescriptionLine.findFirst({
-      where: { id: line_id, org_id: authReq.orgId },
+      where: {
+        id: line_id,
+        org_id: ctx.orgId,
+        intake: {
+          cycle_id: task.cycle_id,
+        },
+      },
       select: {
         id: true,
         drug_code: true,
@@ -47,6 +51,8 @@ export async function POST(
       },
     });
     if (!line) return notFound('処方明細が見つかりません');
+
+    const decoded = parseGS1Barcode(barcode);
 
     // GTIN → YJコード照合
     // DrugMaster の jan_code または yj_code で照合する
@@ -100,5 +106,9 @@ export async function POST(
       },
       warnings,
     });
-  })(req);
-}
+  },
+  {
+    permission: 'canDispense',
+    message: 'バーコード照合権限がありません',
+  },
+);

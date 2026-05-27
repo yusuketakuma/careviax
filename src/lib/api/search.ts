@@ -9,8 +9,10 @@ export function buildSearchFilter(query: string | undefined, fields: string[]) {
 }
 
 export function buildPagination(page?: number, limit?: number) {
-  const p = Math.max(1, page ?? 1);
-  const l = Math.min(100, Math.max(1, limit ?? 20));
+  const normalizedPage = Number.isFinite(page) ? Math.trunc(page as number) : 1;
+  const normalizedLimit = Number.isFinite(limit) ? Math.trunc(limit as number) : 20;
+  const p = Math.max(1, normalizedPage);
+  const l = Math.min(100, Math.max(1, normalizedLimit));
   return { skip: (p - 1) * l, take: l };
 }
 

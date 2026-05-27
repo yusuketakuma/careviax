@@ -95,15 +95,50 @@ describe('/api/set-batches/[id]', () => {
     expect(response.status).toBe(200);
   });
 
-  it('updates a set batch with optimistic locking', async () => {
-    const response = (await PATCH({
-      json: async () => ({
-        quantity: 3,
-        version: 2,
-      }),
-    } as NextRequest, {
+  it('returns 404 for unassigned pharmacist set-batch detail', async () => {
+    setBatchFindFirstMock.mockResolvedValue(null);
+
+    const response = (await GET({} as NextRequest, {
       params: Promise.resolve({ id: 'batch_1' }),
     }))!;
+
+    expect(response.status).toBe(404);
+    expect(setBatchFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'batch_1',
+        org_id: 'org_1',
+        AND: [
+          {
+            plan: {
+              cycle: {
+                case_: expect.objectContaining({
+                  OR: expect.arrayContaining([
+                    { primary_pharmacist_id: 'user_1' },
+                    { backup_pharmacist_id: 'user_1' },
+                    { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
+                  ]),
+                }),
+              },
+            },
+          },
+        ],
+      },
+      include: expect.any(Object),
+    });
+  });
+
+  it('updates a set batch with optimistic locking', async () => {
+    const response = (await PATCH(
+      {
+        json: async () => ({
+          quantity: 3,
+          version: 2,
+        }),
+      } as NextRequest,
+      {
+        params: Promise.resolve({ id: 'batch_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(200);
     expect(setBatchUpdateMock).toHaveBeenCalledWith({
@@ -120,6 +155,27 @@ describe('/api/set-batches/[id]', () => {
     });
   });
 
+  it('returns 404 for unassigned pharmacist set-batch updates before side effects', async () => {
+    setBatchFindFirstMock.mockResolvedValue(null);
+
+    const response = (await PATCH(
+      {
+        json: async () => ({
+          quantity: 3,
+          version: 2,
+        }),
+      } as NextRequest,
+      {
+        params: Promise.resolve({ id: 'batch_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(404);
+    expect(setBatchUpdateMock).not.toHaveBeenCalled();
+    expect(setBatchChangeLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('deletes a set batch', async () => {
     const response = (await DELETE({} as NextRequest, {
       params: Promise.resolve({ id: 'batch_1' }),
@@ -133,5 +189,18 @@ describe('/api/set-batches/[id]', () => {
       orgId: 'org_1',
       payload: { source: 'set_batches_delete', plan_id: 'plan_1', batch_id: 'batch_1' },
     });
+  });
+
+  it('returns 404 for unassigned pharmacist set-batch deletes before side effects', async () => {
+    setBatchFindFirstMock.mockResolvedValue(null);
+
+    const response = (await DELETE({} as NextRequest, {
+      params: Promise.resolve({ id: 'batch_1' }),
+    }))!;
+
+    expect(response.status).toBe(404);
+    expect(setBatchChangeLogCreateMock).not.toHaveBeenCalled();
+    expect(setBatchDeleteMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 });
