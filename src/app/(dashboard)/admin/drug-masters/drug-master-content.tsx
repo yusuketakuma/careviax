@@ -1692,6 +1692,11 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const bulkPreviewBlockingCount = bulkPreviewSummary
     ? bulkPreviewSummary.unmatchedCount + bulkPreviewSummary.invalidCount
     : 0;
+  const bulkPreviewRowsForDisplay = [...(bulkPreview?.preview.rows ?? [])].sort((a, b) => {
+    const aBlocking = ['invalid', 'unmatched'].includes(a.status) ? 0 : 1;
+    const bBlocking = ['invalid', 'unmatched'].includes(b.status) ? 0 : 1;
+    return aBlocking - bBlocking || a.rowNumber - b.rowNumber;
+  });
   const canApplyBulkPreview =
     !!effectiveSelectedSiteId &&
     bulkCsv.trim().length > 0 &&
@@ -2875,7 +2880,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   </div>
                 </div>
                 <div className="mt-3 space-y-2">
-                  {(bulkPreview?.preview.rows ?? []).slice(0, 6).map((row) => (
+                  {bulkPreviewRowsForDisplay.slice(0, 6).map((row) => (
                     <div
                       key={`${row.rowNumber}-${row.status}`}
                       className="rounded-md border border-border/60 bg-background px-3 py-2"
