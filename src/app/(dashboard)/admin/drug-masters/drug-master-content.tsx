@@ -390,6 +390,34 @@ type FormularyCopyPreviewResponse = {
   };
 };
 
+type FormularyTemplatePreviewResponse = {
+  itemCount: number;
+  appliedCount: number;
+  skippedCount: number;
+  overwrite: boolean;
+  dryRun: boolean;
+  preview: {
+    summary: {
+      item_count: number;
+      create_count: number;
+      update_count: number;
+      skip_existing_count: number;
+      apply_count: number;
+    };
+    rows: Array<{
+      action: 'create' | 'update' | 'skip_existing';
+      drug_master_id: string;
+      reorder_point: number | null;
+      preferred_generic_id: string | null;
+      drug_master: {
+        id: string;
+        yj_code: string;
+        drug_name: string;
+      };
+    }>;
+  };
+};
+
 type FormularyTemplateItem = {
   id: string;
   name: string;
@@ -693,6 +721,9 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const [copyPreview, setCopyPreview] = useState<FormularyCopyPreviewResponse | null>(null);
   const [templateName, setTemplateName] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [templatePreview, setTemplatePreview] = useState<FormularyTemplatePreviewResponse | null>(
+    null,
+  );
   const [preferredGenericId, setPreferredGenericId] = useState<string | null>(null);
   const [bulkCsv, setBulkCsv] = useState('');
   const [exportPurpose, setExportPurpose] = useState<FormularyExportPurpose>('operations');
@@ -1370,6 +1401,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     onSuccess: async () => {
       toast.success('採用品テンプレートを作成しました');
       setTemplateName('');
+      setTemplatePreview(null);
       await queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock-templates'] });
     },
     onError: (error) => {
@@ -1378,7 +1410,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   });
 
   const applyTemplateMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async ({ dryRun }: { dryRun: boolean }) => {
       if (!selectedTemplateId) throw new Error('テンプレートを選択してください');
       if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
       const res = await fetch(`/api/pharmacy-drug-stock-templates/${selectedTemplateId}/apply`, {
@@ -1390,16 +1422,25 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
         body: JSON.stringify({
           target_site_id: effectiveSelectedSiteId,
           overwrite: copyOverwrite,
+          dry_run: dryRun,
         }),
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new Error(json?.message ?? '採用品テンプレートの適用に失敗しました');
-      return json as { appliedCount: number; skippedCount: number };
+      return json as FormularyTemplatePreviewResponse;
     },
     onSuccess: async (result) => {
+      if (result.dryRun) {
+        setTemplatePreview(result);
+        toast.success(
+          `テンプレート差分を確認しました（反映予定 ${result.preview.summary.apply_count.toLocaleString()}件）`,
+        );
+        return;
+      }
       toast.success(
         `採用品テンプレートを適用しました（反映 ${result.appliedCount.toLocaleString()}件 / スキップ ${result.skippedCount.toLocaleString()}件）`,
       );
+      setTemplatePreview(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock'] }),
         queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks'] }),
@@ -1426,6 +1467,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     onSuccess: async () => {
       toast.success('採用品テンプレートを削除しました');
       setSelectedTemplateId('');
+      setTemplatePreview(null);
       await queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock-templates'] });
     },
     onError: (error) => {
@@ -2430,6 +2472,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                     onChange={(event) => {
                       setCopyOverwrite(event.target.checked);
                       setCopyPreview(null);
+                      setTemplatePreview(null);
                     }}
                     className="size-4 rounded border-input"
                   />
@@ -2547,10 +2590,13 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                     現在の拠点から作成
                   </LoadingButton>
                 </div>
-                <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(160px,1fr)_auto_auto]">
+                <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(160px,1fr)_auto_auto_auto]">
                   <select
                     value={selectedTemplateId}
-                    onChange={(event) => setSelectedTemplateId(event.target.value)}
+                    onChange={(event) => {
+                      setSelectedTemplateId(event.target.value);
+                      setTemplatePreview(null);
+                    }}
                     className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
                     aria-label="適用する採用品テンプレート"
                   >
@@ -2564,10 +2610,21 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   <LoadingButton
                     type="button"
                     size="sm"
+                    variant="outline"
+                    loading={applyTemplateMutation.isPending}
+                    loadingLabel="確認中"
+                    disabled={!effectiveSelectedSiteId || !selectedTemplateId}
+                    onClick={() => applyTemplateMutation.mutate({ dryRun: true })}
+                  >
+                    適用差分確認
+                  </LoadingButton>
+                  <LoadingButton
+                    type="button"
+                    size="sm"
                     loading={applyTemplateMutation.isPending}
                     loadingLabel="適用中"
                     disabled={!effectiveSelectedSiteId || !selectedTemplateId}
-                    onClick={() => applyTemplateMutation.mutate()}
+                    onClick={() => applyTemplateMutation.mutate({ dryRun: false })}
                   >
                     テンプレートを適用
                   </LoadingButton>
@@ -2583,6 +2640,58 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                     <Trash2 className="size-3.5" aria-hidden="true" />
                   </Button>
                 </div>
+                {templatePreview && (
+                  <div className="mt-3 rounded-md border border-border/60 bg-background p-3">
+                    <div className="grid gap-2 md:grid-cols-4">
+                      <div>
+                        <p className="text-xs text-muted-foreground">追加</p>
+                        <p className="text-lg font-semibold tabular-nums">
+                          {templatePreview.preview.summary.create_count.toLocaleString()}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">上書き</p>
+                        <p className="text-lg font-semibold tabular-nums">
+                          {templatePreview.preview.summary.update_count.toLocaleString()}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">既存スキップ</p>
+                        <p className="text-lg font-semibold tabular-nums">
+                          {templatePreview.preview.summary.skip_existing_count.toLocaleString()}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">反映予定</p>
+                        <p className="text-lg font-semibold tabular-nums">
+                          {templatePreview.preview.summary.apply_count.toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 space-y-1">
+                      {templatePreview.preview.rows.slice(0, 3).map((row) => (
+                        <div
+                          key={`${row.action}-${row.drug_master_id}`}
+                          className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2 text-xs"
+                        >
+                          <span className="min-w-0 font-medium text-foreground">
+                            {row.drug_master.drug_name}
+                          </span>
+                          <span className="flex items-center gap-2 text-muted-foreground">
+                            <span className="font-mono">{row.drug_master.yj_code}</span>
+                            <Badge variant="outline" className="text-[10px]">
+                              {row.action === 'create'
+                                ? '追加'
+                                : row.action === 'update'
+                                  ? '上書き'
+                                  : '既存スキップ'}
+                            </Badge>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
