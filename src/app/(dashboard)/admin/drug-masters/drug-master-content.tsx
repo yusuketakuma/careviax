@@ -236,6 +236,9 @@ type FormularyImpactResponse = {
     missing_reorder_point_count: number;
     safety_flagged_count: number;
     transitional_expiry_count: number;
+    transitional_expiry_within_30_count: number;
+    transitional_expiry_within_60_count: number;
+    transitional_expiry_within_90_count: number;
     action_required_count: number;
     recent_master_change_count: number;
   };
@@ -1457,6 +1460,12 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const safetyFlaggedCount = formularyImpact?.totals.safety_flagged_count ?? safetyReviewCount;
   const transitionalExpiryCount =
     formularyImpact?.totals.transitional_expiry_count ?? expiryWatchCount;
+  const transitionalExpiryWithin30Count =
+    formularyImpact?.totals.transitional_expiry_within_30_count ?? 0;
+  const transitionalExpiryWithin60Count =
+    formularyImpact?.totals.transitional_expiry_within_60_count ?? 0;
+  const transitionalExpiryWithin90Count =
+    formularyImpact?.totals.transitional_expiry_within_90_count ?? transitionalExpiryCount;
   const actionRequiredCount = formularyImpact?.totals.action_required_count ?? 0;
   const recentMasterChangeCount = formularyImpact?.totals.recent_master_change_count ?? 0;
   const frequentUnstockedMismatchCount =
@@ -1961,6 +1970,38 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   {impactQueueTotalCount.toLocaleString()}件中
                   {impactQueueRows.length.toLocaleString()}件表示
                 </Badge>
+              </div>
+              <div className="mt-3 grid gap-2 md:grid-cols-3">
+                <button
+                  type="button"
+                  className="rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
+                  onClick={() => setImpactQueue('transitional_expiry')}
+                >
+                  <p className="text-xs text-muted-foreground">経過措置30日以内</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums">
+                    {transitionalExpiryWithin30Count.toLocaleString()}
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  className="rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
+                  onClick={() => setImpactQueue('transitional_expiry')}
+                >
+                  <p className="text-xs text-muted-foreground">経過措置60日以内</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums">
+                    {transitionalExpiryWithin60Count.toLocaleString()}
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  className="rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
+                  onClick={() => setImpactQueue('transitional_expiry')}
+                >
+                  <p className="text-xs text-muted-foreground">経過措置90日以内</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums">
+                    {transitionalExpiryWithin90Count.toLocaleString()}
+                  </p>
+                </button>
               </div>
               <div className="mt-3 space-y-2">
                 {impactQueueRows.length === 0 ? (

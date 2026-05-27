@@ -120,6 +120,9 @@ vi.mock('@tanstack/react-query', () => ({
             missing_reorder_point_count: 0,
             safety_flagged_count: 0,
             transitional_expiry_count: 0,
+            transitional_expiry_within_30_count: 0,
+            transitional_expiry_within_60_count: 0,
+            transitional_expiry_within_90_count: 0,
             action_required_count: 0,
             recent_master_change_count: 0,
           },
@@ -263,6 +266,8 @@ describe('DrugMasterContent', () => {
     expect(screen.getByText('頻出未採用薬')).toBeTruthy();
     expect(screen.getByText('未使用採用品')).toBeTruthy();
     expect(screen.getByText('影響レビューキュー')).toBeTruthy();
+    expect(screen.getByText('経過措置30日以内')).toBeTruthy();
+    expect(screen.getAllByText('経過措置90日以内').length).toBeGreaterThan(0);
     expect(screen.getByText('薬価改定差分レポート')).toBeTruthy();
     expect(screen.getByText(/薬価影響額推計/)).toBeTruthy();
     expect(screen.getByText('拠点間コピー')).toBeTruthy();

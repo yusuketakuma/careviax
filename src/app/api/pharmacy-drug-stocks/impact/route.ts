@@ -104,6 +104,8 @@ export const GET = withAuthContext(
     if (!site) return notFound('対象の薬局拠点が見つかりません');
 
     const now = new Date();
+    const expiryWithin30 = addDays(now, 30);
+    const expiryWithin60 = addDays(now, 60);
     const expiryUntil = addDays(now, parsed.data.expiry_within_days);
     const reviewCutoff = addDays(now, -parsed.data.review_overdue_days);
     const recentChangeCutoff = addDays(now, -30);
@@ -139,6 +141,24 @@ export const GET = withAuthContext(
         transitional_expiry_date: {
           gte: now,
           lte: expiryUntil,
+        },
+      },
+    } satisfies Prisma.PharmacyDrugStockWhereInput;
+    const transitionalExpiryWithin30Where = {
+      ...baseWhere,
+      drug_master: {
+        transitional_expiry_date: {
+          gte: now,
+          lte: expiryWithin30,
+        },
+      },
+    } satisfies Prisma.PharmacyDrugStockWhereInput;
+    const transitionalExpiryWithin60Where = {
+      ...baseWhere,
+      drug_master: {
+        transitional_expiry_date: {
+          gte: now,
+          lte: expiryWithin60,
         },
       },
     } satisfies Prisma.PharmacyDrugStockWhereInput;
@@ -195,6 +215,8 @@ export const GET = withAuthContext(
       missingReorderPointCount,
       safetyFlaggedCount,
       transitionalExpiryCount,
+      transitionalExpiryWithin30Count,
+      transitionalExpiryWithin60Count,
       actionRequiredCount,
       recentMasterChangeCount,
       selectedQueueRows,
@@ -211,6 +233,8 @@ export const GET = withAuthContext(
       prisma.pharmacyDrugStock.count({ where: missingReorderWhere }),
       prisma.pharmacyDrugStock.count({ where: safetyFlaggedWhere }),
       prisma.pharmacyDrugStock.count({ where: transitionalExpiryWhere }),
+      prisma.pharmacyDrugStock.count({ where: transitionalExpiryWithin30Where }),
+      prisma.pharmacyDrugStock.count({ where: transitionalExpiryWithin60Where }),
       prisma.pharmacyDrugStock.count({ where: actionRequiredWhere }),
       prisma.pharmacyDrugStock.count({ where: recentlyChangedWhere }),
       prisma.pharmacyDrugStock.findMany({
@@ -385,6 +409,9 @@ export const GET = withAuthContext(
         missing_reorder_point_count: missingReorderPointCount,
         safety_flagged_count: safetyFlaggedCount,
         transitional_expiry_count: transitionalExpiryCount,
+        transitional_expiry_within_30_count: transitionalExpiryWithin30Count,
+        transitional_expiry_within_60_count: transitionalExpiryWithin60Count,
+        transitional_expiry_within_90_count: transitionalExpiryCount,
         action_required_count: actionRequiredCount,
         recent_master_change_count: recentMasterChangeCount,
       },

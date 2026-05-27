@@ -81,6 +81,8 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
       .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(0);
     prismaMock.pharmacyDrugStock.findMany
       .mockResolvedValueOnce([stock])
@@ -111,6 +113,9 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
         missing_reorder_point_count: 1,
         safety_flagged_count: 1,
         transitional_expiry_count: 1,
+        transitional_expiry_within_30_count: 1,
+        transitional_expiry_within_60_count: 1,
+        transitional_expiry_within_90_count: 1,
         action_required_count: 1,
         recent_master_change_count: 0,
       },
@@ -169,6 +174,8 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
       .mockResolvedValueOnce([change]);
     prismaMock.pharmacyDrugStock.count
       .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0)
@@ -299,6 +306,8 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
     prismaMock.pharmacyDrugStock.count
       .mockResolvedValueOnce(501)
       .mockResolvedValueOnce(501)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0)
