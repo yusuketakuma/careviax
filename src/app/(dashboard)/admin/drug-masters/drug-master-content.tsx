@@ -271,6 +271,11 @@ type FormularyImpactResponse = {
       }>;
     };
   };
+  follow_up_summary?: {
+    unresolved_count: number;
+    overdue_count: number;
+    missing_due_date_count: number;
+  };
   samples: {
     review_due: FormularyStockSummaryRow[];
     missing_reorder_point: FormularyStockSummaryRow[];
@@ -1488,6 +1493,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     formularyImpact?.totals.transitional_expiry_within_90_count ?? transitionalExpiryCount;
   const actionRequiredCount = formularyImpact?.totals.action_required_count ?? 0;
   const recentMasterChangeCount = formularyImpact?.totals.recent_master_change_count ?? 0;
+  const followUpSummary = formularyImpact?.follow_up_summary;
   const frequentUnstockedMismatchCount =
     formularyUsageMismatch?.totals.frequent_unstocked_count ?? 0;
   const unusedStockedMismatchCount = formularyUsageMismatch?.totals.unused_stocked_count ?? 0;
@@ -2031,6 +2037,40 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   {impactQueueRows.length.toLocaleString()}件表示
                 </Badge>
               </div>
+              {followUpSummary && (
+                <div className="mt-3 grid gap-2 md:grid-cols-3">
+                  <button
+                    type="button"
+                    className="rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
+                    onClick={() => setImpactQueue('action_required')}
+                  >
+                    <p className="text-xs text-muted-foreground">未解決フォローアップ</p>
+                    <p className="mt-1 text-lg font-semibold tabular-nums">
+                      {followUpSummary.unresolved_count.toLocaleString()}
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
+                    onClick={() => setImpactQueue('action_required')}
+                  >
+                    <p className="text-xs text-muted-foreground">期限超過</p>
+                    <p className="mt-1 text-lg font-semibold tabular-nums">
+                      {followUpSummary.overdue_count.toLocaleString()}
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
+                    onClick={() => setImpactQueue('action_required')}
+                  >
+                    <p className="text-xs text-muted-foreground">期限未設定</p>
+                    <p className="mt-1 text-lg font-semibold tabular-nums">
+                      {followUpSummary.missing_due_date_count.toLocaleString()}
+                    </p>
+                  </button>
+                </div>
+              )}
               <div className="mt-3 grid gap-2 md:grid-cols-3">
                 <button
                   type="button"

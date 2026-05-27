@@ -200,6 +200,21 @@ export const GET = withAuthContext(
       ...baseWhere,
       OR: actionRequiredTriggers,
     } satisfies Prisma.PharmacyDrugStockWhereInput;
+    const unresolvedFollowUpWhere = {
+      ...baseWhere,
+      AND: [
+        { follow_up_status: { not: null } },
+        { follow_up_status: { notIn: ['active', 'resolved', ''] } },
+      ],
+    } satisfies Prisma.PharmacyDrugStockWhereInput;
+    const overdueFollowUpWhere = {
+      ...unresolvedFollowUpWhere,
+      follow_up_due_date: { lt: now },
+    } satisfies Prisma.PharmacyDrugStockWhereInput;
+    const missingDueFollowUpWhere = {
+      ...unresolvedFollowUpWhere,
+      follow_up_due_date: null,
+    } satisfies Prisma.PharmacyDrugStockWhereInput;
     const queueWhereByKey: Record<ImpactQueueKey, Prisma.PharmacyDrugStockWhereInput> = {
       action_required: actionRequiredWhere,
       recently_changed: recentlyChangedWhere,
@@ -219,6 +234,9 @@ export const GET = withAuthContext(
       transitionalExpiryWithin60Count,
       actionRequiredCount,
       recentMasterChangeCount,
+      unresolvedFollowUpCount,
+      overdueFollowUpCount,
+      missingDueFollowUpCount,
       selectedQueueRows,
       masterChangeReportRows,
       reviewDueSample,
@@ -237,6 +255,9 @@ export const GET = withAuthContext(
       prisma.pharmacyDrugStock.count({ where: transitionalExpiryWithin60Where }),
       prisma.pharmacyDrugStock.count({ where: actionRequiredWhere }),
       prisma.pharmacyDrugStock.count({ where: recentlyChangedWhere }),
+      prisma.pharmacyDrugStock.count({ where: unresolvedFollowUpWhere }),
+      prisma.pharmacyDrugStock.count({ where: overdueFollowUpWhere }),
+      prisma.pharmacyDrugStock.count({ where: missingDueFollowUpWhere }),
       prisma.pharmacyDrugStock.findMany({
         where: queueWhereByKey[parsed.data.queue],
         orderBy: queueOrderBy,
@@ -431,8 +452,13 @@ export const GET = withAuthContext(
           usage_window_days: parsed.data.price_impact_days,
           scanned_draft_count: priceImpactDrafts.length,
           estimated_total_delta: Number(estimatedTotalDelta.toFixed(2)),
-          rows: priceImpactRows.slice(0, 10),
+        rows: priceImpactRows.slice(0, 10),
         },
+      },
+      follow_up_summary: {
+        unresolved_count: unresolvedFollowUpCount,
+        overdue_count: overdueFollowUpCount,
+        missing_due_date_count: missingDueFollowUpCount,
       },
       recent_changes: recentChanges,
       samples: {

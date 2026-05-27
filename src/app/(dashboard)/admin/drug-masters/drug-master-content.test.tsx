@@ -160,6 +160,11 @@ vi.mock('@tanstack/react-query', () => ({
               rows: [],
             },
           },
+          follow_up_summary: {
+            unresolved_count: 2,
+            overdue_count: 1,
+            missing_due_date_count: 1,
+          },
           samples: {
             review_due: [],
             missing_reorder_point: [],
@@ -281,6 +286,8 @@ describe('DrugMasterContent', () => {
     expect(screen.getByText('頻出未採用薬')).toBeTruthy();
     expect(screen.getByText('未使用採用品')).toBeTruthy();
     expect(screen.getByText('影響レビューキュー')).toBeTruthy();
+    expect(screen.getByText('未解決フォローアップ')).toBeTruthy();
+    expect(screen.getByText('期限超過')).toBeTruthy();
     expect(screen.getByText('経過措置30日以内')).toBeTruthy();
     expect(screen.getAllByText('経過措置90日以内').length).toBeGreaterThan(0);
     expect(screen.getByText('薬価改定差分レポート')).toBeTruthy();
