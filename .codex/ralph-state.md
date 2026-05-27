@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-235245
+
+- current task: reject duplicate adopted-drug CSV rows before bulk import
+- files inspected: `git status --short`, `src/app/api/pharmacy-drug-stocks/bulk/route.ts`, `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`
+- files changed: `src/app/api/pharmacy-drug-stocks/bulk/route.ts`, `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: a CSV could include the same resolved drug on multiple rows with conflicting settings, leaving the import order to decide the final stock state and making preview/audit rows ambiguous
+- security risks found: no authorization boundary changed; duplicate detection runs after org-scoped site validation and before any stock write or audit mutation
+- performance issues found: duplicate detection uses an in-memory count over already-resolved operations and avoids current-stock reads when all rows are duplicate-invalid
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`; targeted ESLint for bulk API files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 1 file / 7 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice rejects exact same-drug duplicates but does not yet add fuzzy duplicate suggestions for near-identical drug names
+- next action: commit the duplicate-row guard and continue the next high-value formulary/drug-master improvement
+
 ### 20260527-235040
 
 - current task: add purpose-specific CSV exports for adopted-drug lists
