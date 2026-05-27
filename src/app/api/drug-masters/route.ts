@@ -159,6 +159,10 @@ export const GET = withAuthContext(async (req: NextRequest, authCtx) => {
             adoption_note: true,
             last_reviewed_at: true,
             reviewed_by_id: true,
+            follow_up_status: true,
+            follow_up_reason: true,
+            follow_up_due_date: true,
+            follow_up_resolved_at: true,
             updated_at: true,
             preferred_generic: {
               select: {

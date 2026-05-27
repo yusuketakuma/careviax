@@ -50,6 +50,10 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
         drug_master_id: 'drug_1',
         reorder_point: null,
         last_reviewed_at: oldReview,
+        follow_up_status: null,
+        follow_up_reason: null,
+        follow_up_due_date: null,
+        follow_up_resolved_at: null,
         updated_at: now,
         drug_master: {
           id: 'drug_1',
@@ -84,6 +88,7 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
         missing_reorder_point_count: 1,
         safety_flagged_count: 1,
         transitional_expiry_count: 1,
+        action_required_count: 1,
       },
     });
   });

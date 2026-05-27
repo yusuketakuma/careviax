@@ -47,6 +47,10 @@ export const GET = withAuthContext(
         drug_master_id: true,
         reorder_point: true,
         last_reviewed_at: true,
+        follow_up_status: true,
+        follow_up_reason: true,
+        follow_up_due_date: true,
+        follow_up_resolved_at: true,
         updated_at: true,
         drug_master: {
           select: {
@@ -83,6 +87,13 @@ export const GET = withAuthContext(
       const expiry = stock.drug_master.transitional_expiry_date;
       return Boolean(expiry && expiry >= now && expiry <= expiryUntil);
     });
+    const actionRequired = stocks.filter((stock) => {
+      if (stock.follow_up_status && stock.follow_up_status !== 'active') {
+        return stock.follow_up_status !== 'resolved';
+      }
+      const expiry = stock.drug_master.transitional_expiry_date;
+      return Boolean(expiry && expiry >= now && expiry <= expiryUntil);
+    });
 
     return success({
       site,
@@ -97,12 +108,14 @@ export const GET = withAuthContext(
         missing_reorder_point_count: missingReorderPoint.length,
         safety_flagged_count: safetyFlagged.length,
         transitional_expiry_count: transitionalExpiry.length,
+        action_required_count: actionRequired.length,
       },
       samples: {
         review_due: reviewDue.slice(0, 10),
         missing_reorder_point: missingReorderPoint.slice(0, 10),
         safety_flagged: safetyFlagged.slice(0, 10),
         transitional_expiry: transitionalExpiry.slice(0, 10),
+        action_required: actionRequired.slice(0, 10),
       },
     });
   },

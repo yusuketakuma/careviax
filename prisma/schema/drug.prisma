@@ -145,30 +145,35 @@ model DrugAlertRule {
 
 // テナント別
 model PharmacyDrugStock {
-  id                   String       @id @default(cuid())
-  org_id               String
-  site_id              String
-  site                 PharmacySite @relation(fields: [site_id], references: [id])
-  drug_master_id       String
-  drug_master          DrugMaster   @relation(fields: [drug_master_id], references: [id])
-  is_stocked           Boolean      @default(true)
-  stock_qty            Int?
-  reorder_point        Int?
-  last_dispensed_at    DateTime?
-  preferred_generic_id String?
-  preferred_generic    DrugMaster?  @relation("PreferredGeneric", fields: [preferred_generic_id], references: [id])
-  adoption_source      String?
-  adoption_note        String?
-  last_reviewed_at     DateTime?
-  reviewed_by_id       String?
-  created_at           DateTime     @default(now())
-  updated_at           DateTime     @updatedAt
+  id                    String       @id @default(cuid())
+  org_id                String
+  site_id               String
+  site                  PharmacySite @relation(fields: [site_id], references: [id])
+  drug_master_id        String
+  drug_master           DrugMaster   @relation(fields: [drug_master_id], references: [id])
+  is_stocked            Boolean      @default(true)
+  stock_qty             Int?
+  reorder_point         Int?
+  last_dispensed_at     DateTime?
+  preferred_generic_id  String?
+  preferred_generic     DrugMaster?  @relation("PreferredGeneric", fields: [preferred_generic_id], references: [id])
+  adoption_source       String?
+  adoption_note         String?
+  last_reviewed_at      DateTime?
+  reviewed_by_id        String?
+  follow_up_status      String?
+  follow_up_reason      String?
+  follow_up_due_date    DateTime?
+  follow_up_resolved_at DateTime?
+  created_at            DateTime     @default(now())
+  updated_at            DateTime     @updatedAt
 
   @@unique([site_id, drug_master_id])
   @@index([org_id])
   @@index([site_id])
   @@index([org_id, site_id, is_stocked])
   @@index([last_reviewed_at])
+  @@index([follow_up_status])
 }
 
 // グローバルマスタ（org_id なし）

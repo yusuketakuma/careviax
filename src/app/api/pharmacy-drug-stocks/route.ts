@@ -26,6 +26,12 @@ const upsertStockSchema = z.object({
   adoption_source: z.enum(['manual', 'csv', 'demo_seed', 'mhlw_review']).default('manual'),
   adoption_note: z.string().trim().max(500).nullable().optional(),
   mark_reviewed: z.boolean().default(false),
+  follow_up_status: z
+    .enum(['active', 'needs_review', 'planned_switch', 'monitoring', 'resolved'])
+    .nullable()
+    .optional(),
+  follow_up_reason: z.string().trim().max(500).nullable().optional(),
+  follow_up_due_date: z.coerce.date().nullable().optional(),
 });
 
 const STOCK_REVIEW_INTERVAL_DAYS = 180;
@@ -42,6 +48,10 @@ const stockSelect = {
   adoption_note: true,
   last_reviewed_at: true,
   reviewed_by_id: true,
+  follow_up_status: true,
+  follow_up_reason: true,
+  follow_up_due_date: true,
+  follow_up_resolved_at: true,
   updated_at: true,
   preferred_generic: {
     select: {
@@ -128,6 +138,10 @@ export const GET = withAuthContext(
         adoption_note: true,
         last_reviewed_at: true,
         reviewed_by_id: true,
+        follow_up_status: true,
+        follow_up_reason: true,
+        follow_up_due_date: true,
+        follow_up_resolved_at: true,
         updated_at: true,
         drug_master: {
           select: {
@@ -181,6 +195,9 @@ export const POST = withAuthContext(
       adoption_source,
       adoption_note,
       mark_reviewed,
+      follow_up_status,
+      follow_up_reason,
+      follow_up_due_date,
     } = parsed.data;
 
     const [site, targetDrug, preferredGeneric] = await Promise.all([
@@ -251,9 +268,14 @@ export const POST = withAuthContext(
         adoption_source: true,
         adoption_note: true,
         last_reviewed_at: true,
+        follow_up_status: true,
+        follow_up_reason: true,
+        follow_up_due_date: true,
+        follow_up_resolved_at: true,
       },
     });
     const reviewedAt = mark_reviewed ? new Date() : undefined;
+    const resolvedAt = follow_up_status === 'resolved' ? new Date() : null;
 
     const stock = await prisma.$transaction(async (tx) => {
       const saved = await tx.pharmacyDrugStock.upsert({
@@ -274,6 +296,10 @@ export const POST = withAuthContext(
           adoption_note: adoption_note ?? null,
           last_reviewed_at: reviewedAt,
           reviewed_by_id: reviewedAt ? authCtx.userId : null,
+          follow_up_status: follow_up_status ?? null,
+          follow_up_reason: follow_up_reason ?? null,
+          follow_up_due_date: follow_up_due_date ?? null,
+          follow_up_resolved_at: resolvedAt,
         },
         update: {
           is_stocked,
@@ -281,6 +307,14 @@ export const POST = withAuthContext(
           preferred_generic_id: preferredGeneric?.id ?? null,
           adoption_source,
           adoption_note: adoption_note ?? null,
+          ...(follow_up_status !== undefined
+            ? {
+                follow_up_status,
+                follow_up_reason: follow_up_reason ?? null,
+                follow_up_due_date: follow_up_due_date ?? null,
+                follow_up_resolved_at: resolvedAt,
+              }
+            : {}),
           ...(reviewedAt
             ? {
                 last_reviewed_at: reviewedAt,
@@ -309,6 +343,9 @@ export const POST = withAuthContext(
               adoption_source,
               adoption_note: adoption_note ?? null,
               mark_reviewed,
+              follow_up_status: follow_up_status ?? null,
+              follow_up_reason: follow_up_reason ?? null,
+              follow_up_due_date: follow_up_due_date?.toISOString() ?? null,
             },
           },
           ip_address: authCtx.ipAddress,

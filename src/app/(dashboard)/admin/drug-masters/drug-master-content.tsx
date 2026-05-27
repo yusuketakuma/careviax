@@ -152,6 +152,10 @@ type PharmacyDrugStockConfig = {
   adoption_note: string | null;
   last_reviewed_at: string | null;
   reviewed_by_id: string | null;
+  follow_up_status: string | null;
+  follow_up_reason: string | null;
+  follow_up_due_date: string | null;
+  follow_up_resolved_at: string | null;
   updated_at: string;
   preferred_generic: PreferredGenericSummary | null;
 };
@@ -179,12 +183,14 @@ type FormularyImpactResponse = {
     missing_reorder_point_count: number;
     safety_flagged_count: number;
     transitional_expiry_count: number;
+    action_required_count: number;
   };
   samples: {
     review_due: FormularyStockSummaryRow[];
     missing_reorder_point: FormularyStockSummaryRow[];
     safety_flagged: FormularyStockSummaryRow[];
     transitional_expiry: FormularyStockSummaryRow[];
+    action_required: FormularyStockSummaryRow[];
   };
 };
 
@@ -727,6 +733,9 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       is_stocked: boolean;
       preferred_generic_id?: string | null;
       reorder_point?: number | null;
+      follow_up_status?: 'active' | 'needs_review' | 'planned_switch' | 'monitoring' | 'resolved' | null;
+      follow_up_reason?: string | null;
+      follow_up_due_date?: string | null;
     }) => {
       const res = await fetch('/api/pharmacy-drug-stocks', {
         method: 'POST',
@@ -921,6 +930,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const safetyFlaggedCount = formularyImpact?.totals.safety_flagged_count ?? safetyReviewCount;
   const transitionalExpiryCount =
     formularyImpact?.totals.transitional_expiry_count ?? expiryWatchCount;
+  const actionRequiredCount = formularyImpact?.totals.action_required_count ?? 0;
   const selectedRowIndex = selectedDrugId
     ? drugs.findIndex((drug) => drug.id === selectedDrugId)
     : undefined;
@@ -1068,7 +1078,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-4">
+            <div className="grid gap-3 md:grid-cols-5">
               <div className="rounded-md border border-border/60 px-3 py-2">
                 <p className="text-xs text-muted-foreground">レビュー期限超過</p>
                 <p className="mt-1 text-2xl font-semibold tabular-nums">
@@ -1091,6 +1101,12 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                 <p className="text-xs text-muted-foreground">経過措置90日以内</p>
                 <p className="mt-1 text-2xl font-semibold tabular-nums">
                   {transitionalExpiryCount.toLocaleString()}
+                </p>
+              </div>
+              <div className="rounded-md border border-border/60 px-3 py-2">
+                <p className="text-xs text-muted-foreground">要対応</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums">
+                  {actionRequiredCount.toLocaleString()}
                 </p>
               </div>
             </div>
@@ -1531,6 +1547,95 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                               }
                             >
                               後発薬設定を保存
+                            </LoadingButton>
+                          </div>
+                        </div>
+                      )}
+
+                      {(detailQuery.data.transitional_expiry_date ||
+                        stockConfig?.follow_up_status) && (
+                        <div className="grid gap-3 rounded-md border border-border/60 bg-background p-3">
+                          <div>
+                            <p className="text-sm font-medium text-foreground">
+                              マスター変更フォロー
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              経過措置や薬価改定で採用品の切替・継続確認が必要な場合に状態を残します。
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge
+                              variant={
+                                stockConfig?.follow_up_status === 'resolved'
+                                  ? 'outline'
+                                  : detailQuery.data.transitional_expiry_date
+                                    ? 'destructive'
+                                    : 'secondary'
+                              }
+                              className="text-[10px]"
+                            >
+                              {stockConfig?.follow_up_status === 'resolved'
+                                ? '対応済み'
+                                : stockConfig?.follow_up_status === 'planned_switch'
+                                  ? '切替予定'
+                                  : stockConfig?.follow_up_status === 'monitoring'
+                                    ? '経過観察'
+                                    : '要確認'}
+                            </Badge>
+                            {detailQuery.data.transitional_expiry_date && (
+                              <span className="text-xs text-muted-foreground">
+                                経過措置期限:{' '}
+                                {new Date(
+                                  detailQuery.data.transitional_expiry_date,
+                                ).toLocaleDateString('ja-JP')}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <LoadingButton
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              loading={stockMutation.isPending}
+                              loadingLabel="記録中"
+                              disabled={!effectiveSelectedSiteId}
+                              onClick={() =>
+                                stockMutation.mutate({
+                                  site_id: effectiveSelectedSiteId,
+                                  drug_master_id: detailQuery.data.id,
+                                  is_stocked: stockConfig?.is_stocked ?? true,
+                                  preferred_generic_id: effectivePreferredGenericId || null,
+                                  reorder_point: stockConfig?.reorder_point ?? null,
+                                  follow_up_status: 'planned_switch',
+                                  follow_up_reason: '経過措置またはマスター変更に伴う切替予定',
+                                  follow_up_due_date:
+                                    detailQuery.data.transitional_expiry_date ?? null,
+                                })
+                              }
+                            >
+                              切替予定にする
+                            </LoadingButton>
+                            <LoadingButton
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              loading={stockMutation.isPending}
+                              loadingLabel="記録中"
+                              disabled={!effectiveSelectedSiteId}
+                              onClick={() =>
+                                stockMutation.mutate({
+                                  site_id: effectiveSelectedSiteId,
+                                  drug_master_id: detailQuery.data.id,
+                                  is_stocked: stockConfig?.is_stocked ?? true,
+                                  preferred_generic_id: effectivePreferredGenericId || null,
+                                  reorder_point: stockConfig?.reorder_point ?? null,
+                                  follow_up_status: 'resolved',
+                                  follow_up_reason: '採用薬フォローアップ確認済み',
+                                  follow_up_due_date: null,
+                                })
+                              }
+                            >
+                              対応済みにする
                             </LoadingButton>
                           </div>
                         </div>
