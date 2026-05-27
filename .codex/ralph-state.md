@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-231104
+
+- current task: add prescription/formulary mismatch detection from recent site QR drafts
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, Next.js route handler docs, `prisma/schema/prescription.prisma`, `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`
+- files changed: `src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts`, `src/app/api/pharmacy-drug-stocks/usage-mismatch/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the formulary dashboard could show adopted-drug review queues, but it had no way to compare actual QR prescription usage against site-specific adopted drugs; high-frequency unadopted drugs and adopted-but-unused drugs stayed invisible
+- security risks found: mismatch detection validates the selected pharmacy site belongs to the authenticated org before reading QR drafts or stock rows, excludes discarded QR drafts, and keeps all reads scoped by `org_id` and `site_id`
+- performance issues found: QR analysis is bounded by `draft_limit`, resolves drug masters in one batched query by YJ code/name, and limits displayed mismatch rows while returning exact mismatch totals for the bounded analysis window
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/usage-mismatch/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for changed API/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 2 files / 7 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice adds QR-derived prescription/adoption mismatch detection and dashboard surfacing, but does not yet add scheduled notifications or monetary impact ranking
+- next action: commit the mismatch detection slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260527-230152
 
 - current task: complete the formulary approval workflow by adding approve/reject actions to the pending request UI
