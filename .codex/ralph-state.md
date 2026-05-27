@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-223344
+
+- current task: add dry-run CSV diff preview before adopted-drug bulk import
+- files inspected: `git status --short`, `src/app/api/pharmacy-drug-stocks/bulk/route.ts`, `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `docs/ui-ux-design-guidelines.md`, Next.js route handler docs
+- files changed: `src/app/api/pharmacy-drug-stocks/bulk/route.ts`, `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: CSV bulk import could still be executed without a prior authoritative diff, so users could only discover unmatched or invalid rows after submitting and could not see whether each valid row would create, update, deactivate, or make no change
+- security risks found: dry-run uses the same `canAdmin`, org, and site boundary as the real import; dry-run performs no stock mutation and writes no audit row, avoiding misleading audit history for previews
+- performance issues found: existing and target stock rows are fetched in one bounded `findMany` by target drug IDs; no per-row current-stock lookups were added
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/bulk/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for changed bulk API/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 2 files / 10 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice adds import preview/diff only
+- next action: commit the CSV preview slice and continue the next high-value formulary/drug-master item
+
 ### 20260527-222746
 
 - current task: add a downloadable CSV template for adopted-drug bulk import
