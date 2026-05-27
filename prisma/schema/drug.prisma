@@ -220,8 +220,8 @@ model FormularyTemplate {
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 
+  @@unique([org_id, name], map: "FormularyTemplate_org_id_name_key")
   @@index([org_id, created_at])
-  @@index([org_id, name])
 }
 
 // グローバルマスタ（org_id なし）
