@@ -1561,6 +1561,46 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     },
   });
 
+  const safetyFollowUpMutation = useMutation({
+    mutationFn: async () => {
+      if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
+      const res = await fetch('/api/pharmacy-drug-stocks/safety-follow-up', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          site_id: effectiveSelectedSiteId,
+          queue: 'all',
+          due_in_days: 30,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.message ?? '安全性フォローアップの作成に失敗しました');
+      return json as {
+        matchedCount: number;
+        updatedCount: number;
+        skippedUnresolvedCount: number;
+      };
+    },
+    onSuccess: async (result) => {
+      toast.success(
+        `安全性フォローアップを作成しました（${result.updatedCount.toLocaleString()}件）`,
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks'] }),
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks-impact'] }),
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock-history'] }),
+      ]);
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : '安全性フォローアップの作成に失敗しました',
+      );
+    },
+  });
+
   const exportMutation = useMutation({
     mutationFn: async () => {
       if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
@@ -2331,6 +2371,22 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                     {controlledAdoptedCount.toLocaleString()}
                   </p>
                 </button>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 bg-background px-3 py-2">
+                <p className="text-xs text-muted-foreground">
+                  安全属性のある採用品のうち、未解決フォローアップがないものを30日以内の要確認にします。
+                </p>
+                <LoadingButton
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  loading={safetyFollowUpMutation.isPending}
+                  loadingLabel="作成中"
+                  disabled={!effectiveSelectedSiteId || safetyFlaggedCount === 0}
+                  onClick={() => safetyFollowUpMutation.mutate()}
+                >
+                  安全性フォローアップ作成
+                </LoadingButton>
               </div>
               <div className="mt-3 grid gap-2 md:grid-cols-3">
                 <button

@@ -332,6 +332,7 @@ describe('DrugMasterContent', () => {
     expect(screen.getByText('ハイリスク採用品')).toBeTruthy();
     expect(screen.getByText('LASA注意採用品')).toBeTruthy();
     expect(screen.getByText('規制薬採用品')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '安全性フォローアップ作成' })).toBeTruthy();
     expect(screen.getByText('経過措置30日以内')).toBeTruthy();
     expect(screen.getAllByText('経過措置90日以内').length).toBeGreaterThan(0);
     expect(screen.getByText('薬価改定差分レポート')).toBeTruthy();

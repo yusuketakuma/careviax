@@ -613,6 +613,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/pharmacists/:id',
   '/api/pharmacists/import',
   '/api/pharmacy-drug-stocks',
+  '/api/pharmacy-drug-stocks/safety-follow-up',
   '/api/pharmacy-sites',
   '/api/pharmacy-sites/:id',
   '/api/pharmacy-sites/:id/insurance-configs',
