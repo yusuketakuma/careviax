@@ -238,6 +238,9 @@ type FormularyImpactResponse = {
     review_due_count: number;
     missing_reorder_point_count: number;
     safety_flagged_count: number;
+    high_risk_count: number;
+    lasa_risk_count: number;
+    controlled_count: number;
     transitional_expiry_count: number;
     transitional_expiry_within_30_count: number;
     transitional_expiry_within_60_count: number;
@@ -283,6 +286,9 @@ type FormularyImpactResponse = {
     review_due: FormularyStockSummaryRow[];
     missing_reorder_point: FormularyStockSummaryRow[];
     safety_flagged: FormularyStockSummaryRow[];
+    high_risk: FormularyStockSummaryRow[];
+    lasa_risk: FormularyStockSummaryRow[];
+    controlled: FormularyStockSummaryRow[];
     transitional_expiry: FormularyStockSummaryRow[];
     action_required: FormularyStockSummaryRow[];
     recently_changed: FormularyStockSummaryRow[];
@@ -488,6 +494,9 @@ type ImpactQueueKey =
   | 'transitional_expiry'
   | 'missing_reorder_point'
   | 'safety_flagged'
+  | 'high_risk'
+  | 'lasa_risk'
+  | 'controlled'
   | 'review_due';
 
 const baseColumns: ColumnDef<DrugMasterRow>[] = [
@@ -1692,6 +1701,9 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const missingReorderCount =
     formularyImpact?.totals.missing_reorder_point_count ?? missingReorderStocks.length;
   const safetyFlaggedCount = formularyImpact?.totals.safety_flagged_count ?? safetyReviewCount;
+  const highRiskAdoptedCount = formularyImpact?.totals.high_risk_count ?? 0;
+  const lasaRiskAdoptedCount = formularyImpact?.totals.lasa_risk_count ?? 0;
+  const controlledAdoptedCount = formularyImpact?.totals.controlled_count ?? 0;
   const transitionalExpiryCount =
     formularyImpact?.totals.transitional_expiry_count ?? expiryWatchCount;
   const transitionalExpiryWithin30Count =
@@ -2292,6 +2304,38 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                 <button
                   type="button"
                   className="rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
+                  onClick={() => setImpactQueue('high_risk')}
+                >
+                  <p className="text-xs text-muted-foreground">ハイリスク採用品</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums">
+                    {highRiskAdoptedCount.toLocaleString()}
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  className="rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
+                  onClick={() => setImpactQueue('lasa_risk')}
+                >
+                  <p className="text-xs text-muted-foreground">LASA注意採用品</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums">
+                    {lasaRiskAdoptedCount.toLocaleString()}
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  className="rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
+                  onClick={() => setImpactQueue('controlled')}
+                >
+                  <p className="text-xs text-muted-foreground">規制薬採用品</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums">
+                    {controlledAdoptedCount.toLocaleString()}
+                  </p>
+                </button>
+              </div>
+              <div className="mt-3 grid gap-2 md:grid-cols-3">
+                <button
+                  type="button"
+                  className="rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
                   onClick={() => setImpactQueue('transitional_expiry')}
                 >
                   <p className="text-xs text-muted-foreground">経過措置30日以内</p>
@@ -2348,6 +2392,11 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                             </span>
                           )}
                           {stock.follow_up_status && <span>{stock.follow_up_status}</span>}
+                          {stock.drug_master.is_high_risk && <span>ハイリスク</span>}
+                          {stock.drug_master.is_lasa_risk && <span>LASA</span>}
+                          {(stock.drug_master.is_narcotic || stock.drug_master.is_psychotropic) && (
+                            <span>規制薬</span>
+                          )}
                           {stock.drug_master.transitional_expiry_date && (
                             <span>
                               経過措置{' '}

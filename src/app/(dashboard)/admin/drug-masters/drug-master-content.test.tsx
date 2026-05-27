@@ -151,6 +151,9 @@ vi.mock('@tanstack/react-query', () => ({
             review_due_count: 0,
             missing_reorder_point_count: 0,
             safety_flagged_count: 0,
+            high_risk_count: 2,
+            lasa_risk_count: 1,
+            controlled_count: 1,
             transitional_expiry_count: 0,
             transitional_expiry_within_30_count: 0,
             transitional_expiry_within_60_count: 0,
@@ -186,6 +189,9 @@ vi.mock('@tanstack/react-query', () => ({
             review_due: [],
             missing_reorder_point: [],
             safety_flagged: [],
+            high_risk: [],
+            lasa_risk: [],
+            controlled: [],
             transitional_expiry: [],
             action_required: [],
             recently_changed: [],
@@ -323,6 +329,9 @@ describe('DrugMasterContent', () => {
     expect(screen.getByText('影響レビューキュー')).toBeTruthy();
     expect(screen.getByText('未解決フォローアップ')).toBeTruthy();
     expect(screen.getByText('期限超過')).toBeTruthy();
+    expect(screen.getByText('ハイリスク採用品')).toBeTruthy();
+    expect(screen.getByText('LASA注意採用品')).toBeTruthy();
+    expect(screen.getByText('規制薬採用品')).toBeTruthy();
     expect(screen.getByText('経過措置30日以内')).toBeTruthy();
     expect(screen.getAllByText('経過措置90日以内').length).toBeGreaterThan(0);
     expect(screen.getByText('薬価改定差分レポート')).toBeTruthy();

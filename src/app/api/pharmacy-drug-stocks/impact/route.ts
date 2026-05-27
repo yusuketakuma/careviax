@@ -19,6 +19,9 @@ const impactQuerySchema = z.object({
       'transitional_expiry',
       'missing_reorder_point',
       'safety_flagged',
+      'high_risk',
+      'lasa_risk',
+      'controlled',
       'review_due',
     ])
     .default('action_required'),
@@ -135,6 +138,20 @@ export const GET = withAuthContext(
         ],
       },
     } satisfies Prisma.PharmacyDrugStockWhereInput;
+    const highRiskWhere = {
+      ...baseWhere,
+      drug_master: { is_high_risk: true },
+    } satisfies Prisma.PharmacyDrugStockWhereInput;
+    const lasaRiskWhere = {
+      ...baseWhere,
+      drug_master: { is_lasa_risk: true },
+    } satisfies Prisma.PharmacyDrugStockWhereInput;
+    const controlledWhere = {
+      ...baseWhere,
+      drug_master: {
+        OR: [{ is_narcotic: true }, { is_psychotropic: true }],
+      },
+    } satisfies Prisma.PharmacyDrugStockWhereInput;
     const transitionalExpiryWhere = {
       ...baseWhere,
       drug_master: {
@@ -221,6 +238,9 @@ export const GET = withAuthContext(
       transitional_expiry: transitionalExpiryWhere,
       missing_reorder_point: missingReorderWhere,
       safety_flagged: safetyFlaggedWhere,
+      high_risk: highRiskWhere,
+      lasa_risk: lasaRiskWhere,
+      controlled: controlledWhere,
       review_due: reviewDueWhere,
     };
     const queueOrderBy = [{ updated_at: 'desc' }] satisfies Prisma.PharmacyDrugStockOrderByWithRelationInput[];
@@ -229,6 +249,9 @@ export const GET = withAuthContext(
       reviewDueCount,
       missingReorderPointCount,
       safetyFlaggedCount,
+      highRiskCount,
+      lasaRiskCount,
+      controlledCount,
       transitionalExpiryCount,
       transitionalExpiryWithin30Count,
       transitionalExpiryWithin60Count,
@@ -242,6 +265,9 @@ export const GET = withAuthContext(
       reviewDueSample,
       missingReorderPointSample,
       safetyFlaggedSample,
+      highRiskSample,
+      lasaRiskSample,
+      controlledSample,
       transitionalExpirySample,
       actionRequiredSample,
       recentlyChangedSample,
@@ -250,6 +276,9 @@ export const GET = withAuthContext(
       prisma.pharmacyDrugStock.count({ where: reviewDueWhere }),
       prisma.pharmacyDrugStock.count({ where: missingReorderWhere }),
       prisma.pharmacyDrugStock.count({ where: safetyFlaggedWhere }),
+      prisma.pharmacyDrugStock.count({ where: highRiskWhere }),
+      prisma.pharmacyDrugStock.count({ where: lasaRiskWhere }),
+      prisma.pharmacyDrugStock.count({ where: controlledWhere }),
       prisma.pharmacyDrugStock.count({ where: transitionalExpiryWhere }),
       prisma.pharmacyDrugStock.count({ where: transitionalExpiryWithin30Where }),
       prisma.pharmacyDrugStock.count({ where: transitionalExpiryWithin60Where }),
@@ -284,6 +313,24 @@ export const GET = withAuthContext(
       }),
       prisma.pharmacyDrugStock.findMany({
         where: safetyFlaggedWhere,
+        orderBy: queueOrderBy,
+        take: 10,
+        select: stockImpactSelect,
+      }),
+      prisma.pharmacyDrugStock.findMany({
+        where: highRiskWhere,
+        orderBy: queueOrderBy,
+        take: 10,
+        select: stockImpactSelect,
+      }),
+      prisma.pharmacyDrugStock.findMany({
+        where: lasaRiskWhere,
+        orderBy: queueOrderBy,
+        take: 10,
+        select: stockImpactSelect,
+      }),
+      prisma.pharmacyDrugStock.findMany({
+        where: controlledWhere,
         orderBy: queueOrderBy,
         take: 10,
         select: stockImpactSelect,
@@ -421,6 +468,9 @@ export const GET = withAuthContext(
           transitional_expiry: transitionalExpiryCount,
           missing_reorder_point: missingReorderPointCount,
           safety_flagged: safetyFlaggedCount,
+          high_risk: highRiskCount,
+          lasa_risk: lasaRiskCount,
+          controlled: controlledCount,
           review_due: reviewDueCount,
         }[parsed.data.queue],
       },
@@ -429,6 +479,9 @@ export const GET = withAuthContext(
         review_due_count: reviewDueCount,
         missing_reorder_point_count: missingReorderPointCount,
         safety_flagged_count: safetyFlaggedCount,
+        high_risk_count: highRiskCount,
+        lasa_risk_count: lasaRiskCount,
+        controlled_count: controlledCount,
         transitional_expiry_count: transitionalExpiryCount,
         transitional_expiry_within_30_count: transitionalExpiryWithin30Count,
         transitional_expiry_within_60_count: transitionalExpiryWithin60Count,
@@ -465,6 +518,9 @@ export const GET = withAuthContext(
         review_due: reviewDueSample,
         missing_reorder_point: missingReorderPointSample,
         safety_flagged: safetyFlaggedSample,
+        high_risk: highRiskSample,
+        lasa_risk: lasaRiskSample,
+        controlled: controlledSample,
         transitional_expiry: transitionalExpirySample,
         action_required: actionRequiredSample,
         recently_changed: recentlyChangedSample,

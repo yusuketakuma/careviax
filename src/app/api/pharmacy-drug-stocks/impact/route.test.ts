@@ -80,6 +80,9 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
       .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(1)
@@ -93,6 +96,9 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
       .mockResolvedValueOnce([stock])
       .mockResolvedValueOnce([stock])
       .mockResolvedValueOnce([stock])
+      .mockResolvedValueOnce([stock])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([stock])
       .mockResolvedValueOnce([stock])
       .mockResolvedValueOnce([]);
@@ -115,6 +121,9 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
         review_due_count: 1,
         missing_reorder_point_count: 1,
         safety_flagged_count: 1,
+        high_risk_count: 1,
+        lasa_risk_count: 0,
+        controlled_count: 0,
         transitional_expiry_count: 1,
         transitional_expiry_within_30_count: 1,
         transitional_expiry_within_60_count: 1,
@@ -189,6 +198,9 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0)
@@ -196,6 +208,9 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
     prismaMock.pharmacyDrugStock.findMany
       .mockResolvedValueOnce([changedStock])
       .mockResolvedValueOnce([changedStock])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
@@ -326,11 +341,17 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0);
     prismaMock.pharmacyDrugStock.findMany
       .mockResolvedValueOnce(stocks)
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce(stocks.slice(0, 10))
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
