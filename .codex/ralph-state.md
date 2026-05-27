@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-224759
+
+- current task: add same-ingredient grouping for formulary review and generic consolidation
+- files inspected: `git status --short`, `src/app/api/drug-masters/[id]/generic-recommendations/route.ts`, `src/app/api/drug-masters/[id]/generic-recommendations/route.test.ts`, `src/app/api/drug-masters/route.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `docs/ui-ux-design-guidelines.md`, Next.js route handler docs
+- files changed: `src/app/api/drug-masters/[id]/ingredient-group/route.ts`, `src/app/api/drug-masters/[id]/ingredient-group/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `.codex/ralph-state.md`
+- bugs found: generic recommendations showed low-price generic candidates, but the detail view did not show the full same-generic-name group, so operators could not see how many brand/generic members existed or which same-ingredient members were already adopted at the selected site
+- security risks found: the new ingredient group API validates the optional site against the authenticated org before returning site-specific formulary status
+- performance issues found: the group is bounded by a request limit up to 100; site stock status is fetched in one batched query for returned member IDs
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/api/drug-masters/[id]/ingredient-group/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for changed ingredient group API/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 2 files / 7 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice adds same-ingredient grouping only
+- next action: commit the ingredient-group slice and continue the next high-value formulary/drug-master item
+
 ### 20260527-224325
 
 - current task: add per-drug formulary change history from audit logs
