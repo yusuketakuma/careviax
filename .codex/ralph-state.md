@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260528-002410
+
+- current task: add expand/collapse control for formulary CSV preview rows
+- files inspected: `docs/ui-ux-design-guidelines.md`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`
+- files changed: `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `.codex/ralph-state.md`
+- bugs found: even after blocking rows were prioritized, the CSV preview still capped visible rows at six with no way to inspect the remaining preview rows before applying
+- security risks found: no authorization or API behavior changed; the UI expands rows already returned by the admin-only bulk preview response
+- performance issues found: default display remains capped at six rows and expands only on user action; no additional network requests are added
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for formulary admin UI; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 1 file / 5 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice adds full preview expansion but not server-side preview pagination
+- next action: commit the CSV preview expansion slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260528-002105
 
 - current task: prioritize blocking rows in the formulary CSV preview
