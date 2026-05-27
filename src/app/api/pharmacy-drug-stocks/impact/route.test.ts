@@ -6,7 +6,7 @@ const { authMock, prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     membership: { findFirst: vi.fn() },
     pharmacySite: { findFirst: vi.fn() },
-    pharmacyDrugStock: { findMany: vi.fn() },
+    pharmacyDrugStock: { count: vi.fn(), findMany: vi.fn() },
     drugMasterChangeEvent: { findMany: vi.fn() },
   },
 }));
@@ -46,34 +46,48 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
     const soonExpiry = new Date(now);
     soonExpiry.setDate(soonExpiry.getDate() + 30);
 
-    prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([
-      {
-        id: 'stock_1',
-        drug_master_id: 'drug_1',
-        reorder_point: null,
-        last_reviewed_at: oldReview,
-        follow_up_status: null,
-        follow_up_reason: null,
-        follow_up_due_date: null,
-        follow_up_resolved_at: null,
-        updated_at: now,
-        drug_master: {
-          id: 'drug_1',
-          yj_code: '123456789012',
-          receipt_code: null,
-          drug_name: 'ハイリスク薬',
-          generic_name: null,
-          drug_price: 100,
-          unit: '錠',
-          is_generic: false,
-          is_narcotic: false,
-          is_psychotropic: false,
-          is_high_risk: true,
-          is_lasa_risk: false,
-          transitional_expiry_date: soonExpiry,
-        },
+    const stock = {
+      id: 'stock_1',
+      drug_master_id: 'drug_1',
+      reorder_point: null,
+      last_reviewed_at: oldReview,
+      follow_up_status: null,
+      follow_up_reason: null,
+      follow_up_due_date: null,
+      follow_up_resolved_at: null,
+      updated_at: now,
+      drug_master: {
+        id: 'drug_1',
+        yj_code: '123456789012',
+        receipt_code: null,
+        drug_name: 'ハイリスク薬',
+        generic_name: null,
+        drug_price: 100,
+        unit: '錠',
+        is_generic: false,
+        is_narcotic: false,
+        is_psychotropic: false,
+        is_high_risk: true,
+        is_lasa_risk: false,
+        transitional_expiry_date: soonExpiry,
       },
-    ]);
+    };
+    prismaMock.pharmacyDrugStock.count
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(0);
+    prismaMock.pharmacyDrugStock.findMany
+      .mockResolvedValueOnce([stock])
+      .mockResolvedValueOnce([stock])
+      .mockResolvedValueOnce([stock])
+      .mockResolvedValueOnce([stock])
+      .mockResolvedValueOnce([stock])
+      .mockResolvedValueOnce([stock])
+      .mockResolvedValueOnce([]);
 
     const response = await GET(
       createRequest('http://localhost/api/pharmacy-drug-stocks/impact?site_id=site_1'),
@@ -107,70 +121,59 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
     const futureReview = new Date(now);
     futureReview.setDate(futureReview.getDate() + 10);
 
-    prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([
-      {
-        id: 'stock_changed',
-        drug_master_id: 'drug_changed',
-        reorder_point: 10,
-        last_reviewed_at: futureReview,
-        follow_up_status: 'resolved',
-        follow_up_reason: '切替済み',
-        follow_up_due_date: null,
-        follow_up_resolved_at: now,
-        updated_at: now,
-        drug_master: {
-          id: 'drug_changed',
-          yj_code: '123456789012',
-          receipt_code: null,
-          drug_name: '改定薬',
-          generic_name: null,
-          drug_price: 120,
-          unit: '錠',
-          is_generic: false,
-          is_narcotic: false,
-          is_psychotropic: false,
-          is_high_risk: false,
-          is_lasa_risk: false,
-          transitional_expiry_date: null,
-        },
-      },
-      {
-        id: 'stock_unchanged',
-        drug_master_id: 'drug_unchanged',
-        reorder_point: 5,
-        last_reviewed_at: futureReview,
-        follow_up_status: null,
-        follow_up_reason: null,
-        follow_up_due_date: null,
-        follow_up_resolved_at: null,
-        updated_at: now,
-        drug_master: {
-          id: 'drug_unchanged',
-          yj_code: '999999999999',
-          receipt_code: null,
-          drug_name: '未改定薬',
-          generic_name: null,
-          drug_price: 80,
-          unit: '錠',
-          is_generic: false,
-          is_narcotic: false,
-          is_psychotropic: false,
-          is_high_risk: false,
-          is_lasa_risk: false,
-          transitional_expiry_date: null,
-        },
-      },
-    ]);
-    prismaMock.drugMasterChangeEvent.findMany.mockResolvedValue([
-      {
-        id: 'change_1',
+    const changedStock = {
+      id: 'stock_changed',
+      drug_master_id: 'drug_changed',
+      reorder_point: 10,
+      last_reviewed_at: futureReview,
+      follow_up_status: 'resolved',
+      follow_up_reason: '切替済み',
+      follow_up_due_date: null,
+      follow_up_resolved_at: now,
+      updated_at: now,
+      drug_master: {
+        id: 'drug_changed',
         yj_code: '123456789012',
-        change_type: 'price_changed',
-        previous_value: { drug_price: '100.00' },
-        current_value: { drug_price: '120.00' },
-        created_at: changedAt,
+        receipt_code: null,
+        drug_name: '改定薬',
+        generic_name: null,
+        drug_price: 120,
+        unit: '錠',
+        is_generic: false,
+        is_narcotic: false,
+        is_psychotropic: false,
+        is_high_risk: false,
+        is_lasa_risk: false,
+        transitional_expiry_date: null,
       },
-    ]);
+    };
+    const change = {
+      id: 'change_1',
+      yj_code: '123456789012',
+      change_type: 'price_changed',
+      previous_value: { drug_price: '100.00' },
+      current_value: { drug_price: '120.00' },
+      created_at: changedAt,
+    };
+    prismaMock.drugMasterChangeEvent.findMany
+      .mockResolvedValueOnce([{ yj_code: '123456789012' }])
+      .mockResolvedValueOnce([change]);
+    prismaMock.pharmacyDrugStock.count
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(1);
+    prismaMock.pharmacyDrugStock.findMany
+      .mockResolvedValueOnce([changedStock])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([changedStock]);
 
     const response = await GET(
       createRequest(
@@ -211,34 +214,48 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
     const oldReview = new Date(now);
     oldReview.setDate(oldReview.getDate() - 220);
 
-    prismaMock.pharmacyDrugStock.findMany.mockResolvedValue(
-      Array.from({ length: 501 }, (_, index) => ({
-        id: `stock_${index}`,
-        drug_master_id: `drug_${index}`,
-        reorder_point: 1,
-        last_reviewed_at: oldReview,
-        follow_up_status: null,
-        follow_up_reason: null,
-        follow_up_due_date: null,
-        follow_up_resolved_at: null,
-        updated_at: now,
-        drug_master: {
-          id: `drug_${index}`,
-          yj_code: `123456789${index.toString().padStart(3, '0')}`,
-          receipt_code: null,
-          drug_name: `採用薬${index}`,
-          generic_name: null,
-          drug_price: 100,
-          unit: '錠',
-          is_generic: false,
-          is_narcotic: false,
-          is_psychotropic: false,
-          is_high_risk: false,
-          is_lasa_risk: false,
-          transitional_expiry_date: null,
-        },
-      })),
-    );
+    const stocks = Array.from({ length: 25 }, (_, index) => ({
+      id: `stock_${index}`,
+      drug_master_id: `drug_${index}`,
+      reorder_point: 1,
+      last_reviewed_at: oldReview,
+      follow_up_status: null,
+      follow_up_reason: null,
+      follow_up_due_date: null,
+      follow_up_resolved_at: null,
+      updated_at: now,
+      drug_master: {
+        id: `drug_${index}`,
+        yj_code: `123456789${index.toString().padStart(3, '0')}`,
+        receipt_code: null,
+        drug_name: `採用薬${index}`,
+        generic_name: null,
+        drug_price: 100,
+        unit: '錠',
+        is_generic: false,
+        is_narcotic: false,
+        is_psychotropic: false,
+        is_high_risk: false,
+        is_lasa_risk: false,
+        transitional_expiry_date: null,
+      },
+    }));
+    prismaMock.pharmacyDrugStock.count
+      .mockResolvedValueOnce(501)
+      .mockResolvedValueOnce(501)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0);
+    prismaMock.pharmacyDrugStock.findMany
+      .mockResolvedValueOnce(stocks)
+      .mockResolvedValueOnce(stocks.slice(0, 10))
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
 
     const response = await GET(
       createRequest(
@@ -249,8 +266,8 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenCalledWith(
-      expect.not.objectContaining({ take: 500 }),
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ take: 500 }),
     );
     const json = await response.json();
     expect(json.selected_queue.key).toBe('review_due');

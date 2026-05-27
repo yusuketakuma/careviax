@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { notFound, success, validationError } from '@/lib/api/response';
@@ -22,11 +23,42 @@ const impactQuerySchema = z.object({
   queue_limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
+type ImpactQueueKey = z.infer<typeof impactQuerySchema>['queue'];
+
 function addDays(date: Date, days: number) {
   const result = new Date(date);
   result.setDate(result.getDate() + days);
   return result;
 }
+
+const stockImpactSelect = {
+  id: true,
+  drug_master_id: true,
+  reorder_point: true,
+  last_reviewed_at: true,
+  follow_up_status: true,
+  follow_up_reason: true,
+  follow_up_due_date: true,
+  follow_up_resolved_at: true,
+  updated_at: true,
+  drug_master: {
+    select: {
+      id: true,
+      yj_code: true,
+      receipt_code: true,
+      drug_name: true,
+      generic_name: true,
+      drug_price: true,
+      unit: true,
+      is_generic: true,
+      is_narcotic: true,
+      is_psychotropic: true,
+      is_high_risk: true,
+      is_lasa_risk: true,
+      transitional_expiry_date: true,
+    },
+  },
+} satisfies Prisma.PharmacyDrugStockSelect;
 
 export const GET = withAuthContext(
   async (req: NextRequest, authCtx) => {
@@ -44,50 +76,164 @@ export const GET = withAuthContext(
     const now = new Date();
     const expiryUntil = addDays(now, parsed.data.expiry_within_days);
     const reviewCutoff = addDays(now, -parsed.data.review_overdue_days);
+    const recentChangeCutoff = addDays(now, -30);
 
-    const stocks = await prisma.pharmacyDrugStock.findMany({
-      where: {
-        org_id: authCtx.orgId,
-        site_id: site.id,
-        is_stocked: true,
+    const baseWhere = {
+      org_id: authCtx.orgId,
+      site_id: site.id,
+      is_stocked: true,
+    } satisfies Prisma.PharmacyDrugStockWhereInput;
+    const reviewDueWhere = {
+      ...baseWhere,
+      OR: [{ last_reviewed_at: null }, { last_reviewed_at: { lt: reviewCutoff } }],
+    } satisfies Prisma.PharmacyDrugStockWhereInput;
+    const missingReorderWhere = {
+      ...baseWhere,
+      reorder_point: null,
+    } satisfies Prisma.PharmacyDrugStockWhereInput;
+    const safetyFlaggedWhere = {
+      ...baseWhere,
+      drug_master: {
+        OR: [
+          { is_high_risk: true },
+          { is_lasa_risk: true },
+          { is_narcotic: true },
+          { is_psychotropic: true },
+        ],
       },
-      orderBy: [{ updated_at: 'desc' }],
-      select: {
-        id: true,
-        drug_master_id: true,
-        reorder_point: true,
-        last_reviewed_at: true,
-        follow_up_status: true,
-        follow_up_reason: true,
-        follow_up_due_date: true,
-        follow_up_resolved_at: true,
-        updated_at: true,
-        drug_master: {
-          select: {
-            id: true,
-            yj_code: true,
-            receipt_code: true,
-            drug_name: true,
-            generic_name: true,
-            drug_price: true,
-            unit: true,
-            is_generic: true,
-            is_narcotic: true,
-            is_psychotropic: true,
-            is_high_risk: true,
-            is_lasa_risk: true,
-            transitional_expiry_date: true,
-          },
+    } satisfies Prisma.PharmacyDrugStockWhereInput;
+    const transitionalExpiryWhere = {
+      ...baseWhere,
+      drug_master: {
+        transitional_expiry_date: {
+          gte: now,
+          lte: expiryUntil,
         },
       },
+    } satisfies Prisma.PharmacyDrugStockWhereInput;
+    const recentChangeYjRows = await prisma.drugMasterChangeEvent.findMany({
+      where: {
+        source: 'mhlw_price',
+        created_at: { gte: recentChangeCutoff },
+      },
+      distinct: ['yj_code'],
+      select: { yj_code: true },
     });
+    const changedYjCodes = recentChangeYjRows.map((change) => change.yj_code);
+    const recentlyChangedWhere = {
+      ...baseWhere,
+      drug_master: { yj_code: { in: changedYjCodes } },
+    } satisfies Prisma.PharmacyDrugStockWhereInput;
+    const actionRequiredTriggers: Prisma.PharmacyDrugStockWhereInput[] = [
+      {
+        AND: [
+          { follow_up_status: { not: null } },
+          { follow_up_status: { notIn: ['active', 'resolved', ''] } },
+        ],
+      },
+      {
+        AND: [
+          { OR: [{ follow_up_status: null }, { follow_up_status: 'active' }] },
+          {
+            OR: [
+              { drug_master: transitionalExpiryWhere.drug_master },
+              ...(changedYjCodes.length > 0
+                ? [{ drug_master: { yj_code: { in: changedYjCodes } } }]
+                : []),
+            ],
+          },
+        ],
+      },
+    ];
+    const actionRequiredWhere = {
+      ...baseWhere,
+      OR: actionRequiredTriggers,
+    } satisfies Prisma.PharmacyDrugStockWhereInput;
+    const queueWhereByKey: Record<ImpactQueueKey, Prisma.PharmacyDrugStockWhereInput> = {
+      action_required: actionRequiredWhere,
+      recently_changed: recentlyChangedWhere,
+      transitional_expiry: transitionalExpiryWhere,
+      missing_reorder_point: missingReorderWhere,
+      safety_flagged: safetyFlaggedWhere,
+      review_due: reviewDueWhere,
+    };
+    const queueOrderBy = [{ updated_at: 'desc' }] satisfies Prisma.PharmacyDrugStockOrderByWithRelationInput[];
+    const [
+      stockedCount,
+      reviewDueCount,
+      missingReorderPointCount,
+      safetyFlaggedCount,
+      transitionalExpiryCount,
+      actionRequiredCount,
+      recentMasterChangeCount,
+      selectedQueueRows,
+      reviewDueSample,
+      missingReorderPointSample,
+      safetyFlaggedSample,
+      transitionalExpirySample,
+      actionRequiredSample,
+      recentlyChangedSample,
+    ] = await Promise.all([
+      prisma.pharmacyDrugStock.count({ where: baseWhere }),
+      prisma.pharmacyDrugStock.count({ where: reviewDueWhere }),
+      prisma.pharmacyDrugStock.count({ where: missingReorderWhere }),
+      prisma.pharmacyDrugStock.count({ where: safetyFlaggedWhere }),
+      prisma.pharmacyDrugStock.count({ where: transitionalExpiryWhere }),
+      prisma.pharmacyDrugStock.count({ where: actionRequiredWhere }),
+      prisma.pharmacyDrugStock.count({ where: recentlyChangedWhere }),
+      prisma.pharmacyDrugStock.findMany({
+        where: queueWhereByKey[parsed.data.queue],
+        orderBy: queueOrderBy,
+        take: parsed.data.queue_limit,
+        select: stockImpactSelect,
+      }),
+      prisma.pharmacyDrugStock.findMany({
+        where: reviewDueWhere,
+        orderBy: queueOrderBy,
+        take: 10,
+        select: stockImpactSelect,
+      }),
+      prisma.pharmacyDrugStock.findMany({
+        where: missingReorderWhere,
+        orderBy: queueOrderBy,
+        take: 10,
+        select: stockImpactSelect,
+      }),
+      prisma.pharmacyDrugStock.findMany({
+        where: safetyFlaggedWhere,
+        orderBy: queueOrderBy,
+        take: 10,
+        select: stockImpactSelect,
+      }),
+      prisma.pharmacyDrugStock.findMany({
+        where: transitionalExpiryWhere,
+        orderBy: queueOrderBy,
+        take: 10,
+        select: stockImpactSelect,
+      }),
+      prisma.pharmacyDrugStock.findMany({
+        where: actionRequiredWhere,
+        orderBy: queueOrderBy,
+        take: 10,
+        select: stockImpactSelect,
+      }),
+      prisma.pharmacyDrugStock.findMany({
+        where: recentlyChangedWhere,
+        orderBy: queueOrderBy,
+        take: 10,
+        select: stockImpactSelect,
+      }),
+    ]);
+    const adoptedChangedYjCodes = new Set(
+      [...selectedQueueRows, ...recentlyChangedSample].map((stock) => stock.drug_master.yj_code),
+    );
     const recentChanges =
-      stocks.length > 0
+      adoptedChangedYjCodes.size > 0
         ? await prisma.drugMasterChangeEvent.findMany({
             where: {
-              yj_code: { in: stocks.map((stock) => stock.drug_master.yj_code) },
+              yj_code: { in: [...adoptedChangedYjCodes] },
               source: 'mhlw_price',
-              created_at: { gte: addDays(now, -30) },
+              created_at: { gte: recentChangeCutoff },
             },
             orderBy: [{ created_at: 'desc' }],
             take: 200,
@@ -101,43 +247,6 @@ export const GET = withAuthContext(
             },
           })
         : [];
-    const changedYjCodes = new Set(recentChanges.map((change) => change.yj_code));
-
-    const reviewDue = stocks.filter(
-      (stock) => !stock.last_reviewed_at || stock.last_reviewed_at < reviewCutoff,
-    );
-    const missingReorderPoint = stocks.filter((stock) => stock.reorder_point == null);
-    const safetyFlagged = stocks.filter(
-      (stock) =>
-        stock.drug_master.is_high_risk ||
-        stock.drug_master.is_lasa_risk ||
-        stock.drug_master.is_narcotic ||
-        stock.drug_master.is_psychotropic,
-    );
-    const transitionalExpiry = stocks.filter((stock) => {
-      const expiry = stock.drug_master.transitional_expiry_date;
-      return Boolean(expiry && expiry >= now && expiry <= expiryUntil);
-    });
-    const actionRequired = stocks.filter((stock) => {
-      if (stock.follow_up_status && stock.follow_up_status !== 'active') {
-        return stock.follow_up_status !== 'resolved';
-      }
-      const expiry = stock.drug_master.transitional_expiry_date;
-      return Boolean(
-        (expiry && expiry >= now && expiry <= expiryUntil) ||
-          changedYjCodes.has(stock.drug_master.yj_code),
-      );
-    });
-    const recentlyChanged = stocks.filter((stock) => changedYjCodes.has(stock.drug_master.yj_code));
-    const queueRowsByKey = {
-      action_required: actionRequired,
-      recently_changed: recentlyChanged,
-      transitional_expiry: transitionalExpiry,
-      missing_reorder_point: missingReorderPoint,
-      safety_flagged: safetyFlagged,
-      review_due: reviewDue,
-    };
-    const selectedQueueRows = queueRowsByKey[parsed.data.queue].slice(0, parsed.data.queue_limit);
 
     return success({
       site,
@@ -149,25 +258,32 @@ export const GET = withAuthContext(
       selected_queue: {
         key: parsed.data.queue,
         rows: selectedQueueRows,
-        total_count: queueRowsByKey[parsed.data.queue].length,
+        total_count: {
+          action_required: actionRequiredCount,
+          recently_changed: recentMasterChangeCount,
+          transitional_expiry: transitionalExpiryCount,
+          missing_reorder_point: missingReorderPointCount,
+          safety_flagged: safetyFlaggedCount,
+          review_due: reviewDueCount,
+        }[parsed.data.queue],
       },
       totals: {
-        stocked_count: stocks.length,
-        review_due_count: reviewDue.length,
-        missing_reorder_point_count: missingReorderPoint.length,
-        safety_flagged_count: safetyFlagged.length,
-        transitional_expiry_count: transitionalExpiry.length,
-        action_required_count: actionRequired.length,
-        recent_master_change_count: recentlyChanged.length,
+        stocked_count: stockedCount,
+        review_due_count: reviewDueCount,
+        missing_reorder_point_count: missingReorderPointCount,
+        safety_flagged_count: safetyFlaggedCount,
+        transitional_expiry_count: transitionalExpiryCount,
+        action_required_count: actionRequiredCount,
+        recent_master_change_count: recentMasterChangeCount,
       },
       recent_changes: recentChanges,
       samples: {
-        review_due: reviewDue.slice(0, 10),
-        missing_reorder_point: missingReorderPoint.slice(0, 10),
-        safety_flagged: safetyFlagged.slice(0, 10),
-        transitional_expiry: transitionalExpiry.slice(0, 10),
-        action_required: actionRequired.slice(0, 10),
-        recently_changed: recentlyChanged.slice(0, 10),
+        review_due: reviewDueSample,
+        missing_reorder_point: missingReorderPointSample,
+        safety_flagged: safetyFlaggedSample,
+        transitional_expiry: transitionalExpirySample,
+        action_required: actionRequiredSample,
+        recently_changed: recentlyChangedSample,
       },
     });
   },
