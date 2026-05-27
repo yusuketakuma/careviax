@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-233159
+
+- current task: add notification-style summary signals for pending formulary change requests
+- files inspected: `git status --short`, `src/app/api/pharmacy-drug-stock-requests/route.ts`, `src/app/api/pharmacy-drug-stock-requests/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `prisma/schema/drug.prisma`
+- files changed: `src/app/api/pharmacy-drug-stock-requests/route.ts`, `src/app/api/pharmacy-drug-stock-requests/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: pending formulary requests were listed, but the API/UI did not expose total pending count beyond the page limit, overdue count, or oldest pending request, making manager attention and notification-like triage weak
+- security risks found: no authorization boundary changed; request summaries reuse the existing admin permission and same-org site validation before counting requests
+- performance issues found: added DB-side counts for total and overdue pending requests instead of deriving notification state from the limited page of rows
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stock-requests/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for request API/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 2 files / 7 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice adds in-screen notification signals but not push/browser notification delivery
+- next action: commit the request notification slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260527-232820
 
 - current task: improve practical drug-master search by adding HOT/JAN/Tall Man/manufacturer search coverage and indexes
