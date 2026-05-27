@@ -377,6 +377,13 @@ async function installFormularyRouteMocks(page: Page) {
               days_ago: 7,
             },
             last_failure: null,
+            recent_runs_30d: {
+              total: 1,
+              failed: 0,
+              failure_streak: 0,
+              latest_status: 'completed',
+              latest_imported_at: '2026-05-20T00:00:00.000Z',
+            },
             freshness: 'fresh',
           },
           {
@@ -386,6 +393,13 @@ async function installFormularyRouteMocks(page: Page) {
             threshold_days: 14,
             last_success: null,
             last_failure: null,
+            recent_runs_30d: {
+              total: 2,
+              failed: 2,
+              failure_streak: 2,
+              latest_status: 'failed',
+              latest_imported_at: '2026-05-26T00:00:00.000Z',
+            },
             freshness: 'never',
           },
         ],
@@ -459,7 +473,13 @@ async function installFormularyRouteMocks(page: Page) {
           review_due_count: 1,
           missing_reorder_point_count: 1,
           safety_flagged_count: 1,
+          high_risk_count: 1,
+          lasa_risk_count: 0,
+          controlled_count: 0,
           transitional_expiry_count: 1,
+          transitional_expiry_within_30_count: 0,
+          transitional_expiry_within_60_count: 0,
+          transitional_expiry_within_90_count: 1,
           action_required_count: 1,
           recent_master_change_count: 1,
         },
@@ -477,6 +497,9 @@ async function installFormularyRouteMocks(page: Page) {
           review_due: [stock],
           missing_reorder_point: [stock],
           safety_flagged: [stock],
+          high_risk: [stock],
+          lasa_risk: [],
+          controlled: [],
           transitional_expiry: [stock],
           action_required: [stock],
           recently_changed: [stock],
@@ -492,6 +515,59 @@ async function installFormularyRouteMocks(page: Page) {
       body: JSON.stringify({
         site: { id: FORMULARY_SITE_ID, name: 'RouteMock 本店' },
         data: [],
+      }),
+    });
+  });
+
+  await page.route('**/api/pharmacy-drug-stock-templates**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: [] }),
+    });
+  });
+
+  await page.route('**/api/pharmacy-drug-stocks/usage-mismatch**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        period: {
+          since: '2026-02-26T00:00:00.000Z',
+          until: '2026-05-27T00:00:00.000Z',
+        },
+        thresholds: { days: 90, frequent_threshold: 2, draft_limit: 500, limit: 10 },
+        totals: {
+          scanned_draft_count: 0,
+          used_drug_count: 0,
+          medication_line_count: 0,
+          matched_drug_count: 0,
+          unmatched_drug_count: 0,
+          stocked_count: 1,
+          frequent_unstocked_count: 0,
+          unused_stocked_count: 0,
+        },
+        frequent_unstocked: [],
+        unused_stocked: [],
+        unmatched_prescribed: [],
+      }),
+    });
+  });
+
+  await page.route('**/api/pharmacy-drug-stock-requests**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: [],
+        summary: {
+          status: 'pending',
+          total_count: 0,
+          overdue_count: 0,
+          overdue_days: 7,
+          oldest_pending_created_at: null,
+          notification_level: 'clear',
+        },
       }),
     });
   });
@@ -825,8 +901,25 @@ test.describe('formulary route-mocked management smoke', () => {
     await expect(page.getByRole('heading', { name: '採用薬マスター' })).toBeVisible();
     await expect(page.getByText('採用薬リスト運用')).toBeVisible();
     await expect(page.getByText('影響レビューキュー')).toBeVisible();
+    await expect(page.getByRole('button', { name: /ハイリスク採用品/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /LASA注意採用品/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /規制薬採用品/ })).toBeVisible();
     await expect(page.getByText('RouteMock 採用薬錠5mg').first()).toBeVisible();
     await expect(page.getByRole('button', { name: '鮮度チェック' })).toBeVisible();
+
+    await page.getByRole('button', { name: /ハイリスク採用品/ }).click();
+    await expect
+      .poll(
+        () =>
+          impactRequests.some(
+            (request) => new URL(request.url).searchParams.get('queue') === 'high_risk',
+          ),
+        {
+          message: 'formulary impact route should be queried with the high-risk queue',
+          timeout: 10_000,
+        },
+      )
+      .toBe(true);
 
     await page.getByRole('button', { name: /30日以内差分/ }).click();
     await expect
