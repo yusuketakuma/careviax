@@ -2827,3 +2827,16 @@ Backup directory:
 - validation results: targeted Vitest passed with 1 file / 10 tests; targeted ESLint passed; TypeScript passed after switching Zod error inspection to `issues[].path`; whitespace check passed
 - remaining work: the 20-item drug master/formulary upgrade goal remains active. This improves CSV error reasons, but broader column-level guidance, browser verification, scheduled import history/audit UX, and final completion audit remain
 - next action: commit this CSV validation slice, then continue with the next high-ROI formulary/drug-master item
+
+### 20260528-003625
+
+- current task: surface recent drug master import run health in the master status dashboard
+- files inspected: `git status --short`, `docs/ui-ux-design-guidelines.md`, Next.js route handler docs, `src/app/api/drug-master-imports/status/route.ts`, `src/app/api/drug-master-imports/status/route.test.ts`, `src/app/api/drug-master-import-logs/route.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `prisma/schema/drug.prisma`
+- files changed: `src/app/api/drug-master-imports/status/route.ts`, `src/app/api/drug-master-imports/status/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the master status dashboard showed latest freshness and latest failure text, but did not expose recent execution volume or consecutive failures by source, so repeated failed scheduled imports were easy to miss
+- security risks found: no auth or tenant boundary changed; the status route remains authenticated and returns only global import metadata without patient or org data
+- performance issues found: recent run health is computed from a bounded 30-day/300-row import-log query and grouped in memory by source
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/drug-master-imports/status/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for changed status route/tests and drug master UI/tests; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed with 2 files / 17 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining high-ROI items include browser/E2E verification, richer import history drill-down, clinical safety enrichment, and final completion audit
+- next action: commit this import-health slice, then continue with browser/E2E verification or the next import history drill-down
