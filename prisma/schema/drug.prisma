@@ -88,6 +88,9 @@ model DrugMaster {
   @@index([therapeutic_category])
   @@index([is_high_risk])
   @@index([is_lasa_risk])
+  @@index([is_narcotic])
+  @@index([is_psychotropic])
+  @@index([transitional_expiry_date])
   @@index([lasa_group_key])
 }
 
@@ -172,6 +175,9 @@ model PharmacyDrugStock {
   @@index([org_id])
   @@index([site_id])
   @@index([org_id, site_id, is_stocked])
+  @@index([org_id, site_id, is_stocked, last_reviewed_at], map: "PharmacyDrugStock_impact_review_due_idx")
+  @@index([org_id, site_id, is_stocked, reorder_point], map: "PharmacyDrugStock_impact_reorder_idx")
+  @@index([org_id, site_id, is_stocked, follow_up_status], map: "PharmacyDrugStock_impact_follow_up_idx")
   @@index([last_reviewed_at])
   @@index([follow_up_status])
 }
