@@ -113,7 +113,10 @@ export const GET = withAuthContext(
         return stock.follow_up_status !== 'resolved';
       }
       const expiry = stock.drug_master.transitional_expiry_date;
-      return Boolean((expiry && expiry >= now && expiry <= expiryUntil) || changedYjCodes.has(stock.drug_master.yj_code));
+      return Boolean(
+        (expiry && expiry >= now && expiry <= expiryUntil) ||
+          changedYjCodes.has(stock.drug_master.yj_code),
+      );
     });
     const recentlyChanged = stocks.filter((stock) => changedYjCodes.has(stock.drug_master.yj_code));
 

@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   Building2,
   ClipboardCheck,
+  ListChecks,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
@@ -177,6 +178,14 @@ type FormularyStockSummaryRow = PharmacyDrugStockConfig & {
 };
 
 type FormularyImpactResponse = {
+  recent_changes: Array<{
+    id: string;
+    yj_code: string;
+    change_type: string;
+    previous_value: unknown;
+    current_value: unknown;
+    created_at: string;
+  }>;
   totals: {
     stocked_count: number;
     review_due_count: number;
@@ -195,6 +204,14 @@ type FormularyImpactResponse = {
     recently_changed: FormularyStockSummaryRow[];
   };
 };
+
+type ImpactQueueKey =
+  | 'action_required'
+  | 'recently_changed'
+  | 'transitional_expiry'
+  | 'missing_reorder_point'
+  | 'safety_flagged'
+  | 'review_due';
 
 const baseColumns: ColumnDef<DrugMasterRow>[] = [
   {
@@ -440,6 +457,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const [selectedSiteId, setSelectedSiteId] = useState('');
   const [preferredGenericId, setPreferredGenericId] = useState<string | null>(null);
   const [bulkCsv, setBulkCsv] = useState('');
+  const [impactQueue, setImpactQueue] = useState<ImpactQueueKey>('action_required');
   const [expiryReferenceTime] = useState(() => Date.now());
   const reorderPointInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -728,6 +746,31 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     },
   });
 
+  const freshnessCheckMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/jobs/drug-master-freshness-check', {
+        method: 'POST',
+        headers: { 'x-org-id': orgId },
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(json?.message ?? 'マスター鮮度チェックに失敗しました');
+      }
+      return json as { processedCount?: number; errors?: string[] };
+    },
+    onSuccess: async (result) => {
+      toast.success(
+        result.processedCount != null
+          ? `マスター鮮度チェックが完了しました（${result.processedCount.toLocaleString()}件）`
+          : 'マスター鮮度チェックが完了しました',
+      );
+      await queryClient.invalidateQueries({ queryKey: ['drug-master-status'] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'マスター鮮度チェックに失敗しました');
+    },
+  });
+
   const stockMutation = useMutation({
     mutationFn: async (payload: {
       site_id: string;
@@ -934,6 +977,10 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     formularyImpact?.totals.transitional_expiry_count ?? expiryWatchCount;
   const actionRequiredCount = formularyImpact?.totals.action_required_count ?? 0;
   const recentMasterChangeCount = formularyImpact?.totals.recent_master_change_count ?? 0;
+  const recentChangesByYjCode = new Map(
+    (formularyImpact?.recent_changes ?? []).map((change) => [change.yj_code, change]),
+  );
+  const impactQueueRows = formularyImpact?.samples[impactQueue] ?? [];
   const selectedRowIndex = selectedDrugId
     ? drugs.findIndex((drug) => drug.id === selectedDrugId)
     : undefined;
@@ -982,6 +1029,12 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
         return '待機';
     }
   };
+  const staleSourceCount =
+    masterStatusData?.sources.filter((source) =>
+      ['stale', 'never'].includes(source.freshness),
+    ).length ?? 0;
+  const agingSourceCount =
+    masterStatusData?.sources.filter((source) => source.freshness === 'aging').length ?? 0;
 
   return (
     <PageScaffold>
@@ -1082,41 +1135,119 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 md:grid-cols-6">
-              <div className="rounded-md border border-border/60 px-3 py-2">
+              <button
+                type="button"
+                className="rounded-md border border-border/60 px-3 py-2 text-left hover:bg-muted/40"
+                onClick={() => setImpactQueue('review_due')}
+              >
                 <p className="text-xs text-muted-foreground">レビュー期限超過</p>
                 <p className="mt-1 text-2xl font-semibold tabular-nums">
                   {reviewDueCount.toLocaleString()}
                 </p>
-              </div>
-              <div className="rounded-md border border-border/60 px-3 py-2">
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-border/60 px-3 py-2 text-left hover:bg-muted/40"
+                onClick={() => setImpactQueue('missing_reorder_point')}
+              >
                 <p className="text-xs text-muted-foreground">在庫下限未設定</p>
                 <p className="mt-1 text-2xl font-semibold tabular-nums">
                   {missingReorderCount.toLocaleString()}
                 </p>
-              </div>
-              <div className="rounded-md border border-border/60 px-3 py-2">
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-border/60 px-3 py-2 text-left hover:bg-muted/40"
+                onClick={() => setImpactQueue('safety_flagged')}
+              >
                 <p className="text-xs text-muted-foreground">安全属性あり</p>
                 <p className="mt-1 text-2xl font-semibold tabular-nums">
                   {safetyFlaggedCount.toLocaleString()}
                 </p>
-              </div>
-              <div className="rounded-md border border-border/60 px-3 py-2">
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-border/60 px-3 py-2 text-left hover:bg-muted/40"
+                onClick={() => setImpactQueue('transitional_expiry')}
+              >
                 <p className="text-xs text-muted-foreground">経過措置90日以内</p>
                 <p className="mt-1 text-2xl font-semibold tabular-nums">
                   {transitionalExpiryCount.toLocaleString()}
                 </p>
-              </div>
-              <div className="rounded-md border border-border/60 px-3 py-2">
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-border/60 px-3 py-2 text-left hover:bg-muted/40"
+                onClick={() => setImpactQueue('action_required')}
+              >
                 <p className="text-xs text-muted-foreground">要対応</p>
                 <p className="mt-1 text-2xl font-semibold tabular-nums">
                   {actionRequiredCount.toLocaleString()}
                 </p>
-              </div>
-              <div className="rounded-md border border-border/60 px-3 py-2">
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-border/60 px-3 py-2 text-left hover:bg-muted/40"
+                onClick={() => setImpactQueue('recently_changed')}
+              >
                 <p className="text-xs text-muted-foreground">30日以内差分</p>
                 <p className="mt-1 text-2xl font-semibold tabular-nums">
                   {recentMasterChangeCount.toLocaleString()}
                 </p>
+              </button>
+            </div>
+            <div className="rounded-md border border-border/60 bg-muted/20 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <ListChecks className="size-4" aria-hidden="true" />
+                  影響レビューキュー
+                </h2>
+                <Badge variant="outline" className="text-[10px]">
+                  {impactQueueRows.length.toLocaleString()}件表示
+                </Badge>
+              </div>
+              <div className="mt-3 space-y-2">
+                {impactQueueRows.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">対象の採用薬はありません。</p>
+                ) : (
+                  impactQueueRows.slice(0, 5).map((stock) => {
+                    const recentChange = recentChangesByYjCode.get(stock.drug_master.yj_code);
+                    return (
+                      <button
+                        key={stock.id}
+                        type="button"
+                        className="w-full rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
+                        onClick={() => {
+                          setSelectedDrugId(stock.drug_master_id);
+                          setPreferredGenericId(null);
+                        }}
+                      >
+                        <span className="block text-sm font-medium text-foreground">
+                          {stock.drug_master.drug_name}
+                        </span>
+                        <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <span className="font-mono">{stock.drug_master.yj_code}</span>
+                          {stock.drug_master.drug_price != null && (
+                            <span>
+                              ¥{Number(stock.drug_master.drug_price).toFixed(1)}/
+                              {stock.drug_master.unit ?? ''}
+                            </span>
+                          )}
+                          {stock.follow_up_status && <span>{stock.follow_up_status}</span>}
+                          {stock.drug_master.transitional_expiry_date && (
+                            <span>
+                              経過措置{' '}
+                              {new Date(
+                                stock.drug_master.transitional_expiry_date,
+                              ).toLocaleDateString('ja-JP')}
+                            </span>
+                          )}
+                          {recentChange && <span>差分: {recentChange.change_type}</span>}
+                        </span>
+                      </button>
+                    );
+                  })
+                )}
               </div>
             </div>
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
@@ -1188,6 +1319,26 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
             </p>
           </CardHeader>
           <CardContent className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={staleSourceCount > 0 ? 'destructive' : 'outline'}>
+                  要更新 {staleSourceCount}件
+                </Badge>
+                <Badge variant={agingSourceCount > 0 ? 'secondary' : 'outline'}>
+                  更新推奨 {agingSourceCount}件
+                </Badge>
+              </div>
+              <LoadingButton
+                type="button"
+                size="sm"
+                variant="outline"
+                loading={freshnessCheckMutation.isPending}
+                loadingLabel="確認中"
+                onClick={() => freshnessCheckMutation.mutate()}
+              >
+                鮮度チェック
+              </LoadingButton>
+            </div>
             {masterStatusData.sources.map((source) => (
               <div
                 key={source.source}

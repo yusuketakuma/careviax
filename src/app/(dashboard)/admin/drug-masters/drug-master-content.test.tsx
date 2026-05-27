@@ -33,6 +33,7 @@ vi.mock('@tanstack/react-query', () => ({
     if (key === 'pharmacy-drug-stocks-impact') {
       return {
         data: {
+          recent_changes: [],
           totals: {
             stocked_count: 0,
             review_due_count: 0,
@@ -137,6 +138,7 @@ describe('DrugMasterContent', () => {
     expect(screen.getByText(/相互作用: 0件/)).toBeTruthy();
     expect(screen.getByText('外部設定')).toBeTruthy();
     expect(screen.getByText(/直近失敗: URL未設定/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: '鮮度チェック' })).toBeTruthy();
   });
 
   it('shows medication-safety filters for high-risk and LASA review', () => {
@@ -156,6 +158,7 @@ describe('DrugMasterContent', () => {
     render(<DrugMasterContent variant="formulary" />);
 
     expect(screen.getByText('採用薬リスト運用')).toBeTruthy();
+    expect(screen.getByText('影響レビューキュー')).toBeTruthy();
     expect(screen.getByLabelText('CSV一括登録')).toBeTruthy();
     expect(screen.getByRole('button', { name: /一括登録/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /CSV出力/ })).toBeTruthy();
