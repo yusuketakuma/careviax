@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260528-000530
+
+- current task: align formulary-stock search keys with practical drug-master search
+- files inspected: `git status --short`, Next.js route handler docs, `src/app/api/pharmacy-drug-stocks/route.ts`, `src/app/api/pharmacy-drug-stocks/route.test.ts`, `src/app/api/drug-masters/route.ts`, `src/app/api/drug-masters/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`
+- files changed: `src/app/api/pharmacy-drug-stocks/route.ts`, `src/app/api/pharmacy-drug-stocks/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: adopted-drug list search did not include HOT code, JAN code, Tall Man names, or manufacturer text even though the broader drug-master search did, so operators could fail to find stocked drugs by practical package or safety-review keys
+- security risks found: no authorization boundary changed; search still validates the selected site belongs to the authenticated org and keeps stock rows scoped by org/site/is_stocked
+- performance issues found: no additional query round trips; search fields are added to the existing nested drug-master predicate, using indexed HOT/JAN columns added earlier where applicable
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/route.test.ts`; targeted ESLint for pharmacy-drug-stocks route files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 1 file / 5 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice improves exact/practical search keys but does not yet add kana normalization or fuzzy matching
+- next action: commit the formulary search-key alignment and continue the next high-value formulary/drug-master improvement
+
 ### 20260528-000245
 
 - current task: prevent duplicate pending formulary change requests
