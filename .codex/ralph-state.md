@@ -2840,3 +2840,16 @@ Backup directory:
 - validation results: targeted Vitest passed with 2 files / 17 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
 - remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining high-ROI items include browser/E2E verification, richer import history drill-down, clinical safety enrichment, and final completion audit
 - next action: commit this import-health slice, then continue with browser/E2E verification or the next import history drill-down
+
+### 20260528-003948
+
+- current task: filter drug master import history by source and status
+- files inspected: `git status --short`, `docs/ui-ux-design-guidelines.md`, Next.js route handler docs, `src/app/api/drug-master-import-logs/route.ts`, `src/app/api/drug-master-import-logs/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`
+- files changed: `src/app/api/drug-master-import-logs/route.ts`, `src/app/api/drug-master-import-logs/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: import history was limited to the latest 10 rows across all sources and states, forcing operators to scan unrelated successes when chasing a PMDA/HOT/MHLW failure
+- security risks found: invalid source/status filters are ignored rather than interpolated into the Prisma query; the route remains behind the existing auth wrapper and returns only global import metadata
+- performance issues found: server-side filters reduce returned history rows without changing the existing max limit of 50
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/drug-master-import-logs/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for changed import-log route/tests and drug master UI/tests; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed with 2 files / 8 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include browser/E2E verification, more granular clinical safety queues, and final completion audit
+- next action: commit this import-history filter slice, then continue with browser/E2E verification or the next safety queue improvement
