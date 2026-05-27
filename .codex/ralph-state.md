@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260528-002105
+
+- current task: prioritize blocking rows in the formulary CSV preview
+- files inspected: `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`
+- files changed: `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `.codex/ralph-state.md`
+- bugs found: the CSV preview only rendered the first six rows in CSV order, so invalid or unmatched rows requiring correction could be hidden behind normal create/update/no-change rows
+- security risks found: no authorization or data access behavior changed; this is local display ordering of already returned preview rows
+- performance issues found: preview display sorts the bounded response rows in memory and does not add fetches or server work
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for formulary admin UI; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 1 file / 5 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice prioritizes blocking preview rows but does not add pagination or full preview expansion
+- next action: commit the CSV preview ordering slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260528-001950
 
 - current task: add copy action for ambiguous CSV candidate YJ codes
