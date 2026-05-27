@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260528-001520
+
+- current task: return candidate drugs for ambiguous formulary CSV name matches
+- files inspected: `src/app/api/pharmacy-drug-stocks/bulk/route.ts`, `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`
+- files changed: `src/app/api/pharmacy-drug-stocks/bulk/route.ts`, `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: name-only CSV rows that matched multiple drug masters were rejected without returning candidate YJ codes, forcing operators to manually search the master again to repair the CSV
+- security risks found: no authorization boundary changed; candidate details are limited to already matched global drug-master IDs/YJ codes/names/generic names after the same org-scoped site validation
+- performance issues found: no additional database queries; candidates are derived from the existing batched name-match result and capped to five entries per invalid row
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`; targeted ESLint for bulk route files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 1 file / 7 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice returns CSV repair candidates but does not yet render them in the admin bulk preview UI
+- next action: commit the ambiguous CSV candidate slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260528-001430
 
 - current task: expose formulary template search in the admin UI
