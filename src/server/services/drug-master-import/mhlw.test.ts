@@ -181,7 +181,11 @@ describe('importMhlwPriceList', () => {
       update: vi.fn(),
     },
     drugMaster: {
+      findMany: vi.fn(),
       upsert: vi.fn(),
+    },
+    drugMasterChangeEvent: {
+      create: vi.fn(),
     },
   } as const;
 
@@ -189,7 +193,9 @@ describe('importMhlwPriceList', () => {
     vi.clearAllMocks();
     db.drugMasterImportLog.create.mockResolvedValue({ id: 'log_1', status: 'running' });
     db.drugMasterImportLog.update.mockResolvedValue({ id: 'log_1', status: 'completed' });
+    db.drugMaster.findMany.mockResolvedValue([]);
     db.drugMaster.upsert.mockResolvedValue({ id: 'drug_1' });
+    db.drugMasterChangeEvent.create.mockResolvedValue({ id: 'change_1' });
   });
 
   it('imports all MHLW price category workbooks by default', async () => {
@@ -234,6 +240,69 @@ describe('importMhlwPriceList', () => {
         update: expect.objectContaining({
           unit: '１ｍｇ１錠',
           therapeutic_category: '1124',
+        }),
+      }),
+    );
+  });
+
+  it('records price and transitional-expiry changes during import', async () => {
+    const workbook = await workbookBlob({
+      ＨＰ用: [
+        [
+          '区分',
+          '薬価基準収載医薬品コード',
+          '成分名',
+          '規格',
+          '品名',
+          'メーカー名',
+          '薬価',
+          '経過措置による使用期限',
+        ],
+        [
+          '内用薬',
+          '1124001F1022',
+          'エスタゾラム',
+          '１ｍｇ１錠',
+          'ユーロジン１ｍｇ錠',
+          'Ｔ’ｓ製薬',
+          '7.10',
+          '2027/03/31',
+        ],
+      ],
+    });
+    db.drugMaster.findMany.mockResolvedValue([
+      {
+        id: 'drug_1',
+        yj_code: '1124001F1022',
+        drug_price: { toString: () => '6.30' },
+        transitional_expiry_date: null,
+      },
+    ]);
+
+    await importMhlwPriceList(db as never, {
+      workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/price.xlsx',
+      fetchImpl: async () => toWorkbookResponse(workbook),
+    });
+
+    expect(db.drugMasterChangeEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          import_log_id: 'log_1',
+          source: 'mhlw_price',
+          yj_code: '1124001F1022',
+          drug_master_id: 'drug_1',
+          change_type: 'price_changed',
+          previous_value: { drug_price: '6.30' },
+          current_value: { drug_price: '7.1' },
+        }),
+      }),
+    );
+    expect(db.drugMasterChangeEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          change_type: 'transitional_expiry_changed',
+          previous_value: { transitional_expiry_date: null },
+          current_value: { transitional_expiry_date: '2027-03-31T00:00:00.000Z' },
         }),
       }),
     );

@@ -71,6 +71,27 @@ export const GET = withAuthContext(
         },
       },
     });
+    const recentChanges =
+      stocks.length > 0
+        ? await prisma.drugMasterChangeEvent.findMany({
+            where: {
+              yj_code: { in: stocks.map((stock) => stock.drug_master.yj_code) },
+              source: 'mhlw_price',
+              created_at: { gte: addDays(now, -30) },
+            },
+            orderBy: [{ created_at: 'desc' }],
+            take: 200,
+            select: {
+              id: true,
+              yj_code: true,
+              change_type: true,
+              previous_value: true,
+              current_value: true,
+              created_at: true,
+            },
+          })
+        : [];
+    const changedYjCodes = new Set(recentChanges.map((change) => change.yj_code));
 
     const reviewDue = stocks.filter(
       (stock) => !stock.last_reviewed_at || stock.last_reviewed_at < reviewCutoff,
@@ -92,8 +113,9 @@ export const GET = withAuthContext(
         return stock.follow_up_status !== 'resolved';
       }
       const expiry = stock.drug_master.transitional_expiry_date;
-      return Boolean(expiry && expiry >= now && expiry <= expiryUntil);
+      return Boolean((expiry && expiry >= now && expiry <= expiryUntil) || changedYjCodes.has(stock.drug_master.yj_code));
     });
+    const recentlyChanged = stocks.filter((stock) => changedYjCodes.has(stock.drug_master.yj_code));
 
     return success({
       site,
@@ -109,13 +131,16 @@ export const GET = withAuthContext(
         safety_flagged_count: safetyFlagged.length,
         transitional_expiry_count: transitionalExpiry.length,
         action_required_count: actionRequired.length,
+        recent_master_change_count: recentlyChanged.length,
       },
+      recent_changes: recentChanges,
       samples: {
         review_due: reviewDue.slice(0, 10),
         missing_reorder_point: missingReorderPoint.slice(0, 10),
         safety_flagged: safetyFlagged.slice(0, 10),
         transitional_expiry: transitionalExpiry.slice(0, 10),
         action_required: actionRequired.slice(0, 10),
+        recently_changed: recentlyChanged.slice(0, 10),
       },
     });
   },

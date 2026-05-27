@@ -7,6 +7,7 @@ const { authMock, prismaMock } = vi.hoisted(() => ({
     membership: { findFirst: vi.fn() },
     pharmacySite: { findFirst: vi.fn() },
     pharmacyDrugStock: { findMany: vi.fn() },
+    drugMasterChangeEvent: { findMany: vi.fn() },
   },
 }));
 
@@ -35,6 +36,7 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'admin' });
     prismaMock.pharmacySite.findFirst.mockResolvedValue({ id: 'site_1', name: '本店' });
+    prismaMock.drugMasterChangeEvent.findMany.mockResolvedValue([]);
   });
 
   it('summarizes review, reorder, safety, and transitional expiry impact', async () => {
@@ -89,6 +91,7 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
         safety_flagged_count: 1,
         transitional_expiry_count: 1,
         action_required_count: 1,
+        recent_master_change_count: 0,
       },
     });
   });

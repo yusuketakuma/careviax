@@ -40,6 +40,7 @@ vi.mock('@tanstack/react-query', () => ({
             safety_flagged_count: 0,
             transitional_expiry_count: 0,
             action_required_count: 0,
+            recent_master_change_count: 0,
           },
           samples: {
             review_due: [],
@@ -47,6 +48,7 @@ vi.mock('@tanstack/react-query', () => ({
             safety_flagged: [],
             transitional_expiry: [],
             action_required: [],
+            recently_changed: [],
           },
         },
         isLoading: false,

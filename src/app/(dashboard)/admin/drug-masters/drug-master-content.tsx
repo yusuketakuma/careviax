@@ -184,6 +184,7 @@ type FormularyImpactResponse = {
     safety_flagged_count: number;
     transitional_expiry_count: number;
     action_required_count: number;
+    recent_master_change_count: number;
   };
   samples: {
     review_due: FormularyStockSummaryRow[];
@@ -191,6 +192,7 @@ type FormularyImpactResponse = {
     safety_flagged: FormularyStockSummaryRow[];
     transitional_expiry: FormularyStockSummaryRow[];
     action_required: FormularyStockSummaryRow[];
+    recently_changed: FormularyStockSummaryRow[];
   };
 };
 
@@ -931,6 +933,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const transitionalExpiryCount =
     formularyImpact?.totals.transitional_expiry_count ?? expiryWatchCount;
   const actionRequiredCount = formularyImpact?.totals.action_required_count ?? 0;
+  const recentMasterChangeCount = formularyImpact?.totals.recent_master_change_count ?? 0;
   const selectedRowIndex = selectedDrugId
     ? drugs.findIndex((drug) => drug.id === selectedDrugId)
     : undefined;
@@ -1078,7 +1081,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-5">
+            <div className="grid gap-3 md:grid-cols-6">
               <div className="rounded-md border border-border/60 px-3 py-2">
                 <p className="text-xs text-muted-foreground">レビュー期限超過</p>
                 <p className="mt-1 text-2xl font-semibold tabular-nums">
@@ -1107,6 +1110,12 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                 <p className="text-xs text-muted-foreground">要対応</p>
                 <p className="mt-1 text-2xl font-semibold tabular-nums">
                   {actionRequiredCount.toLocaleString()}
+                </p>
+              </div>
+              <div className="rounded-md border border-border/60 px-3 py-2">
+                <p className="text-xs text-muted-foreground">30日以内差分</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums">
+                  {recentMasterChangeCount.toLocaleString()}
                 </p>
               </div>
             </div>

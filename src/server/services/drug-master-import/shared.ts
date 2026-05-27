@@ -11,6 +11,7 @@ export type DrugMasterImportDbClient = Pick<
   | 'drugPackageInsert'
   | 'drugInteraction'
   | 'drugAlertRule'
+  | 'drugMasterChangeEvent'
 >;
 
 export type DrugMasterImportSource =
@@ -609,7 +610,7 @@ type LoggedImportResult<T> = {
 export async function withImportLog<T>(
   db: DrugMasterImportDbClient,
   source: DrugMasterImportSource,
-  fn: () => Promise<LoggedImportResult<T>>,
+  fn: (log: { id: string }) => Promise<LoggedImportResult<T>>,
 ) {
   const log = await db.drugMasterImportLog.create({
     data: {
@@ -620,7 +621,7 @@ export async function withImportLog<T>(
   });
 
   try {
-    const result = await fn();
+    const result = await fn(log);
     const completedLog = await db.drugMasterImportLog.update({
       where: { id: log.id },
       data: {

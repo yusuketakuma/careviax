@@ -234,10 +234,29 @@ async function upsertPriceChunk(
   db: DrugMasterImportDbClient,
   records: ParsedMhlwPriceRecord[],
   mode: 'price' | 'generic',
+  importLogId?: string,
 ) {
+  const existingByYjCode =
+    mode === 'price'
+      ? new Map(
+          (
+            await db.drugMaster.findMany({
+              where: { yj_code: { in: records.map((record) => record.yj_code) } },
+              select: {
+                id: true,
+                yj_code: true,
+                drug_price: true,
+                transitional_expiry_date: true,
+              },
+            })
+          ).map((drug) => [drug.yj_code, drug]),
+        )
+      : new Map();
+
   await Promise.all(
-    records.map((record) =>
-      db.drugMaster.upsert({
+    records.map(async (record) => {
+      const existing = existingByYjCode.get(record.yj_code);
+      const saved = await db.drugMaster.upsert({
         where: { yj_code: record.yj_code },
         create: {
           yj_code: record.yj_code,
@@ -266,8 +285,50 @@ async function upsertPriceChunk(
             : {
                 is_generic: record.is_generic,
               },
-      }),
-    ),
+      });
+
+      if (mode !== 'price' || !existing || !importLogId) return;
+
+      const previousPrice = existing.drug_price?.toString() ?? null;
+      const currentPrice = record.drug_price?.toString() ?? null;
+      const previousExpiry = existing.transitional_expiry_date?.toISOString() ?? null;
+      const currentExpiry = record.transitional_expiry_date?.toISOString() ?? null;
+      const changes: Array<{
+        change_type: string;
+        previous_value: Prisma.InputJsonValue;
+        current_value: Prisma.InputJsonValue;
+      }> = [];
+
+      if (previousPrice !== currentPrice) {
+        changes.push({
+          change_type: 'price_changed',
+          previous_value: { drug_price: previousPrice },
+          current_value: { drug_price: currentPrice },
+        });
+      }
+      if (previousExpiry !== currentExpiry) {
+        changes.push({
+          change_type: 'transitional_expiry_changed',
+          previous_value: { transitional_expiry_date: previousExpiry },
+          current_value: { transitional_expiry_date: currentExpiry },
+        });
+      }
+
+      if (changes.length === 0) return;
+      await Promise.all(
+        changes.map((change) =>
+          db.drugMasterChangeEvent.create({
+            data: {
+              import_log_id: importLogId,
+              source: 'mhlw_price',
+              yj_code: record.yj_code,
+              drug_master_id: saved.id,
+              ...change,
+            },
+          }),
+        ),
+      );
+    }),
   );
 }
 
@@ -275,7 +336,7 @@ export async function importMhlwPriceList(
   db: DrugMasterImportDbClient,
   options: ImportMhlwPriceListOptions = {},
 ) {
-  return withImportLog(db, 'mhlw_price', async () => {
+  return withImportLog(db, 'mhlw_price', async (log) => {
     const fetchImpl = options.fetchImpl ?? fetch;
     let workbookUrls: string[];
     if (options.workbookUrls) {
@@ -295,7 +356,7 @@ export async function importMhlwPriceList(
       recordCount += parsed.records.length;
 
       for (let index = 0; index < parsed.records.length; index += 200) {
-        await upsertPriceChunk(db, parsed.records.slice(index, index + 200), 'price');
+        await upsertPriceChunk(db, parsed.records.slice(index, index + 200), 'price', log.id);
       }
     }
 

@@ -202,3 +202,20 @@ model DrugMasterImportLog {
   @@index([source, imported_at])
   @@index([status, imported_at])
 }
+
+// グローバルマスタ取込差分
+model DrugMasterChangeEvent {
+  id             String       @id @default(cuid())
+  import_log_id  String?
+  source         ImportSource
+  yj_code        String
+  drug_master_id String?
+  change_type    String
+  previous_value Json?
+  current_value  Json?
+  created_at     DateTime     @default(now())
+
+  @@index([source, created_at])
+  @@index([yj_code])
+  @@index([change_type])
+}
