@@ -117,8 +117,12 @@ export const GET = withAuthContext(
                 OR: [
                   { drug_name: { contains: parsed.data.q } },
                   { generic_name: { contains: parsed.data.q } },
+                  { tall_man_name: { contains: parsed.data.q } },
+                  { manufacturer: { contains: parsed.data.q } },
                   { yj_code: { startsWith: parsed.data.q } },
                   { receipt_code: { startsWith: parsed.data.q } },
+                  { hot_code: { startsWith: parsed.data.q } },
+                  { jan_code: { startsWith: parsed.data.q } },
                 ],
               },
             }

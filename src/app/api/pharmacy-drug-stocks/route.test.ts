@@ -89,6 +89,79 @@ describe('/api/pharmacy-drug-stocks', () => {
     });
   });
 
+  it('searches stocked formulary rows by practical drug master identifiers', async () => {
+    prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([
+      {
+        id: 'stock_1',
+        site_id: 'site_1',
+        drug_master_id: 'drug_1',
+        is_stocked: true,
+        stock_qty: null,
+        reorder_point: 10,
+        preferred_generic_id: null,
+        adoption_source: 'manual',
+        adoption_note: null,
+        last_reviewed_at: null,
+        reviewed_by_id: null,
+        follow_up_status: null,
+        follow_up_reason: null,
+        follow_up_due_date: null,
+        follow_up_resolved_at: null,
+        updated_at: new Date('2026-03-28T00:00:00Z'),
+        drug_master: {
+          id: 'drug_1',
+          drug_name: 'アムロジピンOD錠5mg',
+          yj_code: '123456789012',
+          drug_price: 12.3,
+          unit: '錠',
+          is_generic: true,
+          is_narcotic: false,
+          is_psychotropic: false,
+          is_high_risk: false,
+          is_lasa_risk: false,
+          transitional_expiry_date: null,
+        },
+        preferred_generic: null,
+      },
+    ]);
+
+    const response = await GET(
+      createRequest('http://localhost/api/pharmacy-drug-stocks?site_id=site_1&q=4987123&limit=20'),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          site_id: 'site_1',
+          is_stocked: true,
+          drug_master: {
+            OR: expect.arrayContaining([
+              { tall_man_name: { contains: '4987123' } },
+              { manufacturer: { contains: '4987123' } },
+              { hot_code: { startsWith: '4987123' } },
+              { jan_code: { startsWith: '4987123' } },
+            ]),
+          },
+        }),
+        take: 20,
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        {
+          id: 'stock_1',
+          drug_master: {
+            drug_name: 'アムロジピンOD錠5mg',
+          },
+        },
+      ],
+    });
+  });
+
   it('upserts stock adoption with a preferred generic', async () => {
     prismaMock.drugMaster.findFirst
       .mockResolvedValueOnce({
