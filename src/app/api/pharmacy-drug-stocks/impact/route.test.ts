@@ -205,4 +205,61 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
       ],
     });
   });
+
+  it('does not cap impact totals to the first 500 adopted drugs', async () => {
+    const now = new Date();
+    const oldReview = new Date(now);
+    oldReview.setDate(oldReview.getDate() - 220);
+
+    prismaMock.pharmacyDrugStock.findMany.mockResolvedValue(
+      Array.from({ length: 501 }, (_, index) => ({
+        id: `stock_${index}`,
+        drug_master_id: `drug_${index}`,
+        reorder_point: 1,
+        last_reviewed_at: oldReview,
+        follow_up_status: null,
+        follow_up_reason: null,
+        follow_up_due_date: null,
+        follow_up_resolved_at: null,
+        updated_at: now,
+        drug_master: {
+          id: `drug_${index}`,
+          yj_code: `123456789${index.toString().padStart(3, '0')}`,
+          receipt_code: null,
+          drug_name: `採用薬${index}`,
+          generic_name: null,
+          drug_price: 100,
+          unit: '錠',
+          is_generic: false,
+          is_narcotic: false,
+          is_psychotropic: false,
+          is_high_risk: false,
+          is_lasa_risk: false,
+          transitional_expiry_date: null,
+        },
+      })),
+    );
+
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/pharmacy-drug-stocks/impact?site_id=site_1&queue=review_due&queue_limit=25',
+      ),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenCalledWith(
+      expect.not.objectContaining({ take: 500 }),
+    );
+    const json = await response.json();
+    expect(json.selected_queue.key).toBe('review_due');
+    expect(json.selected_queue.total_count).toBe(501);
+    expect(json.selected_queue.rows).toHaveLength(25);
+    expect(json.selected_queue.rows[0]).toMatchObject({ id: 'stock_0' });
+    expect(json.totals).toMatchObject({
+      stocked_count: 501,
+      review_due_count: 501,
+    });
+  });
 });

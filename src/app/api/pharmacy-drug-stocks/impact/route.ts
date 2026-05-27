@@ -52,7 +52,6 @@ export const GET = withAuthContext(
         is_stocked: true,
       },
       orderBy: [{ updated_at: 'desc' }],
-      take: 500,
       select: {
         id: true,
         drug_master_id: true,
