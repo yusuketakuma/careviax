@@ -2879,3 +2879,16 @@ Backup directory:
 - validation results: targeted ESLint passed; TypeScript passed; whitespace check passed; first Playwright run against `localhost:3012` failed because an existing Next dev server lock on `localhost:3000` stopped the 3012 server; rerun against existing `localhost:3000` first exposed missing route mocks, then passed after adding mocks and assertions
 - remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include fuller mobile/browser coverage, safety follow-up automation, and final completion audit
 - next action: commit this browser-verification slice, then continue with safety follow-up automation or mobile/formulary E2E coverage
+
+### 20260528-005135
+
+- current task: include safety flags in operations and audit formulary CSV exports
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/api/pharmacy-drug-stocks/export/route.ts`, `src/app/api/pharmacy-drug-stocks/export/route.test.ts`, formulary CSV export UI wiring in `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`
+- files changed: `src/app/api/pharmacy-drug-stocks/export/route.ts`, `src/app/api/pharmacy-drug-stocks/export/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: pharmacist-review export included safety attributes, but operations and audit exports omitted them, so the new safety queues could not be reconciled from ordinary CSV棚卸 output
+- security risks found: no auth boundary changed; CSV formula neutralization still applies to all cells and export audit logging remains unchanged
+- performance issues found: no extra query is needed because the export route already selects the safety flags from `DrugMaster`
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/export/route.test.ts`; targeted ESLint for export route/tests; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed with 1 file / 5 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include mobile/formulary E2E coverage, safety follow-up automation, and final completion audit
+- next action: commit this CSV export safety slice, then continue with safety follow-up automation or mobile/formulary E2E coverage
