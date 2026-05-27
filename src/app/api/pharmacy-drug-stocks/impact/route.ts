@@ -1,0 +1,110 @@
+import { NextRequest } from 'next/server';
+import { z } from 'zod';
+import { withAuthContext } from '@/lib/auth/context';
+import { notFound, success, validationError } from '@/lib/api/response';
+import { parseSearchParams } from '@/lib/api/validation';
+import { prisma } from '@/lib/db/client';
+
+const impactQuerySchema = z.object({
+  site_id: z.string().trim().min(1, 'site_id は必須です'),
+  expiry_within_days: z.coerce.number().int().min(1).max(365).default(90),
+  review_overdue_days: z.coerce.number().int().min(30).max(730).default(180),
+});
+
+function addDays(date: Date, days: number) {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
+export const GET = withAuthContext(
+  async (req: NextRequest, authCtx) => {
+    const parsed = parseSearchParams(impactQuerySchema, new URL(req.url).searchParams);
+    if (!parsed.ok) {
+      return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
+    }
+
+    const site = await prisma.pharmacySite.findFirst({
+      where: { id: parsed.data.site_id, org_id: authCtx.orgId },
+      select: { id: true, name: true },
+    });
+    if (!site) return notFound('対象の薬局拠点が見つかりません');
+
+    const now = new Date();
+    const expiryUntil = addDays(now, parsed.data.expiry_within_days);
+    const reviewCutoff = addDays(now, -parsed.data.review_overdue_days);
+
+    const stocks = await prisma.pharmacyDrugStock.findMany({
+      where: {
+        org_id: authCtx.orgId,
+        site_id: site.id,
+        is_stocked: true,
+      },
+      orderBy: [{ updated_at: 'desc' }],
+      take: 500,
+      select: {
+        id: true,
+        drug_master_id: true,
+        reorder_point: true,
+        last_reviewed_at: true,
+        updated_at: true,
+        drug_master: {
+          select: {
+            id: true,
+            yj_code: true,
+            receipt_code: true,
+            drug_name: true,
+            generic_name: true,
+            drug_price: true,
+            unit: true,
+            is_generic: true,
+            is_narcotic: true,
+            is_psychotropic: true,
+            is_high_risk: true,
+            is_lasa_risk: true,
+            transitional_expiry_date: true,
+          },
+        },
+      },
+    });
+
+    const reviewDue = stocks.filter(
+      (stock) => !stock.last_reviewed_at || stock.last_reviewed_at < reviewCutoff,
+    );
+    const missingReorderPoint = stocks.filter((stock) => stock.reorder_point == null);
+    const safetyFlagged = stocks.filter(
+      (stock) =>
+        stock.drug_master.is_high_risk ||
+        stock.drug_master.is_lasa_risk ||
+        stock.drug_master.is_narcotic ||
+        stock.drug_master.is_psychotropic,
+    );
+    const transitionalExpiry = stocks.filter((stock) => {
+      const expiry = stock.drug_master.transitional_expiry_date;
+      return Boolean(expiry && expiry >= now && expiry <= expiryUntil);
+    });
+
+    return success({
+      site,
+      checked_at: now.toISOString(),
+      thresholds: {
+        expiry_within_days: parsed.data.expiry_within_days,
+        review_overdue_days: parsed.data.review_overdue_days,
+      },
+      totals: {
+        stocked_count: stocks.length,
+        review_due_count: reviewDue.length,
+        missing_reorder_point_count: missingReorderPoint.length,
+        safety_flagged_count: safetyFlagged.length,
+        transitional_expiry_count: transitionalExpiry.length,
+      },
+      samples: {
+        review_due: reviewDue.slice(0, 10),
+        missing_reorder_point: missingReorderPoint.slice(0, 10),
+        safety_flagged: safetyFlagged.slice(0, 10),
+        transitional_expiry: transitionalExpiry.slice(0, 10),
+      },
+    });
+  },
+  { permission: 'canAdmin' },
+);

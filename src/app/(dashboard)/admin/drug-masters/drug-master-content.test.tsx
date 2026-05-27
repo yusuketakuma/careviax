@@ -30,6 +30,26 @@ vi.mock('@tanstack/react-query', () => ({
     if (key === 'pharmacy-drug-stocks') {
       return { data: { data: [] }, isLoading: false };
     }
+    if (key === 'pharmacy-drug-stocks-impact') {
+      return {
+        data: {
+          totals: {
+            stocked_count: 0,
+            review_due_count: 0,
+            missing_reorder_point_count: 0,
+            safety_flagged_count: 0,
+            transitional_expiry_count: 0,
+          },
+          samples: {
+            review_due: [],
+            missing_reorder_point: [],
+            safety_flagged: [],
+            transitional_expiry: [],
+          },
+        },
+        isLoading: false,
+      };
+    }
     if (key === 'drug-master-status') {
       return {
         data: {

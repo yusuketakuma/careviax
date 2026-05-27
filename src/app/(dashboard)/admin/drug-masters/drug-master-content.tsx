@@ -155,6 +155,22 @@ type FormularyStockSummaryRow = PharmacyDrugStockConfig & {
   };
 };
 
+type FormularyImpactResponse = {
+  totals: {
+    stocked_count: number;
+    review_due_count: number;
+    missing_reorder_point_count: number;
+    safety_flagged_count: number;
+    transitional_expiry_count: number;
+  };
+  samples: {
+    review_due: FormularyStockSummaryRow[];
+    missing_reorder_point: FormularyStockSummaryRow[];
+    safety_flagged: FormularyStockSummaryRow[];
+    transitional_expiry: FormularyStockSummaryRow[];
+  };
+};
+
 const baseColumns: ColumnDef<DrugMasterRow>[] = [
   {
     id: 'formulary',
@@ -550,6 +566,24 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     staleTime: 60_000,
   });
 
+  const formularyImpactQuery = useQuery({
+    queryKey: ['pharmacy-drug-stocks-impact', orgId, effectiveSelectedSiteId],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        site_id: effectiveSelectedSiteId,
+        expiry_within_days: '90',
+        review_overdue_days: '180',
+      });
+      const res = await fetch(`/api/pharmacy-drug-stocks/impact?${params}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('採用薬影響レビューの取得に失敗しました');
+      return res.json() as Promise<FormularyImpactResponse>;
+    },
+    enabled: variant === 'formulary' && !!orgId && !!effectiveSelectedSiteId,
+    staleTime: 60_000,
+  });
+
   const preferredGenericCandidatesQuery = useQuery({
     queryKey: [
       'preferred-generic-candidates',
@@ -831,6 +865,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const importLogs = importLogsData?.data ?? [];
   const reviewDueStocks = formularyReviewQuery.data?.data ?? [];
   const missingReorderStocks = formularyMissingReorderQuery.data?.data ?? [];
+  const formularyImpact = formularyImpactQuery.data;
   const safetyReviewCount = reviewDueStocks.filter(
     (stock) =>
       stock.drug_master.is_high_risk ||
@@ -843,6 +878,12 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     const expiry = new Date(stock.drug_master.transitional_expiry_date).getTime();
     return expiry - expiryReferenceTime <= 1000 * 60 * 60 * 24 * 90;
   }).length;
+  const reviewDueCount = formularyImpact?.totals.review_due_count ?? reviewDueStocks.length;
+  const missingReorderCount =
+    formularyImpact?.totals.missing_reorder_point_count ?? missingReorderStocks.length;
+  const safetyFlaggedCount = formularyImpact?.totals.safety_flagged_count ?? safetyReviewCount;
+  const transitionalExpiryCount =
+    formularyImpact?.totals.transitional_expiry_count ?? expiryWatchCount;
   const selectedRowIndex = selectedDrugId
     ? drugs.findIndex((drug) => drug.id === selectedDrugId)
     : undefined;
@@ -993,25 +1034,25 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
               <div className="rounded-md border border-border/60 px-3 py-2">
                 <p className="text-xs text-muted-foreground">レビュー期限超過</p>
                 <p className="mt-1 text-2xl font-semibold tabular-nums">
-                  {reviewDueStocks.length.toLocaleString()}
+                  {reviewDueCount.toLocaleString()}
                 </p>
               </div>
               <div className="rounded-md border border-border/60 px-3 py-2">
                 <p className="text-xs text-muted-foreground">在庫下限未設定</p>
                 <p className="mt-1 text-2xl font-semibold tabular-nums">
-                  {missingReorderStocks.length.toLocaleString()}
+                  {missingReorderCount.toLocaleString()}
                 </p>
               </div>
               <div className="rounded-md border border-border/60 px-3 py-2">
                 <p className="text-xs text-muted-foreground">安全属性あり</p>
                 <p className="mt-1 text-2xl font-semibold tabular-nums">
-                  {safetyReviewCount.toLocaleString()}
+                  {safetyFlaggedCount.toLocaleString()}
                 </p>
               </div>
               <div className="rounded-md border border-border/60 px-3 py-2">
                 <p className="text-xs text-muted-foreground">経過措置90日以内</p>
                 <p className="mt-1 text-2xl font-semibold tabular-nums">
-                  {expiryWatchCount.toLocaleString()}
+                  {transitionalExpiryCount.toLocaleString()}
                 </p>
               </div>
             </div>
@@ -1059,7 +1100,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   variant="outline"
                   loading={reviewMutation.isPending}
                   loadingLabel="記録中"
-                  disabled={!effectiveSelectedSiteId || reviewDueStocks.length === 0}
+                  disabled={!effectiveSelectedSiteId || reviewDueCount === 0}
                   onClick={() => reviewMutation.mutate()}
                   className="gap-1"
                 >
