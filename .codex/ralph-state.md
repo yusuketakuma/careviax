@@ -2151,3 +2151,16 @@ Backup directory:
 - validation results: targeted Vitest passed with 2 files / 5 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
 - remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include richer browser verification, preferred generic recommendation workflow, discontinuation/経過措置 action states, scheduled import freshness control, and broader E2E coverage
 - next action: commit this impact-review slice, then continue with preferred generic recommendation and action-state workflow
+
+### 20260527-212210
+
+- current task: add preferred generic recommendation workflow for formulary configuration
+- files inspected: `git status --short --untracked-files=all`, `git log --oneline -6`, `docs/ui-ux-design-guidelines.md`, Next.js route handler docs, `src/app/api/drug-masters/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `src/server/services/drug-master-import/mhlw.ts`
+- files changed: `src/app/api/drug-masters/[id]/generic-recommendations/route.ts`, `src/app/api/drug-masters/[id]/generic-recommendations/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `.codex/ralph-state.md`
+- bugs found: 採用薬詳細で同一一般名の後発品候補は検索結果のselectから選ぶだけで、薬価順・差額・施設内採用状況を比較できなかった
+- security risks found: recommendation API validates target site belongs to the current org before returning site-specific stock status; global DrugMaster data is read-only and no cross-tenant stock state is exposed
+- performance issues found: recommendation lookup is bounded to 20 candidates, selects only comparison fields, and only fetches site stock rows for the returned candidate ids
+- validation commands: targeted `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/drug-masters/'[id]'/generic-recommendations/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for recommendation route/test and formulary UI; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`; local Prisma/tsx query against demo DB for an adopted generic-name drug and candidate count
+- validation results: targeted Vitest passed with 2 files / 5 tests; targeted ESLint passed; TypeScript passed; whitespace check passed; local demo DB returned an adopted target with 3 same-generic candidates sorted by price
+- remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include action-state workflow for discontinuation/経過措置 handling, browser E2E verification of the formulary screen, scheduled freshness controls, and richer import diff surfacing
+- next action: commit this recommendation slice, then continue with formulary action-state workflow for 経過措置 and master-change follow-up
