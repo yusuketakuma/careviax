@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-222746
+
+- current task: add a downloadable CSV template for adopted-drug bulk import
+- files inspected: `git status --short`, `docs/ui-ux-design-guidelines.md`, Next.js route handler docs, `src/app/api/pharmacy-drug-stocks/bulk/route.ts`, `src/app/api/pharmacy-drug-stocks/export/route.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`
+- files changed: `src/app/api/pharmacy-drug-stocks/template/route.ts`, `src/app/api/pharmacy-drug-stocks/template/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: no functional regression confirmed; the formulary CSV import required users to infer the exact accepted header contract from placeholder text or exported data, increasing the chance of malformed bulk import files
+- security risks found: the template route validates same-org `site_id` before writing audit logs and uses the existing `canAdmin` boundary; no stock or drug data is exposed by the template
+- performance issues found: no runtime hot path changed; template generation is static and does not query stock rows
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/template/route.test.ts src/app/api/pharmacy-drug-stocks/bulk/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for the template route/test and formulary UI/test; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 3 files / 12 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice completes CSV template distribution only
+- next action: commit the template API/UI slice and continue the next high-value formulary/drug-master item
+
 ### 20260527-222300
 
 - current task: surface stocked generic alternatives during QR prescription intake when the prescribed drug is not in formulary
