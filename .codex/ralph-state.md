@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260528-000010
+
+- current task: add deletion for obsolete formulary templates
+- files inspected: `git status --short`, Next.js route handler docs, `prisma/schema/drug.prisma`, `src/app/api/pharmacy-drug-stock-templates/route.ts`, `src/app/api/pharmacy-drug-stock-templates/route.test.ts`, `src/app/api/pharmacy-drug-stock-templates/[id]/apply/route.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`
+- files changed: `src/app/api/pharmacy-drug-stock-templates/[id]/route.ts`, `src/app/api/pharmacy-drug-stock-templates/[id]/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: created formulary templates could be listed and applied, but obsolete or mistaken templates could not be removed from the admin workflow, increasing the chance of applying stale adopted-drug sets
+- security risks found: delete validates same-org template ownership before deletion, remains admin-only, and records a template deletion audit log with item count and source site context
+- performance issues found: deletion uses a single org-scoped lookup plus one transaction; no broad item expansion or stock reads are needed
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/api/pharmacy-drug-stock-templates/[id]/route.test.ts' src/app/api/pharmacy-drug-stock-templates/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for template delete API/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 3 files / 9 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice deletes obsolete templates but does not yet add rename/update or archived-template restore
+- next action: commit the formulary template deletion slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260527-235245
 
 - current task: reject duplicate adopted-drug CSV rows before bulk import
