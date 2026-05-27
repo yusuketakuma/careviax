@@ -54,6 +54,10 @@ describe('/api/pharmacy-drug-stocks/export', () => {
           drug_price: '10.20',
           unit: '錠',
           manufacturer: 'PH-OS製薬',
+          is_narcotic: false,
+          is_psychotropic: false,
+          is_high_risk: true,
+          is_lasa_risk: true,
         },
         preferred_generic: {
           yj_code: '123456789099',
@@ -72,7 +76,9 @@ describe('/api/pharmacy-drug-stocks/export', () => {
     expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     const csv = Buffer.from(bytes.slice(3)).toString('utf8');
     expect(csv).toContain('"YJコード","レセ電コード","医薬品名"');
+    expect(csv).toContain('"メーカー","安全属性","採用"');
     expect(csv).toContain('"123456789012","123456789","アムロジピン錠5mg"');
+    expect(csv).toContain('"PH-OS製薬","ハイリスク / LASA","採用"');
     expect(csv).toContain('"123456789099","アムロジピン後発錠5mg","2026-05-20"');
     expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -138,6 +144,56 @@ describe('/api/pharmacy-drug-stocks/export', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           changes: { site_id: 'site_1', purpose: 'posting', row_count: 1 },
+        }),
+      }),
+    );
+  });
+
+  it('exports audit CSV with safety flags and follow-up fields', async () => {
+    prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([
+      {
+        is_stocked: true,
+        reorder_point: 3,
+        adoption_note: '監査対象',
+        last_reviewed_at: new Date('2026-05-20T00:00:00.000Z'),
+        follow_up_status: 'monitoring',
+        follow_up_reason: '安全性確認',
+        follow_up_due_date: new Date('2026-06-01T00:00:00.000Z'),
+        updated_at: new Date('2026-05-21T00:00:00.000Z'),
+        drug_master: {
+          yj_code: '987654321098',
+          receipt_code: '987654321',
+          drug_name: '安全確認薬',
+          generic_name: null,
+          drug_price: '30.00',
+          unit: '錠',
+          dosage_form: '内用薬',
+          manufacturer: 'PH-OS製薬',
+          is_narcotic: true,
+          is_psychotropic: true,
+          is_high_risk: true,
+          is_lasa_risk: false,
+          transitional_expiry_date: null,
+        },
+        preferred_generic: null,
+      },
+    ]);
+
+    const response = await GET(
+      createRequest('http://localhost/api/pharmacy-drug-stocks/export?site_id=site_1&purpose=audit'),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const csv = await response.text();
+    expect(csv).toContain('"メーカー","安全属性","採用"');
+    expect(csv).toContain('"PH-OS製薬","麻薬 / 向精神薬 / ハイリスク","採用"');
+    expect(csv).toContain('"monitoring","安全性確認","2026-06-01","2026-05-21"');
+    expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          changes: { site_id: 'site_1', purpose: 'audit', row_count: 1 },
         }),
       }),
     );
