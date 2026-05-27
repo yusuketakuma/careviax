@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-232118
+
+- current task: strengthen transitional-expiry alerting with 30/60/90 day urgency buckets
+- files inspected: `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`
+- files changed: `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the formulary impact dashboard only exposed one transitional-expiry count, so users could not distinguish immediately urgent 30-day cases from broader 90-day watch items
+- security risks found: no authorization boundary changed; all expiry bucket counts reuse the existing authenticated org, selected site, and `is_stocked` predicates
+- performance issues found: added DB-side count queries for 30- and 60-day expiry buckets instead of deriving urgency by loading all rows in memory
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/impact/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for changed impact API/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 2 files / 8 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice adds urgency buckets but does not yet send proactive notifications
+- next action: commit the expiry bucket slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260527-231856
 
 - current task: estimate drug price revision impact amounts for adopted drugs using recent QR prescription usage
