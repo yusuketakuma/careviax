@@ -55,14 +55,15 @@ describe('/api/pharmacy-drug-stock-templates', () => {
     prismaMock.auditLog.create.mockResolvedValue({ id: 'audit_1' });
   });
 
-  it('lists formulary templates for the current org', async () => {
+  it('lists formulary templates for the current org with optional search and limit', async () => {
     prismaMock.formularyTemplate.findMany.mockResolvedValue([
       { id: 'template_1', name: '在宅内科 標準セット', item_count: 12 },
     ]);
 
-    const response = await GET(createRequest('http://localhost/api/pharmacy-drug-stock-templates'), {
-      params: Promise.resolve({}),
-    });
+    const response = await GET(
+      createRequest('http://localhost/api/pharmacy-drug-stock-templates?q=%E5%9C%A8%E5%AE%85&limit=10'),
+      { params: Promise.resolve({}) },
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -70,7 +71,16 @@ describe('/api/pharmacy-drug-stock-templates', () => {
       data: [{ id: 'template_1', item_count: 12 }],
     });
     expect(prismaMock.formularyTemplate.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { org_id: 'org_1' } }),
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          OR: [
+            { name: { contains: '在宅' } },
+            { description: { contains: '在宅' } },
+          ],
+        },
+        take: 10,
+      }),
     );
   });
 

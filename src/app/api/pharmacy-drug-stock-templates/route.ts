@@ -2,7 +2,13 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
+
+const templateQuerySchema = z.object({
+  q: z.string().trim().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
 
 const createTemplateSchema = z.object({
   name: z.string().trim().min(1, 'テンプレート名は必須です').max(100),
@@ -11,11 +17,26 @@ const createTemplateSchema = z.object({
 });
 
 export const GET = withAuthContext(
-  async (_req: NextRequest, authCtx) => {
+  async (req: NextRequest, authCtx) => {
+    const parsed = parseSearchParams(templateQuerySchema, new URL(req.url).searchParams);
+    if (!parsed.ok) {
+      return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
+    }
+
     const templates = await prisma.formularyTemplate.findMany({
-      where: { org_id: authCtx.orgId },
+      where: {
+        org_id: authCtx.orgId,
+        ...(parsed.data.q
+          ? {
+              OR: [
+                { name: { contains: parsed.data.q } },
+                { description: { contains: parsed.data.q } },
+              ],
+            }
+          : {}),
+      },
       orderBy: [{ created_at: 'desc' }],
-      take: 50,
+      take: parsed.data.limit,
       select: {
         id: true,
         name: true,
