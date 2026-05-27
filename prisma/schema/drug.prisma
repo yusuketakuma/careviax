@@ -204,6 +204,7 @@ model FormularyChangeRequest {
 
   @@index([org_id, site_id, status])
   @@index([org_id, drug_master_id, status])
+  @@index([org_id, site_id, drug_master_id, status], map: "FormularyChangeRequest_pending_guard_idx")
   @@index([status, created_at])
 }
 
