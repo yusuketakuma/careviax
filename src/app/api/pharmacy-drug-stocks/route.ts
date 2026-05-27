@@ -237,6 +237,18 @@ export const POST = withAuthContext(
     if (!site) return notFound('対象の薬局拠点が見つかりません');
     if (!targetDrug) return notFound('対象の医薬品が見つかりません');
 
+    if (preferred_generic_id && !preferredGeneric) {
+      return validationError('採用後発薬が見つかりません', {
+        preferred_generic_id: ['存在する後発品を選択してください'],
+      });
+    }
+
+    if (preferredGeneric && preferredGeneric.id === targetDrug.id) {
+      return validationError('採用後発薬に対象薬自身は指定できません', {
+        preferred_generic_id: ['対象薬とは別の後発品を選択してください'],
+      });
+    }
+
     if (preferredGeneric && !preferredGeneric.is_generic) {
       return validationError('採用後発薬には後発品のみ指定できます', {
         preferred_generic_id: ['後発品を選択してください'],

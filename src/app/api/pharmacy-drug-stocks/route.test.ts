@@ -35,7 +35,7 @@ function createRequest(url: string, body?: unknown) {
 
 describe('/api/pharmacy-drug-stocks', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'admin' });
     prismaMock.pharmacySite.findFirst.mockResolvedValue({ id: 'site_1', name: '本店' });
@@ -161,5 +161,75 @@ describe('/api/pharmacy-drug-stocks', () => {
         }),
       }),
     );
+  });
+
+  it('rejects unknown preferred generic before stock mutation side effects', async () => {
+    prismaMock.drugMaster.findFirst
+      .mockResolvedValueOnce({
+        id: 'drug_1',
+        drug_name: 'ノルバスク錠5mg',
+        generic_name: 'アムロジピンベシル酸塩錠',
+        is_generic: false,
+      })
+      .mockResolvedValueOnce(null);
+
+    const response = await POST(
+      createRequest('http://localhost/api/pharmacy-drug-stocks', {
+        site_id: 'site_1',
+        drug_master_id: 'drug_1',
+        is_stocked: true,
+        preferred_generic_id: 'missing_generic',
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '採用後発薬が見つかりません',
+      details: {
+        preferred_generic_id: ['存在する後発品を選択してください'],
+      },
+    });
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects the target drug itself as preferred generic', async () => {
+    prismaMock.drugMaster.findFirst
+      .mockResolvedValueOnce({
+        id: 'drug_1',
+        drug_name: 'アムロジピン錠5mg「GE」',
+        generic_name: 'アムロジピンベシル酸塩錠',
+        is_generic: true,
+      })
+      .mockResolvedValueOnce({
+        id: 'drug_1',
+        drug_name: 'アムロジピン錠5mg「GE」',
+        yj_code: '123456789012',
+        is_generic: true,
+        generic_name: 'アムロジピンベシル酸塩錠',
+      });
+
+    const response = await POST(
+      createRequest('http://localhost/api/pharmacy-drug-stocks', {
+        site_id: 'site_1',
+        drug_master_id: 'drug_1',
+        is_stocked: true,
+        preferred_generic_id: 'drug_1',
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '採用後発薬に対象薬自身は指定できません',
+      details: {
+        preferred_generic_id: ['対象薬とは別の後発品を選択してください'],
+      },
+    });
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });
 });
