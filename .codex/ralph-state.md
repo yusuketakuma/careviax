@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-232820
+
+- current task: improve practical drug-master search by adding HOT/JAN/Tall Man/manufacturer search coverage and indexes
+- files inspected: `git status --short`, Next.js route handler docs, `src/app/api/drug-masters/route.ts`, `src/app/api/drug-masters/route.test.ts`, `prisma/schema/drug.prisma`
+- files changed: `src/app/api/drug-masters/route.ts`, `src/app/api/drug-masters/route.test.ts`, `prisma/schema/drug.prisma`, `prisma/migrations/20260527233000_add_drug_master_search_indexes/migration.sql`, `.codex/ralph-state.md`
+- bugs found: drug master search did not include HOT code, Tall Man display names, or manufacturer text, and the schema lacked indexes for HOT/JAN/generic-name lookups used by practical formulary workflows
+- security risks found: no authorization boundary changed; existing org-scoped site validation for stocked-only searches is unchanged
+- performance issues found: added DB indexes for `hot_code`, `jan_code`, and `generic_name` so common identifier/generic-name lookups avoid unnecessary full-table scans as the MHLW master grows
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prisma format --schema=prisma/schema`; `pnpm --config.verify-deps-before-run=false exec prisma validate --schema=prisma/schema`; `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/drug-masters/route.test.ts`; targeted ESLint for drug-master route files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `pnpm --config.verify-deps-before-run=false exec prisma db push --schema=prisma/schema`; `git diff --check`
+- validation results: Prisma format/validate passed; targeted Vitest passed 1 file / 7 tests; targeted ESLint passed; TypeScript passed; local `ph_os_dev` db push passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice improves search coverage but does not yet add kana normalization or fuzzy matching
+- next action: commit the search improvement slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260527-232615
 
 - current task: add stronger auditability for adopted-drug CSV bulk imports
