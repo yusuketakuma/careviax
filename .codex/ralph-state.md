@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260528-002910
+
+- current task: avoid duplicate row numbers when JSON and CSV bulk formulary inputs are combined
+- files inspected: `src/app/api/pharmacy-drug-stocks/bulk/route.ts`, `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`
+- files changed: `src/app/api/pharmacy-drug-stocks/bulk/route.ts`, `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: when request `rows` and `csv` were submitted together, JSON rows used 1-based row numbers while CSV rows kept their own header-based row numbers, causing duplicate row references in preview/audit output
+- security risks found: no authorization boundary changed; row-number normalization happens after same-org site validation and before any stock mutation
+- performance issues found: no additional database work; CSV row numbers are adjusted in memory only when JSON rows are also present, while pure CSV keeps physical line numbers
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/bulk/route.test.ts`; targeted ESLint for bulk route files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 1 file / 9 tests after preserving pure-CSV physical line numbering; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice fixes mixed-input row numbering but does not add separate upload sessions
+- next action: commit the mixed-input row-number fix and continue the next high-value formulary/drug-master improvement
+
 ### 20260528-002650
 
 - current task: reject oversized formulary CSV imports instead of silently truncating rows
