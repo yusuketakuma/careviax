@@ -2190,3 +2190,16 @@ Backup directory:
 - validation results: Prisma schema formatted/generated and local DB synced; targeted Vitest passed with 3 files / 15 tests; targeted ESLint passed; TypeScript passed; whitespace check passed; demo DB has one `price_changed` event for an adopted YJ code
 - remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include full browser/E2E verification, scheduled freshness controls UI, richer action queue drill-down, and broader clinical safety enrichment
 - next action: commit this import-diff slice, then continue with browser verification or scheduled freshness controls
+
+### 20260527-213420
+
+- current task: add formulary impact drill-down and master freshness operation controls
+- files inspected: `git status --short --untracked-files=all`, `git log --oneline -8`, `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `src/app/api/jobs/[jobType]/route.ts`, `src/app/api/drug-master-imports/status/route.ts`
+- files changed: `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: 採用薬影響レビューは件数だけで、どの採用品が要対応・差分対象かを画面からドリルダウンできなかった; マスター更新ステータスは古いソース数の集計と鮮度チェック実行導線が弱かった
+- security risks found: no new security surface beyond existing admin-only UI calls; impact rows still come from org/site-scoped adopted-stock API
+- performance issues found: drill-down reuses existing impact samples and recent_changes payload without adding extra browser fetches; UI renders at most 5 queue rows
+- validation commands: targeted `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/impact/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for impact route and formulary UI/tests; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`; local Prisma/tsx verification of adopted stock count and recent change event availability
+- validation results: targeted Vitest passed with 2 files / 5 tests; targeted ESLint passed; TypeScript passed; whitespace check passed; local DB has 5 adopted demo stocks and 1 recent change event for a sample adopted YJ code
+- remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include browser/E2E verification, richer action queue filters, scheduled import history/audit UX, and clinical safety enrichment
+- next action: commit this drill-down/freshness slice, then continue with Playwright/browser verification or scheduled import UX hardening
