@@ -2853,3 +2853,16 @@ Backup directory:
 - validation results: targeted Vitest passed with 2 files / 8 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
 - remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include browser/E2E verification, more granular clinical safety queues, and final completion audit
 - next action: commit this import-history filter slice, then continue with browser/E2E verification or the next safety queue improvement
+
+### 20260528-004431
+
+- current task: split formulary safety impact queues by high-risk, LASA, and controlled-drug flags
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, Next.js route handler docs, `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`
+- files changed: `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: safety-flagged adopted drugs were grouped into one queue, so high-risk medicines, LASA medicines, and narcotic/psychotropic medicines could not be triaged separately from the impact review
+- security risks found: no auth or tenant boundary changed; all new queue filters reuse the existing org/site-scoped adopted-stock base predicate
+- performance issues found: new queues use direct indexed boolean predicates through the existing bounded queue/sample query pattern
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/impact/route.test.ts 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for changed impact route/tests and drug master UI/tests; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed with 2 files / 8 tests after correcting mock count order; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: the 20-item drug master/formulary upgrade goal remains active. Remaining items include browser/E2E verification of formulary workflows, richer safety follow-up automation, and final completion audit
+- next action: commit this safety queue slice, then continue with browser/E2E verification or safety follow-up automation
