@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-215220
+
+- current task: make adopted-drug impact review totals cover all stocked formulary items instead of only the first 500 rows
+- files inspected: `git status --short`, `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `prisma/schema/drug.prisma`, and related drug master/formulary references
+- files changed: `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: `/api/pharmacy-drug-stocks/impact` loaded only `take: 500` stocked formulary rows before calculating all review, reorder, safety, expiry, action-required, and recent-change totals; facilities with more than 500 adopted drugs could see undercounted dashboard totals and queues
+- security risks found: no authz boundary changed; the existing org/site/is_stocked filters remain in place before impact calculations
+- performance issues found: removed a correctness-breaking row cap from an admin review endpoint; selected queue output is still bounded by `queue_limit`, so the response does not return every adopted row
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/impact/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec eslint src/app/api/pharmacy-drug-stocks/impact/route.ts src/app/api/pharmacy-drug-stocks/impact/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 1 file / 3 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: if very large formulary tenants appear, move the count calculations to DB-side aggregate queries while preserving exact totals; broader 20-item upgrade remains active
+- next action: commit this impact-count correctness fix, then continue the next high-value formulary/drug-master improvement
+
 ### 20260527-214940
 
 - current task: lock in API regression coverage for adopted-drug master-change impact queues
