@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260528-000705
+
+- current task: add a database index for duplicate pending formulary request checks
+- files inspected: `git status --short`, `prisma/schema/drug.prisma`, `prisma/migrations/20260527225500_add_formulary_change_requests/migration.sql`, migration directory listing
+- files changed: `prisma/schema/drug.prisma`, `prisma/migrations/20260528000600_add_formulary_request_pending_guard_index/migration.sql`, `.codex/ralph-state.md`
+- bugs found: the duplicate pending request guard now checks org/site/drug/status, but the schema only had org/site/status and org/drug/status indexes, leaving the exact guard predicate less efficient as request volume grows
+- security risks found: no authorization or data access behavior changed; this is an index-only support change for the existing same-org duplicate guard
+- performance issues found: added `FormularyChangeRequest_pending_guard_idx` on `org_id`, `site_id`, `drug_master_id`, and `status` to support the pending duplicate lookup directly
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prisma format --schema=prisma/schema`; `pnpm --config.verify-deps-before-run=false exec prisma validate --schema=prisma/schema`; `pnpm --config.verify-deps-before-run=false exec prisma generate --schema=prisma/schema`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `pnpm --config.verify-deps-before-run=false exec prisma db push --schema=prisma/schema`; `git diff --check`
+- validation results: Prisma format/validate/generate passed; TypeScript passed; local `ph_os_dev` db push passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice supports the duplicate request guard but does not add request replacement/editing
+- next action: commit the pending request index slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260528-000530
 
 - current task: align formulary-stock search keys with practical drug-master search
