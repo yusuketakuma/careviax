@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-214940
+
+- current task: lock in API regression coverage for adopted-drug master-change impact queues
+- files inspected: `git status --short`, `src/app/api/pharmacy-drug-stocks/impact/route.ts`, `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, related formulary follow-up and import change event references
+- files changed: `src/app/api/pharmacy-drug-stocks/impact/route.test.ts`, `.codex/ralph-state.md`
+- bugs found: no production bug confirmed in this slice; the gap was missing coverage for the most operationally important path where recent MHLW price changes must surface in the selected adopted-drug queue while resolved follow-ups stay out of the action-required count
+- security risks found: no production security code changed; the test preserves org/site-scoped access assumptions by exercising the existing authenticated route wrapper and site lookup path
+- performance issues found: none in runtime code; the test confirms `queue_limit` bounds selected queue rows for the recently changed queue
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stocks/impact/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec eslint src/app/api/pharmacy-drug-stocks/impact/route.test.ts`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 1 file / 2 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade audit is still active; this slice adds regression coverage only
+- next action: continue with the next formulary/drug-master improvement and keep committing logical groups
+
 ### 20260527-235850
 
 - current task: add browser-level route-mocked verification for the adopted drug formulary management screen
