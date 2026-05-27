@@ -11,7 +11,7 @@ const exportQuerySchema = z.object({
 
 function safeCsvCell(value: unknown): string {
   const text = value == null ? '' : String(value);
-  const neutralized = /^[=+\-@]/.test(text) ? `'${text}` : text;
+  const neutralized = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
   return `"${neutralized.replaceAll('"', '""')}"`;
 }
 
