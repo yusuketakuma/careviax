@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-225852
+
+- current task: add a formulary change approval workflow for adopted-drug changes
+- files inspected: `git status --short`, `prisma/schema/drug.prisma`, `src/app/api/pharmacy-drug-stocks/route.ts`, `src/app/api/pharmacy-drug-stocks/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, Next.js route handler docs, `docs/ui-ux-design-guidelines.md`
+- files changed: `prisma/schema/drug.prisma`, `prisma/migrations/20260527225500_add_formulary_change_requests/migration.sql`, `src/app/api/pharmacy-drug-stock-requests/route.ts`, `src/app/api/pharmacy-drug-stock-requests/route.test.ts`, `src/app/api/pharmacy-drug-stock-requests/[id]/route.ts`, `src/app/api/pharmacy-drug-stock-requests/[id]/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: adopted-drug changes could be applied directly from the master screen, but there was no persistent request/approval path for sites that require formulary committee or manager review before adoption, deactivation, or setting changes
+- security risks found: request and decision APIs use the existing `canAdmin` boundary, validate org-scoped sites before request creation/listing, keep requests org-scoped, and reject already-processed requests before applying stock mutations
+- performance issues found: pending request listing is bounded; approval applies a single stock upsert inside the same transaction as the decision/audit update
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prisma format --schema=prisma/schema`; `pnpm --config.verify-deps-before-run=false exec prisma validate --schema=prisma/schema`; `pnpm --config.verify-deps-before-run=false exec prisma generate --schema=prisma/schema`; `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stock-requests/route.test.ts 'src/app/api/pharmacy-drug-stock-requests/[id]/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for changed request API/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `pnpm --config.verify-deps-before-run=false exec prisma db push --schema=prisma/schema`; `git diff --check`
+- validation results: Prisma format/validate/generate passed; targeted Vitest passed 3 files / 9 tests, then request API regression passed 2 files / 5 tests after a JSON null type fix; targeted ESLint passed; TypeScript passed; local `ph_os_dev` db push passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice adds request creation, pending-list display, and approve/reject APIs, but not a full approval inbox UI
+- next action: commit the approval workflow slice and continue the next high-value formulary/drug-master item
+
 ### 20260527-225207
 
 - current task: add same-org site-to-site formulary copy for adopted drug setup
