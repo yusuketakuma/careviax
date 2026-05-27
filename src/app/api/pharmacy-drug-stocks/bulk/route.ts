@@ -270,14 +270,16 @@ export const POST = withAuthContext(
     });
     if (!site) return notFound('対象の薬局拠点が見つかりません');
 
-    const parsedRows = [
-      ...(parsed.data.rows ?? []).map((row, index) => ({
-        ...row,
-        is_stocked: parseBoolean(row.is_stocked),
-        rowNumber: index + 1,
-      })),
-      ...(parsed.data.csv ? parseCsv(parsed.data.csv) : []),
-    ];
+    const requestRows = (parsed.data.rows ?? []).map((row, index) => ({
+      ...row,
+      is_stocked: parseBoolean(row.is_stocked),
+      rowNumber: index + 1,
+    }));
+    const csvRows = (parsed.data.csv ? parseCsv(parsed.data.csv) : []).map((row, index) => ({
+      ...row,
+      rowNumber: requestRows.length > 0 ? requestRows.length + index + 1 : row.rowNumber,
+    }));
+    const parsedRows = [...requestRows, ...csvRows];
 
     if (parsedRows.length > MAX_BULK_ROWS) {
       return validationError('一度に登録できる採用薬データは1000行までです', {

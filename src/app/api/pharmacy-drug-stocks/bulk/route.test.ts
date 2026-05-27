@@ -147,6 +147,53 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
     expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });
 
+  it('numbers CSV rows after JSON rows when both inputs are provided', async () => {
+    prismaMock.drugMaster.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'drug_json',
+          yj_code: '111111111111',
+          drug_name: 'JSON薬',
+          generic_name: '成分J',
+        },
+        {
+          id: 'drug_csv',
+          yj_code: '222222222222',
+          drug_name: 'CSV薬',
+          generic_name: '成分C',
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const response = await POST(
+      createRequest({
+        site_id: 'site_1',
+        dry_run: true,
+        rows: [{ yj_code: '111111111111', drug_name: 'JSON薬', is_stocked: true }],
+        csv: 'YJコード,医薬品名,採用,発注点\n222222222222,CSV薬,採用,10',
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    await expect(response.json()).resolves.toMatchObject({
+      importedCount: 0,
+      preview: {
+        summary: {
+          totalRows: 2,
+          processableRows: 2,
+        },
+        rows: [
+          { rowNumber: 1, status: 'create', yj_code: '111111111111' },
+          { rowNumber: 2, status: 'create', yj_code: '222222222222' },
+        ],
+      },
+    });
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
   it('previews CSV differences without mutating stock rows or writing audit logs', async () => {
     prismaMock.drugMaster.findMany
       .mockResolvedValueOnce([
