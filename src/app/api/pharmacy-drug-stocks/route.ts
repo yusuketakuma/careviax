@@ -8,6 +8,13 @@ import { prisma } from '@/lib/db/client';
 const stockQuerySchema = z.object({
   site_id: z.string().trim().min(1, 'site_id は必須です'),
   drug_master_id: z.string().trim().optional(),
+  q: z.string().trim().optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  review_due: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
+  missing_reorder_point: z
+    .enum(['true', 'false'])
+    .transform((value) => value === 'true')
+    .optional(),
 });
 
 const upsertStockSchema = z.object({
@@ -16,7 +23,34 @@ const upsertStockSchema = z.object({
   is_stocked: z.boolean().default(true),
   reorder_point: z.number().int().min(0).nullable().optional(),
   preferred_generic_id: z.string().trim().nullable().optional(),
+  adoption_source: z.enum(['manual', 'csv', 'demo_seed', 'mhlw_review']).default('manual'),
+  adoption_note: z.string().trim().max(500).nullable().optional(),
+  mark_reviewed: z.boolean().default(false),
 });
+
+const STOCK_REVIEW_INTERVAL_DAYS = 180;
+
+const stockSelect = {
+  id: true,
+  site_id: true,
+  drug_master_id: true,
+  is_stocked: true,
+  stock_qty: true,
+  reorder_point: true,
+  preferred_generic_id: true,
+  adoption_source: true,
+  adoption_note: true,
+  last_reviewed_at: true,
+  reviewed_by_id: true,
+  updated_at: true,
+  preferred_generic: {
+    select: {
+      id: true,
+      drug_name: true,
+      yj_code: true,
+    },
+  },
+} as const;
 
 export const GET = withAuthContext(
   async (req: NextRequest, authCtx) => {
@@ -45,23 +79,7 @@ export const GET = withAuthContext(
           site_id: site.id,
           drug_master_id: parsed.data.drug_master_id,
         },
-        select: {
-          id: true,
-          site_id: true,
-          drug_master_id: true,
-          is_stocked: true,
-          stock_qty: true,
-          reorder_point: true,
-          preferred_generic_id: true,
-          updated_at: true,
-          preferred_generic: {
-            select: {
-              id: true,
-              drug_name: true,
-              yj_code: true,
-            },
-          },
-        },
+        select: stockSelect,
       });
 
       return success({
@@ -70,14 +88,34 @@ export const GET = withAuthContext(
       });
     }
 
+    const reviewCutoff = new Date();
+    reviewCutoff.setDate(reviewCutoff.getDate() - STOCK_REVIEW_INTERVAL_DAYS);
     const stocked = await prisma.pharmacyDrugStock.findMany({
       where: {
         org_id: authCtx.orgId,
         site_id: site.id,
         is_stocked: true,
+        ...(parsed.data.missing_reorder_point ? { reorder_point: null } : {}),
+        ...(parsed.data.review_due
+          ? {
+              OR: [{ last_reviewed_at: null }, { last_reviewed_at: { lt: reviewCutoff } }],
+            }
+          : {}),
+        ...(parsed.data.q
+          ? {
+              drug_master: {
+                OR: [
+                  { drug_name: { contains: parsed.data.q } },
+                  { generic_name: { contains: parsed.data.q } },
+                  { yj_code: { startsWith: parsed.data.q } },
+                  { receipt_code: { startsWith: parsed.data.q } },
+                ],
+              },
+            }
+          : {}),
       },
       orderBy: [{ updated_at: 'desc' }],
-      take: 50,
+      take: parsed.data.limit ?? 50,
       select: {
         id: true,
         site_id: true,
@@ -86,12 +124,24 @@ export const GET = withAuthContext(
         stock_qty: true,
         reorder_point: true,
         preferred_generic_id: true,
+        adoption_source: true,
+        adoption_note: true,
+        last_reviewed_at: true,
+        reviewed_by_id: true,
         updated_at: true,
         drug_master: {
           select: {
             id: true,
             drug_name: true,
             yj_code: true,
+            drug_price: true,
+            unit: true,
+            is_generic: true,
+            is_narcotic: true,
+            is_psychotropic: true,
+            is_high_risk: true,
+            is_lasa_risk: true,
+            transitional_expiry_date: true,
           },
         },
         preferred_generic: {
@@ -122,7 +172,16 @@ export const POST = withAuthContext(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const { site_id, drug_master_id, is_stocked, reorder_point, preferred_generic_id } = parsed.data;
+    const {
+      site_id,
+      drug_master_id,
+      is_stocked,
+      reorder_point,
+      preferred_generic_id,
+      adoption_source,
+      adoption_note,
+      mark_reviewed,
+    } = parsed.data;
 
     const [site, targetDrug, preferredGeneric] = await Promise.all([
       prisma.pharmacySite.findFirst({
@@ -178,43 +237,86 @@ export const POST = withAuthContext(
       });
     }
 
-    const stock = await prisma.pharmacyDrugStock.upsert({
+    const existingStock = await prisma.pharmacyDrugStock.findFirst({
       where: {
-        site_id_drug_master_id: {
-          site_id,
-          drug_master_id,
-        },
-      },
-      create: {
         org_id: authCtx.orgId,
         site_id,
         drug_master_id,
-        is_stocked,
-        reorder_point: reorder_point ?? null,
-        preferred_generic_id: preferredGeneric?.id ?? null,
-      },
-      update: {
-        is_stocked,
-        reorder_point: reorder_point ?? null,
-        preferred_generic_id: preferredGeneric?.id ?? null,
       },
       select: {
         id: true,
-        site_id: true,
-        drug_master_id: true,
         is_stocked: true,
-        stock_qty: true,
         reorder_point: true,
         preferred_generic_id: true,
-        updated_at: true,
-        preferred_generic: {
-          select: {
-            id: true,
-            drug_name: true,
-            yj_code: true,
+        adoption_source: true,
+        adoption_note: true,
+        last_reviewed_at: true,
+      },
+    });
+    const reviewedAt = mark_reviewed ? new Date() : undefined;
+
+    const stock = await prisma.$transaction(async (tx) => {
+      const saved = await tx.pharmacyDrugStock.upsert({
+        where: {
+          site_id_drug_master_id: {
+            site_id,
+            drug_master_id,
           },
         },
-      },
+        create: {
+          org_id: authCtx.orgId,
+          site_id,
+          drug_master_id,
+          is_stocked,
+          reorder_point: reorder_point ?? null,
+          preferred_generic_id: preferredGeneric?.id ?? null,
+          adoption_source,
+          adoption_note: adoption_note ?? null,
+          last_reviewed_at: reviewedAt,
+          reviewed_by_id: reviewedAt ? authCtx.userId : null,
+        },
+        update: {
+          is_stocked,
+          reorder_point: reorder_point ?? null,
+          preferred_generic_id: preferredGeneric?.id ?? null,
+          adoption_source,
+          adoption_note: adoption_note ?? null,
+          ...(reviewedAt
+            ? {
+                last_reviewed_at: reviewedAt,
+                reviewed_by_id: authCtx.userId,
+              }
+            : {}),
+        },
+        select: stockSelect,
+      });
+
+      await tx.auditLog.create({
+        data: {
+          org_id: authCtx.orgId,
+          actor_id: authCtx.userId,
+          action: existingStock ? 'pharmacy_drug_stock_updated' : 'pharmacy_drug_stock_created',
+          target_type: 'PharmacyDrugStock',
+          target_id: saved.id,
+          changes: {
+            site_id,
+            drug_master_id,
+            before: existingStock,
+            after: {
+              is_stocked,
+              reorder_point: reorder_point ?? null,
+              preferred_generic_id: preferredGeneric?.id ?? null,
+              adoption_source,
+              adoption_note: adoption_note ?? null,
+              mark_reviewed,
+            },
+          },
+          ip_address: authCtx.ipAddress,
+          user_agent: authCtx.userAgent,
+        },
+      });
+
+      return saved;
     });
 
     return success({

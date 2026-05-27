@@ -39,6 +39,7 @@ export const POST = withAuthContext(async (req: NextRequest, authCtx) => {
         status: result.log.status,
         importedCount: result.importedCount,
         workbookUrl: result.workbookUrl,
+        workbookUrls: result.workbookUrls,
       },
     },
     201,

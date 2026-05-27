@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  importMhlwPriceList,
   importGenericNameMappings,
   parseMhlwPriceWorkbook,
   parseGenericNameWorkbook,
   resolveLatestGenericNameWorkbookUrl,
+  resolveLatestMhlwPriceListPageUrl,
   resolveLatestMhlwPriceWorkbookUrl,
+  resolveLatestMhlwPriceWorkbookUrls,
 } from './mhlw';
 import { buildWorkbookBuffer } from './excel';
 
@@ -22,6 +25,18 @@ function toWorkbookResponse(buffer: Buffer) {
 }
 
 describe('resolveLatestMhlwPriceWorkbookUrl', () => {
+  it('extracts the latest price list detail page url from the MHLW index page', () => {
+    const html = `
+      <ul>
+        <li><a href="/topics/2026/04/tp20260401-01.html">薬価基準収載品目リストについて（令和8年5月20日適用）</a></li>
+      </ul>
+    `;
+
+    expect(resolveLatestMhlwPriceListPageUrl(html)).toBe(
+      'https://www.mhlw.go.jp/topics/2026/04/tp20260401-01.html',
+    );
+  });
+
   it('extracts the latest price workbook url from the index page', () => {
     const html = `
       <ul>
@@ -32,6 +47,25 @@ describe('resolveLatestMhlwPriceWorkbookUrl', () => {
     expect(resolveLatestMhlwPriceWorkbookUrl(html)).toBe(
       'https://www.mhlw.go.jp/topics/2026/04/xls/tp20260401-01_01.xlsx',
     );
+  });
+
+  it('extracts all listed price workbook urls from the current index page', () => {
+    const html = `
+      <ul>
+        <li><a href="/topics/2026/04/xls/tp20260520-01_01.xlsx">Excel</a></li>
+        <li><a href="/topics/2026/04/xls/tp20260520-01_02.xlsx">Excel</a></li>
+        <li><a href="/topics/2026/04/xls/tp20260520-01_03.xlsx">Excel</a></li>
+        <li><a href="/topics/2026/04/xls/tp20260401-01_04.xlsx">Excel</a></li>
+        <li><a href="/topics/2026/04/xls/tp20260520-01_05.xlsx">Excel</a></li>
+      </ul>
+    `;
+
+    expect(resolveLatestMhlwPriceWorkbookUrls(html)).toEqual([
+      'https://www.mhlw.go.jp/topics/2026/04/xls/tp20260520-01_01.xlsx',
+      'https://www.mhlw.go.jp/topics/2026/04/xls/tp20260520-01_02.xlsx',
+      'https://www.mhlw.go.jp/topics/2026/04/xls/tp20260520-01_03.xlsx',
+      'https://www.mhlw.go.jp/topics/2026/04/xls/tp20260401-01_04.xlsx',
+    ]);
   });
 });
 
@@ -103,7 +137,9 @@ describe('parseMhlwPriceWorkbook', () => {
       drug_name: 'ユーロジン１ｍｇ錠',
       generic_name: 'エスタゾラム',
       manufacturer: 'Ｔ’ｓ製薬',
+      unit: '１ｍｇ１錠',
       dosage_form: '内用薬',
+      therapeutic_category: '1124',
       is_generic: false,
     });
     expect(parsed.records[1]).toMatchObject({
@@ -135,6 +171,72 @@ describe('parseMhlwPriceWorkbook', () => {
       drug_name: 'ユーロジン１ｍｇ錠',
       manufacturer: 'Ｔ’ｓ製薬',
     });
+  });
+});
+
+describe('importMhlwPriceList', () => {
+  const db = {
+    drugMasterImportLog: {
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    drugMaster: {
+      upsert: vi.fn(),
+    },
+  } as const;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db.drugMasterImportLog.create.mockResolvedValue({ id: 'log_1', status: 'running' });
+    db.drugMasterImportLog.update.mockResolvedValue({ id: 'log_1', status: 'completed' });
+    db.drugMaster.upsert.mockResolvedValue({ id: 'drug_1' });
+  });
+
+  it('imports all MHLW price category workbooks by default', async () => {
+    const workbook = await workbookBlob({
+      ＨＰ用: [
+        ['区分', '薬価基準収載医薬品コード', '成分名', '規格', '品名', 'メーカー名', '薬価'],
+        ['内用薬', '1124001F1022', 'エスタゾラム', '１ｍｇ１錠', 'ユーロジン１ｍｇ錠', 'Ｔ’ｓ製薬', '6.30'],
+      ],
+    });
+    const indexHtml = `
+      <a href="/topics/2026/04/tp20260401-01.html">薬価基準収載品目リスト</a>
+    `;
+    const detailHtml = `
+      <a href="/topics/2026/04/xls/tp20260520-01_01.xlsx">Excel</a>
+      <a href="/topics/2026/04/xls/tp20260520-01_02.xlsx">Excel</a>
+    `;
+    const fetchImpl = vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input);
+      if (url.endsWith('0000078916.html')) {
+        return new Response(indexHtml, { status: 200, headers: { 'content-type': 'text/html' } });
+      }
+      if (url.endsWith('tp20260401-01.html')) {
+        return new Response(detailHtml, { status: 200, headers: { 'content-type': 'text/html' } });
+      }
+      return toWorkbookResponse(workbook);
+    });
+
+    const result = await importMhlwPriceList(db as never, { fetchImpl });
+
+    expect(result.importedCount).toBe(2);
+    expect(result.workbookUrls).toEqual([
+      'https://www.mhlw.go.jp/topics/2026/04/xls/tp20260520-01_01.xlsx',
+      'https://www.mhlw.go.jp/topics/2026/04/xls/tp20260520-01_02.xlsx',
+    ]);
+    expect(db.drugMaster.upsert).toHaveBeenCalledTimes(2);
+    expect(db.drugMaster.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          unit: '１ｍｇ１錠',
+          therapeutic_category: '1124',
+        }),
+        update: expect.objectContaining({
+          unit: '１ｍｇ１錠',
+          therapeutic_category: '1124',
+        }),
+      }),
+    );
   });
 });
 

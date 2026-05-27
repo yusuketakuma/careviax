@@ -22,10 +22,21 @@ type ParsedMhlwPriceRecord = {
   drug_name: string;
   generic_name: string | null;
   manufacturer: string | null;
+  unit: string | null;
   dosage_form: string | null;
+  therapeutic_category: string | null;
   drug_price: Prisma.Decimal | null;
   is_generic: boolean;
   transitional_expiry_date: Date | null;
+};
+
+type ParseMhlwPriceWorkbookOptions = {
+  workbookUrl?: string;
+  fetchImpl?: FetchLike;
+};
+
+type ImportMhlwPriceListOptions = ParseMhlwPriceWorkbookOptions & {
+  workbookUrls?: string[];
 };
 
 type ParsedGenericNameEntry = {
@@ -98,15 +109,62 @@ function readCell(row: Array<string | null>, headerMap: Map<string, number>, hea
   return normalizeCell(row[index]);
 }
 
+export function resolveLatestMhlwPriceListPageUrl(
+  html: string,
+  pageUrl = MHLW_MASTER_INDEX_PAGE_URL,
+) {
+  const match = html.match(/href="([^"]*\/topics\/\d{4}\/\d{2}\/tp\d{8}-01\.html)"/i);
+  if (!match) {
+    throw new Error('最新の薬価基準収載品目ページを解決できませんでした');
+  }
+  return resolveImportSourceUrl(match[1], pageUrl, MHLW_IMPORT_URL_POLICY);
+}
+
+async function fetchLatestMhlwPriceListPage(
+  fetchImpl: FetchLike,
+  pageUrl = MHLW_MASTER_INDEX_PAGE_URL,
+) {
+  const indexHtml = await fetchText(pageUrl, {
+    fetchImpl,
+    policy: MHLW_IMPORT_URL_POLICY,
+  });
+  const priceListPageUrl = resolveLatestMhlwPriceListPageUrl(indexHtml, pageUrl);
+  const priceListHtml = await fetchText(priceListPageUrl, {
+    fetchImpl,
+    policy: MHLW_IMPORT_URL_POLICY,
+  });
+
+  return {
+    priceListPageUrl,
+    html: priceListHtml,
+  };
+}
+
 export function resolveLatestMhlwPriceWorkbookUrl(
   html: string,
   pageUrl = MHLW_MASTER_INDEX_PAGE_URL,
 ) {
-  const match = html.match(/href="([^"]+tp\d{8}-01_01\.xlsx)"/i);
-  if (!match) {
+  const workbookUrls = resolveLatestMhlwPriceWorkbookUrls(html, pageUrl);
+  const workbookUrl = workbookUrls[0];
+  if (!workbookUrl) {
     throw new Error('最新の薬価基準収載品目 Excel を解決できませんでした');
   }
-  return resolveImportSourceUrl(match[1], pageUrl, MHLW_IMPORT_URL_POLICY);
+  return workbookUrl;
+}
+
+export function resolveLatestMhlwPriceWorkbookUrls(
+  html: string,
+  pageUrl = MHLW_MASTER_INDEX_PAGE_URL,
+) {
+  const matches = html.matchAll(/href="([^"]+tp\d{8}-01_0[1-4]\.xlsx)"/gi);
+  const urls = [...matches].map((match) =>
+    resolveImportSourceUrl(match[1], pageUrl, MHLW_IMPORT_URL_POLICY),
+  );
+  const uniqueUrls = [...new Set(urls)];
+  if (uniqueUrls.length === 0) {
+    throw new Error('最新の薬価基準収載品目 Excel を解決できませんでした');
+  }
+  return uniqueUrls;
 }
 
 export function resolveLatestGenericNameWorkbookUrl(
@@ -121,19 +179,15 @@ export function resolveLatestGenericNameWorkbookUrl(
 }
 
 export async function parseMhlwPriceWorkbook(
-  options: { workbookUrl?: string; fetchImpl?: FetchLike } = {},
+  options: ParseMhlwPriceWorkbookOptions = {},
 ) {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const workbookUrl = normalizeImportSourceUrl(
-    options.workbookUrl ??
-      resolveLatestMhlwPriceWorkbookUrl(
-        await fetchText(MHLW_MASTER_INDEX_PAGE_URL, {
-          fetchImpl,
-          policy: MHLW_IMPORT_URL_POLICY,
-        }),
-      ),
-    MHLW_IMPORT_URL_POLICY,
-  );
+  let resolvedWorkbookUrl = options.workbookUrl;
+  if (!resolvedWorkbookUrl) {
+    const page = await fetchLatestMhlwPriceListPage(fetchImpl);
+    resolvedWorkbookUrl = resolveLatestMhlwPriceWorkbookUrl(page.html, page.priceListPageUrl);
+  }
+  const workbookUrl = normalizeImportSourceUrl(resolvedWorkbookUrl, MHLW_IMPORT_URL_POLICY);
 
   const rows = await loadPriceWorkbookRows(
     await fetchBytes(workbookUrl, {
@@ -159,7 +213,9 @@ export async function parseMhlwPriceWorkbook(
       drug_name: drugName,
       generic_name: readCell(row, headerMap, '成分名'),
       manufacturer: readCell(row, headerMap, 'メーカー名'),
+      unit: readCell(row, headerMap, '規格'),
       dosage_form: readCell(row, headerMap, '区分'),
+      therapeutic_category: yjCode.slice(0, 4) || null,
       drug_price: parseDecimal(readCell(row, headerMap, '薬価')),
       is_generic:
         genericIndicator != null &&
@@ -188,7 +244,9 @@ async function upsertPriceChunk(
           drug_name: record.drug_name,
           generic_name: record.generic_name,
           manufacturer: record.manufacturer,
+          unit: record.unit,
           dosage_form: record.dosage_form,
+          therapeutic_category: record.therapeutic_category,
           drug_price: mode === 'price' ? record.drug_price : null,
           is_generic: record.is_generic,
           transitional_expiry_date: record.transitional_expiry_date,
@@ -199,7 +257,9 @@ async function upsertPriceChunk(
                 drug_name: record.drug_name,
                 generic_name: record.generic_name,
                 manufacturer: record.manufacturer,
+                unit: record.unit,
                 dosage_form: record.dosage_form,
+                therapeutic_category: record.therapeutic_category,
                 drug_price: record.drug_price,
                 transitional_expiry_date: record.transitional_expiry_date,
               }
@@ -213,19 +273,37 @@ async function upsertPriceChunk(
 
 export async function importMhlwPriceList(
   db: DrugMasterImportDbClient,
-  options: { workbookUrl?: string; fetchImpl?: FetchLike } = {},
+  options: ImportMhlwPriceListOptions = {},
 ) {
   return withImportLog(db, 'mhlw_price', async () => {
-    const parsed = await parseMhlwPriceWorkbook(options);
+    const fetchImpl = options.fetchImpl ?? fetch;
+    let workbookUrls: string[];
+    if (options.workbookUrls) {
+      workbookUrls = options.workbookUrls.map((url) =>
+        normalizeImportSourceUrl(url, MHLW_IMPORT_URL_POLICY),
+      );
+    } else if (options.workbookUrl) {
+      workbookUrls = [normalizeImportSourceUrl(options.workbookUrl, MHLW_IMPORT_URL_POLICY)];
+    } else {
+      const page = await fetchLatestMhlwPriceListPage(fetchImpl);
+      workbookUrls = resolveLatestMhlwPriceWorkbookUrls(page.html, page.priceListPageUrl);
+    }
 
-    for (let index = 0; index < parsed.records.length; index += 200) {
-      await upsertPriceChunk(db, parsed.records.slice(index, index + 200), 'price');
+    let recordCount = 0;
+    for (const workbookUrl of workbookUrls) {
+      const parsed = await parseMhlwPriceWorkbook({ workbookUrl, fetchImpl });
+      recordCount += parsed.records.length;
+
+      for (let index = 0; index < parsed.records.length; index += 200) {
+        await upsertPriceChunk(db, parsed.records.slice(index, index + 200), 'price');
+      }
     }
 
     return {
-      recordCount: parsed.records.length,
+      recordCount,
       payload: {
-        workbookUrl: parsed.workbookUrl,
+        workbookUrl: workbookUrls[0] ?? null,
+        workbookUrls,
       },
     };
   });

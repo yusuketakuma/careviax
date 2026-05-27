@@ -1,13 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const { drugMasterFindManyMock, drugMasterCountMock, genericDrugMappingFindManyMock } = vi.hoisted(
-  () => ({
-    drugMasterFindManyMock: vi.fn(),
-    drugMasterCountMock: vi.fn(),
-    genericDrugMappingFindManyMock: vi.fn(),
-  }),
-);
+const {
+  drugMasterFindManyMock,
+  drugMasterCountMock,
+  genericDrugMappingFindManyMock,
+  pharmacySiteFindFirstMock,
+  pharmacyDrugStockFindManyMock,
+} = vi.hoisted(() => ({
+  drugMasterFindManyMock: vi.fn(),
+  drugMasterCountMock: vi.fn(),
+  genericDrugMappingFindManyMock: vi.fn(),
+  pharmacySiteFindFirstMock: vi.fn(),
+  pharmacyDrugStockFindManyMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => unknown) => {
@@ -24,6 +30,12 @@ vi.mock('@/lib/db/client', () => ({
     },
     genericDrugMapping: {
       findMany: genericDrugMappingFindManyMock,
+    },
+    pharmacySite: {
+      findFirst: pharmacySiteFindFirstMock,
+    },
+    pharmacyDrugStock: {
+      findMany: pharmacyDrugStockFindManyMock,
     },
   },
 }));
@@ -68,6 +80,8 @@ describe('/api/drug-masters GET', () => {
       },
     ]);
     drugMasterCountMock.mockResolvedValue(1);
+    pharmacySiteFindFirstMock.mockResolvedValue({ id: 'site_1' });
+    pharmacyDrugStockFindManyMock.mockResolvedValue([]);
     genericDrugMappingFindManyMock.mockResolvedValue([
       {
         generic_name: 'アムロジピンベシル酸塩',
@@ -78,6 +92,72 @@ describe('/api/drug-masters GET', () => {
         },
       },
     ]);
+  });
+
+  it('attaches site-specific formulary status and supports stocked-only filtering', async () => {
+    pharmacyDrugStockFindManyMock.mockResolvedValue([
+      {
+        id: 'stock_1',
+        drug_master_id: 'drug_1',
+        is_stocked: true,
+        stock_qty: null,
+        reorder_point: 10,
+        preferred_generic_id: null,
+        updated_at: new Date('2026-05-27T00:00:00.000Z'),
+        preferred_generic: null,
+      },
+    ]);
+
+    const response = await GET(
+      createRequest('http://localhost/api/drug-masters?site_id=site_1&stocked=true&limit=5'),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(pharmacySiteFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'site_1',
+        org_id: 'org_1',
+      },
+      select: {
+        id: true,
+      },
+    });
+    expect(drugMasterFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          drug_stocks: {
+            some: {
+              org_id: 'org_1',
+              site_id: 'site_1',
+              is_stocked: true,
+            },
+          },
+        }),
+      }),
+    );
+    expect(pharmacyDrugStockFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          site_id: 'site_1',
+          drug_master_id: { in: ['drug_1'] },
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        expect.objectContaining({
+          id: 'drug_1',
+          stock_config: expect.objectContaining({
+            id: 'stock_1',
+            is_stocked: true,
+            reorder_point: 10,
+          }),
+        }),
+      ],
+    });
   });
 
   it('attaches generic price-comparison data for generic candidate searches', async () => {

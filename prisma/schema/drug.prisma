@@ -59,7 +59,7 @@ model DrugMaster {
   drug_name                String
   drug_name_kana           String?
   generic_name             String?
-  drug_price               Decimal?  @db.Decimal(10, 2)
+  drug_price               Decimal?  @db.Decimal(12, 2)
   unit                     String?
   dosage_form              String?
   therapeutic_category     String? // 薬効分類 4桁
@@ -157,12 +157,18 @@ model PharmacyDrugStock {
   last_dispensed_at    DateTime?
   preferred_generic_id String?
   preferred_generic    DrugMaster?  @relation("PreferredGeneric", fields: [preferred_generic_id], references: [id])
+  adoption_source      String?
+  adoption_note        String?
+  last_reviewed_at     DateTime?
+  reviewed_by_id       String?
   created_at           DateTime     @default(now())
   updated_at           DateTime     @updatedAt
 
   @@unique([site_id, drug_master_id])
   @@index([org_id])
   @@index([site_id])
+  @@index([org_id, site_id, is_stocked])
+  @@index([last_reviewed_at])
 }
 
 // グローバルマスタ（org_id なし）

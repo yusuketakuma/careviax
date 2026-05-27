@@ -8,6 +8,8 @@ const { authMock, prismaMock } = vi.hoisted(() => ({
     pharmacySite: { findFirst: vi.fn() },
     drugMaster: { findFirst: vi.fn() },
     pharmacyDrugStock: { findFirst: vi.fn(), findMany: vi.fn(), upsert: vi.fn() },
+    auditLog: { create: vi.fn() },
+    $transaction: vi.fn(),
   },
 }));
 
@@ -37,6 +39,14 @@ describe('/api/pharmacy-drug-stocks', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'admin' });
     prismaMock.pharmacySite.findFirst.mockResolvedValue({ id: 'site_1', name: '本店' });
+    prismaMock.pharmacyDrugStock.findFirst.mockResolvedValue(null);
+    prismaMock.$transaction.mockImplementation((callback) =>
+      callback({
+        pharmacyDrugStock: prismaMock.pharmacyDrugStock,
+        auditLog: prismaMock.auditLog,
+      }),
+    );
+    prismaMock.auditLog.create.mockResolvedValue({ id: 'audit_1' });
   });
 
   it('returns the current stock config for a selected drug and site', async () => {
@@ -48,6 +58,10 @@ describe('/api/pharmacy-drug-stocks', () => {
       stock_qty: null,
       reorder_point: null,
       preferred_generic_id: 'generic_1',
+      adoption_source: 'manual',
+      adoption_note: null,
+      last_reviewed_at: null,
+      reviewed_by_id: null,
       updated_at: new Date('2026-03-28T00:00:00Z'),
       preferred_generic: {
         id: 'generic_1',
@@ -98,6 +112,10 @@ describe('/api/pharmacy-drug-stocks', () => {
       stock_qty: null,
       reorder_point: null,
       preferred_generic_id: 'generic_1',
+      adoption_source: 'manual',
+      adoption_note: null,
+      last_reviewed_at: null,
+      reviewed_by_id: null,
       updated_at: new Date('2026-03-28T00:00:00Z'),
       preferred_generic: {
         id: 'generic_1',
@@ -134,6 +152,14 @@ describe('/api/pharmacy-drug-stocks', () => {
           reorder_point: 12,
         }),
       })
+    );
+    expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'pharmacy_drug_stock_created',
+          target_type: 'PharmacyDrugStock',
+        }),
+      }),
     );
   });
 });

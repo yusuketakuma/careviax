@@ -25,7 +25,10 @@ vi.mock('@tanstack/react-query', () => ({
       return { data: { data: [], totalCount: 0, hasMore: false }, isLoading: false };
     }
     if (key === 'pharmacy-sites') {
-      return { data: { data: [] } };
+      return { data: { data: [{ id: 'site_1', name: '本店', address: '東京都' }] } };
+    }
+    if (key === 'pharmacy-drug-stocks') {
+      return { data: { data: [] }, isLoading: false };
     }
     if (key === 'drug-master-status') {
       return {
@@ -117,5 +120,20 @@ describe('DrugMasterContent', () => {
 
     expect(screen.getByLabelText('ハイリスク薬のみ')).toBeTruthy();
     expect(screen.getByLabelText('LASA注意のみ')).toBeTruthy();
+  });
+
+  it('enables stocked-only filtering by default on the formulary view', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    expect(screen.getByRole('checkbox', { name: '採用品のみ' })).toHaveProperty('checked', true);
+  });
+
+  it('shows bulk import and review controls on the formulary view', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    expect(screen.getByText('採用薬リスト運用')).toBeTruthy();
+    expect(screen.getByLabelText('CSV一括登録')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /一括登録/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /CSV出力/ })).toBeTruthy();
   });
 });

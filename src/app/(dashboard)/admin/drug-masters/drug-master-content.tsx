@@ -10,9 +10,11 @@ import {
   Shield,
   Database,
   Download,
+  Upload,
   History,
   CheckCircle2,
   Building2,
+  ClipboardCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
@@ -58,6 +60,7 @@ type DrugMasterRow = {
   tall_man_name: string | null;
   lasa_group_key: string | null;
   max_administration_days: number | null;
+  stock_config: PharmacyDrugStockConfig | null;
 };
 
 type DrugMasterImportLog = {
@@ -128,11 +131,46 @@ type PharmacyDrugStockConfig = {
   stock_qty: number | null;
   reorder_point: number | null;
   preferred_generic_id: string | null;
+  adoption_source: string | null;
+  adoption_note: string | null;
+  last_reviewed_at: string | null;
+  reviewed_by_id: string | null;
   updated_at: string;
   preferred_generic: PreferredGenericSummary | null;
 };
 
-const columns: ColumnDef<DrugMasterRow>[] = [
+type FormularyStockSummaryRow = PharmacyDrugStockConfig & {
+  drug_master: {
+    id: string;
+    drug_name: string;
+    yj_code: string;
+    drug_price: number | null;
+    unit: string | null;
+    is_generic: boolean;
+    is_narcotic: boolean;
+    is_psychotropic: boolean;
+    is_high_risk: boolean;
+    is_lasa_risk: boolean;
+    transitional_expiry_date: string | null;
+  };
+};
+
+const baseColumns: ColumnDef<DrugMasterRow>[] = [
+  {
+    id: 'formulary',
+    header: '採用',
+    cell: ({ row }) =>
+      row.original.stock_config?.is_stocked ? (
+        <Badge className="gap-1 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+          <CheckCircle2 className="size-3" aria-hidden="true" />
+          採用
+        </Badge>
+      ) : (
+        <Badge variant="outline" className="text-muted-foreground">
+          未採用
+        </Badge>
+      ),
+  },
   {
     accessorKey: 'drug_name',
     header: '医薬品名',
@@ -356,10 +394,28 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const [narcoticOnly, setNarcoticOnly] = useState(false);
   const [highRiskOnly, setHighRiskOnly] = useState(false);
   const [lasaOnly, setLasaOnly] = useState(false);
+  const [stockedOnly, setStockedOnly] = useState(variant === 'formulary');
   const [selectedDrugId, setSelectedDrugId] = useState<string | null>(null);
   const [selectedSiteId, setSelectedSiteId] = useState('');
   const [preferredGenericId, setPreferredGenericId] = useState<string | null>(null);
+  const [bulkCsv, setBulkCsv] = useState('');
+  const [expiryReferenceTime] = useState(() => Date.now());
   const reorderPointInputRef = useRef<HTMLInputElement | null>(null);
+
+  const { data: sitesData } = useQuery({
+    queryKey: ['pharmacy-sites', orgId, 'stock-setup'],
+    queryFn: async () => {
+      const res = await fetch('/api/pharmacy-sites', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('拠点一覧の取得に失敗しました');
+      return res.json() as Promise<{ data: PharmacySiteOption[] }>;
+    },
+    enabled: !!orgId,
+    staleTime: 300_000,
+  });
+
+  const effectiveSelectedSiteId = selectedSiteId || sitesData?.data?.[0]?.id || '';
 
   const params = useMemo(() => {
     const p = new URLSearchParams({ limit: '50' });
@@ -369,8 +425,19 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     if (narcoticOnly) p.set('narcotic', 'true');
     if (highRiskOnly) p.set('highRisk', 'true');
     if (lasaOnly) p.set('lasa', 'true');
+    if (effectiveSelectedSiteId) p.set('site_id', effectiveSelectedSiteId);
+    if (stockedOnly && effectiveSelectedSiteId) p.set('stocked', 'true');
     return p.toString();
-  }, [searchQuery, category, genericOnly, narcoticOnly, highRiskOnly, lasaOnly]);
+  }, [
+    searchQuery,
+    category,
+    genericOnly,
+    narcoticOnly,
+    highRiskOnly,
+    lasaOnly,
+    effectiveSelectedSiteId,
+    stockedOnly,
+  ]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['drug-masters', orgId, params],
@@ -384,19 +451,6 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
         totalCount: number;
         hasMore: boolean;
       }>;
-    },
-    enabled: !!orgId,
-    staleTime: 300_000,
-  });
-
-  const { data: sitesData } = useQuery({
-    queryKey: ['pharmacy-sites', orgId, 'stock-setup'],
-    queryFn: async () => {
-      const res = await fetch('/api/pharmacy-sites', {
-        headers: { 'x-org-id': orgId },
-      });
-      if (!res.ok) throw new Error('拠点一覧の取得に失敗しました');
-      return res.json() as Promise<{ data: PharmacySiteOption[] }>;
     },
     enabled: !!orgId,
     staleTime: 300_000,
@@ -443,8 +497,6 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     staleTime: 300_000,
   });
 
-  const effectiveSelectedSiteId = selectedSiteId || sitesData?.data?.[0]?.id || '';
-
   const stockConfigQuery = useQuery({
     queryKey: ['pharmacy-drug-stock', orgId, effectiveSelectedSiteId, selectedDrugId],
     queryFn: async () => {
@@ -460,6 +512,42 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     },
     enabled: !!orgId && !!effectiveSelectedSiteId && !!selectedDrugId,
     staleTime: 300_000,
+  });
+
+  const formularyReviewQuery = useQuery({
+    queryKey: ['pharmacy-drug-stocks', orgId, effectiveSelectedSiteId, 'review-due'],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        site_id: effectiveSelectedSiteId,
+        review_due: 'true',
+        limit: '200',
+      });
+      const res = await fetch(`/api/pharmacy-drug-stocks?${params}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('採用薬レビュー対象の取得に失敗しました');
+      return res.json() as Promise<{ data: FormularyStockSummaryRow[] }>;
+    },
+    enabled: variant === 'formulary' && !!orgId && !!effectiveSelectedSiteId,
+    staleTime: 60_000,
+  });
+
+  const formularyMissingReorderQuery = useQuery({
+    queryKey: ['pharmacy-drug-stocks', orgId, effectiveSelectedSiteId, 'missing-reorder'],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        site_id: effectiveSelectedSiteId,
+        missing_reorder_point: 'true',
+        limit: '200',
+      });
+      const res = await fetch(`/api/pharmacy-drug-stocks?${params}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('在庫下限未設定の取得に失敗しました');
+      return res.json() as Promise<{ data: FormularyStockSummaryRow[] }>;
+    },
+    enabled: variant === 'formulary' && !!orgId && !!effectiveSelectedSiteId,
+    staleTime: 60_000,
   });
 
   const preferredGenericCandidatesQuery = useQuery({
@@ -582,13 +670,14 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       if (!res.ok) {
         throw new Error(json?.message ?? '採用品設定の保存に失敗しました');
       }
-      return json as { data: PharmacyDrugStockConfig };
+      return json as { site: PharmacySiteOption; data: PharmacyDrugStockConfig };
     },
     onSuccess: async (result) => {
       toast.success(result.data.is_stocked ? '採用品設定を保存しました' : '採用品から外しました');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock'] }),
         queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks'] }),
+        queryClient.invalidateQueries({ queryKey: ['drug-masters'] }),
       ]);
     },
     onError: (error) => {
@@ -596,11 +685,164 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     },
   });
 
+  const bulkImportMutation = useMutation({
+    mutationFn: async () => {
+      if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
+      const res = await fetch('/api/pharmacy-drug-stocks/bulk', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          site_id: effectiveSelectedSiteId,
+          csv: bulkCsv,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(json?.message ?? '採用薬リストの一括登録に失敗しました');
+      }
+      return json as {
+        importedCount: number;
+        unmatchedRows: Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>;
+      };
+    },
+    onSuccess: async (result) => {
+      toast.success(`採用薬を一括登録しました（${result.importedCount.toLocaleString()}件）`);
+      if (result.unmatchedRows.length > 0) {
+        toast.warning(`未照合の行があります（${result.unmatchedRows.length.toLocaleString()}件）`);
+      }
+      setBulkCsv('');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks'] }),
+        queryClient.invalidateQueries({ queryKey: ['drug-masters'] }),
+      ]);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '採用薬リストの一括登録に失敗しました');
+    },
+  });
+
+  const reviewMutation = useMutation({
+    mutationFn: async () => {
+      if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
+      const res = await fetch('/api/pharmacy-drug-stocks/review', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({ site_id: effectiveSelectedSiteId }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.message ?? '採用薬レビューの記録に失敗しました');
+      return json as { reviewedCount: number };
+    },
+    onSuccess: async (result) => {
+      toast.success(`採用薬レビューを記録しました（${result.reviewedCount.toLocaleString()}件）`);
+      await queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks'] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '採用薬レビューの記録に失敗しました');
+    },
+  });
+
+  const exportMutation = useMutation({
+    mutationFn: async () => {
+      if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
+      const params = new URLSearchParams({ site_id: effectiveSelectedSiteId });
+      const res = await fetch(`/api/pharmacy-drug-stocks/export?${params}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        throw new Error(json?.message ?? '採用薬CSVの出力に失敗しました');
+      }
+      return res.blob();
+    },
+    onSuccess: (blob) => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `formulary-${effectiveSelectedSiteId}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success('採用薬CSVを出力しました');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '採用薬CSVの出力に失敗しました');
+    },
+  });
+
+  const tableColumns = useMemo<ColumnDef<DrugMasterRow>[]>(
+    () => [
+      ...baseColumns,
+      {
+        id: 'formulary_action',
+        header: '採用品設定',
+        cell: ({ row }) => {
+          const stockConfig = row.original.stock_config;
+          const isStocked = stockConfig?.is_stocked ?? false;
+          return (
+            <Button
+              type="button"
+              size="sm"
+              variant={isStocked ? 'outline' : 'default'}
+              disabled={!effectiveSelectedSiteId || stockMutation.isPending}
+              className="h-9 gap-1"
+              onClick={(event) => {
+                event.stopPropagation();
+                if (!effectiveSelectedSiteId) {
+                  toast.error('先に対象拠点を選択してください');
+                  return;
+                }
+                stockMutation.mutate({
+                  site_id: effectiveSelectedSiteId,
+                  drug_master_id: row.original.id,
+                  is_stocked: !isStocked,
+                  preferred_generic_id: isStocked
+                    ? null
+                    : (stockConfig?.preferred_generic_id ?? null),
+                  reorder_point: isStocked ? null : (stockConfig?.reorder_point ?? null),
+                });
+              }}
+            >
+              {isStocked ? (
+                <>
+                  <CheckCircle2 className="size-3.5" aria-hidden="true" />
+                  解除
+                </>
+              ) : (
+                '採用'
+              )}
+            </Button>
+          );
+        },
+      },
+    ],
+    [effectiveSelectedSiteId, stockMutation],
+  );
+
   const activeImport = IMPORT_ACTIONS.find((item) => item.key === importMutation.variables);
 
   const drugs = data?.data ?? [];
   const sites = sitesData?.data ?? [];
   const importLogs = importLogsData?.data ?? [];
+  const reviewDueStocks = formularyReviewQuery.data?.data ?? [];
+  const missingReorderStocks = formularyMissingReorderQuery.data?.data ?? [];
+  const safetyReviewCount = reviewDueStocks.filter(
+    (stock) =>
+      stock.drug_master.is_high_risk ||
+      stock.drug_master.is_lasa_risk ||
+      stock.drug_master.is_narcotic ||
+      stock.drug_master.is_psychotropic,
+  ).length;
+  const expiryWatchCount = reviewDueStocks.filter((stock) => {
+    if (!stock.drug_master.transitional_expiry_date) return false;
+    const expiry = new Date(stock.drug_master.transitional_expiry_date).getTime();
+    return expiry - expiryReferenceTime <= 1000 * 60 * 60 * 24 * 90;
+  }).length;
   const selectedRowIndex = selectedDrugId
     ? drugs.findIndex((drug) => drug.id === selectedDrugId)
     : undefined;
@@ -721,6 +963,15 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   </option>
                 ))}
               </select>
+              <label className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={stockedOnly}
+                  onChange={(event) => setStockedOnly(event.target.checked)}
+                  className="size-4 rounded border-input"
+                />
+                採用品のみ表示
+              </label>
             </label>
           </div>
           {activeImport && importMutation.isPending && (
@@ -728,6 +979,98 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
           )}
         </CardContent>
       </Card>
+
+      {variant === 'formulary' && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ClipboardCheck className="size-4" aria-hidden="true" />
+              採用薬リスト運用
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-4">
+              <div className="rounded-md border border-border/60 px-3 py-2">
+                <p className="text-xs text-muted-foreground">レビュー期限超過</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums">
+                  {reviewDueStocks.length.toLocaleString()}
+                </p>
+              </div>
+              <div className="rounded-md border border-border/60 px-3 py-2">
+                <p className="text-xs text-muted-foreground">在庫下限未設定</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums">
+                  {missingReorderStocks.length.toLocaleString()}
+                </p>
+              </div>
+              <div className="rounded-md border border-border/60 px-3 py-2">
+                <p className="text-xs text-muted-foreground">安全属性あり</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums">
+                  {safetyReviewCount.toLocaleString()}
+                </p>
+              </div>
+              <div className="rounded-md border border-border/60 px-3 py-2">
+                <p className="text-xs text-muted-foreground">経過措置90日以内</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums">
+                  {expiryWatchCount.toLocaleString()}
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-muted-foreground">
+                  CSV一括登録
+                </span>
+                <textarea
+                  value={bulkCsv}
+                  onChange={(event) => setBulkCsv(event.target.value)}
+                  placeholder="YJコード,医薬品名,採用,発注点,優先後発品YJコード,メモ"
+                  className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <LoadingButton
+                  type="button"
+                  size="sm"
+                  loading={bulkImportMutation.isPending}
+                  loadingLabel="登録中"
+                  disabled={!effectiveSelectedSiteId || bulkCsv.trim().length === 0}
+                  onClick={() => bulkImportMutation.mutate()}
+                  className="gap-1"
+                >
+                  <Upload className="size-3.5" aria-hidden="true" />
+                  一括登録
+                </LoadingButton>
+                <LoadingButton
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  loading={exportMutation.isPending}
+                  loadingLabel="出力中"
+                  disabled={!effectiveSelectedSiteId}
+                  onClick={() => exportMutation.mutate()}
+                  className="gap-1"
+                >
+                  <Download className="size-3.5" aria-hidden="true" />
+                  CSV出力
+                </LoadingButton>
+                <LoadingButton
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  loading={reviewMutation.isPending}
+                  loadingLabel="記録中"
+                  disabled={!effectiveSelectedSiteId || reviewDueStocks.length === 0}
+                  onClick={() => reviewMutation.mutate()}
+                  className="gap-1"
+                >
+                  <ClipboardCheck className="size-3.5" aria-hidden="true" />
+                  レビュー済み
+                </LoadingButton>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {masterStatusData && (
         <Card>
@@ -910,13 +1253,23 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
               />
               LASA注意のみ
             </label>
+            <label className="flex items-center gap-1.5 text-sm">
+              <input
+                type="checkbox"
+                checked={stockedOnly}
+                onChange={(e) => setStockedOnly(e.target.checked)}
+                className="size-4 rounded border-input"
+                disabled={!effectiveSelectedSiteId}
+              />
+              採用品のみ
+            </label>
           </div>
         </CardContent>
       </Card>
 
       {/* Table */}
       <DataTable
-        columns={columns}
+        columns={tableColumns}
         data={drugs}
         isLoading={isLoading}
         caption="医薬品マスター一覧"
