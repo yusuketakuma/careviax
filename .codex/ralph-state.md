@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260528-001650
+
+- current task: render ambiguous CSV candidate drugs in the formulary bulk preview UI
+- files inspected: `docs/ui-ux-design-guidelines.md`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`
+- files changed: `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `.codex/ralph-state.md`
+- bugs found: the bulk import API now returned candidate drugs for ambiguous name-only rows, but the admin preview UI did not type or render those candidates, so operators still could not see the YJ code choices in the screen
+- security risks found: no authorization boundary changed; UI only renders candidate data returned by the existing admin-only bulk preview API
+- performance issues found: candidate rendering is limited to candidate arrays already returned for the first preview rows; no additional client fetches are added
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for formulary admin UI; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 1 file / 5 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice renders ambiguous CSV candidates but does not add one-click CSV row correction
+- next action: commit the CSV candidate UI slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260528-001520
 
 - current task: return candidate drugs for ambiguous formulary CSV name matches
