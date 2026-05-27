@@ -176,16 +176,37 @@ export const POST = withAuthContext(
     ]);
 
     const drugByYj = new Map(matchedByYj.map((drug) => [drug.yj_code, drug]));
-    const drugByName = new Map(matchedByName.map((drug) => [drug.drug_name, drug]));
+    const drugsByName = new Map<string, typeof matchedByName>();
+    for (const drug of matchedByName) {
+      const drugs = drugsByName.get(drug.drug_name) ?? [];
+      drugs.push(drug);
+      drugsByName.set(drug.drug_name, drugs);
+    }
     const genericByYj = new Map(preferredGenerics.map((drug) => [drug.yj_code, drug]));
     const unmatchedRows: Array<{ rowNumber: number; yj_code?: string; drug_name?: string }> = [];
     const operations = safeRows.flatMap((row) => {
-      const drug = row.yj_code ? drugByYj.get(row.yj_code) : drugByName.get(row.drug_name ?? '');
+      const nameMatches = row.yj_code ? [] : (drugsByName.get(row.drug_name ?? '') ?? []);
+      if (!row.yj_code && nameMatches.length > 1) {
+        invalidRows.push({
+          rowNumber: row.rowNumber,
+          reason: '医薬品名に複数候補があります。YJコードを指定してください',
+        });
+        return [];
+      }
+
+      const drug = row.yj_code ? drugByYj.get(row.yj_code) : nameMatches[0];
       if (!drug) {
         unmatchedRows.push({
           rowNumber: row.rowNumber,
           yj_code: row.yj_code,
           drug_name: row.drug_name,
+        });
+        return [];
+      }
+      if (row.preferred_generic_yj_code && !genericByYj.has(row.preferred_generic_yj_code)) {
+        invalidRows.push({
+          rowNumber: row.rowNumber,
+          reason: '優先後発品YJコードが見つからないか、後発品ではありません',
         });
         return [];
       }

@@ -35,7 +35,7 @@ function createRequest(body: unknown) {
 
 describe('/api/pharmacy-drug-stocks/bulk', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'admin' });
     prismaMock.pharmacySite.findFirst.mockResolvedValue({ id: 'site_1', name: '本店' });
@@ -82,5 +82,69 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
       }),
     );
     expect(prismaMock.auditLog.create).toHaveBeenCalledOnce();
+  });
+
+  it('rejects rows with unresolved preferred generic codes without importing the drug', async () => {
+    prismaMock.drugMaster.findMany
+      .mockResolvedValueOnce([
+        { id: 'drug_1', yj_code: '123456789012', drug_name: 'アムロジピン錠5mg' },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const response = await POST(
+      createRequest({
+        site_id: 'site_1',
+        csv: 'YJコード,医薬品名,採用,優先後発品YJコード\n123456789012,アムロジピン錠5mg,採用,999999999999',
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json).toMatchObject({
+      importedCount: 0,
+      invalidRows: [
+        {
+          rowNumber: 2,
+          reason: '優先後発品YJコードが見つからないか、後発品ではありません',
+        },
+      ],
+    });
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects name-only rows when the drug name matches multiple masters', async () => {
+    prismaMock.drugMaster.findMany
+      .mockResolvedValueOnce([
+        { id: 'drug_1', yj_code: '111111111111', drug_name: '同名薬' },
+        { id: 'drug_2', yj_code: '222222222222', drug_name: '同名薬' },
+      ])
+      .mockResolvedValueOnce([]);
+
+    const response = await POST(
+      createRequest({
+        site_id: 'site_1',
+        csv: '医薬品名,採用,発注点\n同名薬,採用,10',
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json).toMatchObject({
+      importedCount: 0,
+      invalidRows: [
+        {
+          rowNumber: 2,
+          reason: '医薬品名に複数候補があります。YJコードを指定してください',
+        },
+      ],
+    });
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });
 });
