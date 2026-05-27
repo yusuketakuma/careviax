@@ -75,6 +75,7 @@ type DrugMasterImportLog = {
 };
 
 type ImportAction = 'ssk' | 'mhlw-price' | 'mhlw-generic' | 'hot' | 'pmda';
+type FormularyExportPurpose = 'operations' | 'audit' | 'posting' | 'pharmacist_review';
 
 type DrugMasterDetail = DrugMasterRow & {
   hot_code: string | null;
@@ -693,6 +694,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [preferredGenericId, setPreferredGenericId] = useState<string | null>(null);
   const [bulkCsv, setBulkCsv] = useState('');
+  const [exportPurpose, setExportPurpose] = useState<FormularyExportPurpose>('operations');
   const [bulkPreview, setBulkPreview] = useState<BulkPreviewResponse | null>(null);
   const [impactQueue, setImpactQueue] = useState<ImpactQueueKey>('action_required');
   const [expiryReferenceTime] = useState(() => Date.now());
@@ -1439,7 +1441,10 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const exportMutation = useMutation({
     mutationFn: async () => {
       if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
-      const params = new URLSearchParams({ site_id: effectiveSelectedSiteId });
+      const params = new URLSearchParams({
+        site_id: effectiveSelectedSiteId,
+        purpose: exportPurpose,
+      });
       const res = await fetch(`/api/pharmacy-drug-stocks/export?${params}`, {
         headers: { 'x-org-id': orgId },
       });
@@ -1453,7 +1458,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `formulary-${effectiveSelectedSiteId}.csv`;
+      link.download = `formulary-${exportPurpose}-${effectiveSelectedSiteId}.csv`;
       link.click();
       URL.revokeObjectURL(url);
       toast.success('採用薬CSVを出力しました');
@@ -2600,6 +2605,22 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   <Download className="size-3.5" aria-hidden="true" />
                   CSVテンプレート
                 </LoadingButton>
+                <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                  CSV出力用途
+                  <select
+                    aria-label="CSV出力用途"
+                    value={exportPurpose}
+                    onChange={(event) =>
+                      setExportPurpose(event.target.value as FormularyExportPurpose)
+                    }
+                    className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <option value="operations">運用台帳</option>
+                    <option value="audit">監査</option>
+                    <option value="posting">掲示用</option>
+                    <option value="pharmacist_review">薬剤師レビュー</option>
+                  </select>
+                </label>
                 <LoadingButton
                   type="button"
                   size="sm"

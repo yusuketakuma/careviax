@@ -319,6 +319,7 @@ describe('DrugMasterContent', () => {
     expect(screen.getByRole('button', { name: /^差分確認$/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /一括登録/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /CSVテンプレート/ })).toBeTruthy();
+    expect(screen.getByLabelText('CSV出力用途')).toBeTruthy();
     expect(screen.getByRole('button', { name: /CSV出力/ })).toBeTruthy();
   });
 

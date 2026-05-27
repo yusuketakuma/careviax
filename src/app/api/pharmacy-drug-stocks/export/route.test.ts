@@ -67,7 +67,7 @@ describe('/api/pharmacy-drug-stocks/export', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('text/csv');
-    expect(response.headers.get('content-disposition')).toContain('formulary-site_1-');
+    expect(response.headers.get('content-disposition')).toContain('formulary-operations-site_1-');
     const bytes = new Uint8Array(await response.arrayBuffer());
     expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     const csv = Buffer.from(bytes.slice(3)).toString('utf8');
@@ -86,7 +86,58 @@ describe('/api/pharmacy-drug-stocks/export', () => {
           actor_id: 'user_1',
           action: 'pharmacy_drug_stock_exported',
           target_id: 'site_1',
-          changes: { site_id: 'site_1', row_count: 1 },
+          changes: { site_id: 'site_1', purpose: 'operations', row_count: 1 },
+        }),
+      }),
+    );
+  });
+
+  it('exports a purpose-specific posting CSV with a scoped audit log', async () => {
+    prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([
+      {
+        is_stocked: true,
+        reorder_point: 5,
+        adoption_note: '在宅向け採用',
+        last_reviewed_at: new Date('2026-05-20T00:00:00.000Z'),
+        follow_up_status: 'resolved',
+        follow_up_reason: null,
+        follow_up_due_date: null,
+        updated_at: new Date('2026-05-21T00:00:00.000Z'),
+        drug_master: {
+          yj_code: '123456789012',
+          receipt_code: '123456789',
+          drug_name: 'アムロジピン錠5mg',
+          generic_name: 'アムロジピン',
+          drug_price: '10.20',
+          unit: '錠',
+          dosage_form: '内用薬',
+          manufacturer: 'PH-OS製薬',
+          is_narcotic: false,
+          is_psychotropic: false,
+          is_high_risk: false,
+          is_lasa_risk: false,
+          transitional_expiry_date: null,
+        },
+        preferred_generic: null,
+      },
+    ]);
+
+    const response = await GET(
+      createRequest('http://localhost/api/pharmacy-drug-stocks/export?site_id=site_1&purpose=posting'),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-disposition')).toContain('formulary-posting-site_1-');
+    const csv = await response.text();
+    expect(csv).toContain('"医薬品名","一般名","剤形","単位","メーカー","備考"');
+    expect(csv).toContain('"アムロジピン錠5mg","アムロジピン","内用薬","錠","PH-OS製薬","在宅向け採用"');
+    expect(csv).not.toContain('"YJコード","レセ電コード"');
+    expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          changes: { site_id: 'site_1', purpose: 'posting', row_count: 1 },
         }),
       }),
     );
