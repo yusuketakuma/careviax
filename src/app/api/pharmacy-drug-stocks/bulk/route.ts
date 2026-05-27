@@ -50,6 +50,17 @@ type CurrentStock = {
 
 type PreviewRowStatus = 'create' | 'update' | 'deactivate' | 'no_change' | 'unmatched' | 'invalid';
 
+type InvalidRow = {
+  rowNumber: number;
+  reason: string;
+  candidates?: Array<{
+    id: string;
+    yj_code: string;
+    drug_name: string;
+    generic_name: string | null;
+  }>;
+};
+
 const HEADER_ALIASES: Record<string, keyof z.infer<typeof bulkRowSchema>> = {
   yj_code: 'yj_code',
   yj: 'yj_code',
@@ -138,7 +149,7 @@ function buildPreviewRows({
   operations: BulkOperation[];
   currentStockByDrugId: Map<string, CurrentStock>;
   unmatchedRows: Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>;
-  invalidRows: Array<{ rowNumber: number; reason: string }>;
+  invalidRows: InvalidRow[];
 }) {
   const rows: Array<{
     rowNumber: number;
@@ -146,6 +157,7 @@ function buildPreviewRows({
     yj_code?: string;
     drug_name?: string;
     reason?: string;
+    candidates?: InvalidRow['candidates'];
     before?: {
       is_stocked: boolean;
       reorder_point: number | null;
@@ -219,6 +231,7 @@ function buildPreviewRows({
       rowNumber: row.rowNumber,
       status: 'invalid',
       reason: row.reason,
+      candidates: row.candidates,
       before: null,
       after: null,
     });
@@ -269,7 +282,7 @@ export const POST = withAuthContext(
     }
 
     const safeRows: BulkRow[] = [];
-    const invalidRows: Array<{ rowNumber: number; reason: string }> = [];
+    const invalidRows: InvalidRow[] = [];
     for (const row of rows) {
       const rowParsed = bulkRowSchema.safeParse(row);
       if (!rowParsed.success || (!row.yj_code && !row.drug_name)) {
@@ -327,6 +340,12 @@ export const POST = withAuthContext(
         invalidRows.push({
           rowNumber: row.rowNumber,
           reason: '医薬品名に複数候補があります。YJコードを指定してください',
+          candidates: nameMatches.slice(0, 5).map((drug) => ({
+            id: drug.id,
+            yj_code: drug.yj_code,
+            drug_name: drug.drug_name,
+            generic_name: drug.generic_name,
+          })),
         });
         return [];
       }
@@ -519,6 +538,7 @@ export const POST = withAuthContext(
               yj_code: row.yj_code ?? null,
               drug_name: row.drug_name ?? null,
               reason: row.reason ?? null,
+              candidates: row.candidates ?? null,
               drug_master_id:
                 operations.find((operation) => operation.row.rowNumber === row.rowNumber)?.drug
                   .id ?? null,

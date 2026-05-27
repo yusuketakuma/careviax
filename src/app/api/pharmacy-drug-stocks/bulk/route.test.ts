@@ -340,11 +340,45 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
         {
           rowNumber: 2,
           reason: '医薬品名に複数候補があります。YJコードを指定してください',
+          candidates: [
+            { id: 'drug_1', yj_code: '111111111111', drug_name: '同名薬' },
+            { id: 'drug_2', yj_code: '222222222222', drug_name: '同名薬' },
+          ],
         },
       ],
+      preview: {
+        rows: [
+          {
+            rowNumber: 2,
+            status: 'invalid',
+            candidates: [
+              { id: 'drug_1', yj_code: '111111111111', drug_name: '同名薬' },
+              { id: 'drug_2', yj_code: '222222222222', drug_name: '同名薬' },
+            ],
+          },
+        ],
+      },
     });
     expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
     expect(prismaMock.auditLog.create).toHaveBeenCalledOnce();
+    expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          changes: expect.objectContaining({
+            rows: [
+              expect.objectContaining({
+                row_number: 2,
+                status: 'invalid',
+                candidates: [
+                  { id: 'drug_1', yj_code: '111111111111', drug_name: '同名薬', generic_name: '成分A' },
+                  { id: 'drug_2', yj_code: '222222222222', drug_name: '同名薬', generic_name: '成分B' },
+                ],
+              }),
+            ],
+          }),
+        }),
+      }),
+    );
   });
 
   it('rejects preferred generic rows with a different generic name', async () => {
