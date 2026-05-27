@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260528-000135
+
+- current task: add dry-run preview before applying formulary templates
+- files inspected: `git status --short`, `src/app/api/pharmacy-drug-stock-templates/[id]/apply/route.ts`, `src/app/api/pharmacy-drug-stock-templates/[id]/apply/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`
+- files changed: `src/app/api/pharmacy-drug-stock-templates/[id]/apply/route.ts`, `src/app/api/pharmacy-drug-stock-templates/[id]/apply/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: applying a formulary template could change many site stock rows without showing the operator how many would be created, overwritten, or skipped
+- security risks found: dry-run preview uses the same admin-only, same-org template and target-site validation as the actual apply path and performs no stock writes or audit writes
+- performance issues found: preview batches existing stock lookup and drug-master display lookup for template item IDs instead of doing per-item queries
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/api/pharmacy-drug-stock-templates/[id]/apply/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for template apply API/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 2 files / 7 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice adds optional preview before template apply but does not yet force preview as a prerequisite
+- next action: commit the template apply preview slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260528-000010
 
 - current task: add deletion for obsolete formulary templates
