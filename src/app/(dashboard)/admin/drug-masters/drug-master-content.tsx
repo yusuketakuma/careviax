@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   Building2,
   ClipboardCheck,
+  Copy,
   ListChecks,
   FileWarning,
   Trash2,
@@ -2907,6 +2908,20 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                               <span className="flex items-center gap-2 text-muted-foreground">
                                 <span className="font-mono">{candidate.yj_code}</span>
                                 {candidate.generic_name && <span>{candidate.generic_name}</span>}
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="ghost"
+                                  className="size-7"
+                                  aria-label={`${candidate.drug_name}のYJコードをコピー`}
+                                  title="YJコードをコピー"
+                                  onClick={async () => {
+                                    await navigator.clipboard?.writeText(candidate.yj_code);
+                                    toast.success('YJコードをコピーしました');
+                                  }}
+                                >
+                                  <Copy className="size-3.5" aria-hidden="true" />
+                                </Button>
                               </span>
                             </div>
                           ))}
