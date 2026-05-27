@@ -210,6 +210,31 @@ type FormularyImpactResponse = {
   };
 };
 
+type BulkPreviewResponse = {
+  importedCount: number;
+  unmatchedRows: Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>;
+  invalidRows: Array<{ rowNumber: number; reason: string }>;
+  preview: {
+    summary: {
+      totalRows: number;
+      processableRows: number;
+      createCount: number;
+      updateCount: number;
+      deactivateCount: number;
+      noChangeCount: number;
+      unmatchedCount: number;
+      invalidCount: number;
+    };
+    rows: Array<{
+      rowNumber: number;
+      status: 'create' | 'update' | 'deactivate' | 'no_change' | 'unmatched' | 'invalid';
+      yj_code?: string;
+      drug_name?: string;
+      reason?: string;
+    }>;
+  };
+};
+
 type ImpactQueueKey =
   | 'action_required'
   | 'recently_changed'
@@ -462,6 +487,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const [selectedSiteId, setSelectedSiteId] = useState('');
   const [preferredGenericId, setPreferredGenericId] = useState<string | null>(null);
   const [bulkCsv, setBulkCsv] = useState('');
+  const [bulkPreview, setBulkPreview] = useState<BulkPreviewResponse | null>(null);
   const [impactQueue, setImpactQueue] = useState<ImpactQueueKey>('action_required');
   const [expiryReferenceTime] = useState(() => Date.now());
   const reorderPointInputRef = useRef<HTMLInputElement | null>(null);
@@ -817,8 +843,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     },
   });
 
-  const bulkImportMutation = useMutation({
-    mutationFn: async () => {
+  const runBulkCsvMutation = async (dryRun: boolean) => {
       if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
       const res = await fetch('/api/pharmacy-drug-stocks/bulk', {
         method: 'POST',
@@ -829,6 +854,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
         body: JSON.stringify({
           site_id: effectiveSelectedSiteId,
           csv: bulkCsv,
+          dry_run: dryRun,
         }),
       });
       const json = await res.json().catch(() => null);
@@ -838,14 +864,54 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
       return json as {
         importedCount: number;
         unmatchedRows: Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>;
+        invalidRows: Array<{ rowNumber: number; reason: string }>;
+        preview?: BulkPreviewResponse['preview'];
       };
+  };
+
+  const bulkPreviewMutation = useMutation({
+    mutationFn: async () => runBulkCsvMutation(true),
+    onSuccess: (result) => {
+      if (!result.preview) {
+        setBulkPreview(null);
+        toast.warning('プレビュー結果が返りませんでした');
+        return;
+      }
+      const previewResult: BulkPreviewResponse = {
+        importedCount: result.importedCount,
+        unmatchedRows: result.unmatchedRows,
+        invalidRows: result.invalidRows,
+        preview: result.preview,
+      };
+      setBulkPreview(previewResult);
+      const blockingCount =
+        result.preview.summary.unmatchedCount + result.preview.summary.invalidCount;
+      toast.success(
+        blockingCount > 0
+          ? `CSVを確認しました（要確認 ${blockingCount.toLocaleString()}件）`
+          : `CSVを確認しました（反映対象 ${result.preview.summary.processableRows.toLocaleString()}件）`,
+      );
+    },
+    onError: (error) => {
+      setBulkPreview(null);
+      toast.error(error instanceof Error ? error.message : '採用薬CSVの確認に失敗しました');
+    },
+  });
+
+  const bulkImportMutation = useMutation({
+    mutationFn: async () => {
+      return runBulkCsvMutation(false);
     },
     onSuccess: async (result) => {
       toast.success(`採用薬を一括登録しました（${result.importedCount.toLocaleString()}件）`);
       if (result.unmatchedRows.length > 0) {
         toast.warning(`未照合の行があります（${result.unmatchedRows.length.toLocaleString()}件）`);
       }
+      if (result.invalidRows.length > 0) {
+        toast.warning(`無効な行があります（${result.invalidRows.length.toLocaleString()}件）`);
+      }
       setBulkCsv('');
+      setBulkPreview(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks'] }),
         queryClient.invalidateQueries({ queryKey: ['drug-masters'] }),
@@ -1027,6 +1093,16 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     formularyImpact?.selected_queue.key === impactQueue
       ? formularyImpact.selected_queue.total_count
       : impactQueueRows.length;
+  const bulkPreviewSummary = bulkPreview?.preview.summary ?? null;
+  const bulkPreviewBlockingCount = bulkPreviewSummary
+    ? bulkPreviewSummary.unmatchedCount + bulkPreviewSummary.invalidCount
+    : 0;
+  const canApplyBulkPreview =
+    !!effectiveSelectedSiteId &&
+    bulkCsv.trim().length > 0 &&
+    !!bulkPreviewSummary &&
+    bulkPreviewBlockingCount === 0 &&
+    bulkPreviewSummary.processableRows > 0;
   const selectedRowIndex = selectedDrugId
     ? drugs.findIndex((drug) => drug.id === selectedDrugId)
     : undefined;
@@ -1081,6 +1157,22 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     ).length ?? 0;
   const agingSourceCount =
     masterStatusData?.sources.filter((source) => source.freshness === 'aging').length ?? 0;
+  const bulkPreviewStatusLabel = (status: BulkPreviewResponse['preview']['rows'][number]['status']) => {
+    switch (status) {
+      case 'create':
+        return '新規採用';
+      case 'update':
+        return '更新';
+      case 'deactivate':
+        return '採用解除';
+      case 'unmatched':
+        return '未照合';
+      case 'invalid':
+        return '無効';
+      default:
+        return '変更なし';
+    }
+  };
 
   return (
     <PageScaffold>
@@ -1304,7 +1396,10 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                 </span>
                 <textarea
                   value={bulkCsv}
-                  onChange={(event) => setBulkCsv(event.target.value)}
+                  onChange={(event) => {
+                    setBulkCsv(event.target.value);
+                    setBulkPreview(null);
+                  }}
                   placeholder="YJコード,医薬品名,採用,発注点,優先後発品YJコード,メモ"
                   className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 />
@@ -1313,9 +1408,22 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                 <LoadingButton
                   type="button"
                   size="sm"
+                  variant="outline"
+                  loading={bulkPreviewMutation.isPending}
+                  loadingLabel="確認中"
+                  disabled={!effectiveSelectedSiteId || bulkCsv.trim().length === 0}
+                  onClick={() => bulkPreviewMutation.mutate()}
+                  className="gap-1"
+                >
+                  <ListChecks className="size-3.5" aria-hidden="true" />
+                  差分確認
+                </LoadingButton>
+                <LoadingButton
+                  type="button"
+                  size="sm"
                   loading={bulkImportMutation.isPending}
                   loadingLabel="登録中"
-                  disabled={!effectiveSelectedSiteId || bulkCsv.trim().length === 0}
+                  disabled={!canApplyBulkPreview}
                   onClick={() => bulkImportMutation.mutate()}
                   className="gap-1"
                 >
@@ -1362,6 +1470,81 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                 </LoadingButton>
               </div>
             </div>
+            {bulkPreviewSummary && (
+              <div className="rounded-md border border-border/60 bg-muted/20 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <ListChecks className="size-4" aria-hidden="true" />
+                    CSV反映前プレビュー
+                  </h3>
+                  <Badge variant={bulkPreviewBlockingCount > 0 ? 'destructive' : 'outline'}>
+                    {bulkPreviewBlockingCount > 0
+                      ? `要確認 ${bulkPreviewBlockingCount.toLocaleString()}件`
+                      : '反映可能'}
+                  </Badge>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                  <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+                    <p className="text-xs text-muted-foreground">新規採用</p>
+                    <p className="text-lg font-semibold tabular-nums">
+                      {bulkPreviewSummary.createCount.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+                    <p className="text-xs text-muted-foreground">更新</p>
+                    <p className="text-lg font-semibold tabular-nums">
+                      {bulkPreviewSummary.updateCount.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+                    <p className="text-xs text-muted-foreground">採用解除</p>
+                    <p className="text-lg font-semibold tabular-nums">
+                      {bulkPreviewSummary.deactivateCount.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+                    <p className="text-xs text-muted-foreground">変更なし</p>
+                    <p className="text-lg font-semibold tabular-nums">
+                      {bulkPreviewSummary.noChangeCount.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+                    <p className="text-xs text-muted-foreground">未照合</p>
+                    <p className="text-lg font-semibold tabular-nums">
+                      {bulkPreviewSummary.unmatchedCount.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+                    <p className="text-xs text-muted-foreground">無効</p>
+                    <p className="text-lg font-semibold tabular-nums">
+                      {bulkPreviewSummary.invalidCount.toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {(bulkPreview?.preview.rows ?? []).slice(0, 6).map((row) => (
+                    <div
+                      key={`${row.rowNumber}-${row.status}`}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 bg-background px-3 py-2"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {row.drug_name ?? row.yj_code ?? `行 ${row.rowNumber}`}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          行 {row.rowNumber}
+                          {row.yj_code ? ` / ${row.yj_code}` : ''}
+                          {row.reason ? ` / ${row.reason}` : ''}
+                        </p>
+                      </div>
+                      <Badge variant={['invalid', 'unmatched'].includes(row.status) ? 'destructive' : 'outline'}>
+                        {bulkPreviewStatusLabel(row.status)}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

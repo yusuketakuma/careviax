@@ -7,7 +7,7 @@ const { authMock, prismaMock } = vi.hoisted(() => ({
     membership: { findFirst: vi.fn() },
     pharmacySite: { findFirst: vi.fn() },
     drugMaster: { findMany: vi.fn() },
-    pharmacyDrugStock: { upsert: vi.fn() },
+    pharmacyDrugStock: { findMany: vi.fn(), upsert: vi.fn() },
     auditLog: { create: vi.fn() },
     $transaction: vi.fn(),
   },
@@ -45,6 +45,7 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
         auditLog: prismaMock.auditLog,
       }),
     );
+    prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([]);
     prismaMock.pharmacyDrugStock.upsert.mockResolvedValue({ id: 'stock_1' });
     prismaMock.auditLog.create.mockResolvedValue({ id: 'audit_1' });
   });
@@ -87,6 +88,95 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
       }),
     );
     expect(prismaMock.auditLog.create).toHaveBeenCalledOnce();
+  });
+
+  it('previews CSV differences without mutating stock rows or writing audit logs', async () => {
+    prismaMock.drugMaster.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'drug_new',
+          yj_code: '111111111111',
+          drug_name: '新規薬',
+          generic_name: '成分A',
+        },
+        {
+          id: 'drug_existing',
+          yj_code: '222222222222',
+          drug_name: '既存薬',
+          generic_name: '成分B',
+        },
+        {
+          id: 'drug_stop',
+          yj_code: '333333333333',
+          drug_name: '解除薬',
+          generic_name: '成分C',
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([
+      {
+        drug_master_id: 'drug_existing',
+        is_stocked: true,
+        reorder_point: 5,
+        preferred_generic_id: null,
+        adoption_note: null,
+      },
+      {
+        drug_master_id: 'drug_stop',
+        is_stocked: true,
+        reorder_point: 10,
+        preferred_generic_id: null,
+        adoption_note: '旧メモ',
+      },
+    ]);
+
+    const response = await POST(
+      createRequest({
+        site_id: 'site_1',
+        dry_run: true,
+        csv: [
+          'YJコード,医薬品名,採用,発注点,メモ',
+          '111111111111,新規薬,採用,3,新規',
+          '222222222222,既存薬,採用,8,変更',
+          '333333333333,解除薬,解除,10,旧メモ',
+          '999999999999,不明薬,採用,1,',
+        ].join('\n'),
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      importedCount: 0,
+      unmatchedRows: [{ rowNumber: 5, yj_code: '999999999999' }],
+      preview: {
+        summary: {
+          totalRows: 4,
+          processableRows: 3,
+          createCount: 1,
+          updateCount: 1,
+          deactivateCount: 1,
+          unmatchedCount: 1,
+          invalidCount: 0,
+        },
+        rows: [
+          { rowNumber: 2, status: 'create', yj_code: '111111111111' },
+          {
+            rowNumber: 3,
+            status: 'update',
+            yj_code: '222222222222',
+            before: { reorder_point: 5, adoption_note: null },
+            after: { reorder_point: 8, adoption_note: '変更' },
+          },
+          { rowNumber: 4, status: 'deactivate', yj_code: '333333333333' },
+          { rowNumber: 5, status: 'unmatched', yj_code: '999999999999' },
+        ],
+      },
+    });
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });
 
   it('rejects rows with unresolved preferred generic codes without importing the drug', async () => {

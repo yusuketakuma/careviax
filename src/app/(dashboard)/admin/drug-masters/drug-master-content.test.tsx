@@ -165,6 +165,7 @@ describe('DrugMasterContent', () => {
     expect(screen.getByText('採用薬リスト運用')).toBeTruthy();
     expect(screen.getByText('影響レビューキュー')).toBeTruthy();
     expect(screen.getByLabelText('CSV一括登録')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /差分確認/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /一括登録/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /CSVテンプレート/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /CSV出力/ })).toBeTruthy();

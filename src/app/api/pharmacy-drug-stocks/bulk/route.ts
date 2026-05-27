@@ -17,11 +17,38 @@ const bulkImportSchema = z.object({
   site_id: z.string().trim().min(1, 'site_id は必須です'),
   rows: z.array(bulkRowSchema).max(1000).optional(),
   csv: z.string().max(200_000).optional(),
+  dry_run: z.boolean().optional(),
 });
 
 type BulkRow = z.infer<typeof bulkRowSchema> & {
   rowNumber: number;
 };
+
+type BulkOperation = {
+  row: BulkRow;
+  drug: {
+    id: string;
+    yj_code: string;
+    drug_name: string;
+    generic_name: string | null;
+  };
+  preferredGeneric: {
+    id: string;
+    yj_code: string;
+    drug_name: string;
+    generic_name: string | null;
+  } | null;
+};
+
+type CurrentStock = {
+  drug_master_id: string;
+  is_stocked: boolean;
+  reorder_point: number | null;
+  preferred_generic_id: string | null;
+  adoption_note: string | null;
+};
+
+type PreviewRowStatus = 'create' | 'update' | 'deactivate' | 'no_change' | 'unmatched' | 'invalid';
 
 const HEADER_ALIASES: Record<string, keyof z.infer<typeof bulkRowSchema>> = {
   yj_code: 'yj_code',
@@ -100,6 +127,116 @@ function parseCsv(csv: string): BulkRow[] {
       adoption_note: String(raw.adoption_note ?? '').trim() || null,
     };
   });
+}
+
+function buildPreviewRows({
+  operations,
+  currentStockByDrugId,
+  unmatchedRows,
+  invalidRows,
+}: {
+  operations: BulkOperation[];
+  currentStockByDrugId: Map<string, CurrentStock>;
+  unmatchedRows: Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>;
+  invalidRows: Array<{ rowNumber: number; reason: string }>;
+}) {
+  const rows: Array<{
+    rowNumber: number;
+    status: PreviewRowStatus;
+    yj_code?: string;
+    drug_name?: string;
+    reason?: string;
+    before?: {
+      is_stocked: boolean;
+      reorder_point: number | null;
+      preferred_generic_id: string | null;
+      adoption_note: string | null;
+    } | null;
+    after?: {
+      is_stocked: boolean;
+      reorder_point: number | null;
+      preferred_generic_id: string | null;
+      adoption_note: string | null;
+    } | null;
+  }> = [];
+
+  for (const operation of operations) {
+    const current = currentStockByDrugId.get(operation.drug.id) ?? null;
+    const after = {
+      is_stocked: operation.row.is_stocked,
+      reorder_point: operation.row.reorder_point ?? null,
+      preferred_generic_id: operation.preferredGeneric?.id ?? null,
+      adoption_note: operation.row.adoption_note ?? null,
+    };
+    const before = current
+      ? {
+          is_stocked: current.is_stocked,
+          reorder_point: current.reorder_point,
+          preferred_generic_id: current.preferred_generic_id,
+          adoption_note: current.adoption_note,
+        }
+      : null;
+    const changed =
+      !before ||
+      before.is_stocked !== after.is_stocked ||
+      before.reorder_point !== after.reorder_point ||
+      before.preferred_generic_id !== after.preferred_generic_id ||
+      before.adoption_note !== after.adoption_note;
+    const status: PreviewRowStatus = !before
+      ? after.is_stocked
+        ? 'create'
+        : 'no_change'
+      : !changed
+        ? 'no_change'
+        : before.is_stocked && !after.is_stocked
+          ? 'deactivate'
+          : 'update';
+
+    rows.push({
+      rowNumber: operation.row.rowNumber,
+      status,
+      yj_code: operation.drug.yj_code,
+      drug_name: operation.drug.drug_name,
+      before,
+      after,
+    });
+  }
+
+  for (const row of unmatchedRows) {
+    rows.push({
+      rowNumber: row.rowNumber,
+      status: 'unmatched',
+      yj_code: row.yj_code,
+      drug_name: row.drug_name,
+      reason: '医薬品マスターに一致しません',
+      before: null,
+      after: null,
+    });
+  }
+
+  for (const row of invalidRows) {
+    rows.push({
+      rowNumber: row.rowNumber,
+      status: 'invalid',
+      reason: row.reason,
+      before: null,
+      after: null,
+    });
+  }
+
+  rows.sort((a, b) => a.rowNumber - b.rowNumber);
+  const summary = {
+    totalRows: rows.length,
+    processableRows: operations.length,
+    createCount: rows.filter((row) => row.status === 'create').length,
+    updateCount: rows.filter((row) => row.status === 'update').length,
+    deactivateCount: rows.filter((row) => row.status === 'deactivate').length,
+    noChangeCount: rows.filter((row) => row.status === 'no_change').length,
+    unmatchedCount: unmatchedRows.length,
+    invalidCount: invalidRows.length,
+  };
+
+  return { summary, rows };
 }
 
 export const POST = withAuthContext(
@@ -184,7 +321,7 @@ export const POST = withAuthContext(
     }
     const genericByYj = new Map(preferredGenerics.map((drug) => [drug.yj_code, drug]));
     const unmatchedRows: Array<{ rowNumber: number; yj_code?: string; drug_name?: string }> = [];
-    const operations = safeRows.flatMap((row) => {
+    const operations: BulkOperation[] = safeRows.flatMap((row) => {
       const nameMatches = row.yj_code ? [] : (drugsByName.get(row.drug_name ?? '') ?? []);
       if (!row.yj_code && nameMatches.length > 1) {
         invalidRows.push({
@@ -240,6 +377,40 @@ export const POST = withAuthContext(
         },
       ];
     });
+
+    const currentStocks =
+      operations.length > 0
+        ? await prisma.pharmacyDrugStock.findMany({
+            where: {
+              org_id: authCtx.orgId,
+              site_id: site.id,
+              drug_master_id: { in: [...new Set(operations.map((operation) => operation.drug.id))] },
+            },
+            select: {
+              drug_master_id: true,
+              is_stocked: true,
+              reorder_point: true,
+              preferred_generic_id: true,
+              adoption_note: true,
+            },
+          })
+        : [];
+    const preview = buildPreviewRows({
+      operations,
+      currentStockByDrugId: new Map(currentStocks.map((stock) => [stock.drug_master_id, stock])),
+      unmatchedRows,
+      invalidRows,
+    });
+
+    if (parsed.data.dry_run) {
+      return success({
+        site,
+        importedCount: 0,
+        unmatchedRows,
+        invalidRows,
+        preview,
+      });
+    }
 
     const imported = await prisma.$transaction(async (tx) => {
       let count = 0;
@@ -300,6 +471,7 @@ export const POST = withAuthContext(
       importedCount: imported,
       unmatchedRows,
       invalidRows,
+      preview,
     });
   },
   { permission: 'canAdmin' },
