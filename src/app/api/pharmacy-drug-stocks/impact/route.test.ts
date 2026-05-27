@@ -8,6 +8,7 @@ const { authMock, prismaMock } = vi.hoisted(() => ({
     pharmacySite: { findFirst: vi.fn() },
     pharmacyDrugStock: { count: vi.fn(), findMany: vi.fn() },
     drugMasterChangeEvent: { findMany: vi.fn() },
+    qrScanDraft: { findMany: vi.fn() },
   },
 }));
 
@@ -37,6 +38,7 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'admin' });
     prismaMock.pharmacySite.findFirst.mockResolvedValue({ id: 'site_1', name: '本店' });
     prismaMock.drugMasterChangeEvent.findMany.mockResolvedValue([]);
+    prismaMock.qrScanDraft.findMany.mockResolvedValue([]);
   });
 
   it('summarizes review, reorder, safety, and transitional expiry impact', async () => {
@@ -182,6 +184,16 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([changedStock]);
+    prismaMock.qrScanDraft.findMany.mockResolvedValue([
+      {
+        parsed_data: {
+          medications: [
+            { drugCode: '123456789012', drugName: '改定薬' },
+            { drugCode: '123456789012', drugName: '改定薬' },
+          ],
+        },
+      },
+    ]);
 
     const response = await GET(
       createRequest(
@@ -225,8 +237,32 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
             changes: [{ yj_code: '123456789012', change_type: 'price_changed' }],
           },
         ],
+        price_impact: {
+          scanned_draft_count: 1,
+          estimated_total_delta: 40,
+          rows: [
+            {
+              stock: { id: 'stock_changed' },
+              previous_price: 100,
+              current_price: 120,
+              unit_price_delta: 20,
+              usage_count: 2,
+              estimated_total_delta: 40,
+            },
+          ],
+        },
       },
     });
+    expect(prismaMock.qrScanDraft.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          site_id: 'site_1',
+          status: { not: 'discarded' },
+        }),
+        take: 500,
+      }),
+    );
   });
 
   it('does not cap impact totals to the first 500 adopted drugs', async () => {

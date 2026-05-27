@@ -220,12 +220,12 @@ type FormularyStockSummaryRow = PharmacyDrugStockConfig & {
 };
 
 type FormularyRecentChange = {
-    id: string;
-    yj_code: string;
-    change_type: string;
-    previous_value: unknown;
-    current_value: unknown;
-    created_at: string;
+  id: string;
+  yj_code: string;
+  change_type: string;
+  previous_value: unknown;
+  current_value: unknown;
+  created_at: string;
 };
 
 type FormularyImpactResponse = {
@@ -254,6 +254,19 @@ type FormularyImpactResponse = {
       stock: FormularyStockSummaryRow;
       changes: FormularyRecentChange[];
     }>;
+    price_impact?: {
+      usage_window_days: number;
+      scanned_draft_count: number;
+      estimated_total_delta: number;
+      rows: Array<{
+        stock: FormularyStockSummaryRow;
+        previous_price: number | null;
+        current_price: number | null;
+        unit_price_delta: number | null;
+        usage_count: number;
+        estimated_total_delta: number | null;
+      }>;
+    };
   };
   samples: {
     review_due: FormularyStockSummaryRow[];
@@ -2025,6 +2038,70 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                     ))
                   )}
                 </div>
+                {masterChangeReport.price_impact && (
+                  <div className="mt-3 rounded-md border border-border/60 bg-background px-3 py-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs text-muted-foreground">
+                          薬価影響額推計（直近
+                          {masterChangeReport.price_impact.usage_window_days.toLocaleString()}日QR）
+                        </p>
+                        <p className="mt-1 text-2xl font-semibold tabular-nums">
+                          {masterChangeReport.price_impact.estimated_total_delta >= 0 ? '+' : ''}
+                          ¥
+                          {masterChangeReport.price_impact.estimated_total_delta.toLocaleString(
+                            'ja-JP',
+                            {
+                              maximumFractionDigits: 2,
+                            },
+                          )}
+                        </p>
+                      </div>
+                      <Badge variant="outline" className="text-[10px]">
+                        QR {masterChangeReport.price_impact.scanned_draft_count.toLocaleString()}
+                        件
+                      </Badge>
+                    </div>
+                    {masterChangeReport.price_impact.rows.length > 0 && (
+                      <div className="mt-3 space-y-1">
+                        {masterChangeReport.price_impact.rows.slice(0, 3).map((row) => (
+                          <button
+                            key={row.stock.id}
+                            type="button"
+                            className="flex w-full flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2 text-left text-xs hover:text-primary"
+                            onClick={() => {
+                              setSelectedDrugId(row.stock.drug_master_id);
+                              setPreferredGenericId(null);
+                            }}
+                          >
+                            <span className="min-w-0 font-medium text-foreground">
+                              {row.stock.drug_master.drug_name}
+                            </span>
+                            <span className="flex flex-wrap items-center gap-2 text-muted-foreground">
+                              <span>{row.usage_count.toLocaleString()}回</span>
+                              {row.unit_price_delta != null && (
+                                <span>
+                                  単価差 {row.unit_price_delta >= 0 ? '+' : ''}¥
+                                  {row.unit_price_delta.toLocaleString('ja-JP', {
+                                    maximumFractionDigits: 2,
+                                  })}
+                                </span>
+                              )}
+                              {row.estimated_total_delta != null && (
+                                <span>
+                                  推計 {row.estimated_total_delta >= 0 ? '+' : ''}¥
+                                  {row.estimated_total_delta.toLocaleString('ja-JP', {
+                                    maximumFractionDigits: 2,
+                                  })}
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {masterChangeReport.rows.length > 0 && (
                   <div className="mt-3 space-y-2">
                     {masterChangeReport.rows.slice(0, 5).map((row) => (

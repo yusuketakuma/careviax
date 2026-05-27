@@ -135,6 +135,12 @@ vi.mock('@tanstack/react-query', () => ({
             is_truncated: false,
             change_type_counts: [],
             rows: [],
+            price_impact: {
+              usage_window_days: 90,
+              scanned_draft_count: 0,
+              estimated_total_delta: 0,
+              rows: [],
+            },
           },
           samples: {
             review_due: [],
@@ -258,6 +264,7 @@ describe('DrugMasterContent', () => {
     expect(screen.getByText('未使用採用品')).toBeTruthy();
     expect(screen.getByText('影響レビューキュー')).toBeTruthy();
     expect(screen.getByText('薬価改定差分レポート')).toBeTruthy();
+    expect(screen.getByText(/薬価影響額推計/)).toBeTruthy();
     expect(screen.getByText('拠点間コピー')).toBeTruthy();
     expect(screen.getByRole('button', { name: /コピー差分確認/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /採用品をコピー/ })).toBeTruthy();

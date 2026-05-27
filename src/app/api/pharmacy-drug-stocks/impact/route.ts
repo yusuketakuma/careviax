@@ -10,6 +10,8 @@ const impactQuerySchema = z.object({
   site_id: z.string().trim().min(1, 'site_id は必須です'),
   expiry_within_days: z.coerce.number().int().min(1).max(365).default(90),
   review_overdue_days: z.coerce.number().int().min(30).max(730).default(180),
+  price_impact_days: z.coerce.number().int().min(1).max(365).default(90),
+  price_impact_draft_limit: z.coerce.number().int().min(1).max(1000).default(500),
   queue: z
     .enum([
       'action_required',
@@ -62,6 +64,32 @@ const stockImpactSelect = {
 
 const CHANGE_REPORT_LIMIT = 50;
 
+type ParsedMedication = {
+  drugCode?: unknown;
+  drugName?: unknown;
+};
+
+function readMedications(parsedData: unknown): ParsedMedication[] {
+  if (!parsedData || typeof parsedData !== 'object') return [];
+  const medications = (parsedData as { medications?: unknown }).medications;
+  return Array.isArray(medications) ? (medications as ParsedMedication[]) : [];
+}
+
+function normalizeYjCode(value: unknown) {
+  return typeof value === 'string' ? value.trim().slice(0, 12) : '';
+}
+
+function readDrugPrice(value: unknown) {
+  if (!value || typeof value !== 'object') return null;
+  const drugPrice = (value as { drug_price?: unknown }).drug_price;
+  if (typeof drugPrice === 'number') return Number.isFinite(drugPrice) ? drugPrice : null;
+  if (typeof drugPrice !== 'string') return null;
+  const normalized = drugPrice.trim();
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export const GET = withAuthContext(
   async (req: NextRequest, authCtx) => {
     const parsed = parseSearchParams(impactQuerySchema, new URL(req.url).searchParams);
@@ -79,6 +107,7 @@ export const GET = withAuthContext(
     const expiryUntil = addDays(now, parsed.data.expiry_within_days);
     const reviewCutoff = addDays(now, -parsed.data.review_overdue_days);
     const recentChangeCutoff = addDays(now, -30);
+    const priceImpactCutoff = addDays(now, -parsed.data.price_impact_days);
 
     const baseWhere = {
       org_id: authCtx.orgId,
@@ -266,6 +295,68 @@ export const GET = withAuthContext(
       recentChangesByYjCode.set(change.yj_code, changes);
       changeTypeCounts.set(change.change_type, (changeTypeCounts.get(change.change_type) ?? 0) + 1);
     }
+    const priceChangedYjCodes = [
+      ...new Set(
+        recentChanges
+          .filter((change) => change.change_type === 'price_changed')
+          .map((change) => change.yj_code),
+      ),
+    ];
+    const priceImpactDrafts =
+      priceChangedYjCodes.length > 0
+        ? await prisma.qrScanDraft.findMany({
+            where: {
+              org_id: authCtx.orgId,
+              site_id: site.id,
+              status: { not: 'discarded' },
+              created_at: { gte: priceImpactCutoff },
+            },
+            orderBy: [{ created_at: 'desc' }],
+            take: parsed.data.price_impact_draft_limit,
+            select: {
+              parsed_data: true,
+            },
+          })
+        : [];
+    const priceChangedYjSet = new Set(priceChangedYjCodes);
+    const usageCountByYjCode = new Map<string, number>();
+    for (const draft of priceImpactDrafts) {
+      for (const medication of readMedications(draft.parsed_data)) {
+        const yjCode = normalizeYjCode(medication.drugCode);
+        if (!yjCode || !priceChangedYjSet.has(yjCode)) continue;
+        usageCountByYjCode.set(yjCode, (usageCountByYjCode.get(yjCode) ?? 0) + 1);
+      }
+    }
+    const priceImpactRows = masterChangeReportRows
+      .map((stock) => {
+        const priceChange = (recentChangesByYjCode.get(stock.drug_master.yj_code) ?? []).find(
+          (change) => change.change_type === 'price_changed',
+        );
+        const previousPrice = readDrugPrice(priceChange?.previous_value);
+        const currentPrice = readDrugPrice(priceChange?.current_value);
+        const usageCount = usageCountByYjCode.get(stock.drug_master.yj_code) ?? 0;
+        const unitDelta =
+          previousPrice != null && currentPrice != null ? currentPrice - previousPrice : null;
+        return {
+          stock,
+          previous_price: previousPrice,
+          current_price: currentPrice,
+          unit_price_delta: unitDelta,
+          usage_count: usageCount,
+          estimated_total_delta:
+            unitDelta != null ? Number((unitDelta * usageCount).toFixed(2)) : null,
+        };
+      })
+      .filter((row) => row.unit_price_delta != null)
+      .sort(
+        (a, b) =>
+          Math.abs(b.estimated_total_delta ?? 0) - Math.abs(a.estimated_total_delta ?? 0) ||
+          b.usage_count - a.usage_count,
+      );
+    const estimatedTotalDelta = priceImpactRows.reduce(
+      (sum, row) => sum + (row.estimated_total_delta ?? 0),
+      0,
+    );
 
     return success({
       site,
@@ -273,6 +364,8 @@ export const GET = withAuthContext(
       thresholds: {
         expiry_within_days: parsed.data.expiry_within_days,
         review_overdue_days: parsed.data.review_overdue_days,
+        price_impact_days: parsed.data.price_impact_days,
+        price_impact_draft_limit: parsed.data.price_impact_draft_limit,
       },
       selected_queue: {
         key: parsed.data.queue,
@@ -307,6 +400,12 @@ export const GET = withAuthContext(
           stock,
           changes: recentChangesByYjCode.get(stock.drug_master.yj_code) ?? [],
         })),
+        price_impact: {
+          usage_window_days: parsed.data.price_impact_days,
+          scanned_draft_count: priceImpactDrafts.length,
+          estimated_total_delta: Number(estimatedTotalDelta.toFixed(2)),
+          rows: priceImpactRows.slice(0, 10),
+        },
       },
       recent_changes: recentChanges,
       samples: {
