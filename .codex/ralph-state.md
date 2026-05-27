@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-235850
+
+- current task: add browser-level route-mocked verification for the adopted drug formulary management screen
+- files inspected: `git status --short`, `tools/tests/ui-route-mocked-smoke.spec.ts`, `tools/tests/helpers/local-auth.ts`, `src/app/api/notifications/route.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, and Playwright failure artifacts under `tools/tests/.artifacts/results/`
+- files changed: `tools/tests/ui-route-mocked-smoke.spec.ts`, `.codex/ralph-state.md`
+- bugs found: the new formulary smoke initially let the generic `/api/pharmacy-drug-stocks**` route mock catch `/api/pharmacy-drug-stocks/impact` and continue to the live API, so the selected impact queue was not actually verified against the route-mocked response
+- security risks found: no production security code changed; the test uses a short-lived local NextAuth token and route mocks all tested data surfaces to avoid depending on unrelated live API state
+- performance issues found: none in runtime code; the Playwright check is scoped to Chromium and one route-mocked screen to keep the browser gate cheap
+- validation commands: `pnpm --config.verify-deps-before-run=false exec eslint tools/tests/ui-route-mocked-smoke.spec.ts`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3000 pnpm --config.verify-deps-before-run=false exec playwright test --config playwright.local.config.ts tools/tests/ui-route-mocked-smoke.spec.ts -g "formulary route-mocked" --project=chromium`; `git diff --check`
+- validation results: targeted ESLint passed; TypeScript passed; route-mocked Chromium Playwright smoke passed 1 test; whitespace check passed
+- remaining work: broader 20-item formulary/drug master upgrade audit is not complete; this slice only adds browser coverage for impact queue selection and freshness check invocation
+- next action: continue the next high-value formulary/drug-master improvement or commit this browser smoke slice as its own group
+
 ### 20260527-205800
 
 - current task: add formulary flagging to drug master management so site-used drugs can be marked from the master list
