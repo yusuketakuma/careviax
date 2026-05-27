@@ -287,7 +287,7 @@ model SourceOfTruthMatrix {
   id                 String   @id @default(cuid())
   org_id             String
   entity_type        String // patient/prescription/dispense/carry_items/report_delivery/billing
-  source_of_truth    String // careviax/external
+  source_of_truth    String // ph-os/external
   sync_direction     String? // push/pull/bidirectional
   external_system    String?
   recovery_procedure String?

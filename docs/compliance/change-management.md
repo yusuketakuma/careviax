@@ -2,7 +2,7 @@
 
 ## 概要
 
-CareViaX のソフトウェア変更（コード変更・インフラ変更・設定変更）に関する管理手順を定義する。
+PH-OS のソフトウェア変更（コード変更・インフラ変更・設定変更）に関する管理手順を定義する。
 3省2ガイドライン（MHLW v6.0 §7 + METI/MIC v1.1 §6）が要求する変更管理プロセスへの準拠を確保する。
 
 ---
@@ -106,7 +106,7 @@ Amplify Hosting が自動検知
   ↓
 デプロイ（ゼロダウンタイム: 新旧バージョンをトラフィック切替）
   ↓
-ヘルスチェック (/api/health) 確認
+ヘルスチェック (/api/health) と通常 API 経路の rate-limit backend 確認
 ```
 
 ### 4.2 Amplify ビルド設定（amplify.yml）
@@ -137,6 +137,7 @@ frontend:
 - 本番環境変数: AWS Amplify Console → 環境変数 で管理
 - シークレット（DB パスワード・API キー等）: AWS Secrets Manager に格納し、Amplify ビルド時に取得
 - `.env` ファイルはリポジトリにコミットしない（`.gitignore` で除外）
+- 本番 rate-limit backend は `docs/operations/rate-limit-production-runbook.md` に従い、DynamoDB table / TTL / IAM / 通常 API 経路をデプロイ前後に確認する
 
 ---
 

@@ -17,7 +17,7 @@ The gate must prove:
 
 - Next.js production build completes.
 - The app starts on `localhost:3012`.
-- `DATABASE_URL` and `DIRECT_URL` point to local `careviax_e2e`.
+- `DATABASE_URL` and `DIRECT_URL` point to local `ph-os_e2e`.
 - Required package scripts and Playwright specs exist.
 - The local E2E CareReport duplicate precheck returns `duplicate_groups:0`.
 - Targeted Playwright/axe medical UI tests pass.

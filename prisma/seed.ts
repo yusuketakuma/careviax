@@ -13,7 +13,7 @@ const prisma = new PrismaClient({ adapter });
 const DEFAULT_SOURCE_OF_TRUTH_MATRIX = [
   {
     entity_type: 'patient_basic',
-    source_of_truth: 'careviax',
+    source_of_truth: 'ph-os',
     sync_direction: 'pull',
     external_system: 'receipt_computer',
     recovery_procedure:
@@ -33,11 +33,11 @@ const DEFAULT_SOURCE_OF_TRUTH_MATRIX = [
     sync_direction: 'push',
     external_system: 'receipt_computer',
     recovery_procedure:
-      'CareViaX で保持した DispenseTask/DispenseResult/DispenseAudit を再送し、確定調剤実績との差分を再確認する',
+      'PH-OS で保持した DispenseTask/DispenseResult/DispenseAudit を再送し、確定調剤実績との差分を再確認する',
   },
   {
     entity_type: 'carry_items',
-    source_of_truth: 'careviax',
+    source_of_truth: 'ph-os',
     sync_direction: 'internal',
     external_system: null,
     recovery_procedure:
@@ -45,7 +45,7 @@ const DEFAULT_SOURCE_OF_TRUTH_MATRIX = [
   },
   {
     entity_type: 'report_delivery',
-    source_of_truth: 'careviax',
+    source_of_truth: 'ph-os',
     sync_direction: 'push',
     external_system: 'ses_fax_phone',
     recovery_procedure:
@@ -53,7 +53,7 @@ const DEFAULT_SOURCE_OF_TRUTH_MATRIX = [
   },
   {
     entity_type: 'billing',
-    source_of_truth: 'careviax',
+    source_of_truth: 'ph-os',
     sync_direction: 'push',
     external_system: 'receipt_computer',
     recovery_procedure:
@@ -62,13 +62,13 @@ const DEFAULT_SOURCE_OF_TRUTH_MATRIX = [
 ] as const;
 
 const SEED_IDS = {
-  org: 'cmnhseedorg0000amq9careviax',
-  site: 'cmnhseedsite000amq9careviax',
+  org: 'cmnhseedorg0000amq9ph-os',
+  site: 'cmnhseedsite000amq9ph-os',
   user: 'cmnb3swgz0008wgq9gfpgjq6r',
   patients: [
-    'cmnhseedpt001amq9careviax',
-    'cmnhseedpt002amq9careviax',
-    'cmnhseedpt003amq9careviax',
+    'cmnhseedpt001amq9ph-os',
+    'cmnhseedpt002amq9ph-os',
+    'cmnhseedpt003amq9ph-os',
   ],
 } as const;
 
@@ -141,8 +141,8 @@ async function main() {
       id: SEED_IDS.user,
       org_id: org.id,
       cognito_sub: 'demo-cognito-sub-001',
-      cognito_username: 'demo@careviax.example.com',
-      email: 'demo@careviax.example.com',
+      cognito_username: 'demo@ph-os.example.com',
+      email: 'demo@ph-os.example.com',
       name: '山田 太郎',
       name_kana: 'ヤマダ タロウ',
       account_status: 'active',
@@ -151,8 +151,8 @@ async function main() {
     update: {
       org_id: org.id,
       cognito_sub: 'demo-cognito-sub-001',
-      cognito_username: 'demo@careviax.example.com',
-      email: 'demo@careviax.example.com',
+      cognito_username: 'demo@ph-os.example.com',
+      email: 'demo@ph-os.example.com',
       name: '山田 太郎',
       name_kana: 'ヤマダ タロウ',
       account_status: 'active',

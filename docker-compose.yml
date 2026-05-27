@@ -1,21 +1,21 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: careviax-db
+    container_name: ph-os-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-careviax_dev}
-      POSTGRES_USER: ${POSTGRES_USER:-careviax}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-careviax}
+      POSTGRES_DB: ${POSTGRES_DB:-ph-os_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-ph-os}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ph-os}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - careviax-postgres-data:/var/lib/postgresql/data
+      - ph-os-postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-careviax} -d ${POSTGRES_DB:-careviax_dev}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ph-os} -d ${POSTGRES_DB:-ph-os_dev}"]
       interval: 5s
       timeout: 5s
       retries: 20
 
 volumes:
-  careviax-postgres-data:
+  ph-os-postgres-data:

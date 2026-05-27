@@ -356,7 +356,7 @@
   - site_id, drug_master_id, is_stocked BOOLEAN, stock_qty（概算在庫数）, reorder_point
   - last_dispensed_at, preferred_generic_id（当薬局の採用後発品）
   - 用途: 調剤時に「当薬局に在庫がある薬剤」のみフィルタ表示、欠品時の代替候補提示、一般名処方→採用後発品の自動選択
-  - 在庫数は概算管理（厳密な在庫管理はレセコン/在庫システムの責務。CareViaXは訪問調剤の実務支援に絞る）
+  - 在庫数は概算管理（厳密な在庫管理はレセコン/在庫システムの責務。PH-OSは訪問調剤の実務支援に絞る）
 - [x] GenericDrugMapping（一般名→後発品対応表）:
   - generic_name, brand_drug_ids[], price_comparison
   - データソース: 厚労省 一般名処方マスタ（Excel, 無料）+ 薬価基準収載品目リスト
@@ -382,7 +382,7 @@
   - order_ref / consent_ref / management_plan_ref / report_delivery_ref / visit_record_ref
   - monthly_count_snapshot, same_month_exclusion_flags, validation_notes
 - [x] SourceOfTruthMatrix / IntegrationBoundary:
-  - 患者基本、処方原本、調剤実績、持参情報、報告書送達、請求候補ごとに「CareViaX正本 / 外部正本 / 同期方向 / 障害時復旧手順」を定義
+  - 患者基本、処方原本、調剤実績、持参情報、報告書送達、請求候補ごとに「PH-OS正本 / 外部正本 / 同期方向 / 障害時復旧手順」を定義
   - `docs/compliance/responsibility-matrix.md` に D-12 対応の責任分界表・復旧手順・`org_id` 例外を明文化
   - `prisma/seed.ts` で `patient_basic` / `prescription_original` / `dispense_result` / `carry_items` / `report_delivery` / `billing` の初期 `SourceOfTruthMatrix` を投入
 - [x] Setting（4層）, LabelDictionary

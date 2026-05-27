@@ -1,4 +1,4 @@
-# CareViaX Pharmacy
+# PH-OS Pharmacy
 
 在宅訪問に強い保険薬局向けの業務・連携プラットフォームです。Next.js App Router を中心に、調剤、監査、セット監査、訪問スケジュール、多職種連携を 1 つのリポジトリで扱います。
 
@@ -7,7 +7,7 @@
 GitHub のトップでは、継続的に編集するアプリ本体と運用資産だけが見える構成に寄せています。
 
 ```text
-careviax/
+ph-os/
 ├── docs/      # 仕様、設計、運用ガイド、監査・テスト用ドキュメント
 ├── prisma/    # Prisma schema, migrations, generated client settings
 ├── public/    # Static assets

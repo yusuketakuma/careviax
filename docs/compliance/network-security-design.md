@@ -2,7 +2,7 @@
 
 ## 概要
 
-CareViaX の本番ネットワークは 2 層 VPC を基本とし、公開面とデータ面を分離する。RDS は常に private-db サブネットへ配置し、アプリケーション層または SSM Session Manager 経由でのみ到達可能とする。
+PH-OS の本番ネットワークは 2 層 VPC を基本とし、公開面とデータ面を分離する。RDS は常に private-db サブネットへ配置し、アプリケーション層または SSM Session Manager 経由でのみ到達可能とする。
 
 ## ネットワーク構成
 
@@ -15,10 +15,10 @@ CareViaX の本番ネットワークは 2 層 VPC を基本とし、公開面と
 
 ## セキュリティグループ
 
-1. `careviax-alb-sg`
-2. `careviax-app-sg`
-3. `careviax-rds-sg`
-4. `careviax-ssm-bastion-sg`
+1. `ph-os-alb-sg`
+2. `ph-os-app-sg`
+3. `ph-os-rds-sg`
+4. `ph-os-ssm-bastion-sg`
 
 ## 必須要件
 

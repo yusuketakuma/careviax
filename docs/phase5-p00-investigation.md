@@ -1,7 +1,7 @@
 # P-00: 患者モデル変更の現況調査 — 調査結果報告書
 
 **実施日**: 2026-04-04  
-**対象リポジトリ**: `/Users/yusuke/workspace/careviax`
+**対象リポジトリ**: `/Users/yusuke/workspace/ph-os`
 
 ---
 

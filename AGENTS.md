@@ -1,10 +1,10 @@
 # Repository Codex Instructions
-## CareViaX Required Context
+## PH-OS Required Context
 This version of Next.js has breaking changes. Read the relevant guide in `node_modules/next/dist/docs/` before writing any Next.js code, and heed deprecation notices.
 
-For any UI/UX change, read `docs/ui-ux-design-guidelines.md` first and treat it as the CareViaX UI/UX SSOT. Reference that file when proposing, implementing, or reviewing page structure, grouping, borders, spacing, and heading hierarchy.
+For any UI/UX change, read `docs/ui-ux-design-guidelines.md` first and treat it as the PH-OS UI/UX SSOT. Reference that file when proposing, implementing, or reviewing page structure, grouping, borders, spacing, and heading hierarchy.
 
-Runtime model, approval, sandbox, service tier, MCP, and custom-agent registration belong in the user-level `~/.codex/config.toml`. This repository file defines CareViaX-specific working rules and should not be treated as the effective runtime configuration layer.
+Runtime model, approval, sandbox, service tier, MCP, and custom-agent registration belong in the user-level `~/.codex/config.toml`. This repository file defines PH-OS-specific working rules and should not be treated as the effective runtime configuration layer.
 
 ## Mission
 Operate as a senior autonomous coding agent.

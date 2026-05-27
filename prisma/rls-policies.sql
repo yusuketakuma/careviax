@@ -1,5 +1,5 @@
 -- =============================================================================
--- CareViaX: Row Level Security (RLS) Policies
+-- PH-OS: Row Level Security (RLS) Policies
 -- Purpose: Tenant isolation by org_id for all multi-tenant tables
 -- Usage: Run via psql or as a Prisma migration after schema creation
 -- Prerequisite: Application connects with role 'app_user' (not superuser)

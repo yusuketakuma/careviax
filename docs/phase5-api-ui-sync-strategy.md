@@ -61,7 +61,7 @@ if ('serviceWorker' in navigator) {
 
 ```ts
 // src/lib/offline/db.ts
-const db = new Dexie('careviax-offline');
+const db = new Dexie('ph-os-offline');
 db.version(2).stores({
   patients: 'id, org_id, name_kana, gender, is_archived',
   // v1 との差分: gender が enum 文字列に変更、is_archived 追加

@@ -1,6 +1,6 @@
 {
-  "name": "CareViaX",
-  "short_name": "CareViaX",
+  "name": "PH-OS",
+  "short_name": "PH-OS",
   "description": "在宅訪問薬局プラットフォーム",
   "start_url": "/dashboard",
   "display": "standalone",

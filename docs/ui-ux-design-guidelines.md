@@ -1,6 +1,6 @@
-# CareViaX UI/UX Design Guidelines
+# PH-OS UI/UX Design Guidelines
 
-この文書は CareViaX の画面設計における共通 SSOT です。  
+この文書は PH-OS の画面設計における共通 SSOT です。
 今後の UI/UX 改修では、Claude と Codex の両方がこのファイルを必ず参照し、判断根拠として扱うこと。
 
 ## 目的

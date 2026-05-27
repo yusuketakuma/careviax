@@ -1,4 +1,4 @@
-# CareViaX Pharmacy - Project Configuration
+# PH-OS Pharmacy - Project Configuration
 
 ## Project Overview
 
@@ -7,8 +7,8 @@
 
 仕様書:
 
-- `docs/careviax_pharmacy_workflow_spec_project_context.md` — ワークフロー詳細仕様
-- `docs/careviax_pharmacy_multidisciplinary_collaboration_spec_project_context.md` — 多職種連携詳細仕様
+- `docs/ph-os_pharmacy_workflow_spec_project_context.md` — ワークフロー詳細仕様
+- `docs/ph-os_pharmacy_multidisciplinary_collaboration_spec_project_context.md` — 多職種連携詳細仕様
 - `docs/decisions.md` — 設計判断
 - `docs/ui-ux-design-guidelines.md` — UI/UX 設計の SSOT。UI/UX 変更時は必ず先に参照すること
 
@@ -35,7 +35,7 @@
 - **MHLW ガイドライン v6.0**: 医療情報システムの安全管理
 - **METI/MIC 提供事業者ガイドライン v1.1**: SaaS事業者の安全管理
 - **個人情報保護法 (APPI)**: 要配慮個人情報（医療データ）の取扱い
-- **ISMAP**: AWS が取得済み（171+サービス）、CareViaX はその上に構築
+- **ISMAP**: AWS が取得済み（171+サービス）、PH-OS はその上に構築
 
 ## Architecture: AWS 全面採用（ISMAP準拠）
 
@@ -134,7 +134,7 @@
 ## Directory Structure
 
 ```
-careviax/
+ph-os/
 ├── docs/               # 仕様書・設計・ガイドライン準拠文書
 ├── src/
 │   ├── app/            # Next.js App Router pages
@@ -164,7 +164,7 @@ AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
 
 # Database (RDS PostgreSQL)
-DATABASE_URL=          # postgresql://user:pass@rds-endpoint:5432/careviax
+DATABASE_URL=          # postgresql://user:pass@rds-endpoint:5432/ph-os
 DIRECT_URL=            # Same (no pooler needed for RDS)
 
 # Cognito

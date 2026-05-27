@@ -1,12 +1,12 @@
-# CareViaX Pharmacy — Implementation Plan
+# PH-OS Pharmacy — Implementation Plan
 
-> 仕様書: [ワークフロー](docs/careviax_pharmacy_workflow_spec_project_context.md) | [多職種連携](docs/careviax_pharmacy_multidisciplinary_collaboration_spec_project_context.md) | [設計判断](docs/decisions.md)
+> 仕様書: [ワークフロー](docs/ph-os_pharmacy_workflow_spec_project_context.md) | [多職種連携](docs/ph-os_pharmacy_multidisciplinary_collaboration_spec_project_context.md) | [設計判断](docs/decisions.md)
 > アーキテクチャ / デザイン方針: CLAUDE.md 参照
 > ※ Phase 3 は Phase 2 完了時に詳細化する
 
 ### 明示的な非ゴール（既存レセコン/薬局システムの責務）
 
-- フル在庫管理（発注・仕入・棚卸し・在庫評価）→ CareViaXは在庫医薬品マスタ（採用薬フラグ+引当フラグ）の薄い層のみ
+- フル在庫管理（発注・仕入・棚卸し・在庫評価）→ PH-OSは在庫医薬品マスタ（採用薬フラグ+引当フラグ）の薄い層のみ
 - 麻薬管理帳簿・毒薬劇薬受払い簿 → レセコンが法定帳票を担う
 - 領収書・調剤報酬明細書の発行 → レセコンの中核機能（二重入力回避）
 - 会計・一部負担金の収納管理 → レセコン/会計システム
@@ -16,12 +16,12 @@
 
 - MVPは「訪問日次運用 + 報告送付 + 最低限の処方差分/持参判定」を最優先にし、重いマスタ/処方安全チェック/請求自動化は後段に寄せる
 - `MedicationCycle` は「処方起点の1運用サイクル」を維持する。MVPでも訪問予定は処方差分・持参可否・未解決課題と切り離さない
-- CareViaX / レセコン / 電子薬歴 / 在宅支援システムの責任分界を先に固定し、二重入力を避ける
+- PH-OS / レセコン / 電子薬歴 / 在宅支援システムの責任分界を先に固定し、二重入力を避ける
 - 公開情報ベースの市場比較では、既存製品は「訪問記録・計画書/報告書作成・FAX/メール送付・現場共有」に強い。初期価値は最適化機能より、現場記録/連携/持参漏れ防止に置く
 
 ### 外部システム比較から採る方針
 
-- 調剤レセコン系: 在宅スケジュール/介護請求入力まで持つ製品があるが、CareViaXでは請求エンジン全面置換はしない
+- 調剤レセコン系: 在宅スケジュール/介護請求入力まで持つ製品があるが、PH-OSでは請求エンジン全面置換はしない
 - 電子薬歴系: タブレット記録、写真、訪問報告書・計画書作成はベースライン機能として扱う
 - ふぁむけあ系: 報告書作成、FAX/メール送信予約、トレーシングレポート、店舗間共有は MVP の参照ベンチマークとする
 - シジダス系: 一包化委受託/外部委託オペレーションは Phase 2+ の連携拡張テーマとして扱う
@@ -473,7 +473,7 @@ flowchart LR
   - site_id, drug_master_id, is_stocked BOOLEAN, stock_qty（概算在庫数）, reorder_point
   - last_dispensed_at, preferred_generic_id（当薬局の採用後発品）
   - 用途: 調剤時に「当薬局に在庫がある薬剤」のみフィルタ表示、欠品時の代替候補提示、一般名処方→採用後発品の自動選択
-  - 在庫数は概算管理（厳密な在庫管理はレセコン/在庫システムの責務。CareViaXは訪問調剤の実務支援に絞る）
+  - 在庫数は概算管理（厳密な在庫管理はレセコン/在庫システムの責務。PH-OSは訪問調剤の実務支援に絞る）
 - [x] GenericDrugMapping（一般名→後発品対応表）:
   - generic_name, brand_drug_ids[], price_comparison
   - データソース: 厚労省 一般名処方マスタ（Excel, 無料）+ 薬価基準収載品目リスト
@@ -502,7 +502,7 @@ flowchart LR
   - order_ref / consent_ref / management_plan_ref / report_delivery_ref / visit_record_ref
   - monthly_count_snapshot, same_month_exclusion_flags, validation_notes
 - [x] SourceOfTruthMatrix / IntegrationBoundary:
-  - 患者基本、処方原本、調剤実績、持参情報、報告書送達、請求候補ごとに「CareViaX正本 / 外部正本 / 同期方向 / 障害時復旧手順」を定義
+  - 患者基本、処方原本、調剤実績、持参情報、報告書送達、請求候補ごとに「PH-OS正本 / 外部正本 / 同期方向 / 障害時復旧手順」を定義
   - `docs/compliance/responsibility-matrix.md` に D-12 対応の責任分界表・復旧手順・`org_id` 例外を明文化
   - `prisma/seed.ts` で `patient_basic` / `prescription_original` / `dispense_result` / `carry_items` / `report_delivery` / `billing` の初期 `SourceOfTruthMatrix` を投入
 - [x] Setting（4層）, LabelDictionary
