@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260528-000940
+
+- current task: enforce unique formulary template names at the database layer
+- files inspected: `git status --short`, `prisma/schema/drug.prisma`, `prisma/migrations/20260527233800_add_formulary_templates/migration.sql`, local `FormularyTemplate` duplicate-name query via Prisma adapter
+- files changed: `prisma/schema/drug.prisma`, `prisma/migrations/20260528000900_unique_formulary_template_names/migration.sql`, `.codex/ralph-state.md`
+- bugs found: API now rejects same-org duplicate template names, but the database still allowed duplicates from concurrent writes or non-API paths
+- security risks found: no authorization or access behavior changed; the DB constraint reinforces the same org/name uniqueness rule enforced by the admin API
+- performance issues found: replaced the non-unique org/name index with a unique org/name index; local duplicate precheck returned no duplicate rows before applying the constraint
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prisma format --schema=prisma/schema`; `pnpm --config.verify-deps-before-run=false exec prisma validate --schema=prisma/schema`; `pnpm --config.verify-deps-before-run=false exec prisma generate --schema=prisma/schema`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; local duplicate query for `FormularyTemplate`; `pnpm --config.verify-deps-before-run=false exec prisma db push --schema=prisma/schema --accept-data-loss`; `git diff --check`
+- validation results: Prisma format/validate/generate passed; TypeScript passed; duplicate query returned `[]`; local `ph_os_dev` db push passed after explicit duplicate precheck and Prisma's unique-constraint warning acknowledgement; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice enforces template-name uniqueness but does not yet add rename/update flows
+- next action: commit the template-name uniqueness migration and continue the next high-value formulary/drug-master improvement
+
 ### 20260528-000830
 
 - current task: prevent duplicate formulary template names
