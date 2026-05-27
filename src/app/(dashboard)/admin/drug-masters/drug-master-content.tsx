@@ -141,6 +141,47 @@ type GenericRecommendation = GenericCandidateOption & {
   } | null;
 };
 
+type IngredientGroupResponse = {
+  site: Pick<PharmacySiteOption, 'id' | 'name'> | null;
+  target: Pick<
+    DrugMasterRow,
+    'id' | 'yj_code' | 'drug_name' | 'generic_name' | 'drug_price' | 'unit' | 'is_generic'
+  >;
+  generic_name: string | null;
+  summary: {
+    member_count: number;
+    brand_count: number;
+    generic_count: number;
+    stocked_count: number;
+    unstocked_count: number | null;
+    lowest_price: number | null;
+    highest_price: number | null;
+  } | null;
+  members: Array<
+    Pick<
+      DrugMasterRow,
+      | 'id'
+      | 'yj_code'
+      | 'drug_name'
+      | 'generic_name'
+      | 'drug_price'
+      | 'unit'
+      | 'manufacturer'
+      | 'is_generic'
+    > & {
+      transitional_expiry_date: string | null;
+      site_stock: {
+        drug_master_id: string;
+        is_stocked: boolean;
+        preferred_generic_id: string | null;
+        reorder_point: number | null;
+        follow_up_status: string | null;
+      } | null;
+    }
+  >;
+  reason?: 'generic_name_missing';
+};
+
 type PharmacyDrugStockConfig = {
   id: string;
   site_id: string;
@@ -745,6 +786,24 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     staleTime: 300_000,
   });
 
+  const ingredientGroupQuery = useQuery({
+    queryKey: ['ingredient-group', orgId, effectiveSelectedSiteId, selectedDrugId],
+    queryFn: async () => {
+      if (!selectedDrugId) {
+        throw new Error('医薬品を選択してください');
+      }
+      const params = new URLSearchParams({ limit: '50' });
+      if (effectiveSelectedSiteId) params.set('site_id', effectiveSelectedSiteId);
+      const res = await fetch(`/api/drug-masters/${selectedDrugId}/ingredient-group?${params}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('同一成分グループの取得に失敗しました');
+      return res.json() as Promise<IngredientGroupResponse>;
+    },
+    enabled: !!orgId && !!selectedDrugId && !!detailQuery.data?.generic_name,
+    staleTime: 300_000,
+  });
+
   const importMutation = useMutation({
     mutationFn: async (action: ImportAction) => {
       const definition = IMPORT_ACTIONS.find((item) => item.key === action);
@@ -1179,6 +1238,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     : [];
   const preferredGenericCandidates = preferredGenericCandidatesQuery.data?.data ?? [];
   const genericRecommendations = genericRecommendationsQuery.data?.recommendations ?? [];
+  const ingredientGroup = ingredientGroupQuery.data ?? null;
   const headerTitle = variant === 'formulary' ? '採用薬マスター' : '医薬品マスター';
   const headerDescription =
     variant === 'formulary'
@@ -2239,6 +2299,77 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                     </div>
                   )}
                 </section>
+
+                {ingredientGroup?.summary && (
+                  <section className="space-y-3">
+                    <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <Pill className="size-4" aria-hidden="true" />
+                      同一成分グループ
+                    </h2>
+                    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                      <div className="grid gap-2 sm:grid-cols-4">
+                        <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+                          <p className="text-xs text-muted-foreground">同一一般名</p>
+                          <p className="mt-1 text-lg font-semibold tabular-nums">
+                            {ingredientGroup.summary.member_count.toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+                          <p className="text-xs text-muted-foreground">後発品</p>
+                          <p className="mt-1 text-lg font-semibold tabular-nums">
+                            {ingredientGroup.summary.generic_count.toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+                          <p className="text-xs text-muted-foreground">採用済み</p>
+                          <p className="mt-1 text-lg font-semibold tabular-nums">
+                            {ingredientGroup.summary.stocked_count.toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-border/60 bg-background px-3 py-2">
+                          <p className="text-xs text-muted-foreground">薬価帯</p>
+                          <p className="mt-1 text-sm font-semibold">
+                            {ingredientGroup.summary.lowest_price != null &&
+                            ingredientGroup.summary.highest_price != null
+                              ? `¥${ingredientGroup.summary.lowest_price.toFixed(1)}-¥${ingredientGroup.summary.highest_price.toFixed(1)}`
+                              : '未設定'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {ingredientGroup.members.slice(0, 5).map((member) => (
+                          <button
+                            key={member.id}
+                            type="button"
+                            className="w-full rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
+                            onClick={() => {
+                              setSelectedDrugId(member.id);
+                              setPreferredGenericId(null);
+                            }}
+                          >
+                            <span className="block text-sm font-medium text-foreground">
+                              {member.drug_name}
+                            </span>
+                            <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              <span className="font-mono">{member.yj_code}</span>
+                              <span>{member.is_generic ? '後発品' : '先発/準先発'}</span>
+                              {member.drug_price != null && (
+                                <span>
+                                  ¥{Number(member.drug_price).toFixed(1)}/{member.unit ?? ''}
+                                </span>
+                              )}
+                              {member.site_stock?.is_stocked ? (
+                                <span className="font-medium text-emerald-700">採用済み</span>
+                              ) : (
+                                <span>未採用</span>
+                              )}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+                )}
 
                 <section className="space-y-3">
                   <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
