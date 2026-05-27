@@ -17,6 +17,7 @@ import {
   ClipboardCheck,
   ListChecks,
   FileWarning,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
@@ -1411,6 +1412,27 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     },
   });
 
+  const deleteTemplateMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedTemplateId) throw new Error('テンプレートを選択してください');
+      const res = await fetch(`/api/pharmacy-drug-stock-templates/${selectedTemplateId}`, {
+        method: 'DELETE',
+        headers: { 'x-org-id': orgId },
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.message ?? '採用品テンプレートの削除に失敗しました');
+      return json as { deleted: boolean; data: FormularyTemplateItem };
+    },
+    onSuccess: async () => {
+      toast.success('採用品テンプレートを削除しました');
+      setSelectedTemplateId('');
+      await queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock-templates'] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '採用品テンプレートの削除に失敗しました');
+    },
+  });
+
   const reviewMutation = useMutation({
     mutationFn: async () => {
       if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
@@ -2525,7 +2547,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                     現在の拠点から作成
                   </LoadingButton>
                 </div>
-                <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(160px,1fr)_auto]">
+                <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(160px,1fr)_auto_auto]">
                   <select
                     value={selectedTemplateId}
                     onChange={(event) => setSelectedTemplateId(event.target.value)}
@@ -2549,6 +2571,17 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                   >
                     テンプレートを適用
                   </LoadingButton>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    disabled={!selectedTemplateId || deleteTemplateMutation.isPending}
+                    onClick={() => deleteTemplateMutation.mutate()}
+                    aria-label="採用品テンプレートを削除"
+                    title="採用品テンプレートを削除"
+                  >
+                    <Trash2 className="size-3.5" aria-hidden="true" />
+                  </Button>
                 </div>
               </div>
             </div>
