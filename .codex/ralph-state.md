@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-222300
+
+- current task: surface stocked generic alternatives during QR prescription intake when the prescribed drug is not in formulary
+- files inspected: `git status --short`, `src/lib/pharmacy/qr-intake-mapper.ts`, `src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts`, prescription intake UI display of `formularyStatus`
+- files changed: `src/lib/pharmacy/qr-intake-mapper.ts`, `src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts`, `.codex/ralph-state.md`
+- bugs found: QR intake only marked whether the prescribed DrugMaster itself was stocked; if a non-formulary brand was scanned but the facility stocked a same-generic-name generic drug, the intake warning showed only採用外 and did not surface the available stocked generic alternative
+- security risks found: no authz boundary changed; the lookup remains scoped by org, site, and `is_stocked`
+- performance issues found: preserved batched lookups; added one batched same-generic-name stocked generic query instead of per-line lookups
+- validation commands: `pnpm --config.verify-deps-before-run=false exec vitest run src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts`; `pnpm --config.verify-deps-before-run=false exec eslint src/lib/pharmacy/qr-intake-mapper.ts src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check`
+- validation results: targeted Vitest passed 1 file / 42 tests; targeted ESLint passed; TypeScript passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice connects formulary adoption data to QR intake substitution hints
+- next action: commit the QR intake formulary alternative improvement and continue the next high-value item
+
 ### 20260527-221805
 
 - current task: align CSV bulk formulary import preferred-generic rules with the individual stock API
