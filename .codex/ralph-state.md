@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260527-234434
+
+- current task: add facility-specific formulary templates for reusing adopted-drug sets
+- files inspected: `git status --short`, `prisma/schema/drug.prisma`, `src/app/api/pharmacy-drug-stocks/copy/route.ts`, `src/app/api/pharmacy-drug-stocks/route.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`
+- files changed: `prisma/schema/drug.prisma`, `prisma/migrations/20260527233800_add_formulary_templates/migration.sql`, `src/app/api/pharmacy-drug-stock-templates/route.ts`, `src/app/api/pharmacy-drug-stock-templates/route.test.ts`, `src/app/api/pharmacy-drug-stock-templates/[id]/apply/route.ts`, `src/app/api/pharmacy-drug-stock-templates/[id]/apply/route.test.ts`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.codex/ralph-state.md`
+- bugs found: new or specialized sites could copy from another live site, but there was no reusable named template such as a home-care/internal-medicine standard set that could be created once and applied repeatedly
+- security risks found: template creation and application use admin permission, same-org source/target site validation, and org-scoped template lookup before stock upserts
+- performance issues found: template application batches from the stored item snapshot and checks existing target rows in one query; no per-item pre-read is added
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prisma format --schema=prisma/schema`; `pnpm --config.verify-deps-before-run=false exec prisma validate --schema=prisma/schema`; `pnpm --config.verify-deps-before-run=false exec prisma generate --schema=prisma/schema`; `pnpm --config.verify-deps-before-run=false exec vitest run src/app/api/pharmacy-drug-stock-templates/route.test.ts 'src/app/api/pharmacy-drug-stock-templates/[id]/apply/route.test.ts' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; targeted ESLint for template API/UI files; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `pnpm --config.verify-deps-before-run=false exec prisma db push --schema=prisma/schema`; `git diff --check`
+- validation results: Prisma format/validate/generate passed; targeted Vitest passed 3 files / 8 tests; targeted ESLint passed; TypeScript passed; local `ph_os_dev` db push passed; whitespace check passed
+- remaining work: broader 20-item formulary/drug-master upgrade remains active; this slice adds create/apply templates but not a curated built-in template catalog
+- next action: commit the formulary template slice and continue the next high-value formulary/drug-master improvement
+
 ### 20260527-233717
 
 - current task: add explicit non-formulary warnings to QR prescription intake
