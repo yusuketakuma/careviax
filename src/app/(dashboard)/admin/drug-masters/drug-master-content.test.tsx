@@ -25,7 +25,14 @@ vi.mock('@tanstack/react-query', () => ({
       return { data: { data: [], totalCount: 0, hasMore: false }, isLoading: false };
     }
     if (key === 'pharmacy-sites') {
-      return { data: { data: [{ id: 'site_1', name: '本店', address: '東京都' }] } };
+      return {
+        data: {
+          data: [
+            { id: 'site_1', name: '本店', address: '東京都' },
+            { id: 'site_2', name: '支店', address: '東京都' },
+          ],
+        },
+      };
     }
     if (key === 'pharmacy-drug-stocks') {
       return { data: { data: [] }, isLoading: false };
@@ -176,6 +183,8 @@ describe('DrugMasterContent', () => {
     expect(screen.getByText('採用薬リスト運用')).toBeTruthy();
     expect(screen.getByText('影響レビューキュー')).toBeTruthy();
     expect(screen.getByText('薬価改定差分レポート')).toBeTruthy();
+    expect(screen.getByText('拠点間コピー')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /採用品をコピー/ })).toBeTruthy();
     expect(screen.getByLabelText('CSV一括登録')).toBeTruthy();
     expect(screen.getByRole('button', { name: /差分確認/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /一括登録/ })).toBeTruthy();

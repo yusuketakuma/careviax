@@ -549,6 +549,8 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
   const [stockedOnly, setStockedOnly] = useState(variant === 'formulary');
   const [selectedDrugId, setSelectedDrugId] = useState<string | null>(null);
   const [selectedSiteId, setSelectedSiteId] = useState('');
+  const [copySourceSiteId, setCopySourceSiteId] = useState('');
+  const [copyOverwrite, setCopyOverwrite] = useState(false);
   const [preferredGenericId, setPreferredGenericId] = useState<string | null>(null);
   const [bulkCsv, setBulkCsv] = useState('');
   const [bulkPreview, setBulkPreview] = useState<BulkPreviewResponse | null>(null);
@@ -1024,6 +1026,45 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
     },
   });
 
+  const copyFormularyMutation = useMutation({
+    mutationFn: async () => {
+      if (!copySourceSiteId) throw new Error('コピー元拠点を選択してください');
+      if (!effectiveSelectedSiteId) throw new Error('コピー先拠点を選択してください');
+      const res = await fetch('/api/pharmacy-drug-stocks/copy', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          source_site_id: copySourceSiteId,
+          target_site_id: effectiveSelectedSiteId,
+          overwrite: copyOverwrite,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(json?.message ?? '採用薬リストのコピーに失敗しました');
+      }
+      return json as { copiedCount: number; skippedCount: number };
+    },
+    onSuccess: async (result) => {
+      toast.success(
+        `採用薬リストをコピーしました（反映 ${result.copiedCount.toLocaleString()}件 / スキップ ${result.skippedCount.toLocaleString()}件）`,
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock'] }),
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks'] }),
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stocks-impact'] }),
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock-history'] }),
+        queryClient.invalidateQueries({ queryKey: ['drug-masters'] }),
+      ]);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '採用薬リストのコピーに失敗しました');
+    },
+  });
+
   const reviewMutation = useMutation({
     mutationFn: async () => {
       if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
@@ -1163,6 +1204,7 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
 
   const drugs = data?.data ?? [];
   const sites = sitesData?.data ?? [];
+  const copySourceSites = sites.filter((site) => site.id !== effectiveSelectedSiteId);
   const importLogs = importLogsData?.data ?? [];
   const reviewDueStocks = formularyReviewQuery.data?.data ?? [];
   const missingReorderStocks = formularyMissingReorderQuery.data?.data ?? [];
@@ -1586,6 +1628,56 @@ export function DrugMasterContent({ variant = 'master' }: DrugMasterContentProps
                 )}
               </div>
             )}
+            <div className="rounded-md border border-border/60 bg-muted/20 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Building2 className="size-4" aria-hidden="true" />
+                  拠点間コピー
+                </h3>
+                <Badge variant="outline" className="text-[10px]">
+                  コピー先: {sites.find((site) => site.id === effectiveSelectedSiteId)?.name ?? '未選択'}
+                </Badge>
+              </div>
+              <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(180px,260px)_auto_auto] lg:items-end">
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-muted-foreground">コピー元拠点</span>
+                  <select
+                    value={copySourceSiteId}
+                    onChange={(event) => setCopySourceSiteId(event.target.value)}
+                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                  >
+                    <option value="">選択してください</option>
+                    {copySourceSites.map((site) => (
+                      <option key={site.id} value={site.id}>
+                        {site.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex min-h-9 items-center gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={copyOverwrite}
+                    onChange={(event) => setCopyOverwrite(event.target.checked)}
+                    className="size-4 rounded border-input"
+                  />
+                  既存の採用品設定を上書き
+                </label>
+                <LoadingButton
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  loading={copyFormularyMutation.isPending}
+                  loadingLabel="コピー中"
+                  disabled={!effectiveSelectedSiteId || !copySourceSiteId}
+                  onClick={() => copyFormularyMutation.mutate()}
+                  className="gap-1"
+                >
+                  <ClipboardCheck className="size-3.5" aria-hidden="true" />
+                  採用品をコピー
+                </LoadingButton>
+              </div>
+            </div>
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
               <label className="space-y-1">
                 <span className="text-xs font-medium text-muted-foreground">
