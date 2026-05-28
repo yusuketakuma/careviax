@@ -945,6 +945,52 @@ test.describe('formulary route-mocked management smoke', () => {
     expect(jobRequests[0]?.method).toBe('POST');
     expect(errors).toEqual([]);
   });
+
+  test('mobile formulary keeps safety actions usable without horizontal overflow', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile-chromium');
+
+    const { page, errors } = await createInstrumentedPage(context);
+    const { impactRequests } = await installFormularyRouteMocks(page);
+
+    await page.goto('/admin/formulary');
+    await waitForStableUi(page);
+
+    await expect(page.getByRole('heading', { name: '採用薬マスター' })).toBeVisible();
+    await expect(page.getByText('影響レビューキュー')).toBeVisible();
+
+    const highRiskButton = page.getByRole('button', { name: /ハイリスク採用品/ });
+    const followUpButton = page.getByRole('button', { name: '安全性フォローアップ作成' });
+    await expect(highRiskButton).toBeVisible();
+    await expect(followUpButton).toBeVisible();
+
+    const overflowWidth = await page.evaluate(() => {
+      const root = document.documentElement;
+      return root.scrollWidth - root.clientWidth;
+    });
+    const highRiskBox = await highRiskButton.boundingBox();
+    const followUpBox = await followUpButton.boundingBox();
+
+    await highRiskButton.click();
+    await expect
+      .poll(
+        () =>
+          impactRequests.some(
+            (request) => new URL(request.url).searchParams.get('queue') === 'high_risk',
+          ),
+        {
+          message: 'mobile formulary should query the high-risk queue',
+          timeout: 10_000,
+        },
+      )
+      .toBe(true);
+
+    expect(errors).toEqual([]);
+    expect(overflowWidth).toBeLessThanOrEqual(1);
+    expect(highRiskBox?.height ?? 0).toBeGreaterThanOrEqual(40);
+    expect(followUpBox?.height ?? 0).toBeGreaterThanOrEqual(40);
+  });
 });
 
 test.describe('visit record route-mocked offline save smoke', () => {

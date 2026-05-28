@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { withAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 
@@ -69,7 +69,7 @@ function buildPreview({
 }
 
 export const POST = withAuthContext(
-  async (req: NextRequest, authCtx, ctx: RouteContext<'/api/pharmacy-drug-stock-templates/[id]/apply'>) => {
+  async (req: NextRequest, authCtx, ctx: AuthRouteContext<{ id: string }>) => {
     const { id } = await ctx.params;
     const body = await req.json().catch(() => null);
     if (!body) return validationError('リクエストボディが不正です');

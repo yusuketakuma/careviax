@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { withAuthContext } from '@/lib/auth/context';
+import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { notFound, success } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 
@@ -7,7 +7,7 @@ export const DELETE = withAuthContext(
   async (
     _req: NextRequest,
     authCtx,
-    ctx: RouteContext<'/api/pharmacy-drug-stock-templates/[id]'>,
+    ctx: AuthRouteContext<{ id: string }>,
   ) => {
     const { id } = await ctx.params;
     const template = await prisma.formularyTemplate.findFirst({
