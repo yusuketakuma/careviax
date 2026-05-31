@@ -4,13 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,6 +13,7 @@ import { AlertCircle, Eye, EyeOff, Info, ShieldCheck } from 'lucide-react';
 import {
   COGNITO_CHALLENGE_STORAGE_KEY,
   decodeCognitoChallenge,
+  readStoredCognitoChallenge,
   type CognitoChallengePayload,
 } from '@/lib/auth/cognito-challenge';
 
@@ -72,16 +67,16 @@ export default function FirstLoginPage() {
       return;
     }
 
-    try {
-      const parsed = JSON.parse(raw) as CognitoChallengePayload;
-      if (parsed.type !== 'NEW_PASSWORD_REQUIRED') {
-        setError('初回パスワード設定セッションが無効です。ログインからやり直してください。');
-        return;
-      }
-      setChallenge(parsed);
-    } catch {
+    const parsed = readStoredCognitoChallenge(raw);
+    if (!parsed) {
       setError('初回パスワード設定セッションが壊れています。ログインからやり直してください。');
+      return;
     }
+    if (parsed.type !== 'NEW_PASSWORD_REQUIRED') {
+      setError('初回パスワード設定セッションが無効です。ログインからやり直してください。');
+      return;
+    }
+    setChallenge(parsed);
   }, []);
 
   const strength = evaluatePasswordStrength(newPassword);
@@ -118,7 +113,7 @@ export default function FirstLoginPage() {
         if (nextChallenge) {
           window.sessionStorage.setItem(
             COGNITO_CHALLENGE_STORAGE_KEY,
-            JSON.stringify(nextChallenge)
+            JSON.stringify(nextChallenge),
           );
           window.location.href = `/mfa?callbackUrl=${encodeURIComponent(callbackUrl)}`;
           return;
@@ -153,8 +148,8 @@ export default function FirstLoginPage() {
             <Alert className="mb-6 border-blue-200 bg-blue-50">
               <Info className="h-4 w-4 text-blue-600" />
               <AlertDescription className="text-blue-800">
-                MFA設定により、不正アクセスからアカウントを保護できます。
-                認証アプリ（Google Authenticator等）をご準備ください。
+                MFA設定により、不正アクセスからアカウントを保護できます。 認証アプリ（Google
+                Authenticator等）をご準備ください。
               </AlertDescription>
             </Alert>
 
@@ -215,11 +210,7 @@ export default function FirstLoginPage() {
                   onClick={() => setShowNewPassword(!showNewPassword)}
                   aria-label={showNewPassword ? 'パスワードを隠す' : 'パスワードを表示'}
                 >
-                  {showNewPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
+                  {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
 
@@ -235,24 +226,18 @@ export default function FirstLoginPage() {
                       />
                     ))}
                   </div>
-                  <p className={`text-xs ${strength.color}`}>
-                    パスワード強度: {strength.label}
-                  </p>
+                  <p className={`text-xs ${strength.color}`}>パスワード強度: {strength.label}</p>
                 </div>
               )}
 
               {newPassword.length > 0 && !isLongEnough && (
-                <p className="text-xs text-red-600">
-                  パスワードは13文字以上で入力してください
-                </p>
+                <p className="text-xs text-red-600">パスワードは13文字以上で入力してください</p>
               )}
             </div>
 
             {/* Confirm password */}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="first-confirm-password">
-                新しいパスワード（確認）
-              </Label>
+              <Label htmlFor="first-confirm-password">新しいパスワード（確認）</Label>
               <Input
                 id="first-confirm-password"
                 type="password"
@@ -271,15 +256,15 @@ export default function FirstLoginPage() {
             <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500 space-y-1">
               <p className="font-medium text-slate-600">パスワード要件:</p>
               <ul className="list-disc pl-4 space-y-0.5">
-                <li className={isLongEnough ? 'text-green-600' : ''}>
-                  13文字以上
-                </li>
-                <li className={/[A-Z]/.test(newPassword) && /[a-z]/.test(newPassword) ? 'text-green-600' : ''}>
+                <li className={isLongEnough ? 'text-green-600' : ''}>13文字以上</li>
+                <li
+                  className={
+                    /[A-Z]/.test(newPassword) && /[a-z]/.test(newPassword) ? 'text-green-600' : ''
+                  }
+                >
                   大文字と小文字を含む
                 </li>
-                <li className={/\d/.test(newPassword) ? 'text-green-600' : ''}>
-                  数字を含む
-                </li>
+                <li className={/\d/.test(newPassword) ? 'text-green-600' : ''}>数字を含む</li>
                 <li className={/[^a-zA-Z0-9]/.test(newPassword) ? 'text-green-600' : ''}>
                   記号を含む（推奨）
                 </li>

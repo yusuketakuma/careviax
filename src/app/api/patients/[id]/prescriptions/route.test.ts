@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { patientFindFirstMock, careCaseFindManyMock, prescriptionIntakeFindManyMock } = vi.hoisted(
   () => ({
@@ -38,6 +38,12 @@ vi.mock('@/lib/db/client', () => ({
 
 import { GET } from './route';
 
+function createGetRequest(patientId: string, query = '') {
+  return new NextRequest(
+    `http://localhost/api/patients/${patientId}/prescriptions${query ? `?${query}` : ''}`,
+  );
+}
+
 describe('/api/patients/[id]/prescriptions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -71,9 +77,7 @@ describe('/api/patients/[id]/prescriptions', () => {
     ]);
 
     const response = (await GET(
-      {
-        url: 'http://localhost/api/patients/patient_1/prescriptions?limit=1',
-      } as NextRequest,
+      createGetRequest('patient_1', 'limit=1'),
       {
         params: Promise.resolve({ id: 'patient_1' }),
       },
@@ -107,9 +111,7 @@ describe('/api/patients/[id]/prescriptions', () => {
     ).toString('base64url');
 
     const response = (await GET(
-      {
-        url: `http://localhost/api/patients/patient_1/prescriptions?limit=20&cursor=${keysetCursor}`,
-      } as NextRequest,
+      createGetRequest('patient_1', `limit=20&cursor=${keysetCursor}`),
       {
         params: Promise.resolve({ id: 'patient_1' }),
       },
@@ -140,9 +142,7 @@ describe('/api/patients/[id]/prescriptions', () => {
 
   it('ignores legacy numeric cursors instead of offset paging', async () => {
     const response = (await GET(
-      {
-        url: 'http://localhost/api/patients/patient_1/prescriptions?limit=20&cursor=20',
-      } as NextRequest,
+      createGetRequest('patient_1', 'limit=20&cursor=20'),
       {
         params: Promise.resolve({ id: 'patient_1' }),
       },

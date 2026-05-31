@@ -5,6 +5,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
+import { readJsonObject } from '@/lib/db/json';
 
 const impactQuerySchema = z.object({
   site_id: z.string().trim().min(1, 'site_id は必須です'),
@@ -73,9 +74,13 @@ type ParsedMedication = {
 };
 
 function readMedications(parsedData: unknown): ParsedMedication[] {
-  if (!parsedData || typeof parsedData !== 'object') return [];
-  const medications = (parsedData as { medications?: unknown }).medications;
-  return Array.isArray(medications) ? (medications as ParsedMedication[]) : [];
+  const medications = readJsonObject(parsedData)?.medications;
+  if (!Array.isArray(medications)) return [];
+  return medications.flatMap((medication): ParsedMedication[] => {
+    const record = readJsonObject(medication);
+    if (!record) return [];
+    return [{ drugCode: record.drugCode, drugName: record.drugName }];
+  });
 }
 
 function normalizeYjCode(value: unknown) {
@@ -243,7 +248,9 @@ export const GET = withAuthContext(
       controlled: controlledWhere,
       review_due: reviewDueWhere,
     };
-    const queueOrderBy = [{ updated_at: 'desc' }] satisfies Prisma.PharmacyDrugStockOrderByWithRelationInput[];
+    const queueOrderBy = [
+      { updated_at: 'desc' },
+    ] satisfies Prisma.PharmacyDrugStockOrderByWithRelationInput[];
     const [
       stockedCount,
       reviewDueCount,
@@ -505,7 +512,7 @@ export const GET = withAuthContext(
           usage_window_days: parsed.data.price_impact_days,
           scanned_draft_count: priceImpactDrafts.length,
           estimated_total_delta: Number(estimatedTotalDelta.toFixed(2)),
-        rows: priceImpactRows.slice(0, 10),
+          rows: priceImpactRows.slice(0, 10),
         },
       },
       follow_up_summary: {

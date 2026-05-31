@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   drugMasterFindManyMock,
@@ -43,13 +43,7 @@ vi.mock('@/lib/db/client', () => ({
 import { GET } from './route';
 
 function createRequest(url: string) {
-  return {
-    url,
-    nextUrl: new URL(url),
-    headers: {
-      get: () => null,
-    },
-  } as unknown as NextRequest;
+  return new NextRequest(url);
 }
 
 describe('/api/drug-masters GET', () => {

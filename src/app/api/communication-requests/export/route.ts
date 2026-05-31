@@ -3,6 +3,8 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { buildCommunicationRequestAssignmentWhere } from '@/server/services/communication-request-access';
+import { validationError } from '@/lib/api/response';
+import { communicationRequestStatusSchema } from '@/lib/validations/communication-request';
 
 function csvCell(value: string | number | null | undefined) {
   if (value == null) return '';
@@ -12,7 +14,13 @@ function csvCell(value: string | number | null | undefined) {
 export const GET = withAuth(
   async (req: AuthenticatedRequest) => {
     const { searchParams } = new URL(req.url);
-    const status = searchParams.get('status') ?? undefined;
+    const statusParam = searchParams.get('status') ?? undefined;
+    const status = statusParam ? communicationRequestStatusSchema.safeParse(statusParam) : null;
+    if (status && !status.success) {
+      return validationError('連携依頼ステータスが不正です', {
+        status: ['対応していないステータスです'],
+      });
+    }
     const requestType = searchParams.get('request_type') ?? undefined;
     const assignmentWhere = await buildCommunicationRequestAssignmentWhere({
       db: prisma,
@@ -24,20 +32,7 @@ export const GET = withAuth(
       const requests = await tx.communicationRequest.findMany({
         where: {
           org_id: req.orgId,
-          ...(status
-            ? {
-                status: status as
-                  | 'draft'
-                  | 'sent'
-                  | 'received'
-                  | 'in_progress'
-                  | 'responded'
-                  | 'closed'
-                  | 'escalated'
-                  | 'cancelled'
-                  | 'expired',
-              }
-            : {}),
+          ...(status ? { status: status.data } : {}),
           ...(requestType ? { request_type: requestType } : {}),
           ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
         },
@@ -167,7 +162,9 @@ export const GET = withAuth(
       ),
     ].join('\n');
 
-    const filename = status ? `communication_requests_${status}.csv` : 'communication_requests.csv';
+    const filename = status
+      ? `communication_requests_${status.data}.csv`
+      : 'communication_requests.csv';
 
     return new NextResponse(csv, {
       status: 200,

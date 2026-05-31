@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { format } from 'date-fns';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 /** 今日の日付文字列（有効期限チェックを通過させるため動的に生成） */
 const TODAY = format(new Date(), 'yyyy-MM-dd');
@@ -18,11 +18,12 @@ const {
   withAuthMock: vi.fn(
     (handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>) => {
       return (req: NextRequest) =>
-        handler({
-          ...req,
-          orgId: 'org_1',
-          userId: 'user_1',
-        } as NextRequest & { orgId: string; userId: string });
+        handler(
+          Object.assign(req, {
+            orgId: 'org_1',
+            userId: 'user_1',
+          }),
+        );
     },
   ),
   withOrgContextMock: vi.fn(),
@@ -77,9 +78,15 @@ vi.mock('@/lib/db/client', () => ({
 import { GET, POST } from './route';
 
 function createRequest(body: unknown) {
-  return {
-    json: async () => body,
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/prescription-intakes', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function createGetRequest(url: string) {
+  return new NextRequest(url);
 }
 
 describe('/api/prescription-intakes POST', () => {
@@ -726,6 +733,118 @@ describe('/api/prescription-intakes POST', () => {
     });
   });
 
+  it('does not use supplemental fallback records when QR parsed_data is malformed', async () => {
+    const cycleCreateMock = vi.fn().mockResolvedValue({
+      id: 'cycle_qr',
+      patient_id: 'patient_qr',
+      case_id: 'case_qr',
+      overall_status: 'intake_received',
+      version: 1,
+    });
+    const cycleFindFirstMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: 'cycle_qr',
+        patient_id: 'patient_qr',
+        overall_status: 'intake_received',
+        version: 1,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_qr',
+        patient_id: 'patient_qr',
+        overall_status: 'structuring',
+        version: 2,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_qr',
+        patient_id: 'patient_qr',
+        overall_status: 'ready_to_dispense',
+        version: 3,
+      })
+      .mockResolvedValueOnce({
+        id: 'cycle_qr',
+        patient_id: 'patient_qr',
+        case_id: 'case_qr',
+      });
+    const supplementalUpdateManyMock = vi.fn().mockResolvedValue({ count: 0 });
+    const supplementalDeleteManyMock = vi.fn();
+    const supplementalCreateManyMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        qrScanDraft: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'draft_qr',
+            status: 'pending',
+            patient_id: 'patient_qr',
+            parsed_data: ['unexpected'],
+          }),
+          update: vi.fn().mockResolvedValue({ id: 'draft_qr', status: 'confirmed' }),
+        },
+        jahisSupplementalRecord: {
+          updateMany: supplementalUpdateManyMock,
+          deleteMany: supplementalDeleteManyMock,
+          createMany: supplementalCreateManyMock,
+        },
+        careCase: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'case_qr',
+            patient_id: 'patient_qr',
+            primary_pharmacist_id: 'pharmacist_1',
+          }),
+        },
+        medicationCycle: {
+          create: cycleCreateMock,
+          findFirst: cycleFindFirstMock,
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        cycleTransitionLog: {
+          create: vi.fn().mockResolvedValue({}),
+        },
+        workflowException: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn(),
+        },
+        prescriptionIntake: {
+          create: vi.fn().mockResolvedValue({ id: 'intake_qr' }),
+        },
+        inquiryRecord: {
+          count: vi.fn().mockResolvedValue(0),
+        },
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockResolvedValue({ id: 'task_qr' }),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_qr',
+        patient_id: 'patient_qr',
+        qr_draft_id: 'draft_qr',
+        source_type: 'qr_scan',
+        prescribed_date: TODAY,
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(supplementalUpdateManyMock).toHaveBeenCalled();
+    expect(supplementalDeleteManyMock).not.toHaveBeenCalled();
+    expect(supplementalCreateManyMock).not.toHaveBeenCalled();
+  });
+
   it('creates a fax original follow-up task for fax-based prescription intake', async () => {
     const cycleCreateMock = vi.fn().mockResolvedValue({
       id: 'cycle_3',
@@ -1019,9 +1138,9 @@ describe('/api/prescription-intakes GET', () => {
   });
 
   it('uses a stable created_at/id ordering for cursor pagination', async () => {
-    const response = await GET({
-      url: 'http://localhost/api/prescription-intakes?cursor=intake_2',
-    } as NextRequest);
+    const response = await GET(
+      createGetRequest('http://localhost/api/prescription-intakes?cursor=intake_2'),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -1035,9 +1154,11 @@ describe('/api/prescription-intakes GET', () => {
   });
 
   it('passes status and source filters into the paginated query', async () => {
-    const response = await GET({
-      url: 'http://localhost/api/prescription-intakes?limit=25&status=inquiry_pending&source_type=fax',
-    } as NextRequest);
+    const response = await GET(
+      createGetRequest(
+        'http://localhost/api/prescription-intakes?limit=25&status=inquiry_pending&source_type=fax',
+      ),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -1056,10 +1177,34 @@ describe('/api/prescription-intakes GET', () => {
     expect(prescriptionIntakeCountMock).not.toHaveBeenCalled();
   });
 
+  it('rejects unsupported status filters before querying intakes', async () => {
+    const response = await GET(
+      createGetRequest('http://localhost/api/prescription-intakes?status=bad_status'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeCountMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported source filters before querying intakes', async () => {
+    const response = await GET(
+      createGetRequest('http://localhost/api/prescription-intakes?source_type=bad_source'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeCountMock).not.toHaveBeenCalled();
+  });
+
   it('returns optional totalCount from the same assignment and filter where', async () => {
-    const response = await GET({
-      url: 'http://localhost/api/prescription-intakes?limit=1&status=ready_to_dispense&source_type=paper&include_total=1',
-    } as NextRequest);
+    const response = await GET(
+      createGetRequest(
+        'http://localhost/api/prescription-intakes?limit=1&status=ready_to_dispense&source_type=paper&include_total=1',
+      ),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { importSskDrugMasterMock } = vi.hoisted(() => ({
   importSskDrugMasterMock: vi.fn(),
@@ -22,6 +22,14 @@ vi.mock('@/server/services/drug-master-import/ssk', () => ({
 
 import { POST } from './route';
 
+function createJsonRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/drug-master-imports/ssk', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 describe('/api/drug-master-imports/ssk', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -35,12 +43,10 @@ describe('/api/drug-master-imports/ssk', () => {
 
   it('imports the SSK master and returns the import summary', async () => {
     const response = (await POST(
-      {
-        json: async () => ({
+      createJsonRequest({
           zipUrl: 'https://www.ssk.or.jp/ssk.zip',
           limit: 100,
-        }),
-      } as NextRequest,
+      }),
       { params: Promise.resolve({}) },
     ))!;
 
@@ -56,12 +62,10 @@ describe('/api/drug-master-imports/ssk', () => {
 
   it('rejects credential-bearing ZIP URLs without echoing credentials', async () => {
     const response = (await POST(
-      {
-        json: async () => ({
+      createJsonRequest({
           zipUrl: 'https://importer:secret@www.ssk.or.jp/ssk.zip',
           limit: 100,
-        }),
-      } as NextRequest,
+      }),
       { params: Promise.resolve({}) },
     ))!;
     const payload = await response.json();

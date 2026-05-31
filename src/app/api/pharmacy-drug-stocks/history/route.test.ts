@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { authMock, prismaMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
@@ -24,12 +24,9 @@ import { GET } from './route';
 function createRequest(
   url = 'http://localhost/api/pharmacy-drug-stocks/history?site_id=site_1&drug_master_id=drug_1',
 ) {
-  return {
-    url,
-    headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
-    },
-  } as unknown as NextRequest;
+  return new NextRequest(url, {
+    headers: { 'x-org-id': 'org_1' },
+  });
 }
 
 describe('/api/pharmacy-drug-stocks/history', () => {

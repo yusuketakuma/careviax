@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   conferenceNoteFindFirstMock,
@@ -70,9 +70,11 @@ vi.mock('@/server/services/operational-tasks', () => ({
 import { PATCH } from './route';
 
 function createRequest(body?: unknown) {
-  return {
-    json: async () => body,
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/conference-notes/note_1', {
+    method: 'PATCH',
+    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
 }
 
 describe('/api/conference-notes/[id] PATCH', () => {
@@ -103,9 +105,9 @@ describe('/api/conference-notes/[id] PATCH', () => {
       follow_up_date: new Date('2026-04-15T00:00:00.000Z'),
       follow_up_completed: false,
       generated_report_id: 'report_prev',
-      participants: [{ name: '佐藤CM', role: 'care_manager' }],
+      participants: [{ name: '佐藤CM', role: 'care_manager', legacy_debug: undefined }],
       conference_date: new Date('2026-03-30T10:00:00.000Z'),
-      action_items: [{ title: 'サービス調整を反映', assignee: '薬剤師' }],
+      action_items: [{ title: 'サービス調整を反映', assignee: '薬剤師', legacy_debug: undefined }],
     });
     conferenceNoteUpdateMock.mockImplementation(async (args?: { data?: { metadata?: unknown } }) => ({
       id: 'note_1',
@@ -282,6 +284,12 @@ describe('/api/conference-notes/[id] PATCH', () => {
         }),
       })
     );
+    const savedData = conferenceNoteUpdateMock.mock.calls[0][0].data as {
+      participants: Array<Record<string, unknown>>;
+      action_items: Array<Record<string, unknown>>;
+    };
+    expect(savedData.participants[0].legacy_debug).toBeUndefined();
+    expect(savedData.action_items[0].legacy_debug).toBeUndefined();
     expect(conferenceNoteUpdateMock).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({

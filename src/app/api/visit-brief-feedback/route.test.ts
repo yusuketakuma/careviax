@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -20,6 +20,16 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { POST } from './route';
+
+function createRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/visit-brief-feedback', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+}
 
 describe('/api/visit-brief-feedback POST', () => {
   beforeEach(() => {
@@ -42,8 +52,8 @@ describe('/api/visit-brief-feedback POST', () => {
   });
 
   it('records visit brief feedback through RLS context', async () => {
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createRequest({
         patient_id: 'patient_1',
         context: 'patient',
         generation_id: 'gen_1',
@@ -51,7 +61,7 @@ describe('/api/visit-brief-feedback POST', () => {
         rating: 'helpful',
         comment: '十分に役立った',
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(withOrgContextMock).toHaveBeenCalledWith(

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
+import { parseRealtimeEventPayload } from '@/lib/realtime/events';
 import { useOrgId } from './use-org-id';
 
 interface UseRealtimeEventsOptions {
@@ -8,8 +9,7 @@ interface UseRealtimeEventsOptions {
   enabled?: boolean;
 }
 
-const NOTIFICATION_STREAM_DISABLED =
-  process.env.NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM === '1';
+const NOTIFICATION_STREAM_DISABLED = process.env.NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM === '1';
 
 export function useRealtimeEvents({ onEvent, enabled = true }: UseRealtimeEventsOptions) {
   const orgId = useOrgId();
@@ -75,11 +75,8 @@ export function useRealtimeEvents({ onEvent, enabled = true }: UseRealtimeEvents
 
           for (const chunk of chunks) {
             if (!chunk.startsWith('data: ')) continue;
-            try {
-              handleEvent(JSON.parse(chunk.slice(6)));
-            } catch {
-              // Ignore malformed messages
-            }
+            const event = parseRealtimeEventPayload(chunk.slice(6));
+            if (event) handleEvent(event);
           }
         }
 

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   medicationCycleFindManyMock,
@@ -46,6 +46,18 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { GET, POST } from './route';
 
+function createGetRequest(url: string) {
+  return new NextRequest(url);
+}
+
+function createPostRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/medication-cycles', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 describe('/api/medication-cycles', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -75,9 +87,9 @@ describe('/api/medication-cycles', () => {
 
   it('lists medication cycles with filters', async () => {
     const response = (await GET(
-      {
-        url: 'http://localhost/api/medication-cycles?status=dispensing&patient_id=patient_1&case_id=case_1',
-      } as NextRequest,
+      createGetRequest(
+        'http://localhost/api/medication-cycles?status=dispensing&patient_id=patient_1&case_id=case_1',
+      ),
       { params: Promise.resolve({}) },
     ))!;
 
@@ -97,11 +109,22 @@ describe('/api/medication-cycles', () => {
     );
   });
 
+  it('rejects unsupported status filters before querying cycles', async () => {
+    const response = (await GET(
+      createGetRequest('http://localhost/api/medication-cycles?status=bad_status'),
+      { params: Promise.resolve({}) },
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(medicationCycleFindManyMock).not.toHaveBeenCalled();
+    expect(medicationCycleCountMock).not.toHaveBeenCalled();
+  });
+
   it.each(['abc', '-10'])('uses a safe offset for malformed cursor %s', async (cursor) => {
     const response = (await GET(
-      {
-        url: `http://localhost/api/medication-cycles?cursor=${encodeURIComponent(cursor)}`,
-      } as NextRequest,
+      createGetRequest(
+        `http://localhost/api/medication-cycles?cursor=${encodeURIComponent(cursor)}`,
+      ),
       { params: Promise.resolve({}) },
     ))!;
 
@@ -116,12 +139,10 @@ describe('/api/medication-cycles', () => {
 
   it('creates a medication cycle after org reference validation', async () => {
     const response = (await POST(
-      {
-        json: async () => ({
-          case_id: 'case_1',
-          patient_id: 'patient_1',
-        }),
-      } as NextRequest,
+      createPostRequest({
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+      }),
       { params: Promise.resolve({}) },
     ))!;
 
@@ -145,12 +166,10 @@ describe('/api/medication-cycles', () => {
     careCaseFindFirstMock.mockResolvedValue(null);
 
     const response = (await POST(
-      {
-        json: async () => ({
-          case_id: 'case_2',
-          patient_id: 'patient_2',
-        }),
-      } as NextRequest,
+      createPostRequest({
+        case_id: 'case_2',
+        patient_id: 'patient_2',
+      }),
       { params: Promise.resolve({}) },
     ))!;
 

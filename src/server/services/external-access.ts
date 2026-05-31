@@ -359,15 +359,26 @@ function getExternalAccessSecret() {
   return secret;
 }
 
-function isExternalAccessTokenPayload(
-  payload: Record<string, unknown>,
-): payload is Record<string, unknown> & ExternalAccessTokenPayload {
-  return (
-    payload.purpose === 'external_access_grant' &&
-    typeof payload.grant_id === 'string' &&
-    typeof payload.org_id === 'string' &&
-    typeof payload.patient_id === 'string'
-  );
+function readRequiredTokenString(payload: Record<string, unknown>, key: string) {
+  const value = payload[key];
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+function normalizeExternalAccessTokenPayload(payload: unknown): ExternalAccessTokenPayload | null {
+  if (!isRecord(payload)) return null;
+  if (payload.purpose !== 'external_access_grant') return null;
+
+  const grantId = readRequiredTokenString(payload, 'grant_id');
+  const orgId = readRequiredTokenString(payload, 'org_id');
+  const patientId = readRequiredTokenString(payload, 'patient_id');
+  if (!grantId || !orgId || !patientId) return null;
+
+  return {
+    grant_id: grantId,
+    org_id: orgId,
+    patient_id: patientId,
+    purpose: 'external_access_grant',
+  };
 }
 
 export async function issueExternalAccessToken(args: {
@@ -409,11 +420,7 @@ async function decodeExternalAccessToken(token: string) {
     return null;
   }
 
-  if (payload && isExternalAccessTokenPayload(payload as Record<string, unknown>)) {
-    return payload as Record<string, unknown> & ExternalAccessTokenPayload;
-  }
-
-  return null;
+  return normalizeExternalAccessTokenPayload(payload);
 }
 
 export async function validateExternalAccessGrant(

@@ -20,9 +20,14 @@ type UpdatedCycle = {
   patient_id: string;
   case_id: string | null;
 };
+type DispenseDraftTx = {
+  cycleTransitionLog: Pick<Prisma.TransactionClient['cycleTransitionLog'], 'create'>;
+  dispenseTask: Pick<Prisma.TransactionClient['dispenseTask'], 'create' | 'findFirst'>;
+  medicationCycle: Pick<Prisma.TransactionClient['medicationCycle'], 'findFirst' | 'updateMany'>;
+};
 
 async function readCycleSummary(
-  tx: Prisma.TransactionClient,
+  tx: DispenseDraftTx,
   args: { orgId: string; cycleId: string }
 ): Promise<UpdatedCycle> {
   const cycle = await tx.medicationCycle.findFirst({
@@ -43,7 +48,7 @@ async function readCycleSummary(
  * - 疑義照会がない場合: ready_to_dispense → dispensing に遷移 + DispenseTask 作成
  */
 export async function createDispenseDraft(
-  tx: Prisma.TransactionClient,
+  tx: DispenseDraftTx,
   args: {
     orgId: string;
     userId: string;

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { requireAuthContextMock, listDataExplorerModelsMock } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -16,6 +16,8 @@ vi.mock('@/server/services/data-explorer', () => ({
 
 import { GET } from './route';
 
+const createRequest = () => new NextRequest('http://localhost/api/admin/data-explorer/models');
+
 describe('/api/admin/data-explorer/models', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -29,7 +31,7 @@ describe('/api/admin/data-explorer/models', () => {
   });
 
   it('returns explorer model summaries', async () => {
-    const response = await GET({} as NextRequest);
+    const response = await GET(createRequest());
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({

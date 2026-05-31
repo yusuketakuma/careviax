@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
+
+type AuthenticatedTestRequest = NextRequest & { orgId: string; userId: string; role: string };
 
 const {
   pharmacistShiftFindManyMock,
@@ -10,8 +12,7 @@ const {
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: NextRequest & { orgId: string; userId: string; role: string }) => Promise<Response>) =>
-    handler,
+  withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => handler,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -26,6 +27,14 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 import { GET } from './route';
+
+function createRequest(url: string): AuthenticatedTestRequest {
+  return Object.assign(new NextRequest(url), {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'pharmacist',
+  });
+}
 
 describe('/api/pharmacist-shifts/available GET', () => {
   beforeEach(() => {
@@ -58,12 +67,11 @@ describe('/api/pharmacist-shifts/available GET', () => {
   });
 
   it('returns only shifts not blocked by site closures', async () => {
-    const response = (await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      url: 'http://localhost/api/pharmacist-shifts/available?date=2026-04-20&time_from=09:00:00&time_to=18:00:00',
-    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+    const response = (await GET(
+      createRequest(
+        'http://localhost/api/pharmacist-shifts/available?date=2026-04-20&time_from=09:00:00&time_to=18:00:00',
+      ),
+    ))!;
 
     expect(response.status).toBe(200);
     expect(pharmacistShiftFindManyMock).toHaveBeenCalledWith({

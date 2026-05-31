@@ -65,8 +65,38 @@ function makePatient(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function makeBillingEvidenceSupportDelegates() {
+  return {
+    sourceOfTruthMatrix: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      upsert: vi.fn().mockResolvedValue({}),
+    },
+    billingRule: {
+      findMany: vi.fn().mockResolvedValue([]),
+      upsert: vi.fn().mockResolvedValue({}),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
+    consentRecord: {
+      findFirst: vi.fn().mockResolvedValue({ id: 'consent_1' }),
+    },
+    managementPlan: {
+      findFirst: vi.fn().mockResolvedValue({
+        id: 'plan_1',
+        status: 'approved',
+        next_review_date: null,
+      }),
+    },
+    task: {
+      create: vi.fn().mockResolvedValue({ id: 'task_1' }),
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      upsert: vi.fn().mockResolvedValue({ id: 'task_1' }),
+    },
+  };
+}
+
 function makeTx(overrides: Record<string, unknown> = {}) {
   const baseTx = {
+    ...makeBillingEvidenceSupportDelegates(),
     visitRecord: {
       findFirst: vi.fn().mockResolvedValue(makeVisitRecord()),
       count: vi.fn().mockResolvedValue(1),
@@ -186,7 +216,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
   it('generates billing evidence with claimable=true for a normal visit', async () => {
     const tx = makeTx();
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -224,7 +254,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
         }),
       );
 
-      await upsertBillingEvidenceForVisit(tx as never, {
+      await upsertBillingEvidenceForVisit(tx, {
         orgId: 'org_1',
         visitRecordId: 'visit_1',
       });
@@ -304,7 +334,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
       }),
     );
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -324,7 +354,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
     findActiveVisitConsentMock.mockResolvedValue(null);
     const tx = makeTx();
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -348,7 +378,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
     });
     const tx = makeTx();
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -374,7 +404,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
     findActiveVisitConsentMock.mockResolvedValue({ id: 'consent_1' });
     const tx = makeTx();
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -401,7 +431,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
       .mockResolvedValueOnce(makeVisitRecord()) // main query
       .mockResolvedValueOnce(null); // evaluateInitialHomeVisitAssessmentRequirement findFirst → no record
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -427,7 +457,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
       },
     });
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -452,7 +482,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
       },
     });
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -483,7 +513,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
       },
     });
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -533,7 +563,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
       },
     });
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -569,7 +599,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
       },
     });
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -607,7 +637,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
       },
     });
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -646,7 +676,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
       },
     });
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -695,7 +725,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
       },
     });
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -717,7 +747,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
       .fn()
       .mockResolvedValue(makePatient({ birth_date: new Date('2020-03-20T00:00:00.000Z') }));
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -739,7 +769,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
       .fn()
       .mockResolvedValue(makePatient({ birth_date: new Date('2020-03-21T00:00:00.000Z') }));
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -762,7 +792,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
       .fn()
       .mockResolvedValue(makeVisitRecord({ visit_date: visitDate }));
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -784,7 +814,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
       .fn()
       .mockResolvedValue(makeVisitRecord({ visit_date: visitDate }));
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -806,7 +836,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
       .fn()
       .mockResolvedValue(makeVisitRecord({ visit_date: visitDate }));
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -824,7 +854,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
     // When claimable=true: evidence layer → passed
     const tx = makeTx();
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -851,7 +881,7 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
 
     const tx2 = makeTx();
 
-    await upsertBillingEvidenceForVisit(tx2 as never, {
+    await upsertBillingEvidenceForVisit(tx2, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });

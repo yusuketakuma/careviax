@@ -1,3 +1,5 @@
+import { readJsonObject } from '@/lib/db/json';
+
 export type PatientMcsSummaryMessage = {
   sourceMessageId: string;
   authorName: string;
@@ -55,6 +57,31 @@ function toStringArray(value: unknown, maxItems: number) {
     .slice(0, maxItems);
 }
 
+function parseOpenAiSummaryPayload(raw: string): OpenAiSummaryPayload | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+
+  return readJsonObject(parsed);
+}
+
+function readOpenAiMessageContent(payload: unknown): string | null | undefined {
+  const object = readJsonObject(payload);
+  if (!object || !Array.isArray(object.choices)) return null;
+
+  const choice = readJsonObject(object.choices[0]);
+  if (!choice) return null;
+
+  const message = readJsonObject(choice.message);
+  if (!message) return null;
+
+  if (message.content === undefined || message.content === null) return undefined;
+  return typeof message.content === 'string' ? message.content : null;
+}
+
 function uniqueStrings(items: string[], maxItems: number) {
   return [...new Set(items.map((item) => item.trim()).filter(Boolean))].slice(0, maxItems);
 }
@@ -91,12 +118,16 @@ function summarizeBody(body: string, maxLength = 70) {
 }
 
 function anonymizeForExternalAi(text: string, patientName: string) {
-  const nameParts = patientName.replace(/[\s　]+/g, ' ').trim().split(' ').filter(Boolean);
+  const nameParts = patientName
+    .replace(/[\s　]+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean);
   // 1文字パーツは一般語と衝突しやすいためスキップ（例: 姓「林」→本文中の「林」が過剰置換される）
   const targets = [patientName, ...nameParts.filter((p) => p.length >= 2)];
   const namePattern = new RegExp(
     targets.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'),
-    'g'
+    'g',
   );
   return text
     .replace(namePattern, '患者')
@@ -131,7 +162,9 @@ function buildMessageSummaryLine(message: PatientMcsSummaryMessage) {
 function buildFallbackSummary(input: PatientMcsSummaryInput): PatientMcsSummarySnapshot {
   const generationId = globalThis.crypto?.randomUUID?.() ?? `mcs_${Date.now()}`;
   const ordered = orderMessagesByRecency(input.messages);
-  const otherProfessional = ordered.filter((message) => isOtherProfessionalRole(message.authorRole));
+  const otherProfessional = ordered.filter((message) =>
+    isOtherProfessionalRole(message.authorRole),
+  );
   const sourceMessages = otherProfessional;
   const latestMessage = sourceMessages[0] ?? null;
   const fallbackReason =
@@ -147,21 +180,21 @@ function buildFallbackSummary(input: PatientMcsSummaryInput): PatientMcsSummaryS
 
   const bullets = uniqueStrings(
     sourceMessages.slice(0, 3).map((message) => buildMessageSummaryLine(message)),
-    3
+    3,
   );
   const mustCheckToday = uniqueStrings(
     sourceMessages
       .filter((message) => MUST_CHECK_PATTERN.test(message.body))
       .slice(0, 4)
       .map((message) => buildMessageSummaryLine(message)),
-    4
+    4,
   );
   const suggestedActions = uniqueStrings(
     sourceMessages
       .filter((message) => ACTION_PATTERN.test(message.body))
       .slice(0, 4)
       .map((message) => buildMessageSummaryLine(message)),
-    4
+    4,
   );
   const latestPostedAt = sourceMessages
     .map((message) => message.postedAt)
@@ -179,7 +212,10 @@ function buildFallbackSummary(input: PatientMcsSummaryInput): PatientMcsSummaryS
     bullets,
     must_check_today: mustCheckToday,
     suggested_actions: suggestedActions,
-    source_refs: uniqueStrings(sourceMessages.slice(0, 6).map((message) => buildSourceRef(message)), 6),
+    source_refs: uniqueStrings(
+      sourceMessages.slice(0, 6).map((message) => buildSourceRef(message)),
+      6,
+    ),
     message_count: input.messages.length,
     other_professional_message_count: otherProfessional.length,
     latest_posted_at: latestPostedAt?.toISOString() ?? null,
@@ -189,7 +225,7 @@ function buildFallbackSummary(input: PatientMcsSummaryInput): PatientMcsSummaryS
 }
 
 export async function generatePatientMcsAiSummary(
-  input: PatientMcsSummaryInput
+  input: PatientMcsSummaryInput,
 ): Promise<PatientMcsSummarySnapshot> {
   const apiKey = process.env.PATIENT_MCS_AI_API_KEY;
   const provider =
@@ -199,7 +235,7 @@ export async function generatePatientMcsAiSummary(
   const generationId = globalThis.crypto?.randomUUID?.() ?? `mcs_${startedAt}`;
   const fallback = buildFallbackSummary(input);
   const otherProfessionalMessages = input.messages.filter((message) =>
-    isOtherProfessionalRole(message.authorRole)
+    isOtherProfessionalRole(message.authorRole),
   );
 
   if (otherProfessionalMessages.length === 0) {
@@ -317,15 +353,24 @@ export async function generatePatientMcsAiSummary(
       };
     }
 
-    const payload = (await response.json()) as {
-      choices?: Array<{
-        message?: {
-          content?: string | null;
-        };
-      }>;
-    };
+    const raw = readOpenAiMessageContent((await response.json()) as unknown);
+    if (raw === null) {
+      console.warn('[patient-mcs-ai] fallback', {
+        provider,
+        model,
+        reason: 'invalid_response',
+        duration_ms: Date.now() - startedAt,
+      });
+      return {
+        ...fallback,
+        generation_id: generationId,
+        requested_provider: provider,
+        model,
+        fallback_reason: 'invalid_response',
+        duration_ms: Date.now() - startedAt,
+      };
+    }
 
-    const raw = payload.choices?.[0]?.message?.content;
     if (!raw) {
       console.warn('[patient-mcs-ai] fallback', {
         provider,
@@ -343,7 +388,24 @@ export async function generatePatientMcsAiSummary(
       };
     }
 
-    const parsed = JSON.parse(raw) as OpenAiSummaryPayload;
+    const parsed = parseOpenAiSummaryPayload(raw);
+    if (!parsed) {
+      console.warn('[patient-mcs-ai] fallback', {
+        provider,
+        model,
+        reason: 'invalid_response',
+        duration_ms: Date.now() - startedAt,
+      });
+      return {
+        ...fallback,
+        generation_id: generationId,
+        requested_provider: provider,
+        model,
+        fallback_reason: 'invalid_response',
+        duration_ms: Date.now() - startedAt,
+      };
+    }
+
     const headline =
       typeof parsed.headline === 'string' && parsed.headline.trim().length > 0
         ? parsed.headline.trim()
@@ -361,8 +423,7 @@ export async function generatePatientMcsAiSummary(
       fallback_reason: null,
       headline,
       bullets: bullets.length > 0 ? bullets : fallback.bullets,
-      must_check_today:
-        mustCheckToday.length > 0 ? mustCheckToday : fallback.must_check_today,
+      must_check_today: mustCheckToday.length > 0 ? mustCheckToday : fallback.must_check_today,
       suggested_actions:
         suggestedActions.length > 0 ? suggestedActions : fallback.suggested_actions,
       source_refs: fallback.source_refs,

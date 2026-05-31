@@ -38,6 +38,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { parseJsonObjectText } from '@/lib/admin/json-editor';
 
 // --- Types ---
 
@@ -153,12 +154,7 @@ async function deleteBillingRule(id: string): Promise<void> {
 // --- Form helpers ---
 
 function formDataToPayload(form: RuleFormData) {
-  let conditions: Record<string, unknown> = {};
-  try {
-    conditions = JSON.parse(form.conditions) as Record<string, unknown>;
-  } catch {
-    // fall through — zod will catch this server-side; show inline error instead
-  }
+  const conditions = parseJsonObjectText(form.conditions, 'JSONオブジェクト形式で入力してください');
 
   return {
     rule_type: form.rule_type,
@@ -219,10 +215,12 @@ function RuleFormDialog({
 
   const handleSubmit = () => {
     try {
-      JSON.parse(form.conditions);
+      parseJsonObjectText(form.conditions, 'JSONオブジェクト形式で入力してください');
       setConditionsError('');
-    } catch {
-      setConditionsError('JSON形式で入力してください');
+    } catch (error) {
+      setConditionsError(
+        error instanceof Error ? error.message : 'JSONオブジェクト形式で入力してください',
+      );
       return;
     }
     onSubmit(form);

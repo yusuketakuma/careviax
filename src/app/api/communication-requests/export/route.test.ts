@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
@@ -42,12 +42,11 @@ vi.mock('@/lib/db/rls', () => ({
 import { GET } from './route';
 
 function createRequest(url: string) {
-  return {
-    url,
+  return new NextRequest(url, {
     headers: {
-      get: (key: string) => (key === 'x-org-id' ? 'org_1' : null),
+      'x-org-id': 'org_1',
     },
-  } as unknown as NextRequest;
+  });
 }
 
 describe('/api/communication-requests/export GET', () => {
@@ -105,5 +104,23 @@ describe('/api/communication-requests/export GET', () => {
     expect(body).toContain('"山田 太郎"');
     expect(body).toContain('"医師/FAX"');
     expect(body).toContain('"handoff-prep"');
+  });
+
+  it('rejects an invalid status before resolving assignment scope', async () => {
+    const response = await GET(
+      createRequest('http://localhost/api/communication-requests/export?status=archived'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        status: ['対応していないステータスです'],
+      },
+    });
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestFindManyMock).not.toHaveBeenCalled();
   });
 });

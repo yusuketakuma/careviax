@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectString } from '@/lib/db/json';
 import { success } from '@/lib/api/response';
 import { billingMonthForJapanTimestamp } from '@/server/services/billing-evidence';
 
@@ -91,9 +92,8 @@ export async function GET(req: NextRequest) {
     if (!bucket) continue;
 
     bucket.total_candidates += 1;
-    const sourceSnapshot = candidate.source_snapshot as Record<string, unknown> | null;
     const candidateRevision =
-      typeof sourceSnapshot?.revision_code === 'string' ? sourceSnapshot.revision_code : 'unknown';
+      readJsonObjectString(candidate.source_snapshot, 'revision_code') ?? 'unknown';
     bucket.revision_counts[candidateRevision] =
       (bucket.revision_counts[candidateRevision] ?? 0) + 1;
     switch (candidate.status) {
@@ -132,16 +132,10 @@ export async function GET(req: NextRequest) {
     observedMonths.add(monthKey);
     const bucket = monthlyTrendByMonth.get(monthKey);
     if (!bucket) continue;
-    const calculationContext = evidence.calculation_context as Record<string, unknown> | null;
     const evidenceRevision =
-      typeof calculationContext?.effective_revision_code === 'string'
-        ? calculationContext.effective_revision_code
-        : 'unknown';
+      readJsonObjectString(evidence.calculation_context, 'effective_revision_code') ?? 'unknown';
     bucket.revision_counts[evidenceRevision] = (bucket.revision_counts[evidenceRevision] ?? 0) + 1;
-    const siteConfigStatus =
-      typeof calculationContext?.site_config_status === 'string'
-        ? calculationContext.site_config_status
-        : null;
+    const siteConfigStatus = readJsonObjectString(evidence.calculation_context, 'site_config_status');
     if (siteConfigStatus === 'config_missing' || siteConfigStatus === 'revision_mismatch') {
       bucket.site_config_issue_count += 1;
     }

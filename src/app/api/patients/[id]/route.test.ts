@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -190,12 +190,17 @@ vi.mock('@/lib/patient/facility-reference', () => ({
 import { GET, PATCH } from './route';
 
 function createRequest(body?: unknown, headers?: Record<string, string>) {
-  return {
+  if (body === undefined) {
+    return new NextRequest('http://localhost/api/patients/patient_1', { headers });
+  }
+  return new NextRequest('http://localhost/api/patients/patient_1', {
+    method: 'PATCH',
+    body: JSON.stringify(body),
     headers: {
-      get: (key: string) => headers?.[key] ?? null,
+      'content-type': 'application/json',
+      ...headers,
     },
-    json: async () => body,
-  } as unknown as NextRequest;
+  });
 }
 
 describe('/api/patients/[id]', () => {
@@ -225,6 +230,7 @@ describe('/api/patients/[id]', () => {
     careCaseFindFirstMock.mockResolvedValue({
       id: 'case_1',
       required_visit_support: {
+        legacy_debug: undefined,
         home_visit_intake: {
           requester: {
             organization_name: '旧紹介元',
@@ -939,6 +945,10 @@ describe('/api/patients/[id]', () => {
         },
       },
     });
+    expect(
+      (careCaseUpdateMock.mock.calls[0][0].data.required_visit_support as Record<string, unknown>)
+        .legacy_debug,
+    ).toBeUndefined();
   });
 
   it('updates requester and intake fields only on an assigned care case when the latest case is unassigned', async () => {
@@ -1026,6 +1036,44 @@ describe('/api/patients/[id]', () => {
         where: { id: 'case_unassigned_latest' },
       }),
     );
+  });
+
+  it('rebuilds intake support from an empty object when required_visit_support is malformed', async () => {
+    careCaseFindFirstMock.mockResolvedValue({
+      id: 'case_1',
+      required_visit_support: ['unexpected'],
+    });
+
+    const response = await PATCH(
+      createRequest(
+        {
+          requester: {
+            organization_name: '新しい紹介元',
+          },
+          intake: {
+            primary_disease: '慢性心不全',
+          },
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(careCaseUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'case_1' },
+      data: {
+        referral_source: '新しい紹介元',
+        required_visit_support: {
+          home_visit_intake: expect.objectContaining({
+            requester: expect.objectContaining({
+              organization_name: '新しい紹介元',
+            }),
+            primary_disease: '慢性心不全',
+          }),
+        },
+      },
+    });
   });
 
   it('does not close or recreate insurance when submitted number is identical to existing', async () => {

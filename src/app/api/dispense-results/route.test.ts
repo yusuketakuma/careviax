@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { withAuthMock, withOrgContextMock, dispatchNotificationEventMock, checkDispenseAlertsMock } =
   vi.hoisted(() => ({
@@ -10,12 +10,13 @@ const { withAuthMock, withOrgContextMock, dispatchNotificationEventMock, checkDi
         ) => Promise<Response>,
       ) => {
         return (req: NextRequest) =>
-          handler({
-            ...req,
-            orgId: 'org_1',
-            userId: 'user_1',
-            role: 'pharmacist',
-          } as NextRequest & { orgId: string; userId: string; role: 'pharmacist' });
+          handler(
+            Object.assign(req, {
+              orgId: 'org_1',
+              userId: 'user_1',
+              role: 'pharmacist' as const,
+            }),
+          );
       },
     ),
     withOrgContextMock: vi.fn(),
@@ -59,9 +60,13 @@ const safetyChecklist = {
 };
 
 function createRequest(body: unknown) {
-  return {
-    json: async () => body,
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/dispense-results', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
 }
 
 describe('/api/dispense-results POST', () => {
@@ -450,6 +455,7 @@ describe('/api/dispense-results POST', () => {
     const medicationCycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
     const cycleTransitionLogCreateMock = vi.fn().mockResolvedValue({});
     const visitScheduleUpdateMock = vi.fn().mockResolvedValue({});
+    const membershipFindManyMock = vi.fn().mockResolvedValue([{ user_id: 'auditor_1' }]);
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -507,7 +513,7 @@ describe('/api/dispense-results POST', () => {
           updateMany: vi.fn().mockResolvedValue({ count: 0 }),
         },
         membership: {
-          findMany: vi.fn().mockResolvedValue([{ user_id: 'auditor_1' }]),
+          findMany: membershipFindManyMock,
         },
         auditLog: {
           create: vi.fn().mockResolvedValue({ id: 'audit_log_1' }),
@@ -596,6 +602,7 @@ describe('/api/dispense-results POST', () => {
     const medicationCycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
     const cycleTransitionLogCreateMock = vi.fn().mockResolvedValue({});
     const visitScheduleUpdateMock = vi.fn().mockResolvedValue({});
+    const membershipFindManyMock = vi.fn().mockResolvedValue([{ user_id: 'auditor_1' }]);
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -656,7 +663,7 @@ describe('/api/dispense-results POST', () => {
           updateMany: vi.fn().mockResolvedValue({ count: 0 }), // B3
         },
         membership: {
-          findMany: vi.fn().mockResolvedValue([{ user_id: 'auditor_1' }]),
+          findMany: membershipFindManyMock,
         },
         auditLog: {
           create: vi.fn().mockResolvedValue({ id: 'audit_log_1' }),
@@ -704,6 +711,13 @@ describe('/api/dispense-results POST', () => {
       data: { overall_status: 'audit_pending', version: { increment: 1 } },
     });
     expect(cycleTransitionLogCreateMock).toHaveBeenCalled();
+    expect(membershipFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [{ can_audit_dispense: true }, { role: { in: ['owner', 'admin'] } }],
+        }),
+      }),
+    );
     expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({

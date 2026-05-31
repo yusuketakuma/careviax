@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   settingFindManyMock,
@@ -58,13 +58,17 @@ vi.mock('@/lib/db/client', () => ({
 import { GET, PATCH } from './route';
 
 function createRequest(url: string, method: 'GET' | 'PATCH', body?: unknown) {
-  return {
-    url,
-    headers: {
-      get: () => null,
-    },
-    json: async () => body,
-  } as unknown as NextRequest;
+  return new NextRequest(url, {
+    method,
+    ...(body === undefined
+      ? {}
+      : {
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        }),
+  });
 }
 
 describe('/api/settings', () => {
@@ -96,7 +100,7 @@ describe('/api/settings', () => {
 
     const response = await GET(
       createRequest('http://localhost/api/settings?scope=system', 'GET'),
-      { params: Promise.resolve({}) }
+      { params: Promise.resolve({}) },
     );
 
     if (!response) throw new Error('response is required');

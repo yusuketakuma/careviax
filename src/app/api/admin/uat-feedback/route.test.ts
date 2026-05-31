@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   feedbackFindManyMock,
@@ -24,6 +24,23 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 import { GET, POST } from './route';
+
+function createAuthRequest(init?: ConstructorParameters<typeof NextRequest>[1]) {
+  return Object.assign(new NextRequest('http://localhost/api/admin/uat-feedback', init), {
+    orgId: 'org_1',
+    userId: 'user_1',
+  });
+}
+
+function createJsonAuthRequest(body: unknown) {
+  return createAuthRequest({
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+}
 
 describe('/api/admin/uat-feedback', () => {
   beforeEach(() => {
@@ -67,10 +84,7 @@ describe('/api/admin/uat-feedback', () => {
   });
 
   it('lists persisted UAT feedback', async () => {
-    const response = await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-    } as NextRequest & { orgId: string; userId: string });
+    const response = await GET(createAuthRequest());
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -82,16 +96,14 @@ describe('/api/admin/uat-feedback', () => {
   });
 
   it('stores feedback with checklist state', async () => {
-    const response = await POST({
-      orgId: 'org_1',
-      userId: 'user_1',
-      json: async () => ({
+    const response = await POST(
+      createJsonAuthRequest({
         priority: 'medium',
         feedback: '帳票の余白が広い',
         checklist_progress: '5/7',
         checked_items: ['check_mobile'],
       }),
-    } as unknown as NextRequest & { orgId: string; userId: string });
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);

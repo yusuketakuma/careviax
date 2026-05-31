@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   conferenceNoteFindFirstMock,
@@ -43,9 +43,11 @@ vi.mock('@/lib/db/rls', () => ({
 import { POST } from './route';
 
 function createRequest(body?: unknown) {
-  return {
-    json: async () => body,
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/conference-notes/note_1/generate-report', {
+    method: 'POST',
+    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
 }
 
 describe('/api/conference-notes/[id]/generate-report POST', () => {

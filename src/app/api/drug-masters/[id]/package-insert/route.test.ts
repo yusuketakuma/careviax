@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -52,12 +52,7 @@ vi.mock('@/lib/db/client', () => ({
 import { GET } from './route';
 
 function createRequest() {
-  return {
-    headers: { get: () => null },
-    nextUrl: { pathname: '/api/drug-masters/drug_1/package-insert' },
-    method: 'GET',
-    url: 'http://localhost/api/drug-masters/drug_1/package-insert',
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/drug-masters/drug_1/package-insert');
 }
 
 async function invokeGet(id = 'drug_1') {

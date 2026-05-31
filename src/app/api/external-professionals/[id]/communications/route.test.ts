@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   externalProfessionalFindFirstMock,
@@ -43,6 +43,9 @@ vi.mock('@/lib/db/client', () => ({
 
 import { GET } from './route';
 
+const createRequest = () =>
+  new NextRequest('http://localhost/api/external-professionals/ep_1/communications');
+
 describe('/api/external-professionals/[id]/communications', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -72,7 +75,7 @@ describe('/api/external-professionals/[id]/communications', () => {
   });
 
   it('returns 200 with communication history', async () => {
-    const response = (await GET({} as NextRequest, { params: Promise.resolve({ id: 'ep_1' }) }))!;
+    const response = (await GET(createRequest(), { params: Promise.resolve({ id: 'ep_1' }) }))!;
 
     expect(response.status).toBe(200);
     expect(careTeamLinkFindManyMock).toHaveBeenCalledWith({
@@ -118,7 +121,7 @@ describe('/api/external-professionals/[id]/communications', () => {
   it('returns 404 when professional not found', async () => {
     externalProfessionalFindFirstMock.mockResolvedValue(null);
 
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createRequest(), {
       params: Promise.resolve({ id: 'nonexistent' }),
     }))!;
 

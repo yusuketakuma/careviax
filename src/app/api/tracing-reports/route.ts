@@ -19,6 +19,15 @@ const createTracingReportSchema = z.object({
   sent_to_physician: z.string().optional(),
 });
 
+const tracingReportStatusSchema = z.enum(['draft', 'sent', 'received', 'acknowledged']);
+type TracingReportStatusValue = z.infer<typeof tracingReportStatusSchema>;
+
+function parseTracingReportStatus(value: string | null): TracingReportStatusValue | undefined {
+  if (!value) return undefined;
+  const parsed = tracingReportStatusSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
 async function buildTracingReportAccessWhere(
   req: AuthenticatedRequest,
 ): Promise<Prisma.TracingReportWhereInput | null> {
@@ -75,18 +84,20 @@ export const GET = withAuth(
     const { cursor, limit } = parsePaginationParams(searchParams);
 
     const patientId = searchParams.get('patient_id') ?? undefined;
-    const status = searchParams.get('status') ?? undefined;
+    const statusParam = searchParams.get('status');
+    const status = parseTracingReportStatus(statusParam);
+    if (statusParam && !status) {
+      return validationError('status が不正です', {
+        status: ['status が不正です'],
+      });
+    }
     const accessWhere = await buildTracingReportAccessWhere(req);
 
     const where: Prisma.TracingReportWhereInput = {
       org_id: req.orgId,
       ...(accessWhere ?? {}),
       ...(patientId ? { patient_id: patientId } : {}),
-      ...(status
-        ? {
-            status: status as 'draft' | 'sent' | 'received' | 'acknowledged',
-          }
-        : {}),
+      ...(status ? { status } : {}),
     };
 
     const reports = await prisma.tracingReport.findMany({

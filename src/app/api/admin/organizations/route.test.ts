@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -57,13 +57,13 @@ vi.mock('@/server/services/cognito-admin', () => ({
 import { POST } from './route';
 
 function createRequest(body: unknown) {
-  return {
+  return new NextRequest('http://localhost/api/admin/organizations', {
     method: 'POST',
     headers: {
-      get: () => null,
+      'content-type': 'application/json',
     },
-    json: async () => body,
-  } as unknown as NextRequest;
+    body: JSON.stringify(body),
+  });
 }
 
 function setupCreateTransaction() {
@@ -73,8 +73,8 @@ function setupCreateTransaction() {
     user: { create: userCreateMock },
     membership: { create: membershipCreateMock },
   };
-  transactionMock.mockImplementationOnce(async (callback: (tx: typeof createTx) => Promise<unknown>) =>
-    callback(createTx)
+  transactionMock.mockImplementationOnce(
+    async (callback: (tx: typeof createTx) => Promise<unknown>) => callback(createTx),
   );
 }
 
@@ -85,8 +85,8 @@ function setupCleanupTransaction() {
     user: { delete: userDeleteMock },
     membership: { deleteMany: membershipDeleteManyMock },
   };
-  transactionMock.mockImplementationOnce(async (callback: (tx: typeof cleanupTx) => Promise<unknown>) =>
-    callback(cleanupTx)
+  transactionMock.mockImplementationOnce(
+    async (callback: (tx: typeof cleanupTx) => Promise<unknown>) => callback(cleanupTx),
   );
 }
 
@@ -145,7 +145,7 @@ describe('/api/admin/organizations POST', () => {
         site_address: '東京都新宿区1-1-1',
         admin_email: 'admin@example.com',
         admin_name: '管理者',
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -170,7 +170,7 @@ describe('/api/admin/organizations POST', () => {
         site_address: '東京都新宿区1-1-1',
         admin_email: ' Admin@Example.com ',
         admin_name: '管理者',
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -213,7 +213,7 @@ describe('/api/admin/organizations POST', () => {
         site_address: '東京都新宿区1-1-1',
         admin_email: 'admin@example.com',
         admin_name: '管理者',
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   taskCommentFindFirstMock,
@@ -30,6 +30,12 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { DELETE } from './route';
 
+function createRequest() {
+  return new NextRequest('http://localhost/api/comments/comment_1', {
+    method: 'DELETE',
+  });
+}
+
 describe('/api/comments/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -46,7 +52,7 @@ describe('/api/comments/[id]', () => {
   describe('DELETE', () => {
     it('returns 200 when deleting own comment', async () => {
       const response = (await DELETE(
-        {} as NextRequest,
+        createRequest(),
         { params: Promise.resolve({ id: 'comment_1' }) },
       ))!;
 
@@ -59,7 +65,7 @@ describe('/api/comments/[id]', () => {
       taskCommentFindFirstMock.mockResolvedValue(null);
 
       const response = (await DELETE(
-        {} as NextRequest,
+        createRequest(),
         { params: Promise.resolve({ id: 'nonexistent' }) },
       ))!;
 

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { authMock, membershipFindFirstMock, findManyMock, recordDataExportAuditMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
@@ -44,14 +44,9 @@ function createRequest(
   headers?: Record<string, string>,
   search = 'format=csv'
 ) {
-  const nextUrl = new URL(`http://localhost/api/audit-logs/export?${search}`);
-  return {
-    url: nextUrl.toString(),
-    nextUrl,
-    headers: {
-      get: (key: string) => headers?.[key] ?? null,
-    },
-  } as unknown as NextRequest;
+  return new NextRequest(`http://localhost/api/audit-logs/export?${search}`, {
+    headers,
+  });
 }
 
 describe('/api/audit-logs/export GET', () => {

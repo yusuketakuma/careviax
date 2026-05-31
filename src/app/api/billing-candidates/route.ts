@@ -3,6 +3,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
+import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import {
   getBillingCandidateWorkbenchSummary,
   generateBillingCandidatesForMonth,
@@ -12,31 +13,7 @@ import {
 import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from './billing-month';
 
 function readWorkflowState(sourceSnapshot: unknown) {
-  if (
-    typeof sourceSnapshot !== 'object' ||
-    sourceSnapshot === null ||
-    Array.isArray(sourceSnapshot) ||
-    !('billing_close' in sourceSnapshot)
-  ) {
-    return null;
-  }
-  const workflow = (sourceSnapshot as Record<string, unknown>).billing_close;
-  if (typeof workflow !== 'object' || workflow === null || Array.isArray(workflow)) {
-    return null;
-  }
-  return workflow;
-}
-
-function readSourceSnapshotString(sourceSnapshot: unknown, key: string) {
-  if (
-    typeof sourceSnapshot !== 'object' ||
-    sourceSnapshot === null ||
-    Array.isArray(sourceSnapshot)
-  ) {
-    return null;
-  }
-  const value = (sourceSnapshot as Record<string, unknown>)[key];
-  return typeof value === 'string' ? value : null;
+  return readJsonObject(readJsonObject(sourceSnapshot)?.billing_close);
 }
 
 export const GET = withAuth(
@@ -89,12 +66,12 @@ export const GET = withAuth(
       ...candidate,
       patient_name: result.patientNameMap.get(candidate.patient_id) ?? null,
       workflow_state: readWorkflowState(candidate.source_snapshot),
-      effective_revision_code: readSourceSnapshotString(candidate.source_snapshot, 'revision_code'),
-      site_config_revision_code: readSourceSnapshotString(
+      effective_revision_code: readJsonObjectString(candidate.source_snapshot, 'revision_code'),
+      site_config_revision_code: readJsonObjectString(
         candidate.source_snapshot,
         'site_config_revision_code',
       ),
-      site_config_status: readSourceSnapshotString(candidate.source_snapshot, 'site_config_status'),
+      site_config_status: readJsonObjectString(candidate.source_snapshot, 'site_config_status'),
     }));
 
     const hasMore = candidates.length > limit;

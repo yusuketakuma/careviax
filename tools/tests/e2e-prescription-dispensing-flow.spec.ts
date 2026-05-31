@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
 import {
   attachLocalSession,
+  clickAndWaitForStableRoute,
   createInstrumentedPage,
-  waitForStableUi,
+  openStableRoute,
 } from './helpers/local-auth';
 
 test.describe('prescription → QR scan → draft', () => {
@@ -12,8 +13,7 @@ test.describe('prescription → QR scan → draft', () => {
 
   test('QR scan page loads with scan interface', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/qr-scan');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/qr-scan');
 
     // Page should render (camera or fallback text input)
     const main = page.locator('main');
@@ -26,8 +26,7 @@ test.describe('prescription → QR scan → draft', () => {
 
   test('QR drafts list page loads', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/prescriptions/qr-drafts');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/prescriptions/qr-drafts');
 
     // Should show heading or list
     const main = page.locator('main');
@@ -42,8 +41,7 @@ test.describe('prescription → QR scan → draft', () => {
 
   test('QR drafts list has link to QR scan', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/prescriptions/qr-drafts');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/prescriptions/qr-drafts');
 
     // Should have a way to start a new scan
     const scanLink = page.getByRole('link', { name: /QRスキャン|新規スキャン|スキャン/i });
@@ -63,8 +61,7 @@ test.describe('prescription → QR scan → draft', () => {
 
   test('QR draft detail page navigates from list', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/prescriptions/qr-drafts');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/prescriptions/qr-drafts');
 
     // If any draft exists, clicking it should navigate to detail
     const firstDraftLink = page
@@ -75,8 +72,10 @@ test.describe('prescription → QR scan → draft', () => {
 
     if (hasDraftLink) {
       const href = await firstDraftLink.getAttribute('href');
-      await firstDraftLink.click();
-      await waitForStableUi(page);
+      expect(href).toBeTruthy();
+      await clickAndWaitForStableRoute(page, new RegExp(href!), () =>
+        firstDraftLink.click({ noWaitAfter: true }),
+      );
 
       await expect(page).toHaveURL(new RegExp(href!));
 
@@ -96,20 +95,15 @@ test.describe('prescription intake flow', () => {
 
   test('prescription list → new intake → form renders', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/prescriptions');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/prescriptions');
 
     await expect(page.locator('main').getByRole('heading', { name: '処方受付' }).first()).toBeVisible();
 
     // Navigate to new intake
     const main = page.locator('main');
-    await Promise.all([
-      page.waitForURL(/\/prescriptions\/new/, {
-        timeout: 30_000,
-        waitUntil: 'domcontentloaded',
-      }),
-      main.locator('a[href="/prescriptions/new"]').first().click(),
-    ]);
+    await clickAndWaitForStableRoute(page, /\/prescriptions\/new/, () =>
+      main.getByRole('link', { name: '新規受付' }).first().click(),
+    );
 
     await expect(page.getByRole('heading', { name: '新規処方受付' })).toBeVisible();
 
@@ -123,17 +117,12 @@ test.describe('prescription intake flow', () => {
   test('prescription intake navigates to dispensing queue via shortcut', async ({ context }) => {
     test.slow();
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/prescriptions');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/prescriptions');
 
     const main = page.locator('main');
-    await Promise.all([
-      page.waitForURL(/\/dispensing/, {
-        timeout: 30_000,
-        waitUntil: 'domcontentloaded',
-      }),
-      main.locator('a[href="/dispensing"]').first().click(),
-    ]);
+    await clickAndWaitForStableRoute(page, /\/dispensing/, () =>
+      main.getByRole('link', { name: '調剤キュー' }).first().click(),
+    );
 
     await expect(page.getByRole('heading', { name: '調剤キュー' })).toBeVisible();
 
@@ -148,8 +137,7 @@ test.describe('dispensing → auditing flow', () => {
 
   test('dispensing queue loads and shows tasks or empty state', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/dispensing');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dispensing');
 
     await expect(page.getByRole('heading', { name: '調剤キュー' })).toBeVisible();
 
@@ -161,17 +149,12 @@ test.describe('dispensing → auditing flow', () => {
 
   test('dispensing → auditing navigation works', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/dispensing');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dispensing');
 
     const main = page.locator('main');
-    await Promise.all([
-      page.waitForURL(/\/auditing/, {
-        timeout: 30_000,
-        waitUntil: 'domcontentloaded',
-      }),
-      main.getByRole('link', { name: '鑑査' }).click(),
-    ]);
+    await clickAndWaitForStableRoute(page, /\/auditing/, () =>
+      main.getByRole('link', { name: '鑑査' }).first().click(),
+    );
 
     await expect(page.getByRole('heading', { name: '調剤鑑査' })).toBeVisible();
 
@@ -180,8 +163,7 @@ test.describe('dispensing → auditing flow', () => {
 
   test('auditing queue loads with task list or empty state', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/auditing');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/auditing');
 
     await expect(page.getByRole('heading', { name: '調剤鑑査' })).toBeVisible();
 
@@ -195,39 +177,25 @@ test.describe('dispensing → auditing flow', () => {
     const { page, errors } = await createInstrumentedPage(context);
 
     // Start: prescriptions
-    await page.goto('/prescriptions');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/prescriptions');
     await expect(page.locator('main').getByRole('heading', { name: '処方受付' }).first()).toBeVisible();
 
     // → dispensing
-    const main = page.locator('main');
-    await Promise.all([
-      page.waitForURL(/\/dispensing/, {
-        timeout: 30_000,
-        waitUntil: 'domcontentloaded',
-      }),
-      main.locator('a[href="/dispensing"]').first().click(),
-    ]);
+    await clickAndWaitForStableRoute(page, /\/dispensing/, () =>
+      page.locator('main').getByRole('link', { name: '調剤キュー' }).first().click(),
+    );
     await expect(page.getByRole('heading', { name: '調剤キュー' })).toBeVisible();
 
     // → auditing
-    await Promise.all([
-      page.waitForURL(/\/auditing/, {
-        timeout: 30_000,
-        waitUntil: 'domcontentloaded',
-      }),
-      main.locator('a[href="/auditing"]').first().click(),
-    ]);
+    await clickAndWaitForStableRoute(page, /\/auditing/, () =>
+      page.locator('main').getByRole('link', { name: '鑑査' }).first().click(),
+    );
     await expect(page.getByRole('heading', { name: '調剤鑑査' })).toBeVisible();
 
     // → back to dispensing
-    await Promise.all([
-      page.waitForURL(/\/dispensing/, {
-        timeout: 30_000,
-        waitUntil: 'domcontentloaded',
-      }),
-      page.locator('main').locator('a[href="/dispensing"]').first().click(),
-    ]);
+    await clickAndWaitForStableRoute(page, /\/dispensing/, () =>
+      page.locator('main').getByRole('link', { name: '調剤', exact: true }).first().click(),
+    );
     await expect(page.getByRole('heading', { name: '調剤キュー' })).toBeVisible();
 
     expect(errors).toEqual([]);

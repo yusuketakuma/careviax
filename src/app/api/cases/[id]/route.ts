@@ -1,12 +1,29 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
+import { normalizeJsonInput } from '@/lib/db/json';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { updateCaseSchema } from '@/lib/validations/case';
 import { prisma } from '@/lib/db/client';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import type { Prisma } from '@prisma/client';
+
+function isInputJsonObject(
+  value: Prisma.InputJsonValue | null | undefined
+): value is Prisma.InputJsonObject {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    !('toJSON' in value)
+  );
+}
+
+function normalizeInputJsonObject(value: unknown): Prisma.InputJsonObject {
+  const normalized = normalizeJsonInput(value);
+  return isInputJsonObject(normalized) ? normalized : {};
+}
 
 function normalizeOptionalText(value: string | undefined) {
   if (value === undefined) return undefined;
@@ -148,7 +165,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           ...(normalizedEndReason !== undefined ? { end_reason: normalizedEndReason } : {}),
           ...(required_visit_support !== undefined
             ? {
-                required_visit_support: required_visit_support as Prisma.InputJsonValue,
+                required_visit_support: normalizeInputJsonObject(required_visit_support),
               }
             : {}),
           ...rest,

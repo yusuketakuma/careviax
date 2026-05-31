@@ -5,6 +5,7 @@ import { success, validationError, notFound, forbidden } from '@/lib/api/respons
 import { prisma } from '@/lib/db/client';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { communicationRequestStatusSchema } from '@/lib/validations/communication-request';
 import {
   canAccessCommunicationRequestRecord,
   resolveTracingReportCommunicationScope,
@@ -107,19 +108,7 @@ const ALLOWED_STATUS_TRANSITIONS: Record<
 };
 
 const patchCommunicationRequestSchema = z.object({
-  status: z
-    .enum([
-      'draft',
-      'sent',
-      'received',
-      'in_progress',
-      'responded',
-      'closed',
-      'escalated',
-      'cancelled',
-      'expired',
-    ])
-    .optional(),
+  status: communicationRequestStatusSchema.optional(),
   status_change_reason: z
     .string()
     .trim()

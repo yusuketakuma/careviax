@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   membershipFindManyMock,
@@ -21,7 +21,7 @@ vi.mock('@/lib/auth/middleware', () => ({
           userId: 'admin_1',
           orgId: 'org_1',
           role: 'admin',
-        })
+        }),
       );
   },
 }));
@@ -46,12 +46,11 @@ vi.mock('@/lib/db/client', () => ({
 import { GET } from './route';
 
 function createRequest(url: string) {
-  return {
-    url,
+  return new NextRequest(url, {
     headers: {
-      get: (key: string) => (key === 'x-org-id' ? 'org_1' : null),
+      'x-org-id': 'org_1',
     },
-  } as unknown as NextRequest;
+  });
 }
 
 describe('/api/admin/staff-metrics GET', () => {
@@ -136,7 +135,9 @@ describe('/api/admin/staff-metrics GET', () => {
   });
 
   it('returns staff KPI rows and summary balances', async () => {
-    const response = await GET(createRequest('http://localhost/api/admin/staff-metrics?month=2026-03'));
+    const response = await GET(
+      createRequest('http://localhost/api/admin/staff-metrics?month=2026-03'),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -169,7 +170,9 @@ describe('/api/admin/staff-metrics GET', () => {
   });
 
   it('rejects an invalid month query', async () => {
-    const response = await GET(createRequest('http://localhost/api/admin/staff-metrics?month=2026/03'));
+    const response = await GET(
+      createRequest('http://localhost/api/admin/staff-metrics?month=2026/03'),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);

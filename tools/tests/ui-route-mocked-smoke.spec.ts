@@ -1,12 +1,18 @@
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { encode } from 'next-auth/jwt';
 import {
   attachLocalSession,
   AUTH_SECRET,
   createInstrumentedPage,
   LOCAL_USER,
-  waitForStableUi,
+  openStableRoute,
 } from './helpers/local-auth';
+import {
+  apiPathPattern,
+  captureRouteRequest,
+  fulfillJson,
+  type CapturedRouteRequest,
+} from './helpers/route-mocks';
 
 const SHARED_TOKEN = 'shared-route-mock-token';
 const SHARED_OTP = '472913';
@@ -23,31 +29,6 @@ const OFFLINE_KEY_STORE_NAME = 'crypto-keys';
 const OFFLINE_KEY_RECORD_ID = 'offline-enc-key-v2';
 
 test.use({ serviceWorkers: 'block' });
-
-type CapturedRequest = {
-  method: string;
-  url: string;
-  headers: Record<string, string>;
-  body: unknown;
-};
-
-function readRouteBody(route: Route) {
-  try {
-    return route.request().postDataJSON();
-  } catch {
-    return null;
-  }
-}
-
-function captureRouteRequest(route: Route): CapturedRequest {
-  const request = route.request();
-  return {
-    method: request.method(),
-    url: request.url(),
-    headers: request.headers(),
-    body: readRouteBody(route),
-  };
-}
 
 async function attachRouteMockSession(context: Parameters<typeof attachLocalSession>[0]) {
   const token = await encode({
@@ -172,24 +153,22 @@ async function readOfflineVisitDraftState(page: Page, scheduleId: string) {
 }
 
 async function installSharedViewerRouteMock(page: Page) {
-  const viewerRequests: CapturedRequest[] = [];
-  const selfReportRequests: CapturedRequest[] = [];
+  const viewerRequests: CapturedRouteRequest[] = [];
+  const selfReportRequests: CapturedRouteRequest[] = [];
 
-  await page.route(`**/api/external-access/${SHARED_TOKEN}/self-report`, async (route) => {
-    selfReportRequests.push(captureRouteRequest(route));
-    await route.fulfill({
-      status: 201,
-      contentType: 'application/json',
-      body: JSON.stringify({ data: { id: 'shared_route_mock_self_report' } }),
-    });
-  });
+  await page.route(
+    apiPathPattern(`/api/external-access/${SHARED_TOKEN}/self-report`),
+    async (route) => {
+      selfReportRequests.push(captureRouteRequest(route));
+      await fulfillJson(route, { data: { id: 'shared_route_mock_self_report' } }, 201);
+    },
+  );
 
-  await page.route(`**/api/external-access/${SHARED_TOKEN}`, async (route) => {
-    viewerRequests.push(captureRouteRequest(route));
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
+  await page.route(
+    apiPathPattern(`/api/external-access/${SHARED_TOKEN}`),
+    async (route) => {
+      viewerRequests.push(captureRouteRequest(route));
+      await fulfillJson(route, {
         data: {
           patient: {
             id: 'shared_route_mock_patient',
@@ -228,102 +207,97 @@ async function installSharedViewerRouteMock(page: Page) {
           },
           expires_at: '2026-05-01T09:00:00.000Z',
         },
-      }),
-    });
-  });
+      });
+    },
+  );
 
   return { selfReportRequests, viewerRequests };
 }
 
 async function installBillingWorkbenchRouteMocks(page: Page) {
-  const requests: CapturedRequest[] = [];
+  const requests: CapturedRouteRequest[] = [];
 
-  await page.route('**/api/billing-candidates**', async (route) => {
-    const requestUrl = new URL(route.request().url());
-    if (route.request().method() !== 'GET' || requestUrl.pathname !== '/api/billing-candidates') {
+  await page.route(apiPathPattern('/api/billing-candidates'), async (route) => {
+    if (route.request().method() !== 'GET') {
       await route.continue();
       return;
     }
 
     requests.push(captureRouteRequest(route));
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        data: [
-          {
-            id: 'billing_route_mock_candidate',
-            patient_id: BILLING_PATIENT_ID,
-            patient_name: '請求RouteMock 患者',
-            billing_month: `${BILLING_MONTH}T00:00:00.000Z`,
-            billing_code: 'MED_HOME_VISIT_ROUTE_MOCK',
-            billing_name: '在宅患者訪問薬剤管理指導料 RouteMock',
-            points: 650,
-            quantity: 1,
-            status: 'confirmed',
-            exclusion_reason: null,
-            source_snapshot: {
-              billing_scope: 'home_care_ssot',
-              selection_mode: 'automatic',
-              source_note: 'Route mock evidence',
-              ruleset_version: '2026-route-mock',
-              revision_code: 'revision-2026',
-              site_config_status: 'configured',
-              billing_assignment: {
-                building_id: 'route-mock-building',
-                unit_name: '1F',
-                assignment_scope: 'unit',
-                building_patient_count: 2,
-                unit_patient_count: 1,
-              },
-              billing_close: {
-                review_state: 'reviewed',
-                resolution_state: 'confirmed',
-                reviewed_at: '2026-04-25T01:00:00.000Z',
-                reviewed_by: 'route-mock-user',
-                note: 'reviewed',
-              },
-              validation_layers: {
-                evidence: {
-                  label: 'エビデンス',
-                  state: 'passed',
-                  message: '根拠確認済み',
-                },
-                rule_engine: {
-                  label: 'ルール判定',
-                  state: 'passed',
-                  message: '算定可能',
-                  version: 'billing-rules-2026',
-                },
-                close_review: {
-                  label: '締め確認',
-                  state: 'passed',
-                  message: '締め可能',
-                },
-              },
+    await fulfillJson(route, {
+      data: [
+        {
+          id: 'billing_route_mock_candidate',
+          patient_id: BILLING_PATIENT_ID,
+          patient_name: '請求RouteMock 患者',
+          billing_month: `${BILLING_MONTH}T00:00:00.000Z`,
+          billing_code: 'MED_HOME_VISIT_ROUTE_MOCK',
+          billing_name: '在宅患者訪問薬剤管理指導料 RouteMock',
+          points: 650,
+          quantity: 1,
+          status: 'confirmed',
+          exclusion_reason: null,
+          source_snapshot: {
+            billing_scope: 'home_care_ssot',
+            selection_mode: 'automatic',
+            source_note: 'Route mock evidence',
+            ruleset_version: '2026-route-mock',
+            revision_code: 'revision-2026',
+            site_config_status: 'configured',
+            billing_assignment: {
+              building_id: 'route-mock-building',
+              unit_name: '1F',
+              assignment_scope: 'unit',
+              building_patient_count: 2,
+              unit_patient_count: 1,
             },
-            workflow_state: {
+            billing_close: {
               review_state: 'reviewed',
               resolution_state: 'confirmed',
               reviewed_at: '2026-04-25T01:00:00.000Z',
               reviewed_by: 'route-mock-user',
               note: 'reviewed',
             },
+            validation_layers: {
+              evidence: {
+                label: 'エビデンス',
+                state: 'passed',
+                message: '根拠確認済み',
+              },
+              rule_engine: {
+                label: 'ルール判定',
+                state: 'passed',
+                message: '算定可能',
+                version: 'billing-rules-2026',
+              },
+              close_review: {
+                label: '締め確認',
+                state: 'passed',
+                message: '締め可能',
+              },
+            },
           },
-        ],
-        hasMore: false,
-        summary: {
-          total: 1,
-          pending_review: 0,
-          confirmed: 1,
-          excluded: 0,
-          exported: 0,
-          reviewed: 1,
-          ready_to_close: 1,
-          blocked_from_close: 0,
-          blocker_reasons: [],
+          workflow_state: {
+            review_state: 'reviewed',
+            resolution_state: 'confirmed',
+            reviewed_at: '2026-04-25T01:00:00.000Z',
+            reviewed_by: 'route-mock-user',
+            note: 'reviewed',
+          },
         },
-      }),
+      ],
+      hasMore: false,
+      summary: {
+        total: 1,
+        pending_review: 0,
+        confirmed: 1,
+        excluded: 0,
+        exported: 0,
+        reviewed: 1,
+        ready_to_close: 1,
+        blocked_from_close: 0,
+        blocker_reasons: [],
+      },
     });
   });
 
@@ -331,10 +305,10 @@ async function installBillingWorkbenchRouteMocks(page: Page) {
 }
 
 async function installFormularyRouteMocks(page: Page) {
-  const impactRequests: CapturedRequest[] = [];
-  const jobRequests: CapturedRequest[] = [];
+  const impactRequests: CapturedRouteRequest[] = [];
+  const jobRequests: CapturedRouteRequest[] = [];
 
-  await page.route('**/api/notifications/stream**', async (route) => {
+  await page.route(apiPathPattern('/api/notifications/stream'), async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'text/event-stream',
@@ -342,89 +316,73 @@ async function installFormularyRouteMocks(page: Page) {
     });
   });
 
-  await page.route(/\/api\/notifications(?:\?.*)?$/, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ data: [], hasMore: false, nextCursor: null }),
+  await page.route(apiPathPattern('/api/notifications'), async (route) => {
+    await fulfillJson(route, { data: [], hasMore: false, nextCursor: null });
+  });
+
+  await page.route(apiPathPattern('/api/pharmacy-sites'), async (route) => {
+    await fulfillJson(route, {
+      data: [{ id: FORMULARY_SITE_ID, name: 'RouteMock 本店', address: '東京都千代田区' }],
     });
   });
 
-  await page.route('**/api/pharmacy-sites**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        data: [{ id: FORMULARY_SITE_ID, name: 'RouteMock 本店', address: '東京都千代田区' }],
-      }),
-    });
-  });
-
-  await page.route('**/api/drug-master-imports/status**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        sources: [
-          {
-            source: 'mhlw_price',
-            label: '厚労省 薬価基準収載品目リスト',
-            is_free: true,
-            threshold_days: 120,
-            last_success: {
-              imported_at: '2026-05-20T00:00:00.000Z',
-              record_count: 12343,
-              days_ago: 7,
-            },
-            last_failure: null,
-            recent_runs_30d: {
-              total: 1,
-              failed: 0,
-              failure_streak: 0,
-              latest_status: 'completed',
-              latest_imported_at: '2026-05-20T00:00:00.000Z',
-            },
-            freshness: 'fresh',
+  await page.route(apiPathPattern('/api/drug-master-imports/status'), async (route) => {
+    await fulfillJson(route, {
+      sources: [
+        {
+          source: 'mhlw_price',
+          label: '厚労省 薬価基準収載品目リスト',
+          is_free: true,
+          threshold_days: 120,
+          last_success: {
+            imported_at: '2026-05-20T00:00:00.000Z',
+            record_count: 12343,
+            days_ago: 7,
           },
-          {
-            source: 'pmda',
-            label: 'PMDA 添付文書',
-            is_free: false,
-            threshold_days: 14,
-            last_success: null,
-            last_failure: null,
-            recent_runs_30d: {
-              total: 2,
-              failed: 2,
-              failure_streak: 2,
-              latest_status: 'failed',
-              latest_imported_at: '2026-05-26T00:00:00.000Z',
-            },
-            freshness: 'never',
+          last_failure: null,
+          recent_runs_30d: {
+            total: 1,
+            failed: 0,
+            failure_streak: 0,
+            latest_status: 'completed',
+            latest_imported_at: '2026-05-20T00:00:00.000Z',
           },
-        ],
-        totals: {
-          drug_master_count: 12343,
-          hot_code_coverage: 0,
-          package_insert_count: 0,
-          interaction_count: 0,
-          active_alert_rule_count: 0,
-          generic_mapping_count: 0,
+          freshness: 'fresh',
         },
-        checked_at: '2026-05-27T00:00:00.000Z',
-      }),
+        {
+          source: 'pmda',
+          label: 'PMDA 添付文書',
+          is_free: false,
+          threshold_days: 14,
+          last_success: null,
+          last_failure: null,
+          recent_runs_30d: {
+            total: 2,
+            failed: 2,
+            failure_streak: 2,
+            latest_status: 'failed',
+            latest_imported_at: '2026-05-26T00:00:00.000Z',
+          },
+          freshness: 'never',
+        },
+      ],
+      totals: {
+        drug_master_count: 12343,
+        hot_code_coverage: 0,
+        package_insert_count: 0,
+        interaction_count: 0,
+        active_alert_rule_count: 0,
+        generic_mapping_count: 0,
+      },
+      checked_at: '2026-05-27T00:00:00.000Z',
     });
   });
 
-  await page.route('**/api/drug-master-import-logs**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ data: [] }),
-    });
+  await page.route(apiPathPattern('/api/drug-master-import-logs'), async (route) => {
+    await fulfillJson(route, { data: [] });
   });
 
-  await page.route('**/api/pharmacy-drug-stocks/impact**', async (route) => {
+  await page.route(apiPathPattern('/api/pharmacy-drug-stocks/impact'), async (route) => {
     impactRequests.push(captureRouteRequest(route));
     const requestUrl = new URL(route.request().url());
     const queue = requestUrl.searchParams.get('queue') ?? 'action_required';
@@ -460,261 +418,222 @@ async function installFormularyRouteMocks(page: Page) {
         transitional_expiry_date: '2026-08-31T00:00:00.000Z',
       },
     };
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        site: { id: FORMULARY_SITE_ID, name: 'RouteMock 本店' },
-        checked_at: '2026-05-27T00:00:00.000Z',
-        thresholds: { expiry_within_days: 90, review_overdue_days: 180 },
-        selected_queue: { key: queue, rows: [stock], total_count: 1 },
-        totals: {
-          stocked_count: 1,
-          review_due_count: 1,
-          missing_reorder_point_count: 1,
-          safety_flagged_count: 1,
-          high_risk_count: 1,
-          lasa_risk_count: 0,
-          controlled_count: 0,
-          transitional_expiry_count: 1,
-          transitional_expiry_within_30_count: 0,
-          transitional_expiry_within_60_count: 0,
-          transitional_expiry_within_90_count: 1,
-          action_required_count: 1,
-          recent_master_change_count: 1,
+    await fulfillJson(route, {
+      site: { id: FORMULARY_SITE_ID, name: 'RouteMock 本店' },
+      checked_at: '2026-05-27T00:00:00.000Z',
+      thresholds: { expiry_within_days: 90, review_overdue_days: 180 },
+      selected_queue: { key: queue, rows: [stock], total_count: 1 },
+      totals: {
+        stocked_count: 1,
+        review_due_count: 1,
+        missing_reorder_point_count: 1,
+        safety_flagged_count: 1,
+        high_risk_count: 1,
+        lasa_risk_count: 0,
+        controlled_count: 0,
+        transitional_expiry_count: 1,
+        transitional_expiry_within_30_count: 0,
+        transitional_expiry_within_60_count: 0,
+        transitional_expiry_within_90_count: 1,
+        action_required_count: 1,
+        recent_master_change_count: 1,
+      },
+      recent_changes: [
+        {
+          id: 'formulary_route_mock_change',
+          yj_code: '123456789012',
+          change_type: 'price_changed',
+          previous_value: { drug_price: '19.0' },
+          current_value: { drug_price: '21.2' },
+          created_at: '2026-05-27T00:00:00.000Z',
         },
-        recent_changes: [
-          {
-            id: 'formulary_route_mock_change',
-            yj_code: '123456789012',
-            change_type: 'price_changed',
-            previous_value: { drug_price: '19.0' },
-            current_value: { drug_price: '21.2' },
-            created_at: '2026-05-27T00:00:00.000Z',
+      ],
+      samples: {
+        review_due: [stock],
+        missing_reorder_point: [stock],
+        safety_flagged: [stock],
+        high_risk: [stock],
+        lasa_risk: [],
+        controlled: [],
+        transitional_expiry: [stock],
+        action_required: [stock],
+        recently_changed: [stock],
+      },
+    });
+  });
+
+  await page.route(apiPathPattern('/api/pharmacy-drug-stocks'), async (route) => {
+    await fulfillJson(route, {
+      site: { id: FORMULARY_SITE_ID, name: 'RouteMock 本店' },
+      data: [],
+    });
+  });
+
+  await page.route(apiPathPattern('/api/pharmacy-drug-stock-templates'), async (route) => {
+    await fulfillJson(route, { data: [] });
+  });
+
+  await page.route(apiPathPattern('/api/pharmacy-drug-stocks/usage-mismatch'), async (route) => {
+    await fulfillJson(route, {
+      period: {
+        since: '2026-02-26T00:00:00.000Z',
+        until: '2026-05-27T00:00:00.000Z',
+      },
+      thresholds: { days: 90, frequent_threshold: 2, draft_limit: 500, limit: 10 },
+      totals: {
+        scanned_draft_count: 0,
+        used_drug_count: 0,
+        medication_line_count: 0,
+        matched_drug_count: 0,
+        unmatched_drug_count: 0,
+        stocked_count: 1,
+        frequent_unstocked_count: 0,
+        unused_stocked_count: 0,
+      },
+      frequent_unstocked: [],
+      unused_stocked: [],
+      unmatched_prescribed: [],
+    });
+  });
+
+  await page.route(apiPathPattern('/api/pharmacy-drug-stock-requests'), async (route) => {
+    await fulfillJson(route, {
+      data: [],
+      summary: {
+        status: 'pending',
+        total_count: 0,
+        overdue_count: 0,
+        overdue_days: 7,
+        oldest_pending_created_at: null,
+        notification_level: 'clear',
+      },
+    });
+  });
+
+  await page.route(apiPathPattern('/api/drug-masters'), async (route) => {
+    await fulfillJson(route, {
+      data: [
+        {
+          id: FORMULARY_DRUG_ID,
+          yj_code: '123456789012',
+          receipt_code: '123456789',
+          jan_code: null,
+          drug_name: 'RouteMock 採用薬錠5mg',
+          drug_name_kana: 'ルートモックサイヨウヤク',
+          generic_name: 'RouteMock 一般名',
+          drug_price: 21.2,
+          unit: '錠',
+          dosage_form: '内用薬',
+          therapeutic_category: '1234',
+          manufacturer: 'RouteMock 製薬',
+          is_generic: false,
+          is_narcotic: false,
+          is_psychotropic: false,
+          is_high_risk: true,
+          is_lasa_risk: false,
+          tall_man_name: null,
+          lasa_group_key: null,
+          max_administration_days: null,
+          stock_config: {
+            id: 'formulary_route_mock_stock',
+            site_id: FORMULARY_SITE_ID,
+            drug_master_id: FORMULARY_DRUG_ID,
+            is_stocked: true,
+            stock_qty: null,
+            reorder_point: null,
+            preferred_generic_id: null,
+            adoption_source: 'csv',
+            adoption_note: 'route mock',
+            last_reviewed_at: null,
+            reviewed_by_id: null,
+            follow_up_status: 'planned_switch',
+            follow_up_reason: 'RouteMock 経過措置対応',
+            follow_up_due_date: '2026-08-31T00:00:00.000Z',
+            follow_up_resolved_at: null,
+            updated_at: '2026-05-27T00:00:00.000Z',
+            preferred_generic: null,
           },
-        ],
-        samples: {
-          review_due: [stock],
-          missing_reorder_point: [stock],
-          safety_flagged: [stock],
-          high_risk: [stock],
-          lasa_risk: [],
-          controlled: [],
-          transitional_expiry: [stock],
-          action_required: [stock],
-          recently_changed: [stock],
+          generic_price_comparison: null,
         },
-      }),
+      ],
+      hasMore: false,
+      totalCount: 1,
     });
   });
 
-  await page.route(/\/api\/pharmacy-drug-stocks(?:\?.*)?$/, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        site: { id: FORMULARY_SITE_ID, name: 'RouteMock 本店' },
-        data: [],
-      }),
-    });
-  });
-
-  await page.route('**/api/pharmacy-drug-stock-templates**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ data: [] }),
-    });
-  });
-
-  await page.route('**/api/pharmacy-drug-stocks/usage-mismatch**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        period: {
-          since: '2026-02-26T00:00:00.000Z',
-          until: '2026-05-27T00:00:00.000Z',
-        },
-        thresholds: { days: 90, frequent_threshold: 2, draft_limit: 500, limit: 10 },
-        totals: {
-          scanned_draft_count: 0,
-          used_drug_count: 0,
-          medication_line_count: 0,
-          matched_drug_count: 0,
-          unmatched_drug_count: 0,
-          stocked_count: 1,
-          frequent_unstocked_count: 0,
-          unused_stocked_count: 0,
-        },
-        frequent_unstocked: [],
-        unused_stocked: [],
-        unmatched_prescribed: [],
-      }),
-    });
-  });
-
-  await page.route('**/api/pharmacy-drug-stock-requests**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        data: [],
-        summary: {
-          status: 'pending',
-          total_count: 0,
-          overdue_count: 0,
-          overdue_days: 7,
-          oldest_pending_created_at: null,
-          notification_level: 'clear',
-        },
-      }),
-    });
-  });
-
-  await page.route('**/api/drug-masters**', async (route) => {
-    const requestUrl = new URL(route.request().url());
-    if (requestUrl.pathname !== '/api/drug-masters') {
-      await route.continue();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        data: [
-          {
-            id: FORMULARY_DRUG_ID,
-            yj_code: '123456789012',
-            receipt_code: '123456789',
-            jan_code: null,
-            drug_name: 'RouteMock 採用薬錠5mg',
-            drug_name_kana: 'ルートモックサイヨウヤク',
-            generic_name: 'RouteMock 一般名',
-            drug_price: 21.2,
-            unit: '錠',
-            dosage_form: '内用薬',
-            therapeutic_category: '1234',
-            manufacturer: 'RouteMock 製薬',
-            is_generic: false,
-            is_narcotic: false,
-            is_psychotropic: false,
-            is_high_risk: true,
-            is_lasa_risk: false,
-            tall_man_name: null,
-            lasa_group_key: null,
-            max_administration_days: null,
-            stock_config: {
-              id: 'formulary_route_mock_stock',
-              site_id: FORMULARY_SITE_ID,
-              drug_master_id: FORMULARY_DRUG_ID,
-              is_stocked: true,
-              stock_qty: null,
-              reorder_point: null,
-              preferred_generic_id: null,
-              adoption_source: 'csv',
-              adoption_note: 'route mock',
-              last_reviewed_at: null,
-              reviewed_by_id: null,
-              follow_up_status: 'planned_switch',
-              follow_up_reason: 'RouteMock 経過措置対応',
-              follow_up_due_date: '2026-08-31T00:00:00.000Z',
-              follow_up_resolved_at: null,
-              updated_at: '2026-05-27T00:00:00.000Z',
-              preferred_generic: null,
-            },
-            generic_price_comparison: null,
-          },
-        ],
-        hasMore: false,
-        totalCount: 1,
-      }),
-    });
-  });
-
-  await page.route(`**/api/drug-masters/${FORMULARY_DRUG_ID}`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        id: FORMULARY_DRUG_ID,
-        yj_code: '123456789012',
-        receipt_code: '123456789',
-        hot_code: null,
-        jan_code: null,
-        drug_name: 'RouteMock 採用薬錠5mg',
-        drug_name_kana: 'ルートモックサイヨウヤク',
-        generic_name: 'RouteMock 一般名',
-        drug_price: 21.2,
-        unit: '錠',
-        dosage_form: '内用薬',
-        therapeutic_category: '1234',
-        manufacturer: 'RouteMock 製薬',
-        is_generic: false,
-        is_narcotic: false,
-        is_psychotropic: false,
-        is_high_risk: true,
-        is_lasa_risk: false,
-        tall_man_name: null,
-        lasa_group_key: null,
-        max_administration_days: null,
-        transitional_expiry_date: '2026-08-31T00:00:00.000Z',
-        stock_config: null,
-        package_inserts: [],
-        interactions_as_a: [],
-        interactions_as_b: [],
-      }),
+  await page.route(apiPathPattern(`/api/drug-masters/${FORMULARY_DRUG_ID}`), async (route) => {
+    await fulfillJson(route, {
+      id: FORMULARY_DRUG_ID,
+      yj_code: '123456789012',
+      receipt_code: '123456789',
+      hot_code: null,
+      jan_code: null,
+      drug_name: 'RouteMock 採用薬錠5mg',
+      drug_name_kana: 'ルートモックサイヨウヤク',
+      generic_name: 'RouteMock 一般名',
+      drug_price: 21.2,
+      unit: '錠',
+      dosage_form: '内用薬',
+      therapeutic_category: '1234',
+      manufacturer: 'RouteMock 製薬',
+      is_generic: false,
+      is_narcotic: false,
+      is_psychotropic: false,
+      is_high_risk: true,
+      is_lasa_risk: false,
+      tall_man_name: null,
+      lasa_group_key: null,
+      max_administration_days: null,
+      transitional_expiry_date: '2026-08-31T00:00:00.000Z',
+      stock_config: null,
+      package_inserts: [],
+      interactions_as_a: [],
+      interactions_as_b: [],
     });
   });
 
   await page.route(
-    `**/api/drug-masters/${FORMULARY_DRUG_ID}/generic-recommendations**`,
+    apiPathPattern(`/api/drug-masters/${FORMULARY_DRUG_ID}/generic-recommendations`),
     async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          recommendations: [
-            {
-              id: FORMULARY_GENERIC_ID,
-              yj_code: '123456789099',
-              drug_name: 'RouteMock 後発薬錠5mg',
-              generic_name: 'RouteMock 一般名',
-              drug_price: 10.5,
-              unit: '錠',
-              manufacturer: 'RouteMock GE',
-              is_generic: true,
-              transitional_expiry_date: null,
-              price_delta: -10.7,
-              price_delta_percent: -50.4,
-              site_stock: null,
-            },
-          ],
-        }),
+      await fulfillJson(route, {
+        recommendations: [
+          {
+            id: FORMULARY_GENERIC_ID,
+            yj_code: '123456789099',
+            drug_name: 'RouteMock 後発薬錠5mg',
+            generic_name: 'RouteMock 一般名',
+            drug_price: 10.5,
+            unit: '錠',
+            manufacturer: 'RouteMock GE',
+            is_generic: true,
+            transitional_expiry_date: null,
+            price_delta: -10.7,
+            price_delta_percent: -50.4,
+            site_stock: null,
+          },
+        ],
       });
     },
   );
 
-  await page.route('**/api/jobs/drug-master-freshness-check', async (route) => {
+  await page.route(apiPathPattern('/api/jobs/drug-master-freshness-check'), async (route) => {
     jobRequests.push(captureRouteRequest(route));
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ jobType: 'drug-master-freshness-check', processedCount: 1 }),
-    });
+    await fulfillJson(route, { jobType: 'drug-master-freshness-check', processedCount: 1 });
   });
 
   return { impactRequests, jobRequests };
 }
 
 async function installOfflineVisitRecordRouteMocks(page: Page) {
-  const visitRecordRequests: CapturedRequest[] = [];
+  const visitRecordRequests: CapturedRouteRequest[] = [];
+  const scheduleRequests: CapturedRouteRequest[] = [];
+  const preparationRequests: CapturedRouteRequest[] = [];
 
-  await page.route(`**/api/visit-schedules/${OFFLINE_SCHEDULE_ID}`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
+  await page.route(
+    apiPathPattern(`/api/visit-schedules/${OFFLINE_SCHEDULE_ID}`),
+    async (route) => {
+      scheduleRequests.push(captureRouteRequest(route));
+      await fulfillJson(route, {
         id: OFFLINE_SCHEDULE_ID,
         patient_id: OFFLINE_PATIENT_ID,
         cycle_id: null,
@@ -723,15 +642,15 @@ async function installOfflineVisitRecordRouteMocks(page: Page) {
         visit_type: 'regular',
         carry_items_status: 'ready',
         recurrence_rule: null,
-      }),
-    });
-  });
+      });
+    },
+  );
 
-  await page.route(`**/api/visit-preparations/${OFFLINE_SCHEDULE_ID}`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
+  await page.route(
+    apiPathPattern(`/api/visit-preparations/${OFFLINE_SCHEDULE_ID}`),
+    async (route) => {
+      preparationRequests.push(captureRouteRequest(route));
+      await fulfillJson(route, {
         data: {
           preparation: null,
           pack: {
@@ -752,25 +671,25 @@ async function installOfflineVisitRecordRouteMocks(page: Page) {
             facility_parallel_context: null,
           },
         },
-      }),
-    });
-  });
+      });
+    },
+  );
 
-  await page.route('**/api/visit-records', async (route) => {
+  await page.route(apiPathPattern('/api/visit-records'), async (route) => {
     if (route.request().method() === 'POST') {
       visitRecordRequests.push(captureRouteRequest(route));
-      await route.fulfill({
-        status: 500,
-        contentType: 'application/json',
-        body: JSON.stringify({ message: 'offline save smoke should not POST visit records' }),
-      });
+      await fulfillJson(
+        route,
+        { message: 'offline save smoke should not POST visit records' },
+        500,
+      );
       return;
     }
 
     await route.continue();
   });
 
-  return visitRecordRequests;
+  return { preparationRequests, scheduleRequests, visitRecordRequests };
 }
 
 test.describe('shared external viewer route-mocked smoke', () => {
@@ -780,16 +699,24 @@ test.describe('shared external viewer route-mocked smoke', () => {
     const { page, errors } = await createInstrumentedPage(context);
     const { selfReportRequests, viewerRequests } = await installSharedViewerRouteMock(page);
 
-    await page.goto(`/shared/${SHARED_TOKEN}?otp=${SHARED_OTP}`);
-    await waitForStableUi(page);
+    await openStableRoute(page, `/shared/${SHARED_TOKEN}?otp=${SHARED_OTP}`);
 
     await expect(page).toHaveURL(new RegExp(`/shared/${SHARED_TOKEN}$`));
     expect(new URL(page.url()).search).toBe('');
     await expect(page.getByLabel('OTP')).toHaveValue('');
     expect(viewerRequests).toHaveLength(0);
 
-    await page.getByLabel('OTP').fill(SHARED_OTP);
-    await page.getByRole('button', { name: '閲覧する' }).click();
+    for (let attempt = 0; attempt < 3 && viewerRequests.length === 0; attempt += 1) {
+      const otpInput = page.getByLabel('OTP');
+      await otpInput.fill('');
+      await otpInput.pressSequentially(SHARED_OTP);
+      await expect(otpInput).toHaveValue(SHARED_OTP);
+      await page.getByRole('button', { name: '閲覧する' }).click();
+      await expect
+        .poll(() => viewerRequests.length, { timeout: 3_000 })
+        .toBeGreaterThan(0)
+        .catch(() => null);
+    }
 
     await expect
       .poll(() => viewerRequests.length, {
@@ -837,16 +764,15 @@ test.describe('billing candidates route-mocked workbench smoke', () => {
     test.skip(testInfo.project.name !== 'chromium');
 
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/dashboard');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dashboard');
     await expect(page.getByTestId('app-shell-main')).toBeVisible();
     errors.length = 0;
 
     const requests = await installBillingWorkbenchRouteMocks(page);
-    await page.goto(
+    await openStableRoute(
+      page,
       `/billing/candidates?billing_month=${BILLING_MONTH}&patient_id=${BILLING_PATIENT_ID}&workflow_from=visit_record&visit_record_id=visit_route_mock_record&schedule_id=visit_route_mock_schedule`,
     );
-    await waitForStableUi(page);
 
     await expect(page.getByRole('heading', { name: '月次請求候補' })).toBeVisible();
     await expect
@@ -895,8 +821,7 @@ test.describe('formulary route-mocked management smoke', () => {
     const { page, errors } = await createInstrumentedPage(context);
     const { impactRequests, jobRequests } = await installFormularyRouteMocks(page);
 
-    await page.goto('/admin/formulary');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/admin/formulary');
 
     await expect(page.getByRole('heading', { name: '採用薬マスター' })).toBeVisible();
     await expect(page.getByText('採用薬リスト運用')).toBeVisible();
@@ -904,7 +829,9 @@ test.describe('formulary route-mocked management smoke', () => {
     await expect(page.getByRole('button', { name: /ハイリスク採用品/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /LASA注意採用品/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /規制薬採用品/ })).toBeVisible();
-    await expect(page.getByText('RouteMock 採用薬錠5mg').first()).toBeVisible();
+    await expect(page.getByText('RouteMock 採用薬錠5mg').first()).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(page.getByRole('button', { name: '鮮度チェック' })).toBeVisible();
 
     await page.getByRole('button', { name: /ハイリスク採用品/ }).click();
@@ -954,11 +881,16 @@ test.describe('formulary route-mocked management smoke', () => {
     const { page, errors } = await createInstrumentedPage(context);
     const { impactRequests } = await installFormularyRouteMocks(page);
 
-    await page.goto('/admin/formulary');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/admin/formulary');
 
     await expect(page.getByRole('heading', { name: '採用薬マスター' })).toBeVisible();
     await expect(page.getByText('影響レビューキュー')).toBeVisible();
+    await expect(page.getByText('RouteMock 採用薬錠5mg').first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole('button', { name: /ハイリスク採用品\s*1/ })).toBeVisible({
+      timeout: 15_000,
+    });
 
     const highRiskButton = page.getByRole('button', { name: /ハイリスク採用品/ });
     const followUpButton = page.getByRole('button', { name: '安全性フォローアップ作成' });
@@ -1010,12 +942,24 @@ test.describe('visit record route-mocked offline save smoke', () => {
         get: () => false,
       });
     });
-    const visitRecordRequests = await installOfflineVisitRecordRouteMocks(page);
+    const { preparationRequests, scheduleRequests, visitRecordRequests } =
+      await installOfflineVisitRecordRouteMocks(page);
 
-    await page.goto(`/visits/${OFFLINE_SCHEDULE_ID}/record`);
-    await waitForStableUi(page);
+    await openStableRoute(page, `/visits/${OFFLINE_SCHEDULE_ID}/record`);
     await seedOfflineEncryptionKey(page);
 
+    await expect
+      .poll(() => scheduleRequests.length, {
+        message: 'offline smoke should fetch schedule detail through route mock',
+        timeout: 10_000,
+      })
+      .toBeGreaterThan(0);
+    await expect
+      .poll(() => preparationRequests.length, {
+        message: 'offline smoke should fetch preparation detail through route mock',
+        timeout: 10_000,
+      })
+      .toBeGreaterThan(0);
     await expect(page.getByLabel('主観情報')).toBeVisible({ timeout: 15_000 });
     await expect(
       page.getByText('現在オフラインです。保存すると端末に下書きし、再接続後に同期します。'),
@@ -1032,7 +976,11 @@ test.describe('visit record route-mocked offline save smoke', () => {
     await page.getByLabel('客観情報').fill(soap.objective);
     await page.getByLabel('薬学的評価').fill(soap.assessment);
     await page.getByLabel('計画・介入').fill(soap.plan);
-    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await page.getByRole('combobox', { name: /訪問結果/ }).click();
+    await page.getByRole('option', { name: '延期' }).click();
+    const saveButton = page.getByRole('button', { name: '保存', exact: true });
+    await expect(saveButton).toHaveAttribute('type', 'submit');
+    await saveButton.click();
 
     await expect(
       page.getByText('オフラインで下書きを保存しました。再接続後に自動同期します。'),

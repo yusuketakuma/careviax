@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -49,12 +49,9 @@ vi.mock('@/lib/db/client', () => ({
 import { GET } from './route';
 
 function createRequest() {
-  return {
-    headers: { get: () => null },
-    nextUrl: { pathname: '/api/drug-master-imports/status' },
-    method: 'GET',
-    url: 'http://localhost/api/drug-master-imports/status',
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/drug-master-imports/status', {
+    headers: { 'x-org-id': 'org_1' },
+  });
 }
 
 const SOURCES = ['ssk', 'mhlw_price', 'mhlw_generic', 'hot', 'pmda', 'manual_clinical'];

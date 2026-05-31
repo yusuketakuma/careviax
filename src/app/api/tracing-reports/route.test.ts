@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
+
+type AuthenticatedTestRequest = NextRequest & {
+  orgId: string;
+  userId: string;
+  role: 'pharmacist';
+};
 
 const {
   tracingReportFindManyMock,
@@ -22,19 +28,15 @@ const {
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (
-    handler: (
-      req: NextRequest & { orgId: string; userId: string; role: 'pharmacist' },
-    ) => Promise<Response>,
-  ) => {
-    return (req: NextRequest) =>
-      handler({
-        ...req,
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'pharmacist',
-      } as NextRequest & { orgId: string; userId: string; role: 'pharmacist' });
-  },
+  withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) =>
+    (req: NextRequest) =>
+      handler(
+        Object.assign(req, {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist' as const,
+        }),
+      ),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -62,6 +64,14 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { GET, POST } from './route';
 
+function createRequest(url: string, body?: unknown) {
+  return new NextRequest(url, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
 describe('/api/tracing-reports', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -87,9 +97,9 @@ describe('/api/tracing-reports', () => {
   });
 
   it('lists tracing reports', async () => {
-    const response = (await GET({
-      url: 'http://localhost/api/tracing-reports?patient_id=patient_1&status=draft',
-    } as NextRequest))!;
+    const response = (await GET(
+      createRequest('http://localhost/api/tracing-reports?patient_id=patient_1&status=draft'),
+    ))!;
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -107,13 +117,31 @@ describe('/api/tracing-reports', () => {
     );
   });
 
+  it('rejects an unsupported status filter before report or assignment reads', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/tracing-reports?status=archived'),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'status が不正です',
+      details: {
+        status: ['status が不正です'],
+      },
+    });
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(tracingReportFindManyMock).not.toHaveBeenCalled();
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('creates a tracing report', async () => {
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createRequest('http://localhost/api/tracing-reports', {
         patient_id: 'patient_1',
         content: { summary: '確認事項' },
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(tracingReportCreateMock).toHaveBeenCalledWith({
@@ -127,13 +155,13 @@ describe('/api/tracing-reports', () => {
   it('rejects mismatched patient and case combinations before creating', async () => {
     careCaseFindFirstMock.mockResolvedValue(null);
 
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createRequest('http://localhost/api/tracing-reports', {
         patient_id: 'patient_2',
         case_id: 'case_1',
         content: { summary: '確認事項' },
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(400);
     expect(careCaseFindFirstMock).toHaveBeenCalledWith(
@@ -151,14 +179,14 @@ describe('/api/tracing-reports', () => {
   it('rejects medication issues outside the selected patient and case scope', async () => {
     medicationIssueFindFirstMock.mockResolvedValue(null);
 
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createRequest('http://localhost/api/tracing-reports', {
         patient_id: 'patient_1',
         case_id: 'case_1',
         issue_id: 'issue_other',
         content: { summary: '確認事項' },
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(400);
     expect(medicationIssueFindFirstMock).toHaveBeenCalledWith(

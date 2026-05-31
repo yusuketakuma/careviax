@@ -1,10 +1,11 @@
 import { InteractionSeverity, InteractionSource } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { XMLParser } from 'fast-xml-parser';
 import {
   decodeTextBuffer,
-  DrugMasterImportDbClient,
   FetchLike,
   PMDA_IMPORT_URL_POLICY,
+  type DrugMasterImportLogDbClient,
   ZipExpansionLimits,
   fetchBytes,
   isZipBuffer,
@@ -50,6 +51,14 @@ type ParsedPmdaPackageInsertRecord = {
   adverse_effects: string[];
   dosage_and_administration: string[];
   interaction_candidates: ParsedPmdaInteractionCandidate[];
+};
+type PmdaPackageInsertImportDbClient = DrugMasterImportLogDbClient & {
+  drugInteraction: Pick<Prisma.TransactionClient['drugInteraction'], 'upsert'>;
+  drugMaster: Pick<Prisma.TransactionClient['drugMaster'], 'findMany'>;
+  drugPackageInsert: Pick<
+    Prisma.TransactionClient['drugPackageInsert'],
+    'create' | 'findFirst' | 'update'
+  >;
 };
 
 const PMDA_FULL_URL_ENV = 'PMDA_PACKAGE_INSERT_FULL_URL';
@@ -343,7 +352,7 @@ function matchCounterpartIds(
 }
 
 export async function importPmdaPackageInserts(
-  db: DrugMasterImportDbClient,
+  db: PmdaPackageInsertImportDbClient,
   options: ImportPmdaPackageInsertOptions = {},
 ) {
   return withImportLog(db, 'pmda', async () => {

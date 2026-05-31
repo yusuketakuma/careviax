@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import {
+  COVERAGE_CATALOG,
   getCoverageCategory,
   getCoverageLabel,
   type CoverageCategory,
@@ -80,99 +81,48 @@ const SEARCH_CANDIDATE_FIELDS = [
   'template_key',
   'certification_number',
   'yj_code',
+  'reason',
+  'change_type',
 ] as const;
 const SEARCH_COUNT_EXACT_LIMIT = 1000;
 
-const DATA_EXPLORER_MODEL_ALLOWLIST = [
-  'NotificationRule',
-  'BillingRule',
-  'BillingCandidate',
-  'BillingEvidence',
-  'Notification',
-  'AuditLog',
-  'Template',
-  'DocumentDeliveryRule',
-  'UatFeedback',
-  'SourceOfTruthMatrix',
-  'WebhookRegistration',
-  'CommunicationEvent',
-  'CommunicationRequest',
-  'CommunicationResponse',
-  'CareReport',
-  'DeliveryRecord',
-  'ConferenceNote',
-  'EscalationRule',
-  'TracingReport',
-  'PatientSelfReport',
-  'CommunityActivity',
-  'TaskComment',
-  'HandoffBoard',
-  'DrugMaster',
-  'DrugPackageInsert',
-  'DrugInteraction',
+const DATA_EXPLORER_MODEL_EXCLUSIONS: ReadonlySet<string> = new Set([
+  'Setting',
+  'IntegrationJob',
+  'LabelDictionary',
+  'ExternalAccessGrant',
+  'PatientMcsLink',
+  'PatientMcsSummary',
+  'PatientMcsMessage',
+  'HandoffItem',
+  'PushSubscription',
+] as const);
+const GLOBAL_DATA_EXPLORER_MODELS: ReadonlySet<string> = new Set([
   'DrugAlertRule',
-  'PharmacyDrugStock',
-  'GenericDrugMapping',
+  'DrugInteraction',
+  'DrugMaster',
+  'DrugMasterChangeEvent',
   'DrugMasterImportLog',
-  'MedicationProfile',
-  'ResidualMedication',
-  'MedicationIssue',
-  'Intervention',
-  'Task',
-  'FirstVisitDocument',
-  'PackagingMethodMaster',
-  'Organization',
-  'PharmacySite',
-  'ServiceArea',
-  'PharmacySiteInsuranceConfig',
-  'User',
-  'Membership',
-  'FacilityStandardRegistration',
-  'PharmacistCredential',
-  'PharmacistShift',
-  'PharmacistShiftTemplate',
-  'BusinessHoliday',
-  'Facility',
-  'FacilityUnit',
-  'FacilityContact',
-  'ExternalProfessional',
-  'PrescriberInstitution',
-  'Patient',
-  'Residence',
-  'CareCase',
-  'ContactParty',
-  'CareTeamLink',
-  'PatientCondition',
-  'ConsentRecord',
-  'ManagementPlan',
-  'PatientSchedulePreference',
-  'PatientPackagingProfile',
-  'PatientInsurance',
-  'PatientLabObservation',
-  'MedicationCycle',
-  'CycleTransitionLog',
-  'PrescriptionIntake',
-  'PrescriptionLine',
-  'InquiryRecord',
-  'DispenseTask',
-  'DispenseResult',
-  'DispenseAudit',
-  'DispensingDecision',
-  'SetPlan',
-  'SetBatch',
-  'SetAudit',
-  'SetBatchChangeLog',
-  'WorkflowException',
-  'QrScanDraft',
-  'JahisSupplementalRecord',
-  'VisitSchedule',
-  'FacilityVisitBatch',
-  'VisitRecord',
-  'VisitPreparation',
-  'VisitScheduleProposal',
-  'VisitScheduleContactLog',
-  'VisitScheduleOverride',
-] as const;
+  'DrugPackageInsert',
+  'GenericDrugMapping',
+] as const);
+
+function buildDataExplorerModelAllowlist() {
+  const modelNames = new Set<string>();
+  for (const models of Object.values(COVERAGE_CATALOG)) {
+    for (const modelName of models) {
+      if (!DATA_EXPLORER_MODEL_EXCLUSIONS.has(modelName)) {
+        modelNames.add(modelName);
+      }
+    }
+  }
+  return Array.from(modelNames);
+}
+
+const DATA_EXPLORER_MODEL_ALLOWLIST = buildDataExplorerModelAllowlist();
+const prismaModelByName = new Map(
+  Prisma.dmmf.datamodel.models.map((model) => [model.name, model] as const),
+);
 
 export type DataExplorerField = {
   name: string;
@@ -241,59 +191,62 @@ function isNonEditableModelField(modelName: string, fieldName: string) {
 function resolveTableScope(modelName: string, fieldNameSet: Set<string>): TableMeta['scope'] {
   if (modelName === 'Organization') return 'organization';
   if (fieldNameSet.has('org_id')) return 'org_id';
-  return 'global';
+  if (GLOBAL_DATA_EXPLORER_MODELS.has(modelName)) return 'global';
+  throw new Error(
+    `Data explorer model ${modelName} has no org_id and is not explicitly marked global`,
+  );
+}
+
+function buildTableMeta(modelName: string): TableMeta {
+  const model = prismaModelByName.get(modelName);
+  if (!model) {
+    throw new Error(`Data explorer allowlist references unknown Prisma model: ${modelName}`);
+  }
+
+  const scalarFields = model.fields.filter((field) => field.kind !== 'object');
+  const allFieldNameSet = new Set(scalarFields.map((field) => field.dbName ?? field.name));
+  const scope = resolveTableScope(model.name, allFieldNameSet);
+  const fields = scalarFields
+    .filter((field) => !isDeniedField(field.dbName ?? field.name))
+    .map((field) => ({
+      name: field.dbName ?? field.name,
+      type: String(field.type),
+      kind: field.kind,
+      isList: field.isList,
+      isRequired: field.isRequired,
+      isEditable:
+        !isReadOnlyModel(model.name) &&
+        scope !== 'global' &&
+        field.kind === 'scalar' &&
+        !READ_ONLY_FIELDS.has(field.dbName ?? field.name) &&
+        !isNonEditableModelField(model.name, field.dbName ?? field.name),
+    }));
+
+  const fieldNameSet = new Set(fields.map((field) => field.name));
+  const fieldByName = new Map(fields.map((field) => [field.name, field]));
+  const searchableFields = SEARCH_CANDIDATE_FIELDS.filter((fieldName) => {
+    const field = fieldByName.get(fieldName);
+    return field?.kind === 'scalar' && field.type === 'String' && !field.isList;
+  });
+
+  return {
+    modelName: model.name,
+    tableName: model.dbName ?? model.name,
+    fields,
+    editableFieldNames: new Set(
+      fields.filter((field) => field.isEditable).map((field) => field.name),
+    ),
+    searchableField: searchableFields[0] ?? null,
+    searchableFields,
+    hasUpdatedAt: fieldNameSet.has('updated_at'),
+    scope,
+  };
 }
 
 const tableMetaByName = new Map<string, TableMeta>(
   DATA_EXPLORER_MODEL_ALLOWLIST.map((modelName) => {
-    const model = Prisma.dmmf.datamodel.models.find((candidate) => candidate.name === modelName);
-    if (!model) {
-      throw new Error(`Data explorer allowlist references unknown Prisma model: ${modelName}`);
-    }
-
-    const scalarFields = model.fields.filter((field) => field.kind !== 'object');
-    const allFieldNameSet = new Set(scalarFields.map((field) => field.dbName ?? field.name));
-    const scope = resolveTableScope(model.name, allFieldNameSet);
-    const fields = scalarFields
-      .filter((field) => !isDeniedField(field.dbName ?? field.name))
-      .filter((field) => field.kind !== 'object')
-      .map((field) => ({
-        name: field.dbName ?? field.name,
-        type: String(field.type),
-        kind: field.kind,
-        isList: field.isList,
-        isRequired: field.isRequired,
-        isEditable:
-          !isReadOnlyModel(model.name) &&
-          scope !== 'global' &&
-          field.kind === 'scalar' &&
-          !READ_ONLY_FIELDS.has(field.dbName ?? field.name) &&
-          !isNonEditableModelField(model.name, field.dbName ?? field.name),
-      }));
-
-    const fieldNameSet = new Set(fields.map((field) => field.name));
-    const fieldByName = new Map(fields.map((field) => [field.name, field]));
-    const searchableFields = SEARCH_CANDIDATE_FIELDS.filter((fieldName) => {
-      const field = fieldByName.get(fieldName);
-      return field?.kind === 'scalar' && field.type === 'String' && !field.isList;
-    });
-    const searchableField = searchableFields[0] ?? null;
-
-    return [
-      model.dbName ?? model.name,
-      {
-        modelName: model.name,
-        tableName: model.dbName ?? model.name,
-        fields,
-        editableFieldNames: new Set(
-          fields.filter((field) => field.isEditable).map((field) => field.name),
-        ),
-        searchableField,
-        searchableFields,
-        hasUpdatedAt: fieldNameSet.has('updated_at'),
-        scope,
-      } satisfies TableMeta,
-    ] as const;
+    const meta = buildTableMeta(modelName);
+    return [meta.tableName, meta] as const;
   }),
 );
 

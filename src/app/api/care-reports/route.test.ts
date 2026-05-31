@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   withAuthMock,
@@ -63,6 +63,24 @@ vi.mock('@/lib/prescriptions/prescriber-institutions', () => ({
 }));
 
 import { GET, POST } from './route';
+
+type AuthenticatedTestRequest = NextRequest & {
+  orgId: string;
+  userId: string;
+  role?: string;
+};
+
+function createAuthenticatedRequest(
+  url = 'http://localhost/api/care-reports',
+  init?: ConstructorParameters<typeof NextRequest>[1],
+  auth: { orgId: string; userId: string; role?: string } = {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'pharmacist',
+  },
+): AuthenticatedTestRequest {
+  return Object.assign(new NextRequest(url, init), auth);
+}
 
 describe('/api/care-reports GET', () => {
   beforeEach(() => {
@@ -152,13 +170,11 @@ describe('/api/care-reports GET', () => {
   });
 
   it('supports extended report search filters and enriches delivery summary', async () => {
-    const response = await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      url: 'http://localhost/api/care-reports?q=山田&keyword=眠気&visit_record_id=visit_1&report_type=physician_report&delivery_status=response_waiting&recipient=主治医&date_from=2026-03-01&date_to=2026-03-31&sent_from=2026-03-28&sent_to=2026-03-29',
-      headers: { get: () => null },
-    } as unknown as NextRequest & { orgId: string; userId: string; role?: string });
+    const response = await GET(
+      createAuthenticatedRequest(
+        'http://localhost/api/care-reports?q=山田&keyword=眠気&visit_record_id=visit_1&report_type=physician_report&delivery_status=response_waiting&recipient=主治医&date_from=2026-03-01&date_to=2026-03-31&sent_from=2026-03-28&sent_to=2026-03-29',
+      ),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -219,17 +235,58 @@ describe('/api/care-reports GET', () => {
     });
   });
 
+  it('normalizes malformed billing context metadata while enriching reports', async () => {
+    careReportFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'report_invalid_billing_context',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        visit_record_id: 'visit_1',
+        report_type: 'physician_report',
+        status: 'draft',
+        content: {
+          summary: '訪問後報告',
+          billing_context: ['unexpected'],
+        },
+        template_id: null,
+        pdf_url: null,
+        created_by: 'user_1',
+        created_at: new Date('2026-03-28T09:00:00.000Z'),
+        updated_at: new Date('2026-03-28T09:15:00.000Z'),
+        delivery_records: [],
+      },
+    ]);
+
+    const response = await GET(createAuthenticatedRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+
+    const payload = (await response.json()) as {
+      data: Array<{
+        effective_revision_code: string | null;
+        site_config_status: string | null;
+      }>;
+    };
+
+    expect(payload.data[0]).toMatchObject({
+      effective_revision_code: null,
+      site_config_status: null,
+    });
+  });
+
   it('returns an empty scoped result without reading reports when a non-admin has no assigned cases', async () => {
     careCaseFindManyMock.mockResolvedValueOnce([]);
     careReportFindManyMock.mockResolvedValueOnce([]);
 
-    const response = await GET({
-      orgId: 'org_1',
-      userId: 'unassigned_1',
-      role: 'pharmacist',
-      url: 'http://localhost/api/care-reports',
-      headers: { get: () => null },
-    } as unknown as NextRequest & { orgId: string; userId: string; role?: string });
+    const response = await GET(
+      createAuthenticatedRequest('http://localhost/api/care-reports', undefined, {
+        orgId: 'org_1',
+        userId: 'unassigned_1',
+        role: 'pharmacist',
+      }),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -248,13 +305,9 @@ describe('/api/care-reports GET', () => {
   });
 
   it('returns 400 for an invalid status filter', async () => {
-    const response = await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      url: 'http://localhost/api/care-reports?status=unknown',
-      headers: { get: () => null },
-    } as unknown as NextRequest & { orgId: string; userId: string; role?: string });
+    const response = await GET(
+      createAuthenticatedRequest('http://localhost/api/care-reports?status=unknown'),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -262,13 +315,9 @@ describe('/api/care-reports GET', () => {
   });
 
   it('returns 400 for an invalid date filter', async () => {
-    const response = await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      url: 'http://localhost/api/care-reports?sent_from=2026-03-99',
-      headers: { get: () => null },
-    } as unknown as NextRequest & { orgId: string; userId: string; role?: string });
+    const response = await GET(
+      createAuthenticatedRequest('http://localhost/api/care-reports?sent_from=2026-03-99'),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -319,14 +368,11 @@ describe('/api/care-reports POST', () => {
   });
 
   function createPostRequest(body: Record<string, unknown>) {
-    return {
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      url: 'http://localhost/api/care-reports',
-      headers: { get: () => null },
-      json: async () => body,
-    } as unknown as NextRequest & { orgId: string; userId: string; role?: string };
+    return createAuthenticatedRequest('http://localhost/api/care-reports', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
   }
 
   it('creates a report only when patient, case, and visit record belong together', async () => {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { authMock, membershipFindFirstMock, withOrgContextMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
@@ -67,12 +67,14 @@ type Handler = (req: NextRequest) => Promise<Response | undefined>;
 type RouteEntry = { name: string; handler: Handler; successBody?: unknown };
 
 function createRequest(headers?: Record<string, string>, body: unknown = {}) {
-  return {
+  return new NextRequest('http://localhost/api/test', {
+    method: 'POST',
+    body: JSON.stringify(body),
     headers: {
-      get: (key: string) => headers?.[key] ?? null,
+      'content-type': 'application/json',
+      ...headers,
     },
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+  });
 }
 
 const routes: RouteEntry[] = [

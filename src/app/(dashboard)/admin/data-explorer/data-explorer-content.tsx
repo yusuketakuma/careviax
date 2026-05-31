@@ -1,6 +1,6 @@
 'use client';
 
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCcw, Save, Search } from 'lucide-react';
 import { toast } from 'sonner';
@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { parseJsonObjectText } from '@/lib/admin/json-editor';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
@@ -95,7 +96,7 @@ export function DataExplorerContent() {
   const [modelFilter, setModelFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'all' | CoverageCategory>('all');
   const [rowSearch, setRowSearch] = useState('');
-  const [editorValue, setEditorValue] = useState('{}');
+  const [editorDrafts, setEditorDrafts] = useState<Record<string, string>>({});
 
   const deferredModelFilter = useDeferredValue(modelFilter.trim().toLowerCase());
   const deferredRowSearch = useDeferredValue(rowSearch.trim());
@@ -124,30 +125,21 @@ export function DataExplorerContent() {
     [categoryFilter, deferredModelFilter, modelsQuery.data?.data],
   );
 
-  useEffect(() => {
-    if (filteredModels.length === 0) {
-      return;
-    }
-
-    const selectedTableStillVisible = filteredModels.some(
-      (model) => model.tableName === selectedTable,
-    );
-
-    if (!selectedTable || !selectedTableStillVisible) {
-      setSelectedTable(filteredModels[0].tableName);
-      setSelectedRowId('');
-      setRowSearch('');
-    }
-  }, [filteredModels, selectedTable]);
+  const selectedTableStillVisible = filteredModels.some(
+    (model) => model.tableName === selectedTable,
+  );
+  const effectiveSelectedTable = selectedTableStillVisible
+    ? selectedTable
+    : (filteredModels[0]?.tableName ?? '');
 
   const rowsQuery = useQuery({
-    queryKey: ['admin-data-explorer-rows', orgId, selectedTable, deferredRowSearch],
+    queryKey: ['admin-data-explorer-rows', orgId, effectiveSelectedTable, deferredRowSearch],
     queryFn: async () => {
       const params = new URLSearchParams({ limit: '25' });
       if (deferredRowSearch) params.set('search', deferredRowSearch);
 
       const response = await fetch(
-        `/api/admin/data-explorer/${selectedTable}?${params.toString()}`,
+        `/api/admin/data-explorer/${effectiveSelectedTable}?${params.toString()}`,
         {
           headers: { 'x-org-id': orgId },
         },
@@ -155,54 +147,50 @@ export function DataExplorerContent() {
       if (!response.ok) throw new Error('テーブルデータの取得に失敗しました');
       return response.json() as Promise<{ data: ExplorerRowsPayload }>;
     },
-    enabled: !!orgId && !!selectedTable,
+    enabled: !!orgId && !!effectiveSelectedTable,
   });
 
   const tableData = rowsQuery.data?.data ?? null;
+  const selectedRowIdStillVisible = tableData?.rows.some((row) => String(row.id) === selectedRowId);
+  const effectiveSelectedRowId = selectedRowIdStillVisible
+    ? selectedRowId
+    : tableData?.rows[0]?.id
+      ? String(tableData.rows[0].id)
+      : '';
   const selectedRow =
-    tableData?.rows.find((row) => String(row.id) === selectedRowId) ?? tableData?.rows[0] ?? null;
-
-  useEffect(() => {
-    if (!tableData) return;
-    if (!selectedRowId && tableData.rows[0]?.id) {
-      setSelectedRowId(String(tableData.rows[0].id));
-      return;
-    }
-
-    const exists = tableData.rows.some((row) => String(row.id) === selectedRowId);
-    if (!exists) {
-      setSelectedRowId(tableData.rows[0]?.id ? String(tableData.rows[0].id) : '');
-    }
-  }, [selectedRowId, tableData]);
-
-  useEffect(() => {
-    if (!tableData || !selectedRow) return;
-    setEditorValue(JSON.stringify(extractEditablePatch(selectedRow, tableData.columns), null, 2));
-  }, [selectedRow, tableData]);
+    tableData?.rows.find((row) => String(row.id) === effectiveSelectedRowId) ?? null;
+  const editorKey =
+    effectiveSelectedTable && effectiveSelectedRowId
+      ? `${effectiveSelectedTable}:${effectiveSelectedRowId}`
+      : '';
+  const selectedRowPatchText = useMemo(
+    () =>
+      tableData && selectedRow
+        ? JSON.stringify(extractEditablePatch(selectedRow, tableData.columns), null, 2)
+        : '{}',
+    [selectedRow, tableData],
+  );
+  const editorValue = editorKey ? (editorDrafts[editorKey] ?? selectedRowPatchText) : '{}';
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedTable || !selectedRowId) throw new Error('更新対象の行を選択してください');
-
-      let patch: Record<string, unknown>;
-      try {
-        const parsed = JSON.parse(editorValue);
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-          throw new Error('JSON object が必要です');
-        }
-        patch = parsed as Record<string, unknown>;
-      } catch (error) {
-        throw new Error(error instanceof Error ? error.message : 'JSON が不正です');
+      if (!effectiveSelectedTable || !effectiveSelectedRowId) {
+        throw new Error('更新対象の行を選択してください');
       }
 
-      const response = await fetch(`/api/admin/data-explorer/${selectedTable}/${selectedRowId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
+      const patch = parseJsonObjectText(editorValue, 'JSON object が必要です');
+
+      const response = await fetch(
+        `/api/admin/data-explorer/${effectiveSelectedTable}/${effectiveSelectedRowId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-org-id': orgId,
+          },
+          body: JSON.stringify({ patch }),
         },
-        body: JSON.stringify({ patch }),
-      });
+      );
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error((payload as { message?: string }).message ?? '更新に失敗しました');
@@ -211,8 +199,15 @@ export function DataExplorerContent() {
     },
     onSuccess: async () => {
       toast.success('レコードを更新しました');
+      if (editorKey) {
+        setEditorDrafts((current) => {
+          const next = { ...current };
+          delete next[editorKey];
+          return next;
+        });
+      }
       await queryClient.invalidateQueries({
-        queryKey: ['admin-data-explorer-rows', orgId, selectedTable],
+        queryKey: ['admin-data-explorer-rows', orgId, effectiveSelectedTable],
         exact: false,
       });
       await queryClient.invalidateQueries({
@@ -280,7 +275,7 @@ export function DataExplorerContent() {
                     setRowSearch('');
                   }}
                   className={`w-full rounded-xl border p-3 text-left transition ${
-                    selectedTable === model.tableName
+                    effectiveSelectedTable === model.tableName
                       ? 'border-primary bg-primary/5'
                       : 'border-border bg-card hover:bg-muted/40'
                   }`}
@@ -304,7 +299,7 @@ export function DataExplorerContent() {
 
         <Card className="xl:h-[calc(100vh-13rem)] xl:overflow-hidden">
           <CardHeader>
-            <CardTitle>{selectedTable || 'テーブル選択待ち'}</CardTitle>
+            <CardTitle>{effectiveSelectedTable || 'テーブル選択待ち'}</CardTitle>
             <CardDescription>
               {tableData
                 ? `${tableData.coverageLabel} / ${tableData.totalCount} 件`
@@ -319,7 +314,7 @@ export function DataExplorerContent() {
                 onChange={(event) => setRowSearch(event.target.value)}
                 placeholder="行内容を全文検索"
                 className="border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
-                disabled={!selectedTable}
+                disabled={!effectiveSelectedTable}
               />
             </div>
 
@@ -335,7 +330,7 @@ export function DataExplorerContent() {
                       type="button"
                       onClick={() => setSelectedRowId(rowId)}
                       className={`w-full rounded-xl border p-3 text-left transition ${
-                        rowId === selectedRowId
+                        rowId === effectiveSelectedRowId
                           ? 'border-primary bg-primary/5'
                           : 'border-border bg-card hover:bg-muted/40'
                       }`}
@@ -381,12 +376,18 @@ export function DataExplorerContent() {
               <TabsContent value="editor" className="min-h-0 flex-1">
                 <div className="flex h-full min-h-0 flex-col gap-3">
                   <div className="flex flex-wrap gap-2 text-xs">
-                    <Badge variant="secondary">{selectedTable || '未選択'}</Badge>
+                    <Badge variant="secondary">{effectiveSelectedTable || '未選択'}</Badge>
                     <Badge variant="outline">{editableFields.length} editable fields</Badge>
                   </div>
                   <Textarea
                     value={editorValue}
-                    onChange={(event) => setEditorValue(event.target.value)}
+                    onChange={(event) => {
+                      if (!editorKey) return;
+                      setEditorDrafts((current) => ({
+                        ...current,
+                        [editorKey]: event.target.value,
+                      }));
+                    }}
                     className="min-h-[20rem] flex-1 font-mono text-xs"
                     disabled={!selectedRow}
                   />
@@ -403,14 +404,12 @@ export function DataExplorerContent() {
                       type="button"
                       variant="outline"
                       onClick={() => {
-                        if (!tableData || !selectedRow) return;
-                        setEditorValue(
-                          JSON.stringify(
-                            extractEditablePatch(selectedRow, tableData.columns),
-                            null,
-                            2,
-                          ),
-                        );
+                        if (!editorKey) return;
+                        setEditorDrafts((current) => {
+                          const next = { ...current };
+                          delete next[editorKey];
+                          return next;
+                        });
                       }}
                       disabled={!selectedRow}
                     >

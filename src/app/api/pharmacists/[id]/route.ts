@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
-import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import {
@@ -95,8 +95,8 @@ export async function PATCH(
           max_weekly_visits: isOperational ? (data.max_weekly_visits ?? null) : null,
           max_travel_minutes: isOperational ? (data.max_travel_minutes ?? null) : null,
           can_accept_emergency: isOperational ? data.can_accept_emergency : false,
-          visit_specialties: (isOperational ? data.visit_specialties : []) as Prisma.InputJsonValue,
-          coverage_area: (isOperational ? data.coverage_area : []) as Prisma.InputJsonValue,
+          visit_specialties: toPrismaJsonInput(isOperational ? data.visit_specialties : []),
+          coverage_area: toPrismaJsonInput(isOperational ? data.coverage_area : []),
         },
       });
 

@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
-import type { CaseStatus } from '@prisma/client';
 import {
   applyPatientAssignmentWhere,
   buildCareCaseAssignmentWhere,
 } from '@/lib/auth/visit-schedule-access';
 import { recordDataExportAudit } from '@/server/services/export-audit';
+import { CASE_STATUSES } from '@/lib/patient/case-status';
+import { validationError } from '@/lib/api/response';
+import { z } from 'zod';
 
 const BOM = '\uFEFF';
 
@@ -27,14 +29,7 @@ function buildCsvRow(values: (string | null | undefined)[]): string {
   return values.map(escapeCsv).join(',');
 }
 
-const VALID_CASE_STATUSES: CaseStatus[] = [
-  'referral_received',
-  'assessment',
-  'active',
-  'on_hold',
-  'discharged',
-  'terminated',
-];
+const caseStatusSchema = z.enum(CASE_STATUSES);
 
 /**
  * GET /api/patients/export
@@ -51,16 +46,18 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const caseStatusParam = searchParams.get('case_status') ?? undefined;
-  const caseStatus =
-    caseStatusParam && (VALID_CASE_STATUSES as string[]).includes(caseStatusParam)
-      ? (caseStatusParam as CaseStatus)
-      : undefined;
+  const caseStatus = caseStatusParam ? caseStatusSchema.safeParse(caseStatusParam) : null;
+  if (caseStatus && !caseStatus.success) {
+    return validationError('ケースステータスが不正です', {
+      case_status: ['対応していないステータスです'],
+    });
+  }
 
   const EXPORT_LIMIT = 10000;
   const patientWhere = applyPatientAssignmentWhere(
     {
       org_id: ctx.orgId,
-      ...(caseStatus ? { cases: { some: { status: caseStatus } } } : {}),
+      ...(caseStatus ? { cases: { some: { status: caseStatus.data } } } : {}),
     },
     {
       userId: ctx.userId,
@@ -75,7 +72,7 @@ export async function GET(req: NextRequest) {
     caseStatus || caseAssignmentWhere
       ? {
           AND: [
-            ...(caseStatus ? [{ status: caseStatus }] : []),
+            ...(caseStatus ? [{ status: caseStatus.data }] : []),
             ...(caseAssignmentWhere ? [caseAssignmentWhere] : []),
           ],
         }
@@ -143,7 +140,7 @@ export async function GET(req: NextRequest) {
     format: 'csv',
     recordCount: rows.length,
     filters: {
-      case_status: caseStatus ?? null,
+      case_status: caseStatus?.data ?? null,
       truncated,
     },
     ipAddress: ctx.ipAddress,

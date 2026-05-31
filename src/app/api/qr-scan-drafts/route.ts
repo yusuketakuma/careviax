@@ -1,5 +1,6 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
@@ -253,9 +254,9 @@ export const POST = withAuth(
           status: 'pending',
           schema_version: 1,
           raw_qr_texts: qr_texts,
-          parsed_data: draftParsedData as never,
-          parse_errors: allErrors.length > 0 ? (allErrors as never) : Prisma.JsonNull,
-          auto_completed: autoCompleted as never,
+          parsed_data: toPrismaJsonInput(draftParsedData),
+          parse_errors: allErrors.length > 0 ? toPrismaJsonInput(allErrors) : Prisma.JsonNull,
+          auto_completed: toPrismaJsonInput(autoCompleted),
           expected_qr_count,
         },
       });

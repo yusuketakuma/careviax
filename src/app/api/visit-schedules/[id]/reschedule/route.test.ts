@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -80,12 +80,14 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 import { POST } from './route';
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
-  return {
+  return new NextRequest('http://localhost/api/visit-schedules/schedule_1/reschedule', {
+    method: 'POST',
+    body: JSON.stringify(body),
     headers: {
-      get: (key: string) => headers?.[key] ?? null,
+      'content-type': 'application/json',
+      ...headers,
     },
-    json: async () => body,
-  } as unknown as NextRequest;
+  });
 }
 
 function buildSchedule(overrides?: Record<string, unknown>) {

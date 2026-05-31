@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server';
-import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { success, validationError, notFound } from '@/lib/api/response';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 
 const updateServiceAreaSchema = z.object({
@@ -53,8 +53,8 @@ export async function PATCH(
         ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
         ...(parsed.data.name ? { name: parsed.data.name } : {}),
         ...(parsed.data.area_type ? { area_type: parsed.data.area_type } : {}),
-        ...(parsed.data.geo_data
-          ? { geo_data: parsed.data.geo_data as Prisma.InputJsonValue }
+        ...(parsed.data.geo_data !== undefined
+          ? { geo_data: toPrismaJsonInput(parsed.data.geo_data) }
           : {}),
         ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes || null } : {}),
       },

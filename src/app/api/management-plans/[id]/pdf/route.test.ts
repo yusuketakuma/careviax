@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -37,6 +37,10 @@ vi.mock('@/server/services/export-audit', () => ({
 
 import { GET } from './route';
 
+function createGetRequest() {
+  return new NextRequest('http://localhost/api/management-plans/plan_1/pdf');
+}
+
 describe('/api/management-plans/[id]/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -62,7 +66,7 @@ describe('/api/management-plans/[id]/pdf', () => {
       fileName: 'plan.pdf',
     });
 
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createGetRequest(), {
       params: Promise.resolve({ id: 'plan_1' }),
     }))!;
 
@@ -81,7 +85,7 @@ describe('/api/management-plans/[id]/pdf', () => {
   it('returns 404 when the pdf source is missing', async () => {
     buildManagementPlanPdfMock.mockRejectedValue(new Error('管理計画書が見つかりません'));
 
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createGetRequest(), {
       params: Promise.resolve({ id: 'plan_1' }),
     }))!;
 

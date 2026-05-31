@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 import { serverCache } from '@/lib/utils/server-cache';
 
 const {
@@ -180,12 +180,7 @@ import {
 import { GET } from './route';
 
 function createRequest(headers?: Record<string, string>) {
-  return {
-    headers: {
-      get: (key: string) => headers?.[key] ?? null,
-    },
-    url: 'http://localhost/api/dashboard/workflow',
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/dashboard/workflow', { headers });
 }
 
 describe('/api/dashboard/workflow GET', () => {

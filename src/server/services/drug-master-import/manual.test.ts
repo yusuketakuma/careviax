@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Prisma } from '@prisma/client';
 import { importManualClinicalRules } from './manual';
 
 describe('importManualClinicalRules', () => {
@@ -36,7 +37,7 @@ describe('importManualClinicalRules', () => {
   });
 
   it('replaces alert rules and stores renal adjustment payloads', async () => {
-    const result = await importManualClinicalRules(db as never, {
+    const result = await importManualClinicalRules(db, {
       pim_rules: [
         {
           condition: { therapeutic_categories: ['1124'] },
@@ -100,6 +101,59 @@ describe('importManualClinicalRules', () => {
         precautions_elderly: ['脱水に注意'],
         source_format: 'pdf',
       }),
+    });
+  });
+
+  it('stores JsonNull for omitted elderly precautions on new package inserts', async () => {
+    await importManualClinicalRules(db, {
+      renal_adjustments: [
+        {
+          yj_code: '123456789012',
+          dosage_adjustment_renal: [{ recommendation: '腎機能を確認して調整' }],
+        },
+      ],
+    });
+
+    expect(db.drugPackageInsert.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        dosage_adjustment_renal: [{ recommendation: '腎機能を確認して調整' }],
+        precautions_elderly: Prisma.JsonNull,
+      }),
+    });
+  });
+
+  it('normalizes elderly precautions on existing package updates', async () => {
+    db.drugPackageInsert.findFirst.mockResolvedValueOnce({
+      id: 'insert_1',
+      contraindications: null,
+      interactions: null,
+      adverse_effects: null,
+      dosage_adjustment_renal: null,
+      precautions_elderly: null,
+      document_version: null,
+      revised_at: null,
+      source_format: 'pdf',
+    });
+
+    await importManualClinicalRules(db, {
+      renal_adjustments: [
+        {
+          yj_code: '123456789012',
+          dosage_adjustment_renal: [{ recommendation: '投与間隔を延長' }],
+          precautions_elderly: {
+            notes: ['ふらつきに注意'],
+            unsupported_marker: undefined,
+          },
+        },
+      ],
+    });
+
+    expect(db.drugPackageInsert.update).toHaveBeenCalledWith({
+      where: { id: 'insert_1' },
+      data: {
+        dosage_adjustment_renal: [{ recommendation: '投与間隔を延長' }],
+        precautions_elderly: { notes: ['ふらつきに注意'] },
+      },
     });
   });
 });

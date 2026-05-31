@@ -1,4 +1,5 @@
 import { signAwsJsonRequest, type AwsCredentials } from '@/lib/aws/sigv4';
+import { readJsonObject } from '@/lib/db/json';
 /**
  * Rate limiting module.
  *
@@ -57,13 +58,6 @@ type RateLimitStore = {
 type DynamoRateLimitConfig = {
   tableName: string;
   region: string;
-};
-
-type ContainerCredentialsPayload = {
-  AccessKeyId?: string;
-  SecretAccessKey?: string;
-  Token?: string;
-  Expiration?: string;
 };
 
 const store = new Map<string, RateLimitEntry>();
@@ -188,20 +182,55 @@ function resolveContainerCredentialsUrl(): string | null {
   }
 }
 
-function parseContainerCredentials(payload: ContainerCredentialsPayload): {
+function parseOptionalString(value: unknown) {
+  if (value === undefined || value === null) return undefined;
+  return typeof value === 'string' ? value : null;
+}
+
+function parseContainerCredentials(payload: unknown): {
   credentials: AwsCredentials;
   expiresAt: number | null;
 } | null {
-  if (!payload.AccessKeyId || !payload.SecretAccessKey) return null;
-  const expiresAt = payload.Expiration ? Date.parse(payload.Expiration) : Number.NaN;
+  const object = readJsonObject(payload);
+  if (!object) return null;
+
+  const accessKeyId = typeof object.AccessKeyId === 'string' ? object.AccessKeyId : null;
+  const secretAccessKey =
+    typeof object.SecretAccessKey === 'string' ? object.SecretAccessKey : null;
+  const sessionToken = parseOptionalString(object.Token);
+  const expiration = parseOptionalString(object.Expiration);
+  if (!accessKeyId || !secretAccessKey || sessionToken === null || expiration === null) {
+    return null;
+  }
+
+  const expiresAt = expiration ? Date.parse(expiration) : Number.NaN;
   return {
     credentials: {
-      accessKeyId: payload.AccessKeyId,
-      secretAccessKey: payload.SecretAccessKey,
-      sessionToken: payload.Token,
+      accessKeyId,
+      secretAccessKey,
+      sessionToken,
     },
     expiresAt: Number.isFinite(expiresAt) ? expiresAt : null,
   };
+}
+
+function parseDynamoNumberAttribute(value: unknown) {
+  const object = readJsonObject(value);
+  if (!object || typeof object.N !== 'string') return null;
+  const parsed = Number(object.N);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseDynamoRateLimitResponse(payload: unknown): { count: number; resetAt: number } | null {
+  const object = readJsonObject(payload);
+  const attributes = readJsonObject(object?.Attributes);
+  if (!attributes) return null;
+
+  const count = parseDynamoNumberAttribute(attributes.hit_count);
+  const resetAt = parseDynamoNumberAttribute(attributes.reset_at);
+  if (count === null || resetAt === null) return null;
+
+  return { count, resetAt };
 }
 
 async function resolveAwsCredentials(): Promise<AwsCredentials> {
@@ -232,9 +261,7 @@ async function resolveAwsCredentials(): Promise<AwsCredentials> {
       if (!response.ok) {
         throw new Error(`AWS container credentials request failed: ${response.status}`);
       }
-      const parsed = parseContainerCredentials(
-        (await response.json()) as ContainerCredentialsPayload,
-      );
+      const parsed = parseContainerCredentials((await response.json()) as unknown);
       if (!parsed) {
         throw new Error('AWS container credentials response is missing required fields');
       }
@@ -323,20 +350,16 @@ class DynamoRateLimitStore implements RateLimitStore {
         throw new Error(`DynamoDB rate limit request failed: ${response.status}`);
       }
 
-      const payload = (await response.json()) as {
-        Attributes?: {
-          hit_count?: { N?: string };
-          reset_at?: { N?: string };
-        };
-      };
-      const count = Number(payload.Attributes?.hit_count?.N ?? '1');
-      const resolvedResetAt = Number(payload.Attributes?.reset_at?.N ?? String(resetAt));
+      const parsed = parseDynamoRateLimitResponse((await response.json()) as unknown);
+      if (!parsed) {
+        throw new Error('DynamoDB rate limit response is missing required counters');
+      }
 
       return {
-        allowed: count <= maxRequests,
-        remaining: Math.max(0, maxRequests - count),
-        resetAt: resolvedResetAt,
-        reason: count <= maxRequests ? undefined : 'quota_exceeded',
+        allowed: parsed.count <= maxRequests,
+        remaining: Math.max(0, maxRequests - parsed.count),
+        resetAt: parsed.resetAt,
+        reason: parsed.count <= maxRequests ? undefined : 'quota_exceeded',
       };
     } catch (error) {
       if (isProductionRuntime()) {
@@ -512,6 +535,8 @@ export const API_ROUTE_TEMPLATES = [
   '/api/drug-master-imports/status',
   '/api/drug-masters',
   '/api/drug-masters/:id',
+  '/api/drug-masters/:id/generic-recommendations',
+  '/api/drug-masters/:id/ingredient-group',
   '/api/drug-masters/:id/package-insert',
   '/api/drug-masters/batch',
   '/api/external-access',
@@ -612,8 +637,21 @@ export const API_ROUTE_TEMPLATES = [
   '/api/pharmacists',
   '/api/pharmacists/:id',
   '/api/pharmacists/import',
+  '/api/pharmacy-drug-stock-requests',
+  '/api/pharmacy-drug-stock-requests/:id',
+  '/api/pharmacy-drug-stock-templates',
+  '/api/pharmacy-drug-stock-templates/:id',
+  '/api/pharmacy-drug-stock-templates/:id/apply',
   '/api/pharmacy-drug-stocks',
+  '/api/pharmacy-drug-stocks/bulk',
+  '/api/pharmacy-drug-stocks/copy',
+  '/api/pharmacy-drug-stocks/export',
+  '/api/pharmacy-drug-stocks/history',
+  '/api/pharmacy-drug-stocks/impact',
+  '/api/pharmacy-drug-stocks/review',
   '/api/pharmacy-drug-stocks/safety-follow-up',
+  '/api/pharmacy-drug-stocks/template',
+  '/api/pharmacy-drug-stocks/usage-mismatch',
   '/api/pharmacy-sites',
   '/api/pharmacy-sites/:id',
   '/api/pharmacy-sites/:id/insurance-configs',
@@ -675,16 +713,28 @@ type CompiledRouteTemplate = {
   template: string;
   segments: string[];
   staticSegmentCount: number;
+  catchAllIndex: number;
 };
+
+function isRouteParameterSegment(segment: string) {
+  return segment.startsWith(':');
+}
+
+function isCatchAllRouteSegment(segment: string) {
+  return segment.endsWith('*');
+}
+
+function getStaticRouteSegmentCount(segments: string[]) {
+  return segments.filter((segment) => !isRouteParameterSegment(segment)).length;
+}
 
 const compiledApiRouteTemplates: CompiledRouteTemplate[] = API_ROUTE_TEMPLATES.map((template) => {
   const segments = template.split('/').filter(Boolean);
   return {
     template,
     segments,
-    staticSegmentCount: segments.filter(
-      (segment) => !segment.startsWith(':') && !segment.endsWith('*'),
-    ).length,
+    staticSegmentCount: getStaticRouteSegmentCount(segments),
+    catchAllIndex: segments.findIndex(isCatchAllRouteSegment),
   };
 }).sort((left, right) => {
   if (right.staticSegmentCount !== left.staticSegmentCount) {
@@ -699,20 +749,17 @@ function normalizePathname(pathname: string) {
   return collapsed.length > 1 ? collapsed.replace(/\/+$/, '') : collapsed;
 }
 
-function routeTemplateMatches(template: CompiledRouteTemplate, pathname: string) {
-  const pathSegments = pathname.split('/').filter(Boolean);
-  const catchAllIndex = template.segments.findIndex((segment) => segment.endsWith('*'));
-
-  if (catchAllIndex === -1 && pathSegments.length !== template.segments.length) {
+function routeTemplateMatches(template: CompiledRouteTemplate, pathSegments: string[]) {
+  if (template.catchAllIndex === -1 && pathSegments.length !== template.segments.length) {
     return false;
   }
-  if (catchAllIndex !== -1 && pathSegments.length < catchAllIndex) {
+  if (template.catchAllIndex !== -1 && pathSegments.length <= template.catchAllIndex) {
     return false;
   }
 
   return template.segments.every((segment, index) => {
-    if (segment.endsWith('*')) return true;
-    if (segment.startsWith(':')) return Boolean(pathSegments[index]);
+    if (isCatchAllRouteSegment(segment)) return true;
+    if (isRouteParameterSegment(segment)) return Boolean(pathSegments[index]);
     return segment === pathSegments[index];
   });
 }
@@ -723,8 +770,9 @@ export function canonicalizeRateLimitPath(pathname: string) {
     return normalized;
   }
 
+  const pathSegments = normalized.split('/').filter(Boolean);
   const matched = compiledApiRouteTemplates.find((template) =>
-    routeTemplateMatches(template, normalized),
+    routeTemplateMatches(template, pathSegments),
   );
   return matched?.template ?? UNKNOWN_API_RATE_LIMIT_PATH;
 }

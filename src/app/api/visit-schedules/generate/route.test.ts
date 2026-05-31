@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   withAuthMock,
@@ -16,12 +16,11 @@ const {
       ) => Promise<Response>,
     ) => {
       return (req: NextRequest) =>
-        handler({
-          ...req,
+        handler(Object.assign(req, {
           orgId: 'org_1',
           userId: 'user_1',
           role: 'pharmacist',
-        } as NextRequest & { orgId: string; userId: string; role: string });
+        }));
     },
   ),
   withOrgContextMock: vi.fn(),
@@ -52,9 +51,11 @@ vi.mock('@/lib/db/client', () => ({
 import { POST } from './route';
 
 function createRequest(body: unknown) {
-  return {
-    json: async () => body,
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/visit-schedules/generate', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
 }
 
 function buildCareCase(overrides?: Record<string, unknown>) {
@@ -63,7 +64,7 @@ function buildCareCase(overrides?: Record<string, unknown>) {
     backup_pharmacist_id: 'user_1',
     patient: {
       scheduling_preference: {
-        preferred_weekdays: [2],
+        preferred_weekdays: [2, 'legacy-debug'],
         preferred_time_from: new Date('1970-01-01T10:00:00'),
         preferred_time_to: new Date('1970-01-01T17:00:00'),
         facility_time_from: new Date('1970-01-01T11:00:00'),

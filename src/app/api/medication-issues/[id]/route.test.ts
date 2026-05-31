@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -47,6 +47,14 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { PATCH } from './route';
 
+function createPatchRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/medication-issues/issue_1', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 describe('/api/medication-issues/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -82,11 +90,9 @@ describe('/api/medication-issues/[id]', () => {
 
   it('sets resolver metadata when an issue is resolved', async () => {
     const response = (await PATCH(
-      {
-        json: async () => ({
-          status: 'resolved',
-        }),
-      } as NextRequest,
+      createPatchRequest({
+        status: 'resolved',
+      }),
       {
         params: Promise.resolve({ id: 'issue_1' }),
       },
@@ -127,11 +133,9 @@ describe('/api/medication-issues/[id]', () => {
     });
 
     const response = (await PATCH(
-      {
-        json: async () => ({
-          status: 'in_progress',
-        }),
-      } as NextRequest,
+      createPatchRequest({
+        status: 'in_progress',
+      }),
       {
         params: Promise.resolve({ id: 'issue_1' }),
       },
@@ -152,11 +156,9 @@ describe('/api/medication-issues/[id]', () => {
     medicationIssueFindFirstMock.mockResolvedValue(null);
 
     const response = (await PATCH(
-      {
-        json: async () => ({
-          status: 'resolved',
-        }),
-      } as NextRequest,
+      createPatchRequest({
+        status: 'resolved',
+      }),
       {
         params: Promise.resolve({ id: 'issue_2' }),
       },
@@ -179,11 +181,9 @@ describe('/api/medication-issues/[id]', () => {
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_2', patient_id: 'patient_other' });
 
     const response = (await PATCH(
-      {
-        json: async () => ({
-          status: 'resolved',
-        }),
-      } as NextRequest,
+      createPatchRequest({
+        status: 'resolved',
+      }),
       {
         params: Promise.resolve({ id: 'issue_1' }),
       },

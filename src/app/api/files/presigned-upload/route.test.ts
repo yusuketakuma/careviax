@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -59,12 +59,14 @@ vi.mock('@/server/services/file-storage', () => ({
 import { POST } from './route';
 
 function createRequest(body: unknown) {
-  return {
+  return new NextRequest('http://localhost/api/files/presigned-upload', {
+    method: 'POST',
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
     },
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+    body: JSON.stringify(body),
+  });
 }
 
 describe('/api/files/presigned-upload POST', () => {

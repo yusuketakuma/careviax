@@ -3,6 +3,59 @@ import { prisma } from '@/lib/db/client';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
+type ChannelStatsDbClient = {
+  deliveryRecord: {
+    findMany(args: unknown): Promise<Array<{
+      recipient_name: string;
+      channel: CommunicationChannel;
+      status: string;
+    }>>;
+  };
+  communicationEvent: {
+    findMany(args: unknown): Promise<Array<{
+      counterpart_name: string | null;
+      channel: CommunicationChannel;
+      event_type: string;
+    }>>;
+  };
+};
+
+type ExternalProfessionalSuggestionsDbClient = ChannelStatsDbClient & {
+  careCase: {
+    findMany(args: unknown): Promise<Array<{
+      id: string;
+      care_team_links: Array<{
+        id: string;
+        is_primary: boolean;
+        role: string | null;
+        name: string | null;
+        organization_name: string | null;
+        department: string | null;
+        phone: string | null;
+        email: string | null;
+        fax: string | null;
+        address: string | null;
+        external_professional_id: string | null;
+        external_professional: {
+          id: string;
+          name: string;
+          profession_type: string;
+          organization_name: string | null;
+          department: string | null;
+          phone: string | null;
+          email: string | null;
+          fax: string | null;
+          address: string | null;
+          preferred_contact_method: CommunicationChannel | null;
+          preferred_contact_time: string | null;
+          last_contacted_at: Date | null;
+          last_success_channel: CommunicationChannel | null;
+        } | null;
+      }>;
+    }>>;
+  };
+};
+
 type ExternalProfessionalSuggestion = {
   id: string;
   name: string;
@@ -134,7 +187,18 @@ export async function getChannelStatsByName(
   db: DbClient,
   orgId: string,
   names: string[]
+): Promise<Map<string, ChannelStats>>;
+export async function getChannelStatsByName(
+  db: ChannelStatsDbClient,
+  orgId: string,
+  names: string[]
+): Promise<Map<string, ChannelStats>>;
+export async function getChannelStatsByName(
+  db: DbClient | ChannelStatsDbClient,
+  orgId: string,
+  names: string[]
 ) {
+  const reader = db as ChannelStatsDbClient;
   const uniqueNames = Array.from(
     new Set(names.map((name) => name.trim()).filter((name) => name.length > 0))
   );
@@ -142,7 +206,7 @@ export async function getChannelStatsByName(
   if (uniqueNames.length === 0) return statsMap;
 
   const [deliveries, events] = await Promise.all([
-    db.deliveryRecord.findMany({
+    reader.deliveryRecord.findMany({
       where: {
         org_id: orgId,
         recipient_name: { in: uniqueNames },
@@ -153,7 +217,7 @@ export async function getChannelStatsByName(
         status: true,
       },
     }),
-    db.communicationEvent.findMany({
+    reader.communicationEvent.findMany({
       where: {
         org_id: orgId,
         direction: 'outbound',
@@ -211,10 +275,27 @@ export async function findExternalProfessionalSuggestions(
     patientId?: string | null;
     caseId?: string | null;
   }
+): Promise<ExternalProfessionalSuggestion[]>;
+export async function findExternalProfessionalSuggestions(
+  db: ExternalProfessionalSuggestionsDbClient,
+  orgId: string,
+  input: {
+    patientId?: string | null;
+    caseId?: string | null;
+  }
+): Promise<ExternalProfessionalSuggestion[]>;
+export async function findExternalProfessionalSuggestions(
+  db: DbClient | ExternalProfessionalSuggestionsDbClient,
+  orgId: string,
+  input: {
+    patientId?: string | null;
+    caseId?: string | null;
+  }
 ): Promise<ExternalProfessionalSuggestion[]> {
   if (!input.patientId && !input.caseId) return [];
 
-  const cases = await db.careCase.findMany({
+  const reader = db as ExternalProfessionalSuggestionsDbClient;
+  const cases = await reader.careCase.findMany({
     where: {
       org_id: orgId,
       ...(input.caseId ? { id: input.caseId } : {}),
@@ -293,7 +374,7 @@ export async function findExternalProfessionalSuggestions(
   }
 
   const channelStatsByName = await getChannelStatsByName(
-    db,
+    reader,
     orgId,
     Array.from(deduped.values()).map((item) => item.name)
   );

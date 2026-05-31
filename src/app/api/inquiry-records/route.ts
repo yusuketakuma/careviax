@@ -3,6 +3,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { createInquiryRecordSchema } from '@/lib/validations/prescription';
 import { prisma } from '@/lib/db/client';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import type { Prisma } from '@prisma/client';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
@@ -161,14 +162,14 @@ export const POST = withAuth(
           recipient_role: 'physician',
           related_entity_type: 'inquiry_record',
           related_entity_id: inquiry.id,
-          context_snapshot: {
+          context_snapshot: toPrismaJsonInput({
             cycle_id,
             issue_id: issue_id ?? null,
             line_id: rest.line_id ?? null,
             reason: rest.reason,
             proposal_origin: proposal_origin ?? 'post_inquiry',
             residual_adjustment: residual_adjustment ?? false,
-          } as Prisma.InputJsonValue,
+          }),
           status: 'sent',
           subject: `疑義照会: ${rest.reason}`,
           content: rest.inquiry_content,

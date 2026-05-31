@@ -158,7 +158,7 @@ describe('importPmdaPackageInserts', () => {
       'sample.xml': Buffer.from(sampleXml, 'utf8'),
     });
 
-    const result = await importPmdaPackageInserts(db as never, {
+    const result = await importPmdaPackageInserts(db, {
       zipUrl: 'https://www.pmda.go.jp/pmda.zip',
       fetchImpl: async () =>
         new Response(toZipBlob(zipped), {

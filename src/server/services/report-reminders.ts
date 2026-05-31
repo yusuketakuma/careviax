@@ -1,10 +1,13 @@
 import { addDays, differenceInCalendarDays, startOfMonth, subMonths } from 'date-fns';
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { REPORT_TYPE_LABELS } from '@/lib/constants/status-labels';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 
-type Tx = Prisma.TransactionClient;
+type Tx = {
+  deliveryRecord: Pick<Prisma.TransactionClient['deliveryRecord'], 'findMany'>;
+  task: Pick<Prisma.TransactionClient['task'], 'create' | 'updateMany' | 'upsert'>;
+};
 
 type DeliveryAnalyticsOptions = {
   months?: number;

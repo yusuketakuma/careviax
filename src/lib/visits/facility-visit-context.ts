@@ -1,3 +1,5 @@
+import { readJsonObject } from '@/lib/db/json';
+
 export type FacilityVisitContextPatient = {
   scheduleId: string;
   patientId?: string | null;
@@ -33,35 +35,46 @@ export function decodeFacilityVisitContext(value: string | string[] | undefined)
   const raw = Array.isArray(value) ? value[0] : value;
   if (!raw) return null;
 
+  return decodeFacilityVisitContextRaw(raw, true);
+}
+
+function decodeFacilityVisitContextRaw(
+  raw: string,
+  allowUriDecodeRetry: boolean,
+): FacilityVisitContext | null {
   try {
-    const parsed = JSON.parse(raw) as Partial<FacilityVisitContext>;
+    const parsed = readJsonObject(JSON.parse(raw));
     if (!parsed || typeof parsed.label !== 'string' || !Array.isArray(parsed.patients)) {
       return null;
     }
 
     const patients = parsed.patients
-      .map((item) => ({
-        scheduleId: typeof item?.scheduleId === 'string' ? item.scheduleId : '',
-        patientId: typeof item?.patientId === 'string' ? item.patientId : null,
-        patientName: typeof item?.patientName === 'string' ? item.patientName : '',
-        patientNameKana: typeof item?.patientNameKana === 'string' ? item.patientNameKana : null,
-        birthDate: typeof item?.birthDate === 'string' ? item.birthDate : null,
-        gender: typeof item?.gender === 'string' ? item.gender : null,
-        unitName: typeof item?.unitName === 'string' ? item.unitName : null,
-        routeOrder: typeof item?.routeOrder === 'number' ? item.routeOrder : null,
-        scheduleStatus: typeof item?.scheduleStatus === 'string' ? item.scheduleStatus : null,
-        medicationStartDate:
-          typeof item?.medicationStartDate === 'string' ? item.medicationStartDate : null,
-        medicationEndDate:
-          typeof item?.medicationEndDate === 'string' ? item.medicationEndDate : null,
-        preparationBlockersCount:
-          typeof item?.preparationBlockersCount === 'number'
-            ? item.preparationBlockersCount
-            : undefined,
-        visitRecordId: typeof item?.visitRecordId === 'string' ? item.visitRecordId : null,
-        visitOutcomeStatus:
-          typeof item?.visitOutcomeStatus === 'string' ? item.visitOutcomeStatus : null,
-      }))
+      .map((item) => {
+        const record = readJsonObject(item);
+        return {
+          scheduleId: typeof record?.scheduleId === 'string' ? record.scheduleId : '',
+          patientId: typeof record?.patientId === 'string' ? record.patientId : null,
+          patientName: typeof record?.patientName === 'string' ? record.patientName : '',
+          patientNameKana:
+            typeof record?.patientNameKana === 'string' ? record.patientNameKana : null,
+          birthDate: typeof record?.birthDate === 'string' ? record.birthDate : null,
+          gender: typeof record?.gender === 'string' ? record.gender : null,
+          unitName: typeof record?.unitName === 'string' ? record.unitName : null,
+          routeOrder: typeof record?.routeOrder === 'number' ? record.routeOrder : null,
+          scheduleStatus: typeof record?.scheduleStatus === 'string' ? record.scheduleStatus : null,
+          medicationStartDate:
+            typeof record?.medicationStartDate === 'string' ? record.medicationStartDate : null,
+          medicationEndDate:
+            typeof record?.medicationEndDate === 'string' ? record.medicationEndDate : null,
+          preparationBlockersCount:
+            typeof record?.preparationBlockersCount === 'number'
+              ? record.preparationBlockersCount
+              : undefined,
+          visitRecordId: typeof record?.visitRecordId === 'string' ? record.visitRecordId : null,
+          visitOutcomeStatus:
+            typeof record?.visitOutcomeStatus === 'string' ? record.visitOutcomeStatus : null,
+        };
+      })
       .filter((item) => item.scheduleId && item.patientName);
 
     if (patients.length === 0) return null;
@@ -79,8 +92,10 @@ export function decodeFacilityVisitContext(value: string | string[] | undefined)
       patients,
     } satisfies FacilityVisitContext;
   } catch {
+    if (!allowUriDecodeRetry) return null;
     try {
-      return decodeFacilityVisitContext(decodeURIComponent(raw));
+      const decoded = decodeURIComponent(raw);
+      return decoded === raw ? null : decodeFacilityVisitContextRaw(decoded, false);
     } catch {
       return null;
     }

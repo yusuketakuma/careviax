@@ -1,11 +1,22 @@
-import type { PrismaClient, InsuranceType } from '@prisma/client';
+import type { InsuranceType } from '@prisma/client';
+
+type PatientInsuranceReader = {
+  patientInsurance: {
+    findFirst(args: unknown): Promise<{
+      id: string;
+      number: string | null;
+      insurance_type: InsuranceType;
+      is_active: boolean;
+    } | null>;
+  };
+};
 
 /**
  * Resolves the effective PatientInsurance record for a given patient, type, and reference date.
  * Returns the most recently active record whose validity window covers `asOf`.
  */
 export async function resolvePatientInsurance(
-  prisma: PrismaClient,
+  prisma: PatientInsuranceReader,
   args: {
     orgId: string;
     patientId: string;

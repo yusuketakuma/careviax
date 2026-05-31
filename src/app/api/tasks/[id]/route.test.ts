@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -36,6 +36,14 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { PATCH } from './route';
 
+function createPatchRequest(taskId: string, body: unknown) {
+  return new NextRequest(`http://localhost/api/tasks/${taskId}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 describe('/api/tasks/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -66,26 +74,28 @@ describe('/api/tasks/[id]', () => {
   });
 
   it('does not let a scoped user reassign a PHI-backed task to another user', async () => {
-    const response = (await PATCH({
-      json: async () => ({
+    const response = (await PATCH(
+      createPatchRequest('task_1', {
         assigned_to: 'user_2',
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'task_1' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'task_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(400);
     expect(taskUpdateMock).not.toHaveBeenCalled();
   });
 
   it('updates a task and sets completed_at when marking it completed', async () => {
-    const response = (await PATCH({
-      json: async () => ({
+    const response = (await PATCH(
+      createPatchRequest('task_1', {
         status: 'completed',
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'task_1' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'task_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(200);
     expect(taskUpdateMock).toHaveBeenCalledWith({
@@ -100,13 +110,14 @@ describe('/api/tasks/[id]', () => {
   it('does not update tasks outside the assignment scope', async () => {
     taskFindFirstMock.mockResolvedValue(null);
 
-    const response = (await PATCH({
-      json: async () => ({
+    const response = (await PATCH(
+      createPatchRequest('task_unassigned', {
         status: 'completed',
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'task_unassigned' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'task_unassigned' }),
+      },
+    ))!;
 
     expect(response.status).toBe(404);
     expect(taskFindFirstMock).toHaveBeenCalledWith({

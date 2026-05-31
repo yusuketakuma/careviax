@@ -1,15 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
+
+type AuthenticatedTestRequest = NextRequest & {
+  orgId: string;
+  userId: string;
+};
 
 const { withAuthMock, withOrgContextMock } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
-    (handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>) => {
+    (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
       return (req: NextRequest) =>
-        handler({
-          ...req,
-          orgId: 'org_1',
-          userId: 'user_1',
-        } as NextRequest & { orgId: string; userId: string });
+        handler(
+          Object.assign(req, {
+            orgId: 'org_1',
+            userId: 'user_1',
+          }) as AuthenticatedTestRequest,
+        );
     },
   ),
   withOrgContextMock: vi.fn(),
@@ -25,10 +31,14 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { POST } from './route';
 
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
 function createRequest(body: unknown) {
-  return {
-    json: async () => body,
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/facility-visit-batches/visit-days', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  } satisfies NextRequestInit);
 }
 
 describe('/api/facility-visit-batches/visit-days POST', () => {

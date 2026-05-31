@@ -9,12 +9,21 @@ import { createHmac } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 
-export type WebhookEventType =
-  | 'prescription.created'
-  | 'prescription.dispensed'
-  | 'patient.created'
-  | 'billing.exported'
-  | 'qualification.checked';
+export const WEBHOOK_EVENT_TYPES = [
+  'prescription.created',
+  'prescription.dispensed',
+  'patient.created',
+  'billing.exported',
+  'qualification.checked',
+] as const;
+
+export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number];
+
+const webhookEventTypeSet = new Set<string>(WEBHOOK_EVENT_TYPES);
+
+export function isWebhookEventType(value: string): value is WebhookEventType {
+  return webhookEventTypeSet.has(value);
+}
 
 export type WebhookRegistration = {
   id: string;
@@ -131,7 +140,7 @@ function toWebhookRegistration(record: {
     orgId: record.org_id,
     url: record.url,
     secret: record.secret,
-    events: record.events as WebhookEventType[],
+    events: record.events.filter(isWebhookEventType),
     isActive: record.is_active,
     createdAt: record.created_at,
   };

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -23,15 +23,22 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-import { DELETE, PATCH } from './route';
+import { DELETE, GET, PATCH } from './route';
 
-function createRequest(body?: unknown) {
-  return {
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
+function createRequest(method: 'DELETE' | 'GET' | 'PATCH', body?: unknown) {
+  const init: NextRequestInit = {
+    method,
     headers: {
-      get: () => 'org_1',
+      'x-org-id': 'org_1',
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
     },
-    json: async () => body,
-  } as unknown as NextRequest;
+  };
+  if (body !== undefined) {
+    init.body = JSON.stringify(body);
+  }
+  return new NextRequest('http://localhost/api/billing-rules/rule_1', init);
 }
 
 describe('/api/billing-rules/[id]', () => {
@@ -57,8 +64,31 @@ describe('/api/billing-rules/[id]', () => {
           update: billingRuleUpdateMock,
           delete: billingRuleDeleteMock,
         },
-      })
+      }),
     );
+  });
+
+  it('normalizes malformed rule JSON fields to empty objects on GET', async () => {
+    billingRuleFindFirstMock.mockResolvedValue({
+      id: 'rule_1',
+      org_id: 'org_1',
+      is_system: false,
+      conditions: ['unexpected'],
+      evidence_requirements: 'invalid',
+    });
+
+    const response = await GET(createRequest('GET'), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(200);
+    await expect(resolvedResponse.json()).resolves.toMatchObject({
+      id: 'rule_1',
+      conditions: {},
+      evidence_requirements: {},
+    });
   });
 
   it('blocks non-active field changes for system rules', async () => {
@@ -68,10 +98,9 @@ describe('/api/billing-rules/[id]', () => {
       is_system: true,
     });
 
-    const response = await PATCH(
-      createRequest({ name: '変更したい' }),
-      { params: Promise.resolve({ id: 'rule_1' }) }
-    );
+    const response = await PATCH(createRequest('PATCH', { name: '変更したい' }), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
 
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
@@ -89,10 +118,9 @@ describe('/api/billing-rules/[id]', () => {
       is_system: true,
     });
 
-    const response = await PATCH(
-      createRequest({ is_active: false }),
-      { params: Promise.resolve({ id: 'rule_1' }) }
-    );
+    const response = await PATCH(createRequest('PATCH', { is_active: false }), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
 
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
@@ -103,6 +131,33 @@ describe('/api/billing-rules/[id]', () => {
     });
   });
 
+  it('updates custom rule JSON fields', async () => {
+    billingRuleFindFirstMock.mockResolvedValue({
+      id: 'rule_1',
+      org_id: 'org_1',
+      is_system: false,
+    });
+
+    const response = await PATCH(
+      createRequest('PATCH', {
+        conditions: { patient_status: 'active' },
+        evidence_requirements: { required_documents: ['visit_record'] },
+      }),
+      { params: Promise.resolve({ id: 'rule_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(200);
+    expect(billingRuleUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'rule_1' },
+      data: {
+        conditions: { patient_status: 'active' },
+        evidence_requirements: { required_documents: ['visit_record'] },
+      },
+    });
+  });
+
   it('forbids deleting system rules', async () => {
     billingRuleFindFirstMock.mockResolvedValue({
       id: 'rule_1',
@@ -110,10 +165,9 @@ describe('/api/billing-rules/[id]', () => {
       is_system: true,
     });
 
-    const response = await DELETE(
-      createRequest(),
-      { params: Promise.resolve({ id: 'rule_1' }) }
-    );
+    const response = await DELETE(createRequest('DELETE'), {
+      params: Promise.resolve({ id: 'rule_1' }),
+    });
 
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;

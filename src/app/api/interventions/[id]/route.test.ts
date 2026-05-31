@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -35,13 +35,27 @@ vi.mock('@/lib/db/rls', () => ({
 import { GET, PATCH } from './route';
 
 function createRequest(url: string, body?: unknown) {
-  return {
-    url,
+  return new NextRequest(url, {
     method: body === undefined ? 'GET' : 'PATCH',
-    headers: { get: () => null },
-    nextUrl: new URL(url),
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+    ...(body === undefined
+      ? {}
+      : {
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        }),
+  });
+}
+
+function createBadJsonRequest(url: string) {
+  return new NextRequest(url, {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: '{bad json',
+  });
 }
 
 const authCtx = {
@@ -144,11 +158,7 @@ describe('/api/interventions/[id]', () => {
     });
 
     it('returns 400 on invalid body', async () => {
-      const req = createRequest('http://localhost/api/interventions/int_1');
-      // Override json to reject (simulate bad JSON)
-      (req as unknown as { json: () => Promise<null> }).json = vi
-        .fn()
-        .mockRejectedValue(new Error('bad json'));
+      const req = createBadJsonRequest('http://localhost/api/interventions/int_1');
       const res = await PATCH(req, { params: Promise.resolve({ id: 'int_1' }) });
       expect(res!.status).toBe(400);
     });

@@ -5,25 +5,13 @@ import { useEffect, useState, type ElementType } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import {
-  AlertTriangle,
-  BellRing,
-  Clock,
-  RefreshCw,
-  Route,
-  Sparkles,
-} from 'lucide-react';
+import { AlertTriangle, BellRing, Clock, RefreshCw, Route, Sparkles } from 'lucide-react';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminRealtimeShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { parseNotificationStreamPayload } from '@/lib/notifications/stream-payload';
 
 type NotificationType = 'urgent' | 'business' | 'reminder' | 'system';
 
@@ -37,8 +25,7 @@ type Notification = {
   created_at: string;
 };
 
-const NOTIFICATION_STREAM_DISABLED =
-  process.env.NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM === '1';
+const NOTIFICATION_STREAM_DISABLED = process.env.NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM === '1';
 
 type WorkflowSnapshot = {
   route_control: {
@@ -67,18 +54,21 @@ const TYPE_CONFIG: Record<NotificationType, { label: string; badge: string; icon
   urgent: { label: '緊急', badge: 'border-red-200 bg-red-50 text-red-700', icon: AlertTriangle },
   business: { label: '業務', badge: 'border-blue-200 bg-blue-50 text-blue-700', icon: BellRing },
   reminder: { label: '通知', badge: 'border-amber-200 bg-amber-50 text-amber-700', icon: Clock },
-  system: { label: 'システム', badge: 'border-slate-200 bg-slate-50 text-slate-700', icon: Sparkles },
+  system: {
+    label: 'システム',
+    badge: 'border-slate-200 bg-slate-50 text-slate-700',
+    icon: Sparkles,
+  },
 };
 
 function mergeNotifications(current: Notification[], incoming: Notification[]) {
   const merged = [...incoming, ...current];
   const unique = merged.filter(
     (notification, index, all) =>
-      all.findIndex((candidate) => candidate.id === notification.id) === index
+      all.findIndex((candidate) => candidate.id === notification.id) === index,
   );
   unique.sort(
-    (left, right) =>
-      new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+    (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
   );
   return unique.slice(0, 12);
 }
@@ -144,16 +134,14 @@ export default function RealtimePage() {
 
           for (const chunk of chunks) {
             if (!chunk.startsWith('data: ')) continue;
-            try {
-              const nextNotifications = JSON.parse(chunk.slice(6)) as Notification[];
+            const nextNotifications = parseNotificationStreamPayload(chunk.slice(6));
+            if (nextNotifications.length > 0) {
               queryClient.setQueryData<{ data: Notification[] }>(
                 ['admin-realtime-notifications', orgId],
                 (current) => ({
                   data: mergeNotifications(current?.data ?? [], nextNotifications),
-                })
+                }),
               );
-            } catch {
-              // Ignore malformed SSE payloads and keep the stream alive.
             }
           }
         }
@@ -212,9 +200,7 @@ export default function RealtimePage() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">
               Live Operations
             </p>
-            <h2 className="mt-2 text-xl font-semibold">
-              通知と訪問制御を同じ運用面で監視
-            </h2>
+            <h2 className="mt-2 text-xl font-semibold">通知と訪問制御を同じ運用面で監視</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
               通知は SSE で即時反映し、ワークフローは定期再取得で補完して、
               確定ロック、変更承認待ち、緊急影響を継続監視します。
@@ -285,7 +271,10 @@ export default function RealtimePage() {
                 const config = TYPE_CONFIG[notification.type] ?? TYPE_CONFIG.system;
                 const Icon = config.icon;
                 return (
-                  <div key={notification.id} className="space-y-2 rounded-2xl border border-border/70 bg-muted/20 px-4 py-3">
+                  <div
+                    key={notification.id}
+                    className="space-y-2 rounded-2xl border border-border/70 bg-muted/20 px-4 py-3"
+                  >
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <span className="rounded-full border border-border bg-background p-2">
@@ -310,7 +299,10 @@ export default function RealtimePage() {
                     </div>
                     <p className="text-sm text-muted-foreground">{notification.message}</p>
                     {notification.link ? (
-                      <Link href={notification.link} className="text-xs font-medium text-primary hover:underline">
+                      <Link
+                        href={notification.link}
+                        className="text-xs font-medium text-primary hover:underline"
+                      >
                         詳細を開く
                       </Link>
                     ) : null}
@@ -333,7 +325,10 @@ export default function RealtimePage() {
               <p className="text-sm text-muted-foreground">未処理項目はありません</p>
             ) : (
               workbenchItems.slice(0, 10).map((item) => (
-                <div key={item.id} className="rounded-2xl border border-border/70 bg-background px-4 py-3">
+                <div
+                  key={item.id}
+                  className="rounded-2xl border border-border/70 bg-background px-4 py-3"
+                >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -365,7 +360,10 @@ export default function RealtimePage() {
                         {badge}
                       </Badge>
                     ))}
-                    <Link href={item.action_href} className="ml-auto text-xs font-medium text-primary hover:underline">
+                    <Link
+                      href={item.action_href}
+                      className="ml-auto text-xs font-medium text-primary hover:underline"
+                    >
                       {item.action_label}
                     </Link>
                   </div>

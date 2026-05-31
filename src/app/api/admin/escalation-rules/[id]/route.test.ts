@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
@@ -35,13 +35,14 @@ vi.mock('@/lib/db/client', () => ({
 import { DELETE, PATCH } from './route';
 
 function createRequest(method: 'PATCH' | 'DELETE', headers?: Record<string, string>, body?: unknown) {
-  return {
+  return new NextRequest('http://localhost/api/admin/escalation-rules/rule_1', {
     method,
     headers: {
-      get: (key: string) => headers?.[key] ?? null,
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      ...headers,
     },
-    json: async () => body,
-  } as unknown as NextRequest;
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
 }
 
 describe('/api/admin/escalation-rules/[id]', () => {
@@ -68,15 +69,21 @@ describe('/api/admin/escalation-rules/[id]', () => {
     });
 
     const response = await PATCH(
-      createRequest('PATCH', { 'x-org-id': 'org_1' }, { is_active: false }),
-      { params: Promise.resolve({ id: 'rule_1' }) }
+      createRequest('PATCH', { 'x-org-id': 'org_1' }, {
+        is_active: false,
+        condition: { threshold_hours: '6', severity: 'urgent', status_in: ['open'] },
+      }),
+      { params: Promise.resolve({ id: 'rule_1' }) },
     );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(escalationRuleUpdateMock).toHaveBeenCalledWith({
       where: { id: 'rule_1' },
-      data: { is_active: false },
+      data: {
+        is_active: false,
+        condition: { threshold_hours: 6, severity: 'urgent', status_in: ['open'] },
+      },
     });
   });
 
@@ -91,7 +98,7 @@ describe('/api/admin/escalation-rules/[id]', () => {
 
     const response = await DELETE(
       createRequest('DELETE', { 'x-org-id': 'org_1' }),
-      { params: Promise.resolve({ id: 'rule_1' }) }
+      { params: Promise.resolve({ id: 'rule_1' }) },
     );
 
     if (!response) throw new Error('response is required');

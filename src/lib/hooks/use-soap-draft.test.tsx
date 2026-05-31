@@ -203,4 +203,92 @@ describe('useSoapDraft PHI persistence', () => {
     expect(draft?.structuredSoap.assessment.free_text).toBe(plaintextPhi.assessment);
     expect(draft?.structuredSoap.plan.free_text).toBe(plaintextPhi.plan);
   });
+
+  it('returns null instead of throwing when encrypted structured SOAP is malformed', async () => {
+    dbMocks.first.mockResolvedValue({
+      id: 12,
+      scheduleId: 'schedule-1',
+      patientId: 'patient-1',
+      pharmacistId: '',
+      structuredSoap: 'encv1:structured-soap',
+      currentStep: 2,
+      createdAt: new Date('2026-04-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+      synced: false,
+    });
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:structured-soap') return 'not-json';
+        return null;
+      },
+    );
+    const { result } = renderHook(() => useSoapDraft('schedule-1', 'patient-1'));
+
+    await expect(result.current.loadDraft()).resolves.toBeNull();
+  });
+
+  it('ignores malformed residual medications and visit geo logs while loading valid SOAP', async () => {
+    const soap = makeStructuredSoap();
+    dbMocks.first.mockResolvedValue({
+      id: 13,
+      scheduleId: 'schedule-1',
+      patientId: 'patient-1',
+      pharmacistId: '',
+      structuredSoap: 'encv1:structured-soap',
+      residualMedications: 'encv1:residual-medications',
+      visitGeoLog: 'encv1:visit-geo-log',
+      currentStep: 1,
+      createdAt: new Date('2026-04-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+      synced: false,
+    });
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:structured-soap') return JSON.stringify(soap);
+        if (value === 'encv1:residual-medications') {
+          return JSON.stringify([
+            ['unexpected'],
+            {
+              drug_name: '高血圧薬A',
+              remaining_quantity: 8,
+              is_prohibited_reduction: false,
+            },
+            {
+              drug_name: 'missing quantity',
+              is_prohibited_reduction: true,
+            },
+          ]);
+        }
+        if (value === 'encv1:visit-geo-log') {
+          return JSON.stringify({
+            enabled: true,
+            permission: 'invalid',
+            start: {
+              captured_at: '2026-05-01T10:00:00.000Z',
+              latitude: 35.6812,
+              longitude: 139.7671,
+              accuracy_meters: 12,
+            },
+          });
+        }
+        return null;
+      },
+    );
+    const { result } = renderHook(() => useSoapDraft('schedule-1', 'patient-1'));
+
+    const draft = await result.current.loadDraft();
+
+    expect(draft?.structuredSoap.subjective.free_text).toBe(plaintextPhi.subjective);
+    expect(draft?.residualMedications).toEqual([
+      {
+        drug_name: '高血圧薬A',
+        drug_code: undefined,
+        prescribed_quantity: undefined,
+        prescribed_daily_dose: undefined,
+        remaining_quantity: 8,
+        is_prohibited_reduction: false,
+      },
+    ]);
+    expect(draft?.visitGeoLog).toBeNull();
+  });
 });

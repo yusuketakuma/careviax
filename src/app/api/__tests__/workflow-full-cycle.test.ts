@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 type TestState = {
   patient: {
@@ -166,12 +166,11 @@ const {
       ) => Promise<Response>,
     ) => {
       return (req: NextRequest) =>
-        handler({
-          ...req,
+        handler(Object.assign(req, {
           orgId: 'org_1',
           userId: 'user_1',
           role: 'pharmacist',
-        } as NextRequest & { orgId: string; userId: string; role: string });
+        }));
     },
   ),
   requireAuthContextMock: vi.fn(),
@@ -270,13 +269,14 @@ import { POST as generateCareReports } from '../care-reports/generate-from-visit
 import { POST as sendCareReport } from '../care-reports/[id]/send/route';
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
-  return {
-    url: 'http://localhost/api/test',
+  return new NextRequest('http://localhost/api/test', {
+    method: 'POST',
+    body: JSON.stringify(body),
     headers: {
-      get: (key: string) => headers?.[key] ?? null,
+      'content-type': 'application/json',
+      ...headers,
     },
-    json: async () => body,
-  } as unknown as NextRequest;
+  });
 }
 
 function buildTx(state: TestState) {

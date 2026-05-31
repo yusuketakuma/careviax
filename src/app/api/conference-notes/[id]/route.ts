@@ -3,6 +3,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
+import { normalizeJsonInput } from '@/lib/db/json';
 import { ConferenceDataSyncService } from '@/server/services/conference-data-sync';
 import {
   buildConferenceContent,
@@ -12,6 +13,16 @@ import {
   resolveConferenceNoteType,
   updateConferenceNoteSchema,
 } from '@/lib/validations/conference';
+
+function normalizeInputJsonValue(value: unknown): Prisma.InputJsonValue | typeof Prisma.JsonNull {
+  const normalized = normalizeJsonInput(value);
+  return normalized === null || normalized === undefined ? Prisma.JsonNull : normalized;
+}
+
+function normalizeInputJsonArray(value: unknown): Prisma.InputJsonArray {
+  const normalized = normalizeJsonInput(value);
+  return Array.isArray(normalized) ? normalized : [];
+}
 
 export const PATCH = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {
@@ -189,6 +200,13 @@ export const PATCH = withAuthContext<{ id: string }>(
           metadataBilling?.link_status === 'linked');
       const resolvedBillingCode =
         mergedValidation.data.billing_code?.trim() || metadataBilling?.code?.trim() || null;
+      const mergedMetadata =
+        normalizedMetadata || existingMetadataExtras
+          ? {
+              ...(existingMetadataExtras ?? {}),
+              ...(normalizedMetadata ?? {}),
+            }
+          : null;
       const saved = await tx.conferenceNote.update({
         where: { id },
         data: {
@@ -197,16 +215,8 @@ export const PATCH = withAuthContext<{ id: string }>(
           note_type: resolvedNoteType,
           title: mergedValidation.data.title,
           content: normalizedContent,
-          structured_content: normalizedStructuredContent
-            ? (normalizedStructuredContent as Prisma.InputJsonValue)
-            : Prisma.JsonNull,
-          metadata:
-            normalizedMetadata || existingMetadataExtras
-              ? ({
-                  ...(existingMetadataExtras ?? {}),
-                  ...(normalizedMetadata ?? {}),
-                } as Prisma.InputJsonValue)
-              : Prisma.JsonNull,
+          structured_content: normalizeInputJsonValue(normalizedStructuredContent),
+          metadata: normalizeInputJsonValue(mergedMetadata),
           billing_eligible: resolvedBillingEligible,
           billing_code: resolvedBillingCode,
           follow_up_date: mergedValidation.data.follow_up_date
@@ -214,11 +224,11 @@ export const PATCH = withAuthContext<{ id: string }>(
             : null,
           follow_up_completed: mergedValidation.data.follow_up_completed ?? false,
           generated_report_id: existing.generated_report_id,
-          participants: mergedValidation.data.participants as Prisma.InputJsonValue,
+          participants: normalizeInputJsonArray(mergedValidation.data.participants),
           conference_date: new Date(mergedValidation.data.conference_date),
           action_items:
             mergedValidation.data.action_items !== undefined
-              ? (mergedValidation.data.action_items as Prisma.InputJsonValue)
+              ? normalizeInputJsonArray(mergedValidation.data.action_items)
               : Prisma.JsonNull,
         },
       });

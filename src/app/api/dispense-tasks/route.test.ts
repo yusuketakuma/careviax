@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
+
+type AuthenticatedTestRequest = NextRequest & {
+  orgId: string;
+  userId: string;
+  role: 'pharmacist';
+};
 
 const {
   withAuthMock,
@@ -9,18 +15,15 @@ const {
   dispatchNotificationEventMock,
 } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
-    (
-      handler: (
-        req: NextRequest & { orgId: string; userId: string; role: 'pharmacist' },
-      ) => Promise<Response>,
-    ) => {
+    (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
       return (req: NextRequest) =>
-        handler({
-          ...req,
-          orgId: 'org_1',
-          userId: 'user_1',
-          role: 'pharmacist',
-        } as NextRequest & { orgId: string; userId: string; role: 'pharmacist' });
+        handler(
+          Object.assign(req, {
+            orgId: 'org_1',
+            userId: 'user_1',
+            role: 'pharmacist',
+          }) as AuthenticatedTestRequest,
+        );
     },
   ),
   withOrgContextMock: vi.fn(),
@@ -54,16 +57,18 @@ vi.mock('@/server/services/notifications', () => ({
 
 import { GET, POST } from './route';
 
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
 function createRequest(body: unknown) {
-  return {
-    json: async () => body,
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/dispense-tasks', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  } satisfies NextRequestInit);
 }
 
 function createGetRequest(url = 'http://localhost/api/dispense-tasks') {
-  return {
-    url,
-  } as unknown as NextRequest;
+  return new NextRequest(url);
 }
 
 const expectedCycleAssignmentWhere = {
@@ -172,6 +177,13 @@ describe('/api/dispense-tasks POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expect(membershipFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          role: { in: ['owner', 'admin'] },
+        }),
+      }),
+    );
     expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({

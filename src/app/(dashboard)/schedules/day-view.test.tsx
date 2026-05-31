@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
@@ -10,7 +10,9 @@ const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
 const useRouterMock = vi.hoisted(() => vi.fn());
-const visitBriefCacheToArrayMock = vi.hoisted(() => vi.fn(async () => []));
+const visitBriefCacheToArrayMock = vi.hoisted(() =>
+  vi.fn(async (): Promise<Array<Record<string, unknown>>> => []),
+);
 const visitBriefCacheDeleteMock = vi.hoisted(() => vi.fn(async () => {}));
 const visitBriefCacheAddMock = vi.hoisted(() => vi.fn(async () => {}));
 const visitBriefCacheWhereMock = vi.hoisted(() =>
@@ -211,5 +213,41 @@ describe('ScheduleDayView', () => {
     expect(
       screen.getByText('患者へ電話し、結果を「確認済み」で保存すると日時確定できます。'),
     ).toBeTruthy();
+  });
+
+  it('drops malformed fresh visit brief cache rows instead of rendering them', async () => {
+    visitBriefCacheToArrayMock.mockResolvedValue([
+      {
+        id: 99,
+        scheduleId: 'schedule_1',
+        patientId: 'patient_1',
+        scheduledDate: '2026-04-09',
+        payload: JSON.stringify({
+          scheduleId: 'schedule_1',
+          patientId: 'patient_1',
+          patientName: '山田花子',
+          scheduledDate: '2026-04-09',
+          timeWindowStart: 'not-a-date',
+          timeWindowEnd: null,
+          priority: 'normal',
+          facilityLabel: null,
+          siteName: null,
+          headline: '確認事項あり',
+          mustCheckToday: [],
+          sourceRefs: [],
+          generatedAt: '2026-04-09T08:00:00.000Z',
+          provider: 'rule',
+          isFallback: false,
+        }),
+        updatedAt: new Date(),
+      },
+    ]);
+
+    render(<ScheduleDayView initialSelectedDate="2026-04-09" />);
+
+    await waitFor(() => {
+      expect(visitBriefCacheDeleteMock).toHaveBeenCalledWith(99);
+    });
+    expect(screen.queryByText('山田花子')).toBeNull();
   });
 });

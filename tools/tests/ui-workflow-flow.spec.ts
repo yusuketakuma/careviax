@@ -1,7 +1,9 @@
 import { expect, test } from '@playwright/test';
 import {
   attachLocalSession,
+  clickAndWaitForStableRoute,
   createInstrumentedPage,
+  openStableRoute,
   waitForStableUi,
 } from './helpers/local-auth';
 
@@ -12,25 +14,24 @@ test.describe('prescription intake flow', () => {
 
   test('prescription list page loads with header and new intake link', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/prescriptions');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/prescriptions');
+    const main = page.locator('main');
 
-    await expect(page.getByRole('heading', { name: '処方箋受付' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '処方受付' })).toBeVisible();
     // "新規受付" link should be accessible
-    const newIntakeLink = page.getByRole('link', { name: '新規受付' });
+    const newIntakeLink = main.getByRole('link', { name: '新規受付' }).first();
     await expect(newIntakeLink).toBeVisible();
 
     // Shortcut links should be present
-    await expect(page.getByRole('link', { name: 'QR下書き' })).toBeVisible();
-    await expect(page.getByRole('link', { name: '調剤キュー' })).toBeVisible();
+    await expect(main.getByRole('link', { name: 'QR下書き' }).first()).toBeVisible();
+    await expect(main.getByRole('link', { name: '調剤キュー' }).first()).toBeVisible();
 
     expect(errors).toEqual([]);
   });
 
   test('new prescription intake form loads without errors', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/prescriptions/new');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/prescriptions/new');
 
     await expect(page.getByRole('heading', { name: '新規処方受付' })).toBeVisible();
 
@@ -50,16 +51,14 @@ test.describe('prescription intake flow', () => {
     const { page, errors } = await createInstrumentedPage(context);
 
     // First get a patient ID from the patient list
-    await page.goto('/patients');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
     const firstPatientLink = page.locator('tbody tr').first().locator('a[href^="/patients/"]').first();
     const href = await firstPatientLink.getAttribute('href');
     const patientId = href?.replace('/patients/', '') ?? '';
     expect(patientId).toBeTruthy();
 
     // Navigate to prescription intake with patient_id param
-    await page.goto(`/prescriptions/new?patient_id=${patientId}`);
-    await waitForStableUi(page);
+    await openStableRoute(page, `/prescriptions/new?patient_id=${patientId}`);
 
     await expect(page.getByRole('heading', { name: '新規処方受付' })).toBeVisible();
 
@@ -78,13 +77,11 @@ test.describe('prescription intake flow', () => {
     context,
   }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/prescriptions');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/prescriptions');
 
-    await Promise.all([
-      page.waitForURL(/\/prescriptions\/new/, { timeout: 10_000 }),
-      page.getByRole('link', { name: '新規受付' }).click(),
-    ]);
+    await clickAndWaitForStableRoute(page, /\/prescriptions\/new/, () =>
+      page.locator('main').getByRole('link', { name: '新規受付' }).first().click(),
+    );
 
     await expect(page.getByRole('heading', { name: '新規処方受付' })).toBeVisible();
     expect(errors).toEqual([]);
@@ -92,13 +89,12 @@ test.describe('prescription intake flow', () => {
 
   test('shortcut link from prescriptions to dispensing queue works', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/prescriptions');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/prescriptions');
+    const main = page.locator('main');
 
-    await Promise.all([
-      page.waitForURL(/\/dispensing/, { timeout: 10_000 }),
-      page.getByRole('link', { name: '調剤キュー' }).click(),
-    ]);
+    await clickAndWaitForStableRoute(page, /\/dispensing/, () =>
+      main.getByRole('link', { name: '調剤キュー' }).first().click(),
+    );
 
     await expect(page.getByRole('heading', { name: '調剤キュー' })).toBeVisible();
     expect(errors).toEqual([]);
@@ -112,12 +108,13 @@ test.describe('dispensing queue', () => {
 
   test('dispensing queue page loads with header and shortcut links', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/dispensing');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dispensing');
 
     const main = page.locator('main');
     await expect(page.getByRole('heading', { name: '調剤キュー' })).toBeVisible();
-    await expect(page.getByText('調剤待ちの処方を優先度順に表示します')).toBeVisible();
+    await expect(
+      main.getByText('緊急度、訪問先、疑義照会状況を上から確認し、調剤入力へ進みます。'),
+    ).toBeVisible();
 
     // Shortcut links (scoped to main to avoid sidebar duplicates)
     await expect(main.getByRole('link', { name: '鑑査' })).toBeVisible();
@@ -128,8 +125,7 @@ test.describe('dispensing queue', () => {
 
   test('dispensing queue shows task list or empty state', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/dispensing');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dispensing');
 
     // Should show either task cards or an empty state message
     const hasContent = await page.locator('main').textContent();
@@ -142,14 +138,12 @@ test.describe('dispensing queue', () => {
 
   test('shortcut link from dispensing to auditing works', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/dispensing');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dispensing');
 
     const main = page.locator('main');
-    await Promise.all([
-      page.waitForURL(/\/auditing/, { timeout: 10_000 }),
-      main.getByRole('link', { name: '鑑査' }).click(),
-    ]);
+    await clickAndWaitForStableRoute(page, /\/auditing/, () =>
+      main.getByRole('link', { name: '鑑査' }).first().click(),
+    );
 
     await expect(page.getByRole('heading', { name: '調剤鑑査' })).toBeVisible();
     expect(errors).toEqual([]);
@@ -163,15 +157,16 @@ test.describe('auditing queue', () => {
 
   test('auditing queue page loads with header and shortcut links', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/auditing');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/auditing');
 
     const main = page.locator('main');
     await expect(page.getByRole('heading', { name: '調剤鑑査' })).toBeVisible();
-    await expect(page.getByText('調剤済みの処方を鑑査してください')).toBeVisible();
+    await expect(
+      main.getByText('差異、疑義照会、未承認件数を先に把握し、差戻しと承認の判断を揃えます。'),
+    ).toBeVisible();
 
     // Shortcut links (scoped to main to avoid sidebar duplicates)
-    await expect(main.getByRole('link', { name: '調剤' })).toBeVisible();
+    await expect(main.getByRole('link', { name: '調剤', exact: true }).first()).toBeVisible();
     await expect(main.getByRole('link', { name: 'セット管理' })).toBeVisible();
     await expect(main.getByRole('link', { name: 'ワークフロー' })).toBeVisible();
 
@@ -180,8 +175,7 @@ test.describe('auditing queue', () => {
 
   test('auditing queue shows task list or empty state', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/auditing');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/auditing');
 
     const hasContent = await page.locator('main').textContent();
     expect(hasContent?.trim().length).toBeGreaterThan(0);
@@ -201,30 +195,26 @@ test.describe('workflow cross-navigation', () => {
     const { page, errors } = await createInstrumentedPage(context);
 
     // Start at prescriptions
-    await page.goto('/prescriptions');
-    await waitForStableUi(page);
-    await expect(page.getByRole('heading', { name: '処方箋受付' })).toBeVisible();
+    await openStableRoute(page, '/prescriptions');
+    await expect(page.getByRole('heading', { name: '処方受付' })).toBeVisible();
 
     // Navigate to dispensing via shortcut
-    await Promise.all([
-      page.waitForURL(/\/dispensing/, { timeout: 10_000 }),
-      page.getByRole('link', { name: '調剤キュー' }).click(),
-    ]);
+    await clickAndWaitForStableRoute(page, /\/dispensing/, () =>
+      page.locator('main').getByRole('link', { name: '調剤キュー' }).first().click(),
+    );
     await expect(page.getByRole('heading', { name: '調剤キュー' })).toBeVisible();
 
     // Navigate to auditing via shortcut (scope to main to avoid sidebar duplicate)
     const main = page.locator('main');
-    await Promise.all([
-      page.waitForURL(/\/auditing/, { timeout: 10_000 }),
-      main.getByRole('link', { name: '鑑査' }).click(),
-    ]);
+    await clickAndWaitForStableRoute(page, /\/auditing/, () =>
+      main.getByRole('link', { name: '鑑査' }).first().click(),
+    );
     await expect(page.getByRole('heading', { name: '調剤鑑査' })).toBeVisible();
 
     // Navigate back to dispensing via shortcut (scope to main)
-    await Promise.all([
-      page.waitForURL(/\/dispensing/, { timeout: 10_000 }),
-      main.getByRole('link', { name: '調剤' }).click(),
-    ]);
+    await clickAndWaitForStableRoute(page, /\/dispensing/, () =>
+      main.getByRole('link', { name: '調剤', exact: true }).first().click(),
+    );
     await expect(page.getByRole('heading', { name: '調剤キュー' })).toBeVisible();
 
     // Full round trip should have no errors

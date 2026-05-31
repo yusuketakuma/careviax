@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   consentRecordFindFirstMock,
@@ -32,6 +32,14 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { GET, PATCH } from './route';
 
+function createRequest(method: 'GET' | 'PATCH', body?: unknown) {
+  return new NextRequest('http://localhost/api/consent-records/consent_1', {
+    method,
+    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+}
+
 describe('/api/consent-records/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -54,7 +62,7 @@ describe('/api/consent-records/[id]', () => {
   });
 
   it('returns a consent record by id', async () => {
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createRequest('GET'), {
       params: Promise.resolve({ id: 'consent_1' }),
     }))!;
 
@@ -65,14 +73,15 @@ describe('/api/consent-records/[id]', () => {
   });
 
   it('updates expiry date and document url', async () => {
-    const response = (await PATCH({
-      json: async () => ({
+    const response = (await PATCH(
+      createRequest('PATCH', {
         expiry_date: '2026-12-31',
         document_url: 'https://example.com/consent.pdf',
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'consent_1' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'consent_1' }),
+      }
+    ))!;
 
     expect(response.status).toBe(200);
     expect(consentRecordUpdateMock).toHaveBeenCalledWith({

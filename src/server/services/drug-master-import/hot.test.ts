@@ -153,7 +153,7 @@ describe('importHotMaster', () => {
       '1234567890123,1124001F1022,ユーロジン１ｍｇ錠,Ｔ’ｓ製薬',
     ].join('\n');
 
-    const result = await importHotMaster(db as never, {
+    const result = await importHotMaster(db, {
       fileUrl: 'https://www.medis.or.jp/hot.csv',
       fetchImpl: async () =>
         new Response(new Blob([Buffer.from(csv, 'utf8')]), {

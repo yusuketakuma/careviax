@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { authMock, prismaMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
@@ -18,13 +18,14 @@ vi.mock('@/lib/db/client', () => ({ prisma: prismaMock }));
 import { PATCH } from './route';
 
 function createRequest(body: unknown) {
-  return {
-    url: 'http://localhost/api/pharmacy-drug-stock-requests/request_1',
+  return new NextRequest('http://localhost/api/pharmacy-drug-stock-requests/request_1', {
+    method: 'PATCH',
+    body: JSON.stringify(body),
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
     },
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+  });
 }
 
 describe('/api/pharmacy-drug-stock-requests/[id]', () => {

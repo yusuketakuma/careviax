@@ -1,8 +1,8 @@
 import {
   decodeTextBuffer,
-  DrugMasterImportDbClient,
   FetchLike,
   HOT_IMPORT_URL_POLICY,
+  type DrugMasterImportLogDbClient,
   ZipExpansionLimits,
   fetchBytes,
   isZipBuffer,
@@ -13,6 +13,7 @@ import {
   withImportLog,
 } from './shared';
 import { readWorkbookRows } from './excel';
+import type { Prisma } from '@prisma/client';
 
 export const MEDIS_MASTER_INDEX_PAGE_URL =
   'https://www.medis.or.jp/4_hyojyun/medis-master/riyou/index.html';
@@ -33,6 +34,9 @@ type ImportHotMasterOptions = {
   fileUrl?: string;
   fetchImpl?: FetchLike;
   zipLimits?: Partial<ZipExpansionLimits>;
+};
+type HotMasterImportDbClient = DrugMasterImportLogDbClient & {
+  drugMaster: Pick<Prisma.TransactionClient['drugMaster'], 'findFirst' | 'update' | 'upsert'>;
 };
 
 function resolveConfiguredHotUrl(fileUrl?: string) {
@@ -166,7 +170,7 @@ export async function parseHotMasterFile(options: ImportHotMasterOptions = {}) {
 }
 
 export async function importHotMaster(
-  db: DrugMasterImportDbClient,
+  db: HotMasterImportDbClient,
   options: ImportHotMasterOptions = {},
 ) {
   return withImportLog(db, 'hot', async () => {

@@ -1,9 +1,7 @@
 import type { Prisma } from '@prisma/client';
+import { normalizeJsonInput } from '@/lib/db/json';
 import { HOME_CARE_BILLING_RULESET_VERSION } from '../home-care-billing-ssot';
-import type {
-  Tx,
-  AdditionalBillingRuleDefinition,
-} from './core';
+import type { AdditionalBillingRuleDefinition } from './core';
 import {
   startOfMonth,
   japanMonthRangeForBillingMonth,
@@ -13,6 +11,22 @@ import {
   writeBillingCandidateWorkflowState,
   mergeCandidateSourceSnapshot,
 } from './core';
+
+function isInputJsonObject(
+  value: Prisma.InputJsonValue | null | undefined
+): value is Prisma.InputJsonObject {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    !('toJSON' in value)
+  );
+}
+
+function normalizedJsonObject(value: unknown): Prisma.InputJsonObject {
+  const normalized = normalizeJsonInput(value);
+  return isInputJsonObject(normalized) ? normalized : {};
+}
 
 export type InformationProvisionFeeType =
   | '1'
@@ -91,8 +105,35 @@ export function parseInformationProvisionFeeType(
   return fallbackType ?? '2_i';
 }
 
+export type InformationProvisionCandidatesTx = {
+  billingCandidate: {
+    upsert(args: unknown): Promise<unknown>;
+  };
+  careReport: {
+    findMany(args: unknown): Promise<Array<{
+      id: string;
+      patient_id: string;
+      case_id: string | null;
+      content: Prisma.JsonValue | null;
+      status: string;
+    }>>;
+  };
+  tracingReport: {
+    findMany(args: unknown): Promise<Array<{
+      id: string;
+      patient_id: string;
+      case_id: string | null;
+      content: Prisma.JsonValue | null;
+      status: string;
+      sent_at: Date | null;
+    }>>;
+  };
+};
+
+type GeneratedBillingCandidate = { status: string };
+
 export async function generateInformationProvisionCandidates(
-  tx: Tx,
+  tx: InformationProvisionCandidatesTx,
   args: {
     orgId: string;
     billingMonth: Date;
@@ -152,7 +193,7 @@ export async function generateInformationProvisionCandidates(
     }),
   ]);
 
-  const created = [];
+  const created: GeneratedBillingCandidate[] = [];
   const claimedInfoTypes = new Set<string>();
 
   for (const report of tracingReports) {
@@ -187,6 +228,38 @@ export async function generateInformationProvisionCandidates(
             : existingWorkflow.resolution_state === 'excluded'
               ? 'excluded'
               : 'candidate';
+    const calculationBreakdown = normalizedJsonObject({
+      source_type: 'tracing_report',
+      source_id: report.id,
+      fee_type: feeType,
+      target: rule.targetLabel,
+      same_month_home_care_claim: sameMonthHomeCareClaim,
+      same_month_care_management_claim: sameMonthCareManagementClaim,
+    });
+    const sourceSnapshot = writeBillingCandidateWorkflowState(
+      normalizedJsonObject(
+        mergeCandidateSourceSnapshot({
+          sourceSnapshot: {
+            billing_scope: 'home_care_ssot',
+            selection_mode: 'manual',
+            source_note: rule.sourceNote,
+            source_type: 'tracing_report',
+            source_entity_id: report.id,
+            billing_fee_type: feeType,
+            ruleset_version: HOME_CARE_BILLING_RULESET_VERSION,
+          },
+          calculationContext: null,
+          candidateStatus: status,
+          claimable: exclusionReason == null,
+          evidenceMessage:
+            exclusionReason == null ? '同月の在宅請求との併算定制約なし' : exclusionReason,
+          ruleMessage:
+            exclusionReason == null ? `${rule.targetLabel} の情報提供候補` : exclusionReason,
+          workflow: existingWorkflow,
+        })
+      ),
+      existingWorkflow
+    );
 
     const candidate = await tx.billingCandidate.upsert({
       where: {
@@ -207,40 +280,8 @@ export async function generateInformationProvisionCandidates(
         billing_name: rule.name,
         points: rule.points,
         quantity: 1,
-        calculation_breakdown: {
-          source_type: 'tracing_report',
-          source_id: report.id,
-          fee_type: feeType,
-          target: rule.targetLabel,
-          same_month_home_care_claim: sameMonthHomeCareClaim,
-          same_month_care_management_claim: sameMonthCareManagementClaim,
-        } as Prisma.InputJsonValue,
-        source_snapshot: writeBillingCandidateWorkflowState(
-          mergeCandidateSourceSnapshot({
-            sourceSnapshot: {
-              billing_scope: 'home_care_ssot',
-              selection_mode: 'manual',
-              source_note: rule.sourceNote,
-              source_type: 'tracing_report',
-              source_entity_id: report.id,
-              billing_fee_type: feeType,
-              ruleset_version: HOME_CARE_BILLING_RULESET_VERSION,
-            },
-            calculationContext: null,
-            candidateStatus: status,
-            claimable: exclusionReason == null,
-            evidenceMessage:
-              exclusionReason == null
-                ? '同月の在宅請求との併算定制約なし'
-                : exclusionReason,
-            ruleMessage:
-              exclusionReason == null
-                ? `${rule.targetLabel} の情報提供候補`
-                : exclusionReason,
-            workflow: existingWorkflow,
-          }) as Prisma.JsonValue,
-          existingWorkflow
-        ),
+        calculation_breakdown: calculationBreakdown,
+        source_snapshot: sourceSnapshot,
         status,
         exclusion_reason: exclusionReason,
       },
@@ -249,46 +290,14 @@ export async function generateInformationProvisionCandidates(
         billing_name: rule.name,
         points: rule.points,
         quantity: 1,
-        calculation_breakdown: {
-          source_type: 'tracing_report',
-          source_id: report.id,
-          fee_type: feeType,
-          target: rule.targetLabel,
-          same_month_home_care_claim: sameMonthHomeCareClaim,
-          same_month_care_management_claim: sameMonthCareManagementClaim,
-        } as Prisma.InputJsonValue,
-        source_snapshot: writeBillingCandidateWorkflowState(
-          mergeCandidateSourceSnapshot({
-            sourceSnapshot: {
-              billing_scope: 'home_care_ssot',
-              selection_mode: 'manual',
-              source_note: rule.sourceNote,
-              source_type: 'tracing_report',
-              source_entity_id: report.id,
-              billing_fee_type: feeType,
-              ruleset_version: HOME_CARE_BILLING_RULESET_VERSION,
-            },
-            calculationContext: null,
-            candidateStatus: status,
-            claimable: exclusionReason == null,
-            evidenceMessage:
-              exclusionReason == null
-                ? '同月の在宅請求との併算定制約なし'
-                : exclusionReason,
-            ruleMessage:
-              exclusionReason == null
-                ? `${rule.targetLabel} の情報提供候補`
-                : exclusionReason,
-            workflow: existingWorkflow,
-          }) as Prisma.JsonValue,
-          existingWorkflow
-        ),
+        calculation_breakdown: calculationBreakdown,
+        source_snapshot: sourceSnapshot,
         status,
         exclusion_reason: exclusionReason,
       },
     });
 
-    created.push(candidate);
+    created.push(candidate as GeneratedBillingCandidate);
     if (status !== 'excluded') {
       claimedInfoTypes.add(typeScopeKey);
     }
@@ -326,6 +335,38 @@ export async function generateInformationProvisionCandidates(
             : existingWorkflow.resolution_state === 'excluded'
               ? 'excluded'
               : 'candidate';
+    const calculationBreakdown = normalizedJsonObject({
+      source_type: 'care_report',
+      source_id: report.id,
+      fee_type: feeType,
+      target: rule.targetLabel,
+      same_month_home_care_claim: sameMonthHomeCareClaim,
+      same_month_care_management_claim: sameMonthCareManagementClaim,
+    });
+    const sourceSnapshot = writeBillingCandidateWorkflowState(
+      normalizedJsonObject(
+        mergeCandidateSourceSnapshot({
+          sourceSnapshot: {
+            billing_scope: 'home_care_ssot',
+            selection_mode: 'manual',
+            source_note: rule.sourceNote,
+            source_type: 'care_report',
+            source_entity_id: report.id,
+            billing_fee_type: feeType,
+            ruleset_version: HOME_CARE_BILLING_RULESET_VERSION,
+          },
+          calculationContext: null,
+          candidateStatus: status,
+          claimable: exclusionReason == null,
+          evidenceMessage:
+            exclusionReason == null ? '同月の在宅請求との併算定制約なし' : exclusionReason,
+          ruleMessage:
+            exclusionReason == null ? `${rule.targetLabel} の情報提供候補` : exclusionReason,
+          workflow: existingWorkflow,
+        })
+      ),
+      existingWorkflow
+    );
 
     const candidate = await tx.billingCandidate.upsert({
       where: {
@@ -346,40 +387,8 @@ export async function generateInformationProvisionCandidates(
         billing_name: rule.name,
         points: rule.points,
         quantity: 1,
-        calculation_breakdown: {
-          source_type: 'care_report',
-          source_id: report.id,
-          fee_type: feeType,
-          target: rule.targetLabel,
-          same_month_home_care_claim: sameMonthHomeCareClaim,
-          same_month_care_management_claim: sameMonthCareManagementClaim,
-        } as Prisma.InputJsonValue,
-        source_snapshot: writeBillingCandidateWorkflowState(
-          mergeCandidateSourceSnapshot({
-            sourceSnapshot: {
-              billing_scope: 'home_care_ssot',
-              selection_mode: 'manual',
-              source_note: rule.sourceNote,
-              source_type: 'care_report',
-              source_entity_id: report.id,
-              billing_fee_type: feeType,
-              ruleset_version: HOME_CARE_BILLING_RULESET_VERSION,
-            },
-            calculationContext: null,
-            candidateStatus: status,
-            claimable: exclusionReason == null,
-            evidenceMessage:
-              exclusionReason == null
-                ? '同月の在宅請求との併算定制約なし'
-                : exclusionReason,
-            ruleMessage:
-              exclusionReason == null
-                ? `${rule.targetLabel} の情報提供候補`
-                : exclusionReason,
-            workflow: existingWorkflow,
-          }) as Prisma.JsonValue,
-          existingWorkflow
-        ),
+        calculation_breakdown: calculationBreakdown,
+        source_snapshot: sourceSnapshot,
         status,
         exclusion_reason: exclusionReason,
       },
@@ -388,46 +397,14 @@ export async function generateInformationProvisionCandidates(
         billing_name: rule.name,
         points: rule.points,
         quantity: 1,
-        calculation_breakdown: {
-          source_type: 'care_report',
-          source_id: report.id,
-          fee_type: feeType,
-          target: rule.targetLabel,
-          same_month_home_care_claim: sameMonthHomeCareClaim,
-          same_month_care_management_claim: sameMonthCareManagementClaim,
-        } as Prisma.InputJsonValue,
-        source_snapshot: writeBillingCandidateWorkflowState(
-          mergeCandidateSourceSnapshot({
-            sourceSnapshot: {
-              billing_scope: 'home_care_ssot',
-              selection_mode: 'manual',
-              source_note: rule.sourceNote,
-              source_type: 'care_report',
-              source_entity_id: report.id,
-              billing_fee_type: feeType,
-              ruleset_version: HOME_CARE_BILLING_RULESET_VERSION,
-            },
-            calculationContext: null,
-            candidateStatus: status,
-            claimable: exclusionReason == null,
-            evidenceMessage:
-              exclusionReason == null
-                ? '同月の在宅請求との併算定制約なし'
-                : exclusionReason,
-            ruleMessage:
-              exclusionReason == null
-                ? `${rule.targetLabel} の情報提供候補`
-                : exclusionReason,
-            workflow: existingWorkflow,
-          }) as Prisma.JsonValue,
-          existingWorkflow
-        ),
+        calculation_breakdown: calculationBreakdown,
+        source_snapshot: sourceSnapshot,
         status,
         exclusion_reason: exclusionReason,
       },
     });
 
-    created.push(candidate);
+    created.push(candidate as GeneratedBillingCandidate);
     if (status !== 'excluded') {
       claimedInfoTypes.add(typeScopeKey);
     }

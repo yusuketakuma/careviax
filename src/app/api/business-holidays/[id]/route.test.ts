@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -48,12 +48,14 @@ vi.mock('@/lib/api/org-reference', () => ({
 import { DELETE, PATCH } from './route';
 
 function createRequest(body?: unknown, headers?: Record<string, string>) {
-  return {
+  return new NextRequest('http://localhost/api/business-holidays/holiday_1', {
+    method: body === undefined ? 'DELETE' : 'PATCH',
     headers: {
-      get: (key: string) => headers?.[key] ?? null,
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      ...headers,
     },
-    json: async () => body,
-  } as unknown as NextRequest;
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
 }
 
 describe('/api/business-holidays/[id]', () => {
@@ -95,9 +97,9 @@ describe('/api/business-holidays/[id]', () => {
           holiday_type: 'public_holiday',
           is_closed: true,
         },
-        { 'x-org-id': 'org_1' }
+        { 'x-org-id': 'org_1' },
       ),
-      { params: Promise.resolve({ id: 'holiday_1' }) }
+      { params: Promise.resolve({ id: 'holiday_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -117,7 +119,7 @@ describe('/api/business-holidays/[id]', () => {
   it('deletes a holiday record', async () => {
     const response = await DELETE(
       createRequest(undefined, { 'x-org-id': 'org_1' }),
-      { params: Promise.resolve({ id: 'holiday_1' }) }
+      { params: Promise.resolve({ id: 'holiday_1' }) },
     );
 
     if (!response) throw new Error('response is required');

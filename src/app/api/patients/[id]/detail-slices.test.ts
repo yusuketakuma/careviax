@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   getPatientOverviewMock,
@@ -66,7 +66,7 @@ type SliceRoute = (
 ) => Promise<Response>;
 
 function createRequest(url: string) {
-  return { url } as unknown as NextRequest;
+  return new NextRequest(url);
 }
 
 const sliceRoutes = [

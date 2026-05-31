@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { getPilotReadinessSnapshotMock } = vi.hoisted(() => ({
   getPilotReadinessSnapshotMock: vi.fn(),
@@ -15,6 +15,13 @@ vi.mock('@/server/services/pilot-readiness', () => ({
 }));
 
 import { GET } from './route';
+
+function createAuthRequest() {
+  return Object.assign(new NextRequest('http://localhost/api/admin/pilot-readiness'), {
+    orgId: 'org_1',
+    userId: 'user_1',
+  });
+}
 
 describe('/api/admin/pilot-readiness GET', () => {
   beforeEach(() => {
@@ -48,10 +55,7 @@ describe('/api/admin/pilot-readiness GET', () => {
   });
 
   it('returns the pilot readiness snapshot for the authenticated org', async () => {
-    const response = await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-    } as NextRequest & { orgId: string; userId: string });
+    const response = await GET(createAuthRequest());
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);

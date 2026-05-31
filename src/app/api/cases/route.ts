@@ -4,17 +4,27 @@ import { success, validationError, notFound } from '@/lib/api/response';
 import { createCaseSchema } from '@/lib/validations/case';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
+import { CASE_STATUSES } from '@/lib/patient/case-status';
 import {
   applyPatientAssignmentWhere,
   buildCareCaseAssignmentWhere,
 } from '@/lib/auth/visit-schedule-access';
+import { z } from 'zod';
+
+const caseStatusSchema = z.enum(CASE_STATUSES);
 
 export const GET = withAuth(
   async (req: AuthenticatedRequest) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
     const patientId = searchParams.get('patient_id') ?? undefined;
-    const status = searchParams.get('status') ?? undefined;
+    const statusParam = searchParams.get('status') ?? undefined;
+    const status = statusParam ? caseStatusSchema.safeParse(statusParam) : null;
+    if (status && !status.success) {
+      return validationError('ケースステータスが不正です', {
+        status: ['対応していないステータスです'],
+      });
+    }
     const query = searchParams.get('q')?.trim() ?? '';
 
     const caseAssignmentWhere = buildCareCaseAssignmentWhere(req);
@@ -23,7 +33,7 @@ export const GET = withAuth(
       where: {
         org_id: req.orgId,
         ...(patientId ? { patient_id: patientId } : {}),
-        ...(status ? { status: status as never } : {}),
+        ...(status ? { status: status.data } : {}),
         ...(caseAssignmentWhere ? { AND: [caseAssignmentWhere] } : {}),
         ...(query
           ? {

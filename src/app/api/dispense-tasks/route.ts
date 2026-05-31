@@ -1,4 +1,5 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { ADMIN_MEMBER_ROLES } from '@/lib/auth/member-roles';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
@@ -151,7 +152,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         where: {
           org_id: req.orgId,
           is_active: true,
-          role: { in: ['owner', 'admin'] as never[] },
+          role: { in: [...ADMIN_MEMBER_ROLES] },
           user: {
             is_active: true,
           },

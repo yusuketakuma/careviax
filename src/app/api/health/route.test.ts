@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NextRequest } from 'next/server';
 
 const { getAuthContextMock, queryRawMock, runBackupMonitorChecksMock } = vi.hoisted(() => ({
   getAuthContextMock: vi.fn(),
@@ -22,6 +23,10 @@ vi.mock('@/server/services/backup-monitor', () => ({
 
 import { GET } from './route';
 
+function healthRequest() {
+  return new NextRequest('http://localhost/api/health');
+}
+
 describe('/api/health GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -37,9 +42,7 @@ describe('/api/health GET', () => {
       },
     });
 
-    const response = await GET({
-      headers: { get: vi.fn() },
-    } as never);
+    const response = await GET(healthRequest());
     expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload).toMatchObject({
@@ -66,9 +69,7 @@ describe('/api/health GET', () => {
       },
     });
 
-    const response = await GET({
-      headers: { get: vi.fn() },
-    } as never);
+    const response = await GET(healthRequest());
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       status: 'degraded',
@@ -91,9 +92,7 @@ describe('/api/health GET', () => {
       checks: {},
     });
 
-    const response = await GET({
-      headers: { get: vi.fn() },
-    } as never);
+    const response = await GET(healthRequest());
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({
       status: 'down',
@@ -113,9 +112,7 @@ describe('/api/health GET', () => {
     queryRawMock.mockResolvedValue([{ '?column?': 1 }]);
     runBackupMonitorChecksMock.mockRejectedValue(new Error('backup secret detail'));
 
-    const response = await GET({
-      headers: { get: vi.fn() },
-    } as never);
+    const response = await GET(healthRequest());
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       status: 'degraded',

@@ -3,6 +3,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
+import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import { Prisma, ReportStatus, ReportType } from '@prisma/client';
 import { z } from 'zod';
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
@@ -288,6 +289,7 @@ export const GET = withAuth(
     const patientNameById = new Map(patientRows.map((patient) => [patient.id, patient.name]));
 
     const enrichedData = reports.map((report) => {
+      const billingContext = readJsonObject(readJsonObject(report.content)?.billing_context);
       const latestDelivery = report.delivery_records[0] ?? null;
       const pendingDeliveryCount = report.delivery_records.filter(
         (record) => record.status === 'response_waiting',
@@ -304,32 +306,8 @@ export const GET = withAuth(
         latest_delivery_recipient_name: latestDelivery?.recipient_name ?? null,
         failed_delivery_count: failedDeliveryCount,
         pending_delivery_count: pendingDeliveryCount,
-        effective_revision_code:
-          typeof (report.content as Record<string, unknown> | null)?.billing_context === 'object' &&
-          (report.content as Record<string, unknown> | null)?.billing_context !== null &&
-          typeof (
-            (report.content as Record<string, unknown>).billing_context as Record<string, unknown>
-          ).effective_revision_code === 'string'
-            ? ((
-                (report.content as Record<string, unknown>).billing_context as Record<
-                  string,
-                  unknown
-                >
-              ).effective_revision_code as string)
-            : null,
-        site_config_status:
-          typeof (report.content as Record<string, unknown> | null)?.billing_context === 'object' &&
-          (report.content as Record<string, unknown> | null)?.billing_context !== null &&
-          typeof (
-            (report.content as Record<string, unknown>).billing_context as Record<string, unknown>
-          ).site_config_status === 'string'
-            ? ((
-                (report.content as Record<string, unknown>).billing_context as Record<
-                  string,
-                  unknown
-                >
-              ).site_config_status as string)
-            : null,
+        effective_revision_code: readJsonObjectString(billingContext, 'effective_revision_code'),
+        site_config_status: readJsonObjectString(billingContext, 'site_config_status'),
       };
     });
 

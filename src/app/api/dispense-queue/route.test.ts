@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { authMock, membershipFindFirstMock, dispenseTaskFindManyMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
@@ -23,6 +23,14 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 import { GET } from './route';
+
+function createRequest() {
+  return new NextRequest('http://localhost/api/dispense-queue', {
+    headers: {
+      'x-org-id': 'org_1',
+    },
+  });
+}
 
 describe('/api/dispense-queue', () => {
   beforeEach(() => {
@@ -85,14 +93,7 @@ describe('/api/dispense-queue', () => {
       },
     ]);
 
-    const response = (await GET({
-      url: 'http://localhost/api/dispense-queue',
-      method: 'GET',
-      headers: {
-        get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
-      },
-      nextUrl: new URL('http://localhost/api/dispense-queue'),
-    } as NextRequest))!;
+    const response = (await GET(createRequest()))!;
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({

@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
+
+type AuthenticatedTestRequest = NextRequest & {
+  orgId: string;
+  userId: string;
+  role: 'pharmacist';
+};
 
 const {
   withAuthMock,
@@ -14,18 +20,15 @@ const {
   notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
-    (
-      handler: (
-        req: NextRequest & { orgId: string; userId: string; role: 'pharmacist' },
-      ) => Promise<Response>,
-    ) => {
+    (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
       return (req: NextRequest) =>
-        handler({
-          ...req,
-          orgId: 'org_1',
-          userId: 'user_1',
-          role: 'pharmacist',
-        } as NextRequest & { orgId: string; userId: string; role: 'pharmacist' });
+        handler(
+          Object.assign(req, {
+            orgId: 'org_1',
+            userId: 'user_1',
+            role: 'pharmacist',
+          }) as AuthenticatedTestRequest,
+        );
     },
   ),
   dispenseTaskFindFirstMock: vi.fn(),
@@ -77,8 +80,18 @@ vi.mock('@/lib/dispensing/prefill-generator', () => ({
 
 import { GET, PATCH } from './route';
 
-function createGetRequest() {
-  return {} as NextRequest;
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
+function createGetRequest(taskId = 'task_1') {
+  return new NextRequest(`http://localhost/api/dispense-tasks/${taskId}`);
+}
+
+function createPatchRequest(body: unknown, taskId = 'task_1') {
+  return new NextRequest(`http://localhost/api/dispense-tasks/${taskId}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  } satisfies NextRequestInit);
 }
 
 describe('/api/dispense-tasks/[id]', () => {
@@ -435,11 +448,9 @@ describe('/api/dispense-tasks/[id]', () => {
     });
 
     const response = await PATCH(
-      {
-        json: async () => ({
-          status: 'in_progress',
-        }),
-      } as NextRequest,
+      createPatchRequest({
+        status: 'in_progress',
+      }),
       {
         params: Promise.resolve({ id: 'task_1' }),
       },

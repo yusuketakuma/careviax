@@ -85,7 +85,7 @@ export default function PatientVisitRecordsPrintPage() {
         cache: 'no-store',
       });
       if (!response.ok) throw new Error('薬局情報を取得できませんでした');
-      return response.json().then((r) => r.data);
+      return response.json();
     },
     staleTime: 60_000,
   });
@@ -123,9 +123,12 @@ export default function PatientVisitRecordsPrintPage() {
     },
   });
 
+  const org = orgQuery.data;
   const patient = patientQuery.data;
   const records = recordsQuery.data?.data ?? [];
-  const ready = Boolean(patient) && !patientQuery.isLoading && !recordsQuery.isLoading;
+  const isLoadingPrintData = orgQuery.isLoading || patientQuery.isLoading || recordsQuery.isLoading;
+  const hasPrintData = Boolean(org && patient);
+  const ready = hasPrintData && !isLoadingPrintData;
 
   useEffect(() => {
     if (!ready) return;
@@ -133,11 +136,11 @@ export default function PatientVisitRecordsPrintPage() {
     return () => window.clearTimeout(timer);
   }, [ready]);
 
-  if (isBootstrappingOrg || patientQuery.isLoading || recordsQuery.isLoading) {
+  if (isBootstrappingOrg || isLoadingPrintData) {
     return <Loading />;
   }
 
-  if (!patient || patientQuery.error || recordsQuery.error) {
+  if (!org || !patient || orgQuery.error || patientQuery.error || recordsQuery.error) {
     return (
       <div className="mx-auto max-w-3xl space-y-4 p-6">
         <p className="text-sm text-destructive">印刷データを取得できませんでした。</p>
@@ -160,7 +163,7 @@ export default function PatientVisitRecordsPrintPage() {
         shortcuts={getPatientVisitRecordPrintShortcutLinks(patientId)}
       />
 
-      <PrintLayout pharmacyName={orgQuery.data?.name || 'PH-OS薬局'}>
+      <PrintLayout pharmacyName={org.name.trim() || 'PH-OS薬局'}>
         <div className="space-y-4 text-sm">
           <div className="border-b-2 border-black pb-2">
             <h1 className="text-center text-xl font-bold">訪問記録一覧（薬歴）</h1>

@@ -9,6 +9,9 @@ import {
   proposalLockText,
   scheduleLockText,
   splitTrace,
+  type FacilityTrackableSchedule,
+  type FacilityTrackerSchedule,
+  type ScheduleLockState,
 } from './schedule-day-view.helpers';
 import type { Proposal, VisitSchedule } from './day-view.shared';
 
@@ -40,7 +43,7 @@ describe('schedule-day-view.helpers', () => {
         override_request: { status: 'pending', reason: '施設都合' },
         confirmed_at: '2026-04-02T09:00:00.000Z',
         applied_override: null,
-      } as unknown as Pick<VisitSchedule, 'confirmed_at' | 'applied_override' | 'override_request'>)
+      } satisfies ScheduleLockState)
     ).toMatchObject({ label: '変更承認待ち' });
 
     expect(
@@ -48,7 +51,7 @@ describe('schedule-day-view.helpers', () => {
         override_request: null,
         confirmed_at: '2026-04-02T09:00:00.000Z',
         applied_override: null,
-      } as unknown as Pick<VisitSchedule, 'confirmed_at' | 'applied_override' | 'override_request'>)
+      } satisfies ScheduleLockState)
     ).toMatchObject({ label: '運用ロック' });
   });
 
@@ -69,7 +72,7 @@ describe('schedule-day-view.helpers', () => {
   });
 
   it('builds facility tracker groups and default route order maps', () => {
-    const schedules = [
+    const schedules: FacilityTrackerSchedule[] = [
       {
         id: 'schedule_1',
         facility_batch_id: 'batch_1',
@@ -115,7 +118,7 @@ describe('schedule-day-view.helpers', () => {
           },
         },
       },
-    ] as unknown as VisitSchedule[];
+    ];
 
     const groups = buildFacilityTracker(schedules);
 
@@ -138,7 +141,7 @@ describe('schedule-day-view.helpers', () => {
   });
 
   it('uses one shared facility tracker key for filters and record links', () => {
-    const schedule = {
+    const schedule: FacilityTrackableSchedule = {
       facility_batch_id: 'batch_1',
       facility_hint: null,
       site: { id: 'site_1', name: '中央薬局' },
@@ -155,7 +158,7 @@ describe('schedule-day-view.helpers', () => {
           ],
         },
       },
-    } as unknown as VisitSchedule;
+    };
 
     expect(getFacilityTrackerGrouping(schedule)).toEqual({
       key: 'site_1:batch_1:facility:facility_1',

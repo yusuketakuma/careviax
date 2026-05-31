@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
@@ -111,11 +111,10 @@ vi.mock('@/server/jobs', () => ({
 import { POST } from './route';
 
 function createRequest(headers?: Record<string, string>) {
-  return {
-    headers: {
-      get: (key: string) => headers?.[key] ?? null,
-    },
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/jobs/daily-medication-check', {
+    method: 'POST',
+    headers,
+  });
 }
 
 describe('/api/jobs/[jobType] POST', () => {

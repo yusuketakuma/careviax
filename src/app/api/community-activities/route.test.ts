@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   communityActivityFindManyMock,
@@ -32,6 +32,20 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { GET, POST } from './route';
 
+function createRequest(url: string, body?: unknown) {
+  return new NextRequest(url, {
+    method: body === undefined ? 'GET' : 'POST',
+    ...(body === undefined
+      ? {}
+      : {
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        }),
+  });
+}
+
 describe('/api/community-activities', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -47,22 +61,26 @@ describe('/api/community-activities', () => {
   });
 
   it('lists community activities with filters', async () => {
-    const response = (await GET({
-      url: 'http://localhost/api/community-activities?activity_type=seminar&follow_up_required=true',
-    } as NextRequest, { params: Promise.resolve({}) }))!;
+    const response = (await GET(
+      createRequest(
+        'http://localhost/api/community-activities?activity_type=seminar&follow_up_required=true',
+      ),
+      { params: Promise.resolve({}) },
+    ))!;
 
     expect(response.status).toBe(200);
     expect(communityActivityFindManyMock).toHaveBeenCalled();
   });
 
   it('creates a community activity record', async () => {
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createRequest('http://localhost/api/community-activities', {
         activity_type: 'seminar',
         title: '地域向け勉強会',
         activity_date: '2026-03-29T09:00:00.000Z',
       }),
-    } as NextRequest, { params: Promise.resolve({}) }))!;
+      { params: Promise.resolve({}) },
+    ))!;
 
     expect(response.status).toBe(201);
     expect(communityActivityCreateMock).toHaveBeenCalledWith({

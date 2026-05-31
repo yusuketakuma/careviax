@@ -3,6 +3,7 @@ import {
   QualificationCheckAdapterError,
   StubQualificationCheckAdapter,
   createQualificationCheckAdapter,
+  normalizeQualificationCheckResult,
 } from './index';
 
 describe('QualificationCheckAdapter', () => {
@@ -28,7 +29,7 @@ describe('QualificationCheckAdapter', () => {
         patientExternalId: 'patient-ext-1',
         insuranceNumber: '12345678',
         asOfDate: '2026-03-31',
-      })
+      }),
     ).rejects.toMatchObject({
       name: 'QualificationCheckAdapterError',
       code: 'NOT_IMPLEMENTED',
@@ -53,8 +54,8 @@ describe('QualificationCheckAdapter', () => {
             warnings: [],
           },
         }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      )
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
     );
 
     const adapter = createQualificationCheckAdapter({
@@ -76,7 +77,7 @@ describe('QualificationCheckAdapter', () => {
         patientExternalId: 'patient-ext-1',
         insuranceNumber: '12345678',
         asOfDate: '2026-03-31',
-      })
+      }),
     ).resolves.toMatchObject({
       valid: true,
       payerName: '協会けんぽ',
@@ -91,7 +92,83 @@ describe('QualificationCheckAdapter', () => {
           'x-client-id': 'client-id',
           'x-client-secret': 'client-secret',
         }),
-      })
+      }),
     );
+  });
+
+  it('normalizes valid qualification results and rejects malformed values', () => {
+    expect(
+      normalizeQualificationCheckResult({
+        valid: true,
+        patientName: '患者一郎',
+        payerName: null,
+        payerType: 'medical',
+        copayRatio: 0.3,
+        coverage: { startDate: '2026-01-01', endDate: null },
+        warnings: [],
+        raw: { source: 'mhlw' },
+      }),
+    ).toEqual({
+      valid: true,
+      patientName: '患者一郎',
+      payerName: null,
+      payerType: 'medical',
+      copayRatio: 0.3,
+      coverage: { startDate: '2026-01-01', endDate: null },
+      warnings: [],
+      raw: { source: 'mhlw' },
+    });
+
+    expect(normalizeQualificationCheckResult(['unexpected'])).toBeNull();
+    expect(normalizeQualificationCheckResult({ valid: true, payerType: 'medical' })).toBeNull();
+    expect(
+      normalizeQualificationCheckResult({
+        valid: true,
+        patientName: '患者一郎',
+        payerName: null,
+        payerType: 'invalid',
+        copayRatio: 0.3,
+        coverage: { startDate: '2026-01-01', endDate: null },
+        warnings: [],
+      }),
+    ).toBeNull();
+    expect(
+      normalizeQualificationCheckResult({
+        valid: true,
+        patientName: '患者一郎',
+        payerName: null,
+        payerType: 'medical',
+        copayRatio: 0.3,
+        coverage: { startDate: '2026-01-01', endDate: null },
+        warnings: ['ok', 123],
+      }),
+    ).toBeNull();
+  });
+
+  it('fails closed for malformed successful qualification responses', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ data: { valid: true, payerType: 'medical' } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const adapter = createQualificationCheckAdapter({
+      provider: 'mhlw',
+      baseUrl: 'https://example.jp/qualification',
+      accessToken: 'qualification-token',
+    });
+
+    await expect(
+      adapter.checkInsurance({
+        patientExternalId: 'patient-ext-1',
+        asOfDate: '2026-03-31',
+      }),
+    ).rejects.toMatchObject({
+      name: 'QualificationCheckAdapterError',
+      code: 'UPSTREAM_FAILURE',
+      retriable: false,
+      status: 200,
+    } satisfies Partial<QualificationCheckAdapterError>);
   });
 });

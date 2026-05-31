@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
 import {
   attachLocalSession,
+  clickAndWaitForStableRoute,
   createInstrumentedPage,
-  waitForStableUi,
+  openStableRoute,
 } from './helpers/local-auth';
 
 test.describe('dashboard page', () => {
@@ -12,8 +13,7 @@ test.describe('dashboard page', () => {
 
   test('dashboard loads with header and main content sections', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/dashboard');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dashboard');
 
     // Dashboard header
     await expect(page.getByRole('heading', { name: 'PH-OS ホーム', level: 1 })).toBeVisible();
@@ -28,8 +28,7 @@ test.describe('dashboard page', () => {
 
   test('dashboard renders actionable content in the main region', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/dashboard');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dashboard');
 
     const main = page.locator('main');
     const interactiveCount = await main.locator('a, button').count();
@@ -46,8 +45,7 @@ test.describe('sidebar navigation', () => {
 
   test('sidebar shows all main workflow navigation items', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/dashboard');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dashboard');
 
     const sidebar = page.getByTestId('app-sidebar');
 
@@ -56,7 +54,7 @@ test.describe('sidebar navigation', () => {
     await expect(sidebar.getByRole('link', { name: '患者' })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: '処方登録' })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: 'スケジュール' })).toBeVisible();
-    await expect(sidebar.getByRole('link', { name: '調剤' })).toBeVisible();
+    await expect(sidebar.getByRole('link', { name: '調剤', exact: true })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: '調剤監査' })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: '訪問時' })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: '報告書' })).toBeVisible();
@@ -66,8 +64,7 @@ test.describe('sidebar navigation', () => {
 
   test('sidebar shows workbench navigation items', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/dashboard');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dashboard');
 
     const sidebar = page.getByTestId('app-sidebar');
 
@@ -85,13 +82,11 @@ test.describe('sidebar navigation', () => {
 
   test('clicking sidebar patients link navigates to patients page', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/dashboard');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dashboard');
 
-    await Promise.all([
-      page.waitForURL(/\/patients$/, { timeout: 10_000 }),
+    await clickAndWaitForStableRoute(page, /\/patients$/, () =>
       page.getByTestId('sidebar-nav-patients').click(),
-    ]);
+    );
 
     await expect(page.getByRole('heading', { name: '患者一覧', level: 1 })).toBeVisible();
     expect(errors).toEqual([]);
@@ -100,9 +95,7 @@ test.describe('sidebar navigation', () => {
   test('sidebar highlights active route correctly', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
 
-    // Navigate to patients page
-    await page.goto('/patients');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
 
     // The patients link in sidebar should have active styling
     const patientsLink = page.getByTestId('sidebar-nav-patients');
@@ -121,25 +114,20 @@ test.describe('sidebar navigation', () => {
 
   test('settings link at bottom of sidebar navigates to settings', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/dashboard');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dashboard');
 
     const sidebar = page.getByTestId('app-sidebar');
     const settingsLink = sidebar.getByRole('link', { name: '設定' });
     await expect(settingsLink).toBeVisible();
 
-    await Promise.all([
-      page.waitForURL(/\/settings$/, { timeout: 10_000 }),
-      settingsLink.click(),
-    ]);
+    await clickAndWaitForStableRoute(page, /\/settings$/, () => settingsLink.click());
 
     expect(errors).toEqual([]);
   });
 
   test('logout button is visible in sidebar', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/dashboard');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dashboard');
 
     const sidebar = page.getByTestId('app-sidebar');
     await expect(sidebar.getByRole('button', { name: 'ログアウト' })).toBeVisible();
@@ -157,13 +145,15 @@ test.describe('breadcrumb navigation', () => {
     context,
   }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
 
     // Navigate to patient detail
     const firstPatientLink = page.locator('tbody tr').first().locator('a[href^="/patients/"]').first();
-    await firstPatientLink.click();
-    await waitForStableUi(page);
+    const href = await firstPatientLink.getAttribute('href');
+    expect(href).toBeTruthy();
+    await clickAndWaitForStableRoute(page, new RegExp(`${href}$`), () =>
+      firstPatientLink.click({ noWaitAfter: true }),
+    );
 
     // Breadcrumb should be visible
     const breadcrumb = page.getByRole('navigation', { name: 'パンくずリスト' });
@@ -183,14 +173,12 @@ test.describe('breadcrumb navigation', () => {
 
   test('breadcrumb home link navigates to dashboard', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
 
     const breadcrumb = page.getByRole('navigation', { name: 'パンくずリスト' });
-    await Promise.all([
-      page.waitForURL(/\/dashboard$/, { timeout: 10_000 }),
+    await clickAndWaitForStableRoute(page, /\/dashboard$/, () =>
       breadcrumb.getByRole('link', { name: 'ホームへ' }).click(),
-    ]);
+    );
 
     await expect(page.getByRole('heading', { name: 'PH-OS ホーム', level: 1 })).toBeVisible();
     expect(errors).toEqual([]);

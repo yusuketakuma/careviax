@@ -1,6 +1,7 @@
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { success, validationError } from '@/lib/api/response';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { createFacilitySchema } from '@/lib/validations/facility';
@@ -120,7 +121,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         fax: parsed.data.fax || null,
         acceptance_time_from: toTimeValue(parsed.data.acceptance_time_from),
         acceptance_time_to: toTimeValue(parsed.data.acceptance_time_to),
-        regular_visit_weekdays: parsed.data.regular_visit_weekdays as Prisma.InputJsonValue,
+        regular_visit_weekdays: toPrismaJsonInput(parsed.data.regular_visit_weekdays),
         notes: parsed.data.notes || null,
         contacts: parsed.data.contacts.length
           ? {

@@ -48,7 +48,7 @@ describe('buildAdminMasterReadinessSnapshot', () => {
         externalProfessional: 0,
         prescriberInstitution: 0,
         facilityContact: 0,
-      }) as never,
+      }),
       'org_1',
     );
 
@@ -68,7 +68,7 @@ describe('buildAdminMasterReadinessSnapshot', () => {
       createDb({
         businessHoliday: 0,
         notificationRule: 0,
-      }) as never,
+      }),
       'org_1',
     );
 
@@ -101,7 +101,7 @@ describe('buildAdminMasterReadinessSnapshot', () => {
         drugPackageInsert: 0,
         drugInteraction: 0,
         drugMasterImportLog: 0,
-      }) as never,
+      }),
       'org_1',
     );
 

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -31,6 +31,12 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { DELETE } from './route';
 
+function createRequest() {
+  return new NextRequest('http://localhost/api/pharmacist-shift-templates/template_1', {
+    method: 'DELETE',
+  });
+}
+
 describe('/api/pharmacist-shift-templates/[id] DELETE', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -53,7 +59,7 @@ describe('/api/pharmacist-shift-templates/[id] DELETE', () => {
   });
 
   it('deletes an existing shift template', async () => {
-    const response = (await DELETE({} as NextRequest, {
+    const response = (await DELETE(createRequest(), {
       params: Promise.resolve({ id: 'template_1' }),
     }))!;
 

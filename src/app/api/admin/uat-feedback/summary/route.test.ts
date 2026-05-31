@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { getUatFeedbackSummaryMock } = vi.hoisted(() => ({
   getUatFeedbackSummaryMock: vi.fn(),
@@ -15,6 +15,13 @@ vi.mock('@/server/services/uat-feedback-summary', () => ({
 }));
 
 import { GET } from './route';
+
+function createAuthRequest() {
+  return Object.assign(new NextRequest('http://localhost/api/admin/uat-feedback/summary'), {
+    orgId: 'org_1',
+    userId: 'user_1',
+  });
+}
 
 describe('/api/admin/uat-feedback/summary GET', () => {
   beforeEach(() => {
@@ -46,10 +53,7 @@ describe('/api/admin/uat-feedback/summary GET', () => {
   });
 
   it('returns the UAT feedback summary for the authenticated org', async () => {
-    const response = await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-    } as NextRequest & { orgId: string; userId: string });
+    const response = await GET(createAuthRequest());
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);

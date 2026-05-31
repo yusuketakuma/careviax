@@ -1,7 +1,7 @@
-import type { Prisma } from '@prisma/client';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { updateFacilitySchema } from '@/lib/validations/facility';
 
@@ -144,8 +144,7 @@ export const PATCH = withAuthContext<{ id: string }>(async (req, ctx, routeConte
           : {}),
         ...(parsed.data.regular_visit_weekdays !== undefined
           ? {
-              regular_visit_weekdays:
-                parsed.data.regular_visit_weekdays as Prisma.InputJsonValue,
+              regular_visit_weekdays: toPrismaJsonInput(parsed.data.regular_visit_weekdays),
             }
           : {}),
         ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes || null } : {}),

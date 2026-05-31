@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -32,14 +32,20 @@ vi.mock('@/server/services/home-care-billing-ssot', () => ({
 
 import { GET, POST } from './route';
 
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
 function createRequest(url = 'http://localhost/api/billing-rules', body?: unknown) {
-  return {
-    url,
+  const init: NextRequestInit = {
+    method: body === undefined ? 'GET' : 'POST',
     headers: {
-      get: () => 'org_1',
+      'x-org-id': 'org_1',
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
     },
-    json: async () => body,
-  } as unknown as NextRequest;
+  };
+  if (body !== undefined) {
+    init.body = JSON.stringify(body);
+  }
+  return new NextRequest(url, init);
 }
 
 describe('/api/billing-rules', () => {
@@ -113,12 +119,14 @@ describe('/api/billing-rules', () => {
           findMany: billingRuleFindManyMock,
           create: billingRuleCreateMock,
         },
-      })
+      }),
     );
   });
 
   it('seeds and returns billing SSOT rules on GET', async () => {
-    const response = await GET(createRequest('http://localhost/api/billing-rules?billing_scope=home_care_ssot'));
+    const response = await GET(
+      createRequest('http://localhost/api/billing-rules?billing_scope=home_care_ssot'),
+    );
 
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
@@ -137,9 +145,51 @@ describe('/api/billing-rules', () => {
     });
   });
 
+  it('normalizes malformed rule JSON fields to empty objects on GET', async () => {
+    billingRuleFindManyMock.mockResolvedValue([
+      {
+        id: 'rule_malformed',
+        org_id: 'org_1',
+        billing_scope: 'home_care_ssot',
+        rule_type: 'base',
+        service_type: 'medical_home_visit',
+        payer_basis: 'medical',
+        provider_scope: 'pharmacy',
+        selection_mode: 'auto',
+        calculation_unit: 'point',
+        name: '不正JSONルール',
+        code: 'MALFORMED',
+        conditions: ['unexpected'],
+        evidence_requirements: 'invalid',
+        source_url: null,
+        source_note: null,
+        amount: 0,
+        is_system: true,
+        is_active: true,
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+    ]);
+
+    const response = await GET(createRequest());
+
+    if (!response) throw new Error('response is required');
+    const resolvedResponse = response as Response;
+    expect(resolvedResponse.status).toBe(200);
+    await expect(resolvedResponse.json()).resolves.toMatchObject({
+      data: [
+        {
+          code: 'MALFORMED',
+          conditions: {},
+          evidence_requirements: {},
+        },
+      ],
+    });
+  });
+
   it('re-seeds official SSOT via POST action', async () => {
     const response = await POST(
-      createRequest('http://localhost/api/billing-rules', { action: 'seed_home_care_ssot' })
+      createRequest('http://localhost/api/billing-rules', { action: 'seed_home_care_ssot' }),
     );
 
     if (!response) throw new Error('response is required');
@@ -160,9 +210,10 @@ describe('/api/billing-rules', () => {
         provider_scope: 'pharmacy',
         name: '任意加算',
         code: 'CUSTOM_ADD',
-        conditions: {},
+        conditions: { patient_status: 'active' },
+        evidence_requirements: { required_documents: ['visit_record'] },
         amount: 10,
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -173,6 +224,8 @@ describe('/api/billing-rules', () => {
         billing_scope: 'custom',
         rule_type: 'addition',
         amount: 10,
+        conditions: { patient_status: 'active' },
+        evidence_requirements: { required_documents: ['visit_record'] },
       }),
     });
   });

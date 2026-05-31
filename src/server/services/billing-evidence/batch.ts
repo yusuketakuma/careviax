@@ -1,9 +1,11 @@
 import type { Prisma } from '@prisma/client';
+import { normalizeJsonInput } from '@/lib/db/json';
+import type { Tx } from './core';
 import {
   buildBillingCandidateSpecs,
   ensureHomeCareBillingSsot,
+  type HomeCareBillingRuleEngineTx,
 } from '../home-care-billing-ssot';
-import type { Tx } from './core';
 import {
   startOfMonth,
   asRecord,
@@ -11,16 +13,88 @@ import {
   writeBillingCandidateWorkflowState,
   mergeCandidateSourceSnapshot,
 } from './core';
-import { generateInformationProvisionCandidates } from './information-provision';
-import { generateHomeDuplicateInteractionCandidates } from './duplicate-interaction';
+import {
+  generateInformationProvisionCandidates,
+  type InformationProvisionCandidatesTx,
+} from './information-provision';
+import {
+  generateHomeDuplicateInteractionCandidates,
+  type HomeDuplicateInteractionCandidatesTx,
+} from './duplicate-interaction';
+
+function isInputJsonObject(
+  value: Prisma.InputJsonValue | null | undefined
+): value is Prisma.InputJsonObject {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    !('toJSON' in value)
+  );
+}
+
+function normalizedJsonObject(value: unknown): Prisma.InputJsonObject {
+  const normalized = normalizeJsonInput(value);
+  return isInputJsonObject(normalized) ? normalized : {};
+}
+
+function toPayerBasis(value: string): 'medical' | 'care' {
+  return value === 'care' ? 'care' : 'medical';
+}
+
+type GenerateBillingCandidatesTx =
+  InformationProvisionCandidatesTx
+      & HomeDuplicateInteractionCandidatesTx
+      & HomeCareBillingRuleEngineTx
+      & {
+        billingCandidate: {
+          findMany(args: unknown): Promise<Array<{
+            dedupe_key: string | null;
+            source_snapshot: Prisma.JsonValue | null;
+          }>>;
+          upsert(args: unknown): Promise<unknown>;
+          deleteMany(args: unknown): Promise<unknown>;
+        };
+        billingEvidence: {
+          findMany(args: unknown): Promise<Array<{
+            id: string;
+            patient_id: string | null;
+            cycle_id: string | null;
+            visit_record_id?: string | null;
+            payer_basis: string;
+            billing_service_type: string;
+            provider_scope: string;
+            building_patient_count: number | null;
+            monthly_count_snapshot: number | null;
+            weekly_count_snapshot: number | null;
+            claimable: boolean;
+            exclusion_reason: string | null;
+            calculation_context?: Prisma.JsonValue | null;
+          }>>;
+        };
+        visitRecord?: {
+          findMany(args: unknown): Promise<Array<{ id: string; visit_date: Date }>>;
+        };
+      };
+
+type GeneratedBillingCandidate = { status: string };
 
 export async function generateBillingCandidatesForMonth(
   tx: Tx,
   args: { orgId: string; billingMonth: Date }
-) {
-  await ensureHomeCareBillingSsot(tx, args.orgId, { asOfDate: args.billingMonth });
+): Promise<GeneratedBillingCandidate[]>;
+export async function generateBillingCandidatesForMonth(
+  tx: GenerateBillingCandidatesTx,
+  args: { orgId: string; billingMonth: Date }
+): Promise<GeneratedBillingCandidate[]>;
+export async function generateBillingCandidatesForMonth(
+  tx: Tx | GenerateBillingCandidatesTx,
+  args: { orgId: string; billingMonth: Date }
+): Promise<GeneratedBillingCandidate[]> {
+  const db = tx as GenerateBillingCandidatesTx;
+  await ensureHomeCareBillingSsot(db, args.orgId, { asOfDate: args.billingMonth });
   const monthStart = startOfMonth(args.billingMonth);
-  const evidences = await tx.billingEvidence.findMany({
+  const evidences = await db.billingEvidence.findMany({
     where: {
       org_id: args.orgId,
       billing_month: monthStart,
@@ -31,8 +105,8 @@ export async function generateBillingCandidatesForMonth(
     .map((evidence) => evidence.visit_record_id)
     .filter((value): value is string => typeof value === 'string' && value.length > 0);
   const visitDates =
-    visitRecordIds.length > 0
-      ? await tx.visitRecord.findMany({
+    visitRecordIds.length > 0 && db.visitRecord
+      ? await db.visitRecord.findMany({
           where: { id: { in: visitRecordIds } },
           select: { id: true, visit_date: true },
         })
@@ -41,8 +115,8 @@ export async function generateBillingCandidatesForMonth(
     visitDates.map((visitRecord) => [visitRecord.id, visitRecord.visit_date]),
   );
 
-  const created = [];
-  const rules = await tx.billingRule.findMany({
+  const created: GeneratedBillingCandidate[] = [];
+  const rules = await db.billingRule.findMany({
     where: {
       org_id: args.orgId,
       billing_scope: 'home_care_ssot',
@@ -60,7 +134,7 @@ export async function generateBillingCandidatesForMonth(
       .filter((rule) => rule.ssot_key)
       .map((rule) => [rule.ssot_key as string, rule.id])
   );
-  const existingCandidates = await tx.billingCandidate.findMany({
+  const existingCandidates = await db.billingCandidate.findMany({
     where: {
       org_id: args.orgId,
       billing_month: monthStart,
@@ -119,10 +193,12 @@ export async function generateBillingCandidatesForMonth(
         ? calculationContext.care_level_category
         : null;
 
-    const specs = await buildBillingCandidateSpecs(tx, {
+    const visitRecordId =
+      typeof evidence.visit_record_id === 'string' ? evidence.visit_record_id : null;
+    const specs = await buildBillingCandidateSpecs(db, {
       orgId: args.orgId,
-      asOfDate: visitDateByRecordId.get(evidence.visit_record_id) ?? monthStart,
-      payerBasis: evidence.payer_basis,
+      asOfDate: (visitRecordId ? visitDateByRecordId.get(visitRecordId) : undefined) ?? monthStart,
+      payerBasis: toPayerBasis(evidence.payer_basis),
       serviceType:
         evidence.billing_service_type === 'care_home_management'
           ? 'care_home_management'
@@ -166,8 +242,30 @@ export async function generateBillingCandidatesForMonth(
         preservedStatus === 'excluded' && existingWorkflow.note
           ? existingWorkflow.note
           : spec.exclusionReason;
+      const calculationBreakdown = normalizedJsonObject(spec.calculationBreakdown);
+      const sourceSnapshot = writeBillingCandidateWorkflowState(
+        normalizedJsonObject(
+          mergeCandidateSourceSnapshot({
+            sourceSnapshot: spec.sourceSnapshot,
+            calculationContext: evidence.calculation_context,
+            candidateStatus: preservedStatus,
+            claimable: evidence.claimable,
+            evidenceMessage:
+              evidence.claimable
+                ? '同意・管理計画書・報告送付を満たしています'
+                : evidence.exclusion_reason ?? '請求根拠の確認が必要です',
+            ruleMessage:
+              spec.exclusionReason ??
+              (preservedStatus === 'candidate'
+                ? '算定候補のため月次レビューで確定してください'
+                : 'SSOTルールに適合しています'),
+            workflow: existingWorkflow,
+          })
+        ),
+        existingWorkflow
+      );
 
-      const candidate = await tx.billingCandidate.upsert({
+      const candidate = await db.billingCandidate.upsert({
         where: {
           org_id_dedupe_key: {
             org_id: args.orgId,
@@ -186,26 +284,8 @@ export async function generateBillingCandidatesForMonth(
           billing_name: spec.name,
           points: spec.points,
           quantity: 1,
-          calculation_breakdown: spec.calculationBreakdown as Prisma.InputJsonValue,
-          source_snapshot: writeBillingCandidateWorkflowState(
-            mergeCandidateSourceSnapshot({
-              sourceSnapshot: spec.sourceSnapshot,
-              calculationContext: evidence.calculation_context,
-              candidateStatus: preservedStatus,
-              claimable: evidence.claimable,
-              evidenceMessage:
-                evidence.claimable
-                  ? '同意・管理計画書・報告送付を満たしています'
-                  : evidence.exclusion_reason ?? '請求根拠の確認が必要です',
-              ruleMessage:
-                spec.exclusionReason ??
-                (preservedStatus === 'candidate'
-                  ? '算定候補のため月次レビューで確定してください'
-                  : 'SSOTルールに適合しています'),
-              workflow: existingWorkflow,
-            }) as Prisma.JsonValue,
-            existingWorkflow
-          ),
+          calculation_breakdown: calculationBreakdown,
+          source_snapshot: sourceSnapshot,
           status: preservedStatus,
           exclusion_reason: preservedExclusionReason,
         },
@@ -216,37 +296,19 @@ export async function generateBillingCandidatesForMonth(
           billing_name: spec.name,
           points: spec.points,
           quantity: 1,
-          calculation_breakdown: spec.calculationBreakdown as Prisma.InputJsonValue,
-          source_snapshot: writeBillingCandidateWorkflowState(
-            mergeCandidateSourceSnapshot({
-              sourceSnapshot: spec.sourceSnapshot,
-              calculationContext: evidence.calculation_context,
-              candidateStatus: preservedStatus,
-              claimable: evidence.claimable,
-              evidenceMessage:
-                evidence.claimable
-                  ? '同意・管理計画書・報告送付を満たしています'
-                  : evidence.exclusion_reason ?? '請求根拠の確認が必要です',
-              ruleMessage:
-                spec.exclusionReason ??
-                (preservedStatus === 'candidate'
-                  ? '算定候補のため月次レビューで確定してください'
-                  : 'SSOTルールに適合しています'),
-              workflow: existingWorkflow,
-            }) as Prisma.JsonValue,
-            existingWorkflow
-          ),
+          calculation_breakdown: calculationBreakdown,
+          source_snapshot: sourceSnapshot,
           status: preservedStatus,
           exclusion_reason: preservedExclusionReason,
         },
       });
 
-      created.push(candidate);
+      created.push(candidate as GeneratedBillingCandidate);
     }
   }
 
   if (blockedEvidenceIds.length > 0) {
-    await tx.billingCandidate.deleteMany({
+    await db.billingCandidate.deleteMany({
       where: {
         org_id: args.orgId,
         billing_month: monthStart,
@@ -257,14 +319,14 @@ export async function generateBillingCandidatesForMonth(
   }
 
   const [informationProvisionCandidates, homeDuplicateInteractionCandidates] = await Promise.all([
-    generateInformationProvisionCandidates(tx, {
+    generateInformationProvisionCandidates(db, {
       orgId: args.orgId,
       billingMonth: monthStart,
       ruleIdByKey,
       existingByKey,
       claimableEvidenceByPatient,
     }),
-    generateHomeDuplicateInteractionCandidates(tx, {
+    generateHomeDuplicateInteractionCandidates(db, {
       orgId: args.orgId,
       billingMonth: monthStart,
       ruleIdByKey,

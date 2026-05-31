@@ -55,6 +55,28 @@ describe('facility visit context helpers', () => {
     });
   });
 
+  it('returns null for malformed or non-object context without recursive decode loops', () => {
+    expect(decodeFacilityVisitContext('not-json')).toBeNull();
+    expect(decodeFacilityVisitContext(encodeURIComponent('not-json'))).toBeNull();
+    expect(decodeFacilityVisitContext(JSON.stringify([]))).toBeNull();
+    expect(decodeFacilityVisitContext(JSON.stringify(123))).toBeNull();
+    expect(
+      decodeFacilityVisitContext(
+        JSON.stringify({
+          label: '青空ホーム',
+          siteName: '中央薬局',
+          patients: [
+            ['unexpected'],
+            { scheduleId: 'schedule_1', patientName: '田中太郎', unitName: 201, routeOrder: 1 },
+          ],
+        }),
+      ),
+    ).toMatchObject({
+      label: '青空ホーム',
+      patients: [{ scheduleId: 'schedule_1', patientName: '田中太郎', unitName: null }],
+    });
+  });
+
   it('finds the next unrecorded patient for facility or home grouped visits', () => {
     expect(
       getNextGroupedVisitScheduleId('schedule_1', {

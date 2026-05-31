@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   facilityFindFirstMock,
@@ -14,7 +14,11 @@ const {
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => unknown) => {
     return (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) =>
-      handler(req, { orgId: 'org_1', userId: 'user_1', ipAddress: '127.0.0.1', userAgent: 'vitest' }, routeContext);
+      handler(
+        req,
+        { orgId: 'org_1', userId: 'user_1', ipAddress: '127.0.0.1', userAgent: 'vitest' },
+        routeContext,
+      );
   },
 }));
 
@@ -34,6 +38,10 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { GET, DELETE } from './route';
+
+function createRequest(method: 'GET' | 'DELETE') {
+  return new NextRequest('http://localhost/api/facilities/fac_1', { method });
+}
 
 describe('/api/facilities/[id]', () => {
   beforeEach(() => {
@@ -68,7 +76,7 @@ describe('/api/facilities/[id]', () => {
   describe('GET', () => {
     it('returns 200 with facility detail', async () => {
       const response = (await GET(
-        {} as NextRequest,
+        createRequest('GET'),
         { params: Promise.resolve({ id: 'fac_1' }) },
       ))!;
 
@@ -82,7 +90,7 @@ describe('/api/facilities/[id]', () => {
       facilityFindFirstMock.mockResolvedValue(null);
 
       const response = (await GET(
-        {} as NextRequest,
+        createRequest('GET'),
         { params: Promise.resolve({ id: 'nonexistent' }) },
       ))!;
 
@@ -93,7 +101,7 @@ describe('/api/facilities/[id]', () => {
   describe('DELETE', () => {
     it('returns 200 when deleting facility with no linked patients', async () => {
       const response = (await DELETE(
-        {} as NextRequest,
+        createRequest('DELETE'),
         { params: Promise.resolve({ id: 'fac_1' }) },
       ))!;
 
@@ -104,7 +112,7 @@ describe('/api/facilities/[id]', () => {
       facilityFindFirstMock.mockResolvedValue(null);
 
       const response = (await DELETE(
-        {} as NextRequest,
+        createRequest('DELETE'),
         { params: Promise.resolve({ id: 'nonexistent' }) },
       ))!;
 

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   consentRecordFindFirstMock,
@@ -36,6 +36,14 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { POST } from './route';
 
+function createRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/consent-records/consent_1/revoke', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 describe('/api/consent-records/[id]/revoke', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -65,13 +73,14 @@ describe('/api/consent-records/[id]/revoke', () => {
   });
 
   it('revokes the consent record and related external grants', async () => {
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createRequest({
         reason: '本人希望',
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'consent_1' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'consent_1' }),
+      }
+    ))!;
 
     expect(response.status).toBe(200);
     expect(consentRecordUpdateMock).toHaveBeenCalled();

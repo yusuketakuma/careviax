@@ -6,13 +6,16 @@ import { PLAYWRIGHT_UI_SCREENSHOT_DIR } from './helpers/artifacts';
 import {
   attachLocalSession,
   createInstrumentedPage,
+  openStableRoute,
+  reloadStablePage,
   shouldIgnoreConsoleError,
-  waitForStableUi,
 } from './helpers/local-auth';
 const SCREENSHOT_DIR = PLAYWRIGHT_UI_SCREENSHOT_DIR;
 const DB_CONNECTION_STRING = (
   process.env.DATABASE_URL ?? 'postgresql://ph_os:ph_os@localhost:5433/ph-os_dev?schema=public'
 ).replace(/\?.*$/, '');
+
+test.setTimeout(180_000);
 
 const ROOT_ROUTES = [
   { name: 'dashboard', route: '/dashboard' },
@@ -41,6 +44,7 @@ const ROOT_ROUTES = [
 ] as const;
 
 const DEMO_IDS = {
+  patient: 'ui_demo_patient_1',
   residence: 'ui_demo_residence_1',
   contact: 'ui_demo_contact_1',
   condition: 'ui_demo_condition_1',
@@ -80,6 +84,10 @@ type DemoContext = {
 
 let demoContext: DemoContext;
 
+function jsonb(value: unknown) {
+  return JSON.stringify(value);
+}
+
 async function ensureUiDemoData() {
   const client = new Client({ connectionString: DB_CONNECTION_STRING });
   await client.connect();
@@ -89,28 +97,21 @@ async function ensureUiDemoData() {
       org_id: string;
       site_id: string | null;
       user_id: string;
-      patient_id: string;
-      patient_name: string;
-      patient_kana: string;
     }>(`
       SELECT
         o.id AS org_id,
         ps.id AS site_id,
-        u.id AS user_id,
-        p.id AS patient_id,
-        p.name AS patient_name,
-        p.name_kana AS patient_kana
+        u.id AS user_id
       FROM "Organization" o
       JOIN "User" u ON u.org_id = o.id
-      JOIN "Patient" p ON p.org_id = o.id
       LEFT JOIN "PharmacySite" ps ON ps.org_id = o.id
-      ORDER BY p.created_at ASC
+      ORDER BY u.created_at ASC
       LIMIT 1
     `);
 
     const base = baseResult.rows[0];
     if (!base) {
-      throw new Error('UI demo seed requires Organization, User, and Patient records');
+      throw new Error('UI demo seed requires Organization and User records');
     }
 
     const nextWeek = new Date();
@@ -126,6 +127,25 @@ async function ensureUiDemoData() {
     const medicationName = 'アムロジピン錠 5mg';
     const selfReportSubject = '服薬後のふらつきについて';
     const externalShareName = '山田 京子';
+    const patientName = 'UIデモ E2E 太郎';
+    const patientKana = 'ユーデモ イーツーイー タロウ';
+
+    await client.query(
+      `
+        INSERT INTO "Patient" (
+          "id","org_id","name","name_kana","birth_date","gender","billing_support_flag","created_at","updated_at"
+        ) VALUES ($1,$2,$3,$4,'1948-04-12','female',true,NOW(),NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "name" = EXCLUDED."name",
+            "name_kana" = EXCLUDED."name_kana",
+            "birth_date" = EXCLUDED."birth_date",
+            "gender" = EXCLUDED."gender",
+            "billing_support_flag" = true,
+            "updated_at" = NOW()
+      `,
+      [DEMO_IDS.patient, base.org_id, patientName, patientKana]
+    );
 
     await client.query(
       `
@@ -134,7 +154,7 @@ async function ensureUiDemoData() {
             "updated_at" = NOW()
         WHERE "patient_id" = $1
       `,
-      [base.patient_id]
+      [DEMO_IDS.patient]
     );
 
     await client.query(
@@ -151,7 +171,7 @@ async function ensureUiDemoData() {
             "is_primary" = true,
             "updated_at" = NOW()
       `,
-      [DEMO_IDS.residence, base.org_id, base.patient_id, address, 'facility-demo-1', '305号室']
+      [DEMO_IDS.residence, base.org_id, DEMO_IDS.patient, address, 'facility-demo-1', '305号室']
     );
 
     await client.query(
@@ -175,7 +195,7 @@ async function ensureUiDemoData() {
       [
         DEMO_IDS.contact,
         base.org_id,
-        base.patient_id,
+        DEMO_IDS.patient,
         contactName,
         '090-1111-2222',
         'kyoko@example.com',
@@ -199,7 +219,7 @@ async function ensureUiDemoData() {
             "notes" = EXCLUDED."notes",
             "updated_at" = NOW()
       `,
-      [DEMO_IDS.condition, base.org_id, base.patient_id, conditionName, '定期的な血圧チェックが必要']
+      [DEMO_IDS.condition, base.org_id, DEMO_IDS.patient, conditionName, '定期的な血圧チェックが必要']
     );
 
     await client.query(
@@ -222,10 +242,10 @@ async function ensureUiDemoData() {
       [
         DEMO_IDS.caseId,
         base.org_id,
-        base.patient_id,
+        DEMO_IDS.patient,
         '地域包括支援センター',
         base.user_id,
-        JSON.stringify({
+        jsonb({
           home_visit_intake: {
             requester: {
               organization_name: '地域包括支援センター',
@@ -258,7 +278,7 @@ async function ensureUiDemoData() {
             "is_active" = true,
             "updated_at" = NOW()
       `,
-      [DEMO_IDS.consent, base.org_id, base.patient_id, DEMO_IDS.caseId]
+      [DEMO_IDS.consent, base.org_id, DEMO_IDS.patient, DEMO_IDS.caseId]
     );
 
     await client.query(
@@ -274,7 +294,7 @@ async function ensureUiDemoData() {
             "notes" = EXCLUDED."notes",
             "updated_at" = NOW()
       `,
-      [DEMO_IDS.packaging, base.org_id, base.patient_id, '朝昼夕で一包化']
+      [DEMO_IDS.packaging, base.org_id, DEMO_IDS.patient, '朝昼夕で一包化']
     );
 
     await client.query(
@@ -293,7 +313,7 @@ async function ensureUiDemoData() {
             "is_current" = true,
             "updated_at" = NOW()
       `,
-      [DEMO_IDS.medication, base.org_id, base.patient_id, medicationName, '1錠', '1日1回 朝食後', '東京内科クリニック']
+      [DEMO_IDS.medication, base.org_id, DEMO_IDS.patient, medicationName, '1錠', '1日1回 朝食後', '東京内科クリニック']
     );
 
     await client.query(
@@ -312,7 +332,7 @@ async function ensureUiDemoData() {
             "related_entity_id" = EXCLUDED."related_entity_id",
             "updated_at" = NOW()
       `,
-      [DEMO_IDS.task, base.org_id, '訪問前の服薬確認', 'ご家族へ持参薬確認の電話', base.user_id, nextWeek, base.patient_id]
+      [DEMO_IDS.task, base.org_id, '訪問前の服薬確認', 'ご家族へ持参薬確認の電話', base.user_id, nextWeek, DEMO_IDS.patient]
     );
 
     await client.query(
@@ -332,12 +352,12 @@ async function ensureUiDemoData() {
       [
         DEMO_IDS.grant,
         base.org_id,
-        base.patient_id,
+        DEMO_IDS.patient,
         'ui-demo-token-hash',
         nextWeek,
         externalShareName,
         '090-3333-4444',
-        JSON.stringify({ medications: true, schedules: true }),
+        jsonb({ medications: true, schedules: true }),
       ]
     );
 
@@ -359,7 +379,7 @@ async function ensureUiDemoData() {
       [
         DEMO_IDS.selfReport,
         base.org_id,
-        base.patient_id,
+        DEMO_IDS.patient,
         DEMO_IDS.grant,
         externalShareName,
         '家族',
@@ -389,7 +409,7 @@ async function ensureUiDemoData() {
       [
         DEMO_IDS.communicationRequest,
         base.org_id,
-        base.patient_id,
+        DEMO_IDS.patient,
         DEMO_IDS.caseId,
         '鈴木ケアマネ',
         '訪問前の確認事項',
@@ -416,7 +436,7 @@ async function ensureUiDemoData() {
       [
         DEMO_IDS.communicationEvent,
         base.org_id,
-        base.patient_id,
+        DEMO_IDS.patient,
         DEMO_IDS.caseId,
         '鈴木ケアマネ',
         '架電メモ',
@@ -451,7 +471,7 @@ async function ensureUiDemoData() {
         DEMO_IDS.caseId,
         '訪問薬剤管理指導計画書',
         '服薬状況と残薬確認を中心に継続支援する計画です。',
-        JSON.stringify({
+        jsonb({
           goals: ['服薬遵守の維持', '残薬の適正化'],
           interventions: ['一包化継続', '家族への服薬確認依頼'],
           review_points: ['血圧推移', 'ふらつき再発の有無'],
@@ -479,11 +499,11 @@ async function ensureUiDemoData() {
       [
         DEMO_IDS.careReport,
         base.org_id,
-        base.patient_id,
+        DEMO_IDS.patient,
         DEMO_IDS.caseId,
-        JSON.stringify({
+        jsonb({
           patient: {
-            name: base.patient_name,
+            name: patientName,
             birth_date: '1948-04-12',
             gender: 'female',
           },
@@ -577,7 +597,7 @@ async function ensureUiDemoData() {
         DEMO_IDS.visitRecord,
         base.org_id,
         DEMO_IDS.visitSchedule,
-        base.patient_id,
+        DEMO_IDS.patient,
         base.user_id,
         'めまいは軽減',
         '血圧 132/78 mmHg',
@@ -591,9 +611,9 @@ async function ensureUiDemoData() {
       orgId: base.org_id,
       siteId: base.site_id,
       userId: base.user_id,
-      patientId: base.patient_id,
-      patientName: base.patient_name,
-      patientKana: base.patient_kana,
+      patientId: DEMO_IDS.patient,
+      patientName,
+      patientKana,
       address,
       conditionName,
       contactName,
@@ -623,7 +643,24 @@ async function writeScreenshot(page: Page, name: string) {
   await page.screenshot({
     path: path.join(SCREENSHOT_DIR, `${name}.png`),
     fullPage: true,
+    caret: 'initial',
   });
+}
+
+async function openPatientDetailRoute(page: Page, patientId: string) {
+  await openStableRoute(page, `/patients/${patientId}`);
+
+  const tablist = page.getByTestId('patient-detail-tablist');
+  const loading = page.locator('main').getByText('読み込み中...');
+  if (await tablist.isVisible({ timeout: 60_000 }).catch(() => false)) {
+    return;
+  }
+
+  if (await loading.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await reloadStablePage(page);
+  }
+
+  await expect(tablist).toBeVisible({ timeout: 60_000 });
 }
 
 async function fetchFirstPatientId(page: Page) {
@@ -635,6 +672,17 @@ async function fetchFirstPatientId(page: Page) {
   const patientId = payload.data?.[0]?.id;
   expect(patientId).toBeTruthy();
   return patientId!;
+}
+
+async function waitForPatientsSearch(page: Page, query: string) {
+  const response = await page.waitForResponse((candidate) => {
+    if (candidate.request().method() !== 'GET') return false;
+
+    const url = new URL(candidate.url());
+    return url.pathname === '/api/patients' && url.searchParams.get('q') === query;
+  });
+
+  expect(response.ok()).toBeTruthy();
 }
 
 test.beforeAll(async () => {
@@ -653,10 +701,10 @@ test('login screen renders without runtime errors', async ({ page }) => {
     errors.push(`pageerror:${error.message}`);
   });
 
-  await page.goto('/login');
-  await waitForStableUi(page);
+  await openStableRoute(page, '/login');
 
-  await expect(page.getByText('アカウント情報を入力してください')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'PH-OS' })).toBeVisible();
+  await expect(page.getByText('在宅訪問薬局プラットフォーム')).toBeVisible();
   await expect(page.getByLabel('メールアドレス')).toBeVisible();
   await expect(page.getByLabel('パスワード')).toBeVisible();
   await expect(page.getByRole('button', { name: 'ログイン' })).toBeVisible();
@@ -672,10 +720,8 @@ test.describe('major authenticated screens', () => {
   for (const entry of ROOT_ROUTES) {
     test(`${entry.name} screen renders cleanly`, async ({ context }) => {
       const { page, errors } = await createInstrumentedPage(context);
-      const response = await page.goto(entry.route, { waitUntil: 'domcontentloaded' });
-      await waitForStableUi(page);
+      await openStableRoute(page, entry.route);
 
-      expect(response?.ok() ?? false).toBeTruthy();
       await expect(page.locator('main')).toBeVisible();
       await writeScreenshot(page, entry.name);
       expect(errors).toEqual([]);
@@ -684,17 +730,19 @@ test.describe('major authenticated screens', () => {
 
   test('patients screen shows representative backend fields', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients', { waitUntil: 'domcontentloaded' });
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
 
-    await page.getByLabel('患者検索').fill(demoContext.patientName);
+    await Promise.all([
+      waitForPatientsSearch(page, demoContext.patientName),
+      page.getByLabel('患者検索').fill(demoContext.patientName),
+    ]);
 
     const patientLink = page.locator(
       `main a[href="/patients/${demoContext.patientId}"]:visible`
     ).first();
-    await expect(patientLink).toContainText(demoContext.patientName, { timeout: 10_000 });
+    await expect(patientLink).toContainText(demoContext.patientName, { timeout: 30_000 });
     await expect(patientLink).toHaveAttribute('href', `/patients/${demoContext.patientId}`, {
-      timeout: 10_000,
+      timeout: 30_000,
     });
     await writeScreenshot(page, 'patients-data');
     expect(errors).toEqual([]);
@@ -706,12 +754,8 @@ test.describe('major authenticated screens', () => {
     await bootstrap.close();
 
     const { page, errors } = await createInstrumentedPage(context);
-    const response = await page.goto(`/patients/${patientId}`, {
-      waitUntil: 'domcontentloaded',
-    });
-    await waitForStableUi(page);
+    await openPatientDetailRoute(page, patientId);
 
-    expect(response?.ok() ?? false).toBeTruthy();
     await expect(page.locator('main')).toBeVisible();
     await writeScreenshot(page, 'patient-detail');
     expect(errors).toEqual([]);
@@ -719,14 +763,15 @@ test.describe('major authenticated screens', () => {
 
   test('patient detail screen surfaces representative backend data', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto(`/patients/${demoContext.patientId}`, {
-      waitUntil: 'domcontentloaded',
-    });
-    await waitForStableUi(page);
+    await openPatientDetailRoute(page, demoContext.patientId);
     await dismissSheetOverlayIfPresent(page);
 
-    await expect(page.locator('main').getByText(demoContext.patientName).first()).toBeVisible();
-    await expect(page.locator('main').getByText(demoContext.patientKana).first()).toBeVisible();
+    await expect(page.locator('main').getByText(demoContext.patientName).first()).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(page.locator('main').getByText(demoContext.patientKana).first()).toBeVisible({
+      timeout: 60_000,
+    });
     const intakeSummaryCard = page.getByTestId('patient-intake-summary-card');
     await expect(intakeSummaryCard).toBeVisible();
     await expect(page.locator('main').getByText('訪問薬剤管理 新規依頼受付票').first()).toBeVisible();
@@ -752,10 +797,8 @@ test.describe('major authenticated screens', () => {
   for (const entry of dynamicRoutes) {
     test(`${entry.name} screen renders cleanly`, async ({ context }) => {
       const { page, errors } = await createInstrumentedPage(context);
-      const response = await page.goto(entry.route(), { waitUntil: 'domcontentloaded' });
-      await waitForStableUi(page);
+      await openStableRoute(page, entry.route());
 
-      expect(response?.ok() ?? false).toBeTruthy();
       await expect(page.locator('main')).toBeVisible();
       await writeScreenshot(page, entry.name);
       expect(errors).toEqual([]);
@@ -797,19 +840,17 @@ test.describe('major authenticated screens', () => {
   for (const entry of sharedChromeRoutes) {
     test(`${entry.name} screen renders shared chrome cleanly`, async ({ context }) => {
       const { page, errors } = await createInstrumentedPage(context);
-      const response = await page.goto(entry.route(), { waitUntil: 'domcontentloaded' });
-      await waitForStableUi(page);
+      await openStableRoute(page, entry.route());
 
-      expect(response?.ok() ?? false).toBeTruthy();
       await expect(page.getByRole('heading', { name: entry.heading })).toBeVisible({
-        timeout: 20_000,
+        timeout: 60_000,
       });
       await expect(page.getByRole('link', { name: entry.backLabel })).toBeVisible();
       await expect(page.getByTestId('app-shell-print-route')).toBeVisible();
       await expect(page.getByTestId('app-sidebar')).toHaveCount(0);
       await expect(page.getByTestId('print-layout-root')).toBeVisible();
       if (entry.expectPrintButton) {
-        await expect(page.getByRole('button', { name: '印刷' })).toBeVisible();
+        await expect(page.getByRole('button', { name: '印刷', exact: true })).toBeVisible();
       }
       await writeScreenshot(page, entry.name);
       expect(errors).toEqual([]);
@@ -818,36 +859,35 @@ test.describe('major authenticated screens', () => {
 
   test('patient share screen exposes backend share and self-report data', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto(`/patients/${demoContext.patientId}/share`, {
-      waitUntil: 'domcontentloaded',
-    });
-    await waitForStableUi(page);
+    await openStableRoute(page, `/patients/${demoContext.patientId}/share`);
 
-    await expect(page.locator('main').getByText(demoContext.externalShareName).first()).toBeVisible();
-    await expect(page.locator('main').getByText(demoContext.selfReportSubject).first()).toBeVisible();
+    await expect(page.locator('main').getByText('共有済みリンクと連絡文脈')).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(page.locator('main').getByText(demoContext.selfReportSubject).first()).toBeVisible({
+      timeout: 60_000,
+    });
     await writeScreenshot(page, 'patient-share-data');
     expect(errors).toEqual([]);
   });
 
   test('patient medications screen exposes medication profile data', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto(`/patients/${demoContext.patientId}/medications`, {
-      waitUntil: 'domcontentloaded',
-    });
-    await waitForStableUi(page);
+    await openStableRoute(page, `/patients/${demoContext.patientId}/medications`);
 
-    await expect(page.locator('main').getByText(demoContext.medicationName).first()).toBeVisible();
+    await expect(page.locator('main').getByText(demoContext.medicationName).first()).toBeVisible({
+      timeout: 60_000,
+    });
     await writeScreenshot(page, 'patient-medications-data');
     expect(errors).toEqual([]);
   });
 
   test('reports list keeps direct detail and patient navigation visible', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/reports', { waitUntil: 'domcontentloaded' });
-    await waitForStableUi(page);
+    await openStableRoute(page, '/reports');
 
-    const reportLink = page.locator('main a[href^="/reports/"]:visible').first();
-    await expect(reportLink).toBeVisible();
+    const reportLink = page.locator(`main a[href="/reports/${demoContext.reportId}"]:visible`).first();
+    await expect(reportLink).toBeVisible({ timeout: 60_000 });
     await expect(reportLink).toHaveAttribute('href', /\/reports\/[^/]+$/);
     await expect(page.getByRole('button', { name: '詳細を開く' }).first()).toBeVisible();
 

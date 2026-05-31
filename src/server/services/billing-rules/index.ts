@@ -19,7 +19,15 @@ export {
 } from './revisions';
 
 // ルールエンジン
-export { buildBillingCandidateSpecs, getHomeCareBillingSsotSummary } from './rule-engine';
+export {
+  buildBillingCandidateSpecs,
+  getHomeCareBillingSsotSummary,
+  type HomeCareBillingRuleEngineTx,
+} from './rule-engine';
 
 // シーダー
-export { ensureHomeCareBillingSsot, HOME_CARE_BILLING_RULESET_VERSION } from './seeder';
+export {
+  ensureHomeCareBillingSsot,
+  HOME_CARE_BILLING_RULESET_VERSION,
+  type HomeCareBillingSsotTx,
+} from './seeder';

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -37,6 +37,24 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { DELETE, PATCH } from './route';
+
+function createPatchRequest(body: unknown) {
+  return new NextRequest(
+    'http://localhost/api/pharmacy-sites/site_1/insurance-configs/config_1',
+    {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+      headers: { 'content-type': 'application/json' },
+    },
+  );
+}
+
+function createDeleteRequest() {
+  return new NextRequest(
+    'http://localhost/api/pharmacy-sites/site_1/insurance-configs/config_1',
+    { method: 'DELETE' },
+  );
+}
 
 describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
   beforeEach(() => {
@@ -76,16 +94,17 @@ describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
   });
 
   it('updates an insurance config', async () => {
-    const response = (await PATCH({
-      json: async () => ({
+    const response = (await PATCH(
+      createPatchRequest({
         revision_label: '更新版',
         effective_from: '2024-04-01',
         effective_to: null,
         config: { base_fee: 1 },
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'site_1', configId: 'config_1' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'site_1', configId: 'config_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(200);
     expect(insuranceConfigUpdateMock).toHaveBeenCalledWith({
@@ -96,6 +115,21 @@ describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
         effective_to: null,
         config: { base_fee: 1 },
       },
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        actor_id: 'user_1',
+        action: 'insurance_config_updated',
+        target_type: 'PharmacySiteInsuranceConfig',
+        target_id: 'config_1',
+        changes: {
+          revision_label: '更新版',
+          effective_from: '2024-04-01',
+          effective_to: null,
+          config: { base_fee: 1 },
+        },
+      }),
     });
   });
 
@@ -112,23 +146,24 @@ describe('/api/pharmacy-sites/[id]/insurance-configs/[configId]', () => {
       },
     ]);
 
-    const response = (await PATCH({
-      json: async () => ({
+    const response = (await PATCH(
+      createPatchRequest({
         revision_label: '更新版',
         effective_from: '2024-06-01',
         effective_to: null,
         config: { base_fee: 1 },
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'site_1', configId: 'config_1' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'site_1', configId: 'config_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(400);
     expect(insuranceConfigUpdateMock).not.toHaveBeenCalled();
   });
 
   it('deletes an insurance config', async () => {
-    const response = (await DELETE({} as NextRequest, {
+    const response = (await DELETE(createDeleteRequest(), {
       params: Promise.resolve({ id: 'site_1', configId: 'config_1' }),
     }))!;
 

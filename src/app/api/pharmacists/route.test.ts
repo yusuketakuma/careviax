@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
@@ -61,22 +61,20 @@ vi.mock('@/lib/db/rls', () => ({
 import { GET, POST } from './route';
 
 function createRequest(body: unknown) {
-  return {
-    url: 'http://localhost/api/pharmacists',
+  return new NextRequest('http://localhost/api/pharmacists', {
+    method: 'POST',
+    body: JSON.stringify(body),
     headers: {
-      get: (key: string) => (key === 'x-org-id' ? 'org_1' : null),
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
     },
-    json: async () => body,
-  } as unknown as NextRequest;
+  });
 }
 
 function createGetRequest(query = '') {
-  return {
-    url: `http://localhost/api/pharmacists${query}`,
-    headers: {
-      get: (key: string) => (key === 'x-org-id' ? 'org_1' : null),
-    },
-  } as unknown as NextRequest;
+  return new NextRequest(`http://localhost/api/pharmacists${query}`, {
+    headers: { 'x-org-id': 'org_1' },
+  });
 }
 
 describe('/api/pharmacists GET', () => {
@@ -339,6 +337,39 @@ describe('/api/pharmacists POST', () => {
         can_set: false,
         can_audit_dispense: false,
         can_audit_set: false,
+      }),
+    });
+  });
+
+  it('creates an operational pharmacist with visit settings', async () => {
+    const response = await POST(
+      createRequest({
+        name: '訪問 薬剤師',
+        name_kana: 'ホウモン ヤクザイシ',
+        email: 'visit@example.com',
+        phone: '090-1234-5678',
+        role: 'pharmacist',
+        site_id: 'site_1',
+        max_daily_visits: 6,
+        max_weekly_visits: 24,
+        max_travel_minutes: 45,
+        can_accept_emergency: true,
+        visit_specialties: ['terminal_care'],
+        coverage_area: ['新宿区'],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(userCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        email: 'visit@example.com',
+        max_daily_visits: 6,
+        max_weekly_visits: 24,
+        max_travel_minutes: 45,
+        can_accept_emergency: true,
+        visit_specialties: ['terminal_care'],
+        coverage_area: ['新宿区'],
       }),
     });
   });

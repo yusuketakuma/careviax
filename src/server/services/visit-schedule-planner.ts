@@ -1,11 +1,7 @@
 import { addDays, differenceInCalendarDays, format, getDay, startOfWeek } from 'date-fns';
-import type {
-  VisitPriority,
-  VisitType,
-  VisitAssignmentMode,
-  Prisma,
-} from '@prisma/client';
+import type { VisitPriority, VisitType, VisitAssignmentMode } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { getHomeVisitSpecialMedicalProcedures } from '@/lib/patient/home-visit-intake';
 import { createRoadTravelEstimator } from './road-routing';
 import { evaluateVisitWorkflowGate } from './management-plans';
 import type { VisitRouteTravelMode } from './visit-route-engine';
@@ -174,7 +170,7 @@ function addMinutes(baseDate: Date, minutes: number) {
   return new Date(baseDate.getTime() + minutes * 60_000);
 }
 
-function normalizeWeekdays(value: Prisma.JsonValue | null | undefined) {
+function normalizeWeekdays(value: unknown) {
   if (!Array.isArray(value)) return [];
   return value.filter((entry): entry is number => typeof entry === 'number');
 }
@@ -217,12 +213,7 @@ function intersectWindows(...windows: Array<PreferenceWindow | null | undefined>
 }
 
 function haversineKm(a: SchedulePoint, b: SchedulePoint) {
-  if (
-    a.lat == null ||
-    a.lng == null ||
-    b.lat == null ||
-    b.lng == null
-  ) {
+  if (a.lat == null || a.lng == null || b.lat == null || b.lng == null) {
     return Number.NaN;
   }
   const earthRadiusKm = 6371;
@@ -233,9 +224,7 @@ function haversineKm(a: SchedulePoint, b: SchedulePoint) {
 
   const sinDLat = Math.sin(dLat / 2);
   const sinDLng = Math.sin(dLng / 2);
-  const h =
-    sinDLat * sinDLat +
-    Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
+  const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
   return 2 * earthRadiusKm * Math.asin(Math.sqrt(h));
 }
 
@@ -279,16 +268,14 @@ function sortRoutePoints(points: SchedulePoint[]) {
 async function getTravelCost(
   a: SchedulePoint,
   b: SchedulePoint,
-  estimateRoadTravel: ReturnType<typeof createRoadTravelEstimator>
+  estimateRoadTravel: ReturnType<typeof createRoadTravelEstimator>,
 ) {
   const roadEstimate = await estimateRoadTravel(a, b);
   if (roadEstimate) {
     return {
       score: roadEstimate.durationMinutes,
       summary: `実道路移動 約${Math.round(roadEstimate.durationMinutes)}分${
-        Number.isFinite(roadEstimate.distanceKm)
-          ? ` / ${roadEstimate.distanceKm.toFixed(1)}km`
-          : ''
+        Number.isFinite(roadEstimate.distanceKm) ? ` / ${roadEstimate.distanceKm.toFixed(1)}km` : ''
       }`,
     } satisfies TravelCost;
   }
@@ -300,7 +287,7 @@ async function computeRouteInsertion(
   sitePoint: SchedulePoint | null,
   existingPoints: SchedulePoint[],
   candidatePoint: SchedulePoint,
-  estimateRoadTravel: ReturnType<typeof createRoadTravelEstimator>
+  estimateRoadTravel: ReturnType<typeof createRoadTravelEstimator>,
 ) {
   if (existingPoints.length === 0) {
     const initialCost = sitePoint
@@ -368,8 +355,7 @@ function findAvailableSlot(args: {
   const preferredEnd = args.preferredTimeTo
     ? setClock(args.baseDate, args.preferredTimeTo, DEFAULT_SHIFT_END)
     : args.shiftEnd;
-  const windowStart =
-    preferredStart > args.shiftStart ? preferredStart : args.shiftStart;
+  const windowStart = preferredStart > args.shiftStart ? preferredStart : args.shiftStart;
   const windowEnd = preferredEnd < args.shiftEnd ? preferredEnd : args.shiftEnd;
 
   if (windowEnd <= windowStart) return null;
@@ -449,12 +435,12 @@ function countLockedSchedules(
   schedules: Array<{
     confirmed_at?: Date | null;
     schedule_status?: string;
-  }>
+  }>,
 ) {
   return schedules.filter(
     (schedule) =>
       schedule.confirmed_at != null ||
-      ['ready', 'departed', 'in_progress'].includes(schedule.schedule_status ?? '')
+      ['ready', 'departed', 'in_progress'].includes(schedule.schedule_status ?? ''),
   ).length;
 }
 
@@ -501,7 +487,7 @@ function calculateRemainingSlackMinutes(args: {
 }
 
 export async function generateVisitScheduleProposalDrafts(
-  params: GenerateProposalParams
+  params: GenerateProposalParams,
 ): Promise<GenerateVisitScheduleProposalResult> {
   const travelMode = params.travelMode ?? 'DRIVE';
   const estimateRoadTravel = createRoadTravelEstimator(travelMode);
@@ -555,14 +541,11 @@ export async function generateVisitScheduleProposalDrafts(
 
   const schedulingPreference = careCase.patient.scheduling_preference;
   const primaryFacility = careCase.patient.residences[0]?.facility ?? null;
-  const preferredWeekdays = normalizeWeekdays(
-    schedulingPreference?.preferred_weekdays as Prisma.JsonValue | null | undefined
-  );
-  const facilityVisitWeekdays = normalizeWeekdays(
-    primaryFacility?.regular_visit_weekdays as Prisma.JsonValue | null | undefined
-  );
+  const preferredWeekdays = normalizeWeekdays(schedulingPreference?.preferred_weekdays);
+  const facilityVisitWeekdays = normalizeWeekdays(primaryFacility?.regular_visit_weekdays);
   // Patient preference takes priority; fall back to facility's regular visit days
-  const effectiveWeekdays = preferredWeekdays.length > 0 ? preferredWeekdays : facilityVisitWeekdays;
+  const effectiveWeekdays =
+    preferredWeekdays.length > 0 ? preferredWeekdays : facilityVisitWeekdays;
   const mergedVisitWindow = intersectWindows(
     {
       from: params.preferredTimeFrom,
@@ -579,7 +562,7 @@ export async function generateVisitScheduleProposalDrafts(
     {
       from: readTimeString(primaryFacility?.acceptance_time_from),
       to: readTimeString(primaryFacility?.acceptance_time_to),
-    }
+    },
   );
   const preferenceNotes: string[] = [];
   if (preferredWeekdays.length > 0) {
@@ -599,11 +582,7 @@ export async function generateVisitScheduleProposalDrafts(
   if (params.preferredPharmacistId) {
     preferenceNotes.push('希望担当薬剤師を優先考慮');
   }
-  const intakeJson = (careCase.required_visit_support as Record<string, unknown> | null)
-    ?.home_visit_intake as Record<string, unknown> | null;
-  const specialProcedures = Array.isArray(intakeJson?.special_medical_procedures)
-    ? (intakeJson.special_medical_procedures as string[])
-    : [];
+  const specialProcedures = getHomeVisitSpecialMedicalProcedures(careCase.required_visit_support);
   const specialCapEligible =
     specialProcedures.includes('narcotics') ||
     specialProcedures.includes('narcotics_injection') ||
@@ -634,12 +613,11 @@ export async function generateVisitScheduleProposalDrafts(
     },
   });
 
-  const medicationEndDates = cycle?.prescription_intakes.flatMap((intake) => [
-    ...intake.lines
-      .map((line) => line.end_date)
-      .filter((value): value is Date => value != null),
-    ...(intake.refill_next_dispense_date ? [intake.refill_next_dispense_date] : []),
-  ]) ?? [];
+  const medicationEndDates =
+    cycle?.prescription_intakes.flatMap((intake) => [
+      ...intake.lines.map((line) => line.end_date).filter((value): value is Date => value != null),
+      ...(intake.refill_next_dispense_date ? [intake.refill_next_dispense_date] : []),
+    ]) ?? [];
   const medicationEndDate =
     medicationEndDates.length > 0
       ? new Date(Math.max(...medicationEndDates.map((value) => value.getTime())))
@@ -653,8 +631,8 @@ export async function generateVisitScheduleProposalDrafts(
         planningStart,
         Math.min(
           MAX_SEARCH_DAYS,
-          Math.max(0, differenceInCalendarDays(visitDeadlineDate, planningStart))
-        )
+          Math.max(0, differenceInCalendarDays(visitDeadlineDate, planningStart)),
+        ),
       );
 
   const shifts = await prisma.pharmacistShift.findMany({
@@ -688,10 +666,7 @@ export async function generateVisitScheduleProposalDrafts(
         },
       },
     },
-    orderBy: [
-      { date: 'asc' },
-      { available_from: 'asc' },
-    ],
+    orderBy: [{ date: 'asc' }, { available_from: 'asc' }],
   });
 
   const holidays = await prisma.businessHoliday.findMany({
@@ -812,10 +787,7 @@ export async function generateVisitScheduleProposalDrafts(
           }),
         };
       }
-      if (
-        effectiveWeekdays.length > 0 &&
-        !effectiveWeekdays.includes(getDay(shift.date))
-      ) {
+      if (effectiveWeekdays.length > 0 && !effectiveWeekdays.includes(getDay(shift.date))) {
         return {
           kind: 'rejected' as const,
           diagnostic: buildRejectedDiagnostic({
@@ -837,9 +809,7 @@ export async function generateVisitScheduleProposalDrafts(
       }
       const dayHolidays = holidayByDate.get(toDateKey(shift.date)) ?? [];
       if (
-        dayHolidays.some(
-          (holiday) => holiday.site_id == null || holiday.site_id === shift.site_id
-        )
+        dayHolidays.some((holiday) => holiday.site_id == null || holiday.site_id === shift.site_id)
       ) {
         return {
           kind: 'rejected' as const,
@@ -853,12 +823,11 @@ export async function generateVisitScheduleProposalDrafts(
 
       try {
         const schedulesForShift =
-          confirmedSchedulesByDayAndPharmacist.get(
-            `${shift.user_id}:${toDateKey(shift.date)}`
-          ) ?? [];
+          confirmedSchedulesByDayAndPharmacist.get(`${shift.user_id}:${toDateKey(shift.date)}`) ??
+          [];
         const schedulesForWeek =
           confirmedSchedulesByWeekAndPharmacist.get(
-            `${shift.user_id}:${buildWeekKey(shift.date)}`
+            `${shift.user_id}:${buildWeekKey(shift.date)}`,
           ) ?? [];
         if (
           shift.user.max_daily_visits != null &&
@@ -927,7 +896,7 @@ export async function generateVisitScheduleProposalDrafts(
               : null,
           })),
           candidatePoint,
-          estimateRoadTravel
+          estimateRoadTravel,
         );
         if (
           shift.user.max_travel_minutes != null &&
@@ -961,8 +930,7 @@ export async function generateVisitScheduleProposalDrafts(
         }).length;
 
         const assignmentMode: VisitAssignmentMode =
-          careCase.primary_pharmacist_id &&
-          careCase.primary_pharmacist_id === shift.user_id
+          careCase.primary_pharmacist_id && careCase.primary_pharmacist_id === shift.user_id
             ? 'primary'
             : 'fallback';
         const careRelationship: 'primary' | 'backup' | 'fallback' =
@@ -978,24 +946,14 @@ export async function generateVisitScheduleProposalDrafts(
               : 50
             : 0;
         const relationshipBonus =
-          careRelationship === 'primary'
-            ? -25
-            : careRelationship === 'backup'
-              ? -12
-              : 0;
-        const preferredPharmacistBonus =
-          params.preferredPharmacistId === shift.user_id ? -8 : 0;
+          careRelationship === 'primary' ? -25 : careRelationship === 'backup' ? -12 : 0;
+        const preferredPharmacistBonus = params.preferredPharmacistId === shift.user_id ? -8 : 0;
         const datePenalty = differenceInCalendarDays(shift.date, planningStart) * 10;
         const priorityBonus =
-          params.priority === 'emergency'
-            ? -20
-            : params.priority === 'urgent'
-              ? -10
-              : 0;
+          params.priority === 'emergency' ? -20 : params.priority === 'urgent' ? -10 : 0;
         const geocodePenalty =
           primaryResidence?.lat == null || primaryResidence?.lng == null ? 25 : 0;
-        const facilityBonus =
-          sameFacilityVisits > 0 ? -Math.min(12, sameFacilityVisits * 4) : 0;
+        const facilityBonus = sameFacilityVisits > 0 ? -Math.min(12, sameFacilityVisits * 4) : 0;
         const workloadPenalty = schedulesForShift.length * 2;
         const lockedSchedules = countLockedSchedules(schedulesForShift);
         const lockPenalty = lockedSchedules * 2;
@@ -1023,8 +981,7 @@ export async function generateVisitScheduleProposalDrafts(
           weeklyCap == null
             ? 0
             : confirmedSchedulesForPatient.filter(
-                (schedule) =>
-                  buildWeekKey(schedule.scheduled_date) === buildWeekKey(shift.date),
+                (schedule) => buildWeekKey(schedule.scheduled_date) === buildWeekKey(shift.date),
               ).length;
         const cadencePenalty =
           (monthlyCountForCandidate >= monthlyCap ? 120 : 0) +
@@ -1071,19 +1028,22 @@ export async function generateVisitScheduleProposalDrafts(
           diagnostic: buildRejectedDiagnostic({
             shift,
             reasonCode: 'evaluation_error',
-            detail: error instanceof Error
-              ? `評価中にエラーが発生しました: ${error.message}`
-              : '評価中にエラーが発生しました',
+            detail:
+              error instanceof Error
+                ? `評価中にエラーが発生しました: ${error.message}`
+                : '評価中にエラーが発生しました',
           }),
         };
       }
-    })
+    }),
   );
 
   const acceptedCandidates = evaluatedCandidates
     .filter(
-      (candidate): candidate is Extract<(typeof evaluatedCandidates)[number], { kind: 'accepted' }> =>
-        candidate.kind === 'accepted'
+      (
+        candidate,
+      ): candidate is Extract<(typeof evaluatedCandidates)[number], { kind: 'accepted' }> =>
+        candidate.kind === 'accepted',
     )
     .sort((left, right) => left.score - right.score);
 
@@ -1091,36 +1051,36 @@ export async function generateVisitScheduleProposalDrafts(
   const overflowCandidates = acceptedCandidates.slice(params.candidateCount);
 
   const drafts = selectedCandidates.map((candidate, index) => ({
-      org_id: params.orgId,
-      cycle_id: cycle?.id ?? null,
-      case_id: params.caseId,
-      site_id: candidate.shift.site_id,
-      visit_type: params.visitType,
-      priority: params.priority,
-      proposal_status: (params.rescheduleSourceScheduleId
-        ? 'reschedule_pending'
-        : 'proposed') as ProposalDraft['proposal_status'],
-      patient_contact_status: 'pending' as ProposalDraft['patient_contact_status'],
-      proposed_date: candidate.shift.date,
-      time_window_start: candidate.slot.start,
-      time_window_end: candidate.slot.end,
-      proposed_pharmacist_id: candidate.shift.user_id,
-      assignment_mode: candidate.assignmentMode,
-      route_order: candidate.routeInsertion.routeOrder + index,
-      route_distance_score: candidate.routeInsertion.travelScore,
-      medication_end_date: medicationEndDate,
-      visit_deadline_date: visitDeadlineDate,
-      proposal_reason: buildReason({
-        medicationEndDate,
-        routeOrder: candidate.routeInsertion.routeOrder,
-        assignmentMode: candidate.assignmentMode,
-        careRelationship: candidate.careRelationship,
-        isEmergencyPriority: params.priority === 'emergency',
-        travelScore: candidate.routeInsertion.travelScore,
-        travelSummary: candidate.routeInsertion.travelSummary,
-        constraintSummary: [
-          ...(mergedVisitWindow?.from || mergedVisitWindow?.to
-            ? [
+    org_id: params.orgId,
+    cycle_id: cycle?.id ?? null,
+    case_id: params.caseId,
+    site_id: candidate.shift.site_id,
+    visit_type: params.visitType,
+    priority: params.priority,
+    proposal_status: (params.rescheduleSourceScheduleId
+      ? 'reschedule_pending'
+      : 'proposed') as ProposalDraft['proposal_status'],
+    patient_contact_status: 'pending' as ProposalDraft['patient_contact_status'],
+    proposed_date: candidate.shift.date,
+    time_window_start: candidate.slot.start,
+    time_window_end: candidate.slot.end,
+    proposed_pharmacist_id: candidate.shift.user_id,
+    assignment_mode: candidate.assignmentMode,
+    route_order: candidate.routeInsertion.routeOrder + index,
+    route_distance_score: candidate.routeInsertion.travelScore,
+    medication_end_date: medicationEndDate,
+    visit_deadline_date: visitDeadlineDate,
+    proposal_reason: buildReason({
+      medicationEndDate,
+      routeOrder: candidate.routeInsertion.routeOrder,
+      assignmentMode: candidate.assignmentMode,
+      careRelationship: candidate.careRelationship,
+      isEmergencyPriority: params.priority === 'emergency',
+      travelScore: candidate.routeInsertion.travelScore,
+      travelSummary: candidate.routeInsertion.travelSummary,
+      constraintSummary: [
+        ...(mergedVisitWindow?.from || mergedVisitWindow?.to
+          ? [
               `患者条件 ${mergedVisitWindow?.from ?? '09:00'}-${mergedVisitWindow?.to ?? '18:00'} 内で配置`,
             ]
           : []),
@@ -1147,8 +1107,8 @@ export async function generateVisitScheduleProposalDrafts(
       candidate.assignmentMode === 'fallback'
         ? '担当薬剤師の勤務枠が見つからなかったため代替薬剤師を割り当て'
         : null,
-      reschedule_source_schedule_id: params.rescheduleSourceScheduleId ?? null,
-    }));
+    reschedule_source_schedule_id: params.rescheduleSourceScheduleId ?? null,
+  }));
 
   const acceptedDiagnostics: AcceptedProposalDiagnostic[] = selectedCandidates.map(
     (candidate, index) => ({
@@ -1167,14 +1127,16 @@ export async function generateVisitScheduleProposalDrafts(
       score_breakdown: candidate.scoreBreakdown,
       time_window_start: candidate.slot.start,
       time_window_end: candidate.slot.end,
-    })
+    }),
   );
 
   const rejectedDiagnostics = [
     ...evaluatedCandidates
       .filter(
-        (candidate): candidate is Extract<(typeof evaluatedCandidates)[number], { kind: 'rejected' }> =>
-          candidate.kind === 'rejected'
+        (
+          candidate,
+        ): candidate is Extract<(typeof evaluatedCandidates)[number], { kind: 'rejected' }> =>
+          candidate.kind === 'rejected',
       )
       .map((candidate) => candidate.diagnostic),
     ...overflowCandidates.map((candidate) =>
@@ -1182,7 +1144,7 @@ export async function generateVisitScheduleProposalDrafts(
         shift: candidate.shift,
         reasonCode: 'not_selected',
         detail: `候補上限 ${params.candidateCount} 件のため採用外です（スコア ${candidate.score.toFixed(1)}）`,
-      })
+      }),
     ),
   ];
 

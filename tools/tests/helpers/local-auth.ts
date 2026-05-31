@@ -136,6 +136,126 @@ export async function waitForStableUi(page: Page) {
     .catch(() => null);
 }
 
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetriableDevNavigationError(message: string) {
+  return /net::ERR_ABORTED|frame was detached|net::ERR_EMPTY_RESPONSE|net::ERR_CONNECTION_RESET|net::ERR_CONNECTION_REFUSED/i.test(
+    message,
+  );
+}
+
+function currentUrlMatchesTarget(page: Page, targetUrl: Parameters<Page['waitForURL']>[0]) {
+  const currentUrl = page.url();
+
+  if (targetUrl instanceof RegExp) {
+    return targetUrl.test(currentUrl);
+  }
+
+  const parsedUrl = new URL(currentUrl);
+
+  if (typeof targetUrl === 'function') {
+    return targetUrl(parsedUrl);
+  }
+
+  const currentPath = `${parsedUrl.pathname}${parsedUrl.search}`;
+  return targetUrl === currentUrl || targetUrl === currentPath;
+}
+
+async function waitForCurrentUrlTarget(
+  page: Page,
+  targetUrl: Parameters<Page['waitForURL']>[0],
+  timeout: number,
+) {
+  const deadline = Date.now() + timeout;
+
+  while (Date.now() < deadline) {
+    if (currentUrlMatchesTarget(page, targetUrl)) {
+      return;
+    }
+    await delay(100);
+  }
+
+  throw new Error(`Timed out waiting for current URL to match ${String(targetUrl)}`);
+}
+
+export async function openStableRoute(page: Page, path: string) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await page.goto(path, { waitUntil: 'domcontentloaded' });
+      await waitForStableUi(page);
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const currentUrl = new URL(page.url());
+      const currentPath = `${currentUrl.pathname}${currentUrl.search}`;
+
+      if (!isRetriableDevNavigationError(message)) {
+        throw error;
+      }
+
+      if (currentPath === path) {
+        await waitForStableUi(page);
+        return;
+      }
+
+      if (attempt === 2) {
+        throw error;
+      }
+
+      await delay(
+        /ERR_CONNECTION|ERR_EMPTY_RESPONSE|ERR_CONNECTION_RESET/i.test(message) ? 1_000 : 250,
+      );
+    }
+  }
+}
+
+export async function reloadStablePage(page: Page) {
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await waitForStableUi(page);
+}
+
+export async function clickAndWaitForStableRoute(
+  page: Page,
+  targetUrl: Parameters<Page['waitForURL']>[0],
+  clickAction: () => Promise<unknown>,
+  options: { timeout?: number } = {},
+) {
+  const timeout = options.timeout ?? 10_000;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const [waitResult] = await Promise.all([
+      Promise.race([
+        page.waitForURL(targetUrl, {
+          timeout,
+          waitUntil: 'domcontentloaded',
+        }),
+        waitForCurrentUrlTarget(page, targetUrl, timeout),
+      ])
+        .then(() => null)
+        .catch((error: unknown) => error),
+      clickAction(),
+    ]);
+
+    if (!waitResult || currentUrlMatchesTarget(page, targetUrl)) {
+      await waitForStableUi(page);
+      return;
+    }
+
+    if (
+      attempt === 2 ||
+      !(waitResult instanceof Error) ||
+      (!/timeout/i.test(waitResult.message) &&
+        !isRetriableDevNavigationError(waitResult.message))
+    ) {
+      throw waitResult;
+    }
+
+    await delay(isRetriableDevNavigationError(waitResult.message) ? 1_000 : 250);
+  }
+}
+
 export async function createInstrumentedPage(
   context: BrowserContext,
   options: { captureHttpErrors?: boolean } = {},

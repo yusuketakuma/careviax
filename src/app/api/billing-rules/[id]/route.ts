@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server';
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
+import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import { forbidden, notFound, success, validationError } from '@/lib/api/response';
 
 const payerBasisSchema = z.enum(['medical', 'care', 'self_pay', 'non_billable']);
@@ -39,21 +40,20 @@ function parseEffectiveDate(value?: string | null) {
   return value ? new Date(`${value}T00:00:00.000Z`) : undefined;
 }
 
-function serializeRule(rule: {
-  conditions: Prisma.JsonValue | null;
-  evidence_requirements: Prisma.JsonValue | null;
-} & Record<string, unknown>) {
+function serializeRule(
+  rule: {
+    conditions: Prisma.JsonValue | null;
+    evidence_requirements: Prisma.JsonValue | null;
+  } & Record<string, unknown>,
+) {
   return {
     ...rule,
-    conditions: (rule.conditions ?? {}) as Record<string, unknown>,
-    evidence_requirements: (rule.evidence_requirements ?? {}) as Record<string, unknown>,
+    conditions: readJsonObject(rule.conditions) ?? {},
+    evidence_requirements: readJsonObject(rule.evidence_requirements) ?? {},
   };
 }
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
@@ -62,17 +62,14 @@ export async function GET(
   const rule = await withOrgContext(ctx.orgId, (tx) =>
     tx.billingRule.findFirst({
       where: { id, org_id: ctx.orgId },
-    })
+    }),
   );
 
   if (!rule) return notFound('算定ルールが見つかりません');
   return success(serializeRule(rule));
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
@@ -87,7 +84,7 @@ export async function PATCH(
   }
 
   const existing = await withOrgContext(ctx.orgId, (tx) =>
-    tx.billingRule.findFirst({ where: { id, org_id: ctx.orgId } })
+    tx.billingRule.findFirst({ where: { id, org_id: ctx.orgId } }),
   );
   if (!existing) return notFound('算定ルールが見つかりません');
 
@@ -108,32 +105,29 @@ export async function PATCH(
       where: { id },
       data: {
         ...rest,
-        ...(conditions !== undefined ? { conditions: conditions as Prisma.InputJsonValue } : {}),
+        ...(conditions !== undefined ? { conditions: toPrismaJsonInput(conditions) } : {}),
         ...(evidence_requirements !== undefined
-          ? { evidence_requirements: evidence_requirements as Prisma.InputJsonValue }
+          ? { evidence_requirements: toPrismaJsonInput(evidence_requirements) }
           : {}),
         ...(effective_from !== undefined
           ? { effective_from: parseEffectiveDate(effective_from) }
           : {}),
         ...(effective_to !== undefined ? { effective_to: parseEffectiveDate(effective_to) } : {}),
       },
-    })
+    }),
   );
 
   return success(serializeRule(updated));
 }
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, { permission: 'canAdmin' });
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
   const { id } = await params;
 
   const existing = await withOrgContext(ctx.orgId, (tx) =>
-    tx.billingRule.findFirst({ where: { id, org_id: ctx.orgId } })
+    tx.billingRule.findFirst({ where: { id, org_id: ctx.orgId } }),
   );
   if (!existing) return notFound('算定ルールが見つかりません');
   if (existing.is_system) return forbidden('SSOTの公式ルールは削除できません');

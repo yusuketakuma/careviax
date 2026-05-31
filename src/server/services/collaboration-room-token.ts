@@ -2,6 +2,7 @@ import { decode, encode } from 'next-auth/jwt';
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
 import { getAuthSecret } from '@/lib/auth/secret';
 import { APP_ENV } from '@/lib/config/app-env';
+import { readJsonObject } from '@/lib/db/json';
 import type { CollaborationEntityType } from '@/server/services/collaboration-access';
 
 const COLLABORATION_ROOM_TOKEN_SALT = 'ph-os.collaboration-room-token.v1';
@@ -66,17 +67,24 @@ function requireStrongCollaborationRoomTokenSecret(secret: string) {
 }
 
 function parseSecretString(raw: string) {
+  const trimmed = raw.trim();
+
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (typeof parsed === 'string') return parsed;
-    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-      const secret = (parsed as Partial<Record<string, unknown>>).COLLABORATION_ROOM_TOKEN_SECRET;
+
+    const record = readJsonObject(parsed);
+    if (record) {
+      const secret = record.COLLABORATION_ROOM_TOKEN_SECRET;
       if (typeof secret === 'string') return secret;
       throw new MissingCollaborationRoomTokenSecretError();
     }
-    if (Array.isArray(parsed)) throw new MissingCollaborationRoomTokenSecretError();
-  } catch {
-    if (raw.trim().startsWith('{') || raw.trim().startsWith('[')) {
+
+    throw new MissingCollaborationRoomTokenSecretError();
+  } catch (error) {
+    if (error instanceof MissingCollaborationRoomTokenSecretError) throw error;
+
+    if (trimmed.startsWith('{') || trimmed.startsWith('[') || trimmed.startsWith('"')) {
       throw new MissingCollaborationRoomTokenSecretError();
     }
     // SecretString may be the raw signing secret rather than a JSON object.

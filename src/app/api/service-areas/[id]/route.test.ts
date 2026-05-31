@@ -1,13 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
   validateOrgReferencesMock,
+  serviceAreaFindFirstMock,
+  serviceAreaUpdateMock,
+  serviceAreaDeleteMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
+  serviceAreaFindFirstMock: vi.fn(),
+  serviceAreaUpdateMock: vi.fn(),
+  serviceAreaDeleteMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -26,13 +32,14 @@ vi.mock('@/lib/api/org-reference', () => ({
 import { PATCH, DELETE } from './route';
 
 function createRequest(url: string, body?: unknown) {
-  return {
-    url,
-    method: body === undefined ? 'DELETE' : 'PATCH',
-    headers: { get: () => null },
-    nextUrl: new URL(url),
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+  if (body === undefined) {
+    return new NextRequest(url, { method: 'DELETE' });
+  }
+  return new NextRequest(url, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
 }
 
 const authCtx = {
@@ -44,27 +51,39 @@ describe('/api/service-areas/[id]', () => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue(authCtx);
     validateOrgReferencesMock.mockResolvedValue({ ok: true, data: {} });
+    serviceAreaFindFirstMock.mockResolvedValue({ id: 'area_1' });
+    serviceAreaUpdateMock.mockResolvedValue({ id: 'area_1', name: 'エリアA' });
+    serviceAreaDeleteMock.mockResolvedValue({});
   });
 
   describe('PATCH', () => {
     it('returns 200 on valid update', async () => {
       const updated = { id: 'area_1', name: 'エリアA' };
+      serviceAreaUpdateMock.mockResolvedValueOnce(updated);
       // First call: findFirst (existing check), second call: update
       withOrgContextMock
         .mockImplementationOnce(async (_orgId: string, fn: (tx: unknown) => unknown) =>
-          fn({ serviceArea: { findFirst: vi.fn().mockResolvedValue({ id: 'area_1' }) } })
+          fn({ serviceArea: { findFirst: serviceAreaFindFirstMock } })
         )
         .mockImplementationOnce(async (_orgId: string, fn: (tx: unknown) => unknown) =>
-          fn({ serviceArea: { update: vi.fn().mockResolvedValue(updated) } })
+          fn({ serviceArea: { update: serviceAreaUpdateMock } })
         );
 
       const req = createRequest('http://localhost/api/service-areas/area_1', {
         name: 'エリアA',
+        geo_data: { match_keywords: ['多摩'] },
       });
       const res = await PATCH(req, { params: Promise.resolve({ id: 'area_1' }) });
       expect(res!.status).toBe(200);
       const json = await res!.json();
       expect(json.data.name).toBe('エリアA');
+      expect(serviceAreaUpdateMock).toHaveBeenCalledWith({
+        where: { id: 'area_1' },
+        data: {
+          name: 'エリアA',
+          geo_data: { match_keywords: ['多摩'] },
+        },
+      });
     });
 
     it('returns 404 when area not found', async () => {
@@ -102,10 +121,10 @@ describe('/api/service-areas/[id]', () => {
     it('returns 200 on successful delete', async () => {
       withOrgContextMock
         .mockImplementationOnce(async (_orgId: string, fn: (tx: unknown) => unknown) =>
-          fn({ serviceArea: { findFirst: vi.fn().mockResolvedValue({ id: 'area_1' }) } })
+          fn({ serviceArea: { findFirst: serviceAreaFindFirstMock } })
         )
         .mockImplementationOnce(async (_orgId: string, fn: (tx: unknown) => unknown) =>
-          fn({ serviceArea: { delete: vi.fn().mockResolvedValue({}) } })
+          fn({ serviceArea: { delete: serviceAreaDeleteMock } })
         );
 
       const req = createRequest('http://localhost/api/service-areas/area_1');

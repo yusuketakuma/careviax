@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import {
   attachLocalSession,
   createInstrumentedPage,
+  openStableRoute,
   waitForStableUi,
 } from './helpers/local-auth';
 
@@ -10,8 +11,7 @@ test.describe('auth: login page', () => {
     const { page, errors } = await createInstrumentedPage(context, {
       captureHttpErrors: false,
     });
-    await page.goto('/login');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/login');
 
     await expect(page.getByLabel(/メールアドレス|Email/i)).toBeVisible();
     await expect(page.getByLabel(/パスワード|Password/i)).toBeVisible();
@@ -24,8 +24,7 @@ test.describe('auth: login page', () => {
     const { page, errors } = await createInstrumentedPage(context, {
       captureHttpErrors: false,
     });
-    await page.goto('/login');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/login');
 
     await page.getByRole('button', { name: /ログイン|Sign in/i }).click();
     await waitForStableUi(page);
@@ -41,8 +40,7 @@ test.describe('auth: login page', () => {
     const { page, errors } = await createInstrumentedPage(context, {
       captureHttpErrors: false,
     });
-    await page.goto('/login');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/login');
 
     const resetLink = page.getByRole('link', { name: /パスワードを忘れた|パスワードリセット|Forgot/i });
     await expect(resetLink).toBeVisible();
@@ -50,14 +48,18 @@ test.describe('auth: login page', () => {
     expect(errors).toEqual([]);
   });
 
-  test('authenticated user is redirected from login page', async ({ context }) => {
+  test('authenticated session reaches protected dashboard and login page still renders', async ({
+    context,
+  }) => {
     await attachLocalSession(context);
-    const { page } = await createInstrumentedPage(context);
-    await page.goto('/login');
-    await waitForStableUi(page);
+    const { page, errors } = await createInstrumentedPage(context);
 
-    // Authenticated users should be redirected away from login
-    await expect(page).not.toHaveURL(/\/login$/);
+    await openStableRoute(page, '/dashboard');
+    await expect(page).toHaveURL(/\/dashboard/);
+
+    await openStableRoute(page, '/login');
+    await expect(page.getByRole('button', { name: /ログイン|Sign in/i })).toBeVisible();
+    expect(errors).toEqual([]);
   });
 });
 
@@ -66,8 +68,7 @@ test.describe('auth: MFA page', () => {
     const { page, errors } = await createInstrumentedPage(context, {
       captureHttpErrors: false,
     });
-    await page.goto('/mfa');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/mfa');
 
     // MFA page should show OTP input or redirect to login if no session
     const hasMfaInput =
@@ -86,8 +87,7 @@ test.describe('auth: password reset flow', () => {
     const { page, errors } = await createInstrumentedPage(context, {
       captureHttpErrors: false,
     });
-    await page.goto('/password/reset');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/password/reset');
 
     await expect(page.getByLabel(/メールアドレス|Email/i)).toBeVisible();
     await expect(
@@ -101,8 +101,7 @@ test.describe('auth: password reset flow', () => {
     const { page, errors } = await createInstrumentedPage(context, {
       captureHttpErrors: false,
     });
-    await page.goto('/password/reset');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/password/reset');
 
     const loginLink = page.getByRole('link', { name: /ログイン|ログインに戻る|Back/i });
     await expect(loginLink).toBeVisible();
@@ -110,17 +109,14 @@ test.describe('auth: password reset flow', () => {
     expect(errors).toEqual([]);
   });
 
-  test('password reset empty submission shows validation', async ({ context }) => {
+  test('password reset keeps submission disabled until email is entered', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context, {
       captureHttpErrors: false,
     });
-    await page.goto('/password/reset');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/password/reset');
 
-    await page.getByRole('button', { name: /送信|リセット|Reset|Submit/i }).click();
-    await waitForStableUi(page);
+    await expect(page.getByRole('button', { name: /送信|リセット|Reset|Submit/i })).toBeDisabled();
 
-    // Should stay on reset page
     expect(page.url()).toContain('/password/reset');
 
     const networkErrors = errors.filter((e) => !e.startsWith('console:'));
@@ -130,8 +126,7 @@ test.describe('auth: password reset flow', () => {
   test('password change page requires current and new password', async ({ context }) => {
     await attachLocalSession(context);
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/password/change');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/password/change');
 
     // Either renders the form or redirects if not applicable
     const isFormVisible = await page

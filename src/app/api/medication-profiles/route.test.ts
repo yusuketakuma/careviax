@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   patientFindFirstMock,
@@ -20,12 +20,13 @@ vi.mock('@/lib/auth/middleware', () => ({
     ) => Promise<Response>,
   ) => {
     return (req: NextRequest) =>
-      handler({
-        ...req,
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'pharmacist',
-      } as NextRequest & { orgId: string; userId: string; role: 'pharmacist' });
+      handler(
+        Object.assign(req, {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist' as const,
+        }),
+      );
   },
 }));
 
@@ -45,6 +46,18 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { GET, POST } from './route';
+
+function createGetRequest(search = '') {
+  return new NextRequest(`http://localhost/api/medication-profiles${search}`);
+}
+
+function createPostRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/medication-profiles', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
 
 describe('/api/medication-profiles', () => {
   beforeEach(() => {
@@ -67,9 +80,9 @@ describe('/api/medication-profiles', () => {
   });
 
   it('lists medication profiles', async () => {
-    const response = (await GET({
-      url: 'http://localhost/api/medication-profiles?patient_id=patient_1&is_current=true',
-    } as NextRequest))!;
+    const response = (await GET(
+      createGetRequest('?patient_id=patient_1&is_current=true'),
+    ))!;
 
     expect(response.status).toBe(200);
     expect(patientFindFirstMock).toHaveBeenCalledWith({
@@ -120,9 +133,7 @@ describe('/api/medication-profiles', () => {
   it('hides an inaccessible patient before reading medication profiles', async () => {
     patientFindFirstMock.mockResolvedValue(null);
 
-    const response = (await GET({
-      url: 'http://localhost/api/medication-profiles?patient_id=patient_2',
-    } as NextRequest))!;
+    const response = (await GET(createGetRequest('?patient_id=patient_2')))!;
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -135,13 +146,13 @@ describe('/api/medication-profiles', () => {
   });
 
   it('creates a medication profile with normalized dates', async () => {
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createPostRequest({
         patient_id: 'patient_1',
         drug_name: 'アムロジピン',
         start_date: '2026-03-29',
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(medicationProfileCreateMock).toHaveBeenCalledWith({
@@ -157,12 +168,12 @@ describe('/api/medication-profiles', () => {
   it('returns 404 before creating a medication profile for an inaccessible patient', async () => {
     patientFindFirstMock.mockResolvedValue(null);
 
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createPostRequest({
         patient_id: 'patient_2',
         drug_name: 'アムロジピン',
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(404);
     expect(medicationProfileFindManyMock).not.toHaveBeenCalled();

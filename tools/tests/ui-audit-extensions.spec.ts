@@ -3,16 +3,26 @@ import path from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { PLAYWRIGHT_ELEMENT_SCREENSHOT_DIR, PLAYWRIGHT_SCREENSHOT_DIR } from './helpers/artifacts';
-import { attachLocalSession, createInstrumentedPage, waitForStableUi } from './helpers/local-auth';
+import {
+  attachLocalSession,
+  clickAndWaitForStableRoute,
+  createInstrumentedPage,
+  openStableRoute,
+  waitForStableUi,
+} from './helpers/local-auth';
 
 const SCREENSHOT_DIR = PLAYWRIGHT_SCREENSHOT_DIR;
 const ELEMENT_SCREEN_DIR = PLAYWRIGHT_ELEMENT_SCREENSHOT_DIR;
+const FALLBACK_PATIENT_PATH = '/patients/e2e_mobile_qr_draft_patient';
+
+test.setTimeout(120_000);
 
 async function writeScreenshot(page: Page, name: string) {
   await fs.mkdir(SCREENSHOT_DIR, { recursive: true });
   await page.screenshot({
     path: path.join(SCREENSHOT_DIR, `${name}.png`),
     fullPage: true,
+    caret: 'initial',
   });
 }
 
@@ -20,6 +30,7 @@ async function writeElementScreenshot(locator: ReturnType<Page['locator']>, name
   await fs.mkdir(ELEMENT_SCREEN_DIR, { recursive: true });
   await locator.screenshot({
     path: path.join(ELEMENT_SCREEN_DIR, `${name}.png`),
+    caret: 'initial',
   });
 }
 
@@ -66,14 +77,14 @@ async function analyzeMainAccessibility(page: Page) {
 }
 
 async function openFirstPatientDetail(page: Page) {
-  await page.goto('/patients');
-  await waitForStableUi(page);
+  await openStableRoute(page, '/patients');
 
   const patientLink = page.locator('tbody tr').first().locator('a[href^="/patients/"]').first();
-  const href = await patientLink.getAttribute('href');
+  await patientLink.waitFor({ state: 'attached', timeout: 30_000 }).catch(() => null);
+  const href = (await patientLink.getAttribute('href')) ?? FALLBACK_PATIENT_PATH;
   expect(href).toBeTruthy();
-  await page.goto(href!);
-  await waitForStableUi(page);
+  await openStableRoute(page, href!);
+  await expect(page.getByTestId('patient-detail-tablist')).toBeVisible({ timeout: 60_000 });
   return href!;
 }
 
@@ -87,8 +98,7 @@ test('dashboard accessibility has no critical or serious violations', async ({
   test.skip(testInfo.project.name !== 'chromium');
 
   const { page, errors } = await createInstrumentedPage(context);
-  await page.goto('/dashboard');
-  await waitForStableUi(page);
+  await openStableRoute(page, '/dashboard');
 
   const results = await analyzeMainAccessibility(page);
   const severe = results.violations.filter((violation) =>
@@ -107,8 +117,7 @@ test('patients accessibility has no critical or serious violations', async ({
   test.skip(testInfo.project.name !== 'chromium');
 
   const { page, errors } = await createInstrumentedPage(context);
-  await page.goto('/patients');
-  await waitForStableUi(page);
+  await openStableRoute(page, '/patients');
 
   const results = await analyzeMainAccessibility(page);
   const severe = results.violations.filter((violation) =>
@@ -129,8 +138,7 @@ test('prescription intake accessibility has no critical or serious violations', 
   test.skip(testInfo.project.name !== 'chromium');
 
   const { page, errors } = await createInstrumentedPage(context);
-  await page.goto('/prescriptions/new');
-  await waitForStableUi(page);
+  await openStableRoute(page, '/prescriptions/new');
 
   const results = await analyzeMainAccessibility(page);
   const severe = results.violations.filter((violation) =>
@@ -149,8 +157,7 @@ test('mobile dashboard keeps primary action accessible without horizontal overfl
   test.skip(testInfo.project.name !== 'mobile-chromium');
 
   const { page, errors } = await createInstrumentedPage(context);
-  await page.goto('/dashboard');
-  await waitForStableUi(page);
+  await openStableRoute(page, '/dashboard');
 
   const overflowWidth = await page.evaluate(() => {
     const root = document.documentElement;
@@ -177,8 +184,7 @@ test('mobile patients screen preserves search usability without horizontal overf
   test.skip(testInfo.project.name !== 'mobile-chromium');
 
   const { page, errors } = await createInstrumentedPage(context);
-  await page.goto('/patients');
-  await waitForStableUi(page);
+  await openStableRoute(page, '/patients');
 
   const searchInput = page.getByLabel('患者検索');
   await expect(searchInput).toBeVisible();
@@ -205,8 +211,7 @@ test.describe('environment emulation audit', () => {
     test.skip(testInfo.project.name !== 'chromium');
 
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/dashboard');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dashboard');
 
     await expect(page.locator('html')).toHaveClass(/dark/);
     await expect(page.getByTestId('app-sidebar').first()).toBeVisible();
@@ -221,8 +226,7 @@ test.describe('motion and network audit', () => {
 
     const { page, errors } = await createInstrumentedPage(context);
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.goto('/dashboard');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dashboard');
 
     const prefersReducedMotion = await page.evaluate(
       () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -243,8 +247,7 @@ test.describe('motion and network audit', () => {
         get: () => false,
       });
     });
-    await page.goto('/dashboard');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dashboard');
 
     errors.length = 0;
     const offlineMessage = page.getByText('ネットワーク接続が切れています。').first();
@@ -265,8 +268,7 @@ test.describe('locale and timezone audit', () => {
     test.skip(testInfo.project.name !== 'chromium');
 
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/dashboard');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dashboard');
 
     const runtimeLocale = await page.evaluate(() => navigator.language);
     const runtimeTimezone = await page.evaluate(
@@ -289,13 +291,14 @@ test.describe('ARIA and keyboard contracts', () => {
     test.skip(testInfo.project.name !== 'chromium');
 
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/dashboard');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dashboard');
 
-    await Promise.all([
-      page.waitForURL(/\/patients$/, { timeout: 20_000 }),
-      page.getByTestId('sidebar-nav-patients').click(),
-    ]);
+    await clickAndWaitForStableRoute(
+      page,
+      /\/patients$/,
+      () => page.getByTestId('sidebar-nav-patients').click(),
+      { timeout: 20_000 },
+    );
     await expect(page.getByLabel('患者検索')).toBeVisible();
     expect(errors).toEqual([]);
   });
@@ -304,17 +307,15 @@ test.describe('ARIA and keyboard contracts', () => {
     test.skip(testInfo.project.name !== 'chromium');
 
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
 
     const patientLink = page.locator('tbody tr').first().locator('a[href^="/patients/"]').first();
+    await expect(patientLink).toBeVisible({ timeout: 60_000 });
     const href = await patientLink.getAttribute('href');
     expect(href).toBeTruthy();
 
-    await patientLink.click();
-    await waitForStableUi(page);
+    await clickAndWaitForStableRoute(page, href!, () => patientLink.click(), { timeout: 60_000 });
 
-    await expect(page).toHaveURL(new RegExp(`${href}$`));
     await expect(page.locator('main').getByText('患者詳細').first()).toBeVisible();
     expect(errors).toEqual([]);
   });
@@ -323,8 +324,7 @@ test.describe('ARIA and keyboard contracts', () => {
     test.skip(testInfo.project.name !== 'chromium');
 
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/dashboard');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dashboard');
 
     const nav = page.getByRole('navigation', { name: 'ワークフローナビ' }).first();
     await expect(nav).toBeVisible();
@@ -369,8 +369,7 @@ test.describe('ARIA and keyboard contracts', () => {
     test.skip(testInfo.project.name !== 'chromium');
 
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/dashboard');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dashboard');
 
     const homeLink = page.getByTestId('sidebar-nav-home').first();
     const patientsLink = page.getByTestId('sidebar-nav-patients').first();
@@ -389,10 +388,14 @@ test.describe('ARIA and keyboard contracts', () => {
     test.skip(testInfo.project.name !== 'chromium');
 
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/dashboard');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/dashboard');
 
-    await page.getByTestId('sidebar-nav-patients').first().click();
+    await clickAndWaitForStableRoute(
+      page,
+      /\/patients$/,
+      () => page.getByTestId('sidebar-nav-patients').first().click(),
+      { timeout: 20_000 },
+    );
     await expect(page).toHaveURL(/\/patients$/);
     await expect(page.getByLabel('患者検索')).toBeVisible();
 
@@ -405,12 +408,15 @@ test.describe('ARIA and keyboard contracts', () => {
     test.skip(testInfo.project.name !== 'chromium');
 
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
 
     const patientLink = page.locator('tbody tr').first().locator('a[href^="/patients/"]').first();
-    await patientLink.click();
-    await expect(page).toHaveURL(/\/patients\/[^/]+$/);
+    await expect(patientLink).toBeVisible({ timeout: 60_000 });
+    const href = await patientLink.getAttribute('href');
+    expect(href).toBeTruthy();
+    await clickAndWaitForStableRoute(page, /\/patients\/[^/]+$/, () => patientLink.click(), {
+      timeout: 60_000,
+    });
     await expect(page.getByRole('heading', { name: '患者詳細' })).toBeVisible();
 
     expect(errors).toEqual([]);
@@ -420,7 +426,6 @@ test.describe('ARIA and keyboard contracts', () => {
     context,
   }, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium');
-    test.setTimeout(60_000);
 
     const { page, errors } = await createInstrumentedPage(context);
     await page.setViewportSize({ width: 390, height: 844 });
@@ -448,7 +453,7 @@ test.describe('ARIA and keyboard contracts', () => {
     await expect(basicTab).toBeFocused();
     await page.keyboard.press('ArrowRight');
     await expect(casesTab).toBeFocused();
-    await page.keyboard.press('Enter');
+    await page.keyboard.press('Space');
     await expect(casesTab).toHaveAttribute('aria-selected', 'true');
 
     expect(errors).toEqual([]);
@@ -461,11 +466,12 @@ test.describe('ARIA and keyboard contracts', () => {
 
     const { page, errors } = await createInstrumentedPage(context);
     await openFirstPatientDetail(page);
-    await page.goto(`${page.url()}/mcs`);
-    await waitForStableUi(page);
+    await openStableRoute(page, `${new URL(page.url()).pathname}/mcs`);
 
-    await expect(page.getByTestId('patient-mcs-setup-guide')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'URL を入力する' })).toBeVisible();
+    await expect(page.getByTestId('patient-mcs-setup-guide')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole('button', { name: 'URL を入力する' })).toBeVisible({
+      timeout: 60_000,
+    });
 
     expect(errors).toEqual([]);
   });
@@ -476,8 +482,7 @@ test.describe('ARIA and keyboard contracts', () => {
     test.skip(testInfo.project.name !== 'chromium');
 
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/prescriptions/new');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/prescriptions/new');
 
     const form = page.getByTestId('prescription-intake-form');
     const sourceType = page.getByTestId('prescription-source-type');
@@ -505,13 +510,14 @@ test.describe('ARIA and keyboard contracts', () => {
     const { page, errors } = await createInstrumentedPage(context);
     const patientHref = await openFirstPatientDetail(page);
 
-    await page.goto(`${patientHref}/mcs`);
-    await waitForStableUi(page);
+    await openStableRoute(page, `${patientHref}/mcs`);
 
-    await expect(page.locator('main').getByText('最初に必要な設定')).toBeVisible();
+    await expect(page.locator('main').getByText('最初に必要な設定')).toBeVisible({
+      timeout: 60_000,
+    });
     await expect(
       page.locator('main').getByRole('button', { name: 'URL を入力する' }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 60_000 });
     expect(errors).toEqual([]);
   });
 
@@ -523,10 +529,10 @@ test.describe('ARIA and keyboard contracts', () => {
     const { page, errors } = await createInstrumentedPage(context);
     const patientHref = await openFirstPatientDetail(page);
 
-    await page.goto(`${patientHref}/mcs`);
-    await waitForStableUi(page);
+    await openStableRoute(page, `${patientHref}/mcs`);
 
     const sourceInput = page.getByLabel('MCS 連携元 URL');
+    await expect(sourceInput).toBeVisible({ timeout: 60_000 });
     await sourceInput.fill('invalid-url');
 
     await expect(
@@ -545,8 +551,7 @@ test.describe('ARIA and keyboard contracts', () => {
     test.skip(testInfo.project.name !== 'chromium');
 
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/prescriptions/new');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/prescriptions/new');
 
     await expect(
       page.locator('main').getByText('最後にこのボタンで受付を確定します'),

@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
+
+type AuthenticatedTestRequest = NextRequest & {
+  orgId: string;
+  userId: string;
+  role: 'pharmacist';
+};
 
 const {
   withAuthMock,
@@ -9,18 +15,15 @@ const {
   dispenseTaskFindManyMock,
 } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
-    (
-      handler: (
-        req: NextRequest & { orgId: string; userId: string; role: 'pharmacist' },
-      ) => Promise<Response>,
-    ) => {
+    (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
       return (req: NextRequest) =>
-        handler({
-          ...req,
-          orgId: 'org_1',
-          userId: 'user_1',
-          role: 'pharmacist',
-        } as NextRequest & { orgId: string; userId: string; role: 'pharmacist' });
+        handler(
+          Object.assign(req, {
+            orgId: 'org_1',
+            userId: 'user_1',
+            role: 'pharmacist',
+          }) as AuthenticatedTestRequest,
+        );
     },
   ),
   withOrgContextMock: vi.fn(),
@@ -55,16 +58,18 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 
 import { GET, POST } from './route';
 
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
 function createRequest(body: unknown) {
-  return {
-    json: async () => body,
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/dispense-audits', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  } satisfies NextRequestInit);
 }
 
 function createGetRequest() {
-  return {
-    url: 'http://localhost/api/dispense-audits',
-  } as NextRequest;
+  return new NextRequest('http://localhost/api/dispense-audits');
 }
 
 const expectedCycleAssignmentWhere = {
@@ -179,6 +184,10 @@ describe('/api/dispense-audits POST', () => {
     const cycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
     const cycleTransitionLogCreateMock = vi.fn().mockResolvedValue({});
     const workflowExceptionCreateMock = vi.fn().mockResolvedValue({});
+    const membershipFindFirstMock = vi.fn().mockResolvedValue({ id: 'membership_admin' });
+    const membershipFindManyMock = vi
+      .fn()
+      .mockResolvedValue([{ user_id: 'admin_1' }, { user_id: 'pharmacist_1' }]);
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -205,10 +214,8 @@ describe('/api/dispense-audits POST', () => {
           findMany: vi.fn().mockResolvedValue([{ dispensed_by: 'user_dispense' }]),
         },
         membership: {
-          findFirst: vi.fn().mockResolvedValue({ id: 'membership_admin' }),
-          findMany: vi
-            .fn()
-            .mockResolvedValue([{ user_id: 'admin_1' }, { user_id: 'pharmacist_1' }]),
+          findFirst: membershipFindFirstMock,
+          findMany: membershipFindManyMock,
         },
         dispenseAudit: {
           create: vi.fn().mockResolvedValue({ id: 'audit_1', result: 'rejected' }),
@@ -248,6 +255,14 @@ describe('/api/dispense-audits POST', () => {
       where: { id: 'task_1' },
       data: { status: 'in_progress' },
     });
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
+    expect(membershipFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          role: { in: ['admin', 'pharmacist'] },
+        }),
+      }),
+    );
     expect(workflowExceptionCreateMock).toHaveBeenCalled();
     expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
       expect.anything(),

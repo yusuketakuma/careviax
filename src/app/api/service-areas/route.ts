@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server';
-import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { success, validationError } from '@/lib/api/response';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 
 const createServiceAreaSchema = z.object({
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
         site_id: parsed.data.site_id,
         name: parsed.data.name,
         area_type: parsed.data.area_type,
-        geo_data: parsed.data.geo_data as Prisma.InputJsonValue,
+        geo_data: toPrismaJsonInput(parsed.data.geo_data),
         notes: parsed.data.notes || null,
       },
       include: {

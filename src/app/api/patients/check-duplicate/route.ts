@@ -1,7 +1,7 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
-import { Gender } from '@prisma/client';
+import { patientGenderSchema } from '@/lib/validations/patient';
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const { searchParams } = new URL(req.url);
@@ -11,6 +11,13 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
 
   if (!name || !dateOfBirth || !gender) {
     return validationError('name, date_of_birth, gender は必須です');
+  }
+
+  const parsedGender = patientGenderSchema.safeParse(gender);
+  if (!parsedGender.success) {
+    return validationError('gender の値が不正です', {
+      gender: ['対応していない性別です'],
+    });
   }
 
   // Validate date format
@@ -25,7 +32,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       org_id: req.orgId,
       name: { contains: name, mode: 'insensitive' },
       birth_date: birthDate,
-      ...(Object.values(Gender).includes(gender as Gender) ? { gender: gender as Gender } : {}),
+      gender: parsedGender.data,
     },
     select: {
       id: true,

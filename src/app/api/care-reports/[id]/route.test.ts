@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -57,12 +57,14 @@ vi.mock('@/lib/contact-profiles', () => ({
 import { GET, PATCH } from './route';
 
 function createRequest(body?: unknown) {
-  return {
+  return new NextRequest('http://localhost/api/care-reports/report_1', {
+    method: body === undefined ? 'GET' : 'PATCH',
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
+      'x-org-id': 'org_1',
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
     },
-    json: body === undefined ? undefined : vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
 }
 
 describe('care-reports/[id] route', () => {

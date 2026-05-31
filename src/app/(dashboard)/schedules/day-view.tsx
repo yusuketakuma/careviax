@@ -64,6 +64,10 @@ import {
 import { buildHomeVisit2026ReadinessItems } from '@/lib/visits/home-visit-2026-evidence';
 import { extractConferenceProposalOrigin } from '@/lib/visits/visit-workflow-projection';
 import {
+  parseCachedVisitBriefCardPayload,
+  type CachedVisitBriefCard,
+} from '@/lib/visits/visit-brief-cache';
+import {
   discardSyncQueueItem,
   overwriteVisitRecordConflict,
   processSyncQueue,
@@ -131,24 +135,6 @@ import {
   scheduleLockText,
   splitTrace,
 } from './schedule-day-view.helpers';
-
-type CachedVisitBriefCard = {
-  scheduleId: string;
-  patientId: string;
-  patientName: string;
-  scheduledDate: string;
-  timeWindowStart: string | null;
-  timeWindowEnd: string | null;
-  priority: VisitPriority;
-  facilityLabel: string | null;
-  siteName: string | null;
-  headline: string;
-  mustCheckToday: string[];
-  sourceRefs: string[];
-  generatedAt: string;
-  provider: 'rule' | 'openai';
-  isFallback: boolean;
-};
 
 type RouteTravelMode = 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
 
@@ -1109,16 +1095,20 @@ export function ScheduleDayView({
         const decoded = await Promise.all(
           freshRows.map(async (row) => {
             const payload = await decryptOfflinePayload(row.payload);
-            if (!payload) return null;
-            try {
-              return {
-                row,
-                payload: JSON.parse(payload) as CachedVisitBriefCard,
-              };
-            } catch {
-              return null;
-            }
+            const parsed = parseCachedVisitBriefCardPayload(payload);
+            return {
+              row,
+              payload: parsed,
+            };
           }),
+        );
+
+        await Promise.all(
+          decoded.map((item) =>
+            item.payload === null && item.row.id
+              ? offlineDb.visitBriefCache.delete(item.row.id)
+              : Promise.resolve(),
+          ),
         );
 
         const usableRows = decoded.filter(
@@ -1127,7 +1117,7 @@ export function ScheduleDayView({
           ): item is {
             row: import('@/lib/stores/offline-db').OfflineVisitBriefCache;
             payload: CachedVisitBriefCard;
-          } => item !== null,
+          } => item.payload !== null,
         );
         setCachedVisitBriefs(
           usableRows

@@ -8,6 +8,11 @@ function toIsoString(value: KeysetCursorValue) {
   return value instanceof Date ? value.toISOString() : value;
 }
 
+function readObject(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
 export function encodeKeysetCursor<TKey extends string>(
   keys: readonly TKey[],
   item: { id: string } & Record<TKey, KeysetCursorValue>,
@@ -30,15 +35,13 @@ export function decodeKeysetCursor<TKey extends string>(
   if (!cursor) return null;
 
   try {
-    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as Partial<
-      Record<TKey | 'id', string>
-    >;
-    if (!parsed.id) return null;
+    const parsed = readObject(JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')));
+    if (!parsed || typeof parsed.id !== 'string' || !parsed.id) return null;
 
     const decodedValues = {} as Partial<Record<TKey, Date>>;
     for (const key of keys) {
       const value = parsed[key];
-      if (!value) return null;
+      if (typeof value !== 'string' || !value) return null;
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return null;
       decodedValues[key] = date;

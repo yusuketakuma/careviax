@@ -11,7 +11,7 @@ import {
   buildSetAuditAssignmentWhere,
   buildSetPlanAssignmentWhere,
 } from '@/server/services/prescription-access';
-import type { Prisma } from '@prisma/client';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { z } from 'zod';
 
 // B3: approved_scope keys must match pattern day_number-slot
@@ -178,7 +178,7 @@ export const POST = withAuth(
           plan_id,
           result,
           approved_scope: effectiveApprovedScope
-            ? (effectiveApprovedScope as import('@prisma/client').Prisma.InputJsonValue)
+            ? toPrismaJsonInput(effectiveApprovedScope)
             : undefined,
           reject_reason: reject_reason ?? null,
           audited_by: req.userId,
@@ -220,7 +220,7 @@ export const POST = withAuth(
             },
           },
           data: {
-            carry_items: carryItems as Prisma.InputJsonValue,
+            carry_items: toPrismaJsonInput(carryItems),
             carry_items_status: 'ready',
           },
         });
@@ -250,7 +250,7 @@ export const POST = withAuth(
             },
           },
           data: {
-            carry_items: carryItems as Prisma.InputJsonValue,
+            carry_items: toPrismaJsonInput(carryItems),
             carry_items_status: 'partial',
           },
         });

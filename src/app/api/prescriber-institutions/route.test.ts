@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
+
+type AuthenticatedTestRequest = NextRequest & { orgId: string; userId: string; role: string };
 
 const {
   prescriberInstitutionFindManyMock,
@@ -12,11 +14,7 @@ const {
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (
-    handler: (
-      req: NextRequest & { orgId: string; userId: string; role: string; nextUrl: URL }
-    ) => Promise<Response>
-  ) => handler,
+  withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => handler,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -32,6 +30,17 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { GET, POST } from './route';
+
+function createRequest(url: string, body?: unknown, role = 'pharmacist'): AuthenticatedTestRequest {
+  return Object.assign(
+    new NextRequest(url, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
+    { orgId: 'org_1', userId: 'user_1', role },
+  );
+}
 
 describe('/api/prescriber-institutions', () => {
   beforeEach(() => {
@@ -74,12 +83,9 @@ describe('/api/prescriber-institutions', () => {
   });
 
   it('lists institutions with usage summary', async () => {
-    const response = (await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      nextUrl: new URL('http://localhost/api/prescriber-institutions?q=みなと'),
-    } as unknown as NextRequest & { orgId: string; userId: string; role: string; nextUrl: URL }))!;
+    const response = (await GET(
+      createRequest('http://localhost/api/prescriber-institutions?q=みなと'),
+    ))!;
 
     expect(response.status).toBe(200);
     expect(prescriberInstitutionFindManyMock).toHaveBeenCalledWith({
@@ -119,18 +125,19 @@ describe('/api/prescriber-institutions', () => {
   });
 
   it('creates an institution master row', async () => {
-    const response = (await POST({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'admin',
-      json: async () => ({
-        name: 'さくら病院',
-        institution_code: '7654321',
-        phone: '03-9999-2222',
-        fax: '03-9999-3333',
-        notes: '主治医向け',
-      }),
-    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+    const response = (await POST(
+      createRequest(
+        'http://localhost/api/prescriber-institutions',
+        {
+          name: 'さくら病院',
+          institution_code: '7654321',
+          phone: '03-9999-2222',
+          fax: '03-9999-3333',
+          notes: '主治医向け',
+        },
+        'admin',
+      ),
+    ))!;
 
     expect(response.status).toBe(201);
     expect(prescriberInstitutionCreateMock).toHaveBeenCalledWith({

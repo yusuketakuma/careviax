@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { importMhlwPriceListMock } = vi.hoisted(() => ({
   importMhlwPriceListMock: vi.fn(),
@@ -22,6 +22,16 @@ vi.mock('@/server/services/drug-master-import/mhlw', () => ({
 
 import { POST } from './route';
 
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
+function createPostRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/drug-master-imports/mhlw-price', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  } satisfies NextRequestInit);
+}
+
 describe('/api/drug-master-imports/mhlw-price', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -34,11 +44,9 @@ describe('/api/drug-master-imports/mhlw-price', () => {
 
   it('imports the MHLW price workbook', async () => {
     const response = (await POST(
-      {
-        json: async () => ({
-          workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/price.xlsx',
-        }),
-      } as NextRequest,
+      createPostRequest({
+        workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/price.xlsx',
+      }),
       { params: Promise.resolve({}) },
     ))!;
 
@@ -53,11 +61,9 @@ describe('/api/drug-master-imports/mhlw-price', () => {
 
   it('rejects untrusted workbook URLs before import execution', async () => {
     const response = (await POST(
-      {
-        json: async () => ({
-          workbookUrl: 'https://127.0.0.1/internal.xlsx',
-        }),
-      } as NextRequest,
+      createPostRequest({
+        workbookUrl: 'https://127.0.0.1/internal.xlsx',
+      }),
       { params: Promise.resolve({}) },
     ))!;
 
@@ -67,11 +73,9 @@ describe('/api/drug-master-imports/mhlw-price', () => {
 
   it('rejects credential-bearing workbook URLs without echoing credentials', async () => {
     const response = (await POST(
-      {
-        json: async () => ({
-          workbookUrl: 'https://importer:secret@www.mhlw.go.jp/topics/2026/04/xls/price.xlsx',
-        }),
-      } as NextRequest,
+      createPostRequest({
+        workbookUrl: 'https://importer:secret@www.mhlw.go.jp/topics/2026/04/xls/price.xlsx',
+      }),
       { params: Promise.resolve({}) },
     ))!;
     const payload = await response.json();

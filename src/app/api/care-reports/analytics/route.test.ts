@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { requireAuthContextMock, getCareReportDeliveryAnalyticsMock } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -15,6 +15,10 @@ vi.mock('@/server/services/report-reminders', () => ({
 }));
 
 import { GET } from './route';
+
+function createRequest(url = 'http://localhost/api/care-reports/analytics') {
+  return new NextRequest(url);
+}
 
 describe('/api/care-reports/analytics GET', () => {
   beforeEach(() => {
@@ -44,9 +48,9 @@ describe('/api/care-reports/analytics GET', () => {
   });
 
   it('returns report delivery analytics with threshold parsing', async () => {
-    const response = await GET({
-      url: 'http://localhost/api/care-reports/analytics?overdue_days=10',
-    } as NextRequest);
+    const response = await GET(
+      createRequest('http://localhost/api/care-reports/analytics?overdue_days=10'),
+    );
 
     const ensuredResponse = response;
     if (!ensuredResponse) throw new Error('response is required');

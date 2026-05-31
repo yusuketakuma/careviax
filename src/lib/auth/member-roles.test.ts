@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ADMIN_MEMBER_ROLES,
+  DISPENSE_AUDIT_FALLBACK_MEMBER_ROLES,
   MANAGEABLE_MEMBER_ROLES,
+  MEMBER_ROLES,
+  isMemberRole,
   isCollaboratorRole,
   isOperationalMemberRole,
   memberRoleLabel,
@@ -122,6 +126,38 @@ describe('member-roles', () => {
         'driver',
         'external_viewer',
       ]);
+    });
+  });
+
+  describe('MEMBER_ROLES', () => {
+    it('contains every persisted membership role', () => {
+      expect([...MEMBER_ROLES]).toEqual([
+        'owner',
+        'admin',
+        'pharmacist',
+        'pharmacist_trainee',
+        'clerk',
+        'driver',
+        'external_viewer',
+      ]);
+    });
+
+    it('narrows unknown values to persisted membership roles', () => {
+      expect(isMemberRole('owner')).toBe(true);
+      expect(isMemberRole('physician')).toBe(false);
+      expect(isMemberRole(null)).toBe(false);
+    });
+  });
+
+  describe('ADMIN_MEMBER_ROLES', () => {
+    it('contains only owner and admin bypass roles', () => {
+      expect([...ADMIN_MEMBER_ROLES]).toEqual(['owner', 'admin']);
+    });
+  });
+
+  describe('DISPENSE_AUDIT_FALLBACK_MEMBER_ROLES', () => {
+    it('contains the operational fallback roles for rejected dispense audits', () => {
+      expect([...DISPENSE_AUDIT_FALLBACK_MEMBER_ROLES]).toEqual(['admin', 'pharmacist']);
     });
   });
 });

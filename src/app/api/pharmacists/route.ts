@@ -1,8 +1,8 @@
-import { Prisma } from '@prisma/client';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { forbiddenResponse, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import {
   MANAGEABLE_MEMBER_ROLES,
@@ -215,10 +215,10 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
         max_weekly_visits: isOperational ? (parsed.data.max_weekly_visits ?? null) : null,
         max_travel_minutes: isOperational ? (parsed.data.max_travel_minutes ?? null) : null,
         can_accept_emergency: isOperational ? parsed.data.can_accept_emergency : false,
-        visit_specialties: (isOperational
-          ? parsed.data.visit_specialties
-          : []) as Prisma.InputJsonValue,
-        coverage_area: (isOperational ? parsed.data.coverage_area : []) as Prisma.InputJsonValue,
+        visit_specialties: toPrismaJsonInput(
+          isOperational ? parsed.data.visit_specialties : [],
+        ),
+        coverage_area: toPrismaJsonInput(isOperational ? parsed.data.coverage_area : []),
         account_status: 'invited',
         invited_at: invitedAt,
         invited_by: req.userId,

@@ -3,7 +3,13 @@ import {
   describeOperationalTask as describeOperationalTaskShared,
 } from '@/lib/tasks/operational-task-presentation';
 
-type Tx = Prisma.TransactionClient;
+type Tx = {
+  task: {
+    create(args: unknown): Promise<unknown>;
+    updateMany(args: unknown): Promise<unknown>;
+    upsert(args: unknown): Promise<unknown>;
+  };
+};
 
 export type TaskPriority = 'urgent' | 'high' | 'normal' | 'low';
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';

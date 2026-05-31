@@ -4,7 +4,17 @@ import { dispatchNotificationEvent } from './notifications';
 import { upsertOperationalTask, resolveOperationalTasks } from './operational-tasks';
 
 type Tx = Prisma.TransactionClient | typeof prisma;
-type GateDb = Pick<Prisma.TransactionClient, 'consentRecord' | 'managementPlan'>;
+type FindFirstDelegate<T> = {
+  findFirst(args: unknown): Promise<T | null>;
+};
+type GateDb = {
+  consentRecord: FindFirstDelegate<{ id: string; expiry_date?: Date | null }>;
+  managementPlan: FindFirstDelegate<{
+    id: string;
+    status?: string;
+    next_review_date: Date | null;
+  }>;
+};
 
 export type VisitWorkflowGateIssue =
   | 'missing_visit_consent'

@@ -1,4 +1,5 @@
 import type { VisitBriefAiSummary } from '@/types/visit-brief';
+import { readJsonObject } from '@/lib/db/json';
 
 type VisitBriefAiInput = {
   patientName: string;
@@ -28,6 +29,31 @@ function toStringArray(value: unknown, maxItems: number) {
     .slice(0, maxItems);
 }
 
+function parseOpenAiSummaryPayload(raw: string): OpenAiSummaryPayload | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+
+  return readJsonObject(parsed);
+}
+
+function readOpenAiMessageContent(payload: unknown): string | null | undefined {
+  const object = readJsonObject(payload);
+  if (!object || !Array.isArray(object.choices)) return null;
+
+  const choice = readJsonObject(object.choices[0]);
+  if (!choice) return null;
+
+  const message = readJsonObject(choice.message);
+  if (!message) return null;
+
+  if (message.content === undefined || message.content === null) return undefined;
+  return typeof message.content === 'string' ? message.content : null;
+}
+
 function buildFallbackSummary(input: VisitBriefAiInput): VisitBriefAiSummary {
   const generationId = globalThis.crypto?.randomUUID?.() ?? `brief_${Date.now()}`;
   return {
@@ -50,7 +76,7 @@ function buildFallbackSummary(input: VisitBriefAiInput): VisitBriefAiSummary {
 }
 
 export async function generateVisitBriefAiSummary(
-  input: VisitBriefAiInput
+  input: VisitBriefAiInput,
 ): Promise<VisitBriefAiSummary> {
   const apiKey = process.env.VISIT_BRIEF_AI_API_KEY;
   const provider = process.env.VISIT_BRIEF_AI_PROVIDER ?? (apiKey ? 'openai' : 'disabled');
@@ -65,8 +91,7 @@ export async function generateVisitBriefAiSummary(
   }
 
   const endpoint =
-    process.env.VISIT_BRIEF_AI_BASE_URL ??
-    'https://api.openai.com/v1/chat/completions';
+    process.env.VISIT_BRIEF_AI_BASE_URL ?? 'https://api.openai.com/v1/chat/completions';
   const model = process.env.VISIT_BRIEF_AI_MODEL ?? 'gpt-5-mini';
   const timeoutMs = Number(process.env.VISIT_BRIEF_AI_TIMEOUT_MS ?? 3500);
 
@@ -132,15 +157,24 @@ export async function generateVisitBriefAiSummary(
       return buildFallbackSummary(input);
     }
 
-    const payload = (await response.json()) as {
-      choices?: Array<{
-        message?: {
-          content?: string | null;
-        };
-      }>;
-    };
+    const raw = readOpenAiMessageContent((await response.json()) as unknown);
+    if (raw === null) {
+      console.warn('[visit-brief-ai] fallback', {
+        provider,
+        model,
+        reason: 'invalid_response',
+        duration_ms: Date.now() - startedAt,
+      });
+      return {
+        ...buildFallbackSummary(input),
+        generation_id: generationId,
+        requested_provider: provider,
+        model,
+        fallback_reason: 'invalid_response',
+        duration_ms: Date.now() - startedAt,
+      };
+    }
 
-    const raw = payload.choices?.[0]?.message?.content;
     if (!raw) {
       console.warn('[visit-brief-ai] fallback', {
         provider,
@@ -151,7 +185,24 @@ export async function generateVisitBriefAiSummary(
       return buildFallbackSummary(input);
     }
 
-    const parsed = JSON.parse(raw) as OpenAiSummaryPayload;
+    const parsed = parseOpenAiSummaryPayload(raw);
+    if (!parsed) {
+      console.warn('[visit-brief-ai] fallback', {
+        provider,
+        model,
+        reason: 'invalid_response',
+        duration_ms: Date.now() - startedAt,
+      });
+      return {
+        ...buildFallbackSummary(input),
+        generation_id: generationId,
+        requested_provider: provider,
+        model,
+        fallback_reason: 'invalid_response',
+        duration_ms: Date.now() - startedAt,
+      };
+    }
+
     const headline =
       typeof parsed.headline === 'string' && parsed.headline.trim().length > 0
         ? parsed.headline.trim()
@@ -219,7 +270,7 @@ type ExtractHandoffResult = {
  * Rule-based extraction — pulls items from structured assessment/plan fields.
  */
 export async function extractHandoffFromSoap(
-  input: ExtractHandoffInput
+  input: ExtractHandoffInput,
 ): Promise<ExtractHandoffResult> {
   const nextCheckItems: string[] = [];
   const ongoingMonitoring: string[] = [];
@@ -230,12 +281,12 @@ export async function extractHandoffFromSoap(
   if (plan && typeof plan === 'object') {
     if (Array.isArray(plan.followup_items)) {
       nextCheckItems.push(
-        ...plan.followup_items.filter((i): i is string => typeof i === 'string').slice(0, 5)
+        ...plan.followup_items.filter((i): i is string => typeof i === 'string').slice(0, 5),
       );
     }
     if (Array.isArray(plan.monitoring_items)) {
       ongoingMonitoring.push(
-        ...plan.monitoring_items.filter((i): i is string => typeof i === 'string').slice(0, 5)
+        ...plan.monitoring_items.filter((i): i is string => typeof i === 'string').slice(0, 5),
       );
     }
     if (typeof plan.rationale === 'string' && plan.rationale.trim()) {
@@ -248,9 +299,7 @@ export async function extractHandoffFromSoap(
   if (assessment && typeof assessment === 'object') {
     if (Array.isArray(assessment.issues) && nextCheckItems.length === 0) {
       nextCheckItems.push(
-        ...assessment.issues
-          .filter((i): i is string => typeof i === 'string')
-          .slice(0, 3)
+        ...assessment.issues.filter((i): i is string => typeof i === 'string').slice(0, 3),
       );
     }
   }
@@ -260,7 +309,7 @@ export async function extractHandoffFromSoap(
   if (prev && typeof prev === 'object') {
     if (ongoingMonitoring.length === 0 && Array.isArray(prev.ongoing_monitoring)) {
       ongoingMonitoring.push(
-        ...prev.ongoing_monitoring.filter((i): i is string => typeof i === 'string').slice(0, 5)
+        ...prev.ongoing_monitoring.filter((i): i is string => typeof i === 'string').slice(0, 5),
       );
     }
   }

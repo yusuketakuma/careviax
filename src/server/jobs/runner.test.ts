@@ -55,7 +55,11 @@ describe('runJob', () => {
     expect(result).toEqual({ processedCount: 3 });
     expect(integrationJobUpdateMock).toHaveBeenCalledWith({
       where: { id: 'job_1' },
-      data: expect.objectContaining({ status: 'completed', retry_count: 0 }),
+      data: expect.objectContaining({
+        status: 'completed',
+        output: { processedCount: 3 },
+        retry_count: 0,
+      }),
     });
   });
 

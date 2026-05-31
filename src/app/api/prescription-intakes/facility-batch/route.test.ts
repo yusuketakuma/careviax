@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { format } from 'date-fns';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const TODAY = format(new Date(), 'yyyy-MM-dd');
 
@@ -18,11 +18,10 @@ const {
       handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>
     ) => {
       return (req: NextRequest) =>
-        handler({
-          ...req,
+        handler(Object.assign(req, {
           orgId: 'org_1',
           userId: 'user_1',
-        } as NextRequest & { orgId: string; userId: string });
+        }));
     }
   ),
   withOrgContextMock: vi.fn(),
@@ -58,9 +57,11 @@ vi.mock('@/lib/db/client', () => ({
 import { POST } from './route';
 
 function createRequest(body: unknown) {
-  return {
-    json: async () => body,
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/prescription-intakes/facility-batch', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
 }
 
 describe('/api/prescription-intakes/facility-batch POST', () => {

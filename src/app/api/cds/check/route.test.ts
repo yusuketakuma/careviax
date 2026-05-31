@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   withAuthMock,
@@ -10,11 +10,12 @@ const {
     handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>
   ) => {
     return (req: NextRequest) =>
-      handler({
-        ...req,
+      handler(
+        Object.assign(req, {
         orgId: 'org_1',
         userId: 'user_1',
-      } as NextRequest & { orgId: string; userId: string });
+        }),
+      );
   }),
   medicationCycleFindFirstMock: vi.fn(),
   checkDispenseAlertsMock: vi.fn(),
@@ -39,9 +40,13 @@ vi.mock('@/server/cds/checker', () => ({
 import { POST } from './route';
 
 function createRequest(body: unknown) {
-  return {
-    json: async () => body,
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/cds/check', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
 }
 
 describe('/api/cds/check POST', () => {
@@ -64,7 +69,7 @@ describe('/api/cds/check POST', () => {
     const response = await POST(
       createRequest({
         cycleId: 'cycle_1',
-      })
+      }),
     );
 
     if (!response) throw new Error('response is required');

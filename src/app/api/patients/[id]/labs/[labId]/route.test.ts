@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   patientLabObservationFindFirstMock,
@@ -46,9 +46,13 @@ vi.mock('@/lib/db/client', () => ({
 import { PATCH } from './route';
 
 function createPatchRequest(body: Record<string, unknown>) {
-  return {
-    json: async () => body,
-  } as NextRequest;
+  return new NextRequest('http://localhost/api/patients/patient_1/labs/lab_1', {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
 }
 
 const expectedVisitRecordAssignmentWhere = {

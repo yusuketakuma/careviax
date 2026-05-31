@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -28,13 +28,22 @@ vi.mock('@/lib/db/rls', () => ({
 import { GET, PATCH } from './route';
 
 function createRequest(url: string, body?: unknown) {
-  return {
-    url,
-    method: body === undefined ? 'GET' : 'PATCH',
-    headers: { get: () => null },
-    nextUrl: new URL(url),
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+  if (body === undefined) {
+    return new NextRequest(url);
+  }
+  return new NextRequest(url, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function createInvalidJsonRequest(url: string) {
+  return new NextRequest(url, {
+    method: 'PATCH',
+    body: '{bad-json',
+    headers: { 'content-type': 'application/json' },
+  });
 }
 
 const authCtx = {
@@ -90,8 +99,7 @@ describe('/api/pharmacy-sites/[id]', () => {
     });
 
     it('returns 400 on invalid body', async () => {
-      const req = createRequest('http://localhost/api/pharmacy-sites/site_1');
-      (req as unknown as { json: () => Promise<null> }).json = vi.fn().mockRejectedValue(new Error('bad'));
+      const req = createInvalidJsonRequest('http://localhost/api/pharmacy-sites/site_1');
       const res = await PATCH(req, { params: Promise.resolve({ id: 'site_1' }) });
       expect(res!.status).toBe(400);
     });

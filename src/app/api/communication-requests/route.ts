@@ -1,10 +1,12 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
+import { normalizeJsonInput } from '@/lib/db/json';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
-import { RequestStatus, type Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
+import { communicationRequestStatusSchema } from '@/lib/validations/communication-request';
 import { pickCommunicationRecipientCandidate } from '@/lib/contact-profiles';
 import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/prescriber-institutions';
 import {
@@ -13,9 +15,24 @@ import {
   resolveTracingReportCommunicationScope,
 } from '@/server/services/communication-request-access';
 
-const requestStatusSchema = z.nativeEnum(RequestStatus);
+function isInputJsonObject(
+  value: Prisma.InputJsonValue | null | undefined
+): value is Prisma.InputJsonObject {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    !('toJSON' in value)
+  );
+}
+
+function normalizeInputJsonObject(value: unknown): Prisma.InputJsonObject {
+  const normalized = normalizeJsonInput(value);
+  return isInputJsonObject(normalized) ? normalized : {};
+}
+
 const communicationRequestQuerySchema = z.object({
-  status: requestStatusSchema.optional(),
+  status: communicationRequestStatusSchema.optional(),
   patient_id: z.string().min(1).optional(),
   related_entity_type: z.string().min(1).optional(),
   related_entity_id: z.string().min(1).optional(),
@@ -31,19 +48,7 @@ const createCommunicationRequestSchema = z.object({
   related_entity_type: z.string().optional(),
   related_entity_id: z.string().optional(),
   context_snapshot: z.record(z.string(), z.unknown()).optional(),
-  status: z
-    .enum([
-      'draft',
-      'sent',
-      'received',
-      'in_progress',
-      'responded',
-      'closed',
-      'escalated',
-      'cancelled',
-      'expired',
-    ])
-    .optional(),
+  status: communicationRequestStatusSchema.optional(),
   subject: z.string().min(1, '件名は必須です'),
   content: z.string().min(1, '内容は必須です'),
   due_date: z
@@ -251,7 +256,7 @@ export const POST = withAuth(
         : (suggestedProfessional?.organization_name ??
           suggestedProfessional?.profession_type ??
           null));
-    const effectiveContextSnapshot = {
+    const effectiveContextSnapshot = normalizeInputJsonObject({
       ...(context_snapshot ?? {}),
       ...(suggestedInstitution
         ? {
@@ -269,7 +274,7 @@ export const POST = withAuth(
             recommended_channels: suggestedProfessional.recommended_channels,
           }
         : {}),
-    };
+    });
 
     const result = await withOrgContext(req.orgId, async (tx) => {
       return tx.communicationRequest.create({
@@ -283,7 +288,7 @@ export const POST = withAuth(
           recipient_role: effectiveRecipientRole,
           related_entity_type: related_entity_type ?? null,
           related_entity_id: related_entity_id ?? null,
-          context_snapshot: effectiveContextSnapshot as Prisma.InputJsonValue,
+          context_snapshot: effectiveContextSnapshot,
           status: status ?? 'draft',
           subject,
           content,

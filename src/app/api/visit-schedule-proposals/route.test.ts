@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
@@ -97,15 +97,19 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 import { GET, POST } from './route';
 
 function createRequest(url: string, body?: unknown) {
-  return {
-    url,
-    method: body === undefined ? 'GET' : 'POST',
+  if (body === undefined) {
+    return new NextRequest(url, {
+      headers: { 'x-org-id': 'org_1' },
+    });
+  }
+  return new NextRequest(url, {
+    method: 'POST',
+    body: JSON.stringify(body),
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
     },
-    nextUrl: new URL(url),
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+  });
 }
 
 describe('/api/visit-schedule-proposals', () => {
@@ -229,6 +233,20 @@ describe('/api/visit-schedule-proposals', () => {
         }),
       }),
     );
+  });
+
+  it('rejects unsupported status filters before querying proposals', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/visit-schedule-proposals?status=unknown'),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'status が不正です',
+    });
+    expect(visitScheduleProposalFindManyMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
   });
 
   it('creates proposal drafts and supersedes open proposals', async () => {

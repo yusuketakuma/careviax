@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
+
+type AuthenticatedTestRequest = NextRequest & {
+  orgId: string;
+  userId: string;
+  role: 'pharmacist';
+};
 
 const {
   communicationEventFindManyMock,
@@ -20,18 +26,15 @@ const {
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (
-    handler: (
-      req: NextRequest & { orgId: string; userId: string; role: 'pharmacist' },
-    ) => Promise<Response>,
-  ) => {
+  withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
     return (req: NextRequest) =>
-      handler({
-        ...req,
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'pharmacist',
-      } as unknown as NextRequest & { orgId: string; userId: string; role: 'pharmacist' });
+      handler(
+        Object.assign(req, {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+        }) as AuthenticatedTestRequest,
+      );
   },
 }));
 
@@ -61,6 +64,18 @@ vi.mock('@/lib/contact-profiles', () => ({
 
 import { GET, POST } from './route';
 
+function createGetRequest(query = 'patient_id=patient_1') {
+  return new NextRequest(`http://localhost/api/communication-events?${query}`);
+}
+
+function createPostRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/communication-events', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 describe('/api/communication-events', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -87,9 +102,7 @@ describe('/api/communication-events', () => {
   });
 
   it('lists communication events', async () => {
-    const response = (await GET({
-      url: 'http://localhost/api/communication-events?patient_id=patient_1',
-    } as NextRequest))!;
+    const response = (await GET(createGetRequest()))!;
 
     expect(response.status).toBe(200);
     expect(communicationEventFindManyMock).toHaveBeenCalledWith(
@@ -111,15 +124,15 @@ describe('/api/communication-events', () => {
   it('rejects an unassigned case before create and contact-learning side effects', async () => {
     careCaseFindFirstMock.mockResolvedValue(null);
 
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createPostRequest({
         patient_id: 'patient_2',
         case_id: 'case_2',
         event_type: 'fax',
         channel: 'fax',
         direction: 'outbound',
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(400);
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
@@ -127,13 +140,13 @@ describe('/api/communication-events', () => {
   });
 
   it('creates a communication event', async () => {
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createPostRequest({
         event_type: 'fax',
         channel: 'fax',
         direction: 'outbound',
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(communicationEventCreateMock).toHaveBeenCalled();

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -71,12 +71,19 @@ vi.mock('@/server/services/billing-evidence', () => ({
 import { GET, PATCH } from './route';
 
 function createRequest(body?: unknown) {
-  return {
+  if (body === undefined) {
+    return new NextRequest('http://localhost/api/visit-records/visit_1', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+  }
+  return new NextRequest('http://localhost/api/visit-records/visit_1', {
+    method: 'PATCH',
+    body: JSON.stringify(body),
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
     },
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+  });
 }
 
 describe('/api/visit-records/[id]', () => {
@@ -103,6 +110,7 @@ describe('/api/visit-records/[id]', () => {
       size_bytes: record.sizeBytes,
       uploaded_at: record.completedAt ?? null,
       kind: record.mimeType.startsWith('image/') ? 'photo' : 'attachment',
+      legacy_debug: undefined,
     }));
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -348,6 +356,9 @@ describe('/api/visit-records/[id]', () => {
         }),
       }),
     );
+    const savedAttachments = visitRecordUpdateMock.mock.calls[0][0].data
+      .attachments as Array<Record<string, unknown>>;
+    expect(savedAttachments[0].legacy_debug).toBeUndefined();
   });
 
   it('rejects schedule and patient reassignment on PATCH before updating', async () => {

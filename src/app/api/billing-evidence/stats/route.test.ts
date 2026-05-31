@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -62,11 +62,11 @@ vi.mock('@/lib/db/client', () => ({
 import { GET } from './route';
 
 function createRequest() {
-  return {
+  return new NextRequest('http://localhost/api/billing-evidence/stats', {
     headers: {
-      get: () => 'org_1',
+      'x-org-id': 'org_1',
     },
-  } as unknown as NextRequest;
+  });
 }
 
 describe('/api/billing-evidence/stats GET', () => {
@@ -110,6 +110,11 @@ describe('/api/billing-evidence/stats GET', () => {
           site_config_status: 'config_missing',
         },
       },
+      {
+        claimable: false,
+        exclusion_reason: null,
+        calculation_context: ['unexpected'],
+      },
     ]);
     taskCountMock.mockResolvedValue(6);
     visitScheduleFindManyMock.mockResolvedValue([
@@ -148,10 +153,11 @@ describe('/api/billing-evidence/stats GET', () => {
         exported_candidates: 2,
         current_month_candidates: 11,
         current_month_claimable_evidence: 1,
-        current_month_unclaimable_evidence: 1,
+        current_month_unclaimable_evidence: 2,
         current_month_revision_breakdown: {
           '2024': 1,
           '2026': 1,
+          unknown: 1,
         },
         current_month_site_config_issues: {
           missing: 1,

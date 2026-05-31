@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 import { z } from 'zod';
 
 const { importManualClinicalRulesMock } = vi.hoisted(() => ({
@@ -41,6 +41,14 @@ vi.mock('@/server/services/drug-master-import/manual', () => ({
 
 import { POST } from './route';
 
+function createJsonRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/drug-master-imports/manual-clinical', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 describe('/api/drug-master-imports/manual-clinical', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -56,14 +64,12 @@ describe('/api/drug-master-imports/manual-clinical', () => {
 
   it('imports manual clinical rules', async () => {
     const response = (await POST(
-      {
-        json: async () => ({
+      createJsonRequest({
           pim_rules: [{ name: 'PIM A' }],
           high_risk_rules: [{ name: 'High Risk A' }],
           renal_rules: [{ name: 'Renal A' }],
           drug_safety_overrides: [{ name: 'Safety A' }],
-        }),
-      } as NextRequest,
+      }),
       { params: Promise.resolve({}) },
     ))!;
 

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   withOrgContextMock,
@@ -34,10 +34,11 @@ vi.mock('@/lib/db/client', () => ({
 import { GET, POST } from './route';
 
 function createRequest(url: string, body?: unknown) {
-  return {
-    url,
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+  return new NextRequest(url, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
 }
 
 describe('/api/templates', () => {

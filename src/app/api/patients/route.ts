@@ -3,7 +3,7 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { success, validationError } from '@/lib/api/response';
 import { parseSearchParams } from '@/lib/api/validation';
 import { createPatientSchema } from '@/lib/validations/patient';
-import { caseStatusValues } from '@/lib/validations/case';
+import { caseStatusSchema } from '@/lib/patient/case-status';
 import { prisma } from '@/lib/db/client';
 import {
   FacilityReferenceValidationError,
@@ -21,9 +21,7 @@ const caseStatusQuerySchema = z
   .superRefine((value, ctx) => {
     const statuses = value.split(',').map((status) => status.trim());
     const invalidStatuses = statuses.filter(
-      (status) =>
-        status.length === 0 ||
-        !caseStatusValues.includes(status as (typeof caseStatusValues)[number]),
+      (status) => status.length === 0 || !caseStatusSchema.safeParse(status).success,
     );
 
     if (invalidStatuses.length > 0) {

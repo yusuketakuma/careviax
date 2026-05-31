@@ -1,8 +1,9 @@
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
+import { normalizeJsonInput } from '@/lib/db/json';
 import { z } from 'zod';
 
 const convertActionItemSchema = z.object({
@@ -15,6 +16,11 @@ type ActionItem = {
   converted_task_id?: string;
   converted_at?: string;
 };
+
+function normalizeInputJsonArray(value: unknown): Prisma.InputJsonArray {
+  const normalized = normalizeJsonInput(value);
+  return Array.isArray(normalized) ? normalized : [];
+}
 
 export const POST = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {
@@ -90,7 +96,7 @@ export const POST = withAuthContext<{ id: string }>(
       await tx.conferenceNote.update({
         where: { id: note.id },
         data: {
-          action_items: actionItems as Prisma.InputJsonValue,
+          action_items: normalizeInputJsonArray(actionItems),
         },
       });
 

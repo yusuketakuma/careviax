@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
+
+type AuthenticatedTestRequest = NextRequest & {
+  orgId: string;
+  userId: string;
+  ipAddress?: string;
+  userAgent?: string;
+};
 
 const {
   businessHolidayFindManyMock,
@@ -18,17 +25,16 @@ const {
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (
-    handler: (req: NextRequest & { orgId: string; userId: string; ipAddress?: string; userAgent?: string }) => Promise<Response>,
-  ) => {
+  withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
     return (req: NextRequest) =>
-      handler({
-        ...req,
-        orgId: 'org_1',
-        userId: 'user_1',
-        ipAddress: '127.0.0.1',
-        userAgent: 'vitest',
-      } as NextRequest & { orgId: string; userId: string; ipAddress?: string; userAgent?: string });
+      handler(
+        Object.assign(req, {
+          orgId: 'org_1',
+          userId: 'user_1',
+          ipAddress: '127.0.0.1',
+          userAgent: 'vitest',
+        }) as AuthenticatedTestRequest,
+      );
   },
 }));
 
@@ -51,6 +57,20 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { GET, POST } from './route';
 
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
+function createGetRequest(search = '') {
+  return new NextRequest(`http://localhost/api/business-holidays${search}`);
+}
+
+function createPostRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/business-holidays', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  } satisfies NextRequestInit);
+}
+
 describe('/api/business-holidays', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -72,22 +92,20 @@ describe('/api/business-holidays', () => {
   });
 
   it('lists business holidays', async () => {
-    const response = (await GET({
-      url: 'http://localhost/api/business-holidays?site_id=site_1',
-    } as NextRequest))!;
+    const response = (await GET(createGetRequest('?site_id=site_1')))!;
 
     expect(response.status).toBe(200);
   });
 
   it('creates a business holiday and records an audit log', async () => {
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createPostRequest({
         date: '2026-03-30',
         name: '臨時休業',
         holiday_type: 'site_closure',
         is_closed: true,
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(businessHolidayCreateMock).toHaveBeenCalled();

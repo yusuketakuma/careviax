@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   externalProfessionalFindFirstMock,
@@ -33,6 +33,10 @@ vi.mock('@/lib/patient/facility-reference', () => ({
 }));
 
 import { GET, DELETE } from './route';
+
+function createRequest() {
+  return new NextRequest('http://localhost/api/external-professionals/ep_1');
+}
 
 describe('/api/external-professionals/[id]', () => {
   beforeEach(() => {
@@ -70,7 +74,7 @@ describe('/api/external-professionals/[id]', () => {
   describe('GET', () => {
     it('returns 200 with professional detail', async () => {
       const response = (await GET(
-        {} as NextRequest,
+        createRequest(),
         { params: Promise.resolve({ id: 'ep_1' }) },
       ))!;
 
@@ -83,7 +87,7 @@ describe('/api/external-professionals/[id]', () => {
       externalProfessionalFindFirstMock.mockResolvedValue(null);
 
       const response = (await GET(
-        {} as NextRequest,
+        createRequest(),
         { params: Promise.resolve({ id: 'nonexistent' }) },
       ))!;
 
@@ -94,7 +98,7 @@ describe('/api/external-professionals/[id]', () => {
   describe('DELETE', () => {
     it('returns 200 when deleting', async () => {
       const response = (await DELETE(
-        {} as NextRequest,
+        createRequest(),
         { params: Promise.resolve({ id: 'ep_1' }) },
       ))!;
 

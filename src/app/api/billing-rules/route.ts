@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server';
-import { Prisma, type PayerBasis } from '@prisma/client';
+import type { PayerBasis, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
+import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import {
   ensureHomeCareBillingSsot,
@@ -46,22 +47,24 @@ function parseEffectiveDate(value?: string) {
   return value ? new Date(`${value}T00:00:00.000Z`) : undefined;
 }
 
-function serializeRule(rule: {
-  payer_basis: PayerBasis | null;
-  provider_scope: string | null;
-  calculation_unit: string;
-  billing_scope: string;
-  source_note: string | null;
-  source_url: string | null;
-  is_system: boolean;
-  amount: number;
-  conditions: Prisma.JsonValue | null;
-  evidence_requirements: Prisma.JsonValue | null;
-} & Record<string, unknown>) {
+function serializeRule(
+  rule: {
+    payer_basis: PayerBasis | null;
+    provider_scope: string | null;
+    calculation_unit: string;
+    billing_scope: string;
+    source_note: string | null;
+    source_url: string | null;
+    is_system: boolean;
+    amount: number;
+    conditions: Prisma.JsonValue | null;
+    evidence_requirements: Prisma.JsonValue | null;
+  } & Record<string, unknown>,
+) {
   return {
     ...rule,
-    conditions: (rule.conditions ?? {}) as Record<string, unknown>,
-    evidence_requirements: (rule.evidence_requirements ?? {}) as Record<string, unknown>,
+    conditions: readJsonObject(rule.conditions) ?? {},
+    evidence_requirements: readJsonObject(rule.evidence_requirements) ?? {},
     payer_basis: rule.payer_basis,
     provider_scope: rule.provider_scope,
     calculation_unit: rule.calculation_unit,
@@ -126,7 +129,7 @@ export async function POST(req: NextRequest) {
   const seedParsed = seedBillingRuleSchema.safeParse(body);
   if (seedParsed.success) {
     const seeded = await withOrgContext(ctx.orgId, (tx) =>
-      ensureHomeCareBillingSsot(tx, ctx.orgId)
+      ensureHomeCareBillingSsot(tx, ctx.orgId),
     );
 
     return success(
@@ -134,7 +137,7 @@ export async function POST(req: NextRequest) {
         message: '在宅請求 SSOT の公式算定ルールを同期しました',
         ...seeded,
       },
-      201
+      201,
     );
   }
 
@@ -157,8 +160,8 @@ export async function POST(req: NextRequest) {
         display_order: parsed.data.display_order,
         name: parsed.data.name,
         code: parsed.data.code,
-        conditions: parsed.data.conditions as Prisma.InputJsonValue,
-        evidence_requirements: (parsed.data.evidence_requirements ?? {}) as Prisma.InputJsonValue,
+        conditions: toPrismaJsonInput(parsed.data.conditions),
+        evidence_requirements: toPrismaJsonInput(parsed.data.evidence_requirements ?? {}),
         source_url: parsed.data.source_url,
         source_note: parsed.data.source_note,
         amount: parsed.data.amount,
@@ -166,7 +169,7 @@ export async function POST(req: NextRequest) {
         effective_to: parseEffectiveDate(parsed.data.effective_to),
         is_active: parsed.data.is_active,
       },
-    })
+    }),
   );
 
   return success(serializeRule(rule), 201);

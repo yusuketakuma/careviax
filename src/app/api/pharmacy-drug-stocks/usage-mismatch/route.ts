@@ -5,6 +5,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
+import { readJsonObject } from '@/lib/db/json';
 
 const usageMismatchQuerySchema = z.object({
   site_id: z.string().trim().min(1, 'site_id は必須です'),
@@ -46,9 +47,13 @@ function addDays(date: Date, days: number) {
 }
 
 function readMedications(parsedData: unknown): ParsedMedication[] {
-  if (!parsedData || typeof parsedData !== 'object') return [];
-  const medications = (parsedData as { medications?: unknown }).medications;
-  return Array.isArray(medications) ? (medications as ParsedMedication[]) : [];
+  const medications = readJsonObject(parsedData)?.medications;
+  if (!Array.isArray(medications)) return [];
+  return medications.flatMap((medication): ParsedMedication[] => {
+    const record = readJsonObject(medication);
+    if (!record) return [];
+    return [{ drugCode: record.drugCode, drugName: record.drugName }];
+  });
 }
 
 function normalizeCode(value: unknown) {
@@ -148,9 +153,7 @@ export const GET = withAuthContext(
     const usedDrugIds = new Set<string>();
 
     const usageRows = [...usageByKey.values()].map((usage) => {
-      const drug = usage.drugCode
-        ? drugByYj.get(usage.drugCode)
-        : drugByName.get(usage.drugName);
+      const drug = usage.drugCode ? drugByYj.get(usage.drugCode) : drugByName.get(usage.drugName);
       if (drug) usedDrugIds.add(drug.id);
       return {
         ...usage,

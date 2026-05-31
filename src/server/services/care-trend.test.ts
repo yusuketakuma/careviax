@@ -21,7 +21,7 @@ function makeDb() {
     visitRecord: { findMany: visitRecordFindManyMock },
     medicationIssue: { findMany: medicationIssueFindManyMock },
     residualMedication: { findMany: residualMedicationFindManyMock },
-  } as unknown as Parameters<typeof computeCareTrend>[0];
+  };
 }
 
 describe('computeCareTrend', () => {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -34,9 +34,17 @@ vi.mock('@/lib/db/rls', () => ({
 import { GET, PUT } from './route';
 
 function createRequest(body?: unknown) {
-  return {
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/patients/patient_1/packaging', {
+    method: body === undefined ? 'GET' : 'PUT',
+    ...(body === undefined
+      ? {}
+      : {
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        }),
+  });
 }
 
 describe('/api/patients/[id]/packaging', () => {
@@ -101,7 +109,7 @@ describe('/api/patients/[id]/packaging', () => {
       }),
       {
         params: Promise.resolve({ id: 'patient_1' }),
-      }
+      },
     );
 
     if (!response) throw new Error('response is required');

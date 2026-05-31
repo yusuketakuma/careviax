@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   packagingMethodFindFirstMock,
@@ -16,7 +16,11 @@ const {
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => unknown) => {
     return (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) =>
-      handler(req, { orgId: 'org_1', userId: 'user_1', ipAddress: '127.0.0.1', userAgent: 'vitest' }, routeContext);
+      handler(
+        req,
+        { orgId: 'org_1', userId: 'user_1', ipAddress: '127.0.0.1', userAgent: 'vitest' },
+        routeContext,
+      );
   },
 }));
 
@@ -33,6 +37,16 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { PATCH } from './route';
+
+function createJsonRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/packaging-methods/method_1', {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+}
 
 describe('/api/packaging-methods/[id]', () => {
   beforeEach(() => {
@@ -60,16 +74,17 @@ describe('/api/packaging-methods/[id]', () => {
   });
 
   it('updates a packaging method', async () => {
-    const response = (await PATCH({
-      json: async () => ({
+    const response = (await PATCH(
+      createJsonRequest({
         name: '差替え',
         icon_key: 'pill',
         sort_order: 3,
         is_active: false,
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'method_1' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'method_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(200);
     expect(packagingMethodUpdateMock).toHaveBeenCalledWith({

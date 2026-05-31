@@ -42,6 +42,7 @@ import {
   isPatientMcsBrowserSyncEnabled,
   matchesPatientIdentity,
   normalizeMedicalCareStationUrl,
+  parseAgentBrowserEvalJson,
   parseMcsAuthorDescriptor,
   parseMcsPostedAtLabel,
   sanitizePatientMcsExternalErrorMessage,
@@ -63,23 +64,23 @@ describe('patient-mcs service helpers', () => {
   it('normalizes medical-care URLs and strips hashes', () => {
     expect(
       normalizeMedicalCareStationUrl(
-        'https://www.medical-care.net/projects/medical/57886227#message-123'
-      ).toString()
+        'https://www.medical-care.net/projects/medical/57886227#message-123',
+      ).toString(),
     ).toBe('https://www.medical-care.net/projects/medical/57886227');
   });
 
   it('rejects non-MCS hosts', () => {
     expect(() => normalizeMedicalCareStationUrl('https://example.com/patients/1')).toThrow(
-      'Medical Care Station の URL を入力してください'
+      'Medical Care Station の URL を入力してください',
     );
   });
 
   it('rejects lookalike hosts and non-https URLs', () => {
     expect(() =>
-      normalizeMedicalCareStationUrl('https://www.evilmedical-care.net/patients/1')
+      normalizeMedicalCareStationUrl('https://www.evilmedical-care.net/patients/1'),
     ).toThrow('Medical Care Station の URL を入力してください');
     expect(() => normalizeMedicalCareStationUrl('http://www.medical-care.net/patients/1')).toThrow(
-      'Medical Care Station の URL を入力してください'
+      'Medical Care Station の URL を入力してください',
     );
   });
 
@@ -102,7 +103,7 @@ describe('patient-mcs service helpers', () => {
   it('parses month/day timestamps into the current or previous year', () => {
     const now = new Date('2026-01-05T10:00:00+09:00');
     expect(parseMcsPostedAtLabel('12/31 23:45', now)?.toISOString()).toBe(
-      '2025-12-31T14:45:00.000Z'
+      '2025-12-31T14:45:00.000Z',
     );
     expect(parseMcsPostedAtLabel('1/4', now)?.toISOString()).toBe('2026-01-03T15:00:00.000Z');
   });
@@ -110,35 +111,35 @@ describe('patient-mcs service helpers', () => {
   it('parses time-only labels as today or the previous day when needed', () => {
     const afternoon = new Date('2026-04-02T13:00:00+09:00');
     expect(parseMcsPostedAtLabel('12:12', afternoon)?.toISOString()).toBe(
-      '2026-04-02T03:12:00.000Z'
+      '2026-04-02T03:12:00.000Z',
     );
 
     const justAfterMidnight = new Date('2026-04-02T00:30:00+09:00');
     expect(parseMcsPostedAtLabel('23:50', justAfterMidnight)?.toISOString()).toBe(
-      '2026-04-01T14:50:00.000Z'
+      '2026-04-01T14:50:00.000Z',
     );
   });
 
   it('extracts the patient name from project titles', () => {
-    expect(extractPatientNameFromProjectTitle('板屋 美恵子：年長者の里 | 中央町おだクリニック')).toBe(
-      '板屋 美恵子'
-    );
+    expect(
+      extractPatientNameFromProjectTitle('板屋 美恵子：年長者の里 | 中央町おだクリニック'),
+    ).toBe('板屋 美恵子');
     expect(extractPatientNameFromProjectTitle(null)).toBeNull();
   });
 
   it('matches patient identity against MCS candidate names and kana', () => {
     expect(
-      matchesPatientIdentity(
-        { name: '板屋 美恵子', name_kana: 'イタヤ ミエコ' },
-        ['板屋 美恵子', '年長者の里']
-      )
+      matchesPatientIdentity({ name: '板屋 美恵子', name_kana: 'イタヤ ミエコ' }, [
+        '板屋 美恵子',
+        '年長者の里',
+      ]),
     ).toBe(true);
 
     expect(
-      matchesPatientIdentity(
-        { name: '板屋 美恵子', name_kana: 'イタヤ ミエコ' },
-        ['別患者', 'ベツカンジャ']
-      )
+      matchesPatientIdentity({ name: '板屋 美恵子', name_kana: 'イタヤ ミエコ' }, [
+        '別患者',
+        'ベツカンジャ',
+      ]),
     ).toBe(false);
   });
 
@@ -167,7 +168,7 @@ describe('patient-mcs service helpers', () => {
         patientName: '板屋 美恵子',
         projectTitle: '板屋 美恵子：年長者の里',
         messages: [],
-      })
+      }),
     ).resolves.toMatchObject({
       generation_id: 'gen_1',
       provider: 'rule',
@@ -190,16 +191,42 @@ describe('patient-mcs service helpers', () => {
   it('sanitizes raw external sync errors before surfacing them', () => {
     expect(
       sanitizePatientMcsExternalErrorMessage(
-        'spawn agent-browser ENOENT while connecting to Chrome'
-      )
+        'spawn agent-browser ENOENT while connecting to Chrome',
+      ),
     ).toBe(
-      'MCS 連携用ブラウザに接続できません。ローカル端末で MCS にログインした Chrome を開いてから再試行してください。'
+      'MCS 連携用ブラウザに接続できません。ローカル端末で MCS にログインした Chrome を開いてから再試行してください。',
     );
 
     expect(
       sanitizePatientMcsExternalErrorMessage(
-        'Medical Care Station にログイン済みの Chrome セッションが見つかりません'
-      )
+        'Medical Care Station にログイン済みの Chrome セッションが見つかりません',
+      ),
     ).toBe('Medical Care Station にログイン済みの Chrome セッションが見つかりません');
+  });
+
+  it('decodes agent-browser eval output as a double-encoded JSON object', () => {
+    expect(
+      parseAgentBrowserEvalJson(JSON.stringify(JSON.stringify({ projectId: 'project_1' }))),
+    ).toEqual({
+      projectId: 'project_1',
+    });
+  });
+
+  it('rejects malformed or non-object agent-browser eval output', () => {
+    expect(() => parseAgentBrowserEvalJson('not-json')).toThrow(
+      'MCS からデータを取得できませんでした',
+    );
+    expect(() => parseAgentBrowserEvalJson(JSON.stringify({ projectId: 'project_1' }))).toThrow(
+      'MCS からデータを取得できませんでした',
+    );
+    expect(() => parseAgentBrowserEvalJson(JSON.stringify('not-json'))).toThrow(
+      'MCS からデータを取得できませんでした',
+    );
+    expect(() => parseAgentBrowserEvalJson(JSON.stringify(JSON.stringify([])))).toThrow(
+      'MCS からデータを取得できませんでした',
+    );
+    expect(() => parseAgentBrowserEvalJson(JSON.stringify(JSON.stringify(123)))).toThrow(
+      'MCS からデータを取得できませんでした',
+    );
   });
 });

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
@@ -53,15 +53,14 @@ vi.mock('@/lib/db/rls', () => ({
 import { GET, POST } from './route';
 
 function createRequest(url: string, body?: unknown) {
-  return {
-    url,
+  return new NextRequest(url, {
     method: body === undefined ? 'GET' : 'POST',
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      'x-org-id': 'org_1',
     },
-    nextUrl: new URL(url),
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
 }
 
 describe('/api/medication-issues', () => {
@@ -134,6 +133,23 @@ describe('/api/medication-issues', () => {
     expect(medicationIssueFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(medicationIssueCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid status filter before resolving assignment scope', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/medication-issues?status=archived'),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        status: ['対応していないステータスです'],
+      },
+    });
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(medicationIssueFindManyMock).not.toHaveBeenCalled();
   });
 
   it('creates a medication issue with the current user as identifier', async () => {

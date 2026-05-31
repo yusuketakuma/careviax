@@ -1,4 +1,5 @@
 import { createRoadTravelEstimator, type RouteTravelMode } from './road-routing';
+import { readJsonObject } from '@/lib/db/json';
 
 export type VisitRouteTravelMode = RouteTravelMode;
 
@@ -40,16 +41,14 @@ type GoogleRouteLeg = {
   distanceMeters?: number;
 };
 
-type GoogleRouteResponse = {
-  routes?: Array<{
-    duration?: string;
-    distanceMeters?: number;
-    optimizedIntermediateWaypointIndex?: number[];
-    polyline?: {
-      encodedPolyline?: string;
-    };
-    legs?: GoogleRouteLeg[];
-  }>;
+type NormalizedGoogleRoute = {
+  duration?: string;
+  distanceMeters?: number;
+  optimizedIntermediateWaypointIndex?: number[];
+  polyline?: {
+    encodedPolyline?: string;
+  };
+  legs?: GoogleRouteLeg[];
 };
 
 function parseDurationSeconds(value: string | undefined): number | null {
@@ -57,6 +56,150 @@ function parseDurationSeconds(value: string | undefined): number | null {
   const match = /^([0-9]+(?:\.[0-9]+)?)s$/.exec(value);
   if (!match) return null;
   return Math.round(Number.parseFloat(match[1]));
+}
+
+function readOptionalFiniteNumber(value: unknown): number | undefined | null {
+  if (value === undefined || value === null) return undefined;
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function readOptionalDuration(value: unknown): string | undefined | null {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string') return null;
+  return parseDurationSeconds(value) === null ? null : value;
+}
+
+function readOptionalPolyline(value: unknown): NormalizedGoogleRoute['polyline'] | null {
+  if (value === undefined || value === null) return undefined;
+  const object = readJsonObject(value);
+  if (!object) return null;
+  if (object.encodedPolyline === undefined || object.encodedPolyline === null) return {};
+  return typeof object.encodedPolyline === 'string'
+    ? { encodedPolyline: object.encodedPolyline }
+    : null;
+}
+
+function readOptimizedWaypointIndices(
+  value: unknown,
+  waypointCount: number,
+): number[] | undefined | null {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value)) return null;
+
+  const seen = new Set<number>();
+  const indices: number[] = [];
+  for (const item of value) {
+    if (
+      typeof item !== 'number' ||
+      !Number.isInteger(item) ||
+      item < 0 ||
+      item >= waypointCount ||
+      seen.has(item)
+    ) {
+      return null;
+    }
+    seen.add(item);
+    indices.push(item);
+  }
+  return indices;
+}
+
+function readGoogleRouteLeg(value: unknown): GoogleRouteLeg | null {
+  const object = readJsonObject(value);
+  if (!object) return null;
+
+  const duration = readOptionalDuration(object.duration);
+  const distanceMeters = readOptionalFiniteNumber(object.distanceMeters);
+  if (duration === null || distanceMeters === null) return null;
+
+  return {
+    ...(duration !== undefined ? { duration } : {}),
+    ...(distanceMeters !== undefined ? { distanceMeters } : {}),
+  };
+}
+
+function readGoogleRoute(value: unknown, waypointCount: number): NormalizedGoogleRoute | null {
+  const object = readJsonObject(value);
+  if (!object) return null;
+
+  const duration = readOptionalDuration(object.duration);
+  const distanceMeters = readOptionalFiniteNumber(object.distanceMeters);
+  const polyline = readOptionalPolyline(object.polyline);
+  const optimizedIntermediateWaypointIndex = readOptimizedWaypointIndices(
+    object.optimizedIntermediateWaypointIndex,
+    waypointCount,
+  );
+  if (
+    duration === null ||
+    distanceMeters === null ||
+    polyline === null ||
+    optimizedIntermediateWaypointIndex === null
+  ) {
+    return null;
+  }
+
+  let legs: GoogleRouteLeg[] | undefined;
+  if (object.legs !== undefined && object.legs !== null) {
+    if (!Array.isArray(object.legs)) return null;
+    legs = [];
+    for (const item of object.legs) {
+      const leg = readGoogleRouteLeg(item);
+      if (!leg) return null;
+      legs.push(leg);
+    }
+  }
+
+  return {
+    ...(duration !== undefined ? { duration } : {}),
+    ...(distanceMeters !== undefined ? { distanceMeters } : {}),
+    ...(optimizedIntermediateWaypointIndex !== undefined
+      ? { optimizedIntermediateWaypointIndex }
+      : {}),
+    ...(polyline !== undefined ? { polyline } : {}),
+    ...(legs !== undefined ? { legs } : {}),
+  };
+}
+
+function readGoogleRoutes(payload: unknown, waypointCount: number): NormalizedGoogleRoute[] | null {
+  const object = readJsonObject(payload);
+  if (!object) return null;
+  if (object.routes === undefined || object.routes === null) return [];
+  if (!Array.isArray(object.routes)) return null;
+
+  const routes: NormalizedGoogleRoute[] = [];
+  for (const item of object.routes) {
+    const route = readGoogleRoute(item, waypointCount);
+    if (!route) return null;
+    routes.push(route);
+  }
+  return routes;
+}
+
+function unavailableGoogleRoutePlan(args: {
+  origin: VisitRouteOrigin;
+  travelMode: VisitRouteTravelMode;
+  waypoints: VisitRouteWaypoint[];
+  note: string;
+  totalDistanceMeters?: number | null;
+  totalDurationSeconds?: number | null;
+}): VisitRoutePlan {
+  return {
+    status: 'unavailable',
+    note: args.note,
+    travelMode: args.travelMode,
+    origin: args.origin,
+    encodedPath: null,
+    orderedScheduleIds: args.waypoints.map((waypoint) => waypoint.scheduleId),
+    totalDistanceMeters: args.totalDistanceMeters ?? null,
+    totalDurationSeconds: args.totalDurationSeconds ?? null,
+    stopSummaries: args.waypoints.map((waypoint, index) => ({
+      scheduleId: waypoint.scheduleId,
+      optimizedOrder: index + 1,
+      arrivalOffsetSeconds: null,
+      distanceFromPreviousMeters: null,
+      durationFromPreviousSeconds: null,
+    })),
+  };
 }
 
 function resolveGoogleMapsServerApiKey() {
@@ -180,26 +323,25 @@ async function computeGoogleWaypointRoute(args: {
     throw new Error(errorText || 'Google Routes API request failed');
   }
 
-  const payload = (await response.json()) as GoogleRouteResponse;
-  const route = payload.routes?.[0];
-  if (!route) {
-    return {
-      status: 'unavailable',
-      note: 'Google Routes API からルートが返りませんでした',
-      travelMode: args.travelMode,
+  const payload = (await response.json()) as unknown;
+  const routes = readGoogleRoutes(payload, args.waypoints.length);
+  if (!routes) {
+    return unavailableGoogleRoutePlan({
       origin: args.origin,
-      encodedPath: null,
-      orderedScheduleIds: args.waypoints.map((waypoint) => waypoint.scheduleId),
-      totalDistanceMeters: null,
-      totalDurationSeconds: null,
-      stopSummaries: args.waypoints.map((waypoint, index) => ({
-        scheduleId: waypoint.scheduleId,
-        optimizedOrder: index + 1,
-        arrivalOffsetSeconds: null,
-        distanceFromPreviousMeters: null,
-        durationFromPreviousSeconds: null,
-      })),
-    };
+      travelMode: args.travelMode,
+      waypoints: args.waypoints,
+      note: 'Google Routes API のレスポンス形式が不正です',
+    });
+  }
+
+  const route = routes[0];
+  if (!route) {
+    return unavailableGoogleRoutePlan({
+      origin: args.origin,
+      travelMode: args.travelMode,
+      waypoints: args.waypoints,
+      note: 'Google Routes API からルートが返りませんでした',
+    });
   }
 
   const rawIndices = route.optimizedIntermediateWaypointIndex;

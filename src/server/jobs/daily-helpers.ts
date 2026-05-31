@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { readJsonObject } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 
@@ -25,20 +26,14 @@ export function startOfDay(value = new Date()) {
 }
 
 export function parseConferenceSections(structuredContent: Prisma.JsonValue | null) {
-  if (
-    typeof structuredContent !== 'object' ||
-    structuredContent === null ||
-    !('sections' in structuredContent)
-  ) {
-    return [] as Array<{ key: string; body?: string }>;
-  }
-
-  const sections = (structuredContent as { sections?: unknown }).sections;
+  const sections = readJsonObject(structuredContent)?.sections;
   if (!Array.isArray(sections)) return [];
-  return sections.filter(
-    (section): section is { key: string; body?: string } =>
-      typeof section === 'object' && section !== null && 'key' in section
-  );
+  return sections.flatMap((section): Array<{ key: string; body?: string }> => {
+    const record = readJsonObject(section);
+    if (!record || typeof record.key !== 'string') return [];
+    if (record.body !== undefined && typeof record.body !== 'string') return [];
+    return [{ key: record.key, body: typeof record.body === 'string' ? record.body : undefined }];
+  });
 }
 
 export function parseDateFromConferenceText(body?: string) {
@@ -67,7 +62,7 @@ export function formatDateKey(value: Date) {
 
 export function hasAnyKeyword(
   values: Array<string | null | undefined>,
-  keywords: readonly string[]
+  keywords: readonly string[],
 ) {
   const text = values
     .filter((value): value is string => Boolean(value))
@@ -158,7 +153,7 @@ export function buildConsentExpiryTaskKey(consentId: string) {
 
 export async function syncGeneratedOperationalTasks(
   taskSpecs: GeneratedTaskSpec[],
-  managedTaskTypes: string[]
+  managedTaskTypes: string[],
 ) {
   const taskTypes = Array.from(new Set(managedTaskTypes));
   const existingTasks =

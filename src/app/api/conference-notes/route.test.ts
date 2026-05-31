@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   withAuthMock,
@@ -87,16 +87,14 @@ function createRequest({
   url?: string;
   body?: unknown;
 }) {
-  return {
+  return Object.assign(new NextRequest(url, {
     method,
+    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  }), {
     orgId: 'org_1',
     userId: 'user_1',
-    url,
-    json: async () => body,
-    headers: {
-      get: () => null,
-    },
-  } as unknown as NextRequest & { orgId: string; userId: string };
+  });
 }
 
 /** Build a tx mock that covers all the Prisma models used by ConferenceSyncService */

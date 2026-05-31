@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { normalizeJsonInput } from '@/lib/db/json';
 
 type AuditClient = {
   auditLog: {
@@ -39,12 +40,12 @@ export async function recordDataExportAudit(
       action: 'export',
       target_type: args.targetType,
       target_id: args.targetId ?? 'bulk',
-      changes: {
+      changes: normalizeJsonInput({
         format: args.format,
         record_count: args.recordCount ?? null,
-        filters: (args.filters ?? {}) as Prisma.InputJsonValue,
-        metadata: (args.metadata ?? {}) as Prisma.InputJsonValue,
-      } satisfies Prisma.InputJsonValue,
+        filters: args.filters ?? {},
+        metadata: args.metadata ?? {},
+      }) ?? {},
       ip_address: args.ipAddress,
       user_agent: args.userAgent,
     },

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { getTokenMock, logSecurityEventMock } = vi.hoisted(() => ({
   getTokenMock: vi.fn(),
@@ -31,22 +31,10 @@ function createRequest(args?: {
   const pathname = args?.pathname ?? '/api/patients';
   const method = args?.method ?? 'GET';
   const search = args?.search ?? '';
-  const nextUrl = new URL(`http://localhost${pathname}${search}`);
-  const headers = new Map(
-    Object.entries(args?.headers ?? {}).map(([key, value]) => [key.toLowerCase(), value]),
-  );
-
-  return {
+  return new NextRequest(`http://localhost${pathname}${search}`, {
     method,
-    headers: {
-      get: (key: string) => headers.get(key.toLowerCase()) ?? null,
-    },
-    nextUrl: {
-      pathname: nextUrl.pathname,
-      search: nextUrl.search,
-      clone: () => new URL(nextUrl.toString()),
-    },
-  } as unknown as NextRequest;
+    headers: args?.headers,
+  });
 }
 
 describe('proxy', () => {

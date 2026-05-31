@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { withOrgContextMock, queueOverdueReportResponseRemindersMock } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
@@ -21,6 +21,20 @@ vi.mock('@/server/services/report-reminders', () => ({
 
 import { POST } from './route';
 
+function createRequest(body: unknown) {
+  return Object.assign(
+    new NextRequest('http://localhost/api/care-reports/reminders', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+    {
+      orgId: 'org_1',
+      userId: 'user_1',
+    },
+  );
+}
+
 describe('/api/care-reports/reminders POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -34,11 +48,7 @@ describe('/api/care-reports/reminders POST', () => {
   });
 
   it('creates overdue response follow-up tasks', async () => {
-    const response = await POST({
-      orgId: 'org_1',
-      userId: 'user_1',
-      json: async () => ({ overdue_days: 5 }),
-    } as NextRequest & { orgId: string; userId: string });
+    const response = await POST(createRequest({ overdue_days: 5 }));
 
     const ensuredResponse = response;
     if (!ensuredResponse) throw new Error('response is required');

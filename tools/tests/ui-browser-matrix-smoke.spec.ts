@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { attachLocalSession, createInstrumentedPage, waitForStableUi } from './helpers/local-auth';
+import { attachLocalSession, createInstrumentedPage, openStableRoute } from './helpers/local-auth';
 
 const ROUTES = [
   { path: '/dashboard', readyTestId: 'dashboard-priority-actions' },
@@ -17,8 +17,7 @@ for (const route of ROUTES) {
   test(`${route.path} renders cleanly across browser matrix`, async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
 
-    await page.goto(route.path);
-    await waitForStableUi(page);
+    await openStableRoute(page, route.path);
 
     await expect(page).toHaveURL(new RegExp(`${route.path.replace('/', '\\/')}(\\?.*)?$`));
     await expect(page.getByTestId(route.readyTestId)).toBeVisible({ timeout: 20_000 });

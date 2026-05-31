@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
+
+type AuthenticatedTestRequest = NextRequest & {
+  orgId: string;
+  userId: string;
+  role: string;
+};
 
 const { careCaseFindFirstMock, patientFindFirstMock, findExternalProfessionalSuggestionsMock } =
   vi.hoisted(() => ({
@@ -9,11 +15,7 @@ const { careCaseFindFirstMock, patientFindFirstMock, findExternalProfessionalSug
   }));
 
 vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (
-    handler: (
-      req: NextRequest & { orgId: string; userId: string; role: string; nextUrl: URL },
-    ) => Promise<Response>,
-  ) => handler,
+  withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => handler,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -32,6 +34,15 @@ vi.mock('@/lib/contact-profiles', () => ({
 }));
 
 import { GET } from './route';
+
+function createRequest(search = '') {
+  const req = new NextRequest(`http://localhost/api/external-professionals/suggestions${search}`);
+  return Object.assign(req, {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'pharmacist',
+  }) as AuthenticatedTestRequest;
+}
 
 describe('/api/external-professionals/suggestions', () => {
   beforeEach(() => {
@@ -59,19 +70,7 @@ describe('/api/external-professionals/suggestions', () => {
   });
 
   it('returns external professional suggestions for patient/case context', async () => {
-    const response = (await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      nextUrl: new URL(
-        'http://localhost/api/external-professionals/suggestions?patient_id=patient_1&case_id=case_1',
-      ),
-    } as unknown as NextRequest & {
-      orgId: string;
-      userId: string;
-      role: string;
-      nextUrl: URL;
-    }))!;
+    const response = (await GET(createRequest('?patient_id=patient_1&case_id=case_1')))!;
 
     expect(response.status).toBe(200);
     expect(careCaseFindFirstMock).toHaveBeenCalledWith({
@@ -111,17 +110,7 @@ describe('/api/external-professionals/suggestions', () => {
   });
 
   it('rejects requests without patient or case context', async () => {
-    const response = (await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      nextUrl: new URL('http://localhost/api/external-professionals/suggestions'),
-    } as unknown as NextRequest & {
-      orgId: string;
-      userId: string;
-      role: string;
-      nextUrl: URL;
-    }))!;
+    const response = (await GET(createRequest()))!;
 
     expect(response.status).toBe(400);
   });
@@ -129,19 +118,7 @@ describe('/api/external-professionals/suggestions', () => {
   it('returns empty suggestions when the requested case is outside assignment scope', async () => {
     careCaseFindFirstMock.mockResolvedValue(null);
 
-    const response = (await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      nextUrl: new URL(
-        'http://localhost/api/external-professionals/suggestions?patient_id=patient_1&case_id=case_other',
-      ),
-    } as unknown as NextRequest & {
-      orgId: string;
-      userId: string;
-      role: string;
-      nextUrl: URL;
-    }))!;
+    const response = (await GET(createRequest('?patient_id=patient_1&case_id=case_other')))!;
 
     expect(response.status).toBe(200);
     expect(findExternalProfessionalSuggestionsMock).not.toHaveBeenCalled();

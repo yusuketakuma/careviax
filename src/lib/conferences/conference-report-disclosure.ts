@@ -2,6 +2,7 @@ import {
   getConferenceTypeLabel,
   type VisitWorkflowConferenceContext,
 } from '@/lib/visits/visit-workflow-projection';
+import { readJsonObject } from '@/lib/db/json';
 
 export type ConferenceReportType =
   | 'physician_report'
@@ -127,31 +128,19 @@ export function buildReportableConferenceHighlightsFromStructuredContent(args: {
   noteType: VisitWorkflowConferenceContext['note_type'];
   structuredContent: unknown;
 }) {
-  if (
-    typeof args.structuredContent !== 'object' ||
-    args.structuredContent === null ||
-    Array.isArray(args.structuredContent)
-  ) {
-    return [];
-  }
-
-  const sections: ConferenceReportSection[] = Array.isArray(
-    (args.structuredContent as Record<string, unknown>).sections,
-  )
-    ? ((args.structuredContent as Record<string, unknown>).sections as unknown[])
-        .map((section): ConferenceReportSection | null => {
-          if (typeof section !== 'object' || section === null || Array.isArray(section)) {
-            return null;
-          }
-          const record = section as Record<string, unknown>;
-          return {
-            key: typeof record.key === 'string' ? record.key : '',
-            label: typeof record.label === 'string' ? record.label : '',
-            body: typeof record.body === 'string' ? record.body : '',
-          };
-        })
-        .filter((section): section is ConferenceReportSection => section != null)
-    : [];
+  const structuredContent = readJsonObject(args.structuredContent);
+  const rawSections = Array.isArray(structuredContent?.sections) ? structuredContent.sections : [];
+  const sections = rawSections.flatMap((section): ConferenceReportSection[] => {
+    const record = readJsonObject(section);
+    if (!record) return [];
+    return [
+      {
+        key: typeof record.key === 'string' ? record.key : '',
+        label: typeof record.label === 'string' ? record.label : '',
+        body: typeof record.body === 'string' ? record.body : '',
+      },
+    ];
+  });
 
   const reportType =
     args.noteType === 'pre_discharge'

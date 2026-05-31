@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   facilityFindFirstMock,
@@ -29,6 +29,9 @@ vi.mock('@/lib/db/client', () => ({
 
 import { GET } from './route';
 
+const createRequest = () =>
+  new NextRequest('http://localhost/api/admin/facilities/facility_1/patients');
+
 describe('/api/admin/facilities/[id]/patients', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -50,7 +53,7 @@ describe('/api/admin/facilities/[id]/patients', () => {
   });
 
   it('lists patients linked to the facility via residences', async () => {
-    const response = await GET({} as NextRequest, {
+    const response = await GET(createRequest(), {
       params: Promise.resolve({ id: 'facility_1' }),
     });
 

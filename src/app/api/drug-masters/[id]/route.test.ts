@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { drugMasterFindUniqueMock } = vi.hoisted(() => ({
   drugMasterFindUniqueMock: vi.fn(),
@@ -22,6 +22,10 @@ vi.mock('@/lib/db/client', () => ({
 
 import { GET } from './route';
 
+function createRequest() {
+  return new NextRequest('http://localhost/api/drug-masters/drug_1');
+}
+
 describe('/api/drug-masters/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -35,7 +39,7 @@ describe('/api/drug-masters/[id]', () => {
   });
 
   it('returns the drug master detail with related safety data', async () => {
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createRequest(), {
       params: Promise.resolve({ id: 'drug_1' }),
     }))!;
 

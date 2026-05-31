@@ -3,10 +3,56 @@ import {
   buildConferenceReportDisclosureContent,
   type ConferenceReportType,
 } from '@/lib/conferences/conference-report-disclosure';
+import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import { logger } from '@/lib/utils/logger';
 import { billingMonthForJapanTimestamp } from './billing-evidence/core';
 
-type TransactionClient = Prisma.TransactionClient;
+type ReportType =
+  | 'physician_report'
+  | 'care_manager_report'
+  | 'facility_handoff'
+  | 'nurse_share'
+  | 'family_share'
+  | 'internal_record';
+
+export type ConferenceSyncTransactionClient = {
+  billingCandidate: {
+    upsert(args: unknown): Promise<{ id: string }>;
+  };
+  careCase: {
+    findFirst(
+      args: unknown,
+    ): Promise<{ patient_id: string | null; primary_pharmacist_id: string | null } | null>;
+  };
+  careReport: {
+    findMany?(args: unknown): Promise<Array<{ id: string; report_type: ReportType }>>;
+    createMany?(args: unknown): Promise<unknown>;
+    findFirst?(args: unknown): Promise<{ id: string } | null>;
+    create?(args: unknown): Promise<{ id: string }>;
+  };
+  consentRecord: {
+    findFirst(args: unknown): Promise<{ id: string } | null>;
+  };
+  managementPlan: {
+    findFirst(args: unknown): Promise<{ id: string } | null>;
+  };
+  medicationIssue: {
+    findMany?(args: unknown): Promise<Array<{ title: string }>>;
+    createMany?(args: unknown): Promise<unknown>;
+    create?(args: unknown): Promise<unknown>;
+  };
+  task: {
+    findMany?(args: unknown): Promise<Array<{ dedupe_key: string | null }>>;
+    createMany?(args: unknown): Promise<unknown>;
+    upsert?(args: unknown): Promise<unknown>;
+  };
+  visitScheduleProposal: {
+    findFirst(args: unknown): Promise<{ id: string } | null>;
+    create(args: unknown): Promise<{ id: string }>;
+  };
+};
+
+type TransactionClient = ConferenceSyncTransactionClient;
 
 type ActionItem = {
   title?: string;
@@ -111,16 +157,23 @@ export interface ConferenceSyncResult {
 }
 
 function parseStructuredSections(structuredContent: unknown): StructuredSection[] {
-  if (
-    typeof structuredContent !== 'object' ||
-    structuredContent === null ||
-    !('sections' in structuredContent)
-  ) {
-    return [];
-  }
-  const raw = (structuredContent as Record<string, unknown>).sections;
+  const content = readJsonObject(structuredContent);
+  const raw = content?.sections;
   if (!Array.isArray(raw)) return [];
-  return raw as StructuredSection[];
+  return raw.flatMap((section): StructuredSection[] => {
+    const record = readJsonObject(section);
+    if (!record) return [];
+    const key = record.key;
+    const label = record.label;
+    if (typeof key !== 'string' || typeof label !== 'string') return [];
+    return [
+      {
+        key,
+        label,
+        body: typeof record.body === 'string' ? record.body : undefined,
+      },
+    ];
+  });
 }
 
 function findSection(sections: StructuredSection[], key: string): StructuredSection | undefined {
@@ -881,14 +934,6 @@ export class ConferenceSyncService {
 
     const label = NOTE_TYPE_LABEL[note.note_type] ?? '会議';
 
-    type ReportType =
-      | 'physician_report'
-      | 'care_manager_report'
-      | 'facility_handoff'
-      | 'nurse_share'
-      | 'family_share'
-      | 'internal_record';
-
     const careReportClient = tx.careReport as {
       findMany?: (args: unknown) => Promise<Array<{ id: string; report_type: ReportType }>>;
       createMany?: (args: unknown) => Promise<unknown>;
@@ -925,7 +970,7 @@ export class ConferenceSyncService {
             case_id: note.case_id ?? null,
             report_type: reportType as ReportType,
             status: 'draft' as const,
-            content: {
+            content: toPrismaJsonInput({
               ...buildConferenceReportDisclosureContent({
                 conferenceNoteId: note.id,
                 noteType: note.note_type,
@@ -937,7 +982,7 @@ export class ConferenceSyncService {
                 includeStructuredContent,
               }),
               ...buildReportContentExtras(note.note_type, reportType as ReportType, sections),
-            } as Prisma.InputJsonValue,
+            }),
             created_by: userId,
           })),
         });
@@ -1002,7 +1047,7 @@ export class ConferenceSyncService {
           case_id: note.case_id ?? null,
           report_type: reportType as ReportType,
           status: 'draft' as const,
-          content: {
+          content: toPrismaJsonInput({
             ...buildConferenceReportDisclosureContent({
               conferenceNoteId: note.id,
               noteType: note.note_type,
@@ -1014,7 +1059,7 @@ export class ConferenceSyncService {
               includeStructuredContent,
             }),
             ...buildReportContentExtras(note.note_type, reportType as ReportType, sections),
-          } as Prisma.InputJsonValue,
+          }),
           created_by: userId,
         },
       });

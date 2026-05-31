@@ -4,7 +4,114 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { buildExternalAccessGrantVisibilityWhere } from './external-access';
 
-type DbClient = typeof prisma | Prisma.TransactionClient;
+export type CommunicationQueueDbClient = typeof prisma | Prisma.TransactionClient;
+export type CommunicationQueueReader = {
+  patientSelfReport?: {
+    findMany(args: unknown): Promise<Array<{
+      id: string;
+      patient_id: string;
+      subject: string;
+      category?: string | null;
+      requested_callback: boolean;
+      preferred_contact_time: string | null;
+      reported_by_name: string | null;
+      status: string;
+      created_at: Date;
+    }>>;
+  };
+  visitScheduleContactLog?: {
+    findMany(args: unknown): Promise<Array<{
+      id: string;
+      patient_id: string;
+      outcome: string;
+      contact_name: string | null;
+      contact_phone: string | null;
+      note: string | null;
+      callback_due_at: Date | null;
+      called_at: Date;
+    }>>;
+  };
+  communicationRequest?: {
+    findMany(args: unknown): Promise<Array<{
+      id: string;
+      patient_id: string | null;
+      request_type: string;
+      subject: string;
+      content?: string | null;
+      template_key?: string | null;
+      status: string;
+      due_date: Date | null;
+      requested_at: Date;
+    }>>;
+  };
+  deliveryRecord?: {
+    findMany(args: unknown): Promise<Array<{
+      id: string;
+      channel: string;
+      recipient_name: string | null;
+      status: string;
+      failure_reason: string | null;
+      sent_at: Date | null;
+      confirmed_at: Date | null;
+      updated_at: Date;
+      report: {
+        id: string;
+        patient_id: string | null;
+        report_type: string;
+      };
+    }>>;
+  };
+  externalAccessGrant?: {
+    findMany(args: unknown): Promise<Array<{
+      id: string;
+      patient_id: string;
+      granted_to_name: string;
+      expires_at: Date;
+      scope: string | null;
+    }>>;
+  };
+  careReport?: {
+    findMany(args: unknown): Promise<Array<{
+      id: string;
+      patient_id: string | null;
+      report_type: string;
+      status: string;
+      created_at: Date;
+      updated_at: Date | null;
+    }>>;
+  };
+  tracingReport?: {
+    findMany(args: unknown): Promise<Array<{
+      id: string;
+      patient_id: string;
+      status: string;
+      sent_to_physician: string | null;
+      sent_at: Date | null;
+      acknowledged_at: Date | null;
+      updated_at: Date;
+    }>>;
+  };
+  patient?: {
+    findFirst?(args: unknown): Promise<{
+      id: string;
+      name: string;
+      contacts?: Array<{
+        name: string;
+        relation: string;
+        is_emergency_contact: boolean;
+      }>;
+      scheduling_preference?: {
+        visit_before_contact_required: boolean | null;
+      } | null;
+    } | null>;
+    findMany?(args: unknown): Promise<Array<{ id: string; name: string }>>;
+  };
+  medicationIssue?: {
+    findMany(args: unknown): Promise<Array<{ title: string }>>;
+  };
+};
+
+type DbClient = CommunicationQueueReader;
 type QueuePriority = 'urgent' | 'high' | 'normal';
 
 export type CommunicationQueueItem = {
@@ -180,6 +287,7 @@ async function buildEmergencyDrafts(
   args: { orgId: string; patientId?: string; caseIds?: string[] },
 ): Promise<CommunicationDraftSuggestion[]> {
   if (!args.patientId) return [];
+  if (!db.patient?.findFirst) return [];
 
   const patient = await db.patient.findFirst({
     where: {
@@ -201,8 +309,8 @@ async function buildEmergencyDrafts(
 
   if (!patient) return [];
 
-  const [urgentIssues, recentSelfReports] = await Promise.all([
-    db.medicationIssue.findMany({
+  const urgentIssuesPromise =
+    db.medicationIssue?.findMany({
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
@@ -226,8 +334,9 @@ async function buildEmergencyDrafts(
       select: {
         title: true,
       },
-    }),
-    db.patientSelfReport.findMany({
+    }) ?? Promise.resolve([]);
+  const recentSelfReportsPromise =
+    db.patientSelfReport?.findMany({
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
@@ -241,7 +350,10 @@ async function buildEmergencyDrafts(
         subject: true,
         requested_callback: true,
       },
-    }),
+    }) ?? Promise.resolve([]);
+  const [urgentIssues, recentSelfReports] = await Promise.all([
+    urgentIssuesPromise,
+    recentSelfReportsPromise,
   ]);
 
   const contacts = patient.contacts ?? [];
@@ -309,7 +421,47 @@ async function buildEmergencyDrafts(
 }
 
 export async function listCommunicationQueue(
-  db: DbClient,
+  db: CommunicationQueueDbClient,
+  args: {
+    orgId: string;
+    patientId?: string;
+    patientIds?: string[];
+    caseIds?: string[];
+    limit?: number;
+  },
+): Promise<CommunicationQueueOverview>;
+export async function listCommunicationQueue(
+  db: CommunicationQueueReader,
+  args: {
+    orgId: string;
+    patientId?: string;
+    patientIds?: string[];
+    caseIds?: string[];
+    limit?: number;
+  },
+): Promise<CommunicationQueueOverview>;
+export async function listCommunicationQueue(
+  db: CommunicationQueueDbClient | CommunicationQueueReader,
+  args: {
+    orgId: string;
+    patientId?: string;
+    patientIds?: string[];
+    caseIds?: string[];
+    limit?: number;
+  },
+): Promise<CommunicationQueueOverview>;
+export async function listCommunicationQueue(
+  db: object,
+  args: {
+    orgId: string;
+    patientId?: string;
+    patientIds?: string[];
+    caseIds?: string[];
+    limit?: number;
+  },
+): Promise<CommunicationQueueOverview>;
+export async function listCommunicationQueue(
+  db: CommunicationQueueDbClient | CommunicationQueueReader,
   args: {
     orgId: string;
     patientId?: string;
@@ -318,6 +470,7 @@ export async function listCommunicationQueue(
     limit?: number;
   },
 ): Promise<CommunicationQueueOverview> {
+  const reader = db as CommunicationQueueReader;
   const now = new Date();
   const shareWindow = addDays(now, 7);
   const limit = Math.max(args.limit ?? 8, 1);
@@ -338,6 +491,7 @@ export async function listCommunicationQueue(
         };
 
   async function listVisibleExternalShares() {
+    if (!reader.externalAccessGrant) return [];
     const externalShareWhere = {
       org_id: args.orgId,
       ...patientScope,
@@ -348,7 +502,7 @@ export async function listCommunicationQueue(
       },
     };
 
-    return db.externalAccessGrant.findMany({
+    return reader.externalAccessGrant.findMany({
       where: {
         ...externalShareWhere,
         ...buildExternalAccessGrantVisibilityWhere(args.caseIds),
@@ -375,7 +529,7 @@ export async function listCommunicationQueue(
     tracingReports,
     emergencyDrafts,
   ] = await Promise.all([
-    db.patientSelfReport.findMany({
+    reader.patientSelfReport?.findMany({
       where: {
         org_id: args.orgId,
         ...patientScope,
@@ -396,14 +550,14 @@ export async function listCommunicationQueue(
         status: true,
         created_at: true,
       },
-    }),
+    }) ?? Promise.resolve([]),
     // VisitScheduleContactLog.case_id is non-null. When the caller passed an
     // explicit empty caseIds list (i.e. the user has access to no cases),
     // skip the query — `case_id: { in: [] }` would silently return zero rows
     // anyway, but the intent is clearer with an explicit fast-path.
     args.caseIds !== undefined && args.caseIds.length === 0
       ? Promise.resolve([])
-      : db.visitScheduleContactLog.findMany({
+      : reader.visitScheduleContactLog?.findMany({
           where: {
             org_id: args.orgId,
             ...patientScope,
@@ -435,8 +589,8 @@ export async function listCommunicationQueue(
             callback_due_at: true,
             called_at: true,
           },
-        }),
-    db.communicationRequest.findMany({
+        }) ?? Promise.resolve([]),
+    reader.communicationRequest?.findMany({
       where: {
         org_id: args.orgId,
         ...patientScope,
@@ -458,8 +612,8 @@ export async function listCommunicationQueue(
         due_date: true,
         requested_at: true,
       },
-    }),
-    db.deliveryRecord.findMany({
+    }) ?? Promise.resolve([]),
+    reader.deliveryRecord?.findMany({
       where: {
         org_id: args.orgId,
         status: {
@@ -493,9 +647,9 @@ export async function listCommunicationQueue(
           },
         },
       },
-    }),
+    }) ?? Promise.resolve([]),
     listVisibleExternalShares(),
-    db.careReport.findMany({
+    reader.careReport?.findMany({
       where: {
         org_id: args.orgId,
         ...patientScope,
@@ -514,8 +668,8 @@ export async function listCommunicationQueue(
         created_at: true,
         updated_at: true,
       },
-    }),
-    db.tracingReport.findMany({
+    }) ?? Promise.resolve([]),
+    reader.tracingReport?.findMany({
       where: {
         org_id: args.orgId,
         ...patientScope,
@@ -535,8 +689,8 @@ export async function listCommunicationQueue(
         acknowledged_at: true,
         updated_at: true,
       },
-    }),
-    buildEmergencyDrafts(db, args),
+    }) ?? Promise.resolve([]),
+    buildEmergencyDrafts(reader, args),
   ]);
 
   const visibleExternalShares = externalShares;
@@ -564,7 +718,8 @@ export async function listCommunicationQueue(
   const patients =
     patientIds.length === 0
       ? []
-      : await db.patient.findMany({
+      : reader.patient?.findMany
+        ? await reader.patient.findMany({
           where: {
             org_id: args.orgId,
             id: { in: patientIds },
@@ -573,7 +728,8 @@ export async function listCommunicationQueue(
             id: true,
             name: true,
           },
-        });
+        })
+        : [];
   const patientNameById = new Map(patients.map((patient) => [patient.id, patient.name]));
 
   const actionableRequests = openRequests.filter((request) =>

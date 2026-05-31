@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
+
+type AuthenticatedTestRequest = NextRequest & { orgId: string; userId: string; role: string };
 
 const {
   validateOrgReferencesMock,
@@ -12,8 +14,7 @@ const {
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: NextRequest & { orgId: string; userId: string; role: string }) => Promise<Response>) =>
-    handler,
+  withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => handler,
 }));
 
 vi.mock('@/lib/api/org-reference', () => ({
@@ -25,6 +26,17 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { POST } from './route';
+
+function createRequest(body: unknown): AuthenticatedTestRequest {
+  return Object.assign(
+    new NextRequest('http://localhost/api/pharmacist-shifts/bulk', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+    { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' },
+  );
+}
 
 describe('/api/pharmacist-shifts/bulk POST', () => {
   beforeEach(() => {
@@ -41,11 +53,8 @@ describe('/api/pharmacist-shifts/bulk POST', () => {
   });
 
   it('bulk upserts shift rows and returns the applied count', async () => {
-    const response = (await POST({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      json: async () => ({
+    const response = (await POST(
+      createRequest({
         rows: [
           {
             site_id: 'site_1',
@@ -64,7 +73,7 @@ describe('/api/pharmacist-shifts/bulk POST', () => {
           },
         ],
       }),
-    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(validateOrgReferencesMock).toHaveBeenCalledTimes(2);

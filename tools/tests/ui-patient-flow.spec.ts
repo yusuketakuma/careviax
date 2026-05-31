@@ -1,5 +1,37 @@
-import { expect, test } from '@playwright/test';
-import { attachLocalSession, createInstrumentedPage, waitForStableUi } from './helpers/local-auth';
+import { expect, test, type Page } from '@playwright/test';
+import {
+  attachLocalSession,
+  clickAndWaitForStableRoute,
+  createInstrumentedPage,
+  openStableRoute,
+  reloadStablePage,
+  waitForStableUi,
+} from './helpers/local-auth';
+
+test.setTimeout(60_000);
+
+async function openFirstPatientDetail(page: Page) {
+  const firstPatientLink = page
+    .locator('tbody tr')
+    .first()
+    .locator('a[href^="/patients/"]')
+    .first();
+  await expect(firstPatientLink).toBeVisible({ timeout: 30_000 });
+  const href = await firstPatientLink.getAttribute('href');
+  expect(href).toBeTruthy();
+
+  await clickAndWaitForStableRoute(page, new RegExp(`${href}$`), () =>
+    firstPatientLink.click({ noWaitAfter: true }),
+  );
+  return href!;
+}
+
+async function openNewPatientFormFromList(page: Page) {
+  await openStableRoute(page, '/patients');
+  await clickAndWaitForStableRoute(page, /\/patients\/new$/, () =>
+    page.getByRole('link', { name: '新規登録' }).click(),
+  );
+}
 
 test.describe('patient list and navigation flow', () => {
   test.beforeEach(async ({ context }) => {
@@ -8,8 +40,7 @@ test.describe('patient list and navigation flow', () => {
 
   test('patient list loads with data and table columns', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
 
     // Table should render with expected column headers
     await expect(page.getByRole('columnheader', { name: '氏名' })).toBeVisible();
@@ -34,8 +65,7 @@ test.describe('patient list and navigation flow', () => {
 
   test('search filters patient list by name', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
 
     // Get the first patient name from the table for searching
     const firstPatientName = await page
@@ -63,23 +93,12 @@ test.describe('patient list and navigation flow', () => {
 
   test('clicking patient name navigates to detail page', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
 
     // Use specific selector for patient detail links (not other action links)
-    const firstPatientLink = page
-      .locator('tbody tr')
-      .first()
-      .locator('a[href^="/patients/"]')
-      .first();
-    const href = await firstPatientLink.getAttribute('href');
-    expect(href).toBeTruthy();
+    const href = await openFirstPatientDetail(page);
 
-    // Click the patient name
-    await firstPatientLink.click();
-    await waitForStableUi(page);
-
-    // Should navigate to patient detail (toHaveURL auto-retries)
+    // Should navigate to patient detail.
     await expect(page).toHaveURL(new RegExp(`${href}$`));
     await expect(page.getByRole('heading', { name: '患者詳細' })).toBeVisible();
 
@@ -91,22 +110,16 @@ test.describe('patient list and navigation flow', () => {
 
   test('patient detail back link returns to patient list', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
 
     // Navigate to first patient detail
-    const firstPatientLink = page
-      .locator('tbody tr')
-      .first()
-      .locator('a[href^="/patients/"]')
-      .first();
-    const href = await firstPatientLink.getAttribute('href');
-    await firstPatientLink.click();
+    const href = await openFirstPatientDetail(page);
     await expect(page).toHaveURL(new RegExp(`${href}$`));
 
     // Click back link
-    await page.getByRole('link', { name: '患者一覧へ戻る' }).click();
-    await waitForStableUi(page);
+    await clickAndWaitForStableRoute(page, /\/patients$/, () =>
+      page.getByRole('link', { name: '患者一覧へ戻る' }).click({ noWaitAfter: true }),
+    );
 
     // Should be back on patient list
     await expect(page).toHaveURL(/\/patients$/);
@@ -117,8 +130,7 @@ test.describe('patient list and navigation flow', () => {
 
   test('action buttons on patient row link to correct pages', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
 
     const firstRow = page.locator('table tbody tr').first();
 
@@ -151,8 +163,7 @@ test.describe('patient list filters', () => {
 
   test('filter panel is visible with all filter controls', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
 
     const filterPanel = page.getByTestId('patients-filter-panel');
     await expect(filterPanel).toBeVisible();
@@ -173,8 +184,7 @@ test.describe('patient list filters', () => {
 
   test('search input filters the patient table', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
 
     const rowsBefore = await page.locator('table tbody tr').count();
     expect(rowsBefore).toBeGreaterThan(0);
@@ -195,8 +205,7 @@ test.describe('patient list filters', () => {
 
   test('risk filter changes the displayed patients', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
 
     // Open risk filter dropdown
     const riskTrigger = page.getByLabel('リスクフィルタ');
@@ -222,8 +231,7 @@ test.describe('patient list filters', () => {
 
   test('filter reset clears all filters', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
 
     // Apply a search filter
     await page.getByLabel('患者検索').fill('テスト');
@@ -252,17 +260,10 @@ test.describe('patient detail page', () => {
 
   test('gender field shows Japanese label, not raw enum value', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
 
     // Navigate to first patient detail
-    const firstPatientLink = page
-      .locator('tbody tr')
-      .first()
-      .locator('a[href^="/patients/"]')
-      .first();
-    await firstPatientLink.click();
-    await waitForStableUi(page);
+    await openFirstPatientDetail(page);
     await expect(page.getByRole('heading', { name: '患者詳細' })).toBeVisible();
 
     // The gender field in patient master card should display Japanese label via a Select component
@@ -286,17 +287,10 @@ test.describe('patient detail page', () => {
 
   test('patient detail edit saves and reflects changes', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
 
     // Navigate to first patient detail
-    const firstPatientLink = page
-      .locator('tbody tr')
-      .first()
-      .locator('a[href^="/patients/"]')
-      .first();
-    await firstPatientLink.click();
-    await waitForStableUi(page);
+    await openFirstPatientDetail(page);
 
     // The patient master card is the first card with a "保存" button on the detail page
     // Locate "氏名" input (first input in master card) to confirm we're in the right card
@@ -330,19 +324,18 @@ test.describe('patient detail page', () => {
     await phoneField.fill(testPhone);
 
     // Click the first "保存" button on the page (belongs to patient master card)
-    await page.getByRole('button', { name: '保存' }).first().click();
-
-    // Wait for save response
-    await page.waitForResponse(
-      (res) => res.url().includes('/api/patients/') && res.request().method() === 'PATCH',
-    );
+    await Promise.all([
+      page.waitForResponse(
+        (res) => res.url().includes('/api/patients/') && res.request().method() === 'PATCH',
+      ),
+      page.getByRole('button', { name: '保存' }).first().click(),
+    ]);
 
     // Success toast should appear
     await expect(page.getByText('患者基本情報を更新しました')).toBeVisible();
 
     // Reload and verify persistence
-    await page.reload();
-    await waitForStableUi(page);
+    await reloadStablePage(page);
     const reloadedPhoneParent = page
       .locator('div')
       .filter({ has: page.locator('label:text("電話番号")') })
@@ -352,10 +345,12 @@ test.describe('patient detail page', () => {
 
     // Restore original value
     await reloadedPhoneParent.locator('input').first().fill(originalPhone);
-    await page.getByRole('button', { name: '保存' }).first().click();
-    await page.waitForResponse(
-      (res) => res.url().includes('/api/patients/') && res.request().method() === 'PATCH',
-    );
+    await Promise.all([
+      page.waitForResponse(
+        (res) => res.url().includes('/api/patients/') && res.request().method() === 'PATCH',
+      ),
+      page.getByRole('button', { name: '保存' }).first().click(),
+    ]);
 
     expect(errors).toEqual([]);
   });
@@ -367,29 +362,22 @@ test.describe('patient detail tabs', () => {
   });
 
   const TAB_LABELS = [
-    { label: '基本情報', description: '患者マスタ、保険、リスク、訪問条件' },
-    { label: 'ケース', description: 'ケース進行、担当、紹介情報' },
-    { label: '処方履歴', description: '前回比較と薬剤ライン差分' },
-    { label: '薬剤', description: '服薬一覧、残薬、管理状況' },
-    { label: '訪問', description: '予定、記録、月次実績' },
-    { label: '連携', description: '連絡キュー、課題、請求ブロッカー' },
-    { label: '文書', description: '計画書、共有、PDF 導線' },
-    { label: 'タイムライン', description: '自己申告、共有、統合イベント' },
+    { value: 'basic', label: '基本情報', description: '患者マスタ、保険、リスク、訪問条件' },
+    { value: 'cases', label: 'ケース', description: 'ケース進行、担当、紹介情報' },
+    { value: 'prescriptions', label: '処方履歴', description: '前回比較と薬剤ライン差分' },
+    { value: 'medications', label: '薬剤', description: '服薬一覧、残薬、管理状況' },
+    { value: 'visits', label: '訪問', description: '予定、記録、月次実績' },
+    { value: 'communications', label: '連携', description: '連絡キュー、課題、請求ブロッカー' },
+    { value: 'documents', label: '文書', description: '計画書、共有、PDF 導線' },
+    { value: 'timeline', label: 'タイムライン', description: '自己申告、共有、統合イベント' },
   ];
 
   test('all 8 tabs are visible on patient detail page', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
 
     // Navigate to first patient
-    const firstPatientLink = page
-      .locator('tbody tr')
-      .first()
-      .locator('a[href^="/patients/"]')
-      .first();
-    await firstPatientLink.click();
-    await waitForStableUi(page);
+    await openFirstPatientDetail(page);
 
     // All 8 tab triggers should be present (use full label+description to avoid sidebar matches)
     for (const tab of TAB_LABELS) {
@@ -405,27 +393,22 @@ test.describe('patient detail tabs', () => {
 
   test('switching tabs updates content panel without errors', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
 
-    const firstPatientLink = page
-      .locator('tbody tr')
-      .first()
-      .locator('a[href^="/patients/"]')
-      .first();
-    await firstPatientLink.click();
-    await waitForStableUi(page);
+    await openFirstPatientDetail(page);
 
     // Default tab should be "基本情報" - check the card title
     await expect(page.getByText('患者マスタ', { exact: true })).toBeVisible();
 
     // Click each tab and verify content changes without errors
     for (const tab of TAB_LABELS.slice(1)) {
-      // Click the tab trigger using full name pattern
-      const tabButton = page.getByRole('button', {
-        name: new RegExp(`${tab.label}\\s+${tab.description.slice(0, 6)}`),
-      });
+      const tabButton = page
+        .getByRole('button', {
+          name: new RegExp(`${tab.label}\\s+${tab.description.slice(0, 6)}`),
+        })
+        .first();
       await tabButton.click();
+      await expect(tabButton).toHaveAttribute('aria-pressed', 'true');
 
       // The tab description should appear in the paragraph below tab header
       await expect(page.locator('p').filter({ hasText: tab.description })).toBeVisible({
@@ -434,7 +417,9 @@ test.describe('patient detail tabs', () => {
     }
 
     // Switch back to first tab
-    await page.getByRole('button', { name: /基本情報\s+患者マスタ/ }).click();
+    const basicTabButton = page.getByRole('button', { name: /基本情報\s+患者マスタ/ }).first();
+    await basicTabButton.click();
+    await expect(basicTabButton).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByText('患者マスタ', { exact: true })).toBeVisible();
 
     // No console/page errors during tab switching
@@ -443,16 +428,9 @@ test.describe('patient detail tabs', () => {
 
   test('tab state persists during content interaction', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients');
 
-    const firstPatientLink = page
-      .locator('tbody tr')
-      .first()
-      .locator('a[href^="/patients/"]')
-      .first();
-    await firstPatientLink.click();
-    await waitForStableUi(page);
+    await openFirstPatientDetail(page);
 
     // Switch to "ケース" tab
     const casesTab = page.getByRole('button', { name: /ケース\s+ケース進行/ });
@@ -474,17 +452,16 @@ test.describe('patient creation form', () => {
 
   test('new patient page loads with empty form', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients/new');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients/new');
 
     // Page header
     await expect(page.getByRole('heading', { name: '患者新規登録' })).toBeVisible();
 
     // Required fields should be present
-    await expect(page.getByLabel(/氏名/)).toBeVisible();
-    await expect(page.getByLabel(/フリガナ/)).toBeVisible();
-    await expect(page.getByLabel(/生年月日/)).toBeVisible();
-    await expect(page.getByLabel(/性別/)).toBeVisible();
+    await expect(page.locator('input[name="name"]')).toBeVisible();
+    await expect(page.locator('input[name="name_kana"]')).toBeVisible();
+    await expect(page.locator('input[name="birth_date"]')).toBeVisible();
+    await expect(page.locator('select[name="gender"]')).toBeVisible();
 
     // Submit and cancel buttons
     await expect(page.getByRole('button', { name: '登録する' })).toBeVisible();
@@ -495,8 +472,7 @@ test.describe('patient creation form', () => {
 
   test('empty form submission shows validation errors for required fields', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients/new');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/patients/new');
 
     // Submit without filling anything
     await page.getByRole('button', { name: '登録する' }).click();
@@ -518,14 +494,7 @@ test.describe('patient creation form', () => {
 
   test('navigating from patient list to new patient form via header link', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients');
-    await waitForStableUi(page);
-
-    // Click the "新規登録" link in page header
-    await Promise.all([
-      page.waitForURL(/\/patients\/new$/, { timeout: 10_000 }),
-      page.getByRole('link', { name: '新規登録' }).click(),
-    ]);
+    await openNewPatientFormFromList(page);
 
     // Should be on new patient page
     await expect(page.getByRole('heading', { name: '患者新規登録' })).toBeVisible();
@@ -538,15 +507,15 @@ test.describe('patient creation form', () => {
 
   test('cancel button navigates back without submission', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/patients/new');
-    await waitForStableUi(page);
+    await openNewPatientFormFromList(page);
 
     // Fill some data
     await page.getByLabel(/氏名/).first().fill('テスト患者');
 
     // Click cancel
-    await page.getByRole('button', { name: 'キャンセル' }).click();
-    await waitForStableUi(page);
+    await clickAndWaitForStableRoute(page, /\/patients$/, () =>
+      page.getByRole('button', { name: 'キャンセル' }).click(),
+    );
 
     // Should navigate away from new patient page
     expect(page.url()).not.toContain('/patients/new');

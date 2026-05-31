@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const {
-  conferenceNoteFindManyMock,
-  settingUpsertMock,
-  runJobMock,
-} = vi.hoisted(() => ({
+const { conferenceNoteFindManyMock, settingUpsertMock, runJobMock } = vi.hoisted(() => ({
   conferenceNoteFindManyMock: vi.fn(),
   settingUpsertMock: vi.fn(),
   runJobMock: vi.fn(async (_jobType: string, fn: () => Promise<unknown>) => fn()),
@@ -38,6 +34,17 @@ describe('aggregateConferenceQualityIndicators', () => {
         org_id: 'org_1',
         structured_content: {
           sections: [
+            ['unexpected'],
+            {
+              key: 123,
+              label: '不正',
+              body: '集計しない',
+            },
+            {
+              key: 'quality_indicators',
+              label: '品質指標',
+              body: 123,
+            },
             {
               key: 'quality_indicators',
               label: '品質指標',
@@ -94,7 +101,7 @@ describe('aggregateConferenceQualityIndicators', () => {
             },
           }),
         }),
-      })
+      }),
     );
   });
 });

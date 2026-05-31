@@ -13,10 +13,8 @@ import {
   VerifySoftwareTokenCommand,
   type AuthenticationResultType,
 } from '@aws-sdk/client-cognito-identity-provider';
-import {
-  encodeCognitoChallenge,
-  type CognitoChallengePayload,
-} from '@/lib/auth/cognito-challenge';
+import { encodeCognitoChallenge, type CognitoChallengePayload } from '@/lib/auth/cognito-challenge';
+import { readJsonObject } from '@/lib/db/json';
 
 const DEFAULT_REGION = 'ap-northeast-1';
 
@@ -56,16 +54,28 @@ function buildSecretHash(username: string) {
     .digest('base64');
 }
 
-function decodeJwtPayload(token: string) {
+export function parseCognitoIdTokenPayload(token: string) {
   const [, payload] = token.split('.');
   if (!payload) {
     throw new Error('COGNITO_ID_TOKEN_INVALID');
   }
 
-  return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
-    sub?: string;
-    email?: string;
-    name?: string;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as unknown;
+  } catch {
+    throw new Error('COGNITO_ID_TOKEN_INVALID');
+  }
+
+  const object = readJsonObject(parsed);
+  if (!object) {
+    throw new Error('COGNITO_ID_TOKEN_INVALID');
+  }
+
+  return {
+    sub: typeof object.sub === 'string' ? object.sub : undefined,
+    email: typeof object.email === 'string' ? object.email : undefined,
+    name: typeof object.name === 'string' ? object.name : undefined,
   };
 }
 
@@ -77,7 +87,7 @@ function parseAuthenticatedUser(args: {
     throw new Error('COGNITO_ID_TOKEN_MISSING');
   }
 
-  const payload = decodeJwtPayload(args.authenticationResult.IdToken);
+  const payload = parseCognitoIdTokenPayload(args.authenticationResult.IdToken);
   return {
     id: payload.sub ?? normalizeEmail(args.email),
     email: payload.email ?? normalizeEmail(args.email),
@@ -96,8 +106,7 @@ function toChallengePayload(args: {
 }): CognitoChallengePayload | null {
   if (
     !args.session ||
-    (args.challengeName !== 'NEW_PASSWORD_REQUIRED' &&
-      args.challengeName !== 'SOFTWARE_TOKEN_MFA')
+    (args.challengeName !== 'NEW_PASSWORD_REQUIRED' && args.challengeName !== 'SOFTWARE_TOKEN_MFA')
   ) {
     return null;
   }
@@ -109,10 +118,7 @@ function toChallengePayload(args: {
   };
 }
 
-export async function authenticateWithPassword(args: {
-  email: string;
-  password: string;
-}) {
+export async function authenticateWithPassword(args: { email: string; password: string }) {
   const { clientId } = getRequiredCognitoAuthConfig();
   const username = normalizeEmail(args.email);
   const secretHash = buildSecretHash(username);
@@ -126,7 +132,7 @@ export async function authenticateWithPassword(args: {
         PASSWORD: args.password,
         ...(secretHash ? { SECRET_HASH: secretHash } : {}),
       },
-    })
+    }),
   );
 
   const challenge = toChallengePayload({
@@ -167,7 +173,7 @@ export async function respondToNewPasswordChallenge(args: {
         NEW_PASSWORD: args.newPassword,
         ...(secretHash ? { SECRET_HASH: secretHash } : {}),
       },
-    })
+    }),
   );
 
   const challenge = toChallengePayload({
@@ -208,7 +214,7 @@ export async function respondToSoftwareTokenChallenge(args: {
         SOFTWARE_TOKEN_MFA_CODE: args.code,
         ...(secretHash ? { SECRET_HASH: secretHash } : {}),
       },
-    })
+    }),
   );
 
   if (!output.AuthenticationResult) {
@@ -231,7 +237,7 @@ export async function changePasswordWithAccessToken(args: {
       AccessToken: args.accessToken,
       PreviousPassword: args.currentPassword,
       ProposedPassword: args.newPassword,
-    })
+    }),
   );
 }
 
@@ -245,7 +251,7 @@ export async function startForgotPassword(email: string) {
       ClientId: clientId,
       Username: username,
       ...(secretHash ? { SecretHash: secretHash } : {}),
-    })
+    }),
   );
 }
 
@@ -265,7 +271,7 @@ export async function confirmForgotPassword(args: {
       ConfirmationCode: args.code,
       Password: args.newPassword,
       ...(secretHash ? { SecretHash: secretHash } : {}),
-    })
+    }),
   );
 }
 
@@ -273,7 +279,7 @@ export async function associateTotpForAccessToken(accessToken: string) {
   return getClient().send(
     new AssociateSoftwareTokenCommand({
       AccessToken: accessToken,
-    })
+    }),
   );
 }
 
@@ -287,7 +293,7 @@ export async function verifyTotpForAccessToken(args: {
       AccessToken: args.accessToken,
       UserCode: args.code,
       FriendlyDeviceName: args.deviceName,
-    })
+    }),
   );
 
   await getClient().send(
@@ -297,7 +303,7 @@ export async function verifyTotpForAccessToken(args: {
         Enabled: true,
         PreferredMfa: true,
       },
-    })
+    }),
   );
 
   return result;
@@ -307,7 +313,7 @@ export async function getUserMfaState(accessToken: string) {
   const output = await getClient().send(
     new GetUserCommand({
       AccessToken: accessToken,
-    })
+    }),
   );
 
   const userMfaSettings = output.UserMFASettingList ?? [];
@@ -326,7 +332,7 @@ export async function disableTotpForAccessToken(accessToken: string) {
         Enabled: false,
         PreferredMfa: false,
       },
-    })
+    }),
   );
 }
 
@@ -335,14 +341,11 @@ export async function globalSignOutWithAccessToken(accessToken: string) {
   return client.send(
     new GlobalSignOutCommand({
       AccessToken: accessToken,
-    })
+    }),
   );
 }
 
-export async function refreshCognitoTokens(args: {
-  refreshToken: string;
-  username: string;
-}) {
+export async function refreshCognitoTokens(args: { refreshToken: string; username: string }) {
   const { clientId } = getRequiredCognitoAuthConfig();
   const username = normalizeEmail(args.username);
   const secretHash = buildSecretHash(username);
@@ -355,7 +358,7 @@ export async function refreshCognitoTokens(args: {
         REFRESH_TOKEN: args.refreshToken,
         ...(secretHash ? { SECRET_HASH: secretHash, USERNAME: username } : {}),
       },
-    })
+    }),
   );
 
   if (!output.AuthenticationResult?.AccessToken) {

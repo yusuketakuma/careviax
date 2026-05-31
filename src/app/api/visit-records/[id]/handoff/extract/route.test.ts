@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -31,12 +31,7 @@ vi.mock('@/server/services/visit-handoff', () => ({
 import { POST } from './route';
 
 function createRequest(url: string) {
-  return {
-    url,
-    method: 'POST',
-    headers: { get: () => null },
-    nextUrl: new URL(url),
-  } as unknown as NextRequest;
+  return new NextRequest(url, { method: 'POST' });
 }
 
 const authCtx = {

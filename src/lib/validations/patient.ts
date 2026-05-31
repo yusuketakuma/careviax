@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { allergyEntrySchema } from './patient-allergy';
 
+export const PATIENT_GENDERS = ['male', 'female', 'other'] as const;
+export const patientGenderSchema = z.enum(PATIENT_GENDERS, { error: '性別を選択してください' });
+
 export const patientConditionSchema = z.object({
   id: z.string().optional(),
   condition_type: z.enum(['disease', 'problem']),
@@ -171,7 +174,7 @@ export const createPatientSchema = z.object({
   name: z.string().min(1, '氏名は必須です'),
   name_kana: z.string().min(1, 'フリガナは必須です'),
   birth_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）'),
-  gender: z.enum(['male', 'female', 'other'], { error: '性別を選択してください' }),
+  gender: patientGenderSchema,
   phone: z.string().optional(),
   medical_insurance_number: z.string().optional(),
   care_insurance_number: z.string().optional(),

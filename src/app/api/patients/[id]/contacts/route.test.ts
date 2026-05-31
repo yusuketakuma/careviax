@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -39,12 +39,14 @@ vi.mock('@/lib/db/rls', () => ({
 import { GET, PUT } from './route';
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
-  return {
+  return new NextRequest('http://localhost/api/patients/patient_1/contacts', {
+    method: body === undefined ? 'GET' : 'PUT',
     headers: {
-      get: (key: string) => headers?.[key] ?? null,
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      ...headers,
     },
-    json: async () => body,
-  } as unknown as NextRequest;
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
 }
 
 describe('/api/patients/[id]/contacts PUT', () => {
@@ -91,9 +93,9 @@ describe('/api/patients/[id]/contacts PUT', () => {
             },
           ],
         },
-        { 'x-org-id': 'corg1234567890123456789012' }
+        { 'x-org-id': 'corg1234567890123456789012' },
       ),
-      { params: Promise.resolve({ id: 'patient_1' }) }
+      { params: Promise.resolve({ id: 'patient_1' }) },
     );
 
     if (!response) throw new Error('response is required');
@@ -141,7 +143,7 @@ describe('/api/patients/[id]/contacts PUT', () => {
 
     const response = await GET(
       createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
-      { params: Promise.resolve({ id: 'patient_1' }) }
+      { params: Promise.resolve({ id: 'patient_1' }) },
     );
 
     if (!response) throw new Error('response is required');

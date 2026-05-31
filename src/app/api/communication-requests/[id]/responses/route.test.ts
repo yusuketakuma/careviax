@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   communicationRequestFindFirstMock,
@@ -55,6 +55,20 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { GET, POST } from './route';
 
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
+function createGetRequest(requestId = 'request_1') {
+  return new NextRequest(`http://localhost/api/communication-requests/${requestId}/responses`);
+}
+
+function createPostRequest(body: unknown, requestId = 'request_1') {
+  return new NextRequest(`http://localhost/api/communication-requests/${requestId}/responses`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  } satisfies NextRequestInit);
+}
+
 describe('/api/communication-requests/[id]/responses', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -82,7 +96,7 @@ describe('/api/communication-requests/[id]/responses', () => {
   });
 
   it('lists responses for a communication request', async () => {
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createGetRequest(), {
       params: Promise.resolve({ id: 'request_1' }),
     }))!;
 
@@ -91,13 +105,11 @@ describe('/api/communication-requests/[id]/responses', () => {
 
   it('creates a response and updates the request status', async () => {
     const response = (await POST(
-      {
-        json: async () => ({
-          responder_name: '医師A',
-          content: '確認しました',
-          responded_at: '2026-03-29',
-        }),
-      } as NextRequest,
+      createPostRequest({
+        responder_name: '医師A',
+        content: '確認しました',
+        responded_at: '2026-03-29',
+      }),
       {
         params: Promise.resolve({ id: 'request_1' }),
       },
@@ -114,13 +126,11 @@ describe('/api/communication-requests/[id]/responses', () => {
     careCaseFindFirstMock.mockResolvedValue(null);
 
     const response = (await POST(
-      {
-        json: async () => ({
-          responder_name: '医師A',
-          content: '確認しました',
-          responded_at: '2026-03-29',
-        }),
-      } as NextRequest,
+      createPostRequest({
+        responder_name: '医師A',
+        content: '確認しました',
+        responded_at: '2026-03-29',
+      }),
       {
         params: Promise.resolve({ id: 'request_1' }),
       },

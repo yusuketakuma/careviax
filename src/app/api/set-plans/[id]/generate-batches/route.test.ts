@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { authMock, prismaMock, withOrgContextMock, txMock, notifyWorkflowMutationMock } = vi.hoisted(
   () => ({
@@ -48,12 +48,14 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 import { POST } from './route';
 
 function createRequest(body: unknown) {
-  return {
+  return new NextRequest('http://localhost/api/set-plans/plan_1/generate-batches', {
+    method: 'POST',
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
+      'x-org-id': 'org_1',
+      'content-type': 'application/json',
     },
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+    body: JSON.stringify(body),
+  });
 }
 
 describe('set-plans/[id]/generate-batches POST', () => {

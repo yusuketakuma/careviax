@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   workflowExceptionFindFirstMock,
@@ -38,6 +38,14 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { GET, PATCH } from './route';
 
+function createRequest(body?: unknown) {
+  return new NextRequest('http://localhost/api/workflow-exceptions/exception_1', {
+    method: body === undefined ? 'GET' : 'PATCH',
+    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
 describe('/api/workflow-exceptions/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -70,7 +78,7 @@ describe('/api/workflow-exceptions/[id]', () => {
   });
 
   it('returns a workflow exception by id', async () => {
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createRequest(), {
       params: Promise.resolve({ id: 'exception_1' }),
     }))!;
 
@@ -78,13 +86,14 @@ describe('/api/workflow-exceptions/[id]', () => {
   });
 
   it('resolves an open exception and clears the cycle exception status when no open issues remain', async () => {
-    const response = (await PATCH({
-      json: async () => ({
+    const response = (await PATCH(
+      createRequest({
         status: 'resolved',
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'exception_1' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'exception_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(200);
     expect(workflowExceptionUpdateMock).toHaveBeenCalled();

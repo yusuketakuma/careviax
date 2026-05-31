@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -49,9 +49,11 @@ vi.mock('@/lib/db/rls', () => ({
 import { POST } from './route';
 
 function createRequest(body: unknown) {
-  return {
-    json: async () => body,
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/pharmacists/import', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
 }
 
 describe('/api/pharmacists/import POST', () => {
@@ -119,6 +121,8 @@ describe('/api/pharmacists/import POST', () => {
         org_id: 'org_1',
         email: 'bulk@example.com',
         can_accept_emergency: true,
+        visit_specialties: [],
+        coverage_area: [],
       }),
     });
     expect(membershipCreateMock).toHaveBeenCalledWith({

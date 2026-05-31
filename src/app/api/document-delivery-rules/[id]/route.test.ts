@@ -1,13 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
   membershipFindFirstMock,
+  documentDeliveryRuleFindFirstMock,
+  documentDeliveryRuleUpdateMock,
+  documentDeliveryRuleDeleteMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
+  documentDeliveryRuleFindFirstMock: vi.fn(),
+  documentDeliveryRuleUpdateMock: vi.fn(),
+  documentDeliveryRuleDeleteMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -29,16 +35,28 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { PATCH, DELETE } from './route';
 
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
 function createRequest(url: string, body?: unknown) {
-  return {
-    url,
+  const init: NextRequestInit = {
     method: body === undefined ? 'DELETE' : 'PATCH',
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      'x-org-id': 'org_1',
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
     },
-    nextUrl: new URL(url),
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+  };
+  if (body !== undefined) {
+    init.body = JSON.stringify(body);
+  }
+  return new NextRequest(url, init);
+}
+
+function createInvalidJsonRequest(url: string) {
+  return new NextRequest(url, {
+    method: 'PATCH',
+    headers: { 'x-org-id': 'org_1', 'content-type': 'application/json' },
+    body: 'not-json',
+  } satisfies NextRequestInit);
 }
 
 describe('/api/document-delivery-rules/[id]', () => {
@@ -46,12 +64,15 @@ describe('/api/document-delivery-rules/[id]', () => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    documentDeliveryRuleFindFirstMock.mockResolvedValue({ id: 'rule_1' });
+    documentDeliveryRuleUpdateMock.mockResolvedValue({ id: 'rule_1', channel: 'fax', is_active: true });
+    documentDeliveryRuleDeleteMock.mockResolvedValue({ id: 'rule_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         documentDeliveryRule: {
-          findFirst: vi.fn().mockResolvedValue({ id: 'rule_1' }),
-          update: vi.fn().mockResolvedValue({ id: 'rule_1', channel: 'fax', is_active: true }),
-          delete: vi.fn().mockResolvedValue({ id: 'rule_1' }),
+          findFirst: documentDeliveryRuleFindFirstMock,
+          update: documentDeliveryRuleUpdateMock,
+          delete: documentDeliveryRuleDeleteMock,
         },
       }),
     );
@@ -62,23 +83,26 @@ describe('/api/document-delivery-rules/[id]', () => {
       const response = (await PATCH(
         createRequest('http://localhost/api/document-delivery-rules/rule_1', {
           channel: 'fax',
+          fallback_channels: ['email'],
           is_active: true,
         }),
         { params: Promise.resolve({ id: 'rule_1' }) },
       ))!;
 
       expect(response.status).toBe(200);
+      expect(documentDeliveryRuleUpdateMock).toHaveBeenCalledWith({
+        where: { id: 'rule_1' },
+        data: {
+          channel: 'fax',
+          fallback_channels: ['email'],
+          is_active: true,
+        },
+      });
     });
 
     it('returns 400 with invalid body', async () => {
       const response = (await PATCH(
-        {
-          url: 'http://localhost/api/document-delivery-rules/rule_1',
-          method: 'PATCH',
-          headers: { get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null) },
-          nextUrl: new URL('http://localhost/api/document-delivery-rules/rule_1'),
-          json: vi.fn().mockRejectedValue(new Error('bad json')),
-        } as unknown as NextRequest,
+        createInvalidJsonRequest('http://localhost/api/document-delivery-rules/rule_1'),
         { params: Promise.resolve({ id: 'rule_1' }) },
       ))!;
 

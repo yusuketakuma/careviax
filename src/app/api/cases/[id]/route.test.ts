@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -42,6 +42,18 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { GET, PATCH } from './route';
 
+function createGetRequest() {
+  return new NextRequest('http://localhost/api/cases/case_1');
+}
+
+function createPatchRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/cases/case_1', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 describe('/api/cases/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -79,7 +91,7 @@ describe('/api/cases/[id]', () => {
   });
 
   it('scopes GET by case assignment before returning patient details', async () => {
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createGetRequest(), {
       params: Promise.resolve({ id: 'case_1' }),
     }))!;
 
@@ -123,7 +135,7 @@ describe('/api/cases/[id]', () => {
   it('does not fetch first visit document details for an unassigned case', async () => {
     careCaseFindFirstMock.mockResolvedValue(null);
 
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createGetRequest(), {
       params: Promise.resolve({ id: 'case_2' }),
     }))!;
 
@@ -133,13 +145,11 @@ describe('/api/cases/[id]', () => {
 
   it('updates a case and normalizes empty pharmacist ids to null', async () => {
     const response = (await PATCH(
-      {
-        json: async () => ({
-          primary_pharmacist_id: '',
-          backup_pharmacist_id: 'pharmacist_2',
-          required_visit_support: { escort: true },
-        }),
-      } as NextRequest,
+      createPatchRequest({
+        primary_pharmacist_id: '',
+        backup_pharmacist_id: 'pharmacist_2',
+        required_visit_support: { escort: true, internal_note: undefined },
+      }),
       {
         params: Promise.resolve({ id: 'case_1' }),
       },
@@ -172,17 +182,20 @@ describe('/api/cases/[id]', () => {
         required_visit_support: { escort: true },
       }),
     });
+    expect(
+      (
+        careCaseUpdateMock.mock.calls[0][0].data.required_visit_support as Record<string, unknown>
+      ).internal_note,
+    ).toBeUndefined();
   });
 
   it('denies unassigned case PATCH before reference validation or updates', async () => {
     careCaseFindFirstMock.mockResolvedValue(null);
 
     const response = (await PATCH(
-      {
-        json: async () => ({
-          primary_pharmacist_id: 'user_1',
-        }),
-      } as NextRequest,
+      createPatchRequest({
+        primary_pharmacist_id: 'user_1',
+      }),
       {
         params: Promise.resolve({ id: 'case_2' }),
       },
@@ -196,15 +209,13 @@ describe('/api/cases/[id]', () => {
 
   it('clears optional dates and text fields when empty strings are provided', async () => {
     const response = (await PATCH(
-      {
-        json: async () => ({
-          referral_source: '',
-          start_date: '',
-          end_date: '',
-          end_reason: '',
-          notes: '',
-        }),
-      } as NextRequest,
+      createPatchRequest({
+        referral_source: '',
+        start_date: '',
+        end_date: '',
+        end_reason: '',
+        notes: '',
+      }),
       {
         params: Promise.resolve({ id: 'case_1' }),
       },

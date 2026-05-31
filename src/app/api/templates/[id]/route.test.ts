@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -36,9 +36,11 @@ vi.mock('@/lib/db/client', () => ({
 import { DELETE, PATCH } from './route';
 
 function createRequest(body?: unknown) {
-  return {
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/templates/template_1', {
+    method: body === undefined ? 'DELETE' : 'PATCH',
+    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
 }
 
 describe('/api/templates/[id]', () => {

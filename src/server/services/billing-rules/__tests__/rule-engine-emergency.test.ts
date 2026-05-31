@@ -15,6 +15,21 @@ vi.mock('../seeder', async () => {
 import { MEDICAL_RULES_2024 } from '../revisions/medical/2024';
 import { MEDICAL_RULES_2026 } from '../revisions/medical/2026';
 import { buildBillingCandidateSpecs } from '../rule-engine';
+import type { BillingRuleRow, HomeCareBillingRuleEngineTx } from '../rule-engine';
+
+function makeTx(rules: BillingRuleRow[]): HomeCareBillingRuleEngineTx {
+  return {
+    sourceOfTruthMatrix: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      upsert: vi.fn().mockResolvedValue({ id: 'matrix_1' }),
+    },
+    billingRule: {
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      findMany: vi.fn().mockResolvedValue(rules),
+      upsert: vi.fn().mockResolvedValue({}),
+    },
+  };
+}
 
 describe('buildBillingCandidateSpecs emergency category selection', () => {
   beforeEach(() => {
@@ -22,21 +37,14 @@ describe('buildBillingCandidateSpecs emergency category selection', () => {
   });
 
   it('selects emergency visit 1 when the intake marks planned_disease_exacerbation', async () => {
-    const tx = {
-      sourceOfTruthMatrix: {
-        findFirst: vi.fn().mockResolvedValue(null),
-      },
-      billingRule: {
-        findMany: vi.fn().mockResolvedValue(
-          MEDICAL_RULES_2024.map((rule) => ({
-            ...rule,
-            id: rule.ssot_key,
-            billing_scope: 'home_care_ssot',
-            is_active: true,
-          })),
-        ),
-      },
-    } as never;
+    const tx = makeTx(
+      MEDICAL_RULES_2024.map((rule) => ({
+        ...rule,
+        id: rule.ssot_key,
+        billing_scope: 'home_care_ssot',
+        is_active: true,
+      })),
+    );
 
     const specs = await buildBillingCandidateSpecs(tx, {
       orgId: 'org_1',
@@ -59,21 +67,14 @@ describe('buildBillingCandidateSpecs emergency category selection', () => {
   });
 
   it('selects emergency online billing when the intake marks online', async () => {
-    const tx = {
-      sourceOfTruthMatrix: {
-        findFirst: vi.fn().mockResolvedValue(null),
-      },
-      billingRule: {
-        findMany: vi.fn().mockResolvedValue(
-          MEDICAL_RULES_2024.map((rule) => ({
-            ...rule,
-            id: rule.ssot_key,
-            billing_scope: 'home_care_ssot',
-            is_active: true,
-          })),
-        ),
-      },
-    } as never;
+    const tx = makeTx(
+      MEDICAL_RULES_2024.map((rule) => ({
+        ...rule,
+        id: rule.ssot_key,
+        billing_scope: 'home_care_ssot',
+        is_active: true,
+      })),
+    );
 
     const specs = await buildBillingCandidateSpecs(tx, {
       orgId: 'org_1',
@@ -96,21 +97,14 @@ describe('buildBillingCandidateSpecs emergency category selection', () => {
   });
 
   it('suggests the night emergency add-on when after-hours conditions match', async () => {
-    const tx = {
-      sourceOfTruthMatrix: {
-        findFirst: vi.fn().mockResolvedValue(null),
-      },
-      billingRule: {
-        findMany: vi.fn().mockResolvedValue(
-          MEDICAL_RULES_2024.map((rule) => ({
-            ...rule,
-            id: rule.ssot_key,
-            billing_scope: 'home_care_ssot',
-            is_active: true,
-          })),
-        ),
-      },
-    } as never;
+    const tx = makeTx(
+      MEDICAL_RULES_2024.map((rule) => ({
+        ...rule,
+        id: rule.ssot_key,
+        billing_scope: 'home_care_ssot',
+        is_active: true,
+      })),
+    );
 
     const specs = await buildBillingCandidateSpecs(tx, {
       orgId: 'org_1',
@@ -132,21 +126,14 @@ describe('buildBillingCandidateSpecs emergency category selection', () => {
   });
 
   it('requires structured initial transition evidence before suggesting the 2026 initial transition add-on', async () => {
-    const tx = {
-      sourceOfTruthMatrix: {
-        findFirst: vi.fn().mockResolvedValue(null),
-      },
-      billingRule: {
-        findMany: vi.fn().mockResolvedValue(
-          MEDICAL_RULES_2026.map((rule) => ({
-            ...rule,
-            id: rule.ssot_key,
-            billing_scope: 'home_care_ssot',
-            is_active: true,
-          })),
-        ),
-      },
-    } as never;
+    const tx = makeTx(
+      MEDICAL_RULES_2026.map((rule) => ({
+        ...rule,
+        id: rule.ssot_key,
+        billing_scope: 'home_care_ssot',
+        is_active: true,
+      })),
+    );
 
     const commonContext = {
       orgId: 'org_1',

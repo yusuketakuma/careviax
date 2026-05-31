@@ -117,4 +117,25 @@ describe('conference-report-disclosure', () => {
       }),
     ).toEqual(['退院背景: 退院後支援']);
   });
+
+  it('ignores malformed structured content sections when building external highlights', () => {
+    expect(
+      buildReportableConferenceHighlightsFromStructuredContent({
+        noteType: 'pre_discharge',
+        structuredContent: {
+          sections: [
+            ['unexpected'],
+            { key: 'discharge_background', label: '退院背景', body: '退院後支援' },
+            { key: 'medication_summary', label: '薬剤要約', body: 123 },
+          ],
+        },
+      }),
+    ).toEqual(['退院背景: 退院後支援']);
+    expect(
+      buildReportableConferenceHighlightsFromStructuredContent({
+        noteType: 'pre_discharge',
+        structuredContent: ['unexpected'],
+      }),
+    ).toEqual([]);
+  });
 });

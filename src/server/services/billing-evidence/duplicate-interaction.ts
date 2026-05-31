@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
+import { normalizeJsonInput } from '@/lib/db/json';
 import { HOME_CARE_BILLING_RULESET_VERSION } from '../home-care-billing-ssot';
-import type { Tx, AdditionalBillingRuleDefinition } from './core';
+import type { AdditionalBillingRuleDefinition } from './core';
 import {
   startOfMonth,
   japanMonthRangeForBillingMonth,
@@ -9,6 +10,22 @@ import {
   writeBillingCandidateWorkflowState,
   mergeCandidateSourceSnapshot,
 } from './core';
+
+function isInputJsonObject(
+  value: Prisma.InputJsonValue | null | undefined
+): value is Prisma.InputJsonObject {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    !('toJSON' in value)
+  );
+}
+
+function normalizedJsonObject(value: unknown): Prisma.InputJsonObject {
+  const normalized = normalizeJsonInput(value);
+  return isInputJsonObject(normalized) ? normalized : {};
+}
 
 export type HomeDuplicateInteractionFeeType = '1_i' | '1_ro' | '2_i' | '2_ro';
 
@@ -138,8 +155,29 @@ export function parseHomeDuplicateInteractionFeeType(args: {
   return isResidual ? '1_ro' : '1_i';
 }
 
+export type HomeDuplicateInteractionCandidatesTx = {
+  billingCandidate: {
+    upsert(args: unknown): Promise<unknown>;
+  };
+  inquiryRecord: {
+    findMany(args: unknown): Promise<Array<{
+      id: string;
+      cycle_id: string | null;
+      reason: string;
+      result: string;
+      proposal_origin: string | null;
+      residual_adjustment: boolean | null;
+      change_detail: string | null;
+      cycle: { patient_id: string | null } | null;
+      issue: { category: string | null } | null;
+    }>>;
+  };
+};
+
+type GeneratedBillingCandidate = { status: string };
+
 export async function generateHomeDuplicateInteractionCandidates(
-  tx: Tx,
+  tx: HomeDuplicateInteractionCandidatesTx,
   args: {
     orgId: string;
     billingMonth: Date;
@@ -176,7 +214,7 @@ export async function generateHomeDuplicateInteractionCandidates(
     },
   });
 
-  const created = [];
+  const created: GeneratedBillingCandidate[] = [];
 
   for (const inquiry of inquiries) {
     if (!inquiry.cycle?.patient_id) continue;
@@ -208,6 +246,35 @@ export async function generateHomeDuplicateInteractionCandidates(
             : existingWorkflow.resolution_state === 'excluded'
               ? 'excluded'
               : 'candidate';
+    const calculationBreakdown = normalizedJsonObject({
+      source_type: 'inquiry_record',
+      source_id: inquiry.id,
+      fee_type: feeType,
+      inquiry_result: inquiry.result,
+      issue_category: inquiry.issue?.category ?? null,
+    });
+    const sourceSnapshot = writeBillingCandidateWorkflowState(
+      normalizedJsonObject(
+        mergeCandidateSourceSnapshot({
+          sourceSnapshot: {
+            billing_scope: 'home_care_ssot',
+            selection_mode: 'manual',
+            source_note: rule.sourceNote,
+            source_type: 'inquiry_record',
+            source_entity_id: inquiry.id,
+            duplicate_interaction_fee_type: feeType,
+            ruleset_version: HOME_CARE_BILLING_RULESET_VERSION,
+          },
+          calculationContext: null,
+          candidateStatus: status,
+          claimable: exclusionReason == null,
+          evidenceMessage: exclusionReason == null ? '照会結果の変更確定を確認' : exclusionReason,
+          ruleMessage: exclusionReason == null ? `${rule.targetLabel} の加算候補` : exclusionReason,
+          workflow: existingWorkflow,
+        })
+      ),
+      existingWorkflow,
+    );
 
     const candidate = await tx.billingCandidate.upsert({
       where: {
@@ -228,34 +295,8 @@ export async function generateHomeDuplicateInteractionCandidates(
         billing_name: rule.name,
         points: rule.points,
         quantity: 1,
-        calculation_breakdown: {
-          source_type: 'inquiry_record',
-          source_id: inquiry.id,
-          fee_type: feeType,
-          inquiry_result: inquiry.result,
-          issue_category: inquiry.issue?.category ?? null,
-        } as Prisma.InputJsonValue,
-        source_snapshot: writeBillingCandidateWorkflowState(
-          mergeCandidateSourceSnapshot({
-            sourceSnapshot: {
-              billing_scope: 'home_care_ssot',
-              selection_mode: 'manual',
-              source_note: rule.sourceNote,
-              source_type: 'inquiry_record',
-              source_entity_id: inquiry.id,
-              duplicate_interaction_fee_type: feeType,
-              ruleset_version: HOME_CARE_BILLING_RULESET_VERSION,
-            },
-            calculationContext: null,
-            candidateStatus: status,
-            claimable: exclusionReason == null,
-            evidenceMessage: exclusionReason == null ? '照会結果の変更確定を確認' : exclusionReason,
-            ruleMessage:
-              exclusionReason == null ? `${rule.targetLabel} の加算候補` : exclusionReason,
-            workflow: existingWorkflow,
-          }) as Prisma.JsonValue,
-          existingWorkflow,
-        ),
+        calculation_breakdown: calculationBreakdown,
+        source_snapshot: sourceSnapshot,
         status,
         exclusion_reason: exclusionReason,
       },
@@ -264,40 +305,14 @@ export async function generateHomeDuplicateInteractionCandidates(
         billing_name: rule.name,
         points: rule.points,
         quantity: 1,
-        calculation_breakdown: {
-          source_type: 'inquiry_record',
-          source_id: inquiry.id,
-          fee_type: feeType,
-          inquiry_result: inquiry.result,
-          issue_category: inquiry.issue?.category ?? null,
-        } as Prisma.InputJsonValue,
-        source_snapshot: writeBillingCandidateWorkflowState(
-          mergeCandidateSourceSnapshot({
-            sourceSnapshot: {
-              billing_scope: 'home_care_ssot',
-              selection_mode: 'manual',
-              source_note: rule.sourceNote,
-              source_type: 'inquiry_record',
-              source_entity_id: inquiry.id,
-              duplicate_interaction_fee_type: feeType,
-              ruleset_version: HOME_CARE_BILLING_RULESET_VERSION,
-            },
-            calculationContext: null,
-            candidateStatus: status,
-            claimable: exclusionReason == null,
-            evidenceMessage: exclusionReason == null ? '照会結果の変更確定を確認' : exclusionReason,
-            ruleMessage:
-              exclusionReason == null ? `${rule.targetLabel} の加算候補` : exclusionReason,
-            workflow: existingWorkflow,
-          }) as Prisma.JsonValue,
-          existingWorkflow,
-        ),
+        calculation_breakdown: calculationBreakdown,
+        source_snapshot: sourceSnapshot,
         status,
         exclusion_reason: exclusionReason,
       },
     });
 
-    created.push(candidate);
+    created.push(candidate as GeneratedBillingCandidate);
   }
 
   return created;

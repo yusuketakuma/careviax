@@ -2,7 +2,10 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
-import { createMedicationIssueSchema } from '@/lib/validations/medication';
+import {
+  createMedicationIssueSchema,
+  medicationIssueStatusSchema,
+} from '@/lib/validations/medication';
 import { prisma } from '@/lib/db/client';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import {
@@ -79,7 +82,13 @@ export const GET = withAuth(
 
     const patientId = searchParams.get('patient_id') ?? undefined;
     const caseId = searchParams.get('case_id') ?? undefined;
-    const status = searchParams.get('status') ?? undefined;
+    const statusParam = searchParams.get('status') ?? undefined;
+    const status = statusParam ? medicationIssueStatusSchema.safeParse(statusParam) : null;
+    if (status && !status.success) {
+      return validationError('服薬課題ステータスが不正です', {
+        status: ['対応していないステータスです'],
+      });
+    }
 
     if (patientId && caseId) {
       const refResult = await validateOrgReferences(req.orgId, {
@@ -110,7 +119,7 @@ export const GET = withAuth(
       org_id: req.orgId,
       ...(patientId ? { patient_id: patientId } : {}),
       ...(caseId ? { case_id: caseId } : {}),
-      ...(status ? { status: status as 'open' | 'in_progress' | 'resolved' | 'dismissed' } : {}),
+      ...(status ? { status: status.data } : {}),
       ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
     };
 

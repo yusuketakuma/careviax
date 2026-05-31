@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   getPmdaOnboardingSummaryMock,
@@ -29,6 +29,13 @@ vi.mock('@/server/services/pilot-launch-dossier', () => ({
 }));
 
 import { GET } from './route';
+
+function createAuthRequest() {
+  return Object.assign(new NextRequest('http://localhost/api/admin/pilot-launch-dossier'), {
+    orgId: 'org_1',
+    userId: 'user_1',
+  });
+}
 
 describe('/api/admin/pilot-launch-dossier GET', () => {
   beforeEach(() => {
@@ -69,10 +76,7 @@ describe('/api/admin/pilot-launch-dossier GET', () => {
   });
 
   it('returns a combined dossier for the authenticated org', async () => {
-    const response = await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-    } as NextRequest & { orgId: string; userId: string });
+    const response = await GET(createAuthRequest());
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);

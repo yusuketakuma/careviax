@@ -4,30 +4,34 @@ import {
   VISIT_RECORD_PAGE_LIMIT,
 } from './patient-visit-records.helpers';
 
+function jsonResponse(body: unknown) {
+  return new Response(JSON.stringify(body), {
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 describe('patient-visit-records.helpers', () => {
   it('collects all visit-record pages for a patient', async () => {
     const fetchImpl = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
           data: [{ id: 'record_1' }],
           hasMore: true,
           nextCursor: 'cursor_1',
         }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
           data: [{ id: 'record_2' }],
           hasMore: false,
         }),
-      });
+      );
 
     const records = await fetchPatientVisitRecordsWindow<{ id: string }>({
       orgId: 'org_1',
       patientId: 'patient_1',
-      fetchImpl: fetchImpl as unknown as typeof fetch,
+      fetchImpl,
       limit: 1,
     });
 
@@ -36,18 +40,17 @@ describe('patient-visit-records.helpers', () => {
   });
 
   it('caps the page size to the API maximum', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
         data: [],
         hasMore: false,
       }),
-    });
+    );
 
     await fetchPatientVisitRecordsWindow({
       orgId: 'org_1',
       patientId: 'patient_1',
-      fetchImpl: fetchImpl as unknown as typeof fetch,
+      fetchImpl,
       limit: VISIT_RECORD_PAGE_LIMIT + 25,
     });
 

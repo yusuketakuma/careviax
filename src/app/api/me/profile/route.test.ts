@@ -104,14 +104,18 @@ describe('/api/me/profile', () => {
   });
 
   it('updates the current user profile and syncs Cognito', async () => {
-    const response = await PATCH({
-      nextUrl: new URL('http://localhost/api/me/profile'),
-      url: 'http://localhost/api/me/profile',
-      json: async () => ({
+    const response = await PATCH(
+      new NextRequest('http://localhost/api/me/profile', {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
         name: '更新後 名前',
         phone: '090-9999-0000',
       }),
-    } as NextRequest);
+      }),
+    );
 
     expect(response.status).toBe(200);
     expect(updateCognitoUserProfileMock).toHaveBeenCalledWith({

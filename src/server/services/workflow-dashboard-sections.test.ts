@@ -4,39 +4,91 @@ import {
   buildRemediationGuidance,
   buildUnifiedWorkbench,
 } from './workflow-dashboard-sections';
+import type { WorkflowCoreData } from './workflow-dashboard-queries';
+
+type UpcomingScheduleFixture = WorkflowCoreData['upcomingSchedules'][number];
+type CommunicationQueueFixture = WorkflowCoreData['communicationQueue'];
+
+function emptyCommunicationQueue(): CommunicationQueueFixture {
+  return {
+    summary: {
+      pending_count: 0,
+      overdue_count: 0,
+      self_reports: 0,
+      callback_followups: 0,
+      open_requests: 0,
+      delivery_backlog: 0,
+      expiring_external_shares: 0,
+      unconfirmed_count: 0,
+      reply_waiting_count: 0,
+      failed_count: 0,
+    },
+    items: [],
+    timeline: [],
+    emergency_drafts: [],
+  };
+}
 
 describe('workflow-dashboard-sections', () => {
   it('groups multi-patient facility visits into visibility clusters', () => {
+    const upcomingSchedules: UpcomingScheduleFixture[] = [
+      {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        scheduled_date: new Date('2026-03-31T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        confirmed_at: null,
+        schedule_status: 'planned',
+        priority: 'normal',
+        pharmacist_id: 'user_1',
+        assignment_mode: 'primary',
+        carry_items_status: null,
+        route_order: 1,
+        escalation_reason: null,
+        preparation: null,
+        override_request: null,
+        applied_override: null,
+        site: { id: 'site_1', name: '本店' },
+        case_: {
+          patient: {
+            id: 'patient_1',
+            name: '患者A',
+            residences: [{ building_id: 'facility_alpha', address: '施設A' }],
+          },
+        },
+      },
+      {
+        id: 'schedule_2',
+        case_id: 'case_2',
+        scheduled_date: new Date('2026-03-31T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        confirmed_at: null,
+        schedule_status: 'planned',
+        priority: 'normal',
+        pharmacist_id: 'user_1',
+        assignment_mode: 'primary',
+        carry_items_status: null,
+        route_order: 3,
+        escalation_reason: null,
+        preparation: null,
+        override_request: null,
+        applied_override: null,
+        site: { id: 'site_1', name: '本店' },
+        case_: {
+          patient: {
+            id: 'patient_2',
+            name: '患者B',
+            residences: [{ building_id: 'facility_alpha', address: '施設A' }],
+          },
+        },
+      },
+    ];
+
     const result = buildFacilityVisibility(
-      [
-        {
-          id: 'schedule_1',
-          scheduled_date: new Date('2026-03-31T00:00:00.000Z'),
-          site: { id: 'site_1', name: '本店' },
-          pharmacist_id: 'user_1',
-          route_order: 1,
-          case_: {
-            patient: {
-              name: '患者A',
-              residences: [{ building_id: 'facility_alpha', address: '施設A' }],
-            },
-          },
-        },
-        {
-          id: 'schedule_2',
-          scheduled_date: new Date('2026-03-31T00:00:00.000Z'),
-          site: { id: 'site_1', name: '本店' },
-          pharmacist_id: 'user_1',
-          route_order: 3,
-          case_: {
-            patient: {
-              name: '患者B',
-              residences: [{ building_id: 'facility_alpha', address: '施設A' }],
-            },
-          },
-        },
-      ] as never,
-      new Map([['user_1', '佐藤 薬剤師']])
+      upcomingSchedules,
+      new Map([['user_1', '佐藤 薬剤師']]),
     );
 
     expect(result.clusters).toMatchObject([
@@ -76,53 +128,55 @@ describe('workflow-dashboard-sections', () => {
   });
 
   it('includes cadence summary in visit workbench items when preview is available', () => {
+    const upcomingSchedules: UpcomingScheduleFixture[] = [
+      {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        scheduled_date: new Date('2026-04-10T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        confirmed_at: null,
+        schedule_status: 'planned',
+        priority: 'normal',
+        pharmacist_id: 'user_1',
+        assignment_mode: 'primary',
+        carry_items_status: null,
+        route_order: null,
+        escalation_reason: null,
+        preparation: {
+          medication_changes_reviewed: false,
+          carry_items_confirmed: false,
+          previous_issues_reviewed: false,
+          route_confirmed: false,
+          offline_synced: false,
+          prepared_at: null,
+        },
+        override_request: null,
+        applied_override: null,
+        case_: {
+          patient: {
+            id: 'patient_1',
+            name: '患者A',
+            residences: [{ address: '東京都港区1-1-1', building_id: null }],
+          },
+        },
+        site: null,
+        cadence_preview: {
+          next_billable_date: '2026-04-17',
+          remaining_month_count: 1,
+          warning_messages: ['月上限に近いです'],
+        },
+      },
+    ];
+
     const result = buildUnifiedWorkbench(
       [],
       [],
-      [
-        {
-          id: 'schedule_1',
-          case_id: 'case_1',
-          scheduled_date: new Date('2026-04-10T00:00:00.000Z'),
-          time_window_start: null,
-          time_window_end: null,
-          confirmed_at: null,
-          schedule_status: 'planned',
-          priority: 'normal',
-          pharmacist_id: 'user_1',
-          assignment_mode: 'primary',
-          carry_items_status: null,
-          route_order: null,
-          escalation_reason: null,
-          preparation: {
-            medication_changes_reviewed: false,
-            carry_items_confirmed: false,
-            previous_issues_reviewed: false,
-            route_confirmed: false,
-            offline_synced: false,
-            prepared_at: null,
-          },
-          override_request: null,
-          applied_override: null,
-          case_: {
-            patient: {
-              id: 'patient_1',
-              name: '患者A',
-              residences: [{ address: '東京都港区1-1-1', building_id: null }],
-            },
-          },
-          site: null,
-          cadence_preview: {
-            next_billable_date: '2026-04-17',
-            remaining_month_count: 1,
-            warning_messages: ['月上限に近いです'],
-          },
-        },
-      ] as never,
+      upcomingSchedules,
       [],
       0,
       [],
-      { summary: { unconfirmed_count: 0 }, items: [] } as never,
+      emptyCommunicationQueue(),
       new Map([['user_1', '薬剤師A']]),
       new Map([['patient_1', '患者A']]),
     );

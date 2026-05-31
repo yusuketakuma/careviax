@@ -13,6 +13,7 @@ export const proposalStatusValues = [
   'expired',
   'reschedule_pending',
 ] as const;
+export const proposalStatusSchema = z.enum(proposalStatusValues);
 
 export const patientContactStatusValues = [
   'pending',

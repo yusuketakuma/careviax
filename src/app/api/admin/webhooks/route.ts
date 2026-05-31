@@ -2,21 +2,13 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { NextResponse } from 'next/server';
 import { withOrgContext } from '@/lib/db/rls';
 import { z } from 'zod';
-import { isAllowedWebhookUrl, type WebhookEventType } from '@/server/services/outbound-webhook';
+import { isAllowedWebhookUrl, WEBHOOK_EVENT_TYPES } from '@/server/services/outbound-webhook';
 import { randomBytes } from 'node:crypto';
-
-const WEBHOOK_EVENT_TYPES: WebhookEventType[] = [
-  'prescription.created',
-  'prescription.dispensed',
-  'patient.created',
-  'billing.exported',
-  'qualification.checked',
-];
 
 const createWebhookSchema = z.object({
   url: z.string().url('有効なURLを入力してください'),
   events: z
-    .array(z.enum(WEBHOOK_EVENT_TYPES as [WebhookEventType, ...WebhookEventType[]]))
+    .array(z.enum(WEBHOOK_EVENT_TYPES))
     .min(1, 'イベントを1件以上選択してください'),
 });
 
@@ -99,4 +91,4 @@ export const POST = withAuth(
 );
 
 // Re-export supported event types for reference
-export type { WebhookEventType };
+export type { WebhookEventType } from '@/server/services/outbound-webhook';

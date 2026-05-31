@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -44,6 +44,14 @@ vi.mock('@/server/services/operational-tasks', () => ({
 
 import { PATCH } from './route';
 
+function createTransitionRequest(caseId: string, body: { from: string; to: string }) {
+  return new NextRequest(`http://localhost/api/cases/${caseId}/transition`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 describe('/api/cases/[id]/transition', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -82,12 +90,10 @@ describe('/api/cases/[id]/transition', () => {
 
   it('transitions a case when the current status matches', async () => {
     const response = (await PATCH(
-      {
-        json: async () => ({
-          from: 'assessment',
-          to: 'active',
-        }),
-      } as NextRequest,
+      createTransitionRequest('case_1', {
+        from: 'assessment',
+        to: 'active',
+      }),
       {
         params: Promise.resolve({ id: 'case_1' }),
       },
@@ -104,12 +110,10 @@ describe('/api/cases/[id]/transition', () => {
     firstVisitDocFindFirstMock.mockResolvedValue(null);
 
     const response = (await PATCH(
-      {
-        json: async () => ({
-          from: 'assessment',
-          to: 'active',
-        }),
-      } as NextRequest,
+      createTransitionRequest('case_1', {
+        from: 'assessment',
+        to: 'active',
+      }),
       {
         params: Promise.resolve({ id: 'case_1' }),
       },
@@ -129,12 +133,10 @@ describe('/api/cases/[id]/transition', () => {
 
   it('rejects transitions when the current status does not match', async () => {
     const response = (await PATCH(
-      {
-        json: async () => ({
-          from: 'active',
-          to: 'discharged',
-        }),
-      } as NextRequest,
+      createTransitionRequest('case_1', {
+        from: 'active',
+        to: 'discharged',
+      }),
       {
         params: Promise.resolve({ id: 'case_1' }),
       },
@@ -148,12 +150,10 @@ describe('/api/cases/[id]/transition', () => {
     careCaseFindFirstMock.mockResolvedValue(null);
 
     const response = (await PATCH(
-      {
-        json: async () => ({
-          from: 'assessment',
-          to: 'active',
-        }),
-      } as NextRequest,
+      createTransitionRequest('case_2', {
+        from: 'assessment',
+        to: 'active',
+      }),
       {
         params: Promise.resolve({ id: 'case_2' }),
       },

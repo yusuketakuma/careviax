@@ -29,10 +29,13 @@ describe('daily-helpers', () => {
     expect(
       parseConferenceSections({
         sections: [
+          ['unexpected'],
+          { key: 123, body: 'invalid' },
+          { key: 'ignored_numeric_body', body: 123 },
           { key: 'next_meeting_date', body: '2026-04-02' },
           { key: 'memo', body: '共有事項' },
         ],
-      })
+      }),
     ).toEqual([
       { key: 'next_meeting_date', body: '2026-04-02' },
       { key: 'memo', body: '共有事項' },

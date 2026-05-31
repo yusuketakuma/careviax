@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   patientFindFirstMock,
@@ -47,9 +47,7 @@ vi.mock('@/server/services/export-audit', () => ({
 import { GET } from './route';
 
 function createRequest() {
-  return {
-    url: 'http://localhost/api/patients/patient_1/prescriptions/export',
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/patients/patient_1/prescriptions/export');
 }
 
 describe('/api/patients/[id]/prescriptions/export GET', () => {

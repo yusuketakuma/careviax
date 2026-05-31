@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { importMhlwGenericFlagsMock, importGenericNameMappingsMock } = vi.hoisted(() => ({
   importMhlwGenericFlagsMock: vi.fn(),
@@ -24,6 +24,14 @@ vi.mock('@/server/services/drug-master-import/mhlw', () => ({
 
 import { POST } from './route';
 
+function createJsonRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/drug-master-imports/mhlw-generic', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 describe('/api/drug-master-imports/mhlw-generic', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -41,12 +49,10 @@ describe('/api/drug-master-imports/mhlw-generic', () => {
 
   it('imports both generic flags and mappings in all mode', async () => {
     const response = (await POST(
-      {
-        json: async () => ({
+      createJsonRequest({
           mode: 'all',
           workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/generic.xlsx',
-        }),
-      } as NextRequest,
+      }),
       { params: Promise.resolve({}) },
     ))!;
 
@@ -57,12 +63,10 @@ describe('/api/drug-master-imports/mhlw-generic', () => {
 
   it('rejects credential-bearing workbook URLs without echoing credentials', async () => {
     const response = (await POST(
-      {
-        json: async () => ({
+      createJsonRequest({
           mode: 'all',
           workbookUrl: 'https://importer:secret@www.mhlw.go.jp/topics/2026/04/xls/generic.xlsx',
-        }),
-      } as NextRequest,
+      }),
       { params: Promise.resolve({}) },
     ))!;
     const payload = await response.json();

@@ -304,9 +304,12 @@ describe('getPatientVisitBrief', () => {
       drugPackageInsert: {
         findMany: vi.fn().mockResolvedValue([]),
       },
+      auditLog: {
+        create: vi.fn().mockResolvedValue({ id: 'audit_1' }),
+      },
     };
 
-    const result = await getPatientVisitBrief(db as never, {
+    const result = await getPatientVisitBrief(db, {
       orgId: 'org_1',
       patientId: 'patient_1',
       context: 'patient',
@@ -451,6 +454,21 @@ describe('getPatientVisitBrief', () => {
       limit: 2,
     });
     expect(result.ai_summary.headline).toBe('直近処方で 2 件の変更があります。');
+    expect(db.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'visit_brief_generated_fallback',
+        target_type: 'visit_brief',
+        changes: expect.objectContaining({
+          patient_id: 'patient_1',
+          context: 'patient',
+          provider: 'rule',
+          requested_provider: 'disabled',
+          fallback_reason: 'provider_unavailable',
+          source_refs: ['処方履歴'],
+          generated_at: '2026-03-27T00:00:00.000Z',
+        }),
+      }),
+    });
     expect(result.conference_summary).toEqual(
       expect.objectContaining({
         recent_conferences: 1,
@@ -502,6 +520,7 @@ describe('getScheduleVisitBriefsForPatients', () => {
         findMany: vi.fn().mockResolvedValue([]),
         findFirst: vi.fn().mockResolvedValue(null),
       },
+      billingEvidence: { findMany: vi.fn().mockResolvedValue([]) },
       patient: {
         findFirst: vi.fn(({ where }: { where: { id: string } }) =>
           Promise.resolve({ id: where.id, name: where.id === 'patient_1' ? '患者A' : '患者B' }),
@@ -524,7 +543,7 @@ describe('getScheduleVisitBriefsForPatients', () => {
       drugPackageInsert: { findMany: vi.fn().mockResolvedValue([]) },
     };
 
-    const result = await getScheduleVisitBriefsForPatients(db as never, {
+    const result = await getScheduleVisitBriefsForPatients(db, {
       orgId: 'org_1',
       patientIds: ['patient_1', 'patient_1', 'patient_2'],
     });
@@ -549,6 +568,7 @@ describe('getScheduleVisitBriefsForPatients', () => {
         findMany: vi.fn().mockResolvedValue([]),
         findFirst: vi.fn().mockResolvedValue(null),
       },
+      billingEvidence: { findMany: vi.fn().mockResolvedValue([]) },
       patient: {
         findFirst: vi.fn(async ({ where }: { where: { id: string } }) => {
           activePatientLookups += 1;
@@ -576,7 +596,7 @@ describe('getScheduleVisitBriefsForPatients', () => {
     };
 
     try {
-      const result = await getScheduleVisitBriefsForPatients(db as never, {
+      const result = await getScheduleVisitBriefsForPatients(db, {
         orgId: 'org_1',
         patientIds: ['patient_1', 'patient_2', 'patient_3', 'patient_4', 'patient_5'],
       });
@@ -640,6 +660,7 @@ describe('getScheduleVisitBriefsForSchedules', () => {
         findMany: vi.fn().mockResolvedValue([{ id: 'case_1' }, { id: 'case_2' }]),
         findFirst: vi.fn().mockResolvedValue(null),
       },
+      billingEvidence: { findMany: vi.fn().mockResolvedValue([]) },
       patient: {
         findFirst: vi.fn().mockResolvedValue({ id: 'patient_1', name: '患者A' }),
       },
@@ -664,7 +685,7 @@ describe('getScheduleVisitBriefsForSchedules', () => {
       drugMaster: { findMany: vi.fn().mockResolvedValue([]) },
     };
 
-    const result = await getScheduleVisitBriefsForSchedules(db as never, {
+    const result = await getScheduleVisitBriefsForSchedules(db, {
       schedules: [
         { scheduleId: 'schedule_1', orgId: 'org_1', patientId: 'patient_1', caseId: 'case_1' },
         { scheduleId: 'schedule_2', orgId: 'org_1', patientId: 'patient_1', caseId: 'case_2' },

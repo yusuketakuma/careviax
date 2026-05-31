@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -34,11 +34,11 @@ vi.mock('@/lib/db/client', () => ({
 import { GET } from './route';
 
 function createRequest() {
-  return {
+  return new NextRequest('http://localhost/api/billing-evidence/analytics', {
     headers: {
-      get: () => 'org_1',
+      'x-org-id': 'org_1',
     },
-  } as unknown as NextRequest;
+  });
 }
 
 describe('/api/billing-evidence/analytics GET', () => {
@@ -76,6 +76,13 @@ describe('/api/billing-evidence/analytics GET', () => {
         billing_name: '麻薬加算',
         source_snapshot: { revision_code: '2024' },
       },
+      {
+        billing_month: new Date('2026-03-01T00:00:00.000Z'),
+        status: 'excluded',
+        billing_code: 'X999',
+        billing_name: '不正メタデータ確認',
+        source_snapshot: ['unexpected'],
+      },
     ]);
     billingEvidenceFindManyMock.mockResolvedValue([
       {
@@ -95,6 +102,12 @@ describe('/api/billing-evidence/analytics GET', () => {
           effective_revision_code: '2024',
           site_config_status: 'revision_mismatch',
         },
+      },
+      {
+        billing_month: new Date('2026-03-01T00:00:00.000Z'),
+        claimable: false,
+        exclusion_reason: null,
+        calculation_context: ['unexpected'],
       },
     ]);
   });
@@ -118,8 +131,12 @@ describe('/api/billing-evidence/analytics GET', () => {
           current_month_claimable_rate: expect.any(Number),
           current_month_close_rate: expect.any(Number),
           current_month_exported: expect.any(Number),
-          current_month_revision_counts: expect.any(Object),
-          current_month_site_config_issue_count: expect.any(Number),
+          current_month_revision_counts: {
+            '2024': 2,
+            '2026': 3,
+            unknown: 2,
+          },
+          current_month_site_config_issue_count: 1,
         },
         blocker_reasons: expect.any(Array),
         top_codes: expect.any(Array),

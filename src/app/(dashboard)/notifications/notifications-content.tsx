@@ -21,6 +21,7 @@ import type {
   NotificationTypeFilter,
 } from '@/lib/dashboard/home-link-builders';
 import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
+import { parseNotificationStreamPayload } from '@/lib/notifications/stream-payload';
 
 // --- Types ---
 
@@ -205,8 +206,8 @@ export function NotificationsContent({
 
           for (const chunk of chunks) {
             if (!chunk.startsWith('data: ')) continue;
-            try {
-              const nextNotifications = JSON.parse(chunk.slice(6)) as Notification[];
+            const nextNotifications = parseNotificationStreamPayload(chunk.slice(6));
+            if (nextNotifications.length > 0) {
               queryClient.setQueryData<{ data: Notification[] }>(
                 ['notifications', orgId, 'unread'],
                 (current) => ({
@@ -219,8 +220,6 @@ export function NotificationsContent({
                   data: mergeNotifications(current?.data ?? [], nextNotifications),
                 }),
               );
-            } catch {
-              // Ignore malformed SSE payloads and keep the stream alive.
             }
           }
         }

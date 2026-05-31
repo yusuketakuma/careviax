@@ -1,5 +1,6 @@
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { readJsonObject } from '@/lib/db/json';
 import type { VisitBriefBaselineContext } from '@/types/visit-brief';
 
 export const requesterProfessionLabels: Record<string, string> = {
@@ -185,10 +186,22 @@ export function buildBaselineContext(
 }
 
 export function getHomeVisitIntake(value: unknown): HomeVisitIntake | null {
-  if (!value || typeof value !== 'object') return null;
-  const root = value as Record<string, unknown>;
-  if (!root.home_visit_intake || typeof root.home_visit_intake !== 'object') return null;
-  return root.home_visit_intake as HomeVisitIntake;
+  const root = readJsonObject(value);
+  const intake = readJsonObject(root?.home_visit_intake);
+  return intake as HomeVisitIntake | null;
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string');
+}
+
+export function getHomeVisitSpecialMedicalProcedures(value: unknown): string[] {
+  return readStringArray(getHomeVisitIntake(value)?.special_medical_procedures);
+}
+
+export function getHomeVisitMedicationSupportMethods(value: unknown): string[] {
+  return readStringArray(getHomeVisitIntake(value)?.medication_support_methods);
 }
 
 export function formatOptionalDate(value: string | null | undefined) {
@@ -200,11 +213,7 @@ export function formatOptionalDate(value: string | null | undefined) {
   }
 }
 
-export function formatBoolean(
-  value: boolean | undefined,
-  trueLabel = 'あり',
-  falseLabel = 'なし',
-) {
+export function formatBoolean(value: boolean | undefined, trueLabel = 'あり', falseLabel = 'なし') {
   if (value === undefined) return '—';
   return value ? trueLabel : falseLabel;
 }

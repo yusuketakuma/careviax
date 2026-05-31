@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -40,6 +40,18 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { GET, PATCH } from './route';
 
+function createGetRequest(reportId: string) {
+  return new NextRequest(`http://localhost/api/patient-self-reports/${reportId}`);
+}
+
+function createPatchRequest(reportId: string, body: unknown) {
+  return new NextRequest(`http://localhost/api/patient-self-reports/${reportId}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 describe('/api/patient-self-reports/[id] PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -64,11 +76,9 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
 
   it('stamps triage metadata when moving out of submitted', async () => {
     const response = (await PATCH(
-      {
-        json: async () => ({
-          status: 'resolved',
-        }),
-      } as NextRequest,
+      createPatchRequest('report_1', {
+        status: 'resolved',
+      }),
       {
         params: Promise.resolve({ id: 'report_1' }),
       },
@@ -87,7 +97,7 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
   it('does not return detail for an unassigned self report', async () => {
     patientFindFirstMock.mockResolvedValue(null);
 
-    const response = await GET({} as NextRequest, {
+    const response = await GET(createGetRequest('report_1'), {
       params: Promise.resolve({ id: 'report_1' }),
     });
 
@@ -103,11 +113,9 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     patientFindFirstMock.mockResolvedValue(null);
 
     const response = (await PATCH(
-      {
-        json: async () => ({
-          status: 'resolved',
-        }),
-      } as NextRequest,
+      createPatchRequest('report_1', {
+        status: 'resolved',
+      }),
       {
         params: Promise.resolve({ id: 'report_1' }),
       },

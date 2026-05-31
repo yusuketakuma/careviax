@@ -9,7 +9,25 @@ export const MANAGEABLE_MEMBER_ROLES = [
   'external_viewer',
 ] as const satisfies readonly MemberRole[];
 
+export const MEMBER_ROLES = [
+  'owner',
+  ...MANAGEABLE_MEMBER_ROLES,
+] as const satisfies readonly MemberRole[];
+
+export const ADMIN_MEMBER_ROLES = ['owner', 'admin'] as const satisfies readonly MemberRole[];
+
+export const DISPENSE_AUDIT_FALLBACK_MEMBER_ROLES = [
+  'admin',
+  'pharmacist',
+] as const satisfies readonly MemberRole[];
+
 export type ManageableMemberRole = (typeof MANAGEABLE_MEMBER_ROLES)[number];
+
+const MEMBER_ROLE_SET = new Set<string>(MEMBER_ROLES);
+
+export function isMemberRole(role: unknown): role is MemberRole {
+  return typeof role === 'string' && MEMBER_ROLE_SET.has(role);
+}
 
 export function membershipFlagsForRole(role: ManageableMemberRole | 'owner') {
   switch (role) {

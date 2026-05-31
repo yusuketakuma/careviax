@@ -1,8 +1,8 @@
 import { Prisma } from '@prisma/client';
 import {
-  DrugMasterImportDbClient,
   FetchLike,
   MHLW_IMPORT_URL_POLICY,
+  type DrugMasterImportLogDbClient,
   fetchBytes,
   fetchText,
   normalizeCell,
@@ -37,6 +37,14 @@ type ParseMhlwPriceWorkbookOptions = {
 
 type ImportMhlwPriceListOptions = ParseMhlwPriceWorkbookOptions & {
   workbookUrls?: string[];
+};
+type MhlwPriceImportDbClient = DrugMasterImportLogDbClient & {
+  drugMaster: Pick<Prisma.TransactionClient['drugMaster'], 'findMany' | 'upsert'>;
+  drugMasterChangeEvent: Pick<Prisma.TransactionClient['drugMasterChangeEvent'], 'create'>;
+};
+type MhlwGenericMappingImportDbClient = DrugMasterImportLogDbClient & {
+  drugMaster: Pick<Prisma.TransactionClient['drugMaster'], 'findMany'>;
+  genericDrugMapping: Pick<Prisma.TransactionClient['genericDrugMapping'], 'create' | 'deleteMany'>;
 };
 
 type ParsedGenericNameEntry = {
@@ -231,7 +239,7 @@ export async function parseMhlwPriceWorkbook(
 }
 
 async function upsertPriceChunk(
-  db: DrugMasterImportDbClient,
+  db: MhlwPriceImportDbClient,
   records: ParsedMhlwPriceRecord[],
   mode: 'price' | 'generic',
   importLogId?: string,
@@ -333,7 +341,7 @@ async function upsertPriceChunk(
 }
 
 export async function importMhlwPriceList(
-  db: DrugMasterImportDbClient,
+  db: MhlwPriceImportDbClient,
   options: ImportMhlwPriceListOptions = {},
 ) {
   return withImportLog(db, 'mhlw_price', async (log) => {
@@ -371,7 +379,7 @@ export async function importMhlwPriceList(
 }
 
 export async function importMhlwGenericFlags(
-  db: DrugMasterImportDbClient,
+  db: MhlwPriceImportDbClient,
   options: { workbookUrl?: string; fetchImpl?: FetchLike } = {},
 ) {
   return withImportLog(db, 'mhlw_generic', async () => {
@@ -460,7 +468,7 @@ export async function parseGenericNameWorkbook(
 }
 
 export async function importGenericNameMappings(
-  db: DrugMasterImportDbClient,
+  db: MhlwGenericMappingImportDbClient,
   options: { workbookUrl?: string; fetchImpl?: FetchLike } = {},
 ) {
   return withImportLog(db, 'mhlw_generic', async () => {

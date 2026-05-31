@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -32,6 +32,20 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { GET, PUT } from './route';
+
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
+function createGetRequest(patientId = 'patient_1') {
+  return new NextRequest(`http://localhost/api/patients/${patientId}/visit-constraints`);
+}
+
+function createPutRequest(body: unknown, patientId = 'patient_1') {
+  return new NextRequest(`http://localhost/api/patients/${patientId}/visit-constraints`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  } satisfies NextRequestInit);
+}
 
 describe('/api/patients/[id]/visit-constraints', () => {
   beforeEach(() => {
@@ -68,7 +82,7 @@ describe('/api/patients/[id]/visit-constraints', () => {
   });
 
   it('returns current visit constraint data', async () => {
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createGetRequest(), {
       params: Promise.resolve({ id: 'patient_1' }),
     }))!;
 
@@ -81,8 +95,8 @@ describe('/api/patients/[id]/visit-constraints', () => {
   });
 
   it('upserts visit constraints and geocoding fields', async () => {
-    const response = (await PUT({
-      json: async () => ({
+    const response = (await PUT(
+      createPutRequest({
         preferred_weekdays: [1, 3],
         preferred_time_from: '09:00',
         preferred_time_to: '12:00',
@@ -90,9 +104,10 @@ describe('/api/patients/[id]/visit-constraints', () => {
         residence_lat: 35.0,
         residence_lng: 139.0,
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'patient_1' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(200);
     expect(patientSchedulePreferenceUpsertMock).toHaveBeenCalled();

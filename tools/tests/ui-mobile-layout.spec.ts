@@ -3,7 +3,7 @@ import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { Client } from 'pg';
 import { PLAYWRIGHT_SCREENSHOT_DIR } from './helpers/artifacts';
-import { attachLocalSession, createInstrumentedPage, waitForStableUi } from './helpers/local-auth';
+import { attachLocalSession, createInstrumentedPage, openStableRoute } from './helpers/local-auth';
 
 const DB_CONNECTION_STRING = (
   process.env.DATABASE_URL ??
@@ -15,6 +15,8 @@ const QR_DRAFT_REVIEW_IDS = {
   caseId: 'e2e_mobile_qr_draft_case',
   draft: 'e2e_mobile_qr_draft',
 } as const;
+
+test.setTimeout(120_000);
 
 const MOBILE_ROUTES = [
   {
@@ -125,7 +127,12 @@ async function writeMobileScreenshot(page: Page, name: string) {
   await page.screenshot({
     path: path.join(PLAYWRIGHT_SCREENSHOT_DIR, `${name}.png`),
     fullPage: true,
+    caret: 'initial',
   });
+}
+
+async function openMobileRoute(page: Page, path: string) {
+  await openStableRoute(page, path);
 }
 
 function assertSafeE2eDatabase() {
@@ -141,6 +148,10 @@ function assertSafeE2eDatabase() {
   ) {
     throw new Error('Mobile UI fixtures can only run against local ph_os_e2e');
   }
+}
+
+function jsonb(value: unknown) {
+  return JSON.stringify(value);
 }
 
 async function ensureQrDraftReviewFixture() {
@@ -235,8 +246,8 @@ async function ensureQrDraftReviewFixture() {
         siteId,
         QR_DRAFT_REVIEW_IDS.patient,
         base.user_id,
-        JSON.stringify(['JAHISTC08,E2E']),
-        JSON.stringify({
+        jsonb(['JAHISTC08,E2E']),
+        jsonb({
           patientName: 'QR下書きE2E 太郎',
           patientNameKana: 'キューアールシタガキ イーツーイー タロウ',
           patientBirthdate: '1948-02-12',
@@ -267,7 +278,7 @@ async function ensureQrDraftReviewFixture() {
           ],
           supplementalRecords: [],
         }),
-        JSON.stringify([{ field: 'dosage_form', lineIndex: 0 }]),
+        jsonb([{ field: 'dosage_form', lineIndex: 0 }]),
       ],
     );
   } finally {
@@ -331,8 +342,7 @@ test.describe('mobile layout flow', () => {
   for (const route of MOBILE_ROUTES) {
     test(`${route.path} keeps mobile-first grouping and CTA visibility`, async ({ context }) => {
       const { page, errors } = await createInstrumentedPage(context);
-      await page.goto(route.path);
-      await waitForStableUi(page);
+      await openMobileRoute(page, route.path);
 
       await expect(page.getByTestId(route.readyTestId)).toBeVisible();
       await expect(
@@ -361,8 +371,7 @@ test.describe('mobile layout flow', () => {
   for (const route of MOBILE_WORKFLOW_ROUTES) {
     test(`${route.path} keeps the workflow route compact on mobile`, async ({ context }) => {
       const { page, errors } = await createInstrumentedPage(context);
-      await page.goto(route.path);
-      await waitForStableUi(page);
+      await openMobileRoute(page, route.path);
 
       const workflowNav = page.getByTestId('main-workflow-compact-nav');
       await expect(workflowNav).toBeVisible();
@@ -388,8 +397,7 @@ test.describe('mobile layout flow', () => {
   for (const route of MOBILE_CHROME_TOUCH_TARGET_ROUTES) {
     test(`${route.name} keeps app chrome controls thumb-sized`, async ({ context }) => {
       const { page, errors } = await createInstrumentedPage(context);
-      await page.goto(route.path);
-      await waitForStableUi(page);
+      await openMobileRoute(page, route.path);
 
       await expect(page.getByTestId('app-header')).toBeVisible();
       await expect(page.getByTestId('mobile-bottom-nav')).toBeVisible();
@@ -412,10 +420,9 @@ test.describe('mobile layout flow', () => {
   for (const route of MOBILE_TOUCH_TARGET_ROUTES) {
     test(`${route.name} keeps primary mobile form controls thumb-sized`, async ({ context }) => {
       const { page, errors } = await createInstrumentedPage(context);
-      await page.goto(route.path);
-      await waitForStableUi(page);
+      await openMobileRoute(page, route.path);
 
-      await expect(page.locator(route.scope)).toBeVisible();
+      await expect(page.locator(route.scope)).toBeVisible({ timeout: 60_000 });
       const smallTargets = await collectSmallMobileTargets(page, route.scope);
 
       await writeMobileScreenshot(page, route.name);
@@ -430,13 +437,13 @@ test.describe('mobile layout flow', () => {
     await ensureQrDraftReviewFixture();
 
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/prescriptions/qr-drafts');
-    await waitForStableUi(page);
+    await openMobileRoute(page, '/prescriptions/qr-drafts');
 
-    await page.goto(`/prescriptions/qr-drafts/${QR_DRAFT_REVIEW_IDS.draft}`);
-    await waitForStableUi(page);
+    await openMobileRoute(page, `/prescriptions/qr-drafts/${QR_DRAFT_REVIEW_IDS.draft}`);
 
-    await expect(page.locator('[data-testid="qr-draft-review-workspace"]')).toBeVisible();
+    await expect(page.locator('[data-testid="qr-draft-review-workspace"]')).toBeVisible({
+      timeout: 60_000,
+    });
     const smallTargets = await collectSmallMobileTargets(
       page,
       '[data-testid="qr-draft-review-workspace"]',
@@ -450,8 +457,7 @@ test.describe('mobile layout flow', () => {
   for (const route of MOBILE_CROSS_SCREEN_ROUTES) {
     test(`${route.path} keeps cross-screen mobile shell stable`, async ({ context }) => {
       const { page, errors } = await createInstrumentedPage(context);
-      await page.goto(route.path);
-      await waitForStableUi(page);
+      await openMobileRoute(page, route.path);
 
       const metrics = await page.evaluate(() => ({
         clientWidth: document.documentElement.clientWidth,

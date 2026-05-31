@@ -5,6 +5,7 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
+import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import { success, validationError, notFound, forbiddenResponse } from '@/lib/api/response';
 import { upsertVisitPreparationSchema } from '@/lib/validations/visit-preparation';
 import {
@@ -33,6 +34,19 @@ type IntakeLineSummary = {
   start_date: Date | null;
   end_date: Date | null;
 };
+
+function isInputJsonObject(
+  value: Prisma.InputJsonValue | null | undefined,
+): value is Prisma.InputJsonObject {
+  return (
+    typeof value === 'object' && value !== null && !Array.isArray(value) && !('toJSON' in value)
+  );
+}
+
+function normalizeInputJsonObject(value: unknown): Prisma.InputJsonObject {
+  const normalized = normalizeJsonInput(value);
+  return isInputJsonObject(normalized) ? normalized : {};
+}
 
 type FacilityParallelSchedule = {
   id: string;
@@ -80,10 +94,6 @@ type ConferenceParticipantSummary = {
   role?: string | null;
 };
 
-type ConferenceActionItemSummary = {
-  title?: string | null;
-};
-
 type ConferenceSyncSummary = {
   billing_candidate_id?: string | null;
   visit_proposal_id?: string | null;
@@ -91,6 +101,15 @@ type ConferenceSyncSummary = {
   tasks_created?: number;
   medication_issues_created?: number;
 };
+
+const VISIT_PREPARATION_CONFERENCE_NOTE_TYPES = new Set(['pre_discharge', 'service_manager']);
+type VisitPreparationConferenceNoteType = 'pre_discharge' | 'service_manager';
+
+function isVisitPreparationConferenceNoteType(
+  value: string,
+): value is VisitPreparationConferenceNoteType {
+  return VISIT_PREPARATION_CONFERENCE_NOTE_TYPES.has(value);
+}
 
 function lineIdentity(line: IntakeLineSummary) {
   return line.drug_code?.trim() || line.drug_name.trim();
@@ -180,24 +199,33 @@ function buildPreparationTaskKey(scheduleId: string) {
 }
 
 function parseConferenceSections(value: Prisma.JsonValue | null): ConferenceSectionSummary[] {
-  if (!value || typeof value !== 'object' || Array.isArray(value) || !('sections' in value)) {
-    return [];
-  }
-
-  const sections = (value as { sections?: unknown }).sections;
+  const sections = readJsonObject(value)?.sections;
   if (!Array.isArray(sections)) return [];
-  return sections.filter(
-    (section): section is ConferenceSectionSummary =>
-      typeof section === 'object' && section !== null && 'key' in section,
-  );
+  return sections.flatMap((section): ConferenceSectionSummary[] => {
+    const record = readJsonObject(section);
+    if (!record || typeof record.key !== 'string') return [];
+    return [
+      {
+        key: record.key,
+        label: typeof record.label === 'string' ? record.label : undefined,
+        body: typeof record.body === 'string' ? record.body : undefined,
+      },
+    ];
+  });
 }
 
 function parseConferenceParticipants(value: Prisma.JsonValue): ConferenceParticipantSummary[] {
   if (!Array.isArray(value)) return [];
-  return value.filter(
-    (participant): participant is ConferenceParticipantSummary =>
-      typeof participant === 'object' && participant !== null,
-  );
+  return value.flatMap((participant): ConferenceParticipantSummary[] => {
+    const record = readJsonObject(participant);
+    if (!record) return [];
+    return [
+      {
+        name: typeof record.name === 'string' ? record.name : null,
+        role: typeof record.role === 'string' ? record.role : null,
+      },
+    ];
+  });
 }
 
 function parseConferenceActionItems(value: Prisma.JsonValue | null): string[] {
@@ -205,9 +233,8 @@ function parseConferenceActionItems(value: Prisma.JsonValue | null): string[] {
   return value
     .map((item) => {
       if (typeof item === 'string') return item.trim();
-      if (typeof item === 'object' && item !== null) {
-        return ((item as ConferenceActionItemSummary).title ?? '').trim();
-      }
+      const record = readJsonObject(item);
+      if (record) return typeof record.title === 'string' ? record.title.trim() : '';
       return '';
     })
     .filter((title) => title.length > 0);
@@ -222,14 +249,25 @@ function readConferenceSectionBody(sections: ConferenceSectionSummary[], keys: s
 }
 
 function parseConferenceSyncSummary(value: Prisma.JsonValue | null): ConferenceSyncSummary | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const sync = (value as { sync_summary?: unknown }).sync_summary;
-  if (!sync || typeof sync !== 'object' || Array.isArray(sync)) return null;
-  return sync as ConferenceSyncSummary;
+  const sync = readJsonObject(readJsonObject(value)?.sync_summary);
+  if (!sync) return null;
+  return {
+    billing_candidate_id:
+      typeof sync.billing_candidate_id === 'string' ? sync.billing_candidate_id : null,
+    visit_proposal_id: typeof sync.visit_proposal_id === 'string' ? sync.visit_proposal_id : null,
+    report_draft_ids: Array.isArray(sync.report_draft_ids)
+      ? sync.report_draft_ids.filter((id): id is string => typeof id === 'string')
+      : undefined,
+    tasks_created: typeof sync.tasks_created === 'number' ? sync.tasks_created : undefined,
+    medication_issues_created:
+      typeof sync.medication_issues_created === 'number'
+        ? sync.medication_issues_created
+        : undefined,
+  };
 }
 
 function buildConferenceHighlights(
-  noteType: 'pre_discharge' | 'service_manager',
+  noteType: VisitPreparationConferenceNoteType,
   sections: ConferenceSectionSummary[],
 ) {
   const keys =
@@ -823,8 +861,11 @@ export async function GET(
           }),
         }
       : null;
-  const conferenceContext = recentConferenceNotes.map((note) => {
-    const noteType = note.note_type as 'pre_discharge' | 'service_manager';
+  const conferenceContext = recentConferenceNotes.flatMap((note) => {
+    if (!isVisitPreparationConferenceNoteType(note.note_type)) {
+      return [];
+    }
+    const noteType = note.note_type;
     const sections = parseConferenceSections(note.structured_content);
     const actionItemsFromSections = readConferenceSectionBody(sections, [
       'agreed_actions',
@@ -1021,6 +1062,7 @@ export async function PUT(
     : Object.keys(parsed.data.checklist).length === 0
       ? buildChecklistFromTemplate()
       : parsed.data.checklist;
+  const normalizedChecklist = normalizeInputJsonObject(effectiveChecklist);
 
   const result = await withOrgContext(ctx.orgId, async (tx) => {
     const preparation = await tx.visitPreparation.upsert({
@@ -1030,7 +1072,7 @@ export async function PUT(
       create: {
         org_id: ctx.orgId,
         schedule_id: schedule.id,
-        checklist: effectiveChecklist as Prisma.InputJsonValue,
+        checklist: normalizedChecklist,
         medication_changes_reviewed: parsed.data.medication_changes_reviewed,
         carry_items_confirmed: parsed.data.carry_items_confirmed,
         previous_issues_reviewed: parsed.data.previous_issues_reviewed,
@@ -1040,7 +1082,7 @@ export async function PUT(
         prepared_at: allChecklistComplete ? new Date() : null,
       },
       update: {
-        checklist: effectiveChecklist as Prisma.InputJsonValue,
+        checklist: normalizedChecklist,
         medication_changes_reviewed: parsed.data.medication_changes_reviewed,
         carry_items_confirmed: parsed.data.carry_items_confirmed,
         previous_issues_reviewed: parsed.data.previous_issues_reviewed,

@@ -60,7 +60,7 @@ describe('withOrgContext', () => {
       ).rejects.toThrow('Invalid orgId format');
     });
 
-    it('throws for uuid-style id (not cuid)', async () => {
+    it('throws for uuid-style id that starts with a digit', async () => {
       await expect(
         withOrgContext('550e8400-e29b-41d4-a716-446655440000', async () => null)
       ).rejects.toThrow('Invalid orgId format');
@@ -72,9 +72,15 @@ describe('withOrgContext', () => {
       ).rejects.toThrow('Invalid orgId format');
     });
 
-    it('throws for id that is too short', async () => {
+    it('throws for id with unsupported punctuation', async () => {
       await expect(
-        withOrgContext('cshort', async () => null)
+        withOrgContext('org.example', async () => null)
+      ).rejects.toThrow('Invalid orgId format');
+    });
+
+    it('throws for id that exceeds the safe app id length', async () => {
+      await expect(
+        withOrgContext(`org_${'a'.repeat(70)}`, async () => null)
       ).rejects.toThrow('Invalid orgId format');
     });
 
@@ -82,6 +88,18 @@ describe('withOrgContext', () => {
       const validCuid = 'clh4dz2xq0000qzrm8n9j3k1p';
       await expect(
         withOrgContext(validCuid, async () => 'ok')
+      ).resolves.toBe('ok');
+    });
+
+    it('accepts the local seed org id format', async () => {
+      await expect(
+        withOrgContext('cmnhseedorg0000amq9ph-os', async () => 'ok')
+      ).resolves.toBe('ok');
+    });
+
+    it('accepts audit verifier ids with underscores', async () => {
+      await expect(
+        withOrgContext('audit_verify_org_1780141107010', async () => 'ok')
       ).resolves.toBe('ok');
     });
   });

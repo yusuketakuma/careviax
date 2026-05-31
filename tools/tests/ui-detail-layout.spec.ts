@@ -1,6 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
 import { Client } from 'pg';
-import { attachLocalSession, createInstrumentedPage, waitForStableUi } from './helpers/local-auth';
+import {
+  attachLocalSession,
+  createInstrumentedPage,
+  openStableRoute,
+  reloadStablePage,
+} from './helpers/local-auth';
 
 const DB_CONNECTION_STRING = (
   process.env.DATABASE_URL ??
@@ -34,20 +39,100 @@ function assertSafeE2eDatabase() {
   }
 }
 
-test.setTimeout(90_000);
+test.setTimeout(180_000);
+
+function jsonb(value: unknown) {
+  return JSON.stringify(value);
+}
 
 async function openFirstPatientDetail(page: Page) {
-  await page.goto('/patients');
-  await waitForStableUi(page);
+  await openStableRoute(page, '/patients');
   const firstLink = page
     .locator('a[href^="/patients/"]:not([href="/patients/new"])')
     .filter({ visible: true })
     .first();
-  await expect(firstLink).toBeVisible();
+  await expect(firstLink).toBeVisible({ timeout: 30_000 });
   const href = await firstLink.getAttribute('href');
   expect(href).toBeTruthy();
-  await page.goto(href!);
-  await waitForStableUi(page);
+  await openStableRoute(page, href!);
+
+  const tablist = page.getByTestId('patient-detail-tablist');
+  const loading = page.locator('main').getByText('読み込み中...');
+  if (await tablist.isVisible({ timeout: 60_000 }).catch(() => false)) {
+    return;
+  }
+
+  if (await loading.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await reloadStablePage(page);
+  }
+
+  await expect(tablist).toBeVisible({ timeout: 60_000 });
+}
+
+async function openVisitDetailPage(page: Page, visitRecordId: string) {
+  await openStableRoute(page, `/visits/${visitRecordId}`);
+
+  const main = page.locator('main');
+  const detailReady = main.getByRole('link', { name: '訪問記録 PDF を開く' });
+  const loading = main.getByText('読み込み中...');
+
+  if (await detailReady.isVisible({ timeout: 30_000 }).catch(() => false)) {
+    await expect(loading).toBeHidden({ timeout: 30_000 });
+    return;
+  }
+
+  if (await loading.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await reloadStablePage(page);
+  }
+
+  await expect(detailReady).toBeVisible({ timeout: 30_000 });
+  await expect(loading).toBeHidden({ timeout: 30_000 });
+}
+
+async function openReportDetailPage(page: Page, reportId: string) {
+  const main = page.locator('main');
+  const reportReady = main.getByRole('heading', { name: /主治医|報告書/ }).first();
+  const loading = main.getByText('読み込み中...');
+  const reportApiPath = `/api/care-reports/${reportId}`;
+
+  await openStableRoute(page, '/dashboard');
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const reportResponsePromise = page
+      .waitForResponse(
+        (response) => {
+          const url = new URL(response.url());
+          return url.pathname === reportApiPath && response.request().method() === 'GET';
+        },
+        { timeout: 60_000 },
+      )
+      .catch(() => null);
+
+    if (attempt === 0) {
+      await openStableRoute(page, `/reports/${reportId}`);
+    } else {
+      await reloadStablePage(page);
+    }
+
+    const reportResponse = await reportResponsePromise;
+    if (reportResponse && !reportResponse.ok()) {
+      throw new Error(
+        `Care report detail API failed: ${reportResponse.status()} ${reportResponse.url()}`,
+      );
+    }
+
+    if (await reportReady.isVisible({ timeout: 30_000 }).catch(() => false)) {
+      await expect(loading).toBeHidden({ timeout: 30_000 });
+      return;
+    }
+
+    if (!(await loading.isVisible({ timeout: 1_000 }).catch(() => false))) {
+      break;
+    }
+  }
+
+  await expect(reportReady).toBeVisible({ timeout: 60_000 });
+  await expect(loading).toBeHidden({ timeout: 30_000 });
 }
 
 async function ensureVisitWorkflowFixture() {
@@ -108,7 +193,7 @@ async function ensureVisitWorkflowFixture() {
         base.org_id,
         VISIT_WORKFLOW_IDS.patient,
         base.user_id,
-        JSON.stringify({
+        jsonb({
           initial_transition_management_expected: true,
           medication_support_methods: ['calendar'],
         }),
@@ -213,7 +298,7 @@ async function ensureVisitWorkflowFixture() {
         '残薬は夕食後薬が3包。血圧 128/76 mmHg。',
         '服薬カレンダーで改善傾向。退院前カンファの合意事項を継続確認する。',
         'ケアマネへ共有し、次回訪問で残薬と副作用を再確認する。',
-        JSON.stringify({
+        jsonb({
           subjective: {
             symptom_checks: ['服薬継続'],
             free_text: '退院後の服薬は継続できているが、夕食後薬で飲み忘れがある。',
@@ -276,7 +361,7 @@ async function ensureVisitWorkflowFixture() {
         VISIT_WORKFLOW_IDS.visitRecord,
         VISIT_WORKFLOW_IDS.patient,
         VISIT_WORKFLOW_IDS.caseId,
-        JSON.stringify({
+        jsonb({
           title: '訪問後WF E2E 主治医報告',
           body: '退院後の服薬支援と残薬確認を継続しています。',
         }),
@@ -307,7 +392,7 @@ async function ensureVisitWorkflowFixture() {
         base.org_id,
         VISIT_WORKFLOW_IDS.patient,
         `visit-detail-workflow:${VISIT_WORKFLOW_IDS.visitRecord}:2026-04`,
-        JSON.stringify({ visit_record_id: VISIT_WORKFLOW_IDS.visitRecord }),
+        jsonb({ visit_record_id: VISIT_WORKFLOW_IDS.visitRecord }),
       ],
     );
 
@@ -339,20 +424,20 @@ async function ensureVisitWorkflowFixture() {
         base.org_id,
         VISIT_WORKFLOW_IDS.caseId,
         VISIT_WORKFLOW_IDS.patient,
-        JSON.stringify({
+        jsonb({
           sections: [
             { key: 'discharge_plan', title: '退院予定', body: '4/25 退院後すぐに服薬確認' },
             { key: 'agreed_actions', title: '合意事項', body: '残薬をケアマネへ共有' },
           ],
         }),
-        JSON.stringify({
+        jsonb({
           sync_summary: {
             billing_candidate_id: VISIT_WORKFLOW_IDS.billingCandidate,
             report_draft_ids: [VISIT_WORKFLOW_IDS.careReport],
           },
         }),
-        JSON.stringify([{ name: '青山 E2E ケアマネ', role: 'care_manager' }]),
-        JSON.stringify([{ title: '残薬をケアマネへ共有' }]),
+        jsonb([{ name: '青山 E2E ケアマネ', role: 'care_manager' }]),
+        jsonb([{ title: '残薬をケアマネへ共有' }]),
       ],
     );
 
@@ -386,11 +471,12 @@ test.describe('detail page layout', () => {
   test('visit detail keeps grouped layout and action cluster visible', async ({ context }) => {
     const ids = await ensureVisitWorkflowFixture();
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto(`/visits/${ids.visitRecord}`);
-    await waitForStableUi(page);
+    await openVisitDetailPage(page, ids.visitRecord);
 
     await expect(page.getByTestId('page-scaffold')).toBeVisible();
-    await expect(page.getByRole('link', { name: '訪問記録 PDF を開く' })).toBeVisible();
+    await expect(page.getByRole('link', { name: '訪問記録 PDF を開く' })).toBeVisible({
+      timeout: 30_000,
+    });
     await expect(page.getByRole('button', { name: /報告書生成|生成中/ })).toBeVisible();
 
     const metrics = await page.evaluate(() => ({
@@ -409,8 +495,7 @@ test.describe('detail page layout', () => {
     await attachLocalSession(context);
     const { page, errors } = await createInstrumentedPage(context);
 
-    await page.goto(`/visits/${ids.visitRecord}`);
-    await waitForStableUi(page);
+    await openVisitDetailPage(page, ids.visitRecord);
 
     const main = page.locator('main');
     await expect(main.getByRole('link', { name: '訪問記録 PDF を開く' })).toBeVisible({
@@ -456,13 +541,10 @@ test.describe('detail page layout', () => {
     await attachLocalSession(context);
     const { page, errors } = await createInstrumentedPage(context);
 
-    await page.goto(`/reports/${ids.careReport}`);
-    await waitForStableUi(page);
+    await openReportDetailPage(page, ids.careReport);
 
     const main = page.locator('main');
-    await expect(main.getByRole('heading', { name: /主治医|報告書/ }).first()).toBeVisible({
-      timeout: 30_000,
-    });
+    await expect(main.getByRole('heading', { name: /主治医|報告書/ }).first()).toBeVisible();
     const reportBodyTitle = main.getByText('訪問後WF E2E 主治医報告');
     await reportBodyTitle.scrollIntoViewIfNeeded();
     await expect(reportBodyTitle).toBeVisible();

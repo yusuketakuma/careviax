@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { withAuthMock, buildSnapshotMock } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
@@ -7,11 +7,12 @@ const { withAuthMock, buildSnapshotMock } = vi.hoisted(() => ({
       handler: (req: NextRequest & { orgId: string; userId: string }) => Promise<Response>,
     ) => {
       return (req: NextRequest) =>
-        handler({
-          ...req,
-          orgId: 'org_1',
-          userId: 'user_1',
-        } as NextRequest & { orgId: string; userId: string });
+        handler(
+          Object.assign(req, {
+            orgId: 'org_1',
+            userId: 'user_1',
+          }),
+        );
     },
   ),
   buildSnapshotMock: vi.fn(),
@@ -31,6 +32,10 @@ vi.mock('@/server/services/admin-master-readiness', () => ({
 
 import { GET } from './route';
 
+function createRequest() {
+  return new NextRequest('http://localhost/api/admin/master-readiness');
+}
+
 describe('/api/admin/master-readiness GET', () => {
   beforeEach(() => {
     buildSnapshotMock.mockClear();
@@ -42,7 +47,7 @@ describe('/api/admin/master-readiness GET', () => {
   });
 
   it('returns the admin master readiness snapshot', async () => {
-    const response = await GET({} as NextRequest);
+    const response = await GET(createRequest());
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);

@@ -1,6 +1,7 @@
 import { addDays, subDays } from 'date-fns';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import {
   PrescriberInstitutionReferenceValidationError,
   resolvePrescriberInstitutionFields,
@@ -96,6 +97,22 @@ type UpdatedCycle = {
   patient_id: string;
   case_id: string | null;
 };
+type Tx = {
+  careCase: Pick<Prisma.TransactionClient['careCase'], 'findFirst'>;
+  communicationEvent: Pick<Prisma.TransactionClient['communicationEvent'], 'create'>;
+  communicationRequest: Pick<Prisma.TransactionClient['communicationRequest'], 'create'>;
+  cycleTransitionLog: Pick<Prisma.TransactionClient['cycleTransitionLog'], 'create'>;
+  dispenseTask: Pick<Prisma.TransactionClient['dispenseTask'], 'create' | 'findFirst'>;
+  inquiryRecord: Pick<Prisma.TransactionClient['inquiryRecord'], 'count' | 'create'>;
+  medicationCycle: Pick<
+    Prisma.TransactionClient['medicationCycle'],
+    'create' | 'findFirst' | 'updateMany'
+  >;
+  prescriberInstitution: Pick<Prisma.TransactionClient['prescriberInstitution'], 'findFirst'>;
+  prescriptionIntake: Pick<Prisma.TransactionClient['prescriptionIntake'], 'create'>;
+  task: Pick<Prisma.TransactionClient['task'], 'create' | 'updateMany' | 'upsert'>;
+  workflowException: Pick<Prisma.TransactionClient['workflowException'], 'create' | 'findFirst'>;
+};
 
 // Discriminated union for results returned from within the transaction
 type TransactionResult =
@@ -178,7 +195,7 @@ type LoadedCycleContext = {
 };
 
 async function loadCycleContext(
-  tx: Prisma.TransactionClient,
+  tx: Tx,
   args: {
     orgId: string;
     cycleId?: string;
@@ -295,7 +312,7 @@ async function loadCycleContext(
 }
 
 async function createInquiryArtifactsTx(
-  tx: Prisma.TransactionClient,
+  tx: Tx,
   args: {
     orgId: string;
     userId: string;
@@ -332,12 +349,12 @@ async function createInquiryArtifactsTx(
       recipient_role: 'physician',
       related_entity_type: 'inquiry_record',
       related_entity_id: inquiry.id,
-      context_snapshot: {
+      context_snapshot: toPrismaJsonInput({
         cycle_id: args.cycle.id,
         issue_id: null,
         line_id: null,
         reason: args.inquiry.reason,
-      } as Prisma.InputJsonValue,
+      }),
       status: 'sent',
       subject: `疑義照会: ${args.inquiry.reason}`,
       content: args.inquiry.inquiry_content,
@@ -383,7 +400,7 @@ async function createInquiryArtifactsTx(
 }
 
 async function ensureFaxOriginalFollowupTaskTx(
-  tx: Prisma.TransactionClient,
+  tx: Tx,
   args: {
     orgId: string;
     intakeId: string;
@@ -419,7 +436,7 @@ async function ensureFaxOriginalFollowupTaskTx(
 // 処方登録完了後、createDispenseDraft() 経由で DispenseTask を自動生成する。
 
 export async function createPrescriptionIntakeInTx(
-  tx: Prisma.TransactionClient,
+  tx: Tx,
   input: CreateIntakeInput,
   orgId: string,
   userId: string,

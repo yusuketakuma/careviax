@@ -40,21 +40,31 @@ function isProductionLikeRuntime() {
 }
 
 function parseSecretString(raw: string) {
+  const trimmed = raw.trim();
+
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (typeof parsed === 'string') return parsed;
-    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-      const secret = (parsed as Partial<Record<string, unknown>>).COLLABORATION_ROOM_TOKEN_SECRET;
+
+    const record = readObject(parsed);
+    if (record) {
+      const secret = record.COLLABORATION_ROOM_TOKEN_SECRET;
       if (typeof secret === 'string') return secret;
       return null;
     }
-    if (Array.isArray(parsed)) return null;
+
+    return null;
   } catch {
-    if (raw.trim().startsWith('{') || raw.trim().startsWith('[')) return null;
+    if (trimmed.startsWith('{') || trimmed.startsWith('[') || trimmed.startsWith('"')) return null;
     // SecretString may be the raw signing secret rather than a JSON object.
   }
 
   return raw;
+}
+
+function readObject(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
 }
 
 function isStrongSecret(secret: string) {

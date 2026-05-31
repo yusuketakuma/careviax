@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { prisma } from '@/lib/db/client';
+import { readJsonObject } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import {
   buildMcsTimelinePayload,
@@ -22,8 +23,7 @@ const MCS_HOST = 'www.medical-care.net';
 const DEFAULT_CDP_TARGET = '18800';
 const DEFAULT_MAX_MESSAGES = 50;
 const TOKYO_OFFSET_MS = 9 * 60 * 60 * 1000;
-const MCS_BROWSER_SYNC_DISABLED_MESSAGE =
-  'MCS 同期はローカル端末の開発環境でのみ有効です。';
+const MCS_BROWSER_SYNC_DISABLED_MESSAGE = 'MCS 同期はローカル端末の開発環境でのみ有効です。';
 const MCS_BROWSER_CONNECT_ERROR_MESSAGE =
   'MCS 連携用ブラウザに接続できません。ローカル端末で MCS にログインした Chrome を開いてから再試行してください。';
 const MCS_BROWSER_SCRAPE_ERROR_MESSAGE =
@@ -135,7 +135,7 @@ type PreparedPatientMcsMessage = PatientMcsSummaryMessage & {
 export class PatientMcsSyncError extends Error {
   constructor(
     message: string,
-    readonly kind: PatientMcsSyncErrorKind = 'external'
+    readonly kind: PatientMcsSyncErrorKind = 'external',
   ) {
     super(message);
     this.name = 'PatientMcsSyncError';
@@ -181,9 +181,7 @@ export function sanitizePatientMcsExternalErrorMessage(message: string | null | 
     return MCS_BROWSER_SYNC_DISABLED_MESSAGE;
   }
 
-  if (
-    /agent-browser|chrome|browser|cdp|econnrefused|spawn|enoent|connect/i.test(normalized)
-  ) {
+  if (/agent-browser|chrome|browser|cdp|econnrefused|spawn|enoent|connect/i.test(normalized)) {
     return MCS_BROWSER_CONNECT_ERROR_MESSAGE;
   }
 
@@ -200,7 +198,7 @@ function toPatientMcsSyncError(error: unknown) {
   }
 
   return externalFailure(
-    sanitizePatientMcsExternalErrorMessage(error instanceof Error ? error.message : null)
+    sanitizePatientMcsExternalErrorMessage(error instanceof Error ? error.message : null),
   );
 }
 
@@ -265,19 +263,39 @@ async function openUrl(url: string) {
   return extractUrlFromAgentBrowserOutput(output) ?? getCurrentUrl();
 }
 
-async function evaluateJson<T>(script: string): Promise<T> {
-  const output = await runAgentBrowser(['eval', script]);
-  const decoded = JSON.parse(output) as string;
-  return JSON.parse(decoded) as T;
+export function parseAgentBrowserEvalJson<T extends Record<string, unknown>>(output: string): T {
+  let encodedPayload: unknown;
+  try {
+    encodedPayload = JSON.parse(output) as unknown;
+  } catch {
+    throw externalFailure(MCS_BROWSER_SCRAPE_ERROR_MESSAGE);
+  }
+
+  if (typeof encodedPayload !== 'string') {
+    throw externalFailure(MCS_BROWSER_SCRAPE_ERROR_MESSAGE);
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(encodedPayload) as unknown;
+  } catch {
+    throw externalFailure(MCS_BROWSER_SCRAPE_ERROR_MESSAGE);
+  }
+
+  const object = readJsonObject(payload);
+  if (!object) {
+    throw externalFailure(MCS_BROWSER_SCRAPE_ERROR_MESSAGE);
+  }
+
+  return object as T;
 }
 
-function createTokyoDate(
-  year: number,
-  month: number,
-  day: number,
-  hour = 0,
-  minute = 0
-) {
+async function evaluateJson<T extends Record<string, unknown>>(script: string): Promise<T> {
+  const output = await runAgentBrowser(['eval', script]);
+  return parseAgentBrowserEvalJson<T>(output);
+}
+
+function createTokyoDate(year: number, month: number, day: number, hour = 0, minute = 0) {
   return new Date(Date.UTC(year, month - 1, day, hour, minute) - TOKYO_OFFSET_MS);
 }
 
@@ -353,7 +371,7 @@ export function parseMcsPostedAtLabel(label: string | null | undefined, now = ne
       Number(monthRaw),
       Number(dayRaw),
       Number(hourRaw),
-      Number(minuteRaw)
+      Number(minuteRaw),
     );
 
     if (parsed.getTime() - now.getTime() > 1000 * 60 * 60 * 24 * 30) {
@@ -362,7 +380,7 @@ export function parseMcsPostedAtLabel(label: string | null | undefined, now = ne
         Number(monthRaw),
         Number(dayRaw),
         Number(hourRaw),
-        Number(minuteRaw)
+        Number(minuteRaw),
       );
     }
 
@@ -384,7 +402,13 @@ export function parseMcsPostedAtLabel(label: string | null | undefined, now = ne
   const timeOnlyMatch = normalized.match(/^(\d{1,2}):(\d{2})$/);
   if (timeOnlyMatch) {
     const [, hourRaw, minuteRaw] = timeOnlyMatch;
-    let parsed = createTokyoDate(today.year, today.month, today.day, Number(hourRaw), Number(minuteRaw));
+    let parsed = createTokyoDate(
+      today.year,
+      today.month,
+      today.day,
+      Number(hourRaw),
+      Number(minuteRaw),
+    );
 
     if (parsed.getTime() - now.getTime() > 1000 * 60 * 60 * 12) {
       parsed = new Date(parsed.getTime() - 1000 * 60 * 60 * 24);
@@ -421,7 +445,7 @@ export function extractPatientNameFromProjectTitle(projectTitle: string | null |
 
 export function matchesPatientIdentity(
   patient: Pick<PatientIdentityRecord, 'name' | 'name_kana'>,
-  candidates: Array<string | null | undefined>
+  candidates: Array<string | null | undefined>,
 ) {
   const localCandidates = [patient.name, patient.name_kana]
     .map((value) => normalizePatientIdentityText(value))
@@ -436,13 +460,13 @@ export function matchesPatientIdentity(
   }
 
   return localCandidates.some((localCandidate) =>
-    remoteCandidates.some((remoteCandidate) => localCandidate === remoteCandidate)
+    remoteCandidates.some((remoteCandidate) => localCandidate === remoteCandidate),
   );
 }
 
 function assertPatientIdentityMatches(
   patient: PatientIdentityRecord,
-  scraped: ScrapedMcsTimelineWithContext
+  scraped: ScrapedMcsTimelineWithContext,
 ) {
   const mcsCandidateLabels = [
     scraped.mcsPatientName,
@@ -451,20 +475,22 @@ function assertPatientIdentityMatches(
 
   if (mcsCandidateLabels.length === 0) {
     throw conflictFailure(
-      `MCS 上の患者名を確認できませんでした。対象患者「${patient.name}」に紐づく URL か確認してください`
+      `MCS 上の患者名を確認できませんでした。対象患者「${patient.name}」に紐づく URL か確認してください`,
     );
   }
 
   if (!matchesPatientIdentity(patient, mcsCandidateLabels)) {
     throw conflictFailure(
-      `MCS の患者名「${mcsCandidateLabels[0]}」が対象患者「${patient.name}」と一致しません`
+      `MCS の患者名「${mcsCandidateLabels[0]}」が対象患者「${patient.name}」と一致しません`,
     );
   }
 }
 
 function assertAuthenticatedMcsUrl(currentUrl: string) {
   if (currentUrl.includes('/authentication/login')) {
-    throw externalFailure('Medical Care Station にログイン済みの Chrome セッションが見つかりません');
+    throw externalFailure(
+      'Medical Care Station にログイン済みの Chrome セッションが見つかりません',
+    );
   }
 }
 
@@ -517,7 +543,7 @@ async function activateMedicalTimelineFromPatientPage() {
         currentUrl: location.href,
         patientName,
       });
-    })()`
+    })()`,
   );
 }
 
@@ -572,7 +598,10 @@ async function ensureMedicalProjectUrl(sourceUrl: string): Promise<ResolvedMcsPr
   };
 }
 
-function buildTimelineScrapeScript(args: ScrapedMcsTimelineArgs, maxMessages = DEFAULT_MAX_MESSAGES) {
+function buildTimelineScrapeScript(
+  args: ScrapedMcsTimelineArgs,
+  maxMessages = DEFAULT_MAX_MESSAGES,
+) {
   return `(async () => {
     const selectors = ${JSON.stringify(MCS_TIMELINE_SELECTORS)};
     const args = ${JSON.stringify(args)};
@@ -795,10 +824,7 @@ export async function syncPatientMcsTimeline({
         },
       });
 
-      if (
-        existingLink?.mcs_project_id &&
-        existingLink.mcs_project_id !== scraped.mcsProjectId
-      ) {
+      if (existingLink?.mcs_project_id && existingLink.mcs_project_id !== scraped.mcsProjectId) {
         await tx.patientMcsMessage.deleteMany({
           where: { link_id: link.id },
         });
@@ -845,8 +871,8 @@ export async function syncPatientMcsTimeline({
                 ...buildMessageFields(message),
               },
               update: buildMessageFields(message),
-            })
-          )
+            }),
+          ),
         );
       }
 
@@ -890,10 +916,11 @@ export async function syncPatientMcsTimeline({
         link,
         summary: savedSummary,
         importedCount: preparedMessages.length,
-        latestMessageAt: preparedMessages
-          .map((message) => message.postedAt)
-          .filter((value): value is Date => value instanceof Date)
-          .sort((left, right) => right.getTime() - left.getTime())[0] ?? null,
+        latestMessageAt:
+          preparedMessages
+            .map((message) => message.postedAt)
+            .filter((value): value is Date => value instanceof Date)
+            .sort((left, right) => right.getTime() - left.getTime())[0] ?? null,
       };
     });
 

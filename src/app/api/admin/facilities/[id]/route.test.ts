@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   facilityFindFirstMock,
@@ -43,10 +43,17 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { DELETE, GET, PATCH } from './route';
 
-function createRequest(body?: unknown) {
-  return {
-    json: async () => body,
-  } as unknown as NextRequest;
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
+function createRequest(method: 'DELETE' | 'GET' | 'PATCH', body?: unknown) {
+  const init: NextRequestInit = {
+    method,
+    headers: { 'content-type': 'application/json' },
+  };
+  if (body !== undefined) {
+    init.body = JSON.stringify(body);
+  }
+  return new NextRequest('http://localhost/api/admin/facilities/facility_1', init);
 }
 
 describe('/api/admin/facilities/[id]', () => {
@@ -99,7 +106,7 @@ describe('/api/admin/facilities/[id]', () => {
 
   it('updates a facility and replaces nested contacts', async () => {
     const response = await PATCH(
-      createRequest({
+      createRequest('PATCH', {
         name: 'あおば苑',
         facility_type: 'group_home',
         address: '東京都千代田区1-1-1',
@@ -176,7 +183,7 @@ describe('/api/admin/facilities/[id]', () => {
       ],
     });
 
-    const response = await GET(createRequest(), {
+    const response = await GET(createRequest('GET'), {
       params: Promise.resolve({ id: 'facility_1' }),
     });
 
@@ -201,7 +208,7 @@ describe('/api/admin/facilities/[id]', () => {
   });
 
   it('deletes a facility', async () => {
-    const response = await DELETE(createRequest(), {
+    const response = await DELETE(createRequest('DELETE'), {
       params: Promise.resolve({ id: 'facility_1' }),
     });
 
@@ -215,7 +222,7 @@ describe('/api/admin/facilities/[id]', () => {
   it('returns conflict when the facility is referenced by a residence', async () => {
     residenceFindFirstMock.mockResolvedValue({ id: 'residence_1' });
 
-    const response = await DELETE(createRequest(), {
+    const response = await DELETE(createRequest('DELETE'), {
       params: Promise.resolve({ id: 'facility_1' }),
     });
 

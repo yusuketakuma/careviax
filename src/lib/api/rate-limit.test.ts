@@ -96,6 +96,10 @@ describe('rate-limit', () => {
     expect([...API_ROUTE_TEMPLATES].sort()).toEqual(routeTemplates);
   });
 
+  it('keeps the rate-limit route template catalog unique', () => {
+    expect(new Set(API_ROUTE_TEMPLATES).size).toBe(API_ROUTE_TEMPLATES.length);
+  });
+
   it('keeps the DynamoDB table/IAM infrastructure contract aligned with the rate limiter', () => {
     const artifact = JSON.parse(
       readFileSync(join(process.cwd(), 'tools', 'infra', 'rate-limit-dynamodb.json'), 'utf8'),
@@ -134,7 +138,9 @@ describe('rate-limit', () => {
     expect(rateLimitStatement.resources).toEqual([
       'arn:aws:dynamodb:${AWS_REGION}:${AWS_ACCOUNT_ID}:table/${RATE_LIMIT_DDB_TABLE_NAME}',
     ]);
-    expect(artifact.deploymentVerifierPolicy.statements.flatMap((statement) => statement.actions)).toEqual(
+    expect(
+      artifact.deploymentVerifierPolicy.statements.flatMap((statement) => statement.actions),
+    ).toEqual(
       expect.arrayContaining([
         'dynamodb:DescribeTable',
         'dynamodb:DescribeTimeToLive',
@@ -169,9 +175,9 @@ describe('rate-limit', () => {
     expect(canonicalizeRateLimitPath('/api/patients/patient_2/timeline')).toBe(
       '/api/patients/:id/timeline',
     );
-    expect(
-      canonicalizeRateLimitPath('/api/patients/patient_1/insurance/insurance_1'),
-    ).toBe('/api/patients/:id/insurance/:id');
+    expect(canonicalizeRateLimitPath('/api/patients/patient_1/insurance/insurance_1')).toBe(
+      '/api/patients/:id/insurance/:id',
+    );
     expect(canonicalizeRateLimitPath('/api/visit-schedules/schedule_1/reschedule')).toBe(
       '/api/visit-schedules/:id/reschedule',
     );
@@ -182,6 +188,27 @@ describe('rate-limit', () => {
     expect(canonicalizeRateLimitPath('/api/patients/medications/bulk-export')).toBe(
       '/api/patients/medications/bulk-export',
     );
+    expect(canonicalizeRateLimitPath('/api/drug-masters/batch')).toBe('/api/drug-masters/batch');
+    expect(canonicalizeRateLimitPath('/api/pharmacy-drug-stocks/impact')).toBe(
+      '/api/pharmacy-drug-stocks/impact',
+    );
+    expect(canonicalizeRateLimitPath('/api/pharmacy-drug-stocks/safety-follow-up')).toBe(
+      '/api/pharmacy-drug-stocks/safety-follow-up',
+    );
+    expect(canonicalizeRateLimitPath('/api/pharmacy-drug-stock-templates/template_1/apply')).toBe(
+      '/api/pharmacy-drug-stock-templates/:id/apply',
+    );
+    expect(canonicalizeRateLimitPath('/api/drug-masters/drug_1/generic-recommendations')).toBe(
+      '/api/drug-masters/:id/generic-recommendations',
+    );
+    expect(canonicalizeRateLimitPath('/api/drug-masters/drug_1/ingredient-group')).toBe(
+      '/api/drug-masters/:id/ingredient-group',
+    );
+  });
+
+  it('requires at least one segment for catch-all API route templates', () => {
+    expect(canonicalizeRateLimitPath('/api/auth/callback/credentials')).toBe('/api/auth/:path*');
+    expect(canonicalizeRateLimitPath('/api/auth')).toBe('/api/__unknown__');
   });
 
   it('canonicalizes path variants and unknown API paths to bounded buckets', () => {
@@ -230,11 +257,7 @@ describe('rate-limit', () => {
     }
 
     await expect(
-      checkRateLimit(
-        '203.0.113.10',
-        '/api/patients/patient_1/insurance/insurance_final',
-        'PATCH',
-      ),
+      checkRateLimit('203.0.113.10', '/api/patients/patient_1/insurance/insurance_final', 'PATCH'),
     ).resolves.toMatchObject({
       allowed: false,
       reason: 'quota_exceeded',
@@ -400,6 +423,62 @@ describe('rate-limit', () => {
     expect(headers.Authorization).not.toContain('Credential=AKIA_STATIC/');
   });
 
+  it('fails closed in production when container credentials have malformed fields', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    process.env.RATE_LIMIT_STORE = 'dynamodb';
+    process.env.RATE_LIMIT_DDB_TABLE_NAME = 'ph-os-rate-limit';
+    process.env.RATE_LIMIT_DDB_REGION = 'ap-northeast-1';
+    process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI = '/v2/credentials/rate-limit-role';
+    resetRateLimitStoreForTests();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          AccessKeyId: 'ASIAROLE',
+          SecretAccessKey: 123,
+          Token: 'role-session-token',
+          Expiration: '2026-03-28T00:10:00.000Z',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    await expect(checkRateLimit('user:1', '/api/patients', 'POST')).resolves.toMatchObject({
+      allowed: false,
+      remaining: 0,
+      reason: 'store_unavailable',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed in production when DynamoDB returns malformed counters', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    process.env.RATE_LIMIT_STORE = 'dynamodb';
+    process.env.RATE_LIMIT_DDB_TABLE_NAME = 'ph-os-rate-limit';
+    process.env.RATE_LIMIT_DDB_REGION = 'ap-northeast-1';
+    process.env.AWS_ACCESS_KEY_ID = 'AKIA_TEST';
+    process.env.AWS_SECRET_ACCESS_KEY = 'secret-test-key';
+    resetRateLimitStoreForTests();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          Attributes: {
+            hit_count: { N: 'not-a-number' },
+            reset_at: { N: '1710000000000' },
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    await expect(checkRateLimit('user:1', '/api/patients', 'POST')).resolves.toMatchObject({
+      allowed: false,
+      remaining: 0,
+      reason: 'store_unavailable',
+    });
+  });
+
   it('does not use arbitrary full credential URLs for the DynamoDB rate-limit store', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     process.env.RATE_LIMIT_STORE = 'dynamodb';
@@ -469,9 +548,7 @@ describe('rate-limit', () => {
       ),
     );
 
-    await expect(
-      checkRateLimit('user:1', '/api/not-real-123?x=1', 'POST'),
-    ).resolves.toMatchObject({
+    await expect(checkRateLimit('user:1', '/api/not-real-123?x=1', 'POST')).resolves.toMatchObject({
       allowed: true,
     });
 
@@ -544,7 +621,9 @@ describe('rate-limit', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'));
 
-    await expect(checkAuthRateLimit('ip:203.0.113.10', '/api/auth/callback/credentials')).resolves.toMatchObject({
+    await expect(
+      checkAuthRateLimit('ip:203.0.113.10', '/api/auth/callback/credentials'),
+    ).resolves.toMatchObject({
       allowed: false,
       remaining: 0,
       reason: 'store_misconfigured',

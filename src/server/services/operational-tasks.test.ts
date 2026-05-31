@@ -6,7 +6,6 @@ const { taskUpsertMock, taskCreateMock, taskUpdateManyMock } = vi.hoisted(() => 
   taskUpdateManyMock: vi.fn(),
 }));
 
-import { Prisma } from '@prisma/client';
 import {
   upsertOperationalTask,
   resolveOperationalTasks,
@@ -19,7 +18,7 @@ const tx = {
     create: taskCreateMock,
     updateMany: taskUpdateManyMock,
   },
-} as unknown as Prisma.TransactionClient;
+};
 
 describe('upsertOperationalTask', () => {
   beforeEach(() => {

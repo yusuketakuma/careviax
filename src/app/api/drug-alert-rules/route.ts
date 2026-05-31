@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 
 const alertTypeSchema = z.enum([
@@ -32,12 +32,18 @@ export async function GET(req: NextRequest) {
   const { ctx } = authResult;
 
   const { searchParams } = new URL(req.url);
-  const alertType = searchParams.get('alert_type');
+  const alertTypeParam = searchParams.get('alert_type');
+  const alertType = alertTypeParam ? alertTypeSchema.safeParse(alertTypeParam) : null;
+  if (alertType && !alertType.success) {
+    return validationError('アラート種別が不正です', {
+      alert_type: ['対応していないアラート種別です'],
+    });
+  }
 
   const rules = await withOrgContext(ctx.orgId, (tx) =>
     tx.drugAlertRule.findMany({
       where: {
-        ...(alertType ? { alert_type: alertType as z.infer<typeof alertTypeSchema> } : {}),
+        ...(alertType ? { alert_type: alertType.data } : {}),
       },
       orderBy: [{ alert_type: 'asc' }, { updated_at: 'desc' }],
     })
@@ -63,7 +69,7 @@ export async function POST(req: NextRequest) {
     tx.drugAlertRule.create({
       data: {
         alert_type: parsed.data.alert_type,
-        condition: parsed.data.condition as Prisma.InputJsonValue,
+        condition: toPrismaJsonInput(parsed.data.condition),
         severity: parsed.data.severity,
         message: parsed.data.message,
         is_active: parsed.data.is_active,

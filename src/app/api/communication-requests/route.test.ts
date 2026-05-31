@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   communicationRequestFindManyMock,
@@ -30,12 +30,13 @@ vi.mock('@/lib/auth/middleware', () => ({
     ) => Promise<Response>,
   ) => {
     return (req: NextRequest) =>
-      handler({
-        ...req,
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'pharmacist',
-      } as unknown as NextRequest & { orgId: string; userId: string; role: 'pharmacist' });
+      handler(
+        Object.assign(req, {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist' as const,
+        }),
+      );
   },
 }));
 
@@ -71,6 +72,18 @@ vi.mock('@/lib/contact-profiles', () => ({
 
 import { GET, POST } from './route';
 
+function createGetRequest(search = '') {
+  return new NextRequest(`http://localhost/api/communication-requests${search}`);
+}
+
+function createPostRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/communication-requests', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 describe('/api/communication-requests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -96,9 +109,7 @@ describe('/api/communication-requests', () => {
   });
 
   it('lists communication requests', async () => {
-    const response = (await GET({
-      url: 'http://localhost/api/communication-requests?status=draft',
-    } as NextRequest))!;
+    const response = (await GET(createGetRequest('?status=draft')))!;
 
     expect(response.status).toBe(200);
     expect(communicationRequestFindManyMock).toHaveBeenCalledWith(
@@ -119,22 +130,20 @@ describe('/api/communication-requests', () => {
   });
 
   it('returns 400 for an invalid status filter', async () => {
-    const response = (await GET({
-      url: 'http://localhost/api/communication-requests?status=foo',
-    } as NextRequest))!;
+    const response = (await GET(createGetRequest('?status=foo')))!;
 
     expect(response.status).toBe(400);
     expect(communicationRequestFindManyMock).not.toHaveBeenCalled();
   });
 
   it('creates a communication request', async () => {
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createPostRequest({
         request_type: '疑義照会',
         subject: '確認事項',
         content: '処方内容を確認したいです',
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(communicationRequestCreateMock).toHaveBeenCalledWith({
@@ -150,15 +159,15 @@ describe('/api/communication-requests', () => {
   it('rejects an unassigned case before recipient suggestion or create side effects', async () => {
     careCaseFindFirstMock.mockResolvedValue(null);
 
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createPostRequest({
         patient_id: 'patient_2',
         case_id: 'case_2',
         request_type: '疑義照会',
         subject: '確認事項',
         content: '処方内容を確認したいです',
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(400);
     expect(findLatestPrescriberInstitutionSuggestionMock).not.toHaveBeenCalled();
@@ -167,15 +176,15 @@ describe('/api/communication-requests', () => {
   });
 
   it('derives patient and case from an accessible linked tracing report', async () => {
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createPostRequest({
         request_type: 'tracing_report',
         related_entity_type: 'tracing_report',
         related_entity_id: 'tracing_1',
         subject: '服薬情報提供書',
         content: '処方医へ共有します',
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(tracingReportFindFirstMock).toHaveBeenCalledWith({
@@ -206,8 +215,8 @@ describe('/api/communication-requests', () => {
       case_id: 'case_2',
     });
 
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createPostRequest({
         patient_id: 'patient_1',
         case_id: 'case_1',
         request_type: 'tracing_report',
@@ -216,7 +225,7 @@ describe('/api/communication-requests', () => {
         subject: '服薬情報提供書',
         content: '処方医へ共有します',
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
@@ -231,15 +240,15 @@ describe('/api/communication-requests', () => {
   it('returns not found for an inaccessible linked tracing report before side effects', async () => {
     careCaseFindFirstMock.mockResolvedValue(null);
 
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createPostRequest({
         request_type: 'tracing_report',
         related_entity_type: 'tracing_report',
         related_entity_id: 'tracing_1',
         subject: '服薬情報提供書',
         content: '処方医へ共有します',
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(404);
     expect(findLatestPrescriberInstitutionSuggestionMock).not.toHaveBeenCalled();
@@ -258,15 +267,19 @@ describe('/api/communication-requests', () => {
       prescriber_name: '田中 一郎',
     });
 
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createPostRequest({
         patient_id: 'patient_1',
         case_id: 'case_1',
         request_type: '疑義照会',
+        context_snapshot: {
+          draft_note: undefined,
+          explicit_null: null,
+        },
         subject: '処方確認',
         content: '用量の確認をお願いします',
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(findLatestPrescriberInstitutionSuggestionMock).toHaveBeenCalledWith(
@@ -282,11 +295,20 @@ describe('/api/communication-requests', () => {
         recipient_name: '田中 一郎',
         recipient_role: '処方元医療機関',
         context_snapshot: {
+          explicit_null: null,
           prescriber_institution_id: 'institution_1',
           prescriber_institution_name: 'みなとクリニック',
         },
       }),
     });
+    expect(
+      (
+        communicationRequestCreateMock.mock.calls[0][0].data.context_snapshot as Record<
+          string,
+          unknown
+        >
+      ).draft_note,
+    ).toBeUndefined();
   });
 
   it('falls back to an external professional when no institution suggestion exists', async () => {
@@ -307,15 +329,15 @@ describe('/api/communication-requests', () => {
       is_primary: true,
     });
 
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createPostRequest({
         patient_id: 'patient_1',
         case_id: 'case_1',
         request_type: 'care_manager_coordination',
         subject: '訪問日調整',
         content: '来週の訪問日を相談したいです',
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(pickCommunicationRecipientCandidateMock).toHaveBeenCalledWith(

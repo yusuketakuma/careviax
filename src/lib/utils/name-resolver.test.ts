@@ -11,7 +11,7 @@ describe('batchResolveNames', () => {
       user: {
         findMany,
       },
-    } as never;
+    };
 
     const result = await batchResolveNames(prisma, 'org_1', ['user_1', 'user_2']);
 
@@ -35,7 +35,7 @@ describe('batchResolveNames', () => {
       user: {
         findMany,
       },
-    } as never;
+    };
 
     const result = await batchResolveNames(prisma, 'org_1', []);
 

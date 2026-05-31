@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -33,6 +33,28 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { DELETE, PUT } from './route';
 
+function createPutRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/patients/patient_1/insurance/insurance_1', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+function createInvalidJsonRequest() {
+  return new NextRequest('http://localhost/api/patients/patient_1/insurance/insurance_1', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: '{',
+  });
+}
+
+function createDeleteRequest() {
+  return new NextRequest('http://localhost/api/patients/patient_1/insurance/insurance_1', {
+    method: 'DELETE',
+  });
+}
+
 describe('/api/patients/[id]/insurance/[insuranceId]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -58,9 +80,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
   it('updates an insurance record', async () => {
     const response = await PUT(
-      {
-        json: async () => ({ is_active: false }),
-      } as NextRequest,
+      createPutRequest({ is_active: false }),
       {
         params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
       },
@@ -75,7 +95,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
   });
 
   it('deletes an insurance record', async () => {
-    const response = await DELETE({} as NextRequest, {
+    const response = await DELETE(createDeleteRequest(), {
       params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
     });
 
@@ -94,7 +114,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
     // findFirst returns null because org_id does not match
     patientInsuranceFindFirstMock.mockResolvedValue(null);
 
-    const response = await DELETE({} as NextRequest, {
+    const response = await DELETE(createDeleteRequest(), {
       params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_other_org' }),
     });
 
@@ -106,7 +126,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
   it('DELETE returns 404 when insurance id does not exist', async () => {
     patientInsuranceFindFirstMock.mockResolvedValue(null);
 
-    const response = await DELETE({} as NextRequest, {
+    const response = await DELETE(createDeleteRequest(), {
       params: Promise.resolve({ id: 'patient_1', insuranceId: 'nonexistent_id' }),
     });
 
@@ -125,9 +145,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
     });
 
     const response = await PUT(
-      {
-        json: async () => ({ is_active: false }),
-      } as NextRequest,
+      createPutRequest({ is_active: false }),
       {
         params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
       },
@@ -147,7 +165,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
       ),
     });
 
-    const response = await DELETE({} as NextRequest, {
+    const response = await DELETE(createDeleteRequest(), {
       params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
     });
 
@@ -158,11 +176,9 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
   it('PUT returns 400 when request body fails validation', async () => {
     const response = await PUT(
-      {
-        json: async () => ({
-          copay_ratio: 150, // exceeds max of 100
-        }),
-      } as NextRequest,
+      createPutRequest({
+        copay_ratio: 150, // exceeds max of 100
+      }),
       {
         params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
       },
@@ -175,11 +191,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
 
   it('PUT returns 400 when request body is not valid JSON', async () => {
     const response = await PUT(
-      {
-        json: async () => {
-          throw new Error('invalid json');
-        },
-      } as unknown as NextRequest,
+      createInvalidJsonRequest(),
       {
         params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
       },
@@ -194,9 +206,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
     patientInsuranceFindFirstMock.mockResolvedValue(null);
 
     const response = await PUT(
-      {
-        json: async () => ({ is_active: false }),
-      } as NextRequest,
+      createPutRequest({ is_active: false }),
       {
         params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_other_org' }),
       },
@@ -211,9 +221,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
     patientInsuranceFindFirstMock.mockResolvedValue(null);
 
     const response = await PUT(
-      {
-        json: async () => ({ is_active: false }),
-      } as NextRequest,
+      createPutRequest({ is_active: false }),
       {
         params: Promise.resolve({ id: 'patient_1', insuranceId: 'nonexistent_id' }),
       },

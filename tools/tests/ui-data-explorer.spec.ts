@@ -4,7 +4,7 @@ import { expect, test, type Page } from '@playwright/test';
 import {
   attachLocalSession,
   createInstrumentedPage,
-  waitForStableUi,
+  openStableRoute,
 } from './helpers/local-auth';
 import { PLAYWRIGHT_SCREENSHOT_DIR } from './helpers/artifacts';
 
@@ -25,14 +25,13 @@ test.beforeEach(async ({ context }) => {
 test('admin data explorer surfaces backend-only seed coverage', async ({ context }) => {
   const { page, errors } = await createInstrumentedPage(context);
 
-  await page.goto('/admin/data-explorer');
-  await waitForStableUi(page);
+  await openStableRoute(page, '/admin/data-explorer');
 
   const modelSearch = page.getByPlaceholder('モデル名で検索');
   await expect(modelSearch).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText('全テーブルを一覧・閲覧・更新します。')).toBeVisible();
-  await expect(page.locator('main')).toContainText('AuditLog');
-  await expect(page.locator('main')).toContainText('Patient');
+  await expect(page.getByRole('heading', { name: 'データ探索' })).toBeVisible();
+  await expect(page.locator('main')).toContainText('AuditLog', { timeout: 15_000 });
+  await expect(page.locator('main')).toContainText('Patient', { timeout: 15_000 });
 
   await modelSearch.fill('Organization');
   await expect(page.locator('main')).toContainText('Organization');

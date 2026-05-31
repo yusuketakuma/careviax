@@ -6,9 +6,10 @@ import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
 import { NextRequest } from 'next/server';
 import { getPatientPrivacyFlags } from '@/lib/patient/privacy';
+import { selfReportStatusSchema } from '@/lib/validations/self-report';
 
 const patchSelfReportSchema = z.object({
-  status: z.enum(['submitted', 'triaged', 'converted_to_task', 'resolved', 'dismissed']).optional(),
+  status: selfReportStatusSchema.optional(),
   category: z.string().trim().min(1).max(100).optional(),
   subject: z.string().trim().min(1).max(200).optional(),
   content: z.string().trim().min(1).max(4000).optional(),

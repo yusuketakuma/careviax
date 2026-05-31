@@ -5,6 +5,7 @@ import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
+import { selfReportStatusSchema } from '@/lib/validations/self-report';
 
 const createSelfReportSchema = z.object({
   patient_id: z.string().min(1, '患者IDは必須です'),
@@ -22,7 +23,13 @@ export const GET = withAuthContext(
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
     const patientId = searchParams.get('patient_id') ?? undefined;
-    const status = searchParams.get('status') ?? undefined;
+    const statusParam = searchParams.get('status') ?? undefined;
+    const status = statusParam ? selfReportStatusSchema.safeParse(statusParam) : null;
+    if (status && !status.success) {
+      return validationError('患者自己申告ステータスが不正です', {
+        status: ['対応していないステータスです'],
+      });
+    }
 
     const accessiblePatients = await prisma.patient.findMany({
       where: applyPatientAssignmentWhere(
@@ -49,16 +56,7 @@ export const GET = withAuthContext(
       where: {
         org_id: ctx.orgId,
         patient_id: patientId ?? { in: accessiblePatientIds },
-        ...(status
-          ? {
-              status: status as
-                | 'submitted'
-                | 'triaged'
-                | 'converted_to_task'
-                | 'resolved'
-                | 'dismissed',
-            }
-          : {}),
+        ...(status ? { status: status.data } : {}),
       },
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),

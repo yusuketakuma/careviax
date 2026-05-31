@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { success, validationError, notFound } from '@/lib/api/response';
 
 const updateRuleSchema = z.object({
@@ -68,8 +68,8 @@ export async function PATCH(
       where: { id },
       data: {
         ...rest,
-        ...(conditions !== undefined ? { conditions: conditions as Prisma.InputJsonValue } : {}),
-        ...(recipients !== undefined ? { recipients: recipients as Prisma.InputJsonValue } : {}),
+        ...(conditions !== undefined ? { conditions: toPrismaJsonInput(conditions) } : {}),
+        ...(recipients !== undefined ? { recipients: toPrismaJsonInput(recipients) } : {}),
       },
     })
   );

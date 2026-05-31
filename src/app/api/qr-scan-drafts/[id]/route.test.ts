@@ -1,21 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
+
+type AuthenticatedTestRequest = NextRequest & { orgId: string; userId: string };
 
 const { withAuthMock, withOrgContextMock, careCaseFindManyMock } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
     (
       handler: (
-        req: NextRequest & { orgId: string; userId: string },
+        req: AuthenticatedTestRequest,
         ctx: { params: Promise<{ id: string }> },
       ) => Promise<Response>,
     ) => {
       return (req: NextRequest, ctx: { params: Promise<{ id: string }> }) =>
         handler(
-          {
-            ...req,
+          Object.assign(req, {
             orgId: 'org_1',
             userId: 'user_1',
-          } as NextRequest & { orgId: string; userId: string },
+          }),
           ctx,
         );
     },
@@ -44,8 +45,8 @@ import { GET, DELETE } from './route';
 
 const DRAFT_PARAMS = { params: Promise.resolve({ id: 'draft_1' }) };
 
-function createRequest() {
-  return {} as unknown as NextRequest;
+function createRequest(method: 'DELETE' | 'GET' = 'GET') {
+  return new NextRequest('http://localhost/api/qr-scan-drafts/draft_1', { method });
 }
 
 describe('/api/qr-scan-drafts/[id] GET', () => {
@@ -153,7 +154,7 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
       });
     });
 
-    const response = await DELETE(createRequest(), DRAFT_PARAMS);
+    const response = await DELETE(createRequest('DELETE'), DRAFT_PARAMS);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -170,7 +171,7 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
       }),
     );
 
-    const response = await DELETE(createRequest(), DRAFT_PARAMS);
+    const response = await DELETE(createRequest('DELETE'), DRAFT_PARAMS);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
@@ -196,7 +197,7 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
       });
     });
 
-    await DELETE(createRequest(), DRAFT_PARAMS);
+    await DELETE(createRequest('DELETE'), DRAFT_PARAMS);
 
     expect(updateSpy).toHaveBeenCalledWith(
       expect.objectContaining({

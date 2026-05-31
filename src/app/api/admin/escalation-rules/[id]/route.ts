@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { updateEscalationRuleSchema } from '@/lib/validations/escalation-rule';
 
 function serializeCondition(value: Prisma.JsonValue) {
@@ -39,7 +40,7 @@ export async function PATCH(
     data: {
       ...(parsed.data.trigger_type !== undefined ? { trigger_type: parsed.data.trigger_type } : {}),
       ...(parsed.data.condition !== undefined
-        ? { condition: parsed.data.condition as Prisma.InputJsonValue }
+        ? { condition: toPrismaJsonInput(parsed.data.condition) }
         : {}),
       ...(parsed.data.action !== undefined ? { action: parsed.data.action } : {}),
       ...(parsed.data.notify_role !== undefined ? { notify_role: parsed.data.notify_role } : {}),

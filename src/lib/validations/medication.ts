@@ -29,15 +29,19 @@ export type CreateMedicationProfileInput = z.infer<typeof createMedicationProfil
 // MedicationIssue
 // ────────────────────────────────────────────────────────────────────────────
 
+export const medicationIssueStatusSchema = z.enum([
+  'open',
+  'in_progress',
+  'resolved',
+  'dismissed',
+]);
+
 export const createMedicationIssueSchema = z.object({
   patient_id: z.string().min(1, '患者IDは必須です'),
   case_id: z.string().optional(),
   title: z.string().min(1, 'タイトルは必須です'),
   description: z.string().min(1, '説明は必須です'),
-  status: z
-    .enum(['open', 'in_progress', 'resolved', 'dismissed'])
-    .optional()
-    .default('open'),
+  status: medicationIssueStatusSchema.optional().default('open'),
   priority: z
     .enum(['critical', 'high', 'medium', 'low'])
     .optional()
@@ -50,7 +54,7 @@ export const createMedicationIssueSchema = z.object({
 export type CreateMedicationIssueInput = z.infer<typeof createMedicationIssueSchema>;
 
 export const updateMedicationIssueSchema = z.object({
-  status: z.enum(['open', 'in_progress', 'resolved', 'dismissed']).optional(),
+  status: medicationIssueStatusSchema.optional(),
   priority: z.enum(['critical', 'high', 'medium', 'low']).optional(),
   title: z.string().min(1).optional(),
   description: z.string().min(1).optional(),

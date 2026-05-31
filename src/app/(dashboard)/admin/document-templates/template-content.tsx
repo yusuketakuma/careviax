@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { parseJsonObjectText } from '@/lib/admin/json-editor';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { DocumentDeliveryRuleManager } from './document-delivery-rule-manager';
 import { PageScaffold } from '@/components/layout/page-scaffold';
@@ -129,12 +130,10 @@ export function DocumentTemplateContent() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      let parsedContent: Record<string, unknown>;
-      try {
-        parsedContent = JSON.parse(form.contentText) as Record<string, unknown>;
-      } catch {
-        throw new Error('テンプレート本文は JSON 形式で入力してください');
-      }
+      const parsedContent = parseJsonObjectText(
+        form.contentText,
+        'テンプレート本文は JSON オブジェクト形式で入力してください',
+      );
 
       const payload = {
         name: form.name.trim(),

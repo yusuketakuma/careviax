@@ -171,7 +171,19 @@ describe('generateReportsFromVisit', () => {
     residualMedicationFindManyMock.mockResolvedValue([]);
     careTeamLinkFindManyMock.mockResolvedValue([]);
     userFindFirstMock.mockResolvedValue({ name: '薬剤師A' });
-    billingEvidenceFindFirstMock.mockResolvedValue({ payer_basis: 'medical' });
+    billingEvidenceFindFirstMock.mockResolvedValue({
+      payer_basis: 'medical',
+      applied_rule_keys: ['home_visit_single'],
+      recommended_rule_keys: ['home_visit_single'],
+      validation_notes: ['SSOT確認済み'],
+      calculation_context: {
+        effective_revision_code: '2026',
+        site_config_status: 'resolved',
+        site_config_revision_code: '2026',
+        jahis_supplemental_record_count: 2,
+        jahis_residual_confirmation_count: 1,
+      },
+    });
     careCaseFindFirstMock.mockResolvedValue({ required_visit_support: null });
     prescriptionLineFindManyMock.mockResolvedValue([]);
     buildPhysicianReportMock.mockReturnValue({ title: 'report' });
@@ -213,10 +225,25 @@ describe('generateReportsFromVisit', () => {
     residualMedicationFindManyMock.mockResolvedValue([]);
     careTeamLinkFindManyMock.mockResolvedValue([]);
     userFindFirstMock.mockResolvedValue({ name: '薬剤師A' });
-    billingEvidenceFindFirstMock.mockResolvedValue({ payer_basis: 'medical' });
+    billingEvidenceFindFirstMock.mockResolvedValue({
+      payer_basis: 'medical',
+      applied_rule_keys: ['home_visit_single'],
+      recommended_rule_keys: ['home_visit_single'],
+      validation_notes: ['SSOT確認済み'],
+      calculation_context: {
+        effective_revision_code: '2026',
+        site_config_status: 'resolved',
+        site_config_revision_code: '2026',
+        jahis_supplemental_record_count: 2,
+        jahis_residual_confirmation_count: 1,
+      },
+    });
     careCaseFindFirstMock.mockResolvedValue({ required_visit_support: null });
     prescriptionLineFindManyMock.mockResolvedValue([]);
-    buildPhysicianReportMock.mockReturnValue({ title: 'physician report' });
+    buildPhysicianReportMock.mockReturnValue({
+      title: 'physician report',
+      optional_note: undefined,
+    });
     careReportFindManyMock.mockResolvedValue([]);
 
     withOrgContextMock.mockImplementation(
@@ -243,13 +270,98 @@ describe('generateReportsFromVisit', () => {
         data: [
           expect.objectContaining({
             content: expect.objectContaining({
+              title: 'physician report',
               billing_context: expect.objectContaining({
                 payer_basis: 'medical',
+                applied_rule_keys: ['home_visit_single'],
+                recommended_rule_keys: ['home_visit_single'],
+                validation_notes: ['SSOT確認済み'],
+                effective_revision_code: '2026',
+                site_config_status: 'resolved',
+                site_config_revision_code: '2026',
+                jahis_supplemental_record_count: 2,
+                jahis_residual_confirmation_count: 1,
               }),
             }),
           }),
         ],
         skipDuplicates: true,
+      }),
+    );
+    const createdContent = careReportCreateManyMock.mock.calls[0][0].data[0].content;
+    expect(createdContent).not.toHaveProperty('optional_note');
+  });
+
+  it('normalizes malformed billing calculation context in generated report content', async () => {
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'vr-1',
+      org_id: 'org-1',
+      patient_id: 'p-1',
+      pharmacist_id: 'pharm-1',
+      visit_date: new Date(),
+      structured_soap: null,
+      schedule_id: 'vs-1',
+    });
+    visitScheduleFindUniqueMock.mockResolvedValue({
+      case_id: 'case-1',
+      cycle_id: null,
+      org_id: 'org-1',
+    });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'p-1',
+      name: '田中太郎',
+      birth_date: new Date('1950-01-01'),
+      gender: 'male',
+    });
+    medicationCycleFindFirstMock.mockResolvedValue(null);
+    residualMedicationFindManyMock.mockResolvedValue([]);
+    careTeamLinkFindManyMock.mockResolvedValue([]);
+    userFindFirstMock.mockResolvedValue({ name: '薬剤師A' });
+    billingEvidenceFindFirstMock.mockResolvedValue({
+      payer_basis: 'medical',
+      applied_rule_keys: null,
+      recommended_rule_keys: null,
+      validation_notes: null,
+      calculation_context: ['unexpected'],
+    });
+    careCaseFindFirstMock.mockResolvedValue({ required_visit_support: null });
+    prescriptionLineFindManyMock.mockResolvedValue([]);
+    buildPhysicianReportMock.mockReturnValue({ title: 'physician report' });
+    careReportFindManyMock.mockResolvedValue([]);
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          careReport: {
+            createMany: careReportCreateManyMock.mockResolvedValue({ count: 1 }),
+            findMany: vi
+              .fn()
+              .mockResolvedValue([{ id: 'report-new', report_type: 'physician_report' }]),
+          },
+        }),
+    );
+
+    await generateReportsFromVisit('org-1', 'user-1', 'vr-1');
+
+    expect(careReportCreateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [
+          expect.objectContaining({
+            content: expect.objectContaining({
+              billing_context: {
+                payer_basis: 'medical',
+                applied_rule_keys: [],
+                recommended_rule_keys: [],
+                validation_notes: null,
+                effective_revision_code: null,
+                site_config_status: null,
+                site_config_revision_code: null,
+                jahis_supplemental_record_count: null,
+                jahis_residual_confirmation_count: null,
+              },
+            }),
+          }),
+        ],
       }),
     );
   });

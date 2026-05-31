@@ -3,12 +3,15 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
-import { createTaskSchema } from '@/lib/validations/task';
+import { createTaskSchema, taskStatusValues } from '@/lib/validations/task';
 import {
   type DashboardAssignmentScope,
   buildDashboardTaskAssignmentWhere,
   resolveDashboardAssignmentScope,
 } from '@/server/services/dashboard-assignment-scope';
+import { z } from 'zod';
+
+const taskStatusSchema = z.enum(taskStatusValues);
 
 function canCreateTaskInAssignmentScope(
   scope: DashboardAssignmentScope,
@@ -55,7 +58,13 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const taskType = searchParams.get('task_type') ?? undefined;
-  const status = searchParams.get('status') ?? undefined;
+  const statusParam = searchParams.get('status') ?? undefined;
+  const status = statusParam ? taskStatusSchema.safeParse(statusParam) : null;
+  if (status && !status.success) {
+    return validationError('タスクステータスが不正です', {
+      status: ['対応していないステータスです'],
+    });
+  }
   const assignedTo = searchParams.get('assigned_to') ?? undefined;
   const relatedEntityType = searchParams.get('related_entity_type') ?? undefined;
   const relatedEntityId = searchParams.get('related_entity_id') ?? undefined;
@@ -70,7 +79,7 @@ export async function GET(req: NextRequest) {
       org_id: ctx.orgId,
       ...buildDashboardTaskAssignmentWhere(assignmentScope),
       ...(taskType ? { task_type: taskType } : {}),
-      ...(status ? { status: status as never } : {}),
+      ...(status ? { status: status.data } : {}),
       ...(assignedTo ? { assigned_to: assignedTo } : {}),
       ...(relatedEntityType ? { related_entity_type: relatedEntityType } : {}),
       ...(relatedEntityId ? { related_entity_id: relatedEntityId } : {}),

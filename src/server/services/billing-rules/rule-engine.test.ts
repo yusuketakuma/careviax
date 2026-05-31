@@ -10,6 +10,7 @@ vi.mock('./seeder', () => ({
 }));
 
 import { buildBillingCandidateSpecs } from './rule-engine';
+import type { HomeCareBillingRuleEngineTx } from './rule-engine';
 import type { BillingEvidenceContext, BillingRuleConditions } from './types';
 
 // ── Helpers ──
@@ -102,15 +103,18 @@ function makeContext(overrides: Partial<BillingEvidenceContext> = {}): BillingEv
 }
 
 /** Build a mock tx that feeds rules into the real getHomeCareBillingSsotSummary */
-function makeTx(rules: MockBillingRule[]) {
+function makeTx(rules: MockBillingRule[]): HomeCareBillingRuleEngineTx {
   return {
     sourceOfTruthMatrix: {
       findFirst: vi.fn().mockResolvedValue({ id: 'matrix_1', entity_type: 'billing' }),
+      upsert: vi.fn().mockResolvedValue({ id: 'matrix_1' }),
     },
     billingRule: {
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       findMany: vi.fn().mockResolvedValue(rules),
+      upsert: vi.fn().mockResolvedValue({}),
     },
-  } as never;
+  };
 }
 
 describe('rule-engine: buildBillingCandidateSpecs', () => {
@@ -385,6 +389,28 @@ describe('rule-engine: buildBillingCandidateSpecs', () => {
         rate_percent: 15,
         base_points: 650,
         derived_points: 98,
+      }),
+    );
+  });
+
+  it('normalizes malformed manual rule conditions before exposing calculation breakdown', async () => {
+    const singleRule = makeBaseRule();
+    const malformedRule = makeAdditionRule({
+      ssot_key: 'medical.addition.malformed_conditions',
+      code: 'MED_ADD_MALFORMED',
+      name: '不正条件加算',
+      conditions: ['unexpected'] as unknown as BillingRuleConditions,
+    });
+    const tx = makeTx([singleRule, malformedRule]);
+
+    const specs = await buildBillingCandidateSpecs(tx, makeContext());
+
+    const addition = specs.find((s) => s.ssotKey === 'medical.addition.malformed_conditions');
+    expect(addition).toBeDefined();
+    expect(addition!.status).toBe('candidate');
+    expect(addition!.calculationBreakdown).toEqual(
+      expect.objectContaining({
+        conditions: {},
       }),
     );
   });

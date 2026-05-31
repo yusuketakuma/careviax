@@ -6,7 +6,7 @@ vi.mock('@/lib/db/client', () => ({
 
 import { getPatientReadinessData, getPatientTimelineData } from './patient-detail';
 
-function buildDb(overrides?: Partial<Record<string, unknown>>) {
+function buildDb<T extends Record<string, unknown> = Record<string, never>>(overrides?: T) {
   return {
     patient: {
       findFirst: vi.fn(),
@@ -16,15 +16,30 @@ function buildDb(overrides?: Partial<Record<string, unknown>>) {
     },
     managementPlan: {
       findFirst: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
     },
     prescriptionIntake: {
       findFirst: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
     },
     firstVisitDocument: {
       findFirst: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
     },
+    visitSchedule: { findMany: vi.fn().mockResolvedValue([]) },
+    visitRecord: { findMany: vi.fn().mockResolvedValue([]) },
+    careReport: { findMany: vi.fn().mockResolvedValue([]) },
+    communicationEvent: { findMany: vi.fn().mockResolvedValue([]) },
+    patientSelfReport: { findMany: vi.fn().mockResolvedValue([]) },
+    externalAccessGrant: { findMany: vi.fn().mockResolvedValue([]) },
+    inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
+    dispenseResult: { findMany: vi.fn().mockResolvedValue([]) },
+    conferenceNote: { findMany: vi.fn().mockResolvedValue([]) },
+    billingCandidate: { findMany: vi.fn().mockResolvedValue([]) },
+    medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
+    user: { findMany: vi.fn().mockResolvedValue([]) },
     ...overrides,
-  } as never;
+  };
 }
 
 describe('getPatientReadinessData', () => {

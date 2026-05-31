@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -26,14 +26,14 @@ vi.mock('@/lib/db/client', () => ({
 
 import { POST, DELETE } from './route';
 
-function createRequest(url: string, body?: unknown) {
-  return {
-    url,
-    method: 'POST',
-    headers: { get: () => null },
-    nextUrl: new URL(url),
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+function createJsonRequest(method: 'POST' | 'DELETE', body: unknown) {
+  return new NextRequest('http://localhost/api/push-subscription', {
+    method,
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
 }
 
 const authCtx = {
@@ -50,7 +50,7 @@ describe('/api/push-subscription', () => {
     it('returns 200 on valid subscription', async () => {
       pushSubscriptionUpsertMock.mockResolvedValue({});
 
-      const req = createRequest('http://localhost/api/push-subscription', {
+      const req = createJsonRequest('POST', {
         endpoint: 'https://push.example.com/sub/abc',
         keys: { p256dh: 'key1', auth: 'key2' },
       });
@@ -60,7 +60,7 @@ describe('/api/push-subscription', () => {
     });
 
     it('returns 400 on invalid body', async () => {
-      const req = createRequest('http://localhost/api/push-subscription', {
+      const req = createJsonRequest('POST', {
         endpoint: 'not-a-url',
       });
       const res = await POST(req);
@@ -72,7 +72,7 @@ describe('/api/push-subscription', () => {
     it('returns 200 on valid unsubscribe', async () => {
       pushSubscriptionDeleteManyMock.mockResolvedValue({ count: 1 });
 
-      const req = createRequest('http://localhost/api/push-subscription', {
+      const req = createJsonRequest('DELETE', {
         endpoint: 'https://push.example.com/sub/abc',
       });
       const res = await DELETE(req);
@@ -80,7 +80,7 @@ describe('/api/push-subscription', () => {
     });
 
     it('returns 400 on missing endpoint', async () => {
-      const req = createRequest('http://localhost/api/push-subscription', {});
+      const req = createJsonRequest('DELETE', {});
       const res = await DELETE(req);
       expect(res!.status).toBe(400);
     });

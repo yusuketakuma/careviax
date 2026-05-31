@@ -1,6 +1,12 @@
 import path from 'node:path';
+import os from 'node:os';
 
-const ARTIFACT_ROOT = path.join(process.cwd(), 'tools', 'tests', '.artifacts');
+const ARTIFACT_ROOT =
+  process.env.PLAYWRIGHT_ARTIFACT_ROOT ??
+  (process.env.PLAYWRIGHT_REUSE_SERVER === '1'
+    ? path.join(os.tmpdir(), 'careviax-playwright-artifacts', String(process.pid))
+    : undefined) ??
+  path.join(process.cwd(), 'tools', 'tests', '.artifacts');
 
 export const PLAYWRIGHT_OUTPUT_DIR = path.join(ARTIFACT_ROOT, 'results');
 export const PLAYWRIGHT_REPORT_DIR = path.join(ARTIFACT_ROOT, 'report');

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -46,6 +46,13 @@ vi.mock('@/server/services/operational-tasks', () => ({
 }));
 
 import { POST } from './route';
+
+function createRequest() {
+  return new NextRequest(
+    'http://localhost/api/visit-schedules/schedule_1/reschedule/approve',
+    { method: 'POST' },
+  );
+}
 
 describe('/api/visit-schedules/[id]/reschedule/approve', () => {
   beforeEach(() => {
@@ -96,7 +103,7 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
       },
     });
 
-    const response = (await POST({} as NextRequest, {
+    const response = (await POST(createRequest(), {
       params: Promise.resolve({ id: 'schedule_1' }),
     }))!;
 
@@ -105,7 +112,7 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
   });
 
   it('approves the override, resolves tasks, and dispatches a notification', async () => {
-    const response = (await POST({} as NextRequest, {
+    const response = (await POST(createRequest(), {
       params: Promise.resolve({ id: 'schedule_1' }),
     }))!;
 

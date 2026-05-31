@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { drugMasterFindManyMock } = vi.hoisted(() => ({
   drugMasterFindManyMock: vi.fn(),
@@ -21,6 +21,14 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 import { POST } from './route';
+
+function createRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/drug-masters/batch', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
 
 describe('/api/drug-masters/batch', () => {
   beforeEach(() => {
@@ -47,11 +55,9 @@ describe('/api/drug-masters/batch', () => {
 
   it('returns drug master records keyed by yj code', async () => {
     const response = (await POST(
-      {
-        json: async () => ({
-          yj_codes: ['1111111A'],
-        }),
-      } as NextRequest,
+      createRequest({
+        yj_codes: ['1111111A'],
+      }),
       { params: Promise.resolve({}) },
     ))!;
 

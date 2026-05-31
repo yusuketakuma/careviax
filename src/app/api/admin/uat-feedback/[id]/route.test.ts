@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   feedbackFindFirstMock,
@@ -30,6 +30,16 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 import { PATCH } from './route';
+
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
+function createPatchRequest(body: unknown, feedbackId = 'feedback_1') {
+  return new NextRequest(`http://localhost/api/admin/uat-feedback/${feedbackId}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  } satisfies NextRequestInit);
+}
 
 describe('/api/admin/uat-feedback/[id] PATCH', () => {
   beforeEach(() => {
@@ -68,14 +78,12 @@ describe('/api/admin/uat-feedback/[id] PATCH', () => {
 
   it('updates triage fields and resolves the feedback', async () => {
     const response = await PATCH(
-      {
-        json: async () => ({
-          status: 'resolved',
-          owner_user_id: 'user_2',
-          linked_work_item: 'CVX-102',
-          due_date: '2026-04-02T00:00:00.000Z',
-        }),
-      } as unknown as NextRequest,
+      createPatchRequest({
+        status: 'resolved',
+        owner_user_id: 'user_2',
+        linked_work_item: 'CVX-102',
+        due_date: '2026-04-02T00:00:00.000Z',
+      }),
       { params: Promise.resolve({ id: 'feedback_1' }) }
     );
 
@@ -97,11 +105,9 @@ describe('/api/admin/uat-feedback/[id] PATCH', () => {
     userFindFirstMock.mockResolvedValue(null);
 
     const response = await PATCH(
-      {
-        json: async () => ({
-          owner_user_id: 'user_x',
-        }),
-      } as unknown as NextRequest,
+      createPatchRequest({
+        owner_user_id: 'user_x',
+      }),
       { params: Promise.resolve({ id: 'feedback_1' }) }
     );
 
@@ -118,12 +124,10 @@ describe('/api/admin/uat-feedback/[id] PATCH', () => {
     });
 
     await PATCH(
-      {
-        json: async () => ({
-          status: 'resolved',
-          linked_work_item: 'CVX-103',
-        }),
-      } as unknown as NextRequest,
+      createPatchRequest({
+        status: 'resolved',
+        linked_work_item: 'CVX-103',
+      }),
       { params: Promise.resolve({ id: 'feedback_1' }) }
     );
 

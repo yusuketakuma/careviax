@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -42,6 +42,18 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { GET, POST } from './route';
 
+function createGetRequest(url: string) {
+  return new NextRequest(url);
+}
+
+function createPostRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/management-plans', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 describe('/api/management-plans', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -74,9 +86,9 @@ describe('/api/management-plans', () => {
   });
 
   it('lists management plans filtered by case id', async () => {
-    const response = (await GET({
-      url: 'http://localhost/api/management-plans?case_id=case_1',
-    } as NextRequest))!;
+    const response = (await GET(
+      createGetRequest('http://localhost/api/management-plans?case_id=case_1'),
+    ))!;
 
     expect(response.status).toBe(200);
     expect(managementPlanFindManyMock).toHaveBeenCalledWith({
@@ -98,13 +110,13 @@ describe('/api/management-plans', () => {
   it('denies management plan creation for an unassigned case before write', async () => {
     careCaseFindFirstMock.mockResolvedValue(null);
 
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createPostRequest({
         case_id: 'case_unassigned',
         title: '訪問薬剤管理指導計画書',
         content: { summary: '内容' },
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(404);
     expect(careCaseFindFirstMock).toHaveBeenCalledWith({
@@ -127,14 +139,14 @@ describe('/api/management-plans', () => {
   it('rejects an inaccessible or cross-case source plan before cloning', async () => {
     managementPlanFindFirstMock.mockResolvedValue(null);
 
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createPostRequest({
         case_id: 'case_1',
         title: '訪問薬剤管理指導計画書',
         content: { summary: '内容' },
         source_plan_id: 'plan_unassigned',
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(404);
     expect(managementPlanFindFirstMock).toHaveBeenCalledWith({
@@ -157,14 +169,14 @@ describe('/api/management-plans', () => {
   });
 
   it('creates a new management plan with incremented version', async () => {
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createPostRequest({
         case_id: 'case_1',
         title: '訪問薬剤管理指導計画書',
         content: { summary: '内容' },
         next_review_date: '2026-04-30',
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(managementPlanCreateMock).toHaveBeenCalledWith({
@@ -173,6 +185,8 @@ describe('/api/management-plans', () => {
         case_id: 'case_1',
         version: 3,
         created_by: 'user_1',
+        content: { summary: '内容' },
+        next_review_date: new Date('2026-04-30'),
       }),
     });
   });

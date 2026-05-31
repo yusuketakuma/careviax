@@ -13,6 +13,7 @@ import type {
   BillingRuntimeSiteConfigStatus,
 } from './billing-runtime-context';
 import { resolveBillingRuntimeContext } from './billing-runtime-context';
+import { getHomeVisitSpecialMedicalProcedures } from '@/lib/patient/home-visit-intake';
 
 export type VisitScheduleBillingPreview = {
   alerts: BillingRequirementAlert[];
@@ -92,11 +93,7 @@ export async function buildVisitScheduleBillingPreview(args: {
     visitType,
   });
 
-  const intakeJson = (careCase.required_visit_support as Record<string, unknown> | null)
-    ?.home_visit_intake as Record<string, unknown> | null;
-  const specialProcedures = Array.isArray(intakeJson?.special_medical_procedures)
-    ? (intakeJson.special_medical_procedures as string[])
-    : [];
+  const specialProcedures = getHomeVisitSpecialMedicalProcedures(careCase.required_visit_support);
   const specialCapEligible =
     specialProcedures.includes('narcotics') ||
     specialProcedures.includes('narcotics_injection') ||

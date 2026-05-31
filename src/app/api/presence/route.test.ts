@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -45,13 +45,17 @@ vi.mock('@/server/adapters/realtime', () => ({
 import { POST, GET } from './route';
 
 function createRequest(url: string, body?: unknown) {
-  return {
-    url,
+  return new NextRequest(url, {
     method: body === undefined ? 'GET' : 'POST',
-    headers: { get: () => null },
-    nextUrl: new URL(url),
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+    ...(body === undefined
+      ? {}
+      : {
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        }),
+  });
 }
 
 const authCtx = {

@@ -6,13 +6,7 @@ import { useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import { clearOfflineEncryptionKey } from '@/lib/offline/crypto';
 import { toast } from 'sonner';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -43,10 +37,13 @@ import {
   setVisitLocationTrackingPreference,
   type VisitLocationPermissionState,
 } from '@/lib/visit-location';
+import { SESSION_TIMEOUT_MS, SESSION_WARNING_BEFORE_MS } from '@/lib/utils/session';
 import {
-  SESSION_TIMEOUT_MS,
-  SESSION_WARNING_BEFORE_MS,
-} from '@/lib/utils/session';
+  DEFAULT_USER_NOTIFICATION_SETTINGS,
+  USER_NOTIFICATION_SETTINGS_STORAGE_KEY,
+  parseUserNotificationSettingsStorage,
+  type UserNotificationSetting,
+} from '@/lib/notifications/user-settings';
 
 // --- Profile Tab ---
 
@@ -197,16 +194,8 @@ function ProfileTab() {
         <form onSubmit={handleSave} className="flex flex-col gap-4 max-w-lg">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="profile-email">メールアドレス</Label>
-            <Input
-              id="profile-email"
-              type="email"
-              value={email}
-              disabled
-              className="bg-slate-50"
-            />
-            <p className="text-xs text-slate-500">
-              メールアドレスは管理者のみ変更できます
-            </p>
+            <Input id="profile-email" type="email" value={email} disabled className="bg-slate-50" />
+            <p className="text-xs text-slate-500">メールアドレスは管理者のみ変更できます</p>
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -341,7 +330,7 @@ function SecurityTab() {
       } catch (err) {
         if (!cancelled) {
           setSecurityError(
-            err instanceof Error ? err.message : 'セキュリティ設定の取得に失敗しました。'
+            err instanceof Error ? err.message : 'セキュリティ設定の取得に失敗しました。',
           );
         }
       }
@@ -369,8 +358,7 @@ function SecurityTab() {
       setMfaEnabled(false);
       toast.success('MFAを無効化しました');
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'MFAの無効化に失敗しました。';
+      const message = err instanceof Error ? err.message : 'MFAの無効化に失敗しました。';
       setSecurityError(message);
       toast.error(message);
     } finally {
@@ -387,9 +375,7 @@ function SecurityTab() {
             <ShieldCheck className="h-5 w-5 text-blue-600" aria-hidden="true" />
             二要素認証（MFA）
           </CardTitle>
-          <CardDescription>
-            認証アプリによる二要素認証の設定状況を確認できます
-          </CardDescription>
+          <CardDescription>認証アプリによる二要素認証の設定状況を確認できます</CardDescription>
         </CardHeader>
         <CardContent>
           {securityError && (
@@ -407,20 +393,12 @@ function SecurityTab() {
                 }`}
               >
                 <ShieldCheck
-                  className={`h-5 w-5 ${
-                    mfaEnabled ? 'text-green-600' : 'text-amber-600'
-                  }`}
+                  className={`h-5 w-5 ${mfaEnabled ? 'text-green-600' : 'text-amber-600'}`}
                 />
               </div>
               <div>
-                <p className="text-sm font-medium">
-                  TOTP認証（認証アプリ）
-                </p>
-                <p
-                  className={`text-xs ${
-                    mfaEnabled ? 'text-green-600' : 'text-amber-600'
-                  }`}
-                >
+                <p className="text-sm font-medium">TOTP認証（認証アプリ）</p>
+                <p className={`text-xs ${mfaEnabled ? 'text-green-600' : 'text-amber-600'}`}>
                   {mfaEnabled === null ? '確認中' : mfaEnabled ? '有効' : '無効'}
                 </p>
               </div>
@@ -460,17 +438,13 @@ function SecurityTab() {
             <KeyRound className="h-5 w-5 text-blue-600" aria-hidden="true" />
             パスワード
           </CardTitle>
-          <CardDescription>
-            パスワードは定期的に変更することを推奨します
-          </CardDescription>
+          <CardDescription>パスワードは定期的に変更することを推奨します</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-between rounded-lg border p-4">
             <div>
               <p className="text-sm font-medium">パスワード変更</p>
-              <p className="text-xs text-slate-500">
-                現在のパスワードで再認証して変更します
-              </p>
+              <p className="text-xs text-slate-500">現在のパスワードで再認証して変更します</p>
             </div>
             <Link href="/password/change">
               <Button variant="outline" size="sm">
@@ -486,75 +460,15 @@ function SecurityTab() {
 
 // --- Notifications Tab ---
 
-interface NotificationSetting {
-  id: string;
-  label: string;
-  description: string;
-  enabled: boolean;
-}
-
 function NotificationsTab() {
-  const [settings, setSettings] = useState<NotificationSetting[]>(() => {
-    const defaults: NotificationSetting[] = [
-      {
-        id: 'visit-reminder',
-        label: '訪問リマインド',
-        description: '訪問予定の30分前に通知を受け取ります',
-        enabled: true,
-      },
-      {
-        id: 'report-deadline',
-        label: '報告書期限',
-        description: '報告書の提出期限が近づくと通知を受け取ります',
-        enabled: true,
-      },
-      {
-        id: 'prescription-new',
-        label: '新規処方箋',
-        description: '新しい処方箋が登録されたときに通知を受け取ります',
-        enabled: true,
-      },
-      {
-        id: 'audit-result',
-        label: '鑑査結果',
-        description: '鑑査結果が確定したときに通知を受け取ります',
-        enabled: false,
-      },
-      {
-        id: 'communication-request',
-        label: '連携依頼',
-        description: '多職種からの連携依頼を受信したときに通知を受け取ります',
-        enabled: true,
-      },
-      {
-        id: 'schedule-change',
-        label: 'スケジュール変更',
-        description: '訪問スケジュールが変更されたときに通知を受け取ります',
-        enabled: false,
-      },
-      {
-        id: 'system-maintenance',
-        label: 'システムメンテナンス',
-        description: 'メンテナンス予定のお知らせを受け取ります',
-        enabled: true,
-      },
-    ];
-
+  const [settings, setSettings] = useState<UserNotificationSetting[]>(() => {
     if (typeof window === 'undefined') {
-      return defaults;
+      return DEFAULT_USER_NOTIFICATION_SETTINGS;
     }
 
-    const raw = window.localStorage.getItem('ph-os:user-notification-settings');
-    if (!raw) {
-      return defaults;
-    }
-
-    try {
-      const parsed = JSON.parse(raw) as NotificationSetting[];
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed : defaults;
-    } catch {
-      return defaults;
-    }
+    return parseUserNotificationSettingsStorage(
+      window.localStorage.getItem(USER_NOTIFICATION_SETTINGS_STORAGE_KEY),
+    );
   });
   const [saved, setSaved] = useState(false);
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(() => {
@@ -573,16 +487,11 @@ function NotificationsTab() {
   });
 
   function toggleSetting(id: string) {
-    setSettings((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, enabled: !s.enabled } : s))
-    );
+    setSettings((prev) => prev.map((s) => (s.id === id ? { ...s, enabled: !s.enabled } : s)));
   }
 
   async function handleSave() {
-    window.localStorage.setItem(
-      'ph-os:user-notification-settings',
-      JSON.stringify(settings)
-    );
+    window.localStorage.setItem(USER_NOTIFICATION_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   }
@@ -600,9 +509,7 @@ function NotificationsTab() {
     }
 
     const nextPermission =
-      Notification.permission === 'granted'
-        ? 'granted'
-        : await Notification.requestPermission();
+      Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
 
     setPermission(nextPermission);
     if (nextPermission !== 'granted') {
@@ -631,17 +538,13 @@ function NotificationsTab() {
           <Bell className="h-5 w-5 text-blue-600" aria-hidden="true" />
           通知設定
         </CardTitle>
-        <CardDescription>
-          種別ごとに通知の有効/無効を切り替えられます
-        </CardDescription>
+        <CardDescription>種別ごとに通知の有効/無効を切り替えられます</CardDescription>
       </CardHeader>
       <CardContent>
         {saved && (
           <Alert className="mb-4 border-green-200 bg-green-50">
             <Check className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-800">
-              通知設定を保存しました。
-            </AlertDescription>
+            <AlertDescription className="text-green-800">通知設定を保存しました。</AlertDescription>
           </Alert>
         )}
 
@@ -688,9 +591,7 @@ function NotificationsTab() {
                 >
                   {setting.label}
                 </label>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {setting.description}
-                </p>
+                <p className="text-xs text-slate-500 mt-0.5">{setting.description}</p>
               </div>
               <Switch
                 id={`notif-${setting.id}`}
@@ -703,10 +604,7 @@ function NotificationsTab() {
         </div>
 
         <div className="mt-6">
-          <Button
-            className="bg-blue-600 hover:bg-blue-700"
-            onClick={handleSave}
-          >
+          <Button className="bg-blue-600 hover:bg-blue-700" onClick={handleSave}>
             設定を保存
           </Button>
         </div>
@@ -730,9 +628,7 @@ function LocationTab() {
     setSaved(true);
     window.setTimeout(() => setSaved(false), 3000);
     toast.success(
-      nextEnabled
-        ? '訪問位置情報の記録を有効化しました'
-        : '訪問位置情報の記録を停止しました'
+      nextEnabled ? '訪問位置情報の記録を有効化しました' : '訪問位置情報の記録を停止しました',
     );
   }
 
@@ -847,9 +743,7 @@ function SessionTab() {
       await clearOfflineEncryptionKey();
       await signOut({ callbackUrl: '/login' });
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : '全端末ログアウトに失敗しました。'
-      );
+      toast.error(error instanceof Error ? error.message : '全端末ログアウトに失敗しました。');
       setIsSigningOutAll(false);
     }
   }
@@ -864,9 +758,7 @@ function SessionTab() {
           <Clock className="h-5 w-5 text-blue-600" aria-hidden="true" />
           セッション管理
         </CardTitle>
-        <CardDescription>
-          タイムアウト方針と再認証導線を確認できます
-        </CardDescription>
+        <CardDescription>タイムアウト方針と再認証導線を確認できます</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-3 md:grid-cols-2">
@@ -875,7 +767,7 @@ function SessionTab() {
             <p className="mt-2 text-sm text-slate-600">
               {status === 'loading'
                 ? '確認中'
-                : session?.user?.email ?? session?.user?.name ?? 'セッションなし'}
+                : (session?.user?.email ?? session?.user?.name ?? 'セッションなし')}
             </p>
             <p className="mt-1 text-xs text-slate-500">
               MFA: {mfaEnabled === null ? '確認中' : mfaEnabled ? '有効' : '無効'}

@@ -8,32 +8,12 @@ import {
   applyPatientAssignmentWhere,
   buildVisitRecordScheduleAssignmentWhere,
 } from '@/lib/auth/visit-schedule-access';
+import { LAB_ANALYTE_CODES } from '@/lib/patient/lab-analytes';
+
+const labAnalyteCodeSchema = z.enum(LAB_ANALYTE_CODES);
 
 const createLabSchema = z.object({
-  analyte_code: z.enum([
-    'wbc',
-    'neut',
-    'hb',
-    'plt',
-    'pt_inr',
-    'ast',
-    'alt',
-    't_bil',
-    'scr',
-    'egfr',
-    'ck',
-    'crp',
-    'k',
-    'hba1c',
-    'tp',
-    'alb',
-    'na',
-    'cl',
-    'bun',
-    'bnp',
-    'nt_pro_bnp',
-    'blood_glucose',
-  ]),
+  analyte_code: labAnalyteCodeSchema,
   measured_at: z.string().datetime(),
   value_numeric: z.number().optional(),
   value_text: z.string().optional(),
@@ -78,6 +58,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const ctx = authResult.ctx;
 
   const { id } = await params;
+  const url = new URL(req.url);
+  const analyteCodeParam = url.searchParams.get('analyte_code') ?? undefined;
+  const analyteCode = analyteCodeParam ? labAnalyteCodeSchema.safeParse(analyteCodeParam) : null;
+  if (analyteCode && !analyteCode.success) {
+    return validationError('検査項目コードが不正です', {
+      analyte_code: ['対応していない検査項目コードです'],
+    });
+  }
+  const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10), 200);
 
   const patient = await prisma.patient.findFirst({
     where: applyPatientAssignmentWhere(
@@ -88,15 +77,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   });
   if (!patient) return notFound('患者が見つかりません');
 
-  const url = new URL(req.url);
-  const analyteCode = url.searchParams.get('analyte_code') ?? undefined;
-  const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10), 200);
-
   const labs = await prisma.patientLabObservation.findMany({
     where: {
       org_id: ctx.orgId,
       patient_id: id,
-      ...(analyteCode ? { analyte_code: analyteCode as never } : {}),
+      ...(analyteCode ? { analyte_code: analyteCode.data } : {}),
     },
     orderBy: [{ measured_at: 'desc' }, { created_at: 'desc' }],
     take: limit,

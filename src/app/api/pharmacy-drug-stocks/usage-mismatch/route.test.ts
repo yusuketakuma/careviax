@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { authMock, prismaMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
@@ -17,13 +17,12 @@ vi.mock('@/lib/db/client', () => ({ prisma: prismaMock }));
 
 import { GET } from './route';
 
-function createRequest(url = 'http://localhost/api/pharmacy-drug-stocks/usage-mismatch?site_id=site_1') {
-  return {
-    url,
-    headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
-    },
-  } as unknown as NextRequest;
+function createRequest(
+  url = 'http://localhost/api/pharmacy-drug-stocks/usage-mismatch?site_id=site_1',
+) {
+  return new NextRequest(url, {
+    headers: { 'x-org-id': 'org_1' },
+  });
 }
 
 describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {
@@ -148,6 +147,52 @@ describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {
         }),
       }),
     );
+  });
+
+  it('ignores non-object medication entries in QR parsed_data', async () => {
+    prismaMock.qrScanDraft.findMany.mockResolvedValue([
+      {
+        id: 'draft_malformed',
+        created_at: new Date('2026-05-26T00:00:00.000Z'),
+        parsed_data: {
+          medications: [
+            ['unexpected'],
+            'unexpected',
+            null,
+            { drugCode: '111111111111', drugName: '頻出未採用薬' },
+          ],
+        },
+      },
+    ]);
+    prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([]);
+
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/pharmacy-drug-stocks/usage-mismatch?site_id=site_1&frequent_threshold=1',
+      ),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      totals: {
+        scanned_draft_count: 1,
+        used_drug_count: 1,
+        medication_line_count: 1,
+        matched_drug_count: 1,
+        unmatched_drug_count: 0,
+        frequent_unstocked_count: 1,
+      },
+      frequent_unstocked: [
+        {
+          drug_code: '111111111111',
+          drug_name: '頻出未採用薬',
+          count: 1,
+          matched_drug: { id: 'drug_unstocked' },
+        },
+      ],
+    });
   });
 
   it('rejects another org site before reading QR drafts', async () => {

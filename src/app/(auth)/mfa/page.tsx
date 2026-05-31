@@ -3,19 +3,14 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, ArrowLeft, KeyRound, ShieldCheck } from 'lucide-react';
 import {
   COGNITO_CHALLENGE_STORAGE_KEY,
+  readStoredCognitoChallenge,
   type CognitoChallengePayload,
 } from '@/lib/auth/cognito-challenge';
 
@@ -29,9 +24,12 @@ export default function MfaPage() {
   const [challenge, setChallenge] = useState<CognitoChallengePayload | null>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  const setRef = useCallback((index: number) => (el: HTMLInputElement | null) => {
-    inputRefs.current[index] = el;
-  }, []);
+  const setRef = useCallback(
+    (index: number) => (el: HTMLInputElement | null) => {
+      inputRefs.current[index] = el;
+    },
+    [],
+  );
 
   useEffect(() => {
     const raw = window.sessionStorage.getItem(COGNITO_CHALLENGE_STORAGE_KEY);
@@ -40,16 +38,16 @@ export default function MfaPage() {
       return;
     }
 
-    try {
-      const parsed = JSON.parse(raw) as CognitoChallengePayload;
-      if (parsed.type !== 'SOFTWARE_TOKEN_MFA') {
-        setError('MFA認証セッションが無効です。ログインからやり直してください。');
-        return;
-      }
-      setChallenge(parsed);
-    } catch {
+    const parsed = readStoredCognitoChallenge(raw);
+    if (!parsed) {
       setError('MFA認証セッションが壊れています。ログインからやり直してください。');
+      return;
     }
+    if (parsed.type !== 'SOFTWARE_TOKEN_MFA') {
+      setError('MFA認証セッションが無効です。ログインからやり直してください。');
+      return;
+    }
+    setChallenge(parsed);
   }, []);
 
   function handleDigitChange(index: number, value: string) {
@@ -157,7 +155,7 @@ export default function MfaPage() {
           ? err.message
           : mode === 'recovery'
             ? 'リカバリーコードが正しくありません。'
-            : '認証コードが正しくありません。もう一度お試しください。'
+            : '認証コードが正しくありません。もう一度お試しください。',
       );
       setDigits(['', '', '', '', '', '']);
       setRecoveryCode('');
@@ -175,9 +173,7 @@ export default function MfaPage() {
             <ShieldCheck className="h-5 w-5 text-blue-600" aria-hidden="true" />
             <CardTitle>二要素認証</CardTitle>
           </div>
-          <CardDescription>
-            認証アプリに表示された6桁のコードを入力してください
-          </CardDescription>
+          <CardDescription>認証アプリに表示された6桁のコードを入力してください</CardDescription>
         </CardHeader>
         <CardContent>
           {error && (
@@ -260,9 +256,7 @@ export default function MfaPage() {
               className="w-full bg-blue-600 hover:bg-blue-700"
               disabled={
                 isLoading ||
-                (mode === 'totp'
-                  ? digits.join('').length !== 6
-                  : recoveryCode.trim().length === 0)
+                (mode === 'totp' ? digits.join('').length !== 6 : recoveryCode.trim().length === 0)
               }
               aria-busy={isLoading}
             >

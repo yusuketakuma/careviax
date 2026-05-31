@@ -1,4 +1,5 @@
 import { buildBearerHeaders, fetchJson } from '../http-client';
+import { readJsonObject } from '@/lib/db/json';
 
 /**
  * レセコン連携アダプタ（請求データエクスポート）
@@ -48,7 +49,7 @@ export class ClaimsExportAdapterError extends Error {
       | 'UPSTREAM_FAILURE',
     readonly retriable: boolean,
     readonly status?: number,
-    readonly causeDetail?: unknown
+    readonly causeDetail?: unknown,
   ) {
     super(message);
     this.name = 'ClaimsExportAdapterError';
@@ -80,6 +81,35 @@ function escapeXmlAttr(value: string): string {
     .replace(/>/g, '&gt;');
 }
 
+function readClaimsExportFormat(value: unknown): ClaimsExportResult['format'] | null {
+  return value === 'claims-xml' || value === 'csv' ? value : null;
+}
+
+export function normalizeClaimsExportResult(value: unknown): ClaimsExportResult | null {
+  const object = readJsonObject(value);
+  if (!object) return null;
+
+  const format = readClaimsExportFormat(object.format);
+  if (
+    !format ||
+    typeof object.content !== 'string' ||
+    typeof object.recordCount !== 'number' ||
+    !Number.isInteger(object.recordCount) ||
+    object.recordCount < 0 ||
+    typeof object.generatedAt !== 'string' ||
+    !Number.isFinite(new Date(object.generatedAt).getTime())
+  ) {
+    return null;
+  }
+
+  return {
+    format,
+    content: object.content,
+    recordCount: object.recordCount,
+    generatedAt: object.generatedAt,
+  };
+}
+
 class StubClaimsExportAdapter implements ClaimsExportAdapterContract {
   getCapabilities(): ClaimsExportCapabilities {
     return {
@@ -94,7 +124,7 @@ class StubClaimsExportAdapter implements ClaimsExportAdapterContract {
     const lines = payload.records
       .map(
         (record) =>
-          `  <Claim patientId="${escapeXmlAttr(record.patientId)}" billingCode="${escapeXmlAttr(record.billingCode)}" points="${escapeXmlAttr(String(record.points))}" month="${escapeXmlAttr(record.billingMonth)}" insuranceType="${escapeXmlAttr(record.insuranceType)}"/>`
+          `  <Claim patientId="${escapeXmlAttr(record.patientId)}" billingCode="${escapeXmlAttr(record.billingCode)}" points="${escapeXmlAttr(String(record.points))}" month="${escapeXmlAttr(record.billingMonth)}" insuranceType="${escapeXmlAttr(record.insuranceType)}"/>`,
       )
       .join('\n');
 
@@ -120,7 +150,7 @@ class RececomClaimsExportAdapter implements ClaimsExportAdapterContract {
       throw new ClaimsExportAdapterError(
         'レセコン API の baseUrl が設定されていません',
         'INVALID_CONFIGURATION',
-        false
+        false,
       );
     }
   }
@@ -140,7 +170,7 @@ class RececomClaimsExportAdapter implements ClaimsExportAdapterContract {
         method: 'POST',
         headers: buildBearerHeaders(this.config.accessToken, this.config.apiKey),
         body: payload,
-      }
+      },
     );
 
     if (status === 400) {
@@ -149,7 +179,7 @@ class RececomClaimsExportAdapter implements ClaimsExportAdapterContract {
         'INVALID_PAYLOAD',
         false,
         status,
-        data
+        data,
       );
     }
     if (status >= 400) {
@@ -158,16 +188,27 @@ class RececomClaimsExportAdapter implements ClaimsExportAdapterContract {
         'UPSTREAM_FAILURE',
         status >= 500,
         status,
-        data
+        data,
       );
     }
 
-    return data as ClaimsExportResult;
+    const result = normalizeClaimsExportResult(data);
+    if (!result) {
+      throw new ClaimsExportAdapterError(
+        'レセコン API のレスポンス形式が不正です',
+        'UPSTREAM_FAILURE',
+        false,
+        status,
+        data,
+      );
+    }
+
+    return result;
   }
 }
 
 export function createClaimsExportAdapter(
-  config: ClaimsExportAdapterConfig = { provider: 'stub' }
+  config: ClaimsExportAdapterConfig = { provider: 'stub' },
 ): ClaimsExportAdapterContract {
   switch (config.provider) {
     case 'stub':
@@ -179,7 +220,7 @@ export function createClaimsExportAdapter(
       throw new ClaimsExportAdapterError(
         `未対応のレセコン provider です: ${exhaustiveCheck}`,
         'INVALID_CONFIGURATION',
-        false
+        false,
       );
     }
   }

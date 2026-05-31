@@ -30,6 +30,7 @@ vi.mock('@/lib/db/client', () => ({
 
 import {
   consumeMfaRecoveryCode,
+  hasMfaRecoveryCodes,
   restoreMfaRecoveryCodes,
   takeMfaRecoveryCodesForRecovery,
 } from './mfa-recovery';
@@ -43,15 +44,14 @@ describe('mfa-recovery service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.NEXTAUTH_SECRET = 'test-secret';
-    transactionMock.mockImplementation(
-      async (callback: (tx: unknown) => Promise<unknown>) =>
-        callback({
-          setting: {
-            findFirst: settingFindFirstMock,
-            delete: settingDeleteMock,
-            update: settingUpdateMock,
-          },
-        }),
+    transactionMock.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) =>
+      callback({
+        setting: {
+          findFirst: settingFindFirstMock,
+          delete: settingDeleteMock,
+          update: settingUpdateMock,
+        },
+      }),
     );
     settingDeleteMock.mockResolvedValue(undefined);
     settingUpdateMock.mockResolvedValue(undefined);
@@ -120,6 +120,34 @@ describe('mfa-recovery service', () => {
       },
     });
     expect(settingDeleteMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed persisted recovery-code settings without mutating them', async () => {
+    const matchingHash = hashRecoveryCode(process.env.NEXTAUTH_SECRET!, 'ABCD-EFGH');
+
+    for (const value of [
+      {
+        version: 1,
+        hashes: [matchingHash, 123],
+        generatedAt: '2026-04-04T00:00:00.000Z',
+      },
+      {
+        version: 1,
+        hashes: [matchingHash],
+      },
+      ['unexpected'],
+    ]) {
+      vi.clearAllMocks();
+      settingFindFirstMock.mockResolvedValue({
+        id: 'setting_1',
+        value,
+      });
+
+      await expect(hasMfaRecoveryCodes('user_1')).resolves.toBe(false);
+      await expect(takeMfaRecoveryCodesForRecovery('user_1', 'ABCD-EFGH')).resolves.toBeNull();
+      expect(settingUpdateMock).not.toHaveBeenCalled();
+      expect(settingDeleteMock).not.toHaveBeenCalled();
+    }
   });
 
   it('restores a recovery-code snapshot after a failed external recovery step', async () => {

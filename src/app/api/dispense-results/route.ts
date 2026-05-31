@@ -1,4 +1,5 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
+import { ADMIN_MEMBER_ROLES } from '@/lib/auth/member-roles';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
@@ -479,7 +480,7 @@ export const POST = withAuth(
         where: {
           org_id: req.orgId,
           is_active: true,
-          OR: [{ can_audit_dispense: true }, { role: { in: ['owner', 'admin'] as never[] } }],
+          OR: [{ can_audit_dispense: true }, { role: { in: [...ADMIN_MEMBER_ROLES] } }],
           user: {
             is_active: true,
           },

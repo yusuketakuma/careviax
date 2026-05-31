@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 import { clearRequestAuthContext } from '../request-context';
 
 const { authMock, membershipFindFirstMock, userFindUniqueMock, logSecurityEventMock } =
@@ -34,11 +34,9 @@ import { getAuthContext, requireAuthContext } from '../context';
 const originalTrustProxyHeaders = process.env.TRUST_PROXY_HEADERS;
 
 function createRequest(headers?: Record<string, string>) {
-  return {
-    headers: {
-      get: (key: string) => headers?.[key] ?? null,
-    },
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/test-auth-context', {
+    headers,
+  });
 }
 
 describe('getAuthContext', () => {

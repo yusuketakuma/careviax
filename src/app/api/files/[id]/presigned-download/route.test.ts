@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { requireAuthContextMock, createPresignedDownloadMock } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -26,12 +26,11 @@ vi.mock('@/server/services/file-storage', () => ({
 import { GET } from './route';
 
 function createRequest(url = 'http://localhost/api/files/file_1/presigned-download') {
-  return {
-    url,
+  return new NextRequest(url, {
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
+      'x-org-id': 'org_1',
     },
-  } as unknown as NextRequest;
+  });
 }
 
 describe('/api/files/[id]/presigned-download GET', () => {

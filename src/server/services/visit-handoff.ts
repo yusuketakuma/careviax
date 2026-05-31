@@ -1,13 +1,23 @@
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import type { RequestAuthContext } from '@/lib/auth/request-context';
+import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import type { HandoffData, StructuredSoap } from '@/types/structured-soap';
 import type { VisitHandoff } from '@/types/visit-brief';
 import { extractHandoffFromSoap } from './visit-brief-ai';
 import { upsertOperationalTask, resolveOperationalTasks } from './operational-tasks';
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
+
+function readStructuredSoap(value: unknown): Partial<StructuredSoap> {
+  return readJsonObject(value) ?? {};
+}
+
+function readHandoffData(value: unknown): HandoffData | null {
+  const handoff = readJsonObject(value);
+  return handoff as HandoffData | null;
+}
 
 // ─── processHandoffExtraction ─────────────────────────────────────────────────
 
@@ -22,7 +32,7 @@ export async function processHandoffExtraction(
     soapAssessment: string | null;
     soapPlan: string | null;
     requestContext?: RequestAuthContext;
-  }
+  },
 ): Promise<VisitHandoff> {
   const {
     orgId,
@@ -62,21 +72,16 @@ export async function processHandoffExtraction(
         select: { structured_soap: true },
       });
 
-      const existing =
-        record.structured_soap !== null &&
-        typeof record.structured_soap === 'object' &&
-        !Array.isArray(record.structured_soap)
-          ? (record.structured_soap as Record<string, unknown>)
-          : {};
+      const existing = readStructuredSoap(record.structured_soap);
 
-      const updated: StructuredSoap = {
-        ...(existing as StructuredSoap),
+      const updated = {
+        ...existing,
         handoff,
       };
 
       await tx.visitRecord.update({
         where: { id: visitRecordId },
-        data: { structured_soap: updated as unknown as Prisma.InputJsonValue },
+        data: { structured_soap: toPrismaJsonInput(updated) },
       });
 
       await upsertOperationalTask(tx, {
@@ -89,7 +94,7 @@ export async function processHandoffExtraction(
         relatedEntityId: visitRecordId,
       });
     },
-    { requestContext }
+    { requestContext },
   );
 
   return handoff;
@@ -107,7 +112,7 @@ export async function confirmHandoff(
       Pick<VisitHandoff, 'next_check_items' | 'ongoing_monitoring' | 'decision_rationale'>
     >;
     requestContext?: RequestAuthContext;
-  }
+  },
 ): Promise<VisitHandoff> {
   const { orgId, visitRecordId, confirmedBy, edits, requestContext } = args;
 
@@ -121,15 +126,8 @@ export async function confirmHandoff(
         select: { structured_soap: true },
       });
 
-      const existing =
-        record.structured_soap !== null &&
-        typeof record.structured_soap === 'object' &&
-        !Array.isArray(record.structured_soap)
-          ? (record.structured_soap as Record<string, unknown>)
-          : {};
-
-      const currentSoap = existing as StructuredSoap;
-      const currentHandoff = currentSoap.handoff;
+      const currentSoap = readStructuredSoap(record.structured_soap);
+      const currentHandoff = readHandoffData(currentSoap.handoff);
 
       if (!currentHandoff) {
         throw new Error(`No handoff found for visit record ${visitRecordId}`);
@@ -150,14 +148,14 @@ export async function confirmHandoff(
         confirmed_at: new Date().toISOString(),
       };
 
-      const updated: StructuredSoap = {
+      const updated = {
         ...currentSoap,
         handoff: confirmed,
       };
 
       await tx.visitRecord.update({
         where: { id: visitRecordId },
-        data: { structured_soap: updated as unknown as Prisma.InputJsonValue },
+        data: { structured_soap: toPrismaJsonInput(updated) },
       });
 
       await resolveOperationalTasks(tx, {
@@ -166,7 +164,7 @@ export async function confirmHandoff(
         taskType: 'handoff_confirmation',
       });
     },
-    { requestContext }
+    { requestContext },
   );
 
   if (!confirmed) {

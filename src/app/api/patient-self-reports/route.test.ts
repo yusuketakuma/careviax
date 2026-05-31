@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   patientSelfReportFindManyMock,
@@ -39,6 +39,18 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { GET, POST } from './route';
+
+function createGetRequest(search = '') {
+  return new NextRequest(`http://localhost/api/patient-self-reports${search}`);
+}
+
+function createPostRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/patient-self-reports', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
 
 describe('/api/patient-self-reports', () => {
   beforeEach(() => {
@@ -98,9 +110,7 @@ describe('/api/patient-self-reports', () => {
 
   it('lists self reports with patient display names', async () => {
     const response = (await GET(
-      {
-        url: 'http://localhost/api/patient-self-reports?patient_id=patient_1&status=triaged',
-      } as NextRequest,
+      createGetRequest('?patient_id=patient_1&status=triaged'),
       { params: Promise.resolve({}) },
     ))!;
 
@@ -128,9 +138,7 @@ describe('/api/patient-self-reports', () => {
     patientFindManyMock.mockResolvedValue([]);
 
     const response = (await GET(
-      {
-        url: 'http://localhost/api/patient-self-reports?patient_id=patient_unassigned',
-      } as NextRequest,
+      createGetRequest('?patient_id=patient_unassigned'),
       { params: Promise.resolve({}) },
     ))!;
 
@@ -142,18 +150,33 @@ describe('/api/patient-self-reports', () => {
     expect(patientSelfReportFindManyMock).not.toHaveBeenCalled();
   });
 
+  it('rejects an invalid status filter before resolving accessible patients', async () => {
+    const response = (await GET(
+      createGetRequest('?status=archived'),
+      { params: Promise.resolve({}) },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        status: ['対応していないステータスです'],
+      },
+    });
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(patientSelfReportFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('creates a triaged self report', async () => {
     const response = (await POST(
-      {
-        json: async () => ({
-          patient_id: 'patient_1',
-          reported_by_name: '家族B',
-          relation: 'spouse',
-          category: 'adherence',
-          subject: '飲み忘れ',
-          content: '朝食後を飲み忘れ',
-        }),
-      } as NextRequest,
+      createPostRequest({
+        patient_id: 'patient_1',
+        reported_by_name: '家族B',
+        relation: 'spouse',
+        category: 'adherence',
+        subject: '飲み忘れ',
+        content: '朝食後を飲み忘れ',
+      }),
       { params: Promise.resolve({}) },
     ))!;
 
@@ -173,15 +196,13 @@ describe('/api/patient-self-reports', () => {
     patientFindFirstMock.mockResolvedValue(null);
 
     const response = (await POST(
-      {
-        json: async () => ({
-          patient_id: 'patient_unassigned',
-          reported_by_name: '家族B',
-          category: 'adherence',
-          subject: '飲み忘れ',
-          content: '朝食後を飲み忘れ',
-        }),
-      } as NextRequest,
+      createPostRequest({
+        patient_id: 'patient_unassigned',
+        reported_by_name: '家族B',
+        category: 'adherence',
+        subject: '飲み忘れ',
+        content: '朝食後を飲み忘れ',
+      }),
       { params: Promise.resolve({}) },
     ))!;
 

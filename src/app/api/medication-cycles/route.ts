@@ -5,26 +5,33 @@ import { success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { createMedicationCycleSchema } from '@/lib/validations/medication';
+import { MEDICATION_CYCLE_STATUSES } from '@/lib/prescription/intake-filters';
 import { prisma } from '@/lib/db/client';
-import { type MedicationCycleStatus } from '@prisma/client';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { canAccessCareCase } from '@/server/services/patient-access';
+import { z } from 'zod';
+
+const medicationCycleStatusSchema = z.enum(MEDICATION_CYCLE_STATUSES);
 
 export const GET = withAuthContext(
   async (req: NextRequest, ctx) => {
     const { searchParams } = new URL(req.url);
     const { limit, offset } = parsePaginationParams(searchParams);
 
-    const statusFilter = (searchParams.get('status') ?? undefined) as
-      | MedicationCycleStatus
-      | undefined;
+    const statusParam = searchParams.get('status') ?? undefined;
+    const statusFilter = statusParam ? medicationCycleStatusSchema.safeParse(statusParam) : null;
+    if (statusFilter && !statusFilter.success) {
+      return validationError('服薬サイクルステータスが不正です', {
+        status: ['対応していないステータスです'],
+      });
+    }
     const caseId = searchParams.get('case_id') ?? undefined;
     const patientId = searchParams.get('patient_id') ?? undefined;
     const caseAssignmentWhere = buildCareCaseAssignmentWhere(ctx);
 
     const where = {
       org_id: ctx.orgId,
-      ...(statusFilter ? { overall_status: statusFilter } : {}),
+      ...(statusFilter ? { overall_status: statusFilter.data } : {}),
       ...(caseId ? { case_id: caseId } : {}),
       ...(patientId ? { patient_id: patientId } : {}),
       ...(caseAssignmentWhere ? { case_: caseAssignmentWhere } : {}),

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -70,9 +70,16 @@ import { EPrescriptionAdapterError } from '@/server/adapters/e-prescription';
 import { POST } from './route';
 
 function createRequest(body?: unknown) {
-  return {
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+  return new NextRequest(
+    'http://localhost/api/patients/patient_1/prescriptions/e-prescription',
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    },
+  );
 }
 
 const DEFAULT_CTX = { orgId: 'org_1', userId: 'user_1', role: 'admin' };

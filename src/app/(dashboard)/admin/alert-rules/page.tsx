@@ -14,6 +14,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { parseJsonObjectText } from '@/lib/admin/json-editor';
 
 type DrugAlertRule = {
   id: string;
@@ -64,12 +65,10 @@ export default function AlertRulesPage() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      let parsedCondition: Record<string, unknown>;
-      try {
-        parsedCondition = JSON.parse(form.conditionText) as Record<string, unknown>;
-      } catch {
-        throw new Error('条件(JSON) の形式が不正です');
-      }
+      const parsedCondition = parseJsonObjectText(
+        form.conditionText,
+        '条件(JSON) の形式が不正です',
+      );
 
       const res = await fetch(
         form.id ? `/api/drug-alert-rules/${form.id}` : '/api/drug-alert-rules',

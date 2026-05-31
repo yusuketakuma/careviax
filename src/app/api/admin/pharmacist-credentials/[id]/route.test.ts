@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -34,6 +34,20 @@ vi.mock('@/lib/api/org-reference', () => ({
 }));
 
 import { DELETE, PATCH } from './route';
+
+function createRequest(init?: ConstructorParameters<typeof NextRequest>[1]) {
+  return new NextRequest('http://localhost/api/admin/pharmacist-credentials/cred_1', init);
+}
+
+function createJsonRequest(body: unknown) {
+  return createRequest({
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+}
 
 describe('/api/admin/pharmacist-credentials/[id]', () => {
   beforeEach(() => {
@@ -71,8 +85,8 @@ describe('/api/admin/pharmacist-credentials/[id]', () => {
   });
 
   it('updates a credential and validates pharmacist ownership', async () => {
-    const response = await PATCH({
-      json: async () => ({
+    const response = await PATCH(
+      createJsonRequest({
         user_id: 'user_2',
         certification_type: '専門薬剤師',
         certification_number: 'A-123',
@@ -81,9 +95,10 @@ describe('/api/admin/pharmacist-credentials/[id]', () => {
         tenure_years: 8,
         weekly_work_hours: 32,
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'cred_1' }),
-    });
+      {
+        params: Promise.resolve({ id: 'cred_1' }),
+      },
+    );
 
     expect(response.status).toBe(200);
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
@@ -112,7 +127,7 @@ describe('/api/admin/pharmacist-credentials/[id]', () => {
   });
 
   it('deletes an existing credential', async () => {
-    const response = await DELETE({} as NextRequest, {
+    const response = await DELETE(createRequest({ method: 'DELETE' }), {
       params: Promise.resolve({ id: 'cred_1' }),
     });
 

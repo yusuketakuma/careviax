@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getRequestAuthContext } from '../request-context';
 
 const { authMock, membershipFindFirstMock, userFindUniqueMock } = vi.hoisted(() => ({
@@ -27,11 +26,9 @@ vi.mock('@/lib/db/client', () => ({
 import { withAuth } from '../middleware';
 
 function createRequest(orgId?: string) {
-  return {
-    headers: {
-      get: (key: string) => (key === 'x-org-id' ? orgId ?? null : null),
-    },
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/test-with-auth', {
+    headers: orgId ? { 'x-org-id': orgId } : undefined,
+  });
 }
 
 describe('withAuth', () => {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { requireAuthContextMock, patientFindManyMock, recordDataExportAuditMock } = vi.hoisted(
   () => ({
@@ -28,10 +28,7 @@ vi.mock('@/server/services/export-audit', () => ({
 import { GET } from './route';
 
 function createRequest(url: string) {
-  return {
-    url,
-    headers: { get: () => null },
-  } as unknown as NextRequest;
+  return new NextRequest(url);
 }
 
 describe('/api/patients/export GET', () => {
@@ -146,5 +143,21 @@ describe('/api/patients/export GET', () => {
         },
       }),
     );
+  });
+
+  it('rejects an invalid case status before exporting patients', async () => {
+    const response = await GET(
+      createRequest('http://localhost/api/patients/export?case_status=archived'),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        case_status: ['対応していないステータスです'],
+      },
+    });
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
 });

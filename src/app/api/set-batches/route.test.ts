@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { authMock, prismaMock, withOrgContextMock, txMock, notifyWorkflowMutationMock } = vi.hoisted(
   () => ({
@@ -38,12 +38,22 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 import { GET, POST } from './route';
 
 function createRequest(body: unknown) {
-  return {
+  return new NextRequest('http://localhost/api/set-batches', {
+    method: 'POST',
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
+      'x-org-id': 'org_1',
+      'content-type': 'application/json',
     },
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+    body: JSON.stringify(body),
+  });
+}
+
+function createGetRequest(url: string) {
+  return new NextRequest(url, {
+    headers: {
+      'x-org-id': 'org_1',
+    },
+  });
 }
 
 describe('set-batches POST', () => {
@@ -58,15 +68,9 @@ describe('set-batches POST', () => {
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'pharmacist_trainee' });
     prismaMock.setBatch.findMany.mockResolvedValue([]);
 
-    const response = await GET(
-      {
-        url: 'http://localhost/api/set-batches?plan_id=plan_1',
-        headers: {
-          get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
-        },
-      } as unknown as NextRequest,
-      { params: Promise.resolve({}) },
-    );
+    const response = await GET(createGetRequest('http://localhost/api/set-batches?plan_id=plan_1'), {
+      params: Promise.resolve({}),
+    });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);

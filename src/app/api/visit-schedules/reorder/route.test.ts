@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 type TestRole = 'owner' | 'admin' | 'pharmacist' | 'pharmacist_trainee' | 'clerk';
 type AuthenticatedTestRequest = NextRequest & {
@@ -26,12 +26,11 @@ const {
     authRoleRef,
     withAuthMock: vi.fn((handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
       return (req: NextRequest) =>
-        handler({
-          ...req,
+        handler(Object.assign(req, {
           orgId: 'org_1',
           userId: 'user_1',
           role: authRoleRef.current,
-        } as AuthenticatedTestRequest);
+        }));
     }),
     withOrgContextMock: vi.fn(),
     scheduleFindManyMock: vi.fn(),
@@ -59,9 +58,11 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 import { PATCH } from './route';
 
 function createRequest(body: unknown) {
-  return {
-    json: async () => body,
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/visit-schedules/reorder', {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
 }
 
 function expectNoWriteAuditOrNotify() {

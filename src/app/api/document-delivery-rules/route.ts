@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
-import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 
 const deliveryChannelSchema = z.enum(['email', 'fax', 'mcs']);
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
         document_type: parsed.data.document_type,
         target_role: parsed.data.target_role,
         channel: parsed.data.channel,
-        fallback_channels: parsed.data.fallback_channels as Prisma.InputJsonValue,
+        fallback_channels: toPrismaJsonInput(parsed.data.fallback_channels),
         is_active: parsed.data.is_active,
       },
     })

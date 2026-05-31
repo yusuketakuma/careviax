@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -43,9 +43,11 @@ import { PATCH } from './route';
 
 describe('/api/medication-cycles/[id]/transition', () => {
   const createPatchRequest = (body: unknown) =>
-    ({
-      json: async () => body,
-    }) as NextRequest;
+    new NextRequest('http://localhost/api/medication-cycles/cycle_1/transition', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+      headers: { 'content-type': 'application/json' },
+    });
 
   beforeEach(() => {
     vi.clearAllMocks();

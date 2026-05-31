@@ -1,9 +1,37 @@
-import { Prisma } from '@prisma/client';
 import type { BillingEvidenceContext, BillingCandidateSpec } from './types';
-import { ensureHomeCareBillingSsot } from './seeder';
+import { ensureHomeCareBillingSsot, type HomeCareBillingSsotTx } from './seeder';
 import { HOME_CARE_BILLING_RULESET_VERSION } from './seeder';
+import { readJsonObject } from '@/lib/db/json';
 
-type Tx = Prisma.TransactionClient;
+export type BillingRuleRow = {
+  id: string;
+  ssot_key: string | null;
+  rule_type: string | null;
+  code: string | null;
+  name: string;
+  amount: number;
+  billing_scope: string | null;
+  service_type: string | null;
+  payer_basis: string | null;
+  provider_scope: string | null;
+  selection_mode: string | null;
+  calculation_unit: string | null;
+  source_url: string | null;
+  source_note: string | null;
+  conditions: unknown;
+  created_at?: Date;
+};
+
+export type HomeCareBillingRuleEngineTx = HomeCareBillingSsotTx & {
+  billingRule: HomeCareBillingSsotTx['billingRule'] & {
+    findMany(args: unknown): Promise<BillingRuleRow[]>;
+  };
+  sourceOfTruthMatrix: HomeCareBillingSsotTx['sourceOfTruthMatrix'] & {
+    findFirst(args: unknown): Promise<unknown>;
+  };
+};
+
+type Tx = HomeCareBillingRuleEngineTx;
 
 function buildingTier(buildingPatientCount: number) {
   if (buildingPatientCount >= 10) return 'multi_10_plus';
@@ -15,7 +43,11 @@ function conditionValue(
   rule: Awaited<ReturnType<typeof getHomeCareBillingSsotSummary>>['rules'][number],
   key: string,
 ) {
-  return ((rule.conditions ?? {}) as Record<string, unknown>)[key];
+  return readRuleConditions(rule)[key];
+}
+
+function readRuleConditions(rule: { conditions: unknown }) {
+  return readJsonObject(rule.conditions) ?? {};
 }
 
 function hasRegionAddOn(
@@ -108,7 +140,7 @@ function manualRuleCandidates(
   context: BillingEvidenceContext,
 ) {
   return rules.filter((rule) => {
-    const conditions = (rule.conditions ?? {}) as Record<string, unknown>;
+    const conditions = readRuleConditions(rule);
     if (rule.service_type !== context.serviceType && rule.service_type !== 'generic') return false;
     if (rule.payer_basis !== context.payerBasis) return false;
     if (rule.provider_scope && rule.provider_scope !== context.providerScope) return false;
@@ -149,7 +181,7 @@ export async function buildBillingCandidateSpecs(
 
   if (baseRule) {
     let exclusionReason: string | null = null;
-    const conditions = (baseRule.conditions ?? {}) as Record<string, unknown>;
+    const conditions = readRuleConditions(baseRule);
     const monthlyCap = Number(
       context.specialCapEligible ? conditions.special_monthly_cap : conditions.monthly_cap,
     );
@@ -192,7 +224,7 @@ export async function buildBillingCandidateSpecs(
   }
 
   for (const manualRule of manualRuleCandidates(rules, context)) {
-    const conditions = (manualRule.conditions ?? {}) as Record<string, unknown>;
+    const conditions = readRuleConditions(manualRule);
     const regionKey = String(conditions.region_add_on ?? '');
     const requiresOnline = conditions.requires_online_visit === true;
     const afterHoursVisit = (conditions.after_hours_visit as string | undefined) ?? null;

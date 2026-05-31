@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -47,6 +47,18 @@ vi.mock('@/server/services/management-plans', () => ({
 
 import { GET, PATCH } from './route';
 
+function createGetRequest() {
+  return new NextRequest('http://localhost/api/management-plans/plan_1');
+}
+
+function createPatchRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/management-plans/plan_1', {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 describe('/api/management-plans/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -86,7 +98,7 @@ describe('/api/management-plans/[id]', () => {
   });
 
   it('returns a management plan by id', async () => {
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createGetRequest(), {
       params: Promise.resolve({ id: 'plan_1' }),
     }))!;
 
@@ -114,13 +126,14 @@ describe('/api/management-plans/[id]', () => {
   it('does not update an unassigned management plan', async () => {
     managementPlanFindFirstMock.mockResolvedValue(null);
 
-    const response = (await PATCH({
-      json: async () => ({
+    const response = (await PATCH(
+      createPatchRequest({
         action: 'approve',
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'plan_unassigned' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'plan_unassigned' }),
+      },
+    ))!;
 
     expect(response.status).toBe(404);
     expect(managementPlanUpdateMock).not.toHaveBeenCalled();
@@ -128,14 +141,39 @@ describe('/api/management-plans/[id]', () => {
     expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
   });
 
+  it('updates draft plan content', async () => {
+    const response = (await PATCH(
+      createPatchRequest({
+        action: 'update',
+        title: '更新版計画書',
+        content: { goals: ['服薬継続'], monitoring: ['副作用'] },
+      }),
+      {
+        params: Promise.resolve({ id: 'plan_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(managementPlanUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'plan_1' },
+      data: {
+        title: '更新版計画書',
+        content: { goals: ['服薬継続'], monitoring: ['副作用'] },
+      },
+    });
+    expect(managementPlanUpdateManyMock).not.toHaveBeenCalled();
+    expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
+  });
+
   it('approves a draft plan and schedules a review alert', async () => {
-    const response = (await PATCH({
-      json: async () => ({
+    const response = (await PATCH(
+      createPatchRequest({
         action: 'approve',
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'plan_1' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'plan_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(200);
     expect(managementPlanUpdateManyMock).toHaveBeenCalled();

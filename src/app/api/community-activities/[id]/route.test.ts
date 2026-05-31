@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   communityActivityFindFirstMock,
@@ -32,6 +32,16 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { PATCH } from './route';
 
+function createRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/community-activities/activity_1', {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+}
+
 describe('/api/community-activities/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -47,13 +57,14 @@ describe('/api/community-activities/[id]', () => {
   });
 
   it('updates a community activity', async () => {
-    const response = (await PATCH({
-      json: async () => ({
+    const response = (await PATCH(
+      createRequest({
         title: '更新後タイトル',
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'activity_1' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'activity_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(200);
     expect(communityActivityUpdateMock).toHaveBeenCalled();

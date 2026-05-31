@@ -223,7 +223,7 @@ describe('importMhlwPriceList', () => {
       return toWorkbookResponse(workbook);
     });
 
-    const result = await importMhlwPriceList(db as never, { fetchImpl });
+    const result = await importMhlwPriceList(db, { fetchImpl });
 
     expect(result.importedCount).toBe(2);
     expect(result.workbookUrls).toEqual([
@@ -279,7 +279,7 @@ describe('importMhlwPriceList', () => {
       },
     ]);
 
-    await importMhlwPriceList(db as never, {
+    await importMhlwPriceList(db, {
       workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/price.xlsx',
       fetchImpl: async () => toWorkbookResponse(workbook),
     });
@@ -438,7 +438,7 @@ describe('importGenericNameMappings', () => {
       ],
     });
 
-    const result = await importGenericNameMappings(db as never, {
+    const result = await importGenericNameMappings(db, {
       workbookUrl: 'https://www.mhlw.go.jp/topics/2026/04/xls/generic.xlsx',
       fetchImpl: async () => toWorkbookResponse(workbook),
     });

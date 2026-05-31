@@ -1,10 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { withOrgContextMock, notifyWebhookEventForOrgMock, upsertOperationalTaskMock, prismaMock } =
+const {
+  withOrgContextMock,
+  notifyWebhookEventForOrgMock,
+  upsertOperationalTaskMock,
+  createDispenseDraftMock,
+  prismaMock,
+} =
   vi.hoisted(() => ({
     withOrgContextMock: vi.fn(),
     notifyWebhookEventForOrgMock: vi.fn(),
     upsertOperationalTaskMock: vi.fn(),
+    createDispenseDraftMock: vi.fn(),
     prismaMock: {
       prescriptionIntake: {
         findFirst: vi.fn(),
@@ -34,7 +41,11 @@ vi.mock('@/server/services/operational-tasks', () => ({
   upsertOperationalTask: upsertOperationalTaskMock,
 }));
 
-import { createPrescriptionIntake } from './prescription-intake-service';
+vi.mock('@/server/services/dispense-draft-service', () => ({
+  createDispenseDraft: createDispenseDraftMock,
+}));
+
+import { createPrescriptionIntake, createPrescriptionIntakeInTx } from './prescription-intake-service';
 
 function createMockTx() {
   return {
@@ -61,10 +72,22 @@ function createMockTx() {
     },
     inquiryRecord: {
       count: vi.fn(),
+      create: vi.fn(),
+    },
+    communicationRequest: {
+      create: vi.fn(),
+    },
+    communicationEvent: {
+      create: vi.fn(),
     },
     dispenseTask: {
       findFirst: vi.fn(),
       create: vi.fn(),
+    },
+    task: {
+      create: vi.fn(),
+      updateMany: vi.fn(),
+      upsert: vi.fn(),
     },
   };
 }
@@ -90,6 +113,13 @@ describe('createPrescriptionIntake', () => {
     prismaMock.medicationProfile.updateMany.mockResolvedValue({ count: 0 });
     notifyWebhookEventForOrgMock.mockResolvedValue(undefined);
     upsertOperationalTaskMock.mockResolvedValue({ id: 'task_1' });
+    createDispenseDraftMock.mockResolvedValue({
+      id: 'cycle_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      overall_status: 'ready_to_dispense',
+      primary_pharmacist_id: 'pharmacist_1',
+    });
   });
 
   it('rejects patient/case or org mismatch before creating a cycle or intake', async () => {
@@ -184,5 +214,70 @@ describe('createPrescriptionIntake', () => {
     expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
     expect(prismaMock.prescriptionIntake.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.medicationProfile.findMany).not.toHaveBeenCalled();
+  });
+
+  it('normalizes inquiry communication request context snapshots in transaction flow', async () => {
+    const tx = createMockTx();
+    tx.medicationCycle.findFirst.mockResolvedValue({
+      id: 'cycle_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      overall_status: 'ready_to_dispense',
+      version: 1,
+      case_: {
+        primary_pharmacist_id: 'pharmacist_1',
+      },
+      prescription_intakes: [],
+      dispense_tasks: [],
+    });
+    tx.prescriptionIntake.create.mockResolvedValue({
+      id: 'intake_1',
+    });
+    tx.inquiryRecord.create.mockResolvedValue({
+      id: 'inquiry_1',
+    });
+    tx.communicationRequest.create.mockResolvedValue({
+      id: 'request_1',
+    });
+    tx.communicationEvent.create.mockResolvedValue({
+      id: 'event_1',
+    });
+    tx.inquiryRecord.count.mockResolvedValue(1);
+
+    const result = await createPrescriptionIntakeInTx(
+      tx,
+      {
+        cycle_id: 'cycle_1',
+        source_type: 'qr_scan',
+        prescribed_date: '2026-04-01',
+        lines: [validLine()],
+        inquiry: {
+          reason: '用量確認',
+          inquiry_to_physician: '処方医A',
+          inquiry_content: '用量を確認してください',
+        },
+      },
+      'org_1',
+      'user_1',
+      { skipStructuringCheck: true, skipExpiryCheck: true },
+    );
+
+    expect(result.kind).toBe('intake');
+    expect(tx.communicationRequest.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        context_snapshot: {
+          cycle_id: 'cycle_1',
+          issue_id: null,
+          line_id: null,
+          reason: '用量確認',
+        },
+      }),
+    });
+    expect(createDispenseDraftMock).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        shouldPauseForInquiry: true,
+      }),
+    );
   });
 });

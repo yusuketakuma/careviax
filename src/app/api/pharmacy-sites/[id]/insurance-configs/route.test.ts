@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -42,6 +42,18 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { GET, POST } from './route';
+
+function createGetRequest() {
+  return new NextRequest('http://localhost/api/pharmacy-sites/site_1/insurance-configs');
+}
+
+function createPostRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/pharmacy-sites/site_1/insurance-configs', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
+}
 
 describe('/api/pharmacy-sites/[id]/insurance-configs', () => {
   beforeEach(() => {
@@ -89,7 +101,7 @@ describe('/api/pharmacy-sites/[id]/insurance-configs', () => {
         revision_code: '2024',
       },
     ]);
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createGetRequest(), {
       params: Promise.resolve({ id: 'site_1' }),
     }))!;
 
@@ -101,16 +113,14 @@ describe('/api/pharmacy-sites/[id]/insurance-configs', () => {
 
   it('creates an insurance config with wrapped data', async () => {
     const response = (await POST(
-      {
-        json: async () => ({
-          insurance_type: 'care',
-          revision_code: '2024',
-          revision_label: '令和6年度',
-          effective_from: '2024-04-01',
-          effective_to: null,
-          config: {},
-        }),
-      } as NextRequest,
+      createPostRequest({
+        insurance_type: 'care',
+        revision_code: '2024',
+        revision_label: '令和6年度',
+        effective_from: '2024-04-01',
+        effective_to: null,
+        config: {},
+      }),
       {
         params: Promise.resolve({ id: 'site_1' }),
       },
@@ -124,19 +134,29 @@ describe('/api/pharmacy-sites/[id]/insurance-configs', () => {
         revision_code: '2024',
       },
     });
+    expect(insuranceConfigCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        site_id: 'site_1',
+        insurance_type: 'care',
+        revision_code: '2024',
+        revision_label: '令和6年度',
+        effective_from: new Date('2024-04-01'),
+        effective_to: null,
+        config: {},
+      }),
+    });
   });
 
   it('returns 400 when the effective range is invalid', async () => {
     const response = (await POST(
-      {
-        json: async () => ({
-          insurance_type: 'care',
-          revision_code: '2024',
-          effective_from: '2024-05-01',
-          effective_to: '2024-04-01',
-          config: {},
-        }),
-      } as NextRequest,
+      createPostRequest({
+        insurance_type: 'care',
+        revision_code: '2024',
+        effective_from: '2024-05-01',
+        effective_to: '2024-04-01',
+        config: {},
+      }),
       {
         params: Promise.resolve({ id: 'site_1' }),
       },
@@ -156,15 +176,13 @@ describe('/api/pharmacy-sites/[id]/insurance-configs', () => {
     ]);
 
     const response = (await POST(
-      {
-        json: async () => ({
-          insurance_type: 'medical',
-          revision_code: '2026',
-          effective_from: '2024-06-01',
-          effective_to: '2024-08-01',
-          config: {},
-        }),
-      } as NextRequest,
+      createPostRequest({
+        insurance_type: 'medical',
+        revision_code: '2026',
+        effective_from: '2024-06-01',
+        effective_to: '2024-08-01',
+        config: {},
+      }),
       {
         params: Promise.resolve({ id: 'site_1' }),
       },
@@ -176,15 +194,13 @@ describe('/api/pharmacy-sites/[id]/insurance-configs', () => {
 
   it('rejects unsupported care revisions', async () => {
     const response = (await POST(
-      {
-        json: async () => ({
-          insurance_type: 'care',
-          revision_code: '2026',
-          effective_from: '2026-06-01',
-          effective_to: null,
-          config: {},
-        }),
-      } as NextRequest,
+      createPostRequest({
+        insurance_type: 'care',
+        revision_code: '2026',
+        effective_from: '2026-06-01',
+        effective_to: null,
+        config: {},
+      }),
       {
         params: Promise.resolve({ id: 'site_1' }),
       },
@@ -204,17 +220,15 @@ describe('/api/pharmacy-sites/[id]/insurance-configs', () => {
     ]);
 
     const response = (await POST(
-      {
-        json: async () => ({
-          insurance_type: 'medical',
-          revision_code: '2026',
-          revision_label: '令和8年度改定',
-          effective_from: '2026-06-01',
-          effective_to: null,
-          auto_close_overlaps: true,
-          config: { home_comprehensive_level: 'level_2' },
-        }),
-      } as NextRequest,
+      createPostRequest({
+        insurance_type: 'medical',
+        revision_code: '2026',
+        revision_label: '令和8年度改定',
+        effective_from: '2026-06-01',
+        effective_to: null,
+        auto_close_overlaps: true,
+        config: { home_comprehensive_level: 'level_2' },
+      }),
       {
         params: Promise.resolve({ id: 'site_1' }),
       },
@@ -229,6 +243,15 @@ describe('/api/pharmacy-sites/[id]/insurance-configs', () => {
         effective_to: new Date('2026-05-31T00:00:00.000Z'),
       },
     });
-    expect(insuranceConfigCreateMock).toHaveBeenCalled();
+    expect(insuranceConfigCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        insurance_type: 'medical',
+        revision_code: '2026',
+        revision_label: '令和8年度改定',
+        effective_from: new Date('2026-06-01'),
+        effective_to: null,
+        config: { home_comprehensive_level: 'level_2' },
+      }),
+    });
   });
 });

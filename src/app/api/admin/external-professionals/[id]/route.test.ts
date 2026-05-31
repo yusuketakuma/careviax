@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   externalProfessionalFindFirstMock,
@@ -40,6 +40,26 @@ vi.mock('@/lib/patient/facility-reference', () => ({
 }));
 
 import { DELETE, GET, PATCH } from './route';
+
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
+function createDetailRequest(id = 'external_1') {
+  return new NextRequest(`http://localhost/api/admin/external-professionals/${id}`);
+}
+
+function createPatchRequest(body: unknown, id = 'external_1') {
+  return new NextRequest(`http://localhost/api/admin/external-professionals/${id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  } satisfies NextRequestInit);
+}
+
+function createDeleteRequest(id = 'external_1') {
+  return new NextRequest(`http://localhost/api/admin/external-professionals/${id}`, {
+    method: 'DELETE',
+  } satisfies NextRequestInit);
+}
 
 describe('/api/admin/external-professionals/[id]', () => {
   beforeEach(() => {
@@ -104,7 +124,7 @@ describe('/api/admin/external-professionals/[id]', () => {
       updated_at: new Date('2026-03-28T00:00:00.000Z'),
     });
 
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createDetailRequest(), {
       params: Promise.resolve({ id: 'external_1' }),
     }))!;
 
@@ -119,17 +139,18 @@ describe('/api/admin/external-professionals/[id]', () => {
   });
 
   it('updates an external professional row', async () => {
-    const response = (await PATCH({
-      json: async () => ({
+    const response = (await PATCH(
+      createPatchRequest({
         profession_type: 'nurse',
         name: '訪問 看護',
         facility_id: 'facility_1',
         organization_name: 'あおば訪看',
         phone: '03-1111-2222',
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'external_1' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'external_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(200);
     expect(assertFacilityReferenceMock).toHaveBeenCalledWith(
@@ -159,7 +180,7 @@ describe('/api/admin/external-professionals/[id]', () => {
   });
 
   it('deletes an external professional row', async () => {
-    const response = (await DELETE({} as NextRequest, {
+    const response = (await DELETE(createDeleteRequest(), {
       params: Promise.resolve({ id: 'external_1' }),
     }))!;
 

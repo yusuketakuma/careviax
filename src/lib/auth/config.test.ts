@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Session } from 'next-auth';
+import { NextRequest } from 'next/server';
 
 const { getServerSessionMock, nextAuthMock, getTokenMock } = vi.hoisted(() => ({
   getServerSessionMock: vi.fn(),
@@ -37,6 +38,8 @@ vi.mock('@/server/services/cognito-auth', () => ({
 
 import { authOptions, getAuthAccessToken } from './config';
 
+type SessionCallback = NonNullable<NonNullable<typeof authOptions.callbacks>['session']>;
+
 describe('authOptions session callback', () => {
   it('keeps Cognito tokens out of the client session payload', async () => {
     const sessionCallback = authOptions.callbacks?.session;
@@ -58,7 +61,14 @@ describe('authOptions session callback', () => {
         idToken: 'id-token',
         cognitoGroups: ['admin'],
       },
-    } as never);
+      user: {
+        id: 'user_1',
+        email: 'user@example.com',
+        emailVerified: null,
+      },
+      newSession: null,
+      trigger: 'update',
+    } satisfies Parameters<SessionCallback>[0]);
 
     const clientSession = session as Session;
 
@@ -79,7 +89,7 @@ describe('getAuthAccessToken', () => {
   it('reads the server-side access token from the JWT', async () => {
     getTokenMock.mockResolvedValue({ accessToken: 'jwt-access-token' });
 
-    const request = { headers: new Headers(), cookies: {} } as never;
+    const request = new NextRequest('http://localhost/api/auth/session');
     await expect(getAuthAccessToken(request)).resolves.toBe('jwt-access-token');
     expect(getTokenMock).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { authMock, prismaMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
@@ -23,12 +23,9 @@ vi.mock('@/lib/db/client', () => ({
 import { GET } from './route';
 
 function createRequest(url: string) {
-  return {
-    url,
-    headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
-    },
-  } as unknown as NextRequest;
+  return new NextRequest(url, {
+    headers: { 'x-org-id': 'org_1' },
+  });
 }
 
 describe('/api/pharmacy-drug-stocks/impact', () => {
@@ -221,6 +218,10 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
       {
         parsed_data: {
           medications: [
+            Object.assign(['unexpected'], {
+              drugCode: '123456789012',
+              drugName: '改定薬',
+            }),
             { drugCode: '123456789012', drugName: '改定薬' },
             { drugCode: '123456789012', drugName: '改定薬' },
           ],

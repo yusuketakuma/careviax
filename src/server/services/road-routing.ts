@@ -1,3 +1,5 @@
+import { readJsonObject } from '@/lib/db/json';
+
 type RoutePoint = {
   lat: number | null;
   lng: number | null;
@@ -10,11 +12,46 @@ type TravelEstimate = {
   distanceKm: number;
 };
 
+function readFiniteNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function readMatrixCell(payload: unknown, key: 'durations' | 'distances') {
+  const object = readJsonObject(payload);
+  if (!object || !Array.isArray(object[key])) return null;
+  const row = object[key][0];
+  if (!Array.isArray(row)) return null;
+  return readFiniteNumber(row[0]);
+}
+
+function parseGoogleDurationSeconds(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const match = /^([0-9]+(?:\.[0-9]+)?)s$/.exec(value);
+  if (!match) return null;
+  return Math.round(Number.parseFloat(match[1]));
+}
+
+function readGoogleRouteEstimate(payload: unknown) {
+  const object = readJsonObject(payload);
+  if (!object || !Array.isArray(object.routes)) return null;
+
+  const route = readJsonObject(object.routes[0]);
+  if (!route) return null;
+
+  const durationSeconds = parseGoogleDurationSeconds(route.duration);
+  if (durationSeconds === null) return null;
+
+  return {
+    durationSeconds,
+    distanceMeters: readFiniteNumber(route.distanceMeters),
+  };
+}
+
 export interface RoutingProvider {
   estimate(
     from: RoutePoint,
     to: RoutePoint,
-    travelMode: RouteTravelMode
+    travelMode: RouteTravelMode,
   ): Promise<TravelEstimate | null>;
 }
 
@@ -36,21 +73,17 @@ class OsrmProvider implements RoutingProvider {
   async estimate(
     from: RoutePoint,
     to: RoutePoint,
-    travelMode: RouteTravelMode
+    travelMode: RouteTravelMode,
   ): Promise<TravelEstimate | null> {
     if (from.lat == null || from.lng == null || to.lat == null || to.lng == null) {
       return null;
     }
 
     const profile =
-      travelMode === 'BICYCLE'
-        ? 'cycling'
-        : travelMode === 'WALK'
-          ? 'foot'
-          : this.profile;
+      travelMode === 'BICYCLE' ? 'cycling' : travelMode === 'WALK' ? 'foot' : this.profile;
     const url = new URL(
       `/table/v1/${profile}/${from.lng},${from.lat};${to.lng},${to.lat}`,
-      this.baseUrl
+      this.baseUrl,
     );
     url.searchParams.set('annotations', 'distance,duration');
     url.searchParams.set('sources', '0');
@@ -68,22 +101,16 @@ class OsrmProvider implements RoutingProvider {
       });
       if (!response.ok) return null;
 
-      const payload = (await response.json()) as {
-        durations?: number[][];
-        distances?: number[][];
-      };
-      const durationSeconds = payload.durations?.[0]?.[0];
-      const distanceMeters = payload.distances?.[0]?.[0];
-      if (typeof durationSeconds !== 'number' || !Number.isFinite(durationSeconds)) {
+      const payload = (await response.json()) as unknown;
+      const durationSeconds = readMatrixCell(payload, 'durations');
+      if (durationSeconds === null) {
         return null;
       }
+      const distanceMeters = readMatrixCell(payload, 'distances');
 
       return {
         durationMinutes: durationSeconds / 60,
-        distanceKm:
-          typeof distanceMeters === 'number' && Number.isFinite(distanceMeters)
-            ? distanceMeters / 1000
-            : Number.NaN,
+        distanceKm: distanceMeters === null ? Number.NaN : distanceMeters / 1000,
       };
     } catch {
       return null;
@@ -107,7 +134,7 @@ class GoogleRoutesProvider implements RoutingProvider {
   async estimate(
     from: RoutePoint,
     to: RoutePoint,
-    travelMode: RouteTravelMode
+    travelMode: RouteTravelMode,
   ): Promise<TravelEstimate | null> {
     if (from.lat == null || from.lng == null || to.lat == null || to.lng == null) {
       return null;
@@ -135,24 +162,12 @@ class GoogleRoutesProvider implements RoutingProvider {
       });
       if (!response.ok) return null;
 
-      const payload = (await response.json()) as {
-        routes?: Array<{ duration?: string; distanceMeters?: number }>;
-      };
-      const route = payload.routes?.[0];
+      const route = readGoogleRouteEstimate((await response.json()) as unknown);
       if (!route) return null;
 
-      // duration is in the format "Xs" (e.g. "300s")
-      const durationSeconds = route.duration
-        ? parseInt(route.duration.replace('s', ''), 10)
-        : null;
-      if (durationSeconds == null || !Number.isFinite(durationSeconds)) return null;
-
       return {
-        durationMinutes: durationSeconds / 60,
-        distanceKm:
-          typeof route.distanceMeters === 'number' && Number.isFinite(route.distanceMeters)
-            ? route.distanceMeters / 1000
-            : Number.NaN,
+        durationMinutes: route.durationSeconds / 60,
+        distanceKm: route.distanceMeters === null ? Number.NaN : route.distanceMeters / 1000,
       };
     } catch {
       return null;
@@ -172,7 +187,7 @@ function createProvider(): RoutingProvider | null {
     if (!apiKey) return null;
     return new GoogleRoutesProvider(
       apiKey,
-      Number(process.env.ROUTING_API_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS)
+      Number(process.env.ROUTING_API_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS),
     );
   }
 
@@ -182,7 +197,7 @@ function createProvider(): RoutingProvider | null {
   return new OsrmProvider(
     baseUrl,
     process.env.ROUTING_API_PROFILE ?? 'driving',
-    Number(process.env.ROUTING_API_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS)
+    Number(process.env.ROUTING_API_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS),
   );
 }
 

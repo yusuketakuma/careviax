@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -37,6 +37,12 @@ vi.mock('@/server/services/export-audit', () => ({
 
 import { GET } from './route';
 
+function createGetRequest() {
+  return new NextRequest(
+    'http://localhost/api/patients/patient_1/medication-calendar/pdf?month=2026-03',
+  );
+}
+
 describe('/api/patients/[id]/medication-calendar/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -53,14 +59,9 @@ describe('/api/patients/[id]/medication-calendar/pdf', () => {
       fileName: 'calendar.pdf',
     });
 
-    const response = (await GET(
-      {
-        url: 'http://localhost/api/patients/patient_1/medication-calendar/pdf?month=2026-03',
-      } as NextRequest,
-      {
-        params: Promise.resolve({ id: 'patient_1' }),
-      },
-    ))!;
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
 
     expect(response.status).toBe(200);
     expect(buildMedicationCalendarPdfMock).toHaveBeenCalledWith('org_1', 'patient_1', '2026-03', {
@@ -80,14 +81,9 @@ describe('/api/patients/[id]/medication-calendar/pdf', () => {
   it('does not audit or render a pdf when the scoped patient lookup fails', async () => {
     buildMedicationCalendarPdfMock.mockRejectedValue(new Error('患者が見つかりません'));
 
-    const response = (await GET(
-      {
-        url: 'http://localhost/api/patients/patient_1/medication-calendar/pdf?month=2026-03',
-      } as NextRequest,
-      {
-        params: Promise.resolve({ id: 'patient_1' }),
-      },
-    ))!;
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
 
     expect(response.status).toBe(404);
     expect(pdfResponseMock).not.toHaveBeenCalled();

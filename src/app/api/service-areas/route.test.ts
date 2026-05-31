@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -29,6 +29,18 @@ vi.mock('@/lib/api/org-reference', () => ({
 
 import { GET, POST } from './route';
 
+function createGetRequest(url: string) {
+  return new NextRequest(url);
+}
+
+function createPostRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/service-areas', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 describe('/api/service-areas', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -53,9 +65,7 @@ describe('/api/service-areas', () => {
   });
 
   it('lists service areas', async () => {
-    const response = (await GET({
-      url: 'http://localhost/api/service-areas',
-    } as NextRequest))!;
+    const response = (await GET(createGetRequest('http://localhost/api/service-areas')))!;
 
     expect(response.status).toBe(200);
     expect(serviceAreaFindManyMock).toHaveBeenCalled();
@@ -70,23 +80,23 @@ describe('/api/service-areas', () => {
       ),
     });
 
-    const response = (await GET({
-      url: 'http://localhost/api/service-areas?site_id=site_other_org',
-    } as NextRequest))!;
+    const response = (await GET(
+      createGetRequest('http://localhost/api/service-areas?site_id=site_other_org'),
+    ))!;
 
     expect(response.status).toBe(400);
     expect(serviceAreaFindManyMock).not.toHaveBeenCalled();
   });
 
   it('creates a service area', async () => {
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createPostRequest({
         site_id: 'site_1',
         name: '北多摩',
         area_type: 'radius',
         geo_data: { match_keywords: ['多摩'] },
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(serviceAreaCreateMock).toHaveBeenCalledWith({
@@ -95,6 +105,7 @@ describe('/api/service-areas', () => {
         site_id: 'site_1',
         name: '北多摩',
         area_type: 'radius',
+        geo_data: { match_keywords: ['多摩'] },
       }),
       include: expect.any(Object),
     });
@@ -109,14 +120,14 @@ describe('/api/service-areas', () => {
       ),
     });
 
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createPostRequest({
         site_id: 'site_other_org',
         name: '北多摩',
         area_type: 'radius',
         geo_data: {},
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(400);
     expect(serviceAreaCreateMock).not.toHaveBeenCalled();

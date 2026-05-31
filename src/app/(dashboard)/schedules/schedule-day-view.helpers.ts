@@ -31,10 +31,40 @@ export type FacilityTrackerGroup = {
   routeOrders: number[];
 };
 
-type FacilityTrackableSchedule = Pick<
-  VisitSchedule,
-  'case_' | 'facility_batch_id' | 'facility_hint' | 'site'
->;
+export type FacilityTrackableSchedule = {
+  case_: {
+    patient: {
+      residences: Array<
+        VisitSchedule['case_']['patient']['residences'][number] & {
+          facility_id?: string | null;
+          facility_unit_id?: string | null;
+        }
+      >;
+    };
+  };
+  facility_batch_id: VisitSchedule['facility_batch_id'];
+  facility_hint: Pick<NonNullable<VisitSchedule['facility_hint']>, 'label'> | null;
+  site: Pick<NonNullable<VisitSchedule['site']>, 'id' | 'name'> | null;
+};
+
+export type ScheduleLockState = {
+  confirmed_at: VisitSchedule['confirmed_at'];
+  applied_override: unknown | null;
+  override_request: Pick<NonNullable<VisitSchedule['override_request']>, 'status' | 'reason'> | null;
+};
+
+export type FacilityTrackerSchedule = FacilityTrackableSchedule &
+  Pick<VisitSchedule, 'id' | 'route_order' | 'schedule_status'> & {
+    case_: FacilityTrackableSchedule['case_'] & {
+      patient: FacilityTrackableSchedule['case_']['patient'] & {
+        name: string;
+      };
+    };
+    preparation: Pick<
+      NonNullable<VisitSchedule['preparation']>,
+      'prepared_at' | 'carry_items_confirmed'
+    > | null;
+  };
 
 export type FacilityTrackerGrouping = {
   key: string;
@@ -99,7 +129,7 @@ export function splitTrace(reason: string) {
 }
 
 export function scheduleLockText(
-  schedule: Pick<VisitSchedule, 'confirmed_at' | 'applied_override' | 'override_request'>
+  schedule: ScheduleLockState
 ): LockBadge {
   if (schedule.override_request?.status === 'pending') {
     return {
@@ -157,7 +187,7 @@ export function proposalLockText(
 }
 
 export function buildFacilityTracker(
-  schedules: VisitSchedule[]
+  schedules: FacilityTrackerSchedule[]
 ): FacilityTrackerGroup[] {
   const groups = new Map<string, FacilityTrackerGroup>();
 

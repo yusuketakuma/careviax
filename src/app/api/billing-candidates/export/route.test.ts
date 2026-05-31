@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { withOrgContextMock, recordDataExportAuditMock, txMock } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
@@ -43,6 +43,10 @@ vi.mock('@/server/services/export-audit', () => ({
 }));
 
 import { GET } from './route';
+
+function createRequest(url: string) {
+  return Object.assign(new NextRequest(url), { orgId: 'org_1' });
+}
 
 describe('/api/billing-candidates/export GET', () => {
   beforeEach(() => {
@@ -94,10 +98,9 @@ describe('/api/billing-candidates/export GET', () => {
   });
 
   it('exports billing candidates with patient hierarchy and YJ codes', async () => {
-    const response = await GET({
-      orgId: 'org_1',
-      url: 'http://localhost/api/billing-candidates/export?billing_month=2026-03-01',
-    } as unknown as NextRequest & { orgId: string });
+    const response = await GET(
+      createRequest('http://localhost/api/billing-candidates/export?billing_month=2026-03-01'),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -134,11 +137,38 @@ describe('/api/billing-candidates/export GET', () => {
     );
   });
 
+  it('exports empty source snapshot metadata for malformed source snapshots', async () => {
+    txMock.billingCandidate.findMany.mockResolvedValueOnce([
+      {
+        id: 'candidate_malformed_snapshot',
+        patient_id: 'patient_1',
+        cycle_id: 'cycle_1',
+        billing_month: new Date('2026-03-01T00:00:00.000Z'),
+        billing_code: 'MED_HOME_VISIT_SINGLE',
+        billing_name: '在宅患者訪問薬剤管理指導料 単一建物1人',
+        points: 650,
+        status: 'confirmed',
+        source_snapshot: ['unexpected'],
+      },
+    ]);
+
+    const response = await GET(
+      createRequest('http://localhost/api/billing-candidates/export?billing_month=2026-03-01'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const csv = await response.text();
+    expect(csv).toContain('"candidate_malformed_snapshot"');
+    expect(csv.split('\n')[1]?.split(',').slice(8, 10)).toEqual(['""', '""']);
+  });
+
   it('does not expose patient filters in the export filename', async () => {
-    const response = await GET({
-      orgId: 'org_1',
-      url: 'http://localhost/api/billing-candidates/export?billing_month=2026-03-01&patient_id=patient_1',
-    } as unknown as NextRequest & { orgId: string });
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/billing-candidates/export?billing_month=2026-03-01&patient_id=patient_1',
+      ),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -164,10 +194,9 @@ describe('/api/billing-candidates/export GET', () => {
   });
 
   it('rejects malformed billing months before entering org context', async () => {
-    const response = await GET({
-      orgId: 'org_1',
-      url: 'http://localhost/api/billing-candidates/export?billing_month=2026-03',
-    } as unknown as NextRequest & { orgId: string });
+    const response = await GET(
+      createRequest('http://localhost/api/billing-candidates/export?billing_month=2026-03'),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -176,10 +205,11 @@ describe('/api/billing-candidates/export GET', () => {
   });
 
   it('rejects unsafe patient filters before entering org context', async () => {
-    const response = await GET({
-      orgId: 'org_1',
-      url: 'http://localhost/api/billing-candidates/export?patient_id=patient_1%0D%0AContent-Length:%200',
-    } as unknown as NextRequest & { orgId: string });
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/billing-candidates/export?patient_id=patient_1%0D%0AContent-Length:%200',
+      ),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -188,10 +218,9 @@ describe('/api/billing-candidates/export GET', () => {
   });
 
   it('rejects out-of-range billing months before entering org context', async () => {
-    const response = await GET({
-      orgId: 'org_1',
-      url: 'http://localhost/api/billing-candidates/export?billing_month=2026-13-01',
-    } as unknown as NextRequest & { orgId: string });
+    const response = await GET(
+      createRequest('http://localhost/api/billing-candidates/export?billing_month=2026-13-01'),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -205,12 +234,13 @@ describe('/api/billing-candidates/export GET', () => {
     ['invalid calendar date', '2026-02-30'],
     ['timezone timestamp', '2026-03-01T00:00:00.000Z'],
   ])('rejects %s billing_month before export side effects', async (_caseName, billingMonth) => {
-    const response = await GET({
-      orgId: 'org_1',
-      url: `http://localhost/api/billing-candidates/export?billing_month=${encodeURIComponent(
-        billingMonth,
-      )}`,
-    } as unknown as NextRequest & { orgId: string });
+    const response = await GET(
+      createRequest(
+        `http://localhost/api/billing-candidates/export?billing_month=${encodeURIComponent(
+          billingMonth,
+        )}`,
+      ),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
@@ -226,10 +256,9 @@ describe('/api/billing-candidates/export GET', () => {
       },
     ]);
 
-    const response = await GET({
-      orgId: 'org_1',
-      url: 'http://localhost/api/billing-candidates/export?billing_month=2026-03-01',
-    } as unknown as NextRequest & { orgId: string });
+    const response = await GET(
+      createRequest('http://localhost/api/billing-candidates/export?billing_month=2026-03-01'),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);

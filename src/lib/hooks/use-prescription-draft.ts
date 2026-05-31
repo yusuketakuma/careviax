@@ -5,6 +5,7 @@
 import { useCallback } from 'react';
 import { offlineDb } from '@/lib/stores/offline-db';
 import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
+import { readJsonObject } from '@/lib/db/json';
 
 export type PrescriptionDraftSnapshot = {
   patientSelection: {
@@ -56,6 +57,137 @@ export type PrescriptionDraftSnapshot = {
   };
 };
 
+function parseJsonPayload(value: string) {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function readString(value: unknown) {
+  return typeof value === 'string' ? value : '';
+}
+
+function readOptionalString(value: unknown) {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function readOptionalNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function readPrescriptionCategory(value: unknown): 'regular' | 'emergency' {
+  return value === 'emergency' ? 'emergency' : 'regular';
+}
+
+function readProposalOrigin(value: unknown): 'post_inquiry' | 'pre_issuance' {
+  return value === 'pre_issuance' ? 'pre_issuance' : 'post_inquiry';
+}
+
+function readPatientSelection(
+  value: unknown,
+): PrescriptionDraftSnapshot['patientSelection'] | null {
+  const object = readJsonObject(value);
+  if (!object) return null;
+  return {
+    patientSearch: readString(object.patientSearch),
+    selectedPatientId: readString(object.selectedPatientId),
+    selectedPatientName: readString(object.selectedPatientName),
+    selectedCaseId: readString(object.selectedCaseId),
+  };
+}
+
+function readPrescriptionMeta(
+  value: unknown,
+): PrescriptionDraftSnapshot['prescriptionMeta'] | null {
+  const object = readJsonObject(value);
+  if (!object) return null;
+  return {
+    sourceType: readString(object.sourceType),
+    prescribedDate: readString(object.prescribedDate),
+    prescriberName: readString(object.prescriberName),
+    selectedPrescriberInstitutionId: readString(object.selectedPrescriberInstitutionId),
+    prescriberInstitution: readString(object.prescriberInstitution),
+    refillRemainingCount: readString(object.refillRemainingCount),
+    refillNextDispenseDate: readString(object.refillNextDispenseDate),
+    splitDispenseTotal: readString(object.splitDispenseTotal),
+    splitDispenseCurrent: readString(object.splitDispenseCurrent),
+    splitNextDispenseDate: readString(object.splitNextDispenseDate),
+    prescriptionCategory: readPrescriptionCategory(object.prescriptionCategory),
+    emergencyCategory: readString(object.emergencyCategory),
+  };
+}
+
+function readLine(value: unknown): PrescriptionDraftSnapshot['lines'][number] | null {
+  const object = readJsonObject(value);
+  if (!object) return null;
+  if (typeof object.line_number !== 'number' || !Number.isFinite(object.line_number)) return null;
+  if (typeof object.days !== 'number' || !Number.isFinite(object.days)) return null;
+
+  return {
+    line_number: object.line_number,
+    drug_name: readString(object.drug_name),
+    dose: readString(object.dose),
+    frequency: readString(object.frequency),
+    days: object.days,
+    drug_code: readOptionalString(object.drug_code),
+    dosage_form: readOptionalString(object.dosage_form),
+    quantity: readOptionalNumber(object.quantity),
+    unit: readOptionalString(object.unit),
+    is_generic: typeof object.is_generic === 'boolean' ? object.is_generic : false,
+    is_generic_name_prescription:
+      typeof object.is_generic_name_prescription === 'boolean'
+        ? object.is_generic_name_prescription
+        : undefined,
+    route: readOptionalString(object.route),
+    dispensing_method: readOptionalString(object.dispensing_method),
+    start_date: readOptionalString(object.start_date),
+    end_date: readOptionalString(object.end_date),
+    packaging_instructions: readOptionalString(object.packaging_instructions),
+    notes: readOptionalString(object.notes),
+  };
+}
+
+function readLines(value: unknown): PrescriptionDraftSnapshot['lines'] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const line = readLine(item);
+    return line ? [line] : [];
+  });
+}
+
+function readInquiry(value: unknown): PrescriptionDraftSnapshot['inquiry'] | null {
+  const object = readJsonObject(value);
+  if (!object) return null;
+  return {
+    inquiryReason: readString(object.inquiryReason),
+    inquiryToPhysician: readString(object.inquiryToPhysician),
+    inquiryContent: readString(object.inquiryContent),
+    inquiryDueDate: readString(object.inquiryDueDate),
+    proposalOrigin: readProposalOrigin(object.proposalOrigin),
+    residualAdjustment:
+      typeof object.residualAdjustment === 'boolean' ? object.residualAdjustment : false,
+  };
+}
+
+function readPrescriptionDraftSnapshot(payload: string): PrescriptionDraftSnapshot | null {
+  const object = readJsonObject(parseJsonPayload(payload));
+  if (!object) return null;
+
+  const patientSelection = readPatientSelection(object.patientSelection);
+  const prescriptionMeta = readPrescriptionMeta(object.prescriptionMeta);
+  const inquiry = readInquiry(object.inquiry);
+  if (!patientSelection || !prescriptionMeta || !inquiry) return null;
+
+  return {
+    patientSelection,
+    prescriptionMeta,
+    lines: readLines(object.lines),
+    inquiry,
+  };
+}
+
 /**
  * 処方受付フォームのドラフトを読み書きするフック。
  * org ごとに1件のドラフトを保持する。
@@ -69,7 +201,7 @@ export function usePrescriptionDraft(orgId: string) {
     const decrypted = await decryptOfflinePayload(draft.payload);
     if (!decrypted) return null;
 
-    return JSON.parse(decrypted) as PrescriptionDraftSnapshot;
+    return readPrescriptionDraftSnapshot(decrypted);
   }, [orgId]);
 
   const saveDraft = useCallback(

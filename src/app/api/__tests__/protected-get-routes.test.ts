@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
@@ -136,14 +136,7 @@ import { GET as visitPreparationBriefGet } from '../visit-preparations/[schedule
 type Handler = () => Promise<Response | undefined>;
 
 function createRequest(url: string, headers?: Record<string, string>) {
-  const nextUrl = new URL(url);
-  return {
-    url,
-    nextUrl,
-    headers: {
-      get: (key: string) => headers?.[key] ?? null,
-    },
-  } as unknown as NextRequest;
+  return new NextRequest(url, { headers });
 }
 
 const routes: Array<{ name: string; handler: Handler }> = [

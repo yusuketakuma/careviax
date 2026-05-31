@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
-import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
         case_id: parsed.data.case_id,
         title: parsed.data.title,
         summary: parsed.data.summary ?? null,
-        content: parsed.data.content as Prisma.InputJsonValue,
+        content: toPrismaJsonInput(parsed.data.content),
         created_by: ctx.userId,
         version: (latest?.version ?? 0) + 1,
         effective_from: parsed.data.effective_from

@@ -127,12 +127,14 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
     ? (requestedTab as PatientDetailTabValue)
     : null;
   const activeTab = requestedTabValue ?? 'basic';
+  const [selectedTab, setSelectedTab] = useState<PatientDetailTabValue>(activeTab);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
 
   const handleTabChange = (value: string) => {
     const nextTab = PATIENT_DETAIL_TABS.some((tab) => tab.value === value)
       ? (value as PatientDetailTabValue)
       : 'basic';
+    setSelectedTab(nextTab);
     const nextParams = new URLSearchParams(searchParams.toString());
     if (nextTab === 'basic') {
       nextParams.delete('tab');
@@ -142,6 +144,10 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
     const nextQuery = nextParams.toString();
     router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
   };
+
+  useEffect(() => {
+    setSelectedTab(activeTab);
+  }, [activeTab]);
 
   const {
     data: patient,
@@ -221,7 +227,7 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
       document.getElementById(decodeURIComponent(hash))?.scrollIntoView({ block: 'start' });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [activeTab, patientId]);
+  }, [patientId, selectedTab]);
 
   if (!orgId || isLoading) return <Loading />;
   if (error || !patient) {
@@ -238,7 +244,7 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
   const nextVisit = selectNextVisit(patient.visit_schedules);
   const age = differenceInYears(new Date(), new Date(patient.birth_date));
   const activeTabMeta =
-    PATIENT_DETAIL_TABS.find((tab) => tab.value === activeTab) ?? PATIENT_DETAIL_TABS[0];
+    PATIENT_DETAIL_TABS.find((tab) => tab.value === selectedTab) ?? PATIENT_DETAIL_TABS[0];
   const activeCase =
     patient.cases.find((item) => item.status === 'active') ?? patient.cases[0] ?? null;
   const prescriptionIntakeHref = activeCase
@@ -350,7 +356,7 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
           );
         })()}
 
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
+      <Tabs value={selectedTab} onValueChange={handleTabChange}>
         <div className="space-y-4">
           <div className="md:hidden">
             <VisitBriefCard
@@ -361,6 +367,7 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
           </div>
           <TabsList
             variant="line"
+            activateOnFocus
             className="w-full overflow-x-auto"
             data-testid="patient-detail-tablist"
             aria-label="患者詳細タブ"
@@ -369,6 +376,7 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
+                onClick={() => handleTabChange(tab.value)}
                 data-testid={`patient-detail-tab-${tab.value}`}
               >
                 {tab.label}
@@ -475,7 +483,7 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
               </CardHeader>
               <CardContent className="space-y-1.5">
                 {PATIENT_DETAIL_TABS.map((tab) => {
-                  const isActive = activeTab === tab.value;
+                  const isActive = selectedTab === tab.value;
                   return (
                     <button
                       key={tab.value}
@@ -599,7 +607,7 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
                 patientId={patient.id}
                 medicalInsuranceNumber={patient.medical_insurance_number}
                 careInsuranceNumber={patient.care_insurance_number}
-                enabled={activeTab === 'visits'}
+                enabled={selectedTab === 'visits'}
               />
             </TabsContent>
             <TabsContent value="communications">
@@ -607,7 +615,7 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
                 <PatientCommunicationsPanel
                   patientId={patient.id}
                   cases={patient.cases}
-                  enabled={activeTab === 'communications'}
+                  enabled={selectedTab === 'communications'}
                 />
               </div>
             </TabsContent>
@@ -616,11 +624,11 @@ export function PatientDetailTabs({ patientId }: PatientDetailTabsProps) {
                 patientId={patient.id}
                 patientName={patient.name}
                 cases={patient.cases}
-                enabled={activeTab === 'documents'}
+                enabled={selectedTab === 'documents'}
               />
             </TabsContent>
             <TabsContent value="timeline">
-              <PatientTimelinePanel patientId={patient.id} enabled={activeTab === 'timeline'} />
+              <PatientTimelinePanel patientId={patient.id} enabled={selectedTab === 'timeline'} />
             </TabsContent>
           </div>
         </div>

@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { createEscalationRuleSchema } from '@/lib/validations/escalation-rule';
 
 function serializeCondition(value: Prisma.JsonValue) {
@@ -44,7 +45,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     data: {
       org_id: req.orgId,
       trigger_type: parsed.data.trigger_type,
-      condition: parsed.data.condition as Prisma.InputJsonValue,
+      condition: toPrismaJsonInput(parsed.data.condition),
       action: parsed.data.action,
       notify_role: parsed.data.notify_role ?? null,
       is_active: parsed.data.is_active,

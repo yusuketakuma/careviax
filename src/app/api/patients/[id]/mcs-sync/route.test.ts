@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -12,7 +12,7 @@ const {
 
     constructor(
       message: string,
-      kind: 'validation' | 'conflict' | 'external' = 'external'
+      kind: 'validation' | 'conflict' | 'external' = 'external',
     ) {
       super(message);
       this.kind = kind;
@@ -47,13 +47,14 @@ vi.mock('@/server/services/patient-mcs', () => ({
 import { POST } from './route';
 
 function createRequest(body: unknown = {}) {
-  return {
-    headers: {
-      get: (name: string) => (name === 'x-org-id' ? 'org_1' : null),
-    },
+  return new NextRequest('http://localhost/api/patients/patient_1/mcs-sync', {
     method: 'POST',
-    json: async () => body,
-  } as unknown as NextRequest;
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+    body: JSON.stringify(body),
+  });
 }
 
 describe('/api/patients/[id]/mcs-sync POST', () => {
@@ -84,7 +85,7 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
       }),
       {
         params: Promise.resolve({ id: 'patient_1' }),
-      }
+      },
     );
     if (!response) {
       throw new Error('response was not returned');
@@ -117,7 +118,7 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
       }),
       {
         params: Promise.resolve({ id: 'patient_unknown' }),
-      }
+      },
     );
     if (!response) {
       throw new Error('response was not returned');
@@ -181,8 +182,8 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
     syncPatientMcsTimelineMock.mockRejectedValue(
       new PatientMcsSyncErrorMock(
         'MCS の患者名「別患者」 が対象患者「青葉 花子」と一致しません',
-        'conflict'
-      )
+        'conflict',
+      ),
     );
 
     const response = await POST(
@@ -191,7 +192,7 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
       }),
       {
         params: Promise.resolve({ id: 'patient_1' }),
-      }
+      },
     );
     if (!response) {
       throw new Error('response was not returned');
@@ -204,8 +205,8 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
     syncPatientMcsTimelineMock.mockRejectedValue(
       new PatientMcsSyncErrorMock(
         'Medical Care Station にログイン済みの Chrome セッションが見つかりません',
-        'external'
-      )
+        'external',
+      ),
     );
 
     const response = await POST(createRequest(), {

@@ -252,8 +252,12 @@ describe('lambda room-token verifier', () => {
 
     for (const secretString of [
       JSON.stringify({ NEXTAUTH_SECRET: SECRETS_MANAGER_ROOM_TOKEN_SECRET }),
+      JSON.stringify({ COLLABORATION_ROOM_TOKEN_SECRET: 123 }),
       JSON.stringify({ COLLABORATION_ROOM_TOKEN_SECRET: 'short-secret' }),
       JSON.stringify(['not-a-room-token-secret']),
+      JSON.stringify(null),
+      JSON.stringify(123456789012345678901234567890123),
+      JSON.stringify(true),
       '{not-json',
     ]) {
       clearRoomTokenSecretCache();

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { requireAuthContextMock, listDataExplorerRowsMock } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -17,9 +17,7 @@ vi.mock('@/server/services/data-explorer', () => ({
 import { GET } from './route';
 
 function createRequest(query = '') {
-  return {
-    nextUrl: new URL(`http://localhost/api/admin/data-explorer/Patient${query}`),
-  } as NextRequest;
+  return new NextRequest(`http://localhost/api/admin/data-explorer/Patient${query}`);
 }
 
 describe('/api/admin/data-explorer/[table] GET', () => {

@@ -1,11 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
-const { authMock, membershipFindFirstMock, facilityFindManyMock, residenceGroupByMock } = vi.hoisted(() => ({
+const {
+  authMock,
+  membershipFindFirstMock,
+  facilityFindManyMock,
+  facilityCreateMock,
+  residenceGroupByMock,
+  withOrgContextMock,
+} = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   facilityFindManyMock: vi.fn(),
+  facilityCreateMock: vi.fn(),
   residenceGroupByMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -26,21 +35,54 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
-import { GET } from './route';
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
 
-function createRequest(headers?: Record<string, string>) {
-  return {
-    method: 'GET',
-    nextUrl: new URL('http://localhost/api/admin/facilities'),
+import { GET, POST } from './route';
+
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
+function createRequest(headers?: Record<string, string>, body?: unknown) {
+  const init: NextRequestInit = {
+    method: body === undefined ? 'GET' : 'POST',
     headers: {
-      get: (key: string) => headers?.[key] ?? null,
+      ...(headers ?? {}),
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
     },
-  } as unknown as NextRequest;
+  };
+  if (body !== undefined) {
+    init.body = JSON.stringify(body);
+  }
+  return new NextRequest('http://localhost/api/admin/facilities', init);
 }
 
 describe('/api/admin/facilities GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    facilityCreateMock.mockResolvedValue({
+      id: 'facility_2',
+      name: 'みどり苑',
+      facility_type: 'group_home',
+      address: null,
+      phone: null,
+      fax: null,
+      acceptance_time_from: null,
+      acceptance_time_to: null,
+      regular_visit_weekdays: [2, 4],
+      notes: null,
+      patient_count: 0,
+      contacts: [],
+      created_at: new Date('2026-03-01T00:00:00Z'),
+      updated_at: new Date('2026-03-01T00:00:00Z'),
+    });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        facility: {
+          create: facilityCreateMock,
+        },
+      }),
+    );
   });
 
   it('returns 403 when the role lacks admin permission', async () => {
@@ -110,6 +152,34 @@ describe('/api/admin/facilities GET', () => {
           contacts: [expect.objectContaining({ name: '施設担当' })],
         }),
       ],
+    });
+  });
+
+  it('creates a facility with regular visit weekdays', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(
+      createRequest(
+        { 'x-org-id': 'org_1' },
+        {
+          name: 'みどり苑',
+          facility_type: 'group_home',
+          regular_visit_weekdays: [2, 4],
+        },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(facilityCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        name: 'みどり苑',
+        facility_type: 'group_home',
+        regular_visit_weekdays: [2, 4],
+      }),
+      include: expect.any(Object),
     });
   });
 });

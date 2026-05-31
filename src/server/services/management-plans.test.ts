@@ -34,7 +34,7 @@ function makeGateDb() {
   return {
     consentRecord: { findFirst: consentRecordFindFirstMock },
     managementPlan: { findFirst: managementPlanFindFirstMock },
-  } as unknown as Parameters<typeof evaluateVisitWorkflowGate>[0];
+  };
 }
 
 describe('findActiveVisitConsent', () => {

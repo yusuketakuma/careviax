@@ -3,6 +3,7 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, forbidden } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { communicationChannelSchema } from '@/lib/validations/communication-channel';
 import { canAccessCaseScopedPatientResource } from '@/server/services/patient-access';
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -58,25 +59,20 @@ const ALLOWED_TRACING_STATUS_TRANSITIONS: Record<
 };
 
 type TracingReportStatus = 'draft' | 'sent' | 'received' | 'acknowledged';
-const communicationChannelValues = ['email', 'fax', 'phone', 'in_person', 'postal', 'ses'] as const;
-type CommunicationChannelValue = (typeof communicationChannelValues)[number];
 
 function isTracingReportStatus(value: string): value is TracingReportStatus {
   return ['draft', 'sent', 'received', 'acknowledged'].includes(value);
 }
 
-function isCommunicationChannel(value: string): value is CommunicationChannelValue {
-  return communicationChannelValues.includes(value as CommunicationChannelValue);
-}
-
-function parseCommunicationChannel(value: unknown): CommunicationChannelValue | null {
+function parseCommunicationChannel(value: unknown) {
   if (value === undefined || value === null) return 'fax';
   if (typeof value !== 'string') return null;
 
   const trimmed = value.trim();
   if (trimmed.length === 0) return 'fax';
 
-  return isCommunicationChannel(trimmed) ? trimmed : null;
+  const parsed = communicationChannelSchema.safeParse(trimmed);
+  return parsed.success ? parsed.data : null;
 }
 
 function parseStatusChangeReason(value: unknown) {

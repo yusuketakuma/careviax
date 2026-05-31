@@ -9,12 +9,23 @@ let pub: Redis | null = null;
 let sub: Redis | null = null;
 const subscribedChannels = new Set<string>();
 
+export function parseRedisRealtimeMessage(message: string): Record<string, unknown> | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(message) as unknown;
+  } catch {
+    return null;
+  }
+
+  return typeof data === 'object' && data !== null && !Array.isArray(data)
+    ? (data as Record<string, unknown>)
+    : null;
+}
+
 function getConnections(): { pub: Redis; sub: Redis } {
   const url = process.env.REDIS_URL;
   if (!url) {
-    throw new Error(
-      'REDIS_URL environment variable is not set; RealtimeAdapter cannot connect',
-    );
+    throw new Error('REDIS_URL environment variable is not set; RealtimeAdapter cannot connect');
   }
   if (!pub) {
     pub = new Redis(url, { lazyConnect: false, maxRetriesPerRequest: 3 });
@@ -24,13 +35,8 @@ function getConnections(): { pub: Redis; sub: Redis } {
     sub.on('message', (channel: string, message: string) => {
       const listeners = channelListeners.get(channel);
       if (!listeners) return;
-      let data: unknown;
-      try {
-        data = JSON.parse(message);
-      } catch {
-        // Ignore malformed messages
-        return;
-      }
+      const data = parseRedisRealtimeMessage(message);
+      if (!data) return;
       for (const listener of listeners) {
         try {
           listener(data);

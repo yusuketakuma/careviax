@@ -1,14 +1,7 @@
 import { z } from 'zod';
+import { CASE_STATUSES } from '@/lib/patient/case-status';
 
-export const caseStatusValues = [
-  'referral_received',
-  'assessment',
-  'active',
-  'on_hold',
-  'discharged',
-  'terminated',
-] as const;
-
+export const caseStatusValues = CASE_STATUSES;
 export type CaseStatus = (typeof caseStatusValues)[number];
 
 /** Allowed state transitions */

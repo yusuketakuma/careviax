@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
@@ -56,13 +56,14 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 import { POST } from './route';
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
-  return {
-    url: 'http://localhost/api/set-audits',
+  return new NextRequest('http://localhost/api/set-audits', {
+    method: 'POST',
     headers: {
-      get: (key: string) => headers?.[key] ?? null,
+      ...headers,
+      'content-type': 'application/json',
     },
-    json: async () => body,
-  } as unknown as NextRequest;
+    body: JSON.stringify(body),
+  });
 }
 
 describe('/api/set-audits POST', () => {

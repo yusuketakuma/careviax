@@ -7,7 +7,6 @@ import { generateVisitSchedulesSchema } from '@/lib/validations/visit-schedule';
 import { parseSimpleRruleDates } from '@/lib/visits/rrule';
 import { prisma } from '@/lib/db/client';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
-import type { Prisma } from '@prisma/client';
 
 // Insurance visit frequency limits: medical=4/month, care=2/month
 const MONTHLY_LIMITS: Record<string, number> = {
@@ -20,7 +19,7 @@ const WEEKLY_LIMITS: Record<string, number> = {
   care: 1,
 };
 
-function normalizeWeekdays(value: Prisma.JsonValue | null | undefined) {
+function normalizeWeekdays(value: unknown) {
   if (!Array.isArray(value)) return [];
   return value.filter((entry): entry is number => typeof entry === 'number');
 }
@@ -112,9 +111,7 @@ export const POST = withAuth(
     }
 
     const schedulingPreference = careCase.patient.scheduling_preference;
-    const preferredWeekdays = normalizeWeekdays(
-      schedulingPreference?.preferred_weekdays as Prisma.JsonValue | null | undefined,
-    );
+    const preferredWeekdays = normalizeWeekdays(schedulingPreference?.preferred_weekdays);
     if (
       preferredWeekdays.length > 0 &&
       candidateDates.some((date) => !preferredWeekdays.includes(date.getDay()))

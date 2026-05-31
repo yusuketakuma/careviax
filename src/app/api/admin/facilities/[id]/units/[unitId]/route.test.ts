@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   facilityUnitFindFirstMock,
@@ -38,6 +38,19 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { DELETE, PATCH } from './route';
 
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
+function createRequest(method: 'DELETE' | 'PATCH', body?: unknown) {
+  const init: NextRequestInit = {
+    method,
+    headers: { 'content-type': 'application/json' },
+  };
+  if (body !== undefined) {
+    init.body = JSON.stringify(body);
+  }
+  return new NextRequest('http://localhost/api/admin/facilities/facility_1/units/unit_1', init);
+}
+
 describe('/api/admin/facilities/[id]/units/[unitId]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -67,14 +80,15 @@ describe('/api/admin/facilities/[id]/units/[unitId]', () => {
   });
 
   it('updates a facility unit', async () => {
-    const response = (await PATCH({
-      json: async () => ({
+    const response = (await PATCH(
+      createRequest('PATCH', {
         capacity: 30,
         notes: '更新',
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'facility_1', unitId: 'unit_1' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'facility_1', unitId: 'unit_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(200);
     expect(facilityUnitUpdateMock).toHaveBeenCalledWith({
@@ -96,7 +110,7 @@ describe('/api/admin/facilities/[id]/units/[unitId]', () => {
   it('blocks deleting a unit that still has residents', async () => {
     residenceFindFirstMock.mockResolvedValue({ id: 'residence_1' });
 
-    const response = (await DELETE({} as NextRequest, {
+    const response = (await DELETE(createRequest('DELETE'), {
       params: Promise.resolve({ id: 'facility_1', unitId: 'unit_1' }),
     }))!;
 

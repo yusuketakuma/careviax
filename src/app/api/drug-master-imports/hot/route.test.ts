@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { importHotMasterMock } = vi.hoisted(() => ({
   importHotMasterMock: vi.fn(),
@@ -22,6 +22,14 @@ vi.mock('@/server/services/drug-master-import/hot', () => ({
 
 import { POST } from './route';
 
+function createJsonRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/drug-master-imports/hot', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 describe('/api/drug-master-imports/hot', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -34,11 +42,9 @@ describe('/api/drug-master-imports/hot', () => {
 
   it('imports the HOT master', async () => {
     const response = (await POST(
-      {
-        json: async () => ({
+      createJsonRequest({
           fileUrl: 'https://www.medis.or.jp/hot.csv',
-        }),
-      } as NextRequest,
+      }),
       { params: Promise.resolve({}) },
     ))!;
 
@@ -53,11 +59,9 @@ describe('/api/drug-master-imports/hot', () => {
 
   it('rejects credential-bearing file URLs without echoing credentials', async () => {
     const response = (await POST(
-      {
-        json: async () => ({
+      createJsonRequest({
           fileUrl: 'https://importer:secret@www.medis.or.jp/hot.csv',
-        }),
-      } as NextRequest,
+      }),
       { params: Promise.resolve({}) },
     ))!;
     const payload = await response.json();

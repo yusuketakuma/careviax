@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
 import { withOrgContext } from '@/lib/db/rls';
+import { normalizeJsonInput } from '@/lib/db/json';
 import {
   success,
   validationError,
@@ -28,6 +29,11 @@ import {
 } from '@/server/services/file-storage';
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
+
+function normalizeInputJsonArray(value: unknown): Prisma.InputJsonArray {
+  const normalized = normalizeJsonInput(value);
+  return Array.isArray(normalized) ? normalized : [];
+}
 
 function parseStoredVisitRecordAttachments(value: unknown): VisitRecordAttachment[] {
   if (!Array.isArray(value)) return [];
@@ -329,7 +335,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             ? { next_visit_suggestion_date: new Date(next_visit_suggestion_date) }
             : {}),
           ...(normalizedAttachments
-            ? { attachments: normalizedAttachments as Prisma.InputJsonValue }
+            ? { attachments: normalizeInputJsonArray(normalizedAttachments) }
             : {}),
           version: { increment: 1 },
         } as Prisma.VisitRecordUncheckedUpdateInput,

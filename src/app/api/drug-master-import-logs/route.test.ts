@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { drugMasterImportLogFindManyMock } = vi.hoisted(() => ({
   drugMasterImportLogFindManyMock: vi.fn(),
@@ -22,6 +22,10 @@ vi.mock('@/lib/db/client', () => ({
 
 import { GET } from './route';
 
+function createRequest(search = '') {
+  return new NextRequest(`http://localhost/api/drug-master-import-logs${search}`);
+}
+
 describe('/api/drug-master-import-logs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -31,9 +35,7 @@ describe('/api/drug-master-import-logs', () => {
   });
 
   it('clamps limit and returns latest import logs', async () => {
-    const response = (await GET({
-      url: 'http://localhost/api/drug-master-import-logs?limit=100',
-    } as NextRequest, { params: Promise.resolve({}) }))!;
+    const response = (await GET(createRequest('?limit=100'), { params: Promise.resolve({}) }))!;
 
     expect(response.status).toBe(200);
     expect(drugMasterImportLogFindManyMock).toHaveBeenCalledWith({
@@ -45,9 +47,9 @@ describe('/api/drug-master-import-logs', () => {
   });
 
   it('filters import logs by valid source and status', async () => {
-    const response = (await GET({
-      url: 'http://localhost/api/drug-master-import-logs?source=pmda&status=failed&limit=20',
-    } as NextRequest, { params: Promise.resolve({}) }))!;
+    const response = (await GET(createRequest('?source=pmda&status=failed&limit=20'), {
+      params: Promise.resolve({}),
+    }))!;
 
     expect(response.status).toBe(200);
     expect(drugMasterImportLogFindManyMock).toHaveBeenCalledWith({
@@ -58,16 +60,29 @@ describe('/api/drug-master-import-logs', () => {
     });
   });
 
-  it('ignores invalid filter values', async () => {
-    await GET({
-      url: 'http://localhost/api/drug-master-import-logs?source=unknown&status=deleted',
-    } as NextRequest, { params: Promise.resolve({}) });
+  it('returns 400 before querying when the source filter is invalid', async () => {
+    const response = await GET(createRequest('?source=unknown'), { params: Promise.resolve({}) });
 
-    expect(drugMasterImportLogFindManyMock).toHaveBeenCalledWith({
-      where: {},
-      orderBy: [{ imported_at: 'desc' }, { created_at: 'desc' }],
-      take: 10,
-      select: expect.any(Object),
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        source: ['対応していない取込ソースです'],
+      },
     });
+    expect(drugMasterImportLogFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 before querying when the status filter is invalid', async () => {
+    const response = await GET(createRequest('?status=deleted'), { params: Promise.resolve({}) });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        status: ['対応していない取込ステータスです'],
+      },
+    });
+    expect(drugMasterImportLogFindManyMock).not.toHaveBeenCalled();
   });
 });

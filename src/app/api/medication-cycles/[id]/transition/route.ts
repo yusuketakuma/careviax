@@ -121,10 +121,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // B6: For on_hold recovery, derive valid return targets from pre-hold status
   let allowed: string[] = ALLOWED_TRANSITIONS[fromStatus as keyof typeof ALLOWED_TRANSITIONS] ?? [];
   if (fromStatus === 'on_hold') {
-    const preHoldStatus = await getPreHoldStatus(
-      prisma as unknown as Parameters<typeof getPreHoldStatus>[0],
-      id,
-    );
+    const preHoldStatus = await getPreHoldStatus(prisma, id);
     if (preHoldStatus) {
       allowed = [preHoldStatus, 'cancelled'];
     }

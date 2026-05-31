@@ -1,16 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
+
+type AuthenticatedTestRequest = NextRequest & { orgId: string; userId: string; role: string };
 
 const { findLatestPrescriberInstitutionSuggestionMock } = vi.hoisted(() => ({
   findLatestPrescriberInstitutionSuggestionMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (
-    handler: (
-      req: NextRequest & { orgId: string; userId: string; role: string; nextUrl: URL }
-    ) => Promise<Response>
-  ) => handler,
+  withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => handler,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -22,6 +20,14 @@ vi.mock('@/lib/prescriptions/prescriber-institutions', () => ({
 }));
 
 import { GET } from './route';
+
+function createRequest(url: string): AuthenticatedTestRequest {
+  return Object.assign(new NextRequest(url), {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'pharmacist',
+  });
+}
 
 describe('/api/prescriber-institutions/suggestion', () => {
   beforeEach(() => {
@@ -38,19 +44,11 @@ describe('/api/prescriber-institutions/suggestion', () => {
   });
 
   it('returns the latest prescriber institution suggestion for patient/case context', async () => {
-    const response = (await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      nextUrl: new URL(
-        'http://localhost/api/prescriber-institutions/suggestion?patient_id=patient_1&case_id=case_1'
+    const response = (await GET(
+      createRequest(
+        'http://localhost/api/prescriber-institutions/suggestion?patient_id=patient_1&case_id=case_1',
       ),
-    } as unknown as NextRequest & {
-      orgId: string;
-      userId: string;
-      role: string;
-      nextUrl: URL;
-    }))!;
+    ))!;
 
     expect(response.status).toBe(200);
     expect(findLatestPrescriberInstitutionSuggestionMock).toHaveBeenCalledWith(
@@ -71,17 +69,9 @@ describe('/api/prescriber-institutions/suggestion', () => {
   });
 
   it('rejects requests without patient or case context', async () => {
-    const response = (await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      nextUrl: new URL('http://localhost/api/prescriber-institutions/suggestion'),
-    } as unknown as NextRequest & {
-      orgId: string;
-      userId: string;
-      role: string;
-      nextUrl: URL;
-    }))!;
+    const response = (await GET(
+      createRequest('http://localhost/api/prescriber-institutions/suggestion'),
+    ))!;
 
     expect(response.status).toBe(400);
   });

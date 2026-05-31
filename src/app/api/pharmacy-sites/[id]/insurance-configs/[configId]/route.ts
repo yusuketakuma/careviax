@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server';
-import type { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { success, validationError, notFound } from '@/lib/api/response';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import {
   pharmacySiteInsuranceConfigUpdateSchema,
   rangesOverlap,
@@ -65,7 +65,7 @@ export async function PATCH(
         revision_label: parsed.data.revision_label ?? null,
         effective_from: nextStart,
         effective_to: nextEnd,
-        config: parsed.data.config as Prisma.InputJsonValue,
+        config: toPrismaJsonInput(parsed.data.config),
       },
     });
 
@@ -76,7 +76,7 @@ export async function PATCH(
         action: 'insurance_config_updated',
         target_type: 'PharmacySiteInsuranceConfig',
         target_id: configId,
-        changes: parsed.data as Prisma.InputJsonValue,
+        changes: toPrismaJsonInput(parsed.data),
         ip_address: ctx.ipAddress,
         user_agent: ctx.userAgent,
       },

@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import type { Proposal, VisitSchedule } from '../day-view.shared';
 import { WeeklyCellInspector } from './weekly-cell-inspector';
 
 setupDomTestEnv();
@@ -29,6 +30,60 @@ describe('WeeklyCellInspector', () => {
     const generateMock = vi.fn();
     const expandMock = vi.fn();
     const driveMock = vi.fn();
+    const schedule: VisitSchedule = {
+      id: 'schedule_1',
+      case_id: 'case_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      schedule_status: 'planned',
+      scheduled_date: '2026-04-09',
+      time_window_start: '2026-04-09T09:00:00.000Z',
+      time_window_end: '2026-04-09T10:00:00.000Z',
+      pharmacist_id: 'pharmacist_1',
+      assignment_mode: 'primary',
+      route_order: 1,
+      facility_batch_id: null,
+      confirmed_at: null,
+      carry_items_status: 'unknown',
+      case_: { patient: { id: 'patient_1', name: '患者A', residences: [] } },
+      site: null,
+      preparation: null,
+      override_request: null,
+      applied_override: null,
+      facility_hint: null,
+      workload_hint: {
+        daily_visit_count: 1,
+        urgent_visit_count: 0,
+      },
+      handoff_hint: null,
+    };
+    const proposal: Proposal = {
+      id: 'proposal_1',
+      case_id: 'case_2',
+      visit_type: 'regular',
+      priority: 'normal',
+      proposal_status: 'proposed',
+      patient_contact_status: 'pending',
+      proposed_date: '2026-04-09',
+      time_window_start: '2026-04-09T11:00:00.000Z',
+      time_window_end: '2026-04-09T12:00:00.000Z',
+      proposed_pharmacist_id: 'pharmacist_1',
+      proposed_pharmacist: null,
+      assignment_mode: 'primary',
+      route_order: 2,
+      route_distance_score: 1.2,
+      medication_end_date: null,
+      visit_deadline_date: null,
+      proposal_reason: '',
+      escalation_reason: null,
+      finalized_schedule_id: null,
+      reschedule_source_schedule_id: null,
+      case_: { patient: { id: 'patient_2', name: '患者B', residences: [] } },
+      site: null,
+      finalized_schedule: null,
+      reschedule_source_schedule: null,
+      contact_logs: [],
+    };
 
     render(
       <WeeklyCellInspector
@@ -58,57 +113,8 @@ describe('WeeklyCellInspector', () => {
         onApplyRoute={vi.fn()}
         applyRouteDisabled
         applyRoutePending={false}
-        schedules={[
-          {
-            id: 'schedule_1',
-            org_id: 'org_1',
-            case_id: 'case_1',
-            cycle_id: null,
-            site_id: null,
-            visit_type: 'regular',
-            priority: 'normal',
-            schedule_status: 'planned',
-            scheduled_date: '2026-04-09',
-            time_window_start: '2026-04-09T09:00:00.000Z',
-            time_window_end: '2026-04-09T10:00:00.000Z',
-            pharmacist_id: 'pharmacist_1',
-            assignment_mode: 'primary',
-            route_order: 1,
-            confirmed_at: null,
-            carry_items_status: 'unknown',
-            case_: { patient: { id: 'patient_1', name: '患者A', residences: [] } },
-            site: null,
-          } as never,
-        ]}
-        proposals={[
-          {
-            id: 'proposal_1',
-            case_id: 'case_2',
-            visit_type: 'regular',
-            priority: 'normal',
-            proposal_status: 'proposed',
-            patient_contact_status: 'pending',
-            proposed_date: '2026-04-09',
-            time_window_start: '2026-04-09T11:00:00.000Z',
-            time_window_end: '2026-04-09T12:00:00.000Z',
-            proposed_pharmacist_id: 'pharmacist_1',
-            proposed_pharmacist: null,
-            assignment_mode: 'primary',
-            route_order: 2,
-            route_distance_score: 1.2,
-            medication_end_date: null,
-            visit_deadline_date: null,
-            proposal_reason: '',
-            escalation_reason: null,
-            finalized_schedule_id: null,
-            reschedule_source_schedule_id: null,
-            case_: { patient: { id: 'patient_2', name: '患者B', residences: [] } },
-            site: null,
-            finalized_schedule: null,
-            reschedule_source_schedule: null,
-            contact_logs: [],
-          } as never,
-        ]}
+        schedules={[schedule]}
+        proposals={[proposal]}
         selectedCaseId="case_1"
         onGenerateForCell={generateMock}
         generateDisabled={false}

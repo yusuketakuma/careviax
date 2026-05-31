@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   currentRole,
@@ -117,15 +117,15 @@ import { GET, POST } from './route';
 const routeContext = { params: Promise.resolve({}) };
 
 function createRequest(body: unknown) {
-  return {
-    json: async () => body,
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/external-access', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 }
 
 function createGetRequest(url = 'http://localhost/api/external-access') {
-  return {
-    url,
-  } as unknown as NextRequest;
+  return new NextRequest(url);
 }
 
 function expectPharmacistPatientAssignmentWhere(patientId?: string) {

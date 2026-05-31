@@ -1,21 +1,37 @@
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { ensureGroupedVisitFixtures } from './helpers/grouped-visit-fixtures';
-import { attachLocalSession, createInstrumentedPage, waitForStableUi } from './helpers/local-auth';
+import {
+  attachLocalSession,
+  clickAndWaitForStableRoute,
+  createInstrumentedPage,
+  openStableRoute,
+  reloadStablePage,
+  waitForStableUi,
+} from './helpers/local-auth';
+import { apiPathPattern, fulfillJson, readRouteBody } from './helpers/route-mocks';
 
 test.setTimeout(90_000);
+test.use({ serviceWorkers: 'block' });
 
-async function openScheduleBoard(page: import('@playwright/test').Page) {
-  await page.goto('/schedules');
-  await waitForStableUi(page);
+async function openScheduleBoard(page: Page) {
+  await openStableRoute(page, '/schedules');
 
   const nextWeekButton = page.getByRole('button', { name: /翌週/ }).first();
   if (!(await nextWeekButton.isVisible().catch(() => false))) {
-    await page.reload();
-    await waitForStableUi(page);
+    await reloadStablePage(page);
   }
 }
 
-async function expectNoPageHorizontalOverflow(page: import('@playwright/test').Page) {
+async function openVisitRecordPage(page: Page, url: string) {
+  await openStableRoute(page, url);
+
+  const switcher = page.getByTestId('facility-visit-record-switcher');
+  if (!(await switcher.isVisible({ timeout: 5_000 }).catch(() => false))) {
+    await reloadStablePage(page);
+  }
+}
+
+async function expectNoPageHorizontalOverflow(page: Page) {
   const overflow = await page.evaluate(() => {
     const root = document.documentElement;
     return {
@@ -27,7 +43,7 @@ async function expectNoPageHorizontalOverflow(page: import('@playwright/test').P
   expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 2);
 }
 
-async function swipeVisitSwitcherToNext(page: import('@playwright/test').Page) {
+async function swipeVisitSwitcherToNext(page: Page) {
   await page.getByTestId('facility-visit-record-switcher').evaluate((element) => {
     element.dispatchEvent(
       new TouchEvent('touchstart', {
@@ -73,46 +89,34 @@ type VisitRecordSavePayload = {
   };
 };
 
-function readRouteJson(route: Route) {
-  try {
-    return route.request().postDataJSON() as VisitRecordSavePayload;
-  } catch {
-    return null;
-  }
-}
-
 async function installVisitRecordSaveStub(page: Page) {
   const payloads: VisitRecordSavePayload[] = [];
 
-  await page.route('**/api/visit-records', async (route) => {
+  await page.route(apiPathPattern('/api/visit-records'), async (route) => {
     if (route.request().method() !== 'POST') {
       await route.continue();
       return;
     }
 
-    const payload = readRouteJson(route);
+    const payload = readRouteBody<VisitRecordSavePayload>(route);
     if (payload) {
       payloads.push(payload);
     }
 
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        record: {
-          id: 'stubbed_grouped_facility_visit_record',
-          version: 1,
-          schedule_id: payload?.schedule_id ?? 'stubbed_schedule',
-          patient_id: payload?.patient_id ?? 'stubbed_patient',
-          visit_date: '2026-04-25',
-          outcome_status: 'completed',
-          soap_subjective: payload?.soap_subjective ?? null,
-          soap_objective: payload?.soap_objective ?? null,
-          soap_assessment: payload?.soap_assessment ?? null,
-          soap_plan: payload?.soap_plan ?? null,
-          structured_soap: payload?.structured_soap ?? null,
-        },
-      }),
+    await fulfillJson(route, {
+      record: {
+        id: 'stubbed_grouped_facility_visit_record',
+        version: 1,
+        schedule_id: payload?.schedule_id ?? 'stubbed_schedule',
+        patient_id: payload?.patient_id ?? 'stubbed_patient',
+        visit_date: '2026-04-25',
+        outcome_status: 'completed',
+        soap_subjective: payload?.soap_subjective ?? null,
+        soap_objective: payload?.soap_objective ?? null,
+        soap_assessment: payload?.soap_assessment ?? null,
+        soap_plan: payload?.soap_plan ?? null,
+        structured_soap: payload?.structured_soap ?? null,
+      },
     });
   });
 
@@ -152,23 +156,15 @@ async function installGroupedFacilityScheduleStub(
     ],
   ]);
 
-  await page.route('**/api/visit-schedules/e2e_grouped_facility_schedule_*', async (route) => {
+  await page.route(/\/api\/visit-schedules\/e2e_grouped_facility_schedule_[^/?]+$/, async (route) => {
     const scheduleId = new URL(route.request().url()).pathname.split('/').pop() ?? '';
     const schedule = schedules.get(scheduleId as (typeof ids.facilitySchedules)[number]);
     if (!schedule) {
-      await route.fulfill({
-        status: 404,
-        contentType: 'application/json',
-        body: JSON.stringify({ message: 'stubbed schedule not found' }),
-      });
+      await fulfillJson(route, { message: 'stubbed schedule not found' }, 404);
       return;
     }
 
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(schedule),
-    });
+    await fulfillJson(route, schedule);
   });
 }
 
@@ -176,68 +172,64 @@ async function installGroupedFacilityPreparationStub(
   page: Page,
   ids: Awaited<ReturnType<typeof ensureGroupedVisitFixtures>>,
 ) {
-  await page.route('**/api/visit-preparations/e2e_grouped_facility_schedule_*', async (route) => {
+  await page.route(/\/api\/visit-preparations\/e2e_grouped_facility_schedule_[^/?]+$/, async (route) => {
     const currentScheduleId = new URL(route.request().url()).pathname.split('/').pop() ?? '';
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        data: {
-          preparation: null,
-          pack: {
-            care_team: [],
-            billing_blockers: [],
-            conference_context: [],
-            medication_period: {
-              schedule_start_date: '2026-04-25',
-              schedule_end_date: '2026-05-08',
-              prescription_start_date: null,
-              prescription_end_date: null,
-            },
-            prescription_changes: null,
-            previous_visit: null,
-            intake_context: {
-              initial_transition_management_expected: null,
-            },
-            facility_parallel_context: {
-              batch_id: 'e2e_grouped_facility_batch',
-              label: '青空ホームE2E',
-              place_kind: 'facility',
-              site_name: 'サンプル薬局 本店',
-              common_notes: '受付で入館証を受け取り、2Fスタッフへ声かけ',
-              current_schedule_id: currentScheduleId,
-              patients: [
-                {
-                  schedule_id: ids.facilitySchedules[0],
-                  patient_id: ids.facilityPatients[0],
-                  patient_name: '施設E2E 太郎',
-                  unit_name: '201号室',
-                  route_order: 1,
-                  schedule_status: 'ready',
-                  medication_start_date: '2026-04-25',
-                  medication_end_date: '2026-05-08',
-                  preparation_blockers_count: 0,
-                  visit_record_id: null,
-                  visit_outcome_status: null,
-                },
-                {
-                  schedule_id: ids.facilitySchedules[1],
-                  patient_id: ids.facilityPatients[1],
-                  patient_name: '施設E2E 花子',
-                  unit_name: '202号室',
-                  route_order: 2,
-                  schedule_status: 'ready',
-                  medication_start_date: '2026-04-25',
-                  medication_end_date: '2026-05-08',
-                  preparation_blockers_count: 0,
-                  visit_record_id: null,
-                  visit_outcome_status: null,
-                },
-              ],
-            },
+    await fulfillJson(route, {
+      data: {
+        preparation: null,
+        pack: {
+          care_team: [],
+          billing_blockers: [],
+          conference_context: [],
+          medication_period: {
+            schedule_start_date: '2026-04-25',
+            schedule_end_date: '2026-05-08',
+            prescription_start_date: null,
+            prescription_end_date: null,
+          },
+          prescription_changes: null,
+          previous_visit: null,
+          intake_context: {
+            initial_transition_management_expected: null,
+          },
+          facility_parallel_context: {
+            batch_id: 'e2e_grouped_facility_batch',
+            label: '青空ホームE2E',
+            place_kind: 'facility',
+            site_name: 'サンプル薬局 本店',
+            common_notes: '受付で入館証を受け取り、2Fスタッフへ声かけ',
+            current_schedule_id: currentScheduleId,
+            patients: [
+              {
+                schedule_id: ids.facilitySchedules[0],
+                patient_id: ids.facilityPatients[0],
+                patient_name: '施設E2E 太郎',
+                unit_name: '201号室',
+                route_order: 1,
+                schedule_status: 'ready',
+                medication_start_date: '2026-04-25',
+                medication_end_date: '2026-05-08',
+                preparation_blockers_count: 0,
+                visit_record_id: null,
+                visit_outcome_status: null,
+              },
+              {
+                schedule_id: ids.facilitySchedules[1],
+                patient_id: ids.facilityPatients[1],
+                patient_name: '施設E2E 花子',
+                unit_name: '202号室',
+                route_order: 2,
+                schedule_status: 'ready',
+                medication_start_date: '2026-04-25',
+                medication_end_date: '2026-05-08',
+                preparation_blockers_count: 0,
+                visit_record_id: null,
+                visit_outcome_status: null,
+              },
+            ],
           },
         },
-      }),
+      },
     });
   });
 }
@@ -288,8 +280,7 @@ test.describe('schedule page', () => {
 
   test('schedule view toggle switches between list and calendar', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/schedules');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/schedules');
 
     // Look for a view toggle (list/calendar)
     const calendarToggle = page.getByRole('button', { name: /カレンダー/ });
@@ -320,8 +311,7 @@ test.describe('schedule page', () => {
 
   test('schedule proposals page loads and shows proposals or empty state', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/schedules/proposals');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/schedules/proposals');
 
     const main = page.locator('main');
     const content = await main.textContent();
@@ -343,8 +333,7 @@ test.describe('visits page', () => {
 
   test('visits list page loads with table and date filters', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/visits');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/visits');
 
     await expect(page.getByRole('heading', { name: '訪問記録一覧' })).toBeVisible();
 
@@ -366,32 +355,43 @@ test.describe('visits page', () => {
 
   test('visits table shows data or empty state', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context, { captureHttpErrors: false });
-    await page.goto('/visits');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/visits');
 
     // Desktop uses a table; mobile uses stacked cards with the same patient/date links.
     const main = page.locator('main');
-    const table = main.getByRole('table', { name: '訪問記録一覧' });
-    const hasTable = await table.isVisible().catch(() => false);
-    const hasRows = hasTable ? (await table.getByRole('row').count()) > 1 : false;
-    const hasMobileCards =
-      !hasTable &&
-      ((await main.locator('a[href^="/visits/"]').filter({ visible: true }).count()) > 0 ||
-        (await main.locator('a[href^="/patients/"]').filter({ visible: true }).count()) > 0);
-    const hasEmpty = await main
-      .getByText(/訪問記録がありません|データがありません/)
-      .isVisible()
-      .catch(() => false);
+    await expect(main.getByRole('heading', { name: '訪問記録一覧' })).toBeVisible();
+    await main
+      .getByText('読み込み中...')
+      .first()
+      .waitFor({ state: 'detached', timeout: 60_000 })
+      .catch(() => null);
 
-    expect(hasRows || hasMobileCards || hasEmpty).toBe(true);
+    await expect
+      .poll(
+        async () => {
+          const table = main.getByRole('table', { name: '訪問記録一覧' });
+          const hasTable = await table.isVisible().catch(() => false);
+          const hasRows = hasTable ? (await table.getByRole('row').count()) > 1 : false;
+          const hasMobileCards =
+            !hasTable &&
+            ((await main.locator('a[href^="/visits/"]').filter({ visible: true }).count()) > 0 ||
+              (await main.locator('a[href^="/patients/"]').filter({ visible: true }).count()) > 0);
+          const hasEmpty = await main
+            .getByText(/訪問記録がありません|データがありません/)
+            .isVisible()
+            .catch(() => false);
+          return hasRows || hasMobileCards || hasEmpty;
+        },
+        { message: 'visits table should settle with rows or an empty state', timeout: 60_000 },
+      )
+      .toBe(true);
 
     expect(errors).toEqual([]);
   });
 
   test('visit detail page loads from visits list', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/visits');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/visits');
 
     // If there are visit records, click the first one
     const firstVisitLink = page
@@ -401,9 +401,11 @@ test.describe('visits page', () => {
       .first();
     if (await firstVisitLink.isVisible().catch(() => false)) {
       const href = await firstVisitLink.getAttribute('href');
-      await firstVisitLink.click();
+      expect(href).toBeTruthy();
+      await clickAndWaitForStableRoute(page, new RegExp(`${href}$`), () =>
+        firstVisitLink.click({ noWaitAfter: true }),
+      );
       await expect(page).toHaveURL(new RegExp(`${href}$`));
-      await waitForStableUi(page);
 
       // Visit detail should show SOAP sections
       const main = page.locator('main');
@@ -421,8 +423,7 @@ test.describe('visits page', () => {
 
   test('date filter on visits page is functional', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/visits');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/visits');
 
     // Date filter inputs should be functional
     const dateFrom = page.locator('#date-from');
@@ -449,9 +450,10 @@ test.describe('visits page', () => {
     const { page, errors } = await createInstrumentedPage(context);
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(`/visits/${ids.facilitySchedules[0]}/record`);
-    await waitForStableUi(page);
-    await expect(page.getByTestId('facility-visit-record-switcher')).toBeVisible();
+    await openVisitRecordPage(page, `/visits/${ids.facilitySchedules[0]}/record`);
+    await expect(page.getByTestId('facility-visit-record-switcher')).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(page.getByLabel('施設並行訪問の患者切替')).toBeVisible();
     await expect(page.getByText('施設並行訪問')).toBeVisible();
     await expect(page.getByText('訪問先全体の進捗')).toBeVisible();
@@ -468,9 +470,10 @@ test.describe('visits page', () => {
     await expect(page.getByText('施設E2E 花子').first()).toBeVisible();
 
     await page.setViewportSize({ width: 768, height: 1024 });
-    await page.goto(`/visits/${ids.homeSchedules[0]}/record`);
-    await waitForStableUi(page);
-    await expect(page.getByTestId('facility-visit-record-switcher')).toBeVisible();
+    await openVisitRecordPage(page, `/visits/${ids.homeSchedules[0]}/record`);
+    await expect(page.getByTestId('facility-visit-record-switcher')).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(page.getByLabel('同一個人宅訪問の患者切替')).toBeVisible();
     await expect(page.getByText('同一個人宅訪問')).toBeVisible();
     await expect(page.getByText('山田宅E2E')).toBeVisible();
@@ -492,10 +495,11 @@ test.describe('visits page', () => {
     await installGroupedFacilityScheduleStub(page, ids);
     await installGroupedFacilityPreparationStub(page, ids);
 
-    await page.goto(`/visits/${ids.facilitySchedules[0]}/record`);
-    await waitForStableUi(page);
+    await openVisitRecordPage(page, `/visits/${ids.facilitySchedules[0]}/record`);
 
-    await expect(page.getByTestId('facility-visit-record-switcher')).toBeVisible();
+    await expect(page.getByTestId('facility-visit-record-switcher')).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(page.getByText('施設E2E 太郎').first()).toBeVisible();
 
     const soap = {
@@ -550,8 +554,7 @@ test.describe('reports page', () => {
 
   test('reports page loads with filter panel and table', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/reports');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/reports');
 
     await expect(page.getByRole('heading', { name: '報告書', exact: true })).toBeVisible();
 
@@ -567,8 +570,7 @@ test.describe('reports page', () => {
 
   test('reports table shows data or empty state', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/reports');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/reports');
 
     const main = page.locator('main');
     await expect(main.getByRole('heading', { name: '報告書一覧' })).toBeVisible();
@@ -604,8 +606,7 @@ test.describe('reports page', () => {
 
   test('report detail page loads from reports list', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/reports');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/reports');
 
     // If there are reports, click the first detail link
     const firstRow = page.locator('table tbody tr').first();
@@ -613,9 +614,11 @@ test.describe('reports page', () => {
     if (await detailLink.isVisible().catch(() => false)) {
       const href = await detailLink.getAttribute('href');
       if (href?.startsWith('/reports/')) {
-        await detailLink.click();
-        await expect(page).toHaveURL(new RegExp(href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-        await waitForStableUi(page);
+        const targetUrl = new RegExp(href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        await clickAndWaitForStableRoute(page, targetUrl, () =>
+          detailLink.click({ noWaitAfter: true }),
+        );
+        await expect(page).toHaveURL(targetUrl);
 
         // Report detail should show content
         const main = page.locator('main');
@@ -629,8 +632,7 @@ test.describe('reports page', () => {
 
   test('reports filter panel search narrows results', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/reports');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/reports');
 
     const searchInput = page.getByPlaceholder('患者名 / フリガナ');
     await searchInput.fill('ZZZNONEXISTENT');
@@ -663,8 +665,7 @@ test.describe('admin dashboard', () => {
 
   test('admin dashboard loads with summary cards', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/admin');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/admin');
 
     await expect(page.getByRole('heading', { name: '管理者ダッシュボード' })).toBeVisible();
 
@@ -688,8 +689,7 @@ test.describe('admin dashboard', () => {
 
   test('admin monthly navigation works without errors', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/admin');
-    await waitForStableUi(page);
+    await openStableRoute(page, '/admin');
 
     // Monthly navigation buttons
     const prevMonth = page.getByRole('button', { name: '前月' });

@@ -3,6 +3,48 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
+type PatientRiskReader = {
+  patient: {
+    findMany(args: unknown): Promise<Array<{
+      id: string;
+      name: string;
+      billing_support_flag: boolean;
+    }>>;
+  };
+  careCase: {
+    findMany(args: unknown): Promise<Array<{ id: string; patient_id: string }>>;
+  };
+  patientSelfReport: {
+    findMany(args: unknown): Promise<Array<{ patient_id: string; requested_callback: boolean }>>;
+  };
+  medicationIssue: {
+    findMany(args: unknown): Promise<Array<{ patient_id: string; priority: string }>>;
+  };
+  task: {
+    findMany(args: unknown): Promise<Array<{
+      related_entity_type: string | null;
+      related_entity_id: string | null;
+      priority: string;
+    }>>;
+  };
+  visitSchedule: {
+    findMany(args: unknown): Promise<Array<{
+      case_id: string;
+      schedule_status: string;
+      priority: string;
+      scheduled_date: Date;
+    }>>;
+  };
+  careReport: {
+    findMany(args: unknown): Promise<Array<{ patient_id: string }>>;
+  };
+  consentRecord: {
+    findMany(args: unknown): Promise<Array<{ patient_id: string }>>;
+  };
+  managementPlan: {
+    findMany(args: unknown): Promise<Array<{ case_id: string }>>;
+  };
+};
 type RiskLevel = 'stable' | 'watch' | 'high';
 
 export type PatientRiskSummary = {
@@ -36,7 +78,30 @@ export async function listPatientRiskSummaries(
     candidateLimit?: number;
     includeStable?: boolean;
   },
+): Promise<PatientRiskSummary[]>;
+export async function listPatientRiskSummaries(
+  db: PatientRiskReader,
+  args: {
+    orgId: string;
+    patientIds?: string[];
+    caseIdsByPatient?: Record<string, string[]>;
+    limit?: number;
+    candidateLimit?: number;
+    includeStable?: boolean;
+  },
+): Promise<PatientRiskSummary[]>;
+export async function listPatientRiskSummaries(
+  db: DbClient | PatientRiskReader,
+  args: {
+    orgId: string;
+    patientIds?: string[];
+    caseIdsByPatient?: Record<string, string[]>;
+    limit?: number;
+    candidateLimit?: number;
+    includeStable?: boolean;
+  },
 ): Promise<PatientRiskSummary[]> {
+  const reader = db as PatientRiskReader;
   const now = new Date();
   const recentWindow = addDays(now, -30);
   const activeCaseStatuses = ['assessment', 'active', 'on_hold'] as const;
@@ -48,7 +113,7 @@ export async function listPatientRiskSummaries(
       : args.patientIds;
   if (scopedPatientIds !== undefined && scopedPatientIds.length === 0) return [];
 
-  const patients = await db.patient.findMany({
+  const patients = await reader.patient.findMany({
     where: {
       org_id: args.orgId,
       ...(hasPatientFilter ? { id: { in: scopedPatientIds } } : {}),
@@ -96,7 +161,7 @@ export async function listPatientRiskSummaries(
           : []),
       ])
     : null;
-  const cases = await db.careCase.findMany({
+  const cases = await reader.careCase.findMany({
     where: {
       org_id: args.orgId,
       patient_id: { in: patientIds },
@@ -120,7 +185,7 @@ export async function listPatientRiskSummaries(
     visitConsents,
     managementPlans,
   ] = await Promise.all([
-    db.patientSelfReport.findMany({
+    reader.patientSelfReport.findMany({
       where: {
         org_id: args.orgId,
         patient_id: { in: patientIds },
@@ -133,7 +198,7 @@ export async function listPatientRiskSummaries(
         requested_callback: true,
       },
     }),
-    db.medicationIssue.findMany({
+    reader.medicationIssue.findMany({
       where: {
         org_id: args.orgId,
         ...(patientCaseScopes ? { OR: patientCaseScopes } : { patient_id: { in: patientIds } }),
@@ -146,7 +211,7 @@ export async function listPatientRiskSummaries(
         priority: true,
       },
     }),
-    db.task.findMany({
+    reader.task.findMany({
       where: {
         org_id: args.orgId,
         status: {
@@ -175,7 +240,7 @@ export async function listPatientRiskSummaries(
     }),
     caseIds.length === 0
       ? Promise.resolve([])
-      : db.visitSchedule.findMany({
+      : reader.visitSchedule.findMany({
           where: {
             org_id: args.orgId,
             case_id: { in: caseIds },
@@ -190,7 +255,7 @@ export async function listPatientRiskSummaries(
             scheduled_date: true,
           },
         }),
-    db.careReport.findMany({
+    reader.careReport.findMany({
       where: {
         org_id: args.orgId,
         ...(patientCaseScopes ? { OR: patientCaseScopes } : { patient_id: { in: patientIds } }),
@@ -202,7 +267,7 @@ export async function listPatientRiskSummaries(
         patient_id: true,
       },
     }),
-    db.consentRecord.findMany({
+    reader.consentRecord.findMany({
       where: {
         org_id: args.orgId,
         patient_id: { in: patientIds },
@@ -217,7 +282,7 @@ export async function listPatientRiskSummaries(
     }),
     caseIds.length === 0
       ? Promise.resolve([])
-      : db.managementPlan.findMany({
+      : reader.managementPlan.findMany({
           where: {
             org_id: args.orgId,
             case_id: { in: caseIds },
@@ -370,6 +435,22 @@ export async function listPatientRiskSummaries(
 
 export async function getPatientRiskSummary(
   db: DbClient,
+  args: {
+    orgId: string;
+    patientId: string;
+    caseIds?: string[];
+  },
+): Promise<PatientRiskSummary | null>;
+export async function getPatientRiskSummary(
+  db: PatientRiskReader,
+  args: {
+    orgId: string;
+    patientId: string;
+    caseIds?: string[];
+  },
+): Promise<PatientRiskSummary | null>;
+export async function getPatientRiskSummary(
+  db: DbClient | PatientRiskReader,
   args: {
     orgId: string;
     patientId: string;

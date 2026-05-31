@@ -1,7 +1,12 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 
-type DbClient = Prisma.TransactionClient | typeof prisma;
+type PrescriberInstitutionLookupDb = {
+  prescriberInstitution: Pick<Prisma.TransactionClient['prescriberInstitution'], 'findFirst'>;
+};
+type PrescriberInstitutionSuggestionDb = PrescriberInstitutionLookupDb & {
+  prescriptionIntake: Pick<Prisma.TransactionClient['prescriptionIntake'], 'findFirst'>;
+};
 
 export class PrescriberInstitutionReferenceValidationError extends Error {
   constructor(message = '選択した医療機関が見つかりません') {
@@ -21,7 +26,7 @@ export type PrescriberInstitutionSuggestion = {
 };
 
 export async function findPrescriberInstitutionById(
-  db: DbClient,
+  db: PrescriberInstitutionLookupDb,
   orgId: string,
   institutionId: string | null | undefined
 ) {
@@ -45,7 +50,7 @@ export async function findPrescriberInstitutionById(
 }
 
 export async function assertPrescriberInstitutionReference(
-  db: DbClient,
+  db: PrescriberInstitutionLookupDb,
   orgId: string,
   institutionId: string | null | undefined
 ) {
@@ -58,7 +63,7 @@ export async function assertPrescriberInstitutionReference(
 }
 
 export async function resolvePrescriberInstitutionFields(
-  db: DbClient,
+  db: PrescriberInstitutionLookupDb,
   orgId: string,
   input: {
     prescriber_institution_id?: string | null;
@@ -90,7 +95,7 @@ export async function resolvePrescriberInstitutionFields(
 }
 
 export async function findLatestPrescriberInstitutionSuggestion(
-  db: DbClient,
+  db: PrescriberInstitutionSuggestionDb | typeof prisma,
   orgId: string,
   input: {
     caseId?: string | null;

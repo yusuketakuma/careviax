@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   withOrgContextMock,
@@ -65,10 +65,18 @@ vi.mock('@/server/services/billing-evidence', () => ({
 import { GET, POST } from './route';
 
 function createRequest(body: unknown) {
-  return {
-    orgId: 'org_1',
-    json: async () => body,
-  } as unknown as NextRequest & { orgId: string };
+  return Object.assign(
+    new NextRequest('http://localhost/api/billing-candidates', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      headers: { 'content-type': 'application/json' },
+    }),
+    { orgId: 'org_1' },
+  );
+}
+
+function createGetRequest(url: string) {
+  return Object.assign(new NextRequest(url), { orgId: 'org_1' });
 }
 
 describe('/api/billing-candidates', () => {
@@ -153,10 +161,11 @@ describe('/api/billing-candidates', () => {
     ]);
     patientFindManyMock.mockResolvedValueOnce([{ id: 'patient_1', name: '佐藤 花子' }]);
 
-    const response = await GET({
-      orgId: 'org_1',
-      url: 'http://localhost/api/billing-candidates?billing_month=2026-03-01&patient_id=patient_1&limit=10',
-    } as unknown as NextRequest & { orgId: string });
+    const response = await GET(
+      createGetRequest(
+        'http://localhost/api/billing-candidates?billing_month=2026-03-01&patient_id=patient_1&limit=10',
+      ),
+    );
 
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
@@ -205,6 +214,35 @@ describe('/api/billing-candidates', () => {
     });
   });
 
+  it('normalizes malformed source snapshot metadata on read', async () => {
+    billingCandidateFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'candidate_malformed_snapshot',
+        patient_id: 'patient_1',
+        status: 'confirmed',
+        source_snapshot: ['unexpected'],
+      },
+    ]);
+    patientFindManyMock.mockResolvedValueOnce([{ id: 'patient_1', name: '佐藤 花子' }]);
+
+    const response = await GET(createGetRequest('http://localhost/api/billing-candidates'));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        {
+          id: 'candidate_malformed_snapshot',
+          patient_name: '佐藤 花子',
+          workflow_state: null,
+          effective_revision_code: null,
+          site_config_revision_code: null,
+          site_config_status: null,
+        },
+      ],
+    });
+  });
+
   it.each([
     ['empty query value', ''],
     ['incomplete month', '2026-03'],
@@ -213,12 +251,13 @@ describe('/api/billing-candidates', () => {
     ['out-of-range month', '2026-13-01'],
     ['timezone timestamp', '2026-03-01T00:00:00.000Z'],
   ])('rejects %s billing_month on read before org context', async (_caseName, billingMonth) => {
-    const response = await GET({
-      orgId: 'org_1',
-      url: `http://localhost/api/billing-candidates?billing_month=${encodeURIComponent(
-        billingMonth,
-      )}`,
-    } as unknown as NextRequest & { orgId: string });
+    const response = await GET(
+      createGetRequest(
+        `http://localhost/api/billing-candidates?billing_month=${encodeURIComponent(
+          billingMonth,
+        )}`,
+      ),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);

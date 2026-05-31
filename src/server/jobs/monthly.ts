@@ -1,22 +1,17 @@
 import { startOfMonth, subMonths, endOfMonth } from 'date-fns';
 import { prisma } from '@/lib/db';
+import { readJsonObject } from '@/lib/db/json';
 import { runJob } from './runner';
 
 function parseConferenceSections(structuredContent: unknown) {
-  if (
-    typeof structuredContent !== 'object' ||
-    structuredContent === null ||
-    !('sections' in structuredContent)
-  ) {
-    return [] as Array<{ key: string; body?: string }>;
-  }
-
-  const sections = (structuredContent as { sections?: unknown }).sections;
+  const sections = readJsonObject(structuredContent)?.sections;
   if (!Array.isArray(sections)) return [];
-  return sections.filter(
-    (section): section is { key: string; body?: string } =>
-      typeof section === 'object' && section !== null && 'key' in section
-  );
+  return sections.flatMap((section): Array<{ key: string; body?: string }> => {
+    const record = readJsonObject(section);
+    if (!record || typeof record.key !== 'string') return [];
+    if (record.body !== undefined && typeof record.body !== 'string') return [];
+    return [{ key: record.key, body: typeof record.body === 'string' ? record.body : undefined }];
+  });
 }
 
 function parseSectionLines(body?: string) {
@@ -122,12 +117,12 @@ export async function generateMonthlyVisitReport() {
             withinLimit: values.filter((entry) => entry.count === entry.monthlyLimit),
           },
         ];
-      })
+      }),
     );
 
     const totalPatients = Array.from(aggregation.values()).reduce(
       (sum, orgMap) => sum + orgMap.size,
-      0
+      0,
     );
 
     return {
@@ -189,7 +184,7 @@ export async function generateMonthlyMetrics() {
     });
 
     const homeVisitCounts = Object.fromEntries(
-      visitCounts.map((item) => [item.org_id, item._count])
+      visitCounts.map((item) => [item.org_id, item._count]),
     );
     const metricsCount = Object.keys(concentrationRates).length + visitCounts.length;
 
@@ -236,8 +231,8 @@ export async function aggregateConferenceQualityIndicators() {
     for (const note of notes) {
       const qualityIndicators = parseSectionLines(
         parseConferenceSections(note.structured_content).find(
-          (section) => section.key === 'quality_indicators'
-        )?.body
+          (section) => section.key === 'quality_indicators',
+        )?.body,
       );
       if (qualityIndicators.length === 0) continue;
 
@@ -249,10 +244,7 @@ export async function aggregateConferenceQualityIndicators() {
       current.totalNotes += 1;
       current.totalIndicators += qualityIndicators.length;
       for (const indicator of qualityIndicators) {
-        current.indicatorCounts.set(
-          indicator,
-          (current.indicatorCounts.get(indicator) ?? 0) + 1
-        );
+        current.indicatorCounts.set(indicator, (current.indicatorCounts.get(indicator) ?? 0) + 1);
       }
       aggregation.set(note.org_id, current);
     }
@@ -305,7 +297,7 @@ export async function runMonthlyOperations() {
 
     return {
       processedCount: results.reduce((total, r) => total + r.processedCount, 0),
-      errors: results.flatMap((r) => ('errors' in r ? r.errors ?? [] : [])),
+      errors: results.flatMap((r) => ('errors' in r ? (r.errors ?? []) : [])),
     };
   });
 }

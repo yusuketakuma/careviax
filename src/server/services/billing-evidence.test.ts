@@ -43,6 +43,54 @@ import {
   upsertBillingEvidenceForVisit,
 } from './billing-evidence';
 
+function makeSourceOfTruthMatrixDelegate() {
+  return {
+    findFirst: vi.fn().mockResolvedValue(null),
+    upsert: vi.fn().mockResolvedValue({}),
+  };
+}
+
+function makeBillingRuleDelegate(rules: Array<{ id: string; ssot_key: string | null }> = []) {
+  return {
+    findMany: vi.fn().mockResolvedValue(rules),
+    upsert: vi.fn().mockResolvedValue({}),
+    deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+  };
+}
+
+function makeUpsertBillingEvidenceSupportDelegates() {
+  return {
+    sourceOfTruthMatrix: makeSourceOfTruthMatrixDelegate(),
+    billingRule: makeBillingRuleDelegate(),
+    patientInsurance: {
+      findFirst: vi
+        .fn()
+        .mockImplementation(({ where }: { where: { insurance_type: string } }) =>
+          Promise.resolve(
+            where?.insurance_type === 'medical'
+              ? { id: 'ins_1', number: 'med_1', insurance_type: 'medical', is_active: true }
+              : null,
+          ),
+        ),
+    },
+    consentRecord: {
+      findFirst: vi.fn().mockResolvedValue({ id: 'consent_1' }),
+    },
+    managementPlan: {
+      findFirst: vi.fn().mockResolvedValue({
+        id: 'plan_1',
+        status: 'approved',
+        next_review_date: null,
+      }),
+    },
+    task: {
+      create: vi.fn().mockResolvedValue({ id: 'task_1' }),
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      upsert: vi.fn().mockResolvedValue({ id: 'task_1' }),
+    },
+  };
+}
+
 describe('billing-evidence service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -69,7 +117,10 @@ describe('billing-evidence service', () => {
         status: 'confirmed',
         points: 650,
         exclusionReason: null,
-        calculationBreakdown: {},
+        calculationBreakdown: {
+          base_points: 650,
+          debug_note: undefined,
+        },
         sourceSnapshot: {},
       },
     ]);
@@ -130,14 +181,13 @@ describe('billing-evidence service', () => {
           },
         ]),
       },
-      billingRule: {
-        findMany: vi.fn().mockResolvedValue([
-          {
-            id: 'rule_1',
-            ssot_key: 'medical.home_visit.single',
-          },
-        ]),
-      },
+      sourceOfTruthMatrix: makeSourceOfTruthMatrixDelegate(),
+      billingRule: makeBillingRuleDelegate([
+        {
+          id: 'rule_1',
+          ssot_key: 'medical.home_visit.single',
+        },
+      ]),
       billingCandidate: {
         findMany: vi.fn().mockResolvedValue([]),
         upsert: upsertMock,
@@ -154,7 +204,7 @@ describe('billing-evidence service', () => {
       },
     };
 
-    const created = await generateBillingCandidatesForMonth(tx as never, {
+    const created = await generateBillingCandidatesForMonth(tx, {
       orgId: 'org_1',
       billingMonth,
     });
@@ -170,6 +220,9 @@ describe('billing-evidence service', () => {
         create: expect.objectContaining({
           billing_month: new Date('2026-03-01T00:00:00.000Z'),
           dedupe_key: '2026-03-01:evidence_ok:MED_HOME_VISIT_SINGLE',
+          calculation_breakdown: {
+            base_points: 650,
+          },
           source_snapshot: expect.objectContaining({
             billing_assignment: expect.objectContaining({
               building_id: 'building_b',
@@ -182,6 +235,11 @@ describe('billing-evidence service', () => {
         }),
       })
     );
+    expect(
+      (
+        upsertMock.mock.calls[0][0].create.calculation_breakdown as Record<string, unknown>
+      ).debug_note,
+    ).toBeUndefined();
     expect(deleteManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -237,9 +295,8 @@ describe('billing-evidence service', () => {
           },
         ]),
       },
-      billingRule: {
-        findMany: vi.fn().mockResolvedValue([]),
-      },
+      sourceOfTruthMatrix: makeSourceOfTruthMatrixDelegate(),
+      billingRule: makeBillingRuleDelegate(),
       visitRecord: {
         findMany: vi.fn().mockResolvedValue([
           {
@@ -264,7 +321,7 @@ describe('billing-evidence service', () => {
       },
     };
 
-    await generateBillingCandidatesForMonth(tx as never, {
+    await generateBillingCandidatesForMonth(tx, {
       orgId: 'org_1',
       billingMonth,
     });
@@ -304,7 +361,7 @@ describe('billing-evidence service', () => {
       },
     };
 
-    const summary = await getBillingCandidateWorkbenchSummary(tx as never, {
+    const summary = await getBillingCandidateWorkbenchSummary(tx, {
       orgId: 'org_1',
       billingMonth: new Date('2026-03-01T00:00:00.000Z'),
     });
@@ -357,7 +414,7 @@ describe('billing-evidence service', () => {
       },
     };
 
-    const result = await closeBillingCandidatesForMonth(tx as never, {
+    const result = await closeBillingCandidatesForMonth(tx, {
       orgId: 'org_1',
       billingMonth: new Date(Date.UTC(2026, 2, 1)),
       actorId: 'user_1',
@@ -429,12 +486,11 @@ describe('billing-evidence service', () => {
           },
         ]),
       },
-      billingRule: {
-        findMany: vi.fn().mockResolvedValue([
-          { id: 'rule_info_2_i', ssot_key: 'medical.information_provision.2_medical' },
-          { id: 'rule_dup_1_i', ssot_key: 'medical.home_duplicate_interaction.change_other' },
-        ]),
-      },
+      sourceOfTruthMatrix: makeSourceOfTruthMatrixDelegate(),
+      billingRule: makeBillingRuleDelegate([
+        { id: 'rule_info_2_i', ssot_key: 'medical.information_provision.2_medical' },
+        { id: 'rule_dup_1_i', ssot_key: 'medical.home_duplicate_interaction.change_other' },
+      ]),
       billingCandidate: {
         findMany: vi.fn().mockResolvedValue([]),
         upsert: upsertMock,
@@ -488,7 +544,7 @@ describe('billing-evidence service', () => {
       },
     };
 
-    const created = await generateBillingCandidatesForMonth(tx as never, {
+    const created = await generateBillingCandidatesForMonth(tx, {
       orgId: 'org_1',
       billingMonth,
     });
@@ -575,11 +631,10 @@ describe('billing-evidence service', () => {
       billingEvidence: {
         findMany: vi.fn().mockResolvedValue([]),
       },
-      billingRule: {
-        findMany: vi.fn().mockResolvedValue([
-          { id: 'rule_adverse_2026', ssot_key: 'medical.adverse_event_prevention.home_change' },
-        ]),
-      },
+      sourceOfTruthMatrix: makeSourceOfTruthMatrixDelegate(),
+      billingRule: makeBillingRuleDelegate([
+        { id: 'rule_adverse_2026', ssot_key: 'medical.adverse_event_prevention.home_change' },
+      ]),
       billingCandidate: {
         findMany: vi.fn().mockResolvedValue([]),
         upsert: upsertMock,
@@ -608,7 +663,7 @@ describe('billing-evidence service', () => {
       },
     };
 
-    await generateBillingCandidatesForMonth(tx as never, {
+    await generateBillingCandidatesForMonth(tx, {
       orgId: 'org_1',
       billingMonth: new Date('2026-06-01T00:00:00.000Z'),
     });
@@ -661,6 +716,7 @@ describe('billing-evidence service', () => {
     buildBillingCandidateSpecsMock.mockResolvedValue([]);
 
     const tx = {
+      ...makeUpsertBillingEvidenceSupportDelegates(),
       visitRecord: {
         findFirst: vi.fn().mockResolvedValue({
           id: 'visit_1',
@@ -743,7 +799,7 @@ describe('billing-evidence service', () => {
       },
     };
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -799,6 +855,7 @@ describe('billing-evidence service', () => {
     buildBillingCandidateSpecsMock.mockResolvedValue([]);
 
     const tx = {
+      ...makeUpsertBillingEvidenceSupportDelegates(),
       visitRecord: {
         findFirst: vi.fn().mockResolvedValue({
           id: 'visit_1',
@@ -870,7 +927,7 @@ describe('billing-evidence service', () => {
       },
     };
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -904,6 +961,7 @@ describe('billing-evidence service', () => {
     buildBillingCandidateSpecsMock.mockResolvedValue([]);
 
     const tx = {
+      ...makeUpsertBillingEvidenceSupportDelegates(),
       visitRecord: {
         findFirst: vi.fn().mockResolvedValue({
           id: 'visit_1',
@@ -960,12 +1018,6 @@ describe('billing-evidence service', () => {
         }),
         count: vi.fn().mockResolvedValue(1),
       },
-      consentRecord: {
-        findFirst: vi.fn(),
-      },
-      managementPlan: {
-        findMany: vi.fn(),
-      },
       careReport: {
         findMany: vi.fn().mockResolvedValue([
           { id: 'report_1', status: 'sent' },
@@ -1005,7 +1057,7 @@ describe('billing-evidence service', () => {
       reviewOverdue: false,
     });
 
-    await upsertBillingEvidenceForVisit(tx as never, {
+    await upsertBillingEvidenceForVisit(tx, {
       orgId: 'org_1',
       visitRecordId: 'visit_1',
     });
@@ -1055,9 +1107,8 @@ describe('billing-evidence service', () => {
       billingEvidence: {
         findMany: vi.fn().mockResolvedValue([]),
       },
-      billingRule: {
-        findMany: vi.fn().mockResolvedValue([]),
-      },
+      sourceOfTruthMatrix: makeSourceOfTruthMatrixDelegate(),
+      billingRule: makeBillingRuleDelegate(),
       billingCandidate: {
         findMany: vi.fn().mockResolvedValue([]),
         upsert: vi.fn(),
@@ -1074,7 +1125,7 @@ describe('billing-evidence service', () => {
       },
     };
 
-    await generateBillingCandidatesForMonth(tx as never, {
+    await generateBillingCandidatesForMonth(tx, {
       orgId: 'org_1',
       billingMonth,
     });

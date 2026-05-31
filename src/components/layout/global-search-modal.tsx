@@ -2,7 +2,17 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Building2, CalendarDays, CheckSquare, Clock3, FileText, Pill, Search, User, Users } from 'lucide-react';
+import {
+  Building2,
+  CalendarDays,
+  CheckSquare,
+  Clock3,
+  FileText,
+  Pill,
+  Search,
+  User,
+  Users,
+} from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -14,7 +24,12 @@ import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { labelForPath } from '@/lib/navigation/route-labels';
+import {
+  RECENT_OPERATIONS_KEY,
+  parseRecentOperationsStorage,
+  prependRecentOperation,
+  type RecentOperation,
+} from '@/lib/navigation/recent-operations';
 
 type PatientSearchResult = {
   id: string;
@@ -64,36 +79,18 @@ type VisitRecordSearchResult = {
   visit_date?: string | null;
 };
 
-type RecentOperation = {
-  href: string;
-  label: string;
-  visitedAt: string;
-};
-
 type GlobalSearchModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   pathname: string;
 };
 
-const RECENT_OPERATIONS_KEY = 'ph-os:recent-operations';
-
 function readRecentOperations() {
   if (typeof window === 'undefined') {
     return [] as RecentOperation[];
   }
 
-  try {
-    const raw = window.localStorage.getItem(RECENT_OPERATIONS_KEY);
-    if (!raw) {
-      return [];
-    }
-
-    const parsed = JSON.parse(raw) as RecentOperation[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return parseRecentOperationsStorage(window.localStorage.getItem(RECENT_OPERATIONS_KEY));
 }
 
 function saveRecentOperation(pathname: string) {
@@ -101,14 +98,7 @@ function saveRecentOperation(pathname: string) {
     return [];
   }
 
-  const nextItem: RecentOperation = {
-    href: pathname,
-    label: labelForPath(pathname),
-    visitedAt: new Date().toISOString(),
-  };
-
-  const deduped = readRecentOperations().filter((item) => item.href !== pathname);
-  const next = [nextItem, ...deduped].slice(0, 8);
+  const next = prependRecentOperation(readRecentOperations(), pathname);
   window.localStorage.setItem(RECENT_OPERATIONS_KEY, JSON.stringify(next));
   return next;
 }
@@ -163,11 +153,7 @@ function buildResultItems(
   ];
 }
 
-export function GlobalSearchModal({
-  open,
-  onOpenChange,
-  pathname,
-}: GlobalSearchModalProps) {
+export function GlobalSearchModal({ open, onOpenChange, pathname }: GlobalSearchModalProps) {
   const orgId = useOrgId();
   const [query, setQuery] = useState('');
   const [patients, setPatients] = useState<PatientSearchResult[]>([]);
@@ -236,23 +222,18 @@ export function GlobalSearchModal({
         const headers: HeadersInit = orgId ? { 'x-org-id': orgId } : {};
         const sig = controller.signal;
 
-        const [
-          patientRes,
-          drugRes,
-          facilityRes,
-          staffRes,
-          taskRes,
-          prescriptionRes,
-          visitRes,
-        ] = await Promise.all([
-          fetch(`/api/patients?q=${q}&limit=5`, { headers, signal: sig }),
-          fetch(`/api/drug-masters?q=${q}&limit=5`, { signal: sig }),
-          fetch(`/api/facilities?q=${q}&limit=5`, { headers, signal: sig }).catch(() => null),
-          fetch(`/api/pharmacists?q=${q}&limit=5`, { headers, signal: sig }).catch(() => null),
-          fetch(`/api/tasks?q=${q}&limit=5`, { headers, signal: sig }).catch(() => null),
-          fetch(`/api/prescription-intakes?q=${q}&limit=5`, { headers, signal: sig }).catch(() => null),
-          fetch(`/api/visit-records?q=${q}&limit=5`, { headers, signal: sig }).catch(() => null),
-        ]);
+        const [patientRes, drugRes, facilityRes, staffRes, taskRes, prescriptionRes, visitRes] =
+          await Promise.all([
+            fetch(`/api/patients?q=${q}&limit=5`, { headers, signal: sig }),
+            fetch(`/api/drug-masters?q=${q}&limit=5`, { signal: sig }),
+            fetch(`/api/facilities?q=${q}&limit=5`, { headers, signal: sig }).catch(() => null),
+            fetch(`/api/pharmacists?q=${q}&limit=5`, { headers, signal: sig }).catch(() => null),
+            fetch(`/api/tasks?q=${q}&limit=5`, { headers, signal: sig }).catch(() => null),
+            fetch(`/api/prescription-intakes?q=${q}&limit=5`, { headers, signal: sig }).catch(
+              () => null,
+            ),
+            fetch(`/api/visit-records?q=${q}&limit=5`, { headers, signal: sig }).catch(() => null),
+          ]);
 
         if (!patientRes.ok || !drugRes.ok) {
           throw new Error('検索結果の取得に失敗しました。');
@@ -260,11 +241,21 @@ export function GlobalSearchModal({
 
         const patientPayload = (await patientRes.json()) as { data: PatientSearchResult[] };
         const drugPayload = (await drugRes.json()) as { data: DrugSearchResult[] };
-        const facilityPayload = facilityRes?.ok ? (await facilityRes.json()) as { data: FacilitySearchResult[] } : { data: [] };
-        const staffPayload = staffRes?.ok ? (await staffRes.json()) as { data: StaffSearchResult[] } : { data: [] };
-        const taskPayload = taskRes?.ok ? (await taskRes.json()) as { data: TaskSearchResult[] } : { data: [] };
-        const prescriptionPayload = prescriptionRes?.ok ? (await prescriptionRes.json()) as { data: PrescriptionSearchResult[] } : { data: [] };
-        const visitPayload = visitRes?.ok ? (await visitRes.json()) as { data: VisitRecordSearchResult[] } : { data: [] };
+        const facilityPayload = facilityRes?.ok
+          ? ((await facilityRes.json()) as { data: FacilitySearchResult[] })
+          : { data: [] };
+        const staffPayload = staffRes?.ok
+          ? ((await staffRes.json()) as { data: StaffSearchResult[] })
+          : { data: [] };
+        const taskPayload = taskRes?.ok
+          ? ((await taskRes.json()) as { data: TaskSearchResult[] })
+          : { data: [] };
+        const prescriptionPayload = prescriptionRes?.ok
+          ? ((await prescriptionRes.json()) as { data: PrescriptionSearchResult[] })
+          : { data: [] };
+        const visitPayload = visitRes?.ok
+          ? ((await visitRes.json()) as { data: VisitRecordSearchResult[] })
+          : { data: [] };
 
         setPatients(patientPayload.data ?? []);
         setDrugs(drugPayload.data ?? []);
@@ -277,9 +268,7 @@ export function GlobalSearchModal({
         if (controller.signal.aborted) {
           return;
         }
-        setSearchError(
-          error instanceof Error ? error.message : '検索結果の取得に失敗しました。'
-        );
+        setSearchError(error instanceof Error ? error.message : '検索結果の取得に失敗しました。');
       } finally {
         if (!controller.signal.aborted) {
           setIsLoading(false);
@@ -295,7 +284,7 @@ export function GlobalSearchModal({
 
   const allResults = useMemo(
     () => buildResultItems(patients, drugs, facilities, staff, tasks, prescriptions, visitRecords),
-    [patients, drugs, facilities, staff, tasks, prescriptions, visitRecords]
+    [patients, drugs, facilities, staff, tasks, prescriptions, visitRecords],
   );
 
   const hasResults = allResults.length > 0;
@@ -459,7 +448,9 @@ export function GlobalSearchModal({
                               key={item.id}
                               href={rendered.href}
                               onClick={() => onOpenChange(false)}
-                              ref={(el) => { resultRefs.current[flatIdx] = el; }}
+                              ref={(el) => {
+                                resultRefs.current[flatIdx] = el;
+                              }}
                               role="option"
                               aria-selected={activeIndex === flatIdx}
                               className={`block rounded-lg border px-3 py-2 outline-none transition-colors hover:bg-muted/40 focus:bg-muted/60 ${
@@ -468,9 +459,13 @@ export function GlobalSearchModal({
                                   : 'border-border'
                               }`}
                             >
-                              <p className="text-sm font-medium text-foreground">{rendered.primary}</p>
+                              <p className="text-sm font-medium text-foreground">
+                                {rendered.primary}
+                              </p>
                               {rendered.secondary ? (
-                                <p className="text-xs text-muted-foreground">{rendered.secondary}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {rendered.secondary}
+                                </p>
                               ) : null}
                             </Link>
                           );
@@ -521,12 +516,8 @@ export function GlobalSearchModal({
             </section>
           )}
 
-          {isLoading ? (
-            <p className="text-sm text-muted-foreground">検索中...</p>
-          ) : null}
-          {searchError ? (
-            <p className="text-sm text-destructive">{searchError}</p>
-          ) : null}
+          {isLoading ? <p className="text-sm text-muted-foreground">検索中...</p> : null}
+          {searchError ? <p className="text-sm text-destructive">{searchError}</p> : null}
           {query.trim() && !isLoading && !searchError && !hasResults ? (
             <EmptyState
               icon={Search}

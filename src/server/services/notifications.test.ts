@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Prisma } from '@prisma/client';
 import { dispatchNotificationEvent } from './notifications';
 
 const { sendSmsMock, sendLineMessageMock } = vi.hoisted(() => ({
@@ -24,6 +23,7 @@ function createTx() {
   const membershipFindMany = vi.fn();
   const notificationCreate = vi.fn();
   const notificationUpsert = vi.fn();
+  const pushSubscriptionFindMany = vi.fn();
   const userFindMany = vi.fn();
 
   return {
@@ -38,14 +38,18 @@ function createTx() {
         create: notificationCreate,
         upsert: notificationUpsert,
       },
+      pushSubscription: {
+        findMany: pushSubscriptionFindMany,
+      },
       user: {
         findMany: userFindMany,
       },
-    } as unknown as Prisma.TransactionClient,
+    },
     notificationRuleFindMany,
     membershipFindMany,
     notificationCreate,
     notificationUpsert,
+    pushSubscriptionFindMany,
     userFindMany,
   };
 }
@@ -167,6 +171,58 @@ describe('dispatchNotificationEvent', () => {
 
     expect(notifications).toHaveLength(3);
     expect(notificationCreate).toHaveBeenCalledTimes(3);
+    const userIds = notificationCreate.mock.calls.map(
+      ([args]) => (args as { data: { user_id: string } }).data.user_id
+    );
+    expect(userIds).toEqual(['user_1', 'user_2', 'user_3']);
+  });
+
+  it('ignores unsupported role recipients before querying memberships', async () => {
+    const {
+      tx,
+      notificationRuleFindMany,
+      membershipFindMany,
+      notificationCreate,
+      userFindMany,
+    } = createTx();
+
+    notificationRuleFindMany.mockResolvedValue([
+      {
+        id: 'rule_1',
+        org_id: 'org_1',
+        event_type: 'patient_self_report_followup_due',
+        channel: 'in_app',
+        recipients: {
+          roles: ['physician', 'admin', 42, 'admin'],
+          user_ids: ['user_2', null],
+        },
+        enabled: true,
+      },
+    ]);
+    membershipFindMany.mockResolvedValue([{ user_id: 'user_3' }]);
+    userFindMany.mockResolvedValue([]);
+    notificationCreate.mockImplementation(async ({ data }) => ({
+      id: `notification_${data.user_id as string}`,
+      ...data,
+    }));
+
+    const notifications = await dispatchNotificationEvent(tx, {
+      orgId: 'org_1',
+      eventType: 'patient_self_report_followup_due',
+      type: 'urgent',
+      title: '折り返し依頼',
+      message: '至急対応してください',
+      explicitUserIds: ['user_1'],
+    });
+
+    expect(notifications).toHaveLength(3);
+    expect(membershipFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          role: { in: ['admin'] },
+        }),
+      })
+    );
     const userIds = notificationCreate.mock.calls.map(
       ([args]) => (args as { data: { user_id: string } }).data.user_id
     );

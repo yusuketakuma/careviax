@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { success, validationError, notFound } from '@/lib/api/response';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 
 const alertTypeSchema = z.enum([
@@ -56,8 +56,8 @@ export async function PATCH(
       where: { id },
       data: {
         ...(parsed.data.alert_type ? { alert_type: parsed.data.alert_type } : {}),
-        ...(parsed.data.condition
-          ? { condition: parsed.data.condition as Prisma.InputJsonValue }
+        ...(parsed.data.condition !== undefined
+          ? { condition: toPrismaJsonInput(parsed.data.condition) }
           : {}),
         ...(parsed.data.severity ? { severity: parsed.data.severity } : {}),
         ...(parsed.data.message ? { message: parsed.data.message } : {}),

@@ -2,6 +2,7 @@ import { addDays, addYears, subHours } from 'date-fns';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { normalizeJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { logger } from '@/lib/utils/logger';
 import { runJob } from './runner';
@@ -850,13 +851,13 @@ export async function checkInitialHomeVisitAssessmentBacklog() {
         slaDueAt: schedule.scheduled_date,
         relatedEntityType: 'visit_schedule',
         relatedEntityId: schedule.id,
-        metadata: {
+        metadata: normalizeJsonInput({
           patient_id: patientId,
           patient_name: patientName,
           schedule_id: schedule.id,
           action_href: `/patients/${patientId}`,
           action_label: '患者記録を確認',
-        } as Prisma.InputJsonValue,
+        }) ?? {},
       });
 
       await withOrgContext(schedule.org_id, (tx) =>
@@ -869,10 +870,10 @@ export async function checkInitialHomeVisitAssessmentBacklog() {
           link: `/patients/${patientId}`,
           explicitUserIds: [schedule.pharmacist_id],
           dedupeKey,
-          metadata: {
+          metadata: normalizeJsonInput({
             patient_id: patientId,
             schedule_id: schedule.id,
-          } as Prisma.InputJsonValue,
+          }) ?? {},
         }),
       );
       notificationCount += 1;

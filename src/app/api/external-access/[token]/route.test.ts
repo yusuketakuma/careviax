@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createHash } from 'node:crypto';
 
 const {
@@ -45,10 +45,9 @@ function makeRequest(
     headersMap['x-otp'] = otpHeader;
   }
 
-  return {
-    nextUrl: new URL(url),
-    headers: { get: (key: string) => headersMap[key.toLowerCase()] ?? null },
-  } as unknown as NextRequest;
+  return new NextRequest(url, {
+    headers: headersMap,
+  });
 }
 
 describe('/api/external-access/[token]', () => {

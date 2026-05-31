@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
@@ -46,12 +46,7 @@ vi.mock('@/lib/db/rls', () => ({
 import { GET } from './route';
 
 function createRequest(url: string, headers?: Record<string, string>) {
-  return {
-    url,
-    headers: {
-      get: (key: string) => headers?.[key] ?? null,
-    },
-  } as unknown as NextRequest;
+  return new NextRequest(url, { headers });
 }
 
 describe('/api/notifications GET', () => {
@@ -73,7 +68,7 @@ describe('/api/notifications GET', () => {
     authMock.mockResolvedValue(null);
 
     const response = await GET(
-      createRequest('http://localhost/api/notifications', { 'x-org-id': 'org_1' })
+      createRequest('http://localhost/api/notifications', { 'x-org-id': 'org_1' }),
     );
 
     if (!response) throw new Error('response is required');
@@ -86,10 +81,9 @@ describe('/api/notifications GET', () => {
     getMembershipMock.mockResolvedValue({ role: 'pharmacist' });
 
     const response = await GET(
-      createRequest(
-        'http://localhost/api/notifications?user_id=user_2',
-        { 'x-org-id': 'org_1' }
-      )
+      createRequest('http://localhost/api/notifications?user_id=user_2', {
+        'x-org-id': 'org_1',
+      }),
     );
 
     if (!response) throw new Error('response is required');
@@ -105,10 +99,9 @@ describe('/api/notifications GET', () => {
     getMembershipMock.mockResolvedValue({ role: 'admin' });
 
     const response = await GET(
-      createRequest(
-        'http://localhost/api/notifications?user_id=user_2',
-        { 'x-org-id': 'org_1' }
-      )
+      createRequest('http://localhost/api/notifications?user_id=user_2', {
+        'x-org-id': 'org_1',
+      }),
     );
 
     if (!response) throw new Error('response is required');

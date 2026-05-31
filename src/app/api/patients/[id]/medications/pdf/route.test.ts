@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -37,6 +37,10 @@ vi.mock('@/server/services/export-audit', () => ({
 
 import { GET } from './route';
 
+function createGetRequest() {
+  return new NextRequest('http://localhost/api/patients/patient_1/medications/pdf');
+}
+
 describe('/api/patients/[id]/medications/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -53,7 +57,7 @@ describe('/api/patients/[id]/medications/pdf', () => {
       fileName: 'medications.pdf',
     });
 
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createGetRequest(), {
       params: Promise.resolve({ id: 'patient_1' }),
     }))!;
 
@@ -76,7 +80,7 @@ describe('/api/patients/[id]/medications/pdf', () => {
   it('does not audit or render a pdf when the scoped patient lookup fails', async () => {
     buildMedicationHistoryPdfMock.mockRejectedValue(new Error('患者が見つかりません'));
 
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createGetRequest(), {
       params: Promise.resolve({ id: 'patient_1' }),
     }))!;
 

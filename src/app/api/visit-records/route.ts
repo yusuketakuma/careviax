@@ -9,6 +9,7 @@ import {
   type CreateVisitRecordInput,
 } from '@/lib/validations/visit-record';
 import { prisma } from '@/lib/db/client';
+import { normalizeJsonInput } from '@/lib/db/json';
 import { getRequestAuthContext } from '@/lib/auth/request-context';
 import {
   buildVisitRecordScheduleAssignmentWhere,
@@ -84,6 +85,27 @@ type VisitRecordHandoffExtractionPayload = {
   soapAssessment: string | null;
   soapPlan: string | null;
 };
+
+function isInputJsonObject(
+  value: Prisma.InputJsonValue | null | undefined
+): value is Prisma.InputJsonObject {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    !('toJSON' in value)
+  );
+}
+
+function normalizeOptionalJsonInput(value: unknown): Prisma.InputJsonValue | undefined {
+  const normalized = normalizeJsonInput(value);
+  return normalized === null || normalized === undefined ? undefined : normalized;
+}
+
+function normalizeInputJsonObject(value: unknown): Prisma.InputJsonObject {
+  const normalized = normalizeJsonInput(value);
+  return isInputJsonObject(normalized) ? normalized : {};
+}
 
 async function loadExistingVisitRecordConflict(
   tx: Prisma.TransactionClient,
@@ -853,8 +875,8 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
               ...rest,
               outcome_status,
               ...soapTextOverrides,
-              structured_soap: (structured_soap as Prisma.InputJsonValue) ?? undefined,
-              visit_geo_log: (visit_geo_log as Prisma.InputJsonValue) ?? undefined,
+              structured_soap: normalizeOptionalJsonInput(structured_soap),
+              visit_geo_log: normalizeOptionalJsonInput(visit_geo_log),
               version: { increment: 1 },
             } as Prisma.VisitRecordUncheckedUpdateInput,
           })
@@ -870,8 +892,8 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
               ...rest,
               outcome_status,
               ...soapTextOverrides,
-              structured_soap: (structured_soap as Prisma.InputJsonValue) ?? undefined,
-              visit_geo_log: (visit_geo_log as Prisma.InputJsonValue) ?? undefined,
+              structured_soap: normalizeOptionalJsonInput(structured_soap),
+              visit_geo_log: normalizeOptionalJsonInput(visit_geo_log),
             } as Prisma.VisitRecordUncheckedCreateInput,
           });
 
@@ -1179,13 +1201,13 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
         relatedEntityType: 'visit_record',
         relatedEntityId: record.id,
         dedupeKey: `visit-followup:${record.id}`,
-        metadata: {
+        metadata: normalizeInputJsonObject({
           patient_id: careCase.patient_id,
           case_id: schedule.case_id,
           schedule_id,
           auto_generated: !next_visit_suggestion_date,
           source_visit_type: schedule.visit_type,
-        } as Prisma.InputJsonValue,
+        }),
       });
     }
 
@@ -1201,10 +1223,10 @@ async function saveVisitRecord(req: AuthenticatedRequest, input: CreateVisitReco
       relatedEntityType: 'visit_record',
       relatedEntityId: record.id,
       dedupeKey: `care-report-followup:${record.id}`,
-      metadata: {
+      metadata: normalizeInputJsonObject({
         patient_id: careCase.patient_id,
         case_id: schedule.case_id,
-      } as Prisma.InputJsonValue,
+      }),
     });
 
     await upsertBillingEvidenceForVisit(tx, {

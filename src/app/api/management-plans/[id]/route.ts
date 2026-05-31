@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
-import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
@@ -87,7 +87,7 @@ export async function PATCH(
           ...(data.title !== undefined ? { title: data.title } : {}),
           ...(data.summary !== undefined ? { summary: data.summary ?? null } : {}),
           ...(data.content !== undefined
-            ? { content: data.content as Prisma.InputJsonValue }
+            ? { content: toPrismaJsonInput(data.content) }
             : {}),
           ...(data.effective_from !== undefined
             ? {

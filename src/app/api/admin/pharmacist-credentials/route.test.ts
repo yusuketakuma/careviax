@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
@@ -51,11 +51,20 @@ vi.mock('@/lib/db/rls', () => ({
 import { GET, POST } from './route';
 
 function createRequest(headers?: Record<string, string>) {
-  return {
+  return new NextRequest('http://localhost/api/admin/pharmacist-credentials', {
+    headers,
+  });
+}
+
+function createJsonRequest(body: unknown, headers?: Record<string, string>) {
+  return new NextRequest('http://localhost/api/admin/pharmacist-credentials', {
+    method: 'POST',
     headers: {
-      get: (key: string) => headers?.[key] ?? null,
+      'content-type': 'application/json',
+      ...headers,
     },
-  } as unknown as NextRequest;
+    body: JSON.stringify(body),
+  });
 }
 
 describe('/api/admin/pharmacist-credentials GET', () => {
@@ -152,20 +161,20 @@ describe('/api/admin/pharmacist-credentials GET', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 
-    const response = await POST({
-      headers: {
-        get: (key: string) => (key === 'x-org-id' ? 'org_1' : null),
-      },
-      json: async () => ({
-        user_id: 'user_2',
-        certification_type: '研修認定',
-        certification_number: 'N-100',
-        issued_date: '2025-04-01',
-        expiry_date: '2027-03-31',
-        tenure_years: 3,
-        weekly_work_hours: 28,
-      }),
-    } as unknown as NextRequest);
+    const response = await POST(
+      createJsonRequest(
+        {
+          user_id: 'user_2',
+          certification_type: '研修認定',
+          certification_number: 'N-100',
+          issued_date: '2025-04-01',
+          expiry_date: '2027-03-31',
+          tenure_years: 3,
+          weekly_work_hours: 28,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);

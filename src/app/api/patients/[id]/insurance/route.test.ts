@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -37,9 +37,15 @@ vi.mock('@/lib/db/rls', () => ({
 import { GET, POST } from './route';
 
 function createRequest(body?: unknown) {
-  return {
-    json: async () => body,
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/patients/patient_1/insurance', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+function createGetRequest() {
+  return new NextRequest('http://localhost/api/patients/patient_1/insurance');
 }
 
 const routeParams = { params: Promise.resolve({ id: 'patient_1' }) };
@@ -132,7 +138,7 @@ describe('/api/patients/[id]/insurance', () => {
       expiredHistoryInsurance,
     ]);
 
-    const response = await GET({} as unknown as NextRequest, routeParams);
+    const response = await GET(createGetRequest(), routeParams);
 
     expect(response.status).toBe(200);
     expectPatientAssignmentLookup();
@@ -160,7 +166,7 @@ describe('/api/patients/[id]/insurance', () => {
   it('GET returns 404 for an inaccessible patient without reading insurance records', async () => {
     patientFindFirstMock.mockResolvedValue(null);
 
-    const response = await GET({} as unknown as NextRequest, routeParams);
+    const response = await GET(createGetRequest(), routeParams);
 
     expect(response.status).toBe(404);
     expectPatientAssignmentLookup();

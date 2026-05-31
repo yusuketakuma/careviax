@@ -1,21 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
+
+type AuthenticatedTestRequest = NextRequest & {
+  orgId: string;
+  userId: string;
+  role: 'pharmacist';
+};
 
 const { withAuthMock, withOrgContextMock, inquiryRecordFindManyMock, upsertOperationalTaskMock } =
   vi.hoisted(() => ({
     withAuthMock: vi.fn(
-      (
-        handler: (
-          req: NextRequest & { orgId: string; userId: string; role: 'pharmacist' },
-        ) => Promise<Response>,
-      ) => {
+      (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
         return (req: NextRequest) =>
-          handler({
-            ...req,
-            orgId: 'org_1',
-            userId: 'user_1',
-            role: 'pharmacist',
-          } as NextRequest & { orgId: string; userId: string; role: 'pharmacist' });
+          handler(
+            Object.assign(req, {
+              orgId: 'org_1',
+              userId: 'user_1',
+              role: 'pharmacist',
+            }) as AuthenticatedTestRequest,
+          );
       },
     ),
     withOrgContextMock: vi.fn(),
@@ -45,14 +48,18 @@ vi.mock('@/server/services/operational-tasks', () => ({
 
 import { GET, POST } from './route';
 
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
 function createRequest(url: string) {
-  return { url } as unknown as NextRequest;
+  return new NextRequest(url);
 }
 
 function createPostRequest(body: unknown) {
-  return {
-    json: async () => body,
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/inquiry-records', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  } satisfies NextRequestInit);
 }
 
 const expectedCycleAssignmentWhere = {
@@ -221,5 +228,90 @@ describe('/api/inquiry-records POST', () => {
     expect(inquiryCreateMock).not.toHaveBeenCalled();
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('creates communication request with inquiry context snapshot', async () => {
+    const inquiryCreateMock = vi.fn().mockResolvedValue({ id: 'inquiry_1' });
+    const communicationRequestCreateMock = vi
+      .fn()
+      .mockResolvedValue({ id: 'communication_request_1' });
+    const communicationEventCreateMock = vi.fn().mockResolvedValue({ id: 'event_1' });
+    const medicationCycleUpdateMock = vi.fn().mockResolvedValue({ id: 'cycle_1' });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        medicationCycle: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'cycle_1',
+            overall_status: 'ready_to_dispense',
+            patient_id: 'patient_1',
+            case_id: 'case_1',
+          }),
+          update: medicationCycleUpdateMock,
+        },
+        prescriptionLine: {
+          findFirst: vi.fn(),
+        },
+        medicationIssue: {
+          findFirst: vi.fn(),
+          update: vi.fn(),
+        },
+        inquiryRecord: {
+          create: inquiryCreateMock,
+        },
+        communicationRequest: {
+          create: communicationRequestCreateMock,
+        },
+        communicationEvent: {
+          create: communicationEventCreateMock,
+        },
+      }),
+    );
+
+    const response = await POST(
+      createPostRequest({
+        cycle_id: 'cycle_1',
+        reason: '用量疑義',
+        inquiry_to_physician: '在宅医',
+        inquiry_content: '用量をご確認ください',
+        proposal_origin: 'pre_issuance',
+        residual_adjustment: true,
+        inquired_at: '2026-03-29',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(communicationRequestCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        related_entity_type: 'inquiry_record',
+        related_entity_id: 'inquiry_1',
+        context_snapshot: {
+          cycle_id: 'cycle_1',
+          issue_id: null,
+          line_id: null,
+          reason: '用量疑義',
+          proposal_origin: 'pre_issuance',
+          residual_adjustment: true,
+        },
+      }),
+    });
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        relatedEntityType: 'inquiry_record',
+        relatedEntityId: 'inquiry_1',
+        metadata: expect.objectContaining({
+          communication_request_id: 'communication_request_1',
+        }),
+      }),
+    );
+    expect(medicationCycleUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'cycle_1' },
+      data: { overall_status: 'inquiry_pending' },
+    });
   });
 });

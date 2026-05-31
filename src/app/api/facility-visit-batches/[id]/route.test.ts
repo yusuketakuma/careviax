@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 type RouteContext = { params: Promise<{ id: string }> };
 type AuthenticatedTestRequest = NextRequest & { orgId: string; userId: string; role: 'pharmacist' };
@@ -51,12 +51,11 @@ const {
         }
 
         return handler(
-          {
-            ...req,
+          Object.assign(req, {
             orgId: 'org_1',
             userId: 'user_1',
-            role: 'pharmacist',
-          } as AuthenticatedTestRequest,
+            role: 'pharmacist' as const,
+          }),
           routeContext,
         );
       }) as WrappedRouteHandler;
@@ -82,9 +81,17 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 import { DELETE, PATCH } from './route';
 
 function createRequest(body?: unknown) {
-  return {
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/facility-visit-batches/batch_1', {
+    method: body === undefined ? 'DELETE' : 'PATCH',
+    ...(body === undefined
+      ? {}
+      : {
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        }),
+  });
 }
 
 function routeContext(id: string): RouteContext {

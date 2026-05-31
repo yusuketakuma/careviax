@@ -19,6 +19,7 @@ import {
   isBrowserNotificationSupported,
   showBrowserNotification,
 } from '@/lib/browser-notifications';
+import { parseNotificationStreamPayload } from '@/lib/notifications/stream-payload';
 
 type Notification = {
   id: string;
@@ -131,13 +132,11 @@ export function NotificationBell() {
           buffer = lines.pop() ?? '';
           for (const chunk of lines) {
             if (chunk.startsWith('data: ')) {
-              const json = chunk.slice(6);
-              try {
-                mergeNotifications(JSON.parse(json) as Notification[], {
+              const nextNotifications = parseNotificationStreamPayload(chunk.slice(6));
+              if (nextNotifications.length > 0) {
+                mergeNotifications(nextNotifications, {
                   announce: true,
                 });
-              } catch {
-                // Ignore malformed JSON chunks
               }
             }
           }

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectString } from '@/lib/db/json';
 import { success } from '@/lib/api/response';
 import { billingMonthForJapanTimestamp } from '@/server/services/billing-evidence';
 
@@ -176,11 +177,8 @@ export async function GET(req: NextRequest) {
   ).length;
   const currentMonthRevisionBreakdown = currentMonthEvidence.reduce<Record<string, number>>(
     (acc, item) => {
-      const context = item.calculation_context as Record<string, unknown> | null;
       const revisionCode =
-        typeof context?.effective_revision_code === 'string'
-          ? context.effective_revision_code
-          : 'unknown';
+        readJsonObjectString(item.calculation_context, 'effective_revision_code') ?? 'unknown';
       acc[revisionCode] = (acc[revisionCode] ?? 0) + 1;
       return acc;
     },
@@ -188,9 +186,7 @@ export async function GET(req: NextRequest) {
   );
   const currentMonthSiteConfigIssues = currentMonthEvidence.reduce(
     (acc, item) => {
-      const context = item.calculation_context as Record<string, unknown> | null;
-      const siteConfigStatus =
-        typeof context?.site_config_status === 'string' ? context.site_config_status : null;
+      const siteConfigStatus = readJsonObjectString(item.calculation_context, 'site_config_status');
       if (siteConfigStatus === 'config_missing') acc.missing += 1;
       if (siteConfigStatus === 'revision_mismatch') acc.revision_mismatch += 1;
       return acc;

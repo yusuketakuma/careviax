@@ -283,6 +283,13 @@ describe('checkPrescriptionOriginalRetention', () => {
         relatedEntityType: 'visit_schedule',
         relatedEntityId: 'schedule_1',
         dedupeKey: 'initial-home-visit-assessment:schedule_1',
+        metadata: {
+          patient_id: 'patient_1',
+          patient_name: '山田 太郎',
+          schedule_id: 'schedule_1',
+          action_href: '/patients/patient_1',
+          action_label: '患者記録を確認',
+        },
       }),
     );
     expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
@@ -291,6 +298,10 @@ describe('checkPrescriptionOriginalRetention', () => {
         orgId: 'org_1',
         eventType: 'billing_initial_assessment_due',
         explicitUserIds: ['pharmacist_1'],
+        metadata: {
+          patient_id: 'patient_1',
+          schedule_id: 'schedule_1',
+        },
       }),
     );
   });

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const VALID_ORG_ID = 'corgabcdefghijklmnopqrstu';
 
@@ -32,11 +32,14 @@ vi.mock('@/server/services/external-access', () => ({
 import { POST } from './route';
 
 function createSelfReportRequest(url: string, body: unknown, otpHeader: string | null = null) {
-  return {
-    nextUrl: new URL(url),
-    headers: { get: (key: string) => (key === 'x-otp' ? otpHeader : null) },
-    json: async () => body,
-  } as unknown as NextRequest;
+  return new NextRequest(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...(otpHeader === null ? {} : { 'x-otp': otpHeader }),
+    },
+    body: JSON.stringify(body),
+  });
 }
 
 describe('/api/external-access/[token]/self-report', () => {

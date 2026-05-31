@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
@@ -119,16 +119,18 @@ vi.mock('@/server/services/visit-handoff', () => ({
 import { GET, POST } from './route';
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
-  return {
-    url: 'http://localhost/api/visit-records',
+  return new NextRequest('http://localhost/api/visit-records', {
+    method: 'POST',
+    body: JSON.stringify(body),
     headers: {
-      get: (key: string) => headers?.[key] ?? null,
+      'content-type': 'application/json',
+      ...headers,
     },
-    json: async () => body,
-  } as unknown as NextRequest;
+  });
 }
 
 const completedVisitStructuredSoap = {
+  legacy_debug: undefined,
   subjective: { symptom_checks: [], free_text: '服薬状況を確認' },
   objective: {
     medication_status: 'full_compliance',
@@ -165,13 +167,9 @@ const completedInitialVisitStructuredSoap = {
 };
 
 function createGetRequest(url = 'http://localhost/api/visit-records') {
-  return {
-    url,
-    method: 'GET',
-    headers: {
-      get: (key: string) => (key === 'x-org-id' ? 'org_1' : null),
-    },
-  } as unknown as NextRequest;
+  return new NextRequest(url, {
+    headers: { 'x-org-id': 'org_1' },
+  });
 }
 
 describe('/api/visit-records GET', () => {
@@ -778,6 +776,10 @@ describe('/api/visit-records POST', () => {
         }),
       }),
     );
+    expect(
+      (visitRecordCreateMock.mock.calls[0][0].data.structured_soap as Record<string, unknown>)
+        .legacy_debug,
+    ).toBeUndefined();
     await expect(response.json()).resolves.toMatchObject({
       suggestedSchedule: {
         suggested_date: '2026-04-01',

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { attachLocalSession, createInstrumentedPage, waitForStableUi } from './helpers/local-auth';
+import { attachLocalSession, createInstrumentedPage, openStableRoute } from './helpers/local-auth';
 
 const LAYOUT_ROUTES = [
   '/dashboard',
@@ -25,8 +25,7 @@ test.describe('page scaffold layout', () => {
   for (const route of LAYOUT_ROUTES) {
     test(`${route} keeps grouped layout without horizontal overflow`, async ({ context }) => {
       const { page, errors } = await createInstrumentedPage(context);
-      await page.goto(route);
-      await waitForStableUi(page);
+      await openStableRoute(page, route);
 
       const scaffold = page.getByTestId('page-scaffold');
       await expect(scaffold).toBeVisible();

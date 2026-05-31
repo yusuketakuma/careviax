@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { withAuthMock, careCaseFindFirstMock, buildVisitScheduleBillingPreviewBatchMock } =
   vi.hoisted(() => ({
@@ -12,12 +12,11 @@ const { withAuthMock, careCaseFindFirstMock, buildVisitScheduleBillingPreviewBat
       ) => {
         void _options;
         return (req: NextRequest) =>
-          handler({
-            ...req,
+          handler(Object.assign(req, {
             orgId: 'org_1',
             userId: 'user_1',
             role: 'pharmacist',
-          } as NextRequest & { orgId: string; userId: string; role: 'pharmacist' });
+          } as const));
       },
     ),
     careCaseFindFirstMock: vi.fn(),
@@ -43,6 +42,14 @@ vi.mock('@/server/services/visit-schedule-billing-preview', () => ({
 import { POST } from './route';
 
 const withAuthRegistrationCalls = [...withAuthMock.mock.calls];
+
+function createPostRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/visit-schedule-proposals/billing-preview-batch', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
+}
 
 describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
   beforeEach(() => {
@@ -72,8 +79,8 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
   });
 
   it('returns keyed preview results for multiple requests', async () => {
-    const response = await POST({
-      json: async () => ({
+    const response = await POST(
+      createPostRequest({
         items: [
           { key: 'proposal_1', case_id: 'case_1', proposed_date: '2026-04-03' },
           {
@@ -84,7 +91,7 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
           },
         ],
       }),
-    } as NextRequest);
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -144,11 +151,11 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
   it('denies unassigned batch preview requests before calling the billing-preview service', async () => {
     careCaseFindFirstMock.mockResolvedValueOnce(null);
 
-    const response = await POST({
-      json: async () => ({
+    const response = await POST(
+      createPostRequest({
         items: [{ key: 'proposal_1', case_id: 'case_unassigned', proposed_date: '2026-04-03' }],
       }),
-    } as NextRequest);
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);

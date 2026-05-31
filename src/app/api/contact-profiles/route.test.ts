@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { listContactProfilesMock } = vi.hoisted(() => ({
   listContactProfilesMock: vi.fn(),
@@ -22,6 +22,14 @@ vi.mock('@/lib/contact-profiles', () => ({
 }));
 
 import { GET } from './route';
+
+function createAuthRequest(url: string) {
+  return Object.assign(new NextRequest(url), {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'admin',
+  });
+}
 
 describe('/api/contact-profiles', () => {
   beforeEach(() => {
@@ -47,17 +55,11 @@ describe('/api/contact-profiles', () => {
   });
 
   it('lists aggregated contact profiles by kind and query', async () => {
-    const response = (await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'admin',
-      nextUrl: new URL('http://localhost/api/contact-profiles?kind=external_professional&q=%E5%B1%B1%E7%94%B0'),
-    } as unknown as NextRequest & {
-      orgId: string;
-      userId: string;
-      role: string;
-      nextUrl: URL;
-    }))!;
+    const response = (await GET(
+      createAuthRequest(
+        'http://localhost/api/contact-profiles?kind=external_professional&q=%E5%B1%B1%E7%94%B0',
+      ),
+    ))!;
 
     expect(response.status).toBe(200);
     expect(listContactProfilesMock).toHaveBeenCalledWith(expect.anything(), 'org_1', {

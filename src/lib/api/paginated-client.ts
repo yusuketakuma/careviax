@@ -1,3 +1,5 @@
+import { readJsonObject } from '@/lib/db/json';
+
 type CursorPaginatedResponse<T, Extra extends object = Record<string, never>> = Extra & {
   data?: T[];
   hasMore?: boolean;
@@ -5,6 +7,41 @@ type CursorPaginatedResponse<T, Extra extends object = Record<string, never>> = 
 };
 
 export const CURSOR_PAGE_LIMIT = 100;
+
+type NormalizedCursorResponse<T, Extra extends object> = {
+  page: {
+    data: T[];
+    hasMore: boolean;
+    nextCursor?: string;
+  };
+  extra: Extra;
+};
+
+function normalizeCursorResponse<T, Extra extends object>(
+  payload: unknown,
+): NormalizedCursorResponse<T, Extra> | null {
+  const object = readJsonObject(payload);
+  if (!object) return null;
+
+  const data = object.data ?? [];
+  const hasMore = object.hasMore ?? false;
+  if (!Array.isArray(data)) return null;
+  if (typeof hasMore !== 'boolean') return null;
+  if (object.nextCursor !== undefined && typeof object.nextCursor !== 'string') return null;
+
+  const { data: _data, hasMore: _hasMore, nextCursor, ...rest } = object;
+  void _data;
+  void _hasMore;
+
+  return {
+    page: {
+      data: data as T[],
+      hasMore,
+      ...(nextCursor !== undefined ? { nextCursor } : {}),
+    },
+    extra: rest as Extra,
+  };
+}
 
 export async function fetchAllCursorPages<T, Extra extends object = Record<string, never>>(args: {
   path: string;
@@ -38,10 +75,14 @@ export async function fetchAllCursorPages<T, Extra extends object = Record<strin
       throw new Error('一覧データの取得に失敗しました');
     }
 
-    const json = (await response.json()) as CursorPaginatedResponse<T, Extra>;
-    const { data = [], hasMore = false, nextCursor, ...rest } = json;
+    const normalized = normalizeCursorResponse<T, Extra>((await response.json()) as unknown);
+    if (!normalized) {
+      throw new Error('一覧データの取得に失敗しました');
+    }
+
+    const { data, hasMore, nextCursor } = normalized.page;
     if (extra == null) {
-      extra = rest as Extra;
+      extra = normalized.extra;
     }
     collected.push(...data);
 

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
+
+type AuthenticatedTestRequest = NextRequest & { orgId: string; userId: string };
 
 const {
   withAuthMock,
@@ -12,17 +14,16 @@ const {
   withAuthMock: vi.fn(
     (
       handler: (
-        req: NextRequest & { orgId: string; userId: string },
+        req: AuthenticatedTestRequest,
         ctx: { params: Promise<{ id: string }> },
       ) => Promise<Response>,
     ) => {
       return (req: NextRequest, ctx: { params: Promise<{ id: string }> }) =>
         handler(
-          {
-            ...req,
+          Object.assign(req, {
             orgId: 'org_1',
             userId: 'user_1',
-          } as NextRequest & { orgId: string; userId: string },
+          }),
           ctx,
         );
     },
@@ -63,9 +64,11 @@ vi.mock('@/server/adapters/realtime', () => ({
 import { POST } from './route';
 
 function createRequest(body: unknown) {
-  return {
-    json: async () => body,
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/qr-scan-drafts/draft_1/confirm', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 }
 
 describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
@@ -193,6 +196,73 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
     expect(JSON.stringify(event)).not.toContain('draft_1');
     expect(JSON.stringify(event)).not.toContain('intake_1');
     expect(JSON.stringify(event)).not.toContain('cycle_1');
+  });
+
+  it('does not use supplemental fallback records when parsed_data is malformed', async () => {
+    const supplementalDeleteManyMock = vi.fn();
+    const supplementalCreateManyMock = vi.fn();
+    let callCount = 0;
+    withOrgContextMock.mockImplementation(async (_orgId, callback) => {
+      callCount += 1;
+
+      if (callCount === 1) {
+        return callback({
+          qrScanDraft: {
+            findFirst: vi.fn().mockResolvedValue({
+              id: 'draft_1',
+              status: 'pending',
+              org_id: 'org_1',
+              patient_id: 'patient_1',
+              scanned_by: 'user_scan',
+              parsed_data: ['unexpected'],
+            }),
+          },
+        });
+      }
+
+      if (callCount === 2) {
+        jahisSupplementalRecordUpdateManyMock.mockResolvedValue({ count: 0 });
+        return callback({
+          qrScanDraft: {
+            update: vi.fn().mockResolvedValue({ id: 'draft_1', status: 'confirmed' }),
+          },
+          jahisSupplementalRecord: {
+            updateMany: jahisSupplementalRecordUpdateManyMock,
+            deleteMany: supplementalDeleteManyMock,
+            createMany: supplementalCreateManyMock,
+          },
+        });
+      }
+
+      return callback({
+        cycleTransitionLog: {
+          create: vi.fn().mockResolvedValue({}),
+        },
+      });
+    });
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        prescribed_date: '2026-04-01',
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+      { params: Promise.resolve({ id: 'draft_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(jahisSupplementalRecordUpdateManyMock).toHaveBeenCalled();
+    expect(supplementalDeleteManyMock).not.toHaveBeenCalled();
+    expect(supplementalCreateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects confirmation when the draft patient does not match the target patient', async () => {

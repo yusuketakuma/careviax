@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -32,12 +32,14 @@ vi.mock('@/server/services/outbound-webhook', () => ({
 import { POST } from './route';
 
 function createRequest(body: unknown) {
-  return {
+  return new NextRequest('http://localhost/api/billing-candidates/close', {
+    method: 'POST',
+    body: JSON.stringify(body),
     headers: {
-      get: () => 'org_1',
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
     },
-    json: async () => body,
-  } as unknown as NextRequest;
+  });
 }
 
 describe('/api/billing-candidates/close POST', () => {

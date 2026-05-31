@@ -1,7 +1,11 @@
 import type { PrismaClient } from '@prisma/client';
 
+type NameResolverDb = {
+  user: Pick<PrismaClient['user'], 'findMany'>;
+};
+
 export async function batchResolveNames(
-  prisma: PrismaClient,
+  prisma: NameResolverDb,
   orgId: string,
   userIds: string[]
 ): Promise<Map<string, string>> {

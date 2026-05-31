@@ -4,7 +4,7 @@
 
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
-import { Prisma } from '@prisma/client';
+import { readJsonObjectNumber, readJsonObjectString, toPrismaJsonInput } from '@/lib/db/json';
 import type { StructuredSoap } from '@/types/structured-soap';
 import { buildPhysicianReport, buildCareManagerReport } from './report-templates';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
@@ -320,33 +320,32 @@ export async function generateReportsFromVisit(
     plan: { intervention_checks: [] },
   };
 
-  const calculationContext = billingEvidence?.calculation_context as Record<string, unknown> | null;
   const billingContext = billingEvidence
     ? {
         payer_basis: billingEvidence.payer_basis,
         applied_rule_keys: billingEvidence.applied_rule_keys ?? [],
         recommended_rule_keys: billingEvidence.recommended_rule_keys ?? [],
         validation_notes: billingEvidence.validation_notes ?? null,
-        effective_revision_code:
-          typeof calculationContext?.effective_revision_code === 'string'
-            ? calculationContext.effective_revision_code
-            : null,
-        site_config_status:
-          typeof calculationContext?.site_config_status === 'string'
-            ? calculationContext.site_config_status
-            : null,
-        site_config_revision_code:
-          typeof calculationContext?.site_config_revision_code === 'string'
-            ? calculationContext.site_config_revision_code
-            : null,
-        jahis_supplemental_record_count:
-          typeof calculationContext?.jahis_supplemental_record_count === 'number'
-            ? calculationContext.jahis_supplemental_record_count
-            : null,
-        jahis_residual_confirmation_count:
-          typeof calculationContext?.jahis_residual_confirmation_count === 'number'
-            ? calculationContext.jahis_residual_confirmation_count
-            : null,
+        effective_revision_code: readJsonObjectString(
+          billingEvidence.calculation_context,
+          'effective_revision_code',
+        ),
+        site_config_status: readJsonObjectString(
+          billingEvidence.calculation_context,
+          'site_config_status',
+        ),
+        site_config_revision_code: readJsonObjectString(
+          billingEvidence.calculation_context,
+          'site_config_revision_code',
+        ),
+        jahis_supplemental_record_count: readJsonObjectNumber(
+          billingEvidence.calculation_context,
+          'jahis_supplemental_record_count',
+        ),
+        jahis_residual_confirmation_count: readJsonObjectNumber(
+          billingEvidence.calculation_context,
+          'jahis_residual_confirmation_count',
+        ),
       }
     : null;
 
@@ -406,7 +405,7 @@ export async function generateReportsFromVisit(
               visit_record_id: visitRecordId,
               report_type: type,
               status: 'draft',
-              content: contentByType.get(type) as Prisma.InputJsonValue,
+              content: toPrismaJsonInput(contentByType.get(type)),
               created_by: userId,
             })),
             skipDuplicates: true,

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -47,12 +47,14 @@ vi.mock('@/lib/db/rls', () => ({
 import { DELETE, PATCH } from './route';
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
-  return {
+  return new NextRequest('http://localhost/api/tracing-reports/tracing_1', {
+    method: body === null ? 'DELETE' : 'PATCH',
     headers: {
-      get: (key: string) => headers?.[key] ?? null,
+      ...headers,
+      ...(body === null ? {} : { 'content-type': 'application/json' }),
     },
-    json: async () => body,
-  } as unknown as NextRequest;
+    body: body === null ? undefined : JSON.stringify(body),
+  });
 }
 
 describe('/api/tracing-reports/[id] PATCH', () => {
@@ -208,6 +210,7 @@ describe('/api/tracing-reports/[id] PATCH', () => {
       code: 'VALIDATION_ERROR',
       message: 'channel が不正です',
     });
+    expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(tracingReportUpdateMock).not.toHaveBeenCalled();
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();

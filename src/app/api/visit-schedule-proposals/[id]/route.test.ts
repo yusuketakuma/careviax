@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -94,13 +94,19 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 import { GET, PATCH } from './route';
 
 function createRequest(body?: unknown, headers?: Record<string, string>) {
-  return {
-    url: 'http://localhost/api/visit-schedule-proposals/proposal_1',
+  if (body === undefined) {
+    return new NextRequest('http://localhost/api/visit-schedule-proposals/proposal_1', {
+      headers,
+    });
+  }
+  return new NextRequest('http://localhost/api/visit-schedule-proposals/proposal_1', {
+    method: 'PATCH',
+    body: JSON.stringify(body),
     headers: {
-      get: (key: string) => headers?.[key] ?? null,
+      'content-type': 'application/json',
+      ...headers,
     },
-    json: async () => body,
-  } as unknown as NextRequest;
+  });
 }
 
 function buildProposal(overrides?: Record<string, unknown>) {

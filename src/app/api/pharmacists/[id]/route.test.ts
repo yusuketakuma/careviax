@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -55,12 +55,14 @@ vi.mock('@/server/services/cognito-admin', () => ({
 import { PATCH } from './route';
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
-  return {
+  return new NextRequest('http://localhost/api/pharmacists/user_1', {
+    method: 'PATCH',
+    body: JSON.stringify(body),
     headers: {
-      get: (key: string) => headers?.[key] ?? null,
+      'content-type': 'application/json',
+      ...headers,
     },
-    json: async () => body,
-  } as unknown as NextRequest;
+  });
 }
 
 describe('/api/pharmacists/[id] PATCH', () => {
@@ -117,10 +119,12 @@ describe('/api/pharmacists/[id] PATCH', () => {
           action: 'update',
           name: '更新 薬剤師',
           name_kana: 'コウシン ヤクザイシ',
-          phone: '090-1111-2222',
-          site_id: 'site_2',
-          role: 'admin',
-        },
+        phone: '090-1111-2222',
+        site_id: 'site_2',
+        role: 'admin',
+        visit_specialties: ['terminal_care'],
+        coverage_area: ['新宿区'],
+      },
         { 'x-org-id': 'org_1' }
       ),
       { params: Promise.resolve({ id: 'user_1' }) }
@@ -140,6 +144,8 @@ describe('/api/pharmacists/[id] PATCH', () => {
         name: '更新 薬剤師',
         name_kana: 'コウシン ヤクザイシ',
         phone: '090-1111-2222',
+        visit_specialties: ['terminal_care'],
+        coverage_area: ['新宿区'],
       }),
     });
     expect(membershipUpdateMock).toHaveBeenCalledWith({

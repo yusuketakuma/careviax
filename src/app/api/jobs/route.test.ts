@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { requireAuthContextMock, integrationJobFindManyMock } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -21,11 +21,11 @@ vi.mock('@/lib/db/client', () => ({
 import { GET } from './route';
 
 function createRequest() {
-  return {
+  return new NextRequest('http://localhost/api/jobs', {
     headers: {
-      get: () => 'org_1',
+      'x-org-id': 'org_1',
     },
-  } as unknown as NextRequest;
+  });
 }
 
 describe('/api/jobs GET', () => {

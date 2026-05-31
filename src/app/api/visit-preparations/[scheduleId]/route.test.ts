@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
@@ -112,30 +112,27 @@ vi.mock('@/server/services/operational-tasks', async (importOriginal) => {
 import { GET, PUT } from './route';
 
 function createRequest(headers?: Record<string, string>) {
-  return {
-    url: 'http://localhost/api/visit-preparations/schedule_1',
-    headers: {
-      get: (key: string) => headers?.[key] ?? null,
-    },
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/visit-preparations/schedule_1', {
+    headers,
+  });
 }
 
 function createPutRequest(
   body: unknown,
   headers: Record<string, string> = { 'x-org-id': 'org_1' },
 ) {
-  return {
-    url: 'http://localhost/api/visit-preparations/schedule_1',
+  return new NextRequest('http://localhost/api/visit-preparations/schedule_1', {
     method: 'PUT',
     headers: {
-      get: (key: string) => headers[key] ?? null,
+      ...headers,
+      'content-type': 'application/json',
     },
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+    body: JSON.stringify(body),
+  });
 }
 
 const completePreparationBody = {
-  checklist: {},
+  checklist: { legacy_debug: undefined },
   medication_changes_reviewed: true,
   carry_items_confirmed: true,
   previous_issues_reviewed: true,
@@ -378,6 +375,16 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
         },
         metadata: { sync_summary: { visit_proposal_id: 'proposal_1' } },
         action_items: [{ title: '退院時変更薬を確認する' }],
+      },
+      {
+        id: 'conf_regular_1',
+        note_type: 'regular',
+        title: '通常カンファ',
+        conference_date: new Date('2026-03-23T00:00:00Z'),
+        participants: [],
+        structured_content: { sections: [] },
+        metadata: null,
+        action_items: [],
       },
     ]);
     billingEvidenceBlockersMock.mockResolvedValue([]);
@@ -623,6 +630,67 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
         }),
       }),
     );
+  });
+
+  it('ignores malformed conference JSON sections and sync summaries', async () => {
+    conferenceNoteFindManyMock.mockResolvedValue([
+      {
+        id: 'conf_malformed',
+        note_type: 'pre_discharge',
+        title: '退院前カンファ',
+        conference_date: new Date('2026-03-24T00:00:00Z'),
+        participants: [
+          ['unexpected'],
+          { name: '病院薬剤師', role: 'hospital_pharmacist' },
+          { name: 123, role: ['invalid'] },
+        ],
+        structured_content: {
+          sections: [
+            ['unexpected'],
+            { key: 123, label: '退院予定日', body: '2026-03-27' },
+            { key: 'target_discharge_date', label: ['invalid'], body: 123 },
+            { key: 'next_visit_plan', label: '初回訪問計画', body: '退院翌週に初回訪問' },
+          ],
+        },
+        metadata: {
+          sync_summary: {
+            visit_proposal_id: 123,
+            report_draft_ids: ['report_1', 456],
+            tasks_created: 2,
+          },
+        },
+        action_items: [['unexpected'], { title: 123 }, { title: '退院時変更薬を確認する' }],
+      },
+    ]);
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        pack: {
+          conference_context: [
+            {
+              participants: [
+                { name: '病院薬剤師', role: 'hospital_pharmacist' },
+                { name: null, role: null },
+              ],
+              highlights: ['初回訪問計画: 退院翌週に初回訪問'],
+              action_items: ['退院時変更薬を確認する'],
+              sync_summary: {
+                billing_candidate_id: null,
+                visit_proposal_id: null,
+                report_draft_ids: ['report_1'],
+                tasks_created: 2,
+              },
+            },
+          ],
+        },
+      },
+    });
   });
 
   it('includes intake_context with structured scheduling preference and home_visit_intake fields', async () => {
@@ -950,6 +1018,15 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
   });
 
   it('allows the backup pharmacist to mark previous issues as reviewed', async () => {
+    const defaultChecklist = {
+      emergency_contacts_checked: false,
+      medication_prepared: false,
+      patient_record_reviewed: false,
+      prescription_confirmed: false,
+      previous_visit_reviewed: false,
+      route_confirmed: false,
+    };
+
     visitScheduleFindFirstMock.mockResolvedValueOnce({
       id: 'schedule_1',
       case_id: 'case_1',
@@ -972,11 +1049,13 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
       expect.objectContaining({
         where: { schedule_id: 'schedule_1' },
         create: expect.objectContaining({
+          checklist: defaultChecklist,
           previous_issues_reviewed: true,
           prepared_by: 'user_1',
           prepared_at: expect.any(Date),
         }),
         update: expect.objectContaining({
+          checklist: defaultChecklist,
           previous_issues_reviewed: true,
           prepared_by: 'user_1',
           prepared_at: expect.any(Date),

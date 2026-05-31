@@ -1,5 +1,5 @@
 import { endOfDay, parseISO, startOfDay, subDays } from 'date-fns';
-import type { Prisma, PrismaClient, CaseStatus } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import type { MemberRole } from '@prisma/client';
 import { buildSearchFilter } from '@/lib/api/search';
 import { getPatientPrivacyFlags } from '@/lib/patient/privacy';
@@ -18,6 +18,8 @@ import {
   getFacilityVisitDefaults,
 } from '@/lib/patient/facility-reference';
 import { withOrgContext } from '@/lib/db/rls';
+import { toPrismaJsonInput } from '@/lib/db/json';
+import { parseCaseStatusList } from '@/lib/patient/case-status';
 import { createPatientSchema } from '@/lib/validations/patient';
 import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
 import type { z } from 'zod';
@@ -140,13 +142,10 @@ function buildDbWhere(orgId: string, filters: PatientListFilters) {
   };
 
   // case_status → DB filter
-  const requestedCaseStatuses = filters.case_status
-    ?.split(',')
-    .map((v) => v.trim())
-    .filter(Boolean);
-  if (requestedCaseStatuses?.length) {
+  const requestedCaseStatuses = parseCaseStatusList(filters.case_status);
+  if (requestedCaseStatuses.length) {
     where.cases = {
-      some: { status: { in: requestedCaseStatuses as CaseStatus[] } },
+      some: { status: { in: requestedCaseStatuses } },
     };
   }
 
@@ -239,12 +238,9 @@ function matchesPatientPostFilters(patient: MappedPatientListItem, filters: Pati
   const latestCase = patient.latest_case;
   const latestVisitDate = patient.latest_visit?.visit_date ?? null;
 
-  const requestedCaseStatuses = filters.case_status
-    ?.split(',')
-    .map((value) => value.trim())
-    .filter(Boolean);
-  if (requestedCaseStatuses?.length) {
-    if (!latestCase || !requestedCaseStatuses.includes(latestCase.status)) {
+  const requestedCaseStatuses = parseCaseStatusList(filters.case_status);
+  if (requestedCaseStatuses.length) {
+    if (!latestCase || !requestedCaseStatuses.some((status) => status === latestCase.status)) {
       return false;
     }
   }
@@ -752,9 +748,7 @@ export async function createPatientWithIntake(orgId: string, data: CreatePatient
         medical_insurance_number: rest.medical_insurance_number || null,
         care_insurance_number: rest.care_insurance_number || null,
         billing_support_flag: rest.billing_support_flag ?? false,
-        allergy_info: rest.allergy_info
-          ? (rest.allergy_info as unknown as Prisma.InputJsonValue)
-          : undefined,
+        allergy_info: rest.allergy_info ? toPrismaJsonInput(rest.allergy_info) : undefined,
         notes: rest.notes || null,
       },
     });
@@ -877,9 +871,9 @@ export async function createPatientWithIntake(orgId: string, data: CreatePatient
           org_id: orgId,
           patient_id: newPatient.id,
           referral_source: requester?.organization_name || null,
-          required_visit_support: {
+          required_visit_support: toPrismaJsonInput({
             home_visit_intake: homeVisitIntake,
-          } as Prisma.InputJsonValue,
+          }),
         },
       });
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -46,13 +46,13 @@ import { POST } from './route';
 import { MissingCollaborationRoomTokenSecretError } from '@/server/services/collaboration-room-token';
 
 function createRequest(body: unknown) {
-  return {
-    url: 'http://localhost/api/collaboration/room-token',
+  return new NextRequest('http://localhost/api/collaboration/room-token', {
     method: 'POST',
-    headers: { get: () => null },
-    nextUrl: new URL('http://localhost/api/collaboration/room-token'),
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
 }
 
 const authCtx = {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   facilityFindFirstMock,
@@ -37,6 +37,19 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { GET, POST } from './route';
 
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
+function createRequest(body?: unknown) {
+  const init: NextRequestInit = {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: { 'content-type': 'application/json' },
+  };
+  if (body !== undefined) {
+    init.body = JSON.stringify(body);
+  }
+  return new NextRequest('http://localhost/api/admin/facilities/facility_1/units', init);
+}
+
 describe('/api/admin/facilities/[id]/units', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -72,7 +85,7 @@ describe('/api/admin/facilities/[id]/units', () => {
   });
 
   it('lists facility units', async () => {
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createRequest(), {
       params: Promise.resolve({ id: 'facility_1' }),
     }))!;
 
@@ -83,17 +96,18 @@ describe('/api/admin/facilities/[id]/units', () => {
   });
 
   it('creates a facility unit', async () => {
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createRequest({
         name: '3F 西',
         floor: '3F',
         unit_type: 'wing',
         capacity: 18,
         display_order: 2,
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'facility_1' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'facility_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(201);
     expect(facilityUnitCreateMock).toHaveBeenCalledWith({

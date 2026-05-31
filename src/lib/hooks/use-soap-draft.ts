@@ -5,8 +5,13 @@
 import { useCallback } from 'react';
 import { offlineDb, type OfflineVisitDraft } from '@/lib/stores/offline-db';
 import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
+import { readJsonObject } from '@/lib/db/json';
 import type { StructuredSoap } from '@/types/structured-soap';
-import type { VisitGeoLog } from '@/lib/visit-location';
+import type {
+  VisitGeoLog,
+  VisitGeoPoint,
+  VisitLocationPermissionState,
+} from '@/lib/visit-location';
 
 export type SoapDraftResidualMedication = {
   drug_name: string;
@@ -63,6 +68,180 @@ function purgeLegacyPlaintextSoapDraftFields(
   delete draft.soapPlan;
 }
 
+function parseJsonPayload(value: string) {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function readStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
+}
+
+function readOptionalString(value: unknown) {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function readOptionalNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function readSoapSubjective(value: unknown): StructuredSoap['subjective'] | null {
+  const object = readJsonObject(value);
+  if (!object) return null;
+  return {
+    symptom_checks: readStringArray(object.symptom_checks),
+    free_text: readOptionalString(object.free_text),
+  };
+}
+
+function readSoapObjective(value: unknown): StructuredSoap['objective'] | null {
+  const object = readJsonObject(value);
+  if (!object) return null;
+  return {
+    ...(object as Partial<StructuredSoap['objective']>),
+    medication_status: typeof object.medication_status === 'string' ? object.medication_status : '',
+    adherence_score:
+      object.adherence_score === 1 ||
+      object.adherence_score === 2 ||
+      object.adherence_score === 3 ||
+      object.adherence_score === 4 ||
+      object.adherence_score === 5
+        ? object.adherence_score
+        : 3,
+    side_effect_checks: readStringArray(object.side_effect_checks),
+    free_text: readOptionalString(object.free_text),
+  };
+}
+
+function readSoapAssessment(value: unknown): StructuredSoap['assessment'] | null {
+  const object = readJsonObject(value);
+  if (!object) return null;
+  return {
+    problem_checks: readStringArray(object.problem_checks),
+    severity: readOptionalString(object.severity),
+    drug_related_problems: readStringArray(object.drug_related_problems),
+    free_text: readOptionalString(object.free_text),
+  };
+}
+
+function readSoapPlan(value: unknown): StructuredSoap['plan'] | null {
+  const object = readJsonObject(value);
+  if (!object) return null;
+  return {
+    intervention_checks: readStringArray(object.intervention_checks),
+    next_visit_date: readOptionalString(object.next_visit_date),
+    prescription_proposal: readOptionalString(object.prescription_proposal),
+    physician_report_items: readOptionalString(object.physician_report_items),
+    care_manager_report_items: readOptionalString(object.care_manager_report_items),
+    care_service_coordination: readOptionalString(object.care_service_coordination),
+    free_text: readOptionalString(object.free_text),
+  };
+}
+
+function readStructuredSoapPayload(payload: string): StructuredSoap | null {
+  const object = readJsonObject(parseJsonPayload(payload));
+  if (!object) return null;
+
+  const subjective = readSoapSubjective(object.subjective);
+  const objective = readSoapObjective(object.objective);
+  const assessment = readSoapAssessment(object.assessment);
+  const plan = readSoapPlan(object.plan);
+  if (!subjective || !objective || !assessment || !plan) return null;
+
+  return {
+    ...(object as Partial<StructuredSoap>),
+    subjective,
+    objective,
+    assessment,
+    plan,
+  };
+}
+
+function readResidualMedication(value: unknown): SoapDraftResidualMedication | null {
+  const object = readJsonObject(value);
+  if (!object) return null;
+  if (typeof object.drug_name !== 'string') return null;
+  if (
+    typeof object.remaining_quantity !== 'number' ||
+    !Number.isFinite(object.remaining_quantity)
+  ) {
+    return null;
+  }
+  if (typeof object.is_prohibited_reduction !== 'boolean') return null;
+
+  return {
+    drug_name: object.drug_name,
+    drug_code: readOptionalString(object.drug_code),
+    prescribed_quantity: readOptionalNumber(object.prescribed_quantity),
+    prescribed_daily_dose: readOptionalNumber(object.prescribed_daily_dose),
+    remaining_quantity: object.remaining_quantity,
+    is_prohibited_reduction: object.is_prohibited_reduction,
+  };
+}
+
+function readResidualMedicationsPayload(payload: string | null | undefined) {
+  if (!payload) return [];
+  const parsed = parseJsonPayload(payload);
+  if (!Array.isArray(parsed)) return [];
+  return parsed.flatMap((item) => {
+    const medication = readResidualMedication(item);
+    return medication ? [medication] : [];
+  });
+}
+
+const VISIT_LOCATION_PERMISSION_STATES = new Set<VisitLocationPermissionState>([
+  'granted',
+  'prompt',
+  'denied',
+  'unsupported',
+  'unavailable',
+]);
+
+function readVisitGeoPoint(value: unknown): VisitGeoPoint | null {
+  if (value === null) return null;
+  const object = readJsonObject(value);
+  if (!object) return null;
+  if (typeof object.captured_at !== 'string') return null;
+  if (typeof object.latitude !== 'number' || !Number.isFinite(object.latitude)) return null;
+  if (typeof object.longitude !== 'number' || !Number.isFinite(object.longitude)) return null;
+  const accuracy =
+    typeof object.accuracy_meters === 'number' && Number.isFinite(object.accuracy_meters)
+      ? object.accuracy_meters
+      : null;
+
+  return {
+    captured_at: object.captured_at,
+    latitude: object.latitude,
+    longitude: object.longitude,
+    accuracy_meters: accuracy,
+  };
+}
+
+function readVisitGeoLogPayload(payload: string | null | undefined): VisitGeoLog | null {
+  if (!payload) return null;
+  const object = readJsonObject(parseJsonPayload(payload));
+  if (!object) return null;
+  if (typeof object.enabled !== 'boolean') return null;
+  if (
+    typeof object.permission !== 'string' ||
+    !VISIT_LOCATION_PERMISSION_STATES.has(object.permission as VisitLocationPermissionState)
+  ) {
+    return null;
+  }
+
+  return {
+    enabled: object.enabled,
+    permission: object.permission as VisitLocationPermissionState,
+    start: readVisitGeoPoint(object.start),
+    end: readVisitGeoPoint(object.end),
+  };
+}
+
 /**
  * 指定した scheduleId に対応するSOAPドラフトを読み書きするフック。
  *
@@ -80,12 +259,14 @@ export function useSoapDraft(scheduleId: string, patientId: string) {
 
     const structuredSoapPayload = await decryptOfflinePayload(draft?.structuredSoap);
     if (!structuredSoapPayload) return null;
+    const structuredSoap = readStructuredSoapPayload(structuredSoapPayload);
+    if (!structuredSoap) return null;
 
     const residualPayload = await decryptOfflinePayload(draft.residualMedications);
     const visitGeoLogPayload = await decryptOfflinePayload(draft.visitGeoLog);
 
     return {
-      structuredSoap: JSON.parse(structuredSoapPayload) as StructuredSoap,
+      structuredSoap,
       currentStep: draft.currentStep ?? 0,
       visitDate: draft.visitDate ?? null,
       outcomeStatus: draft.outcomeStatus ?? null,
@@ -96,10 +277,8 @@ export function useSoapDraft(scheduleId: string, patientId: string) {
       cancellationReason: draft.cancellationReason ?? null,
       postponeReason: draft.postponeReason ?? null,
       revisitReason: draft.revisitReason ?? null,
-      residualMedications: residualPayload
-        ? (JSON.parse(residualPayload) as SoapDraftResidualMedication[])
-        : [],
-      visitGeoLog: visitGeoLogPayload ? (JSON.parse(visitGeoLogPayload) as VisitGeoLog) : null,
+      residualMedications: readResidualMedicationsPayload(residualPayload),
+      visitGeoLog: readVisitGeoLogPayload(visitGeoLogPayload),
     };
   }, [scheduleId]);
 

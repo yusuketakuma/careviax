@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
@@ -42,14 +42,14 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 import { PATCH } from './route';
 
 function createRequest(body: unknown) {
-  return {
-    url: 'http://localhost/api/visit-schedule-proposals/reorder',
+  return new NextRequest('http://localhost/api/visit-schedule-proposals/reorder', {
     method: 'PATCH',
+    body: JSON.stringify(body),
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
     },
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+  });
 }
 
 describe('/api/visit-schedule-proposals/reorder PATCH', () => {

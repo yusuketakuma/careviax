@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { parseJsonObjectText } from '@/lib/admin/json-editor';
 
 type PharmacySite = {
   id: string;
@@ -67,12 +68,7 @@ export default function ServiceAreasPage() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      let geoData: Record<string, unknown>;
-      try {
-        geoData = JSON.parse(form.geoText) as Record<string, unknown>;
-      } catch {
-        throw new Error('エリア定義(JSON) の形式が不正です');
-      }
+      const geoData = parseJsonObjectText(form.geoText, 'エリア定義(JSON) の形式が不正です');
 
       const res = await fetch(form.id ? `/api/service-areas/${form.id}` : '/api/service-areas', {
         method: form.id ? 'PATCH' : 'POST',

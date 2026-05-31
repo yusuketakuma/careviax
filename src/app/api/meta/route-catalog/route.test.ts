@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { requireAuthContextMock } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -12,11 +12,11 @@ vi.mock('@/lib/auth/context', () => ({
 import { GET } from './route';
 
 function createRequest() {
-  return {
+  return new NextRequest('http://localhost/api/meta/route-catalog', {
     headers: {
-      get: () => 'org_1',
+      'x-org-id': 'org_1',
     },
-  } as unknown as NextRequest;
+  });
 }
 
 describe('/api/meta/route-catalog GET', () => {

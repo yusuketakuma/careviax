@@ -1,4 +1,4 @@
-import type { prisma } from '@/lib/db/client';
+import type { PrismaClient } from '@prisma/client';
 import {
   ADMIN_MASTER_READINESS_GROUPS,
   type AdminMasterReadinessGroupSummary,
@@ -8,7 +8,42 @@ import {
   type AdminMasterReadinessStatus,
 } from '@/lib/admin/master-readiness';
 
-type DbClient = typeof prisma;
+type CountDelegate<T extends keyof PrismaClient> = Pick<
+  Extract<PrismaClient[T], { count: unknown }>,
+  'count'
+>;
+
+type DbClient = {
+  auditLog: CountDelegate<'auditLog'>;
+  billingRule: CountDelegate<'billingRule'>;
+  businessHoliday: CountDelegate<'businessHoliday'>;
+  documentDeliveryRule: CountDelegate<'documentDeliveryRule'>;
+  drugAlertRule: CountDelegate<'drugAlertRule'>;
+  drugInteraction: CountDelegate<'drugInteraction'>;
+  drugMaster: CountDelegate<'drugMaster'>;
+  drugMasterImportLog: CountDelegate<'drugMasterImportLog'>;
+  drugPackageInsert: CountDelegate<'drugPackageInsert'>;
+  escalationRule: CountDelegate<'escalationRule'>;
+  externalProfessional: CountDelegate<'externalProfessional'>;
+  facility: CountDelegate<'facility'>;
+  facilityContact: CountDelegate<'facilityContact'>;
+  facilityStandardRegistration: CountDelegate<'facilityStandardRegistration'>;
+  facilityUnit: CountDelegate<'facilityUnit'>;
+  membership: CountDelegate<'membership'>;
+  notificationRule: CountDelegate<'notificationRule'>;
+  packagingMethodMaster: CountDelegate<'packagingMethodMaster'>;
+  pharmacistCredential: CountDelegate<'pharmacistCredential'>;
+  pharmacistShift: CountDelegate<'pharmacistShift'>;
+  pharmacistShiftTemplate: CountDelegate<'pharmacistShiftTemplate'>;
+  pharmacyDrugStock: CountDelegate<'pharmacyDrugStock'>;
+  pharmacySite: CountDelegate<'pharmacySite'>;
+  pharmacySiteInsuranceConfig: CountDelegate<'pharmacySiteInsuranceConfig'>;
+  prescriberInstitution: CountDelegate<'prescriberInstitution'>;
+  serviceArea: CountDelegate<'serviceArea'>;
+  setting: CountDelegate<'setting'>;
+  template: CountDelegate<'template'>;
+  user: CountDelegate<'user'>;
+};
 
 type CountMap = Record<string, number>;
 type IssueMap = Record<string, string[]>;

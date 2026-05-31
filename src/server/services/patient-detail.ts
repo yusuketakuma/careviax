@@ -1,7 +1,9 @@
 import { format } from 'date-fns';
 import type { MemberRole, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { readJsonObjectString } from '@/lib/db/json';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
+import { KEY_LAB_ANALYTE_CODES } from '@/lib/patient/lab-analytes';
 import {
   getPatientPrivacyFlags,
   maskAddressDetail,
@@ -44,6 +46,31 @@ import {
 import { buildExternalAccessGrantVisibilityWhere } from '@/server/services/external-access';
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
+type PatientReadinessDb = {
+  consentRecord: Pick<Prisma.TransactionClient['consentRecord'], 'findFirst'>;
+  firstVisitDocument: Pick<Prisma.TransactionClient['firstVisitDocument'], 'findFirst'>;
+  managementPlan: Pick<Prisma.TransactionClient['managementPlan'], 'findFirst'>;
+  patient: Pick<Prisma.TransactionClient['patient'], 'findFirst'>;
+  prescriptionIntake: Pick<Prisma.TransactionClient['prescriptionIntake'], 'findFirst'>;
+};
+type PatientTimelineDb = {
+  billingCandidate: Pick<Prisma.TransactionClient['billingCandidate'], 'findMany'>;
+  careReport: Pick<Prisma.TransactionClient['careReport'], 'findMany'>;
+  communicationEvent: Pick<Prisma.TransactionClient['communicationEvent'], 'findMany'>;
+  conferenceNote: Pick<Prisma.TransactionClient['conferenceNote'], 'findMany'>;
+  dispenseResult: Pick<Prisma.TransactionClient['dispenseResult'], 'findMany'>;
+  externalAccessGrant: Pick<Prisma.TransactionClient['externalAccessGrant'], 'findMany'>;
+  firstVisitDocument: Pick<Prisma.TransactionClient['firstVisitDocument'], 'findMany'>;
+  inquiryRecord: Pick<Prisma.TransactionClient['inquiryRecord'], 'findMany'>;
+  managementPlan: Pick<Prisma.TransactionClient['managementPlan'], 'findMany'>;
+  medicationCycle: Pick<Prisma.TransactionClient['medicationCycle'], 'findMany'>;
+  patient: Pick<Prisma.TransactionClient['patient'], 'findFirst'>;
+  patientSelfReport: Pick<Prisma.TransactionClient['patientSelfReport'], 'findMany'>;
+  prescriptionIntake: Pick<Prisma.TransactionClient['prescriptionIntake'], 'findMany'>;
+  user: Pick<Prisma.TransactionClient['user'], 'findMany'>;
+  visitRecord: Pick<Prisma.TransactionClient['visitRecord'], 'findMany'>;
+  visitSchedule: Pick<Prisma.TransactionClient['visitSchedule'], 'findMany'>;
+};
 
 type DetailArgs = {
   orgId: string;
@@ -144,12 +171,6 @@ function getCommunicationDirectionLabel(direction: string) {
   return direction;
 }
 
-function readObjectString(input: unknown, key: string) {
-  if (typeof input !== 'object' || input === null || Array.isArray(input)) return null;
-  const value = (input as Record<string, unknown>)[key];
-  return typeof value === 'string' ? value : null;
-}
-
 function normalizeCareTeamRole(role: string) {
   if (['physician', 'doctor', 'clinic', 'prescriber'].includes(role)) return 'physician';
   if (['nurse', 'visiting_nurse', 'home_nurse'].includes(role)) return 'nurse';
@@ -238,7 +259,7 @@ function buildNullableCaseScope(caseIds: string[]) {
 }
 
 async function listVisibleTimelineExternalShares(
-  db: DbClient,
+  db: PatientTimelineDb,
   args: DetailArgs,
   caseIds: string[],
 ) {
@@ -261,7 +282,7 @@ async function listVisibleTimelineExternalShares(
   });
 }
 
-async function listBillingCaseRefs(db: DbClient, args: DetailArgs, caseIds: string[]) {
+async function listBillingCaseRefs(db: PatientTimelineDb, args: DetailArgs, caseIds: string[]) {
   if (caseIds.length === 0) {
     return { visitRecordIds: [] as string[], cycleIds: [] as string[] };
   }
@@ -353,12 +374,11 @@ async function findPatientOverviewBase(db: DbClient, args: DetailArgs) {
 }
 
 async function listLabSummary(db: DbClient, args: Pick<DetailArgs, 'orgId' | 'patientId'>) {
-  const keyAnalytes = ['egfr', 'scr', 'k', 'crp', 'hba1c', 'pt_inr', 'alb'] as const;
   const labRows = await db.patientLabObservation.findMany({
     where: {
       org_id: args.orgId,
       patient_id: args.patientId,
-      analyte_code: { in: keyAnalytes as unknown as never[] },
+      analyte_code: { in: [...KEY_LAB_ANALYTE_CODES] },
     },
     orderBy: [{ measured_at: 'desc' }],
     take: 50,
@@ -788,17 +808,17 @@ export async function getPatientCommunicationsData(db: DbClient, args: DetailArg
     billing_summary: {
       evidence: billingEvidence.map((item) => ({
         ...item,
-        effective_revision_code: readObjectString(
+        effective_revision_code: readJsonObjectString(
           item.calculation_context,
           'effective_revision_code',
         ),
-        site_config_status: readObjectString(item.calculation_context, 'site_config_status'),
+        site_config_status: readJsonObjectString(item.calculation_context, 'site_config_status'),
         blockers: billingEvidenceBlockers.find((blocker) => blocker.id === item.id)?.blockers ?? [],
       })),
       candidates: billingCandidates.map((item) => ({
         ...item,
-        effective_revision_code: readObjectString(item.source_snapshot, 'revision_code'),
-        site_config_status: readObjectString(item.source_snapshot, 'site_config_status'),
+        effective_revision_code: readJsonObjectString(item.source_snapshot, 'revision_code'),
+        site_config_status: readJsonObjectString(item.source_snapshot, 'site_config_status'),
       })),
       claimable_count: billingEvidence.filter((item) => item.claimable).length,
       blocked_count: billingEvidence.filter((item) => !item.claimable).length,
@@ -850,7 +870,7 @@ export async function getPatientDocumentsData(db: DbClient, args: DetailArgs) {
   };
 }
 
-export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
+export async function getPatientTimelineData(db: PatientTimelineDb, args: DetailArgs) {
   const patient = await db.patient.findFirst({
     where: buildPatientDetailWhere(args),
     select: {
@@ -1202,7 +1222,7 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
   ]);
 
   const actorNameMap = await batchResolveNames(
-    db as typeof prisma,
+    db,
     args.orgId,
     Array.from(
       new Set(
@@ -1569,7 +1589,7 @@ export async function getPatientTimelineData(db: DbClient, args: DetailArgs) {
   };
 }
 
-export async function getPatientReadinessData(db: DbClient, args: DetailArgs) {
+export async function getPatientReadinessData(db: PatientReadinessDb, args: DetailArgs) {
   const patient = await db.patient.findFirst({
     where: buildPatientDetailWhere(args),
     select: {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -22,6 +22,20 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { GET, POST } from './route';
+
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
+function createGetRequest() {
+  return new NextRequest('http://localhost/api/notification-rules');
+}
+
+function createPostRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/notification-rules', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  } satisfies NextRequestInit);
+}
 
 describe('/api/notification-rules', () => {
   beforeEach(() => {
@@ -46,20 +60,26 @@ describe('/api/notification-rules', () => {
   });
 
   it('lists notification rules', async () => {
-    const response = (await GET({} as NextRequest))!;
+    const response = (await GET(createGetRequest()))!;
 
     expect(response.status).toBe(200);
     expect(notificationRuleFindManyMock).toHaveBeenCalled();
   });
 
   it('creates a notification rule', async () => {
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createPostRequest({
         event_type: 'visit_schedule_created',
         channel: 'in_app',
-        recipients: { roles: ['admin'] },
+        recipients: { roles: ['admin'], user_ids: ['user_1'] },
+        conditions: {
+          min_priority: 'urgent',
+          skipped: undefined,
+          fallback: null,
+          levels: ['high', undefined],
+        },
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(notificationRuleCreateMock).toHaveBeenCalledWith({
@@ -67,6 +87,12 @@ describe('/api/notification-rules', () => {
         org_id: 'org_1',
         event_type: 'visit_schedule_created',
         channel: 'in_app',
+        recipients: { roles: ['admin'], user_ids: ['user_1'] },
+        conditions: {
+          min_priority: 'urgent',
+          fallback: null,
+          levels: ['high', null],
+        },
       }),
     });
   });

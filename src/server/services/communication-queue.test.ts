@@ -48,7 +48,7 @@ function makeDb() {
       findMany: patientFindManyMock,
     },
     medicationIssue: { findMany: medicationIssueFindManyMock },
-  } as unknown as Parameters<typeof listCommunicationQueue>[0];
+  };
 }
 
 function emptyDbMocks() {

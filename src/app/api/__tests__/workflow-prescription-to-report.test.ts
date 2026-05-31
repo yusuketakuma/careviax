@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 /* -------------------------------------------------------------------------- */
 /*  Shared IDs used across all steps                                          */
@@ -74,12 +74,11 @@ const {
       ) => Promise<Response>,
     ) => {
       return (req: NextRequest) =>
-        handler({
-          ...req,
+        handler(Object.assign(req, {
           orgId: 'org_1',
           userId: 'user_1',
           role: 'pharmacist',
-        } as NextRequest & { orgId: string; userId: string; role?: string });
+        }));
     },
   ),
   requireAuthContextMock: vi.fn(),
@@ -224,24 +223,20 @@ import { GET as getCareReports } from '../care-reports/route';
 /* -------------------------------------------------------------------------- */
 
 function createPostRequest(body: unknown) {
-  return {
-    url: 'http://localhost/api/test',
+  return new NextRequest('http://localhost/api/test', {
+    method: 'POST',
+    body: JSON.stringify(body),
     headers: {
-      get: (key: string) => ({ 'x-org-id': IDS.org })[key] ?? null,
+      'content-type': 'application/json',
+      'x-org-id': IDS.org,
     },
-    json: async () => body,
-  } as unknown as NextRequest;
+  });
 }
 
 function createGetRequest(url: string) {
-  return {
-    url,
-    method: 'GET',
-    headers: {
-      get: (key: string) => ({ 'x-org-id': IDS.org })[key] ?? null,
-    },
-    nextUrl: new URL(url),
-  } as unknown as NextRequest;
+  return new NextRequest(url, {
+    headers: { 'x-org-id': IDS.org },
+  });
 }
 
 type TxCallback = (tx: unknown) => unknown | Promise<unknown>;
@@ -786,13 +781,13 @@ describe('Workflow: prescription intake to care report', () => {
     ]);
     prismaCareCaseFindManyMock.mockResolvedValue([{ id: IDS.case, patient_id: IDS.patient }]);
 
-    const response = await getCareReports({
+    const response = await getCareReports(Object.assign(createGetRequest(
+      `http://localhost/api/care-reports?patient_id=${IDS.patient}`,
+    ), {
       orgId: IDS.org,
       userId: IDS.user,
       role: 'pharmacist',
-      url: `http://localhost/api/care-reports?patient_id=${IDS.patient}`,
-      headers: { get: () => null },
-    } as unknown as NextRequest & { orgId: string; userId: string; role?: string });
+    }));
 
     expect(response).toBeDefined();
     expect(response!.status).toBe(200);

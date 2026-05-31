@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { validationError } from '@/lib/api/response';
+import { readJsonObjectString } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { recordDataExportAudit } from '@/server/services/export-audit';
 import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from '../billing-month';
@@ -134,16 +135,9 @@ export const GET = withAuth(
           unit_name: residence?.unit_name ?? '',
           yj_codes: candidate.cycle_id ? (yjCodesByCycleId.get(candidate.cycle_id) ?? []) : [],
           effective_revision_code:
-            typeof (candidate.source_snapshot as Record<string, unknown> | null)?.revision_code ===
-            'string'
-              ? ((candidate.source_snapshot as Record<string, unknown>).revision_code as string)
-              : '',
+            readJsonObjectString(candidate.source_snapshot, 'revision_code') ?? '',
           site_config_revision_code:
-            typeof (candidate.source_snapshot as Record<string, unknown> | null)
-              ?.site_config_revision_code === 'string'
-              ? ((candidate.source_snapshot as Record<string, unknown>)
-                  .site_config_revision_code as string)
-              : '',
+            readJsonObjectString(candidate.source_snapshot, 'site_config_revision_code') ?? '',
         };
       });
 

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -37,6 +37,10 @@ vi.mock('@/server/services/export-audit', () => ({
 
 import { GET } from './route';
 
+function createRequest() {
+  return new NextRequest('http://localhost/api/conference-notes/note_1/pdf');
+}
+
 describe('/api/conference-notes/[id]/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -62,7 +66,7 @@ describe('/api/conference-notes/[id]/pdf', () => {
       fileName: 'conference-note.pdf',
     });
 
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createRequest(), {
       params: Promise.resolve({ id: 'note_1' }),
     }))!;
 
@@ -81,7 +85,7 @@ describe('/api/conference-notes/[id]/pdf', () => {
   it('returns 404 when the conference note is missing', async () => {
     buildConferenceNotePdfMock.mockRejectedValue(new Error('カンファレンス記録が見つかりません'));
 
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createRequest(), {
       params: Promise.resolve({ id: 'note_1' }),
     }))!;
 

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -37,10 +37,17 @@ vi.mock('@/lib/db/rls', () => ({
 import { GET, POST } from './route';
 
 function createRequest(url: string, body?: unknown) {
-  return {
-    url,
-    json: async () => body,
-  } as unknown as NextRequest;
+  return new NextRequest(url, {
+    method: body === undefined ? 'GET' : 'POST',
+    ...(body === undefined
+      ? {}
+      : {
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        }),
+  });
 }
 
 describe('/api/tasks', () => {
@@ -68,8 +75,8 @@ describe('/api/tasks', () => {
   it('filters tasks by related entity fields', async () => {
     const response = await GET(
       createRequest(
-        'http://localhost/api/tasks?task_type=conference_action_item&related_entity_type=conference_note&related_entity_id=note_1'
-      )
+        'http://localhost/api/tasks?task_type=conference_action_item&related_entity_type=conference_note&related_entity_id=note_1',
+      ),
     );
     if (!response) throw new Error('response is undefined');
 
@@ -96,6 +103,15 @@ describe('/api/tasks', () => {
     );
   });
 
+  it('rejects unsupported status filters before resolving assignment scope', async () => {
+    const response = await GET(createRequest('http://localhost/api/tasks?status=bad_status'));
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(400);
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(taskFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('creates an operational task', async () => {
     const response = await POST(
       createRequest('http://localhost/api/tasks', {
@@ -106,7 +122,7 @@ describe('/api/tasks', () => {
         assigned_to: 'user_1',
         related_entity_type: 'patient',
         related_entity_id: 'patient_1',
-      })
+      }),
     );
     if (!response) throw new Error('response is undefined');
 

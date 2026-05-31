@@ -122,4 +122,86 @@ describe('google-routes', () => {
       ],
     });
   });
+
+  it('returns unavailable when Google Routes returns malformed route metrics', async () => {
+    process.env.ROUTING_API_PROVIDER = 'google';
+    process.env.GOOGLE_MAPS_SERVER_API_KEY = 'test-key';
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          routes: [
+            {
+              duration: '1800s',
+              distanceMeters: '7200',
+              optimizedIntermediateWaypointIndex: [0],
+              legs: [{ duration: '600s', distanceMeters: 2400 }],
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const result = await computeOptimizedVisitRoute({
+      origin: { lat: 35.0, lng: 139.0, label: '拠点A' },
+      travelMode: 'DRIVE',
+      waypoints: [
+        {
+          scheduleId: 'schedule_1',
+          patientName: '山田 太郎',
+          address: '東京都港区1-1-1',
+          lat: 35.1,
+          lng: 139.1,
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: 'unavailable',
+      note: 'Google Routes API のレスポンス形式が不正です',
+      orderedScheduleIds: ['schedule_1'],
+      totalDistanceMeters: null,
+      totalDurationSeconds: null,
+    });
+  });
+
+  it('returns unavailable when Google waypoint optimization references an invalid stop', async () => {
+    process.env.ROUTING_API_PROVIDER = 'google';
+    process.env.GOOGLE_MAPS_SERVER_API_KEY = 'test-key';
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          routes: [
+            {
+              duration: '1800s',
+              distanceMeters: 7200,
+              optimizedIntermediateWaypointIndex: [1],
+              legs: [{ duration: '600s', distanceMeters: 2400 }],
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const result = await computeOptimizedVisitRoute({
+      origin: { lat: 35.0, lng: 139.0, label: '拠点A' },
+      travelMode: 'DRIVE',
+      waypoints: [
+        {
+          scheduleId: 'schedule_1',
+          patientName: '山田 太郎',
+          address: '東京都港区1-1-1',
+          lat: 35.1,
+          lng: 139.1,
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: 'unavailable',
+      note: 'Google Routes API のレスポンス形式が不正です',
+      orderedScheduleIds: ['schedule_1'],
+    });
+  });
 });

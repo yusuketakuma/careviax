@@ -39,7 +39,7 @@ function makeDb() {
     careReport: { findMany: careReportFindManyMock },
     consentRecord: { findMany: consentRecordFindManyMock },
     managementPlan: { findMany: managementPlanFindManyMock },
-  } as unknown as Parameters<typeof listPatientRiskSummaries>[0];
+  };
 }
 
 describe('listPatientRiskSummaries', () => {

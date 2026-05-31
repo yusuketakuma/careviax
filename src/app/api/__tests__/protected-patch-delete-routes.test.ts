@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { authMock, prismaMock, withOrgContextMock, txMock } = vi.hoisted(() => {
   const createRecord = () => ({
@@ -107,13 +107,14 @@ type Handler = () => Promise<Response | undefined>;
 type RouteEntry = { name: string; handler: Handler; successBody?: unknown };
 
 function createRequest(url: string, headers?: Record<string, string>, body?: unknown) {
-  return {
-    url,
+  return new NextRequest(url, {
+    method: 'PATCH',
+    body: JSON.stringify(body ?? {}),
     headers: {
-      get: (key: string) => headers?.[key] ?? null,
+      'content-type': 'application/json',
+      ...headers,
     },
-    json: vi.fn().mockResolvedValue(body ?? {}),
-  } as unknown as NextRequest;
+  });
 }
 
 const permissionRoutes: RouteEntry[] = [

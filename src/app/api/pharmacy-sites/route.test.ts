@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { pharmacySiteFindManyMock } = vi.hoisted(() => ({
   pharmacySiteFindManyMock: vi.fn(),
@@ -10,7 +10,7 @@ vi.mock('@/lib/auth/middleware', () => ({
     handler: (req: NextRequest & { orgId: string }) => Promise<Response>,
   ) => {
     return (req: NextRequest) =>
-      handler({ ...req, orgId: 'org_1' } as NextRequest & { orgId: string });
+      handler(Object.assign(req, { orgId: 'org_1' }));
   },
 }));
 
@@ -46,9 +46,7 @@ describe('/api/pharmacy-sites', () => {
       },
     ]);
 
-    const response = (await GET({
-      url: 'http://localhost/api/pharmacy-sites',
-    } as NextRequest))!;
+    const response = (await GET(new NextRequest('http://localhost/api/pharmacy-sites')))!;
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -91,9 +89,9 @@ describe('/api/pharmacy-sites', () => {
       },
     ]);
 
-    const response = (await GET({
-      url: 'http://localhost/api/pharmacy-sites?view=resource_map',
-    } as NextRequest))!;
+    const response = (await GET(
+      new NextRequest('http://localhost/api/pharmacy-sites?view=resource_map'),
+    ))!;
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({

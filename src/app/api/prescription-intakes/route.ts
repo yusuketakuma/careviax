@@ -3,9 +3,15 @@ import { success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { createPrescriptionIntakeSchema } from '@/lib/validations/prescription';
+import {
+  MEDICATION_CYCLE_STATUSES,
+  PRESCRIPTION_SOURCE_TYPES,
+} from '@/lib/prescription/intake-filters';
 import { prisma } from '@/lib/db/client';
+import { readJsonObject } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { format } from 'date-fns';
+import { z } from 'zod';
 import { createPrescriptionIntake } from '@/server/services/prescription-intake-service';
 import {
   buildPrescriptionIntakeAssignmentWhere,
@@ -16,6 +22,9 @@ import {
   readJahisSupplementalRecords,
 } from '@/server/services/jahis-supplemental-records';
 import { broadcastOrgRealtimeEvent } from '@/server/services/org-realtime';
+
+const prescriptionSourceTypeSchema = z.enum(PRESCRIPTION_SOURCE_TYPES);
+const medicationCycleStatusSchema = z.enum(MEDICATION_CYCLE_STATUSES);
 
 function validateSplitDispense(input: {
   split_dispense_total?: number;
@@ -50,18 +59,32 @@ export const GET = withAuth(
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
 
-    const status = searchParams.get('status') ?? undefined;
-    const sourceType = searchParams.get('source_type') ?? undefined;
+    const statusParam = searchParams.get('status') ?? undefined;
+    const sourceTypeParam = searchParams.get('source_type') ?? undefined;
+    const status = statusParam ? medicationCycleStatusSchema.safeParse(statusParam) : null;
+    const sourceType = sourceTypeParam
+      ? prescriptionSourceTypeSchema.safeParse(sourceTypeParam)
+      : null;
+    if (status && !status.success) {
+      return validationError('処方受付ステータスが不正です', {
+        status: ['対応していないステータスです'],
+      });
+    }
+    if (sourceType && !sourceType.success) {
+      return validationError('処方受付ソース種別が不正です', {
+        source_type: ['対応していないソース種別です'],
+      });
+    }
     const includeTotal = searchParams.get('include_total') === '1';
     const assignmentWhere = buildPrescriptionIntakeAssignmentWhere(req);
 
     const where = {
       org_id: req.orgId,
-      ...(sourceType ? { source_type: sourceType as never } : {}),
+      ...(sourceType ? { source_type: sourceType.data } : {}),
       ...(status
         ? {
             cycle: {
-              overall_status: status as never,
+              overall_status: status.data,
             },
           }
         : {}),
@@ -256,7 +279,7 @@ export const POST = withAuth(
     }
 
     if (qrDraft && patient_id) {
-      const parsedData = qrDraft.parsed_data as Record<string, unknown> | null;
+      const parsedData = readJsonObject(qrDraft.parsed_data);
       const supplementalRecords = readJahisSupplementalRecords(parsedData?.supplementalRecords);
 
       await withOrgContext(req.orgId, async (tx) => {

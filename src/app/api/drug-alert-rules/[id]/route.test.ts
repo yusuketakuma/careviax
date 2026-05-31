@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
   membershipFindFirstMock,
+  drugAlertRuleUpdateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
+  drugAlertRuleUpdateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -30,15 +32,25 @@ vi.mock('@/lib/db/rls', () => ({
 import { PATCH, DELETE } from './route';
 
 function createRequest(url: string, body?: unknown) {
-  return {
-    url,
+  return new NextRequest(url, {
     method: body === undefined ? 'DELETE' : 'PATCH',
     headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      'x-org-id': 'org_1',
     },
-    nextUrl: new URL(url),
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+}
+
+function createBadJsonRequest(url: string) {
+  return new NextRequest(url, {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+    body: '{bad json',
+  });
 }
 
 describe('/api/drug-alert-rules/[id]', () => {
@@ -50,7 +62,11 @@ describe('/api/drug-alert-rules/[id]', () => {
       callback({
         drugAlertRule: {
           findFirst: vi.fn().mockResolvedValue({ id: 'rule_1' }),
-          update: vi.fn().mockResolvedValue({ id: 'rule_1', severity: 'warning', is_active: true }),
+          update: drugAlertRuleUpdateMock.mockResolvedValue({
+            id: 'rule_1',
+            severity: 'warning',
+            is_active: true,
+          }),
           delete: vi.fn().mockResolvedValue({ id: 'rule_1' }),
         },
       }),
@@ -63,22 +79,34 @@ describe('/api/drug-alert-rules/[id]', () => {
         createRequest('http://localhost/api/drug-alert-rules/rule_1', {
           severity: 'warning',
           is_active: true,
+          condition: {
+            severity_floor: 'warning',
+            omitted: undefined,
+            fallback: null,
+            thresholds: [1, undefined],
+          },
         }),
         { params: Promise.resolve({ id: 'rule_1' }) },
       ))!;
 
       expect(response.status).toBe(200);
+      expect(drugAlertRuleUpdateMock).toHaveBeenCalledWith({
+        where: { id: 'rule_1' },
+        data: expect.objectContaining({
+          severity: 'warning',
+          is_active: true,
+          condition: {
+            severity_floor: 'warning',
+            fallback: null,
+            thresholds: [1, null],
+          },
+        }),
+      });
     });
 
     it('returns 400 with invalid body', async () => {
       const response = (await PATCH(
-        {
-          url: 'http://localhost/api/drug-alert-rules/rule_1',
-          method: 'PATCH',
-          headers: { get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null) },
-          nextUrl: new URL('http://localhost/api/drug-alert-rules/rule_1'),
-          json: vi.fn().mockRejectedValue(new Error('bad json')),
-        } as unknown as NextRequest,
+        createBadJsonRequest('http://localhost/api/drug-alert-rules/rule_1'),
         { params: Promise.resolve({ id: 'rule_1' }) },
       ))!;
 

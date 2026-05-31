@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import bcrypt from 'bcryptjs';
 import type { MemberRole } from '@prisma/client';
+import { encode } from 'next-auth/jwt';
 
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
@@ -581,6 +582,30 @@ describe('validateExternalAccessGrant', () => {
       ok: false,
       kind: 'not_found',
     });
+  });
+
+  it('rejects signed tokens with malformed external access payloads before DB lookup', async () => {
+    const token = await encode({
+      secret: 'test-secret',
+      salt: 'ph-os-external-access',
+      maxAge: 72 * 60 * 60,
+      token: {
+        sub: 'grant_1',
+        grant_id: '',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        purpose: 'external_access_grant',
+      },
+    });
+
+    const result = await validateExternalAccessGrant(token, null);
+
+    expect(result).toMatchObject({
+      ok: false,
+      kind: 'not_found',
+      message: '共有リンクが無効です',
+    });
+    expect(prismaMock.externalAccessGrant.findUnique).not.toHaveBeenCalled();
   });
 
   it('rejects expired grants', async () => {

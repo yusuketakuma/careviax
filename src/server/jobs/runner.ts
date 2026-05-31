@@ -1,5 +1,6 @@
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { toPrismaJsonInput } from '@/lib/db/json';
 
 const MAX_RETRIES = 3;
 
@@ -53,7 +54,7 @@ export async function runJob(
         where: { id: job.id },
         data: {
           status: 'completed',
-          output: result as unknown as Prisma.InputJsonValue,
+          output: toPrismaJsonInput(result),
           completed_at: new Date(),
           locked_at: null,
           retry_count: attempt,

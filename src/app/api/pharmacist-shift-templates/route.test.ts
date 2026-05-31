@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -37,6 +37,14 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { GET, POST } from './route';
 
+function createRequest(url: string, body?: unknown) {
+  return new NextRequest(url, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
 describe('/api/pharmacist-shift-templates', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -60,9 +68,9 @@ describe('/api/pharmacist-shift-templates', () => {
   });
 
   it('lists shift templates filtered by pharmacist', async () => {
-    const response = (await GET({
-      url: 'http://localhost/api/pharmacist-shift-templates?user_id=user_2',
-    } as NextRequest))!;
+    const response = (await GET(
+      createRequest('http://localhost/api/pharmacist-shift-templates?user_id=user_2'),
+    ))!;
 
     expect(response.status).toBe(200);
     expect(pharmacistShiftTemplateFindManyMock).toHaveBeenCalledWith({
@@ -79,8 +87,8 @@ describe('/api/pharmacist-shift-templates', () => {
   });
 
   it('upserts a shift template', async () => {
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createRequest('http://localhost/api/pharmacist-shift-templates', {
         user_id: 'user_2',
         site_id: 'site_1',
         weekday: 1,
@@ -88,7 +96,7 @@ describe('/api/pharmacist-shift-templates', () => {
         available_from: '09:00',
         available_to: '18:00',
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {

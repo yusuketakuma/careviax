@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
@@ -25,16 +25,25 @@ vi.mock('@/server/services/data-explorer', () => ({
 
 import { PATCH } from './route';
 
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
 function createRequest(url: string, body?: unknown) {
-  return {
-    url,
+  const init: NextRequestInit = {
     method: 'PATCH',
-    headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
-    },
-    nextUrl: new URL(url),
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+    headers: { 'x-org-id': 'org_1', 'content-type': 'application/json' },
+  };
+  if (body !== undefined) {
+    init.body = JSON.stringify(body);
+  }
+  return new NextRequest(url, init);
+}
+
+function createInvalidJsonRequest(url: string) {
+  return new NextRequest(url, {
+    method: 'PATCH',
+    headers: { 'x-org-id': 'org_1', 'content-type': 'application/json' },
+    body: 'not-json',
+  } satisfies NextRequestInit);
 }
 
 describe('/api/admin/data-explorer/[table]/[id]', () => {
@@ -84,8 +93,7 @@ describe('/api/admin/data-explorer/[table]/[id]', () => {
   });
 
   it('returns 400 on invalid body', async () => {
-    const req = createRequest('http://localhost/api/admin/data-explorer/Patient/row_1');
-    (req as unknown as { json: () => Promise<null> }).json = vi.fn().mockRejectedValue(new Error('bad'));
+    const req = createInvalidJsonRequest('http://localhost/api/admin/data-explorer/Patient/row_1');
     const res = await PATCH(req, {
       params: Promise.resolve({ table: 'Patient', id: 'row_1' }),
     });

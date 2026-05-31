@@ -113,6 +113,8 @@ describe('data explorer service hardening', () => {
     const modelCountSql = String(modelTx.$queryRawUnsafe.mock.calls[0]?.[0] ?? '');
     expect(modelCountSql).toContain('FROM "Patient" AS t WHERE t."org_id" = $1');
     expect(modelCountSql).toContain('FROM "Organization" AS t WHERE t."id" = $1');
+    expect(modelCountSql).toContain('FROM "DrugMaster" AS t');
+    expect(modelCountSql).not.toContain('FROM "DrugMaster" AS t WHERE');
     expect(modelCountSql).not.toContain('FROM "Setting" AS t');
     expect(modelTx.$queryRawUnsafe.mock.calls[0]?.slice(1)).toEqual(['org_1']);
 
@@ -154,11 +156,57 @@ describe('data explorer service hardening', () => {
     expect(result.totalCountIsExact).toBe(false);
   });
 
-  it('rejects Prisma models that are not explicitly allowlisted', async () => {
-    await expect(listDataExplorerRows('org_1', 'Setting')).rejects.toThrow(
-      'Unknown table: Setting',
-    );
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+  it.each(['Setting', 'ExternalAccessGrant', 'PatientMcsMessage', 'PushSubscription'])(
+    'rejects excluded Prisma model %s before issuing SQL',
+    async (tableName) => {
+      await expect(listDataExplorerRows('org_1', tableName)).rejects.toThrow(
+        `Unknown table: ${tableName}`,
+      );
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('exposes formulary operational models with the expected coverage categories', async () => {
+    const tx = mockOrgContext(async (query) => {
+      if (query.includes('COUNT(*)')) {
+        return [
+          { table_name: 'FormularyChangeRequest', row_count: 2 },
+          { table_name: 'FormularyTemplate', row_count: 1 },
+          { table_name: 'DrugMasterChangeEvent', row_count: 3 },
+        ];
+      }
+      return [];
+    });
+
+    const result = await listDataExplorerModels('org_1');
+    const byModel = new Map(result.map((model) => [model.modelName, model]));
+    const sql = joinedSql(tx);
+
+    expect(byModel.get('FormularyChangeRequest')).toMatchObject({
+      coverageCategory: 'frontend_api',
+      rowCount: 2,
+      searchableFields: ['reason'],
+    });
+    expect(byModel.get('FormularyTemplate')).toMatchObject({
+      coverageCategory: 'frontend_api',
+      rowCount: 1,
+      searchableFields: ['name'],
+    });
+    expect(byModel.get('DrugMasterChangeEvent')).toMatchObject({
+      coverageCategory: 'api_only',
+      editableFieldCount: 0,
+      rowCount: 3,
+      searchableFields: ['yj_code', 'change_type'],
+    });
+    expect(sql).toContain('FROM "FormularyChangeRequest" AS t WHERE t."org_id" = $1');
+    expect(sql).toContain('FROM "FormularyTemplate" AS t WHERE t."org_id" = $1');
+    expect(sql).toContain('FROM "DrugMasterChangeEvent" AS t');
+    expect(sql).not.toContain('FROM "DrugMasterChangeEvent" AS t WHERE');
+    expect(sql).toContain('FROM "DrugMaster" AS t');
+    expect(sql).not.toContain('FROM "DrugMaster" AS t WHERE');
+    expect(sql.match(/FROM "FormularyChangeRequest" AS t/g)).toHaveLength(1);
+    expect(sql.match(/FROM "FormularyTemplate" AS t/g)).toHaveLength(1);
+    expect(sql.match(/FROM "DrugMasterChangeEvent" AS t/g)).toHaveLength(1);
   });
 
   it.each([

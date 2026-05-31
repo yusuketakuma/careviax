@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { enrichSchedulesWithHints } from './schedule-enrichment';
 
+type ScheduleFixture = Parameters<typeof enrichSchedulesWithHints>[0][number] & { id: string };
+
 describe('enrichSchedulesWithHints', () => {
   it('adds facility, workload, and handoff hints to related schedules', () => {
-    const enriched = enrichSchedulesWithHints([
+    const schedules: ScheduleFixture[] = [
       {
         id: 'schedule_1',
         pharmacist_id: 'user_1',
@@ -40,7 +42,8 @@ describe('enrichSchedulesWithHints', () => {
           },
         },
       },
-    ] as never);
+    ];
+    const enriched = enrichSchedulesWithHints(schedules);
 
     expect(enriched[0]).toMatchObject({
       facility_batch_id: 'batch_1',

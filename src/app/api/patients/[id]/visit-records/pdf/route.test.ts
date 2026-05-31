@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -37,6 +37,12 @@ vi.mock('@/server/services/export-audit', () => ({
 
 import { GET } from './route';
 
+function createGetRequest() {
+  return new NextRequest(
+    'http://localhost/api/patients/patient_1/visit-records/pdf?date_from=2026-03-01&date_to=2026-03-31',
+  );
+}
+
 describe('/api/patients/[id]/visit-records/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -53,14 +59,9 @@ describe('/api/patients/[id]/visit-records/pdf', () => {
       fileName: 'visit-records.pdf',
     });
 
-    const response = (await GET(
-      {
-        url: 'http://localhost/api/patients/patient_1/visit-records/pdf?date_from=2026-03-01&date_to=2026-03-31',
-      } as NextRequest,
-      {
-        params: Promise.resolve({ id: 'patient_1' }),
-      },
-    ))!;
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
 
     expect(response.status).toBe(200);
     expect(buildPatientVisitRecordsPdfMock).toHaveBeenCalledWith(
@@ -86,14 +87,9 @@ describe('/api/patients/[id]/visit-records/pdf', () => {
   it('does not audit or render a pdf when the scoped patient lookup fails', async () => {
     buildPatientVisitRecordsPdfMock.mockRejectedValue(new Error('患者が見つかりません'));
 
-    const response = (await GET(
-      {
-        url: 'http://localhost/api/patients/patient_1/visit-records/pdf?date_from=2026-03-01&date_to=2026-03-31',
-      } as NextRequest,
-      {
-        params: Promise.resolve({ id: 'patient_1' }),
-      },
-    ))!;
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
 
     expect(response.status).toBe(404);
     expect(pdfResponseMock).not.toHaveBeenCalled();

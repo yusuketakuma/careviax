@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
@@ -67,12 +67,7 @@ vi.mock('@/server/services/visit-schedule-billing-preview', () => ({
 import { GET } from './route';
 
 function createRequest(headers?: Record<string, string>) {
-  return {
-    url: 'http://localhost/api/dashboard/home/actions',
-    headers: {
-      get: (key: string) => headers?.[key] ?? null,
-    },
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/dashboard/home/actions', { headers });
 }
 
 describe('/api/dashboard/home/actions GET', () => {

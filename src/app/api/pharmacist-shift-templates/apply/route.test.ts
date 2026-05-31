@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -30,6 +30,14 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { POST } from './route';
+
+function createRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/pharmacist-shift-templates/apply', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
 
 describe('/api/pharmacist-shift-templates/apply POST', () => {
   beforeEach(() => {
@@ -63,12 +71,12 @@ describe('/api/pharmacist-shift-templates/apply POST', () => {
   });
 
   it('applies weekday templates across the target month', async () => {
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createRequest({
         month: '2026-04',
         user_id: 'user_2',
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(200);
     expect(pharmacistShiftTemplateFindManyMock).toHaveBeenCalledWith({

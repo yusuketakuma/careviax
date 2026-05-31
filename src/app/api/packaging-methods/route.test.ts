@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   packagingMethodFindManyMock,
@@ -13,18 +13,24 @@ const {
   withOrgContextMock: vi.fn(),
 }));
 
+type AuthenticatedTestRequest = NextRequest & {
+  orgId: string;
+  userId: string;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+};
+
 vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (
-    handler: (req: NextRequest & { orgId: string; userId: string; ipAddress?: string | null; userAgent?: string | null }) => Promise<Response>,
-  ) => {
+  withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => {
     return (req: NextRequest) =>
-      handler({
-        ...req,
-        orgId: 'org_1',
-        userId: 'user_1',
-        ipAddress: '127.0.0.1',
-        userAgent: 'vitest',
-      } as NextRequest & { orgId: string; userId: string; ipAddress?: string | null; userAgent?: string | null });
+      handler(
+        Object.assign(req, {
+          orgId: 'org_1',
+          userId: 'user_1',
+          ipAddress: '127.0.0.1',
+          userAgent: 'vitest',
+        }) as AuthenticatedTestRequest,
+      );
   },
 }));
 
@@ -41,6 +47,12 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { GET, POST } from './route';
+
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
+function createRequest(init?: NextRequestInit) {
+  return new NextRequest('http://localhost/api/packaging-methods', init);
+}
 
 describe('/api/packaging-methods', () => {
   beforeEach(() => {
@@ -77,7 +89,7 @@ describe('/api/packaging-methods', () => {
   });
 
   it('lists packaging methods', async () => {
-    const response = (await GET({} as NextRequest))!;
+    const response = (await GET(createRequest()))!;
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -86,15 +98,19 @@ describe('/api/packaging-methods', () => {
   });
 
   it('creates a packaging method with wrapped data', async () => {
-    const response = (await POST({
-      json: async () => ({
-        name: 'カレンダー',
-        description: '曜日別ケース',
-        icon_key: 'calendar',
-        sort_order: 2,
-        is_active: true,
+    const response = (await POST(
+      createRequest({
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'カレンダー',
+          description: '曜日別ケース',
+          icon_key: 'calendar',
+          sort_order: 2,
+          is_active: true,
+        }),
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(packagingMethodCreateMock).toHaveBeenCalledWith({

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   externalProfessionalFindFirstMock,
@@ -29,6 +29,9 @@ vi.mock('@/lib/db/client', () => ({
 
 import { GET } from './route';
 
+const createRequest = () =>
+  new NextRequest('http://localhost/api/admin/external-professionals/external_1/patients');
+
 describe('/api/admin/external-professionals/[id]/patients', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -52,7 +55,7 @@ describe('/api/admin/external-professionals/[id]/patients', () => {
   });
 
   it('lists linked patients via care team reverse reference', async () => {
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createRequest(), {
       params: Promise.resolve({ id: 'external_1' }),
     }))!;
 

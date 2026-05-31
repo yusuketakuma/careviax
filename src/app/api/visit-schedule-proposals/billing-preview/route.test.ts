@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { withAuthMock, careCaseFindFirstMock, buildVisitScheduleBillingPreviewMock } = vi.hoisted(
   () => ({
@@ -12,12 +12,11 @@ const { withAuthMock, careCaseFindFirstMock, buildVisitScheduleBillingPreviewMoc
       ) => {
         void _options;
         return (req: NextRequest) =>
-          handler({
-            ...req,
+          handler(Object.assign(req, {
             orgId: 'org_1',
             userId: 'user_1',
             role: 'pharmacist',
-          } as NextRequest & { orgId: string; userId: string; role: 'pharmacist' });
+          } as const));
       },
     ),
     careCaseFindFirstMock: vi.fn(),
@@ -70,9 +69,11 @@ describe('/api/visit-schedule-proposals/billing-preview GET', () => {
   });
 
   it('returns cadence preview with scheduled dates and next billable date', async () => {
-    const response = await GET({
-      url: 'http://localhost/api/visit-schedule-proposals/billing-preview?case_id=case_1&proposed_date=2026-04-03',
-    } as NextRequest);
+    const response = await GET(
+      new NextRequest(
+        'http://localhost/api/visit-schedule-proposals/billing-preview?case_id=case_1&proposed_date=2026-04-03',
+      ),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -117,9 +118,11 @@ describe('/api/visit-schedule-proposals/billing-preview GET', () => {
   it('denies unassigned preview requests before calling the billing-preview service', async () => {
     careCaseFindFirstMock.mockResolvedValueOnce(null);
 
-    const response = await GET({
-      url: 'http://localhost/api/visit-schedule-proposals/billing-preview?case_id=case_unassigned&proposed_date=2026-04-03',
-    } as NextRequest);
+    const response = await GET(
+      new NextRequest(
+        'http://localhost/api/visit-schedule-proposals/billing-preview?case_id=case_unassigned&proposed_date=2026-04-03',
+      ),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);

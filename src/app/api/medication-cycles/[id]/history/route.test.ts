@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -28,12 +28,7 @@ vi.mock('@/lib/db/client', () => ({
 import { GET } from './route';
 
 function createRequest(url: string) {
-  return {
-    url,
-    method: 'GET',
-    headers: { get: () => null },
-    nextUrl: new URL(url),
-  } as unknown as NextRequest;
+  return new NextRequest(url);
 }
 
 const authCtx = {

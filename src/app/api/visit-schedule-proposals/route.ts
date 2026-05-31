@@ -9,7 +9,7 @@ import {
 } from '@/lib/auth/visit-schedule-access';
 import {
   generateVisitScheduleProposalSchema,
-  proposalStatusValues,
+  proposalStatusSchema,
 } from '@/lib/validations/visit-schedule-proposal';
 import { resolveBillingRulesForDate } from '@/server/services/billing-rules';
 import { resolveBillingPayerBasis } from '@/server/services/billing-payer-basis';
@@ -161,12 +161,8 @@ export const GET = withAuth(
     const dateTo = searchParams.get('date_to');
     const assignmentWhere = buildVisitScheduleProposalAssignmentWhere(req);
 
-    const parsedStatus = status
-      ? proposalStatusValues.includes(status as (typeof proposalStatusValues)[number])
-        ? (status as (typeof proposalStatusValues)[number])
-        : null
-      : null;
-    if (status && !parsedStatus) {
+    const parsedStatus = status ? proposalStatusSchema.safeParse(status) : null;
+    if (parsedStatus && !parsedStatus.success) {
       return validationError('status が不正です');
     }
 
@@ -183,7 +179,7 @@ export const GET = withAuth(
               },
             }
           : {}),
-        ...(parsedStatus ? { proposal_status: parsedStatus } : {}),
+        ...(parsedStatus ? { proposal_status: parsedStatus.data } : {}),
         ...(dateFrom || dateTo
           ? {
               proposed_date: {

@@ -1,5 +1,6 @@
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { withOrgContext } from '@/lib/db/rls';
+import { readJsonObject } from '@/lib/db/json';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { createPrescriptionIntake } from '@/server/services/prescription-intake-service';
 import {
@@ -160,7 +161,7 @@ export const POST = withAuth(
       return validationError('処方受付の作成に失敗しました');
     }
 
-    const parsedData = draft.parsed_data as Record<string, unknown> | null;
+    const parsedData = readJsonObject(draft.parsed_data);
     const supplementalRecords = readJahisSupplementalRecords(parsedData?.supplementalRecords);
 
     // Update draft status to confirmed

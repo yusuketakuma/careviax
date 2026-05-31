@@ -108,4 +108,51 @@ describe('outbound-webhook', () => {
       },
     ]);
   });
+
+  it('filters unsupported persisted event values before dispatching', async () => {
+    webhookRegistrationFindManyMock.mockResolvedValue([
+      {
+        id: 'webhook_unsupported_only',
+        org_id: 'org_1',
+        url: 'https://hooks.example.com/unsupported',
+        secret: 'secret_unsupported',
+        events: ['patient.deleted', 'admin.created'],
+        is_active: true,
+        created_at: new Date('2026-04-05T00:00:00.000Z'),
+      },
+      {
+        id: 'webhook_mixed',
+        org_id: 'org_1',
+        url: 'https://hooks.example.com/patient',
+        secret: 'secret_patient',
+        events: ['patient.created', 'admin.created'],
+        is_active: true,
+        created_at: new Date('2026-04-05T00:00:00.000Z'),
+      },
+    ]);
+    lookupMock.mockResolvedValue([{ address: '8.8.8.8', family: 4 }]);
+    fetchMock.mockResolvedValue({ status: 202, ok: true });
+
+    const result = await dispatchWebhookEventForOrg('org_1', 'patient.created', {
+      patientId: 'patient_1',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://hooks.example.com/patient',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'X-PH-OS-Event': 'patient.created',
+        }),
+      }),
+    );
+    expect(result).toMatchObject([
+      {
+        webhookId: 'webhook_mixed',
+        event: 'patient.created',
+        statusCode: 202,
+        success: true,
+      },
+    ]);
+  });
 });

@@ -1,13 +1,17 @@
-import { Prisma } from '@prisma/client';
-import { isoOrNull } from '@/lib/utils/date';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { isoOrNull } from '@/lib/utils/date';
+import { normalizeJsonInput } from '@/lib/db/json';
 import { detectMedicationChanges as detectChangesShared } from '@/lib/prescription/medication-diff';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
+import type { BillingEvidenceBlockersReader } from '@/server/services/billing-evidence';
 import {
   getInquiryPresentationBadges,
   getInquiryPrimaryDetail,
 } from '@/lib/inquiries/presentation';
-import { listCommunicationQueue } from '@/server/services/communication-queue';
+import {
+  listCommunicationQueue,
+} from '@/server/services/communication-queue';
 import { generateVisitBriefAiSummary } from '@/server/services/visit-brief-ai';
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
 import { SET_METHOD_LABELS } from '@/lib/prescription/set-methods';
@@ -31,7 +35,136 @@ import type {
   VisitBriefUnresolvedItem,
 } from '@/types/visit-brief';
 
-type DbClient = typeof prisma | Prisma.TransactionClient;
+type FindManyDelegate<T> = {
+  findMany(args: unknown): Promise<T[]>;
+};
+
+type FindFirstDelegate<T> = {
+  findFirst(args: unknown): Promise<T | null>;
+};
+
+type VisitBriefDataReader = BillingEvidenceBlockersReader & {
+    auditLog?: {
+      count?(args: unknown): Promise<number>;
+      create?(args: unknown): Promise<unknown>;
+    };
+    careCase: FindManyDelegate<{ id: string; required_visit_support?: unknown }> & {
+      findFirst?(args: unknown): Promise<{ required_visit_support: unknown } | null>;
+    };
+    conferenceNote?: FindManyDelegate<{
+      id: string;
+      title: string;
+      conference_date: Date;
+      action_items: unknown;
+      metadata: unknown;
+    }>;
+    communicationEvent: FindManyDelegate<{
+      event_type: string;
+      subject: string | null;
+      content: string | null;
+      counterpart_name: string | null;
+      occurred_at: Date;
+      direction: string;
+      channel: string;
+    }>;
+    communicationRequest: FindManyDelegate<{
+      request_type: string;
+      subject: string;
+      content: string;
+      status: string;
+      due_date: Date | null;
+      requested_at: Date;
+    }>;
+    drugMaster?: FindManyDelegate<DrugMasterEnrichment>;
+    drugPackageInsert: FindManyDelegate<{
+      drug_master: { yj_code: string; drug_name: string };
+      contraindications: unknown;
+      adverse_effects: unknown;
+      precautions_elderly: unknown;
+    }>;
+    jahisSupplementalRecord?: FindManyDelegate<JahisSupplementalRecordForBrief>;
+    inquiryRecord: FindManyDelegate<{
+      reason: string;
+      inquiry_content: string;
+      proposal_origin?: 'post_inquiry' | 'pre_issuance' | null;
+      residual_adjustment?: boolean | null;
+      change_detail?: string | null;
+    }>;
+    medicationCycle: FindManyDelegate<{ id: string }>;
+    medicationIssue: FindManyDelegate<{
+      title: string;
+      description: string;
+      priority: string;
+      category: string | null;
+    }>;
+    medicationProfile: FindManyDelegate<{
+      drug_name: string;
+      dose: string | null;
+      frequency: string | null;
+      start_date: Date | null;
+      end_date: Date | null;
+      prescriber: string | null;
+      source: string | null;
+    }>;
+    patient: FindFirstDelegate<{
+      id: string;
+      name: string;
+      scheduling_preference?: {
+        visit_before_contact_required: boolean | null;
+      } | null;
+    }>;
+    patientSelfReport: FindManyDelegate<{
+      subject: string;
+      category: string;
+      content: string;
+      status: string;
+      reported_by_name: string;
+      requested_callback: boolean;
+      created_at: Date;
+    }>;
+    prescriptionIntake: FindManyDelegate<
+      {
+        prescribed_date: Date;
+        prescriber_name: string | null;
+        lines: PrescriptionLineLike[];
+      }
+    >;
+    residence?: FindFirstDelegate<{
+      facility: {
+        acceptance_time_from: Date | null;
+        acceptance_time_to: Date | null;
+        notes: string | null;
+      } | null;
+    }>;
+    setPlan: FindFirstDelegate<{
+      set_method?: string | null;
+      target_period_start?: Date | null;
+      target_period_end?: Date | null;
+      notes?: string | null;
+      audits?: Array<{ result: string }>;
+    }>;
+    task: FindManyDelegate<{
+      title: string;
+      description: string | null;
+      priority: string;
+    }>;
+    visitScheduleContactLog: FindManyDelegate<{
+      outcome: string;
+      contact_name: string | null;
+      note: string | null;
+      callback_due_at: Date | null;
+      called_at: Date;
+    }>;
+    visitRecord: FindFirstDelegate<{
+      soap_plan: string | null;
+    }> & {
+      findMany?(args: unknown): Promise<Array<{ id: string }>>;
+    };
+  };
+
+export type VisitBriefDbClient = typeof prisma | Prisma.TransactionClient | VisitBriefDataReader;
+
+type DbClient = VisitBriefDbClient;
 
 function compactTimelineValues(values: Array<string | null | undefined | false>) {
   return values.filter(
@@ -78,6 +211,9 @@ async function listVisitBriefBillingRefs(
   caseIds: string[],
 ) {
   if (args.caseIds === undefined || caseIds.length === 0) {
+    return { visitRecordIds: undefined, cycleIds: undefined };
+  }
+  if (typeof db.visitRecord.findMany !== 'function') {
     return { visitRecordIds: undefined, cycleIds: undefined };
   }
 
@@ -1331,12 +1467,15 @@ export async function getPatientVisitBrief(
     patient.scheduling_preference?.visit_before_contact_required ?? null;
   const baselineContext = buildBaselineContext(intakeData, visitBeforeContactRequired);
 
-  const communicationQueue = await listCommunicationQueue(db, {
-    orgId: args.orgId,
-    patientId: args.patientId,
-    caseIds: args.caseIds,
-    limit: 6,
-  });
+  const communicationQueue = await listCommunicationQueue(
+    db,
+    {
+      orgId: args.orgId,
+      patientId: args.patientId,
+      caseIds: args.caseIds,
+      limit: 6,
+    },
+  );
 
   const currentIntake = latestIntakes[0] ?? null;
   const previousIntake = latestIntakes[1] ?? null;
@@ -1356,7 +1495,7 @@ export async function getPatientVisitBrief(
   const drugCodes = currentLines.map((l) => l.drug_code).filter((c): c is string => c !== null);
 
   const drugMasters =
-    drugCodes.length > 0
+    drugCodes.length > 0 && db.drugMaster
       ? await db.drugMaster.findMany({
           where: { yj_code: { in: drugCodes } },
           select: {
@@ -1473,7 +1612,7 @@ export async function getPatientVisitBrief(
           : 'visit_brief_generated_success',
         target_type: 'visit_brief',
         target_id: aiSummary.generation_id,
-        changes: {
+        changes: normalizeJsonInput({
           patient_id: args.patientId,
           context: args.context,
           provider: aiSummary.provider,
@@ -1483,7 +1622,7 @@ export async function getPatientVisitBrief(
           source_refs: aiSummary.source_refs,
           duration_ms: aiSummary.duration_ms,
           generated_at: aiSummary.generated_at,
-        } as Prisma.InputJsonValue,
+        }) ?? {},
       },
     });
   }

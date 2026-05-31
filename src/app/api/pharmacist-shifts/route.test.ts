@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
+
+type AuthenticatedTestRequest = NextRequest & { orgId: string; userId: string; role: string };
 
 const {
   pharmacistShiftFindManyMock,
@@ -14,8 +16,7 @@ const {
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: NextRequest & { orgId: string; userId: string; role: string }) => Promise<Response>) =>
-    handler,
+  withAuth: (handler: (req: AuthenticatedTestRequest) => Promise<Response>) => handler,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -36,6 +37,17 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { GET, POST } from './route';
 
+function createRequest(url: string, body?: unknown): AuthenticatedTestRequest {
+  return Object.assign(
+    new NextRequest(url, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
+    { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' },
+  );
+}
+
 describe('/api/pharmacist-shifts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -52,12 +64,11 @@ describe('/api/pharmacist-shifts', () => {
   });
 
   it('filters shifts by month range and related ids', async () => {
-    const response = (await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      url: 'http://localhost/api/pharmacist-shifts?month=2026-04-01&user_id=user_2&site_id=site_1',
-    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+    const response = (await GET(
+      createRequest(
+        'http://localhost/api/pharmacist-shifts?month=2026-04-01&user_id=user_2&site_id=site_1',
+      ),
+    ))!;
 
     expect(response.status).toBe(200);
     expect(pharmacistShiftFindManyMock).toHaveBeenCalledWith({
@@ -79,11 +90,8 @@ describe('/api/pharmacist-shifts', () => {
   });
 
   it('upserts shifts and updates site_id on existing rows', async () => {
-    const response = (await POST({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      json: async () => ({
+    const response = (await POST(
+      createRequest('http://localhost/api/pharmacist-shifts', {
         site_id: 'site_2',
         user_id: 'user_2',
         date: '2026-04-15',
@@ -92,7 +100,7 @@ describe('/api/pharmacist-shifts', () => {
         available_to: '12:00:00',
         note: '午前のみ',
       }),
-    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {

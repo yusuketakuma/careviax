@@ -87,4 +87,62 @@ describe('visit-brief-ai', () => {
       must_check_today: ['残薬確認', 'ふらつき確認'],
     });
   });
+
+  it('falls back when the AI response content is not a JSON object', async () => {
+    process.env.VISIT_BRIEF_AI_PROVIDER = 'openai';
+    process.env.VISIT_BRIEF_AI_API_KEY = 'test-key';
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify(['unexpected']),
+            },
+          },
+        ],
+      }),
+    } as Response);
+
+    const result = await generateVisitBriefAiSummary(input);
+
+    expect(result).toMatchObject({
+      provider: 'rule',
+      requested_provider: 'openai',
+      is_fallback: true,
+      model: 'gpt-5-mini',
+      fallback_reason: 'invalid_response',
+      headline: '直近処方で 1 件の変更があります。',
+    });
+  });
+
+  it('falls back with invalid_response when the AI response envelope is malformed', async () => {
+    process.env.VISIT_BRIEF_AI_PROVIDER = 'openai';
+    process.env.VISIT_BRIEF_AI_API_KEY = 'test-key';
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: {
+          message: {
+            content: JSON.stringify({
+              headline: 'bad envelope',
+              bullets: [],
+              must_check_today: [],
+            }),
+          },
+        },
+      }),
+    } as Response);
+
+    const result = await generateVisitBriefAiSummary(input);
+
+    expect(result).toMatchObject({
+      provider: 'rule',
+      requested_provider: 'openai',
+      is_fallback: true,
+      model: 'gpt-5-mini',
+      fallback_reason: 'invalid_response',
+      headline: '直近処方で 1 件の変更があります。',
+    });
+  });
 });

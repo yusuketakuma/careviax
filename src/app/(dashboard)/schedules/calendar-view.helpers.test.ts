@@ -7,6 +7,12 @@ import {
   type CalendarVisitSchedule,
 } from './calendar-view.helpers';
 
+function jsonResponse(body: unknown) {
+  return new Response(JSON.stringify(body), {
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 describe('calendar-view.helpers', () => {
   it('sorts schedules by route order, time, and patient name', () => {
     const schedules: CalendarVisitSchedule[] = [
@@ -115,28 +121,26 @@ describe('calendar-view.helpers', () => {
 
   it('follows pagination until all schedules are collected', async () => {
     const fetchImpl = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
           data: [{ id: 'schedule_1' }],
           hasMore: true,
           nextCursor: 'cursor_1',
         }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
           data: [{ id: 'schedule_2' }],
           hasMore: false,
         }),
-      });
+      );
 
     const schedules = await fetchCalendarSchedules({
       orgId: 'org_1',
       dateFrom: '2026-03-01',
       dateTo: '2026-03-31',
-      fetchImpl: fetchImpl as unknown as typeof fetch,
+      fetchImpl,
       limit: 1,
     });
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   withAuthMock,
@@ -94,11 +94,34 @@ vi.mock('@/lib/patient/facility-reference', () => ({
 
 import { GET, POST } from './route';
 
-function createRequest(body?: unknown) {
-  return {
-    headers: { get: () => null },
-    json: async () => body,
-  } as unknown as NextRequest;
+type AuthenticatedTestRequest = NextRequest & {
+  orgId: string;
+  userId: string;
+  role: string;
+};
+
+function createAuthenticatedRequest(
+  url = 'http://localhost/api/patients',
+  init?: ConstructorParameters<typeof NextRequest>[1],
+  auth: { orgId: string; userId: string; role: string } = {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'pharmacist',
+  },
+): AuthenticatedTestRequest {
+  return Object.assign(new NextRequest(url, init), auth);
+}
+
+function createJsonRequest(body: unknown, auth?: { orgId: string; userId: string; role: string }) {
+  return createAuthenticatedRequest(
+    'http://localhost/api/patients',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+    auth,
+  );
 }
 
 describe('/api/patients GET', () => {
@@ -285,13 +308,11 @@ describe('/api/patients GET', () => {
   });
 
   it('supports advanced patient filters and enriches risk, consent, and assignment fields', async () => {
-    const response = (await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      url: 'http://localhost/api/patients?q=青葉&facility_mode=facility&consent_status=complete&risk_level=watch&last_visit=within_30_days',
-      headers: { get: () => null },
-    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+    const response = (await GET(
+      createAuthenticatedRequest(
+        'http://localhost/api/patients?q=青葉&facility_mode=facility&consent_status=complete&risk_level=watch&last_visit=within_30_days',
+      ),
+    ))!;
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -373,13 +394,11 @@ describe('/api/patients GET', () => {
   });
 
   it('supports case, building, billing, and last-visit date filters together', async () => {
-    const response = (await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      url: 'http://localhost/api/patients?case_status=active&building_id=facility_alpha&billing_support=true&last_visit_from=2026-03-01&last_visit_to=2026-03-31',
-      headers: { get: () => null },
-    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+    const response = (await GET(
+      createAuthenticatedRequest(
+        'http://localhost/api/patients?case_status=active&building_id=facility_alpha&billing_support=true&last_visit_from=2026-03-01&last_visit_to=2026-03-31',
+      ),
+    ))!;
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -395,13 +414,9 @@ describe('/api/patients GET', () => {
   });
 
   it('rejects invalid case_status values', async () => {
-    const response = (await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      url: 'http://localhost/api/patients?case_status=active,invalid_status',
-      headers: { get: () => null },
-    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+    const response = (await GET(
+      createAuthenticatedRequest('http://localhost/api/patients?case_status=active,invalid_status'),
+    ))!;
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
@@ -413,13 +428,9 @@ describe('/api/patients GET', () => {
   });
 
   it('rejects invalid case_status query values before reaching patient filtering', async () => {
-    const response = (await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      url: 'http://localhost/api/patients?case_status=active,unknown',
-      headers: { get: () => null },
-    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+    const response = (await GET(
+      createAuthenticatedRequest('http://localhost/api/patients?case_status=active,unknown'),
+    ))!;
 
     expect(response.status).toBe(400);
 
@@ -430,16 +441,15 @@ describe('/api/patients GET', () => {
 
     expect(payload.code).toBe('VALIDATION_ERROR');
     expect(payload.details?.case_status?.[0]).toBe('case_status の値が不正です');
+    expect(patientFindManyMock).not.toHaveBeenCalled();
   });
 
   it('supports payer-basis and primary pharmacist filters', async () => {
-    const response = (await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      url: 'http://localhost/api/patients?payer_basis=medical&primary_pharmacist_id=user_1',
-      headers: { get: () => null },
-    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+    const response = (await GET(
+      createAuthenticatedRequest(
+        'http://localhost/api/patients?payer_basis=medical&primary_pharmacist_id=user_1',
+      ),
+    ))!;
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -457,13 +467,11 @@ describe('/api/patients GET', () => {
   it('supports readiness_issue filters for onboarding gaps', async () => {
     firstVisitDocumentFindManyMock.mockResolvedValue([]);
 
-    const response = (await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      url: 'http://localhost/api/patients?readiness_issue=missing_primary_physician',
-      headers: { get: () => null },
-    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+    const response = (await GET(
+      createAuthenticatedRequest(
+        'http://localhost/api/patients?readiness_issue=missing_primary_physician',
+      ),
+    ))!;
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -523,13 +531,9 @@ describe('/api/patients GET', () => {
     queryRawMock.mockResolvedValue([]);
     listPatientRiskSummariesMock.mockResolvedValue([]);
 
-    const response = (await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      url: 'http://localhost/api/patients?cursor=patient_1&limit=1',
-      headers: { get: () => null },
-    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+    const response = (await GET(
+      createAuthenticatedRequest('http://localhost/api/patients?cursor=patient_1&limit=1'),
+    ))!;
 
     expect(response.status).toBe(200);
     expect(patientFindManyMock).toHaveBeenCalledWith(
@@ -541,13 +545,13 @@ describe('/api/patients GET', () => {
   });
 
   it('masks phone and insurance fields for users without sensitive data access', async () => {
-    const response = (await GET({
-      orgId: 'org_1',
-      userId: 'user_2',
-      role: 'clerk',
-      url: 'http://localhost/api/patients',
-      headers: { get: () => null },
-    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+    const response = (await GET(
+      createAuthenticatedRequest('http://localhost/api/patients', undefined, {
+        orgId: 'org_1',
+        userId: 'user_2',
+        role: 'clerk',
+      }),
+    ))!;
 
     if (!response) throw new Error('response is required');
     const payload = (await response.json()) as {
@@ -574,13 +578,13 @@ describe('/api/patients GET', () => {
   });
 
   it('masks address and disables detail viewing for external viewers', async () => {
-    const response = (await GET({
-      orgId: 'org_1',
-      userId: 'user_ext',
-      role: 'external_viewer',
-      url: 'http://localhost/api/patients',
-      headers: { get: () => null },
-    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+    const response = (await GET(
+      createAuthenticatedRequest('http://localhost/api/patients', undefined, {
+        orgId: 'org_1',
+        userId: 'user_ext',
+        role: 'external_viewer',
+      }),
+    ))!;
 
     if (!response) throw new Error('response is required');
     const payload = (await response.json()) as {
@@ -616,15 +620,20 @@ describe('/api/patients GET', () => {
       name: '訪問 花子',
     });
 
-    const response = (await POST({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      ...createRequest({
+    const response = (await POST(
+      createJsonRequest({
         name: '訪問 花子',
         gender: 'female',
         billing_support_flag: true,
         address: '東京都千代田区1-2-3',
+        allergy_info: [
+          {
+            drug_name: 'ペニシリン',
+            category: 'drug',
+            severity: 'moderate',
+            confirmed_at: '2026-03-01',
+          },
+        ],
         requester: {
           organization_name: '千代田クリニック',
           profession: 'physician',
@@ -653,7 +662,7 @@ describe('/api/patients GET', () => {
           special_medical_procedures: ['narcotics', 'home_oxygen'],
         },
       }),
-    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(assertFacilityReferenceMock).toHaveBeenCalled();
@@ -664,6 +673,14 @@ describe('/api/patients GET', () => {
           phone: '03-3333-4444',
           birth_date: expect.any(Date),
           billing_support_flag: true,
+          allergy_info: [
+            {
+              drug_name: 'ペニシリン',
+              category: 'drug',
+              severity: 'moderate',
+              confirmed_at: '2026-03-01',
+            },
+          ],
         }),
       }),
     );
@@ -733,11 +750,8 @@ describe('/api/patients GET', () => {
       regular_visit_weekdays: [1, 3, 5],
     });
 
-    const response = (await POST({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      ...createRequest({
+    const response = (await POST(
+      createJsonRequest({
         name: '施設 利用者',
         name_kana: 'シセツ リヨウシャ',
         birth_date: '1945-02-03',
@@ -745,7 +759,7 @@ describe('/api/patients GET', () => {
         address: '東京都新宿区1-2-3',
         facility_id: 'facility_1',
       }),
-    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(getFacilityVisitDefaultsMock).toHaveBeenCalledWith(

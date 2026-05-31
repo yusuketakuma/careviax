@@ -22,6 +22,8 @@
  *        ph-os/staging/app-secrets
  */
 
+import { readJsonObject } from '@/lib/db/json';
+
 import { APP_ENV } from './app-env';
 
 type SecretsManagerModule = {
@@ -43,6 +45,14 @@ export interface AppSecrets {
   JOB_API_KEY: string;
 }
 
+const REQUIRED_SECRET_KEYS = [
+  'DATABASE_URL',
+  'NEXTAUTH_SECRET',
+  'ENCRYPTION_KEY',
+  'JWT_SIGNING_SECRET',
+  'JOB_API_KEY',
+] as const satisfies readonly (keyof AppSecrets)[];
+
 // ---------------------------------------------------------------------------
 // Internal cache
 // ---------------------------------------------------------------------------
@@ -60,6 +70,38 @@ const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 
 function secretName(): string {
   return `ph-os/${APP_ENV}/app-secrets`;
+}
+
+export function parseAppSecrets(raw: string, sourceLabel = `Secret "${secretName()}"`): AppSecrets {
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    throw new Error(`${sourceLabel} is not valid JSON`);
+  }
+
+  const record = readJsonObject(parsed);
+  if (!record) {
+    throw new Error(`${sourceLabel} must be a JSON object`);
+  }
+
+  const missing = REQUIRED_SECRET_KEYS.filter((key) => {
+    const value = record[key];
+    return typeof value !== 'string' || value.trim() === '';
+  });
+
+  if (missing.length > 0) {
+    throw new Error(`${sourceLabel} is missing required string keys: ${missing.join(', ')}`);
+  }
+
+  return {
+    DATABASE_URL: record.DATABASE_URL as string,
+    NEXTAUTH_SECRET: record.NEXTAUTH_SECRET as string,
+    ENCRYPTION_KEY: record.ENCRYPTION_KEY as string,
+    JWT_SIGNING_SECRET: record.JWT_SIGNING_SECRET as string,
+    JOB_API_KEY: record.JOB_API_KEY as string,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -85,24 +127,7 @@ async function fetchFromSecretsManager(): Promise<AppSecrets> {
     throw new Error(`Secret "${secretName()}" has no SecretString value`);
   }
 
-  const parsed = JSON.parse(raw) as Partial<AppSecrets>;
-
-  const required: (keyof AppSecrets)[] = [
-    'DATABASE_URL',
-    'NEXTAUTH_SECRET',
-    'ENCRYPTION_KEY',
-    'JWT_SIGNING_SECRET',
-    'JOB_API_KEY',
-  ];
-
-  const missing = required.filter((k) => !parsed[k]);
-  if (missing.length > 0) {
-    throw new Error(
-      `Secret "${secretName()}" is missing required keys: ${missing.join(', ')}`,
-    );
-  }
-
-  return parsed as AppSecrets;
+  return parseAppSecrets(raw, `Secret "${secretName()}"`);
 }
 
 // ---------------------------------------------------------------------------
@@ -123,10 +148,9 @@ async function loadSecretsManagerModule(): Promise<SecretsManagerModule | null> 
   if (!cachedSecretsManagerModule) {
     cachedSecretsManagerModule = (async () => {
       try {
-        const dynamicImport = new Function(
-          'specifier',
-          'return import(specifier)'
-        ) as (specifier: string) => Promise<unknown>;
+        const dynamicImport = new Function('specifier', 'return import(specifier)') as (
+          specifier: string,
+        ) => Promise<unknown>;
         const loaded = await dynamicImport('@aws-sdk/client-secrets-manager');
 
         if (
@@ -165,11 +189,7 @@ export async function getSecrets(): Promise<AppSecrets> {
   }
 
   const now = Date.now();
-  if (
-    cachedSecrets &&
-    cachePopulatedAt &&
-    now - cachePopulatedAt < CACHE_TTL_MS
-  ) {
+  if (cachedSecrets && cachePopulatedAt && now - cachePopulatedAt < CACHE_TTL_MS) {
     return cachedSecrets;
   }
 
@@ -178,7 +198,7 @@ export async function getSecrets(): Promise<AppSecrets> {
   } catch (error) {
     console.warn(
       `[secrets] Falling back to environment variables for ${secretName()}:`,
-      error instanceof Error ? error.message : String(error)
+      error instanceof Error ? error.message : String(error),
     );
     cachedSecrets = fromEnv();
   }
@@ -190,9 +210,7 @@ export async function getSecrets(): Promise<AppSecrets> {
  * Convenience helper — fetches secrets then returns a single value.
  * Prefer `getSecrets()` when you need multiple keys to avoid redundant calls.
  */
-export async function getSecret<K extends keyof AppSecrets>(
-  key: K,
-): Promise<AppSecrets[K]> {
+export async function getSecret<K extends keyof AppSecrets>(key: K): Promise<AppSecrets[K]> {
   const secrets = await getSecrets();
   return secrets[key];
 }

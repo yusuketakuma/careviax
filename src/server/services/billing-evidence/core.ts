@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { normalizeJsonInput } from '@/lib/db/json';
 import { findActiveVisitConsent, findCurrentManagementPlan } from '../management-plans';
 import { upsertOperationalTask, resolveOperationalTasks } from '../operational-tasks';
 import { resolveBillingPayerBasis } from '../billing-payer-basis';
@@ -9,12 +10,159 @@ import {
   buildBillingCandidateSpecs,
   ensureHomeCareBillingSsot,
   HOME_CARE_BILLING_RULESET_VERSION,
+  type HomeCareBillingRuleEngineTx,
 } from '../home-care-billing-ssot';
 import { resolveBillingRuntimeContext } from '../billing-runtime-context';
 import { getHomeVisit2026BillingEligibility } from '@/lib/visits/home-visit-2026-evidence';
+import {
+  getHomeVisitIntake,
+  getHomeVisitMedicationSupportMethods,
+  getHomeVisitSpecialMedicalProcedures,
+} from '@/lib/patient/home-visit-intake';
 import type { StructuredSoap } from '@/types/structured-soap';
 
 export type Tx = Prisma.TransactionClient | typeof prisma;
+
+export type BillingEvidenceBlockersReader = {
+  billingEvidence: {
+    findMany(args: unknown): Promise<
+      Array<{
+        id: string;
+        visit_record_id: string | null;
+        claimable: boolean;
+        exclusion_reason: string | null;
+        same_month_exclusion_flags: Prisma.JsonValue | null;
+        validation_notes: string | null;
+      }>
+    >;
+  };
+};
+
+type UpsertBillingEvidenceReader = HomeCareBillingRuleEngineTx & {
+  billingCandidate: {
+    findMany(args: unknown): Promise<
+      Array<{
+        billing_code: string;
+        status: string;
+        source_snapshot: Prisma.JsonValue | null;
+      }>
+    >;
+  };
+  billingEvidence: {
+    upsert(args: unknown): Promise<unknown>;
+  };
+  businessHoliday: {
+    findFirst(args: unknown): Promise<{ id: string } | null>;
+  };
+  careReport: {
+    findMany(args: unknown): Promise<Array<{ id: string; status: string }>>;
+  };
+  conferenceNote: {
+    findMany(args: unknown): Promise<
+      Array<{
+        id: string;
+        metadata: Prisma.JsonValue | null;
+        generated_report_id: string | null;
+      }>
+    >;
+  };
+  deliveryRecord: {
+    findMany(
+      args: unknown,
+    ): Promise<Array<{ id: string; report_id?: string | null; status: string }>>;
+  };
+  jahisSupplementalRecord?: {
+    findMany?(args: unknown): Promise<
+      Array<{
+        record_type: string;
+        record_label: string;
+        summary: string | null;
+        raw_line: string;
+      }>
+    >;
+  };
+  patient: {
+    findFirst(args: unknown): Promise<{
+      id: string;
+      birth_date: Date | null;
+      cases?: Array<{ required_visit_support: Prisma.JsonValue | null }>;
+    } | null>;
+  };
+  patientInsurance: {
+    findFirst(args: unknown): Promise<{
+      id: string;
+      number: string | null;
+      insurance_type: 'medical' | 'care' | 'public_subsidy';
+      is_active: boolean;
+    } | null>;
+  };
+  consentRecord: {
+    findFirst(args: unknown): Promise<{ id: string; expiry_date?: Date | null } | null>;
+  };
+  managementPlan: {
+    findFirst(args: unknown): Promise<{
+      id: string;
+      status?: string;
+      next_review_date: Date | null;
+    } | null>;
+  };
+  pharmacySiteInsuranceConfig: {
+    findFirst(args: Prisma.PharmacySiteInsuranceConfigFindFirstArgs): Promise<{
+      id: string;
+      revision_code: string;
+      effective_from: Date;
+      effective_to: Date | null;
+      config: Prisma.JsonValue | null;
+    } | null>;
+  };
+  prescriptionIntake: {
+    findFirst(args: unknown): Promise<{
+      prescription_category: string | null;
+      emergency_category: string | null;
+    } | null>;
+  };
+  residence: {
+    count(args: unknown): Promise<number>;
+    findFirst(args: unknown): Promise<{
+      building_id: string | null;
+      unit_name: string | null;
+      facility_id: string | null;
+      facility_unit_id: string | null;
+      facility: {
+        id: string;
+        facility_type: string | null;
+        total_units: number | null;
+        units: Array<{ id: string }>;
+      } | null;
+    } | null>;
+  };
+  task: {
+    create(args: unknown): Promise<unknown>;
+    updateMany(args: unknown): Promise<unknown>;
+    upsert(args: unknown): Promise<unknown>;
+  };
+  visitRecord: {
+    count(args: unknown): Promise<number>;
+    findFirst(args: unknown): Promise<{
+      id: string;
+      patient_id: string;
+      visit_date: Date;
+      outcome_status: string;
+      soap_objective?: string | null;
+      soap_assessment?: string | null;
+      structured_soap?: Prisma.JsonValue | null;
+      schedule: {
+        cycle_id: string | null;
+        case_id: string;
+        pharmacist_id: string | null;
+        visit_type: string;
+        site_id: string | null;
+      } | null;
+    } | null>;
+  };
+};
+
+type UpsertBillingEvidenceTx = Tx | UpsertBillingEvidenceReader;
 
 export type BillingCandidateWorkflowState = {
   review_state: 'pending' | 'reviewed';
@@ -186,6 +334,24 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function isInputJsonObject(
+  value: Prisma.InputJsonValue | null | undefined,
+): value is Prisma.InputJsonObject {
+  return (
+    typeof value === 'object' && value !== null && !Array.isArray(value) && !('toJSON' in value)
+  );
+}
+
+function normalizeInputJsonObject(value: unknown): Prisma.InputJsonObject {
+  const normalized = normalizeJsonInput(value);
+  return isInputJsonObject(normalized) ? normalized : {};
+}
+
+function normalizeInputJsonArray(value: unknown): Prisma.InputJsonArray {
+  const normalized = normalizeJsonInput(value);
+  return Array.isArray(normalized) ? normalized : [];
+}
+
 function csvFromUnique(values: Array<string | null | undefined>) {
   const unique = Array.from(
     new Set(
@@ -196,7 +362,7 @@ function csvFromUnique(values: Array<string | null | undefined>) {
 }
 
 async function listJahisSupplementalRecordsForBilling(
-  tx: Tx,
+  tx: UpsertBillingEvidenceTx,
   args: { orgId: string; patientId: string },
 ) {
   const client = (
@@ -249,9 +415,9 @@ function readConferenceCandidateLinkage(sourceSnapshot: Prisma.JsonValue | null)
 }
 
 function hasInitialHomeVisitAssessmentEvidence(record: {
-  soap_objective: string | null;
-  soap_assessment: string | null;
-  structured_soap: Prisma.JsonValue | null;
+  soap_objective?: string | null;
+  soap_assessment?: string | null;
+  structured_soap?: Prisma.JsonValue | null;
 }) {
   if (record.soap_objective?.trim() || record.soap_assessment?.trim()) {
     return true;
@@ -278,7 +444,17 @@ function hasInitialHomeVisitAssessmentEvidence(record: {
 }
 
 export async function evaluateInitialHomeVisitAssessmentRequirement(
-  tx: Tx,
+  tx: {
+    visitRecord: {
+      count(args: unknown): Promise<number>;
+      findFirst(args: unknown): Promise<{
+        id: string;
+        soap_objective?: string | null;
+        soap_assessment?: string | null;
+        structured_soap?: Prisma.JsonValue | null;
+      } | null>;
+    };
+  },
   args: { orgId: string; patientId: string; targetDate: Date },
 ) {
   const cutoff = new Date(args.targetDate);
@@ -339,7 +515,7 @@ export async function evaluateInitialHomeVisitAssessmentRequirement(
 }
 
 export function readBillingCandidateWorkflowState(
-  sourceSnapshot: Prisma.JsonValue | null | undefined,
+  sourceSnapshot: unknown,
 ): BillingCandidateWorkflowState {
   const workflow =
     isRecord(sourceSnapshot) && isRecord(sourceSnapshot.billing_close)
@@ -361,10 +537,10 @@ export function readBillingCandidateWorkflowState(
 }
 
 export function writeBillingCandidateWorkflowState(
-  sourceSnapshot: Prisma.JsonValue | null | undefined,
+  sourceSnapshot: unknown,
   workflow: Partial<BillingCandidateWorkflowState>,
-): Prisma.InputJsonValue {
-  const current = isRecord(sourceSnapshot) ? sourceSnapshot : {};
+): Prisma.InputJsonObject {
+  const current = normalizeInputJsonObject(sourceSnapshot);
   const nextWorkflow = {
     ...readBillingCandidateWorkflowState(sourceSnapshot),
     ...workflow,
@@ -373,7 +549,7 @@ export function writeBillingCandidateWorkflowState(
   return {
     ...current,
     billing_close: nextWorkflow,
-  } as Prisma.InputJsonValue;
+  };
 }
 
 export function buildValidationLayers(args: {
@@ -477,7 +653,10 @@ export function mergeCandidateSourceSnapshot(args: {
  */
 type PrimaryResidenceForBilling = Awaited<ReturnType<typeof fetchPrimaryResidenceForBilling>>;
 
-async function fetchPrimaryResidenceForBilling(tx: Tx, args: { orgId: string; patientId: string }) {
+async function fetchPrimaryResidenceForBilling(
+  tx: UpsertBillingEvidenceTx,
+  args: { orgId: string; patientId: string },
+) {
   return tx.residence.findFirst({
     where: {
       org_id: args.orgId,
@@ -502,7 +681,7 @@ async function fetchPrimaryResidenceForBilling(tx: Tx, args: { orgId: string; pa
 }
 
 async function resolveBuildingPatientCount(
-  tx: Tx,
+  tx: UpsertBillingEvidenceTx,
   args: { orgId: string; patientId: string },
   primaryResidence?: PrimaryResidenceForBilling,
 ) {
@@ -557,7 +736,7 @@ async function resolveBuildingPatientCount(
 }
 
 async function resolveBillingAssignment(
-  tx: Tx,
+  tx: UpsertBillingEvidenceTx,
   args: { orgId: string; patientId: string },
   primaryResidence?: PrimaryResidenceForBilling,
 ) {
@@ -712,7 +891,7 @@ export function describeBillingEvidenceBlockers(args: {
 }
 
 export async function listBillingEvidenceBlockers(
-  tx: Tx,
+  tx: Tx | BillingEvidenceBlockersReader,
   args: {
     orgId: string;
     patientId?: string;
@@ -766,7 +945,7 @@ export function asRecord(value: Prisma.JsonValue | null | undefined) {
 }
 
 export async function upsertBillingEvidenceForVisit(
-  tx: Tx,
+  tx: UpsertBillingEvidenceTx,
   args: { orgId: string; visitRecordId: string },
 ) {
   const visitRecord = await tx.visitRecord.findFirst({
@@ -813,13 +992,13 @@ export async function upsertBillingEvidenceForVisit(
   }
 
   const [medicalInsurance, careInsurance] = await Promise.all([
-    resolvePatientInsurance(tx as Parameters<typeof resolvePatientInsurance>[0], {
+    resolvePatientInsurance(tx, {
       orgId: args.orgId,
       patientId: visitRecord.patient_id,
       type: 'medical',
       asOf: visitRecord.visit_date,
     }),
-    resolvePatientInsurance(tx as Parameters<typeof resolvePatientInsurance>[0], {
+    resolvePatientInsurance(tx, {
       orgId: args.orgId,
       patientId: visitRecord.patient_id,
       type: 'care',
@@ -881,7 +1060,7 @@ export async function upsertBillingEvidenceForVisit(
       where: {
         org_id: args.orgId,
         schedule: {
-          pharmacist_id: visitRecord.schedule.pharmacist_id,
+          pharmacist_id: visitRecord.schedule.pharmacist_id as string,
         },
         visit_date: {
           gte: weekStart,
@@ -1110,9 +1289,8 @@ export async function upsertBillingEvidenceForVisit(
 
   // 介護認定レベル判定 (intake の care_level から)
   const caseData = patient.cases?.[0] ?? null;
-  const intakeJson = (caseData?.required_visit_support as Record<string, unknown> | null)
-    ?.home_visit_intake as Record<string, unknown> | null;
-  const careLevel = (intakeJson?.care_level as string) ?? null;
+  const intakeJson = getHomeVisitIntake(caseData?.required_visit_support);
+  const careLevel = typeof intakeJson?.care_level === 'string' ? intakeJson.care_level : null;
   const careLevelCategory = careLevel
     ? careLevel.startsWith('support_')
       ? ('support_required' as const)
@@ -1127,9 +1305,7 @@ export async function upsertBillingEvidenceForVisit(
   const narcoticRequired = narcoticsBase || narcoticsRescue;
 
   // 特別な医療処置 (intake から)
-  const specialProcedures = Array.isArray(intakeJson?.special_medical_procedures)
-    ? (intakeJson.special_medical_procedures as string[])
-    : [];
+  const specialProcedures = getHomeVisitSpecialMedicalProcedures(caseData?.required_visit_support);
   const centralVenousRequired = specialProcedures.some(
     (p) => p === 'tpn' || p === 'cv_port' || p === 'central_venous',
   );
@@ -1139,8 +1315,7 @@ export async function upsertBillingEvidenceForVisit(
     specialProcedures.includes('enteral_nutrition') ||
     specialProcedures.includes('enteral_route') ||
     specialProcedures.includes('tube_feeding') ||
-    (Array.isArray(intakeJson?.medication_support_methods) &&
-      (intakeJson.medication_support_methods as string[]).includes('tube'));
+    getHomeVisitMedicationSupportMethods(caseData?.required_visit_support).includes('tube');
   const structuredSoap =
     isRecord(visitRecord.structured_soap) && !Array.isArray(visitRecord.structured_soap)
       ? (visitRecord.structured_soap as Partial<StructuredSoap>)
@@ -1399,16 +1574,19 @@ export async function upsertBillingEvidenceForVisit(
     ...conferenceDeliveryRecords.map((record) => record.id),
   ]);
 
-  const sharedAppliedRuleKeys = candidateSpecs
-    .filter((spec) => spec.status === 'confirmed')
-    .map((spec) => spec.ssotKey) as Prisma.InputJsonValue;
+  const sharedAppliedRuleKeys = normalizeInputJsonArray(
+    candidateSpecs.filter((spec) => spec.status === 'confirmed').map((spec) => spec.ssotKey),
+  );
 
-  const sharedRecommendedRuleKeys = Array.from(
-    new Set([
-      ...candidateSpecs.filter((spec) => spec.status === 'candidate').map((spec) => spec.ssotKey),
-      ...conferenceRecommendedRuleKeys,
-    ]),
-  ) as Prisma.InputJsonValue;
+  const sharedRecommendedRuleKeys = normalizeInputJsonArray(
+    Array.from(
+      new Set([
+        ...candidateSpecs.filter((spec) => spec.status === 'candidate').map((spec) => spec.ssotKey),
+        ...conferenceRecommendedRuleKeys,
+      ]),
+    ),
+  );
+  const sameMonthExclusionFlags = normalizeInputJsonObject(exclusionFlags);
 
   const sharedValidationNotes = claimable
     ? '同意・管理計画書・報告送付を満たしています'
@@ -1443,7 +1621,7 @@ export async function upsertBillingEvidenceForVisit(
       applied_rule_keys: sharedAppliedRuleKeys,
       recommended_rule_keys: sharedRecommendedRuleKeys,
       calculation_context: calculationContext,
-      same_month_exclusion_flags: exclusionFlags as Prisma.InputJsonValue,
+      same_month_exclusion_flags: sameMonthExclusionFlags,
       validation_notes: sharedValidationNotes,
     },
     update: {
@@ -1466,7 +1644,7 @@ export async function upsertBillingEvidenceForVisit(
       applied_rule_keys: sharedAppliedRuleKeys,
       recommended_rule_keys: sharedRecommendedRuleKeys,
       calculation_context: calculationContext,
-      same_month_exclusion_flags: exclusionFlags as Prisma.InputJsonValue,
+      same_month_exclusion_flags: sameMonthExclusionFlags,
       validation_notes: sharedValidationNotes,
     },
   });
@@ -1491,19 +1669,35 @@ export async function upsertBillingEvidenceForVisit(
       relatedEntityType: 'visit_record',
       relatedEntityId: visitRecord.id,
       dedupeKey: taskKey,
-      metadata: {
+      metadata: normalizeInputJsonObject({
         visit_record_id: visitRecord.id,
         patient_id: visitRecord.patient_id,
         cycle_id: visitRecord.schedule.cycle_id,
-      } as Prisma.InputJsonValue,
+      }),
     });
   }
 
   return evidence;
 }
 
+type BillingCandidateWorkbenchSummaryTx = {
+  billingCandidate: {
+    findMany(args: unknown): Promise<
+      Array<{
+        id?: string;
+        status: string;
+        source_snapshot: Prisma.JsonValue | null;
+        exclusion_reason?: string | null;
+      }>
+    >;
+  };
+  billingEvidence: {
+    findMany(args: unknown): Promise<Array<{ exclusion_reason: string | null }>>;
+  };
+};
+
 export async function getBillingCandidateWorkbenchSummary(
-  tx: Tx,
+  tx: BillingCandidateWorkbenchSummaryTx,
   args: { orgId: string; billingMonth: Date; patientId?: string },
 ) {
   const billingMonth = startOfMonth(args.billingMonth);
@@ -1658,8 +1852,20 @@ export async function reviewBillingCandidate(
   });
 }
 
+type CloseBillingCandidatesTx = BillingCandidateWorkbenchSummaryTx & {
+  billingCandidate: BillingCandidateWorkbenchSummaryTx['billingCandidate'] & {
+    update?(args: unknown): Promise<unknown>;
+  };
+  billingEvidence: BillingCandidateWorkbenchSummaryTx['billingEvidence'] & {
+    count(args: unknown): Promise<number>;
+  };
+  auditLog: {
+    create(args: unknown): Promise<unknown>;
+  };
+};
+
 export async function closeBillingCandidatesForMonth(
-  tx: Tx,
+  tx: CloseBillingCandidatesTx,
   args: {
     orgId: string;
     billingMonth: Date;
@@ -1702,8 +1908,14 @@ export async function closeBillingCandidatesForMonth(
   const exported = await Promise.all(
     candidates
       .filter((candidate) => candidate.status === 'confirmed')
-      .map((candidate) =>
-        tx.billingCandidate.update({
+      .map((candidate) => {
+        if (!tx.billingCandidate.update) {
+          throw new Error('BILLING_CANDIDATE_UPDATE_UNAVAILABLE');
+        }
+        if (!candidate.id) {
+          throw new Error('BILLING_CANDIDATE_ID_UNAVAILABLE');
+        }
+        return tx.billingCandidate.update({
           where: { id: candidate.id },
           data: {
             status: 'exported',
@@ -1716,8 +1928,8 @@ export async function closeBillingCandidatesForMonth(
               reviewed_by: readBillingCandidateWorkflowState(candidate.source_snapshot).reviewed_by,
             }),
           },
-        }),
-      ),
+        });
+      }),
   );
 
   await tx.auditLog.create({

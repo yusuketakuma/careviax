@@ -9,8 +9,6 @@
  * 副作用（通知、WorkflowException、タスク作成等）はcaller側で実行すること。
  */
 
-import type { Prisma } from '@prisma/client';
-
 type CycleStatus =
   | 'intake_received'
   | 'structuring'
@@ -71,12 +69,35 @@ interface TransitionOptions {
   note?: string;
 }
 
+type TransitionCycleRow = {
+  id: string;
+  overall_status: string;
+  version: number;
+  patient_id: string | null;
+};
+
+export type TransitionCycleDb = {
+  medicationCycle: {
+    findFirst(args: unknown): Promise<TransitionCycleRow | null>;
+    updateMany(args: unknown): Promise<{ count: number }>;
+  };
+  cycleTransitionLog: {
+    create(args: unknown): Promise<unknown>;
+  };
+};
+
+export type PreHoldStatusDb = {
+  cycleTransitionLog: {
+    findFirst(args: unknown): Promise<{ from_status: string | null } | null>;
+  };
+};
+
 /**
  * MedicationCycle の状態を遷移させる。
  * 遷移検証 + version increment + CycleTransitionLog 記録を一括で実行。
  */
 export async function transitionCycleStatus(
-  tx: Prisma.TransactionClient,
+  tx: TransitionCycleDb,
   cycleId: string,
   orgId: string,
   newStatus: string,
@@ -141,7 +162,7 @@ export async function transitionCycleStatus(
  * on_hold に遷移した記録がない場合は null を返す。
  */
 export async function getPreHoldStatus(
-  tx: Prisma.TransactionClient,
+  tx: PreHoldStatusDb,
   cycleId: string,
 ): Promise<string | null> {
   const log = await tx.cycleTransitionLog.findFirst({

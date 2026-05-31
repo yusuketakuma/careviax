@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { visitScheduleFindManyMock } = vi.hoisted(() => ({
   visitScheduleFindManyMock: vi.fn(),
@@ -12,12 +12,11 @@ vi.mock('@/lib/auth/middleware', () => ({
     ) => Promise<Response>,
   ) => {
     return (req: NextRequest) =>
-      handler({
-        ...req,
+      handler(Object.assign(req, {
         orgId: 'org_1',
         userId: 'user_1',
         role: 'pharmacist',
-      } as NextRequest & { orgId: string; userId: string; role: 'pharmacist' });
+      } as const));
   },
 }));
 
@@ -38,9 +37,9 @@ describe('/api/visit-schedules/today', () => {
   });
 
   it('lists today visit schedules', async () => {
-    const response = (await GET({
-      url: 'http://localhost/api/visit-schedules/today?pharmacist_id=pharm_1',
-    } as NextRequest))!;
+    const response = (await GET(
+      new NextRequest('http://localhost/api/visit-schedules/today?pharmacist_id=pharm_1'),
+    ))!;
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({

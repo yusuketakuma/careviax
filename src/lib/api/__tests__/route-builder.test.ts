@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
 const { authMock, membershipFindFirstMock, patientFindFirstMock } = vi.hoisted(() => ({
@@ -39,12 +38,14 @@ function createRequest(
   body: unknown,
   headers?: Record<string, string>
 ) {
-  return {
+  return new NextRequest('http://localhost/api/test-route-builder', {
+    method: 'POST',
     headers: {
-      get: (key: string) => headers?.[key] ?? null,
+      'content-type': 'application/json',
+      ...headers,
     },
-    json: vi.fn().mockResolvedValue(body),
-  } as unknown as NextRequest;
+    body: JSON.stringify(body),
+  });
 }
 
 describe('withValidatedBody', () => {

@@ -1,16 +1,73 @@
 import { Prisma } from '@prisma/client';
+import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import {
   ConferenceSyncService,
   type ConferenceSyncResult,
+  type ConferenceSyncTransactionClient,
 } from '@/server/services/conference-sync';
 import {
   upsertOperationalTask,
   resolveOperationalTasks,
 } from '@/server/services/operational-tasks';
 
-type TransactionClient = Prisma.TransactionClient;
+type TransactionClient = {
+  billingCandidate: ConferenceSyncTransactionClient['billingCandidate'];
+  careCase: {
+    findFirst(args: unknown): Promise<CareCaseSummary | null>;
+    update(args: unknown): Promise<unknown>;
+  };
+  careReport: ConferenceSyncTransactionClient['careReport'];
+  conferenceNote: {
+    update(args: unknown): Promise<PersistedConferenceNote>;
+  };
+  consentRecord: ConferenceSyncTransactionClient['consentRecord'];
+  facility: {
+    findFirst(
+      args: unknown,
+    ): Promise<{ acceptance_time_from: Date | null; acceptance_time_to: Date | null } | null>;
+  };
+  managementPlan: ConferenceSyncTransactionClient['managementPlan'];
+  medicationIssue: {
+    findMany(args: unknown): Promise<Array<{ title: string }>>;
+    createMany(args: unknown): Promise<unknown>;
+  };
+  patientSchedulePreference: {
+    upsert(args: unknown): Promise<unknown>;
+  };
+  residence: {
+    findFirst(args: unknown): Promise<{ facility_id: string | null } | null>;
+  };
+  task: {
+    findMany?(args: unknown): Promise<Array<{ dedupe_key: string | null }>>;
+    createMany?(args: unknown): Promise<unknown>;
+    create(args: unknown): Promise<unknown>;
+    updateMany(args: unknown): Promise<unknown>;
+    upsert(args: unknown): Promise<unknown>;
+  };
+  visitSchedule: {
+    findFirst(args: unknown): Promise<{
+      id: string;
+      cycle_id: string | null;
+      site_id: string | null;
+      visit_type: string;
+      priority: string;
+      scheduled_date: Date;
+      time_window_start: Date | null;
+      time_window_end: Date | null;
+      medication_end_date: Date | null;
+      visit_deadline_date: Date | null;
+      route_order: number | null;
+      recurrence_rule: string | null;
+    } | null>;
+  };
+  visitScheduleProposal: {
+    findFirst(args: unknown): Promise<{ id: string } | null>;
+    create(args: unknown): Promise<{ id: string }>;
+    update(args: unknown): Promise<{ id: string }>;
+  };
+};
 
-type PersistedConferenceNote = {
+export type PersistedConferenceNote = {
   id: string;
   case_id: string | null;
   patient_id: string | null;
@@ -40,7 +97,7 @@ type CareCaseSummary = {
   id: string;
   patient_id: string;
   primary_pharmacist_id: string | null;
-  required_visit_support: Prisma.JsonValue | null;
+  required_visit_support: JsonLike;
 };
 
 type ConferenceDerivedSyncResult = {
@@ -50,27 +107,46 @@ type ConferenceDerivedSyncResult = {
   metadataPatch?: Prisma.InputJsonObject | null;
 };
 
-type JsonLike = Prisma.JsonValue | Prisma.InputJsonValue | null;
+type JsonLike = unknown;
 
-function toStoredJsonValue(value: Prisma.InputJsonValue | undefined): Prisma.JsonValue | null {
-  return value === undefined ? null : (value as Prisma.JsonValue);
+function normalizeExistingJson(value: JsonLike): Prisma.InputJsonValue | undefined {
+  if (value === null || value === undefined) return undefined;
+  const normalized = normalizeJsonInput(value);
+  return normalized === null || normalized === undefined ? undefined : normalized;
+}
+
+function isInputJsonObject(
+  value: Prisma.InputJsonValue | null | undefined,
+): value is Prisma.InputJsonObject {
+  return (
+    typeof value === 'object' && value !== null && !Array.isArray(value) && !('toJSON' in value)
+  );
+}
+
+function normalizeJsonObject(value: JsonLike): Prisma.InputJsonObject {
+  const normalized = normalizeJsonInput(value);
+  return isInputJsonObject(normalized) ? normalized : {};
+}
+
+function toStoredJsonValue(value: Prisma.InputJsonValue | undefined) {
+  return normalizeJsonInput(value) ?? null;
 }
 
 function parseStructuredSections(structuredContent: Prisma.JsonValue | null): StructuredSection[] {
-  if (
-    typeof structuredContent !== 'object' ||
-    structuredContent === null ||
-    !('sections' in structuredContent)
-  ) {
-    return [];
-  }
-
-  const rawSections = (structuredContent as { sections?: unknown }).sections;
+  const rawSections = readJsonObject(structuredContent)?.sections;
   if (!Array.isArray(rawSections)) return [];
-  return rawSections.filter(
-    (section): section is StructuredSection =>
-      typeof section === 'object' && section !== null && 'key' in section && 'label' in section
-  );
+  return rawSections.flatMap((section): StructuredSection[] => {
+    const record = readJsonObject(section);
+    if (!record || typeof record.key !== 'string' || typeof record.label !== 'string') return [];
+    if (record.body !== undefined && typeof record.body !== 'string') return [];
+    return [
+      {
+        key: record.key,
+        label: record.label,
+        body: typeof record.body === 'string' ? record.body : undefined,
+      },
+    ];
+  });
 }
 
 function findSection(sections: StructuredSection[], key: string) {
@@ -100,9 +176,7 @@ function parseDateFromBody(body?: string) {
   const match = body.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
   if (match) {
     const [, year, month, day] = match;
-    const parsed = new Date(
-      Date.UTC(Number(year), Number(month) - 1, Number(day), 12, 0, 0, 0)
-    );
+    const parsed = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 12, 0, 0, 0));
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
@@ -125,11 +199,7 @@ function weekOfMonthFromDate(value: Date) {
   return Math.min(5, Math.max(1, Math.ceil(value.getUTCDate() / 7)));
 }
 
-function deriveRecurringVisitRule(
-  source: string,
-  anchorDate: Date,
-  fallbackRule?: string | null
-) {
+function deriveRecurringVisitRule(source: string, anchorDate: Date, fallbackRule?: string | null) {
   const unitMatches = Array.from(source.matchAll(/(月|週)\s*(\d+)\s*回/g));
   if (unitMatches.length === 0) return null;
 
@@ -167,7 +237,7 @@ function deriveRecurringVisitRule(
 
 function mergeConferenceSyncMetadata(
   existingMetadata: JsonLike,
-  sync: ConferenceSyncResult
+  sync: ConferenceSyncResult,
 ): Prisma.InputJsonValue | undefined {
   const hasSyncSummary =
     Boolean(sync.report_draft_ids?.length) ||
@@ -177,14 +247,10 @@ function mergeConferenceSyncMetadata(
     Boolean(sync.medication_issues_created);
 
   if (!hasSyncSummary) {
-    if (existingMetadata === null) return undefined;
-    return existingMetadata as Prisma.InputJsonValue;
+    return normalizeExistingJson(existingMetadata);
   }
 
-  const base =
-    existingMetadata && typeof existingMetadata === 'object' && !Array.isArray(existingMetadata)
-      ? (existingMetadata as Prisma.InputJsonObject)
-      : {};
+  const base = normalizeJsonObject(existingMetadata);
 
   return {
     ...base,
@@ -200,17 +266,13 @@ function mergeConferenceSyncMetadata(
 
 function mergeConferenceDerivedMetadata(
   existingMetadata: JsonLike,
-  metadataPatch?: Prisma.InputJsonObject | null
+  metadataPatch?: Prisma.InputJsonObject | null,
 ): Prisma.InputJsonValue | undefined {
   if (!metadataPatch || Object.keys(metadataPatch).length === 0) {
-    if (existingMetadata === null) return undefined;
-    return existingMetadata as Prisma.InputJsonValue;
+    return normalizeExistingJson(existingMetadata);
   }
 
-  const base =
-    existingMetadata && typeof existingMetadata === 'object' && !Array.isArray(existingMetadata)
-      ? (existingMetadata as Prisma.InputJsonObject)
-      : {};
+  const base = normalizeJsonObject(existingMetadata);
   const baseVisitBrief =
     base.visit_brief && typeof base.visit_brief === 'object' && !Array.isArray(base.visit_brief)
       ? (base.visit_brief as Prisma.InputJsonObject)
@@ -234,17 +296,13 @@ function mergeConferenceDerivedMetadata(
 
 function mergeRequiredVisitSupportPatch(
   existingValue: JsonLike,
-  patch: Prisma.InputJsonObject | null
+  patch: Prisma.InputJsonObject | null,
 ): Prisma.InputJsonValue | undefined {
   if (!patch || Object.keys(patch).length === 0) {
-    if (existingValue === null) return undefined;
-    return existingValue as Prisma.InputJsonValue;
+    return normalizeExistingJson(existingValue);
   }
 
-  const base =
-    existingValue && typeof existingValue === 'object' && !Array.isArray(existingValue)
-      ? (existingValue as Prisma.InputJsonObject)
-      : {};
+  const base = normalizeJsonObject(existingValue);
   const baseConferenceSync =
     base.conference_sync &&
     typeof base.conference_sync === 'object' &&
@@ -270,7 +328,7 @@ function mergeRequiredVisitSupportPatch(
 
 function metadataChanged(
   currentMetadata: Prisma.JsonValue | null,
-  nextMetadata: Prisma.InputJsonValue | undefined
+  nextMetadata: Prisma.InputJsonValue | undefined,
 ) {
   const currentSerialized = JSON.stringify(currentMetadata ?? null);
   const nextSerialized = JSON.stringify(nextMetadata ?? null);
@@ -280,7 +338,7 @@ function metadataChanged(
 async function loadCareCaseSummary(
   tx: TransactionClient,
   orgId: string,
-  caseId: string | null
+  caseId: string | null,
 ): Promise<CareCaseSummary | null> {
   if (!caseId) return null;
 
@@ -311,7 +369,7 @@ async function upsertConferenceLineTasks(
     relatedEntityType?: string | null;
     relatedEntityId?: string | null;
     lines: string[];
-  }
+  },
 ) {
   let count = 0;
 
@@ -354,7 +412,7 @@ async function upsertMedicationIssuesFromSection(
     status?: 'open' | 'in_progress' | 'resolved' | 'dismissed';
     resolvedBy?: string | null;
     resolvedAt?: Date | null;
-  }
+  },
 ) {
   if (!args.note.case_id || !args.patientId || args.lines.length === 0) return 0;
 
@@ -404,7 +462,7 @@ async function syncPreDischargeUsage(
   userId: string,
   note: PersistedConferenceNote,
   careCase: CareCaseSummary | null,
-  sections: StructuredSection[]
+  sections: StructuredSection[],
 ): Promise<ConferenceDerivedSyncResult> {
   const medicationIssuesCreated = await upsertMedicationIssuesFromSection(tx, {
     orgId,
@@ -413,13 +471,13 @@ async function syncPreDischargeUsage(
     patientId: careCase?.patient_id ?? null,
     sectionKey: 'medication_changes_on_discharge',
     lines: parseSectionLines(
-      findSectionBody(sections, ['medication_changes_on_discharge', 'medication_summary']) ?? undefined
+      findSectionBody(sections, ['medication_changes_on_discharge', 'medication_summary']) ??
+        undefined,
     ),
   });
 
   const dischargeDate =
-    parseDateFromBody(findSection(sections, 'target_discharge_date')?.body) ??
-    note.conference_date;
+    parseDateFromBody(findSection(sections, 'target_discharge_date')?.body) ?? note.conference_date;
   let tasksCreated = 0;
 
   if (note.case_id) {
@@ -506,7 +564,7 @@ async function syncServiceManagerUsage(
   userId: string,
   note: PersistedConferenceNote,
   careCase: CareCaseSummary | null,
-  sections: StructuredSection[]
+  sections: StructuredSection[],
 ): Promise<ConferenceDerivedSyncResult> {
   const medicationIssuesCreated = await upsertMedicationIssuesFromSection(tx, {
     orgId,
@@ -515,7 +573,7 @@ async function syncServiceManagerUsage(
     patientId: careCase?.patient_id ?? null,
     sectionKey: 'medication_related_items',
     lines: parseSectionLines(
-      findSectionBody(sections, ['medication_related_items', 'medication_review']) ?? undefined
+      findSectionBody(sections, ['medication_related_items', 'medication_review']) ?? undefined,
     ),
     category: 'adherence',
   });
@@ -536,10 +594,7 @@ async function syncServiceManagerUsage(
     'visit_schedule_adjustment',
     'service_adjustments',
   ]);
-  const carePlanUpdate = findSectionBody(sections, [
-    'care_plan_update',
-    'care_plan_changes',
-  ]);
+  const carePlanUpdate = findSectionBody(sections, ['care_plan_update', 'care_plan_changes']);
 
   if (careCase?.id && carePlanUpdate) {
     const requiredVisitSupportPatch = mergeRequiredVisitSupportPatch(
@@ -554,7 +609,7 @@ async function syncServiceManagerUsage(
             },
           },
         },
-      } satisfies Prisma.InputJsonObject
+      } satisfies Prisma.InputJsonObject,
     );
 
     if (
@@ -619,7 +674,7 @@ async function syncServiceManagerUsage(
       const suggestedRecurrenceRule = deriveRecurringVisitRule(
         serviceAdjustment,
         latestSchedule?.scheduled_date ?? note.conference_date,
-        latestSchedule?.recurrence_rule ?? null
+        latestSchedule?.recurrence_rule ?? null,
       );
 
       if (suggestedRecurrenceRule) {
@@ -634,8 +689,8 @@ async function syncServiceManagerUsage(
             12,
             0,
             0,
-            0
-          )
+            0,
+          ),
         );
 
         const existingProposal = await tx.visitScheduleProposal.findFirst({
@@ -730,14 +785,14 @@ function buildVisitBriefMetadataPatch(body: string | null): Prisma.InputJsonObje
 
 function buildCareTeamMetadataPatch(
   note: PersistedConferenceNote,
-  sections: StructuredSection[]
+  sections: StructuredSection[],
 ): Prisma.InputJsonObject | null {
   const visitBriefPatch = buildVisitBriefMetadataPatch(
-    findSectionBody(sections, ['case_review', 'discussion_summary'])
+    findSectionBody(sections, ['case_review', 'discussion_summary']),
   );
 
   const interventionOutcomes = parseSectionLines(
-    findSectionBody(sections, ['intervention_outcomes']) ?? undefined
+    findSectionBody(sections, ['intervention_outcomes']) ?? undefined,
   );
   const careTeamPatch =
     interventionOutcomes.length > 0
@@ -764,7 +819,7 @@ async function syncCareTeamUsage(
   _userId: string,
   note: PersistedConferenceNote,
   _careCase: CareCaseSummary | null,
-  sections: StructuredSection[]
+  sections: StructuredSection[],
 ): Promise<ConferenceDerivedSyncResult> {
   return {
     tasksCreated: 0,
@@ -778,7 +833,7 @@ async function syncEmergencyUsage(
   orgId: string,
   note: PersistedConferenceNote,
   careCase: CareCaseSummary | null,
-  sections: StructuredSection[]
+  sections: StructuredSection[],
 ): Promise<ConferenceDerivedSyncResult> {
   let tasksCreated = 0;
 
@@ -791,7 +846,7 @@ async function syncEmergencyUsage(
     priority: 'urgent',
     assignedTo: careCase?.primary_pharmacist_id ?? null,
     lines: parseSectionLines(
-      findSectionBody(sections, ['immediate_actions', 'urgent_actions']) ?? undefined
+      findSectionBody(sections, ['immediate_actions', 'urgent_actions']) ?? undefined,
     ),
   });
 
@@ -818,7 +873,7 @@ async function syncDeathConferenceUsage(
   userId: string,
   note: PersistedConferenceNote,
   careCase: CareCaseSummary | null,
-  sections: StructuredSection[]
+  sections: StructuredSection[],
 ): Promise<ConferenceDerivedSyncResult> {
   let tasksCreated = 0;
   const medicationIssuesCreated = await upsertMedicationIssuesFromSection(tx, {
@@ -879,7 +934,7 @@ async function syncConferenceDerivedData(
   tx: TransactionClient,
   orgId: string,
   userId: string,
-  note: PersistedConferenceNote
+  note: PersistedConferenceNote,
 ): Promise<ConferenceDerivedSyncResult> {
   const sections = parseStructuredSections(note.structured_content);
   const careCase = await loadCareCaseSummary(tx, orgId, note.case_id);
@@ -912,7 +967,7 @@ export class ConferenceDataSyncService {
     note: PersistedConferenceNote,
     options?: {
       mode?: 'create' | 'update';
-    }
+    },
   ): Promise<{
     note: PersistedConferenceNote;
     sync: ConferenceSyncResult;
@@ -928,11 +983,11 @@ export class ConferenceDataSyncService {
       sync.visit_proposal_id = derived.visitProposalId;
     }
 
-    const metadataWithDerived = mergeConferenceDerivedMetadata(note.metadata, derived.metadataPatch);
-    const nextMetadata = mergeConferenceSyncMetadata(
-      metadataWithDerived ?? note.metadata,
-      sync
+    const metadataWithDerived = mergeConferenceDerivedMetadata(
+      note.metadata,
+      derived.metadataPatch,
     );
+    const nextMetadata = mergeConferenceSyncMetadata(metadataWithDerived ?? note.metadata, sync);
     if (!metadataChanged(note.metadata, nextMetadata)) {
       return { note, sync };
     }

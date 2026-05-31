@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   facilityFindFirstMock,
@@ -39,10 +39,17 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { GET, PUT } from './route';
 
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
 function createRequest(body?: unknown) {
-  return {
-    json: async () => body,
-  } as unknown as NextRequest;
+  const init: NextRequestInit = {
+    method: body === undefined ? 'GET' : 'PUT',
+    headers: { 'content-type': 'application/json' },
+  };
+  if (body !== undefined) {
+    init.body = JSON.stringify(body);
+  }
+  return new NextRequest('http://localhost/api/admin/facilities/facility_1/contacts', init);
 }
 
 describe('/api/admin/facilities/[id]/contacts', () => {
@@ -73,7 +80,7 @@ describe('/api/admin/facilities/[id]/contacts', () => {
   });
 
   it('lists facility contacts', async () => {
-    const response = await GET({} as NextRequest, {
+    const response = await GET(createRequest(), {
       params: Promise.resolve({ id: 'facility_1' }),
     });
 

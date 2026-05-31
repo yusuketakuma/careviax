@@ -23,6 +23,7 @@ import {
   type SettingScope,
   type SettingValueItem,
 } from '@/lib/admin/settings-catalog';
+import { parseJsonObjectText } from '@/lib/admin/json-editor';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type SettingResponse = {
@@ -93,7 +94,10 @@ function SettingRow({
       </div>
       <div className="w-56 shrink-0">
         {item.type === 'select' || item.type === 'boolean' ? (
-          <Select value={item.value} onValueChange={(value) => onChange(item.key, value ?? item.value)}>
+          <Select
+            value={item.value}
+            onValueChange={(value) => onChange(item.key, value ?? item.value)}
+          >
             <SelectTrigger id={`setting-${item.key}`} className="h-8 text-sm">
               <SelectValue />
             </SelectTrigger>
@@ -163,18 +167,18 @@ function ScopePanel({
       JSON.stringify(
         Object.fromEntries(displayedItems.map((item) => [item.key, item.value])),
         null,
-        2
+        2,
       ),
-    [displayedItems]
+    [displayedItems],
   );
   const serializedFetchedItems = useMemo(
     () =>
       JSON.stringify(
         Object.fromEntries(fetchedItems.map((item) => [item.key, item.value])),
         null,
-        2
+        2,
       ),
-    [fetchedItems]
+    [fetchedItems],
   );
 
   const isDirty = useMemo(() => {
@@ -190,10 +194,10 @@ function ScopePanel({
     mutationFn: async () => {
       let itemsForSave = displayedItems;
       if (editorMode === 'json') {
-        const parsed = JSON.parse(jsonDraft) as Record<string, unknown>;
-        if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
-          throw new Error('JSON はキーと値のオブジェクト形式で入力してください');
-        }
+        const parsed = parseJsonObjectText(
+          jsonDraft,
+          'JSON はキーと値のオブジェクト形式で入力してください',
+        );
         itemsForSave = displayedItems.map((item) => ({
           ...item,
           value:
@@ -230,8 +234,8 @@ function ScopePanel({
         JSON.stringify(
           Object.fromEntries(payload.data.items.map((item) => [item.key, item.value])),
           null,
-          2
-        )
+          2,
+        ),
       );
       await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
       toast.success(`${SCOPE_LABELS[scope].label}設定を保存しました`);
@@ -243,7 +247,7 @@ function ScopePanel({
 
   function handleChange(key: string, value: string) {
     setDraftItems((current) =>
-      (current ?? displayedItems).map((item) => (item.key === key ? { ...item, value } : item))
+      (current ?? displayedItems).map((item) => (item.key === key ? { ...item, value } : item)),
     );
   }
 
@@ -287,7 +291,11 @@ function ScopePanel({
               <SelectItem value="json">JSON編集</SelectItem>
             </SelectContent>
           </Select>
-          <Button size="sm" onClick={() => saveMutation.mutate()} disabled={!isDirty || saveMutation.isPending}>
+          <Button
+            size="sm"
+            onClick={() => saveMutation.mutate()}
+            disabled={!isDirty || saveMutation.isPending}
+          >
             <Save className="mr-1.5 size-3.5" aria-hidden="true" />
             {saveMutation.isPending ? '保存中...' : '保存'}
           </Button>
@@ -363,7 +371,8 @@ export function SettingsContent() {
   });
 
   const sites = sitesQuery.data?.data ?? [];
-  const resolvedSiteId = selectedSiteId || profileQuery.data?.data.defaultSiteId || sites[0]?.id || '';
+  const resolvedSiteId =
+    selectedSiteId || profileQuery.data?.data.defaultSiteId || sites[0]?.id || '';
   const selectedSite = sites.find((site) => site.id === resolvedSiteId) ?? null;
   const currentUser = profileQuery.data?.data ?? null;
   const healthChecks = healthQuery.data?.checks ?? {};
@@ -382,7 +391,11 @@ export function SettingsContent() {
           <HealthCard
             title="全体ステータス"
             value={healthQuery.data?.status ?? 'loading'}
-            description={healthQuery.data?.timestamp ? `更新: ${new Date(healthQuery.data.timestamp).toLocaleString('ja-JP')}` : '監視情報を取得しています'}
+            description={
+              healthQuery.data?.timestamp
+                ? `更新: ${new Date(healthQuery.data.timestamp).toLocaleString('ja-JP')}`
+                : '監視情報を取得しています'
+            }
             icon={Activity}
           />
           <HealthCard
@@ -391,7 +404,7 @@ export function SettingsContent() {
             description={
               healthChecks.database?.latencyMs != null
                 ? `${healthChecks.database.latencyMs}ms`
-                : healthChecks.database?.message ?? '未取得'
+                : (healthChecks.database?.message ?? '未取得')
             }
             icon={Database}
           />
@@ -424,7 +437,10 @@ export function SettingsContent() {
         <TabsContent value="site" className="space-y-4">
           <div className="max-w-xs space-y-1.5">
             <Label htmlFor="admin-settings-site">対象店舗</Label>
-            <Select value={resolvedSiteId} onValueChange={(value) => setSelectedSiteId(value ?? '')}>
+            <Select
+              value={resolvedSiteId}
+              onValueChange={(value) => setSelectedSiteId(value ?? '')}
+            >
               <SelectTrigger id="admin-settings-site">
                 <SelectValue placeholder="店舗を選択" />
               </SelectTrigger>

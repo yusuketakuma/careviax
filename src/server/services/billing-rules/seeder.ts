@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import type { BillingRevision, BillingRuleSeed } from './types';
 import {
   CARE_REVISIONS,
@@ -6,7 +6,17 @@ import {
   resolveRevisionEntryForDate,
 } from './revisions';
 
-type Tx = Prisma.TransactionClient;
+export type HomeCareBillingSsotTx = {
+  billingRule: {
+    deleteMany(args: unknown): Promise<unknown>;
+    upsert(args: unknown): Promise<unknown>;
+  };
+  sourceOfTruthMatrix: {
+    upsert(args: unknown): Promise<unknown>;
+  };
+};
+
+type Tx = HomeCareBillingSsotTx;
 
 export const HOME_CARE_BILLING_RULESET_VERSION = 'home-care-ssot-registry-v2';
 
@@ -74,8 +84,8 @@ export async function ensureHomeCareBillingSsot(
         display_order: rule.display_order,
         name: rule.name,
         code: rule.code,
-        conditions: rule.conditions as Prisma.InputJsonValue,
-        evidence_requirements: (rule.evidence_requirements ?? {}) as Prisma.InputJsonValue,
+        conditions: toPrismaJsonInput(rule.conditions),
+        evidence_requirements: toPrismaJsonInput(rule.evidence_requirements ?? {}),
         source_url: rule.source_url,
         source_note: rule.source_note,
         amount: rule.amount,

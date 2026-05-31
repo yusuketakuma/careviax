@@ -2,6 +2,7 @@ import { format } from 'date-fns';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
+import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { updatePatientSchema, type UpdatePatientInput } from '@/lib/validations/patient';
 import { prisma } from '@/lib/db/client';
@@ -35,6 +36,7 @@ import {
   VISIT_OUTCOME_LABELS,
 } from '@/lib/constants/status-labels';
 import { getHomeVisitIntake, type HomeVisitIntake } from '@/lib/patient/home-visit-intake';
+import { KEY_LAB_ANALYTE_CODES } from '@/lib/patient/lab-analytes';
 import {
   applyPatientAssignmentWhere,
   buildCareCaseAssignmentWhere,
@@ -56,6 +58,19 @@ type FirstVisitDocumentContact = {
   is_primary: boolean;
   is_emergency_contact: boolean;
 };
+
+function isInputJsonObject(
+  value: Prisma.InputJsonValue | null | undefined,
+): value is Prisma.InputJsonObject {
+  return (
+    typeof value === 'object' && value !== null && !Array.isArray(value) && !('toJSON' in value)
+  );
+}
+
+function normalizeInputJsonObject(value: unknown): Prisma.InputJsonObject {
+  const normalized = normalizeJsonInput(value);
+  return isInputJsonObject(normalized) ? normalized : {};
+}
 
 function normalizeFirstVisitDocumentContacts(
   value: Prisma.JsonValue | null | undefined,
@@ -1197,12 +1212,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   );
 
   // Lab summary: most recent value per analyte for key analytes
-  const KEY_ANALYTES = ['egfr', 'scr', 'k', 'crp', 'hba1c', 'pt_inr', 'alb'] as const;
   const labRows = await prisma.patientLabObservation.findMany({
     where: {
       org_id: ctx.orgId,
       patient_id: id,
-      analyte_code: { in: KEY_ANALYTES as unknown as never[] },
+      analyte_code: { in: [...KEY_LAB_ANALYTE_CODES] },
     },
     orderBy: [{ measured_at: 'desc' }],
     take: 50,
@@ -1924,12 +1938,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               requester,
               intake,
             });
-            const nextRequiredVisitSupport =
-              activeCase.required_visit_support &&
-              typeof activeCase.required_visit_support === 'object' &&
-              !Array.isArray(activeCase.required_visit_support)
-                ? { ...(activeCase.required_visit_support as Record<string, unknown>) }
-                : {};
+            const currentRequiredVisitSupport = readJsonObject(activeCase.required_visit_support);
+            const nextRequiredVisitSupport = currentRequiredVisitSupport
+              ? { ...currentRequiredVisitSupport }
+              : {};
 
             if (nextHomeVisitIntake) {
               nextRequiredVisitSupport.home_visit_intake = nextHomeVisitIntake;
@@ -1945,7 +1957,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
                       referral_source: normalizeNullableText(requester.organization_name) ?? null,
                     }
                   : {}),
-                required_visit_support: nextRequiredVisitSupport as Prisma.InputJsonValue,
+                required_visit_support: normalizeInputJsonObject(nextRequiredVisitSupport),
               },
             });
           }

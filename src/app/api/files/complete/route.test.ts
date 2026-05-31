@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { requireAuthContextMock, completeUploadedFileMock } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -26,6 +26,14 @@ vi.mock('@/server/services/file-storage', () => ({
 
 import { POST } from './route';
 
+function createRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/files/complete', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 describe('/api/files/complete', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -43,12 +51,12 @@ describe('/api/files/complete', () => {
   });
 
   it('completes an uploaded file', async () => {
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createRequest({
         file_id: '11111111-1111-4111-8111-111111111111',
         etag: 'etag-1',
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(200);
     expect(completeUploadedFileMock).toHaveBeenCalledWith({

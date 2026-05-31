@@ -135,4 +135,105 @@ describe('usePrescriptionDraft PHI persistence', () => {
     expect(dbMocks.add).not.toHaveBeenCalled();
     expect(dbMocks.update).not.toHaveBeenCalled();
   });
+
+  it('restores encrypted prescription drafts from a valid snapshot payload', async () => {
+    const snapshot = makeSnapshot();
+    dbMocks.first.mockResolvedValue({
+      id: 3,
+      orgId: 'org-1',
+      payload: 'encv1:prescription-draft',
+      createdAt: new Date('2026-04-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+    });
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:prescription-draft') return JSON.stringify(snapshot);
+        return null;
+      },
+    );
+    const { result } = renderHook(() => usePrescriptionDraft('org-1'));
+
+    await expect(result.current.loadDraft()).resolves.toEqual(snapshot);
+  });
+
+  it('returns null instead of throwing when the encrypted draft payload is malformed', async () => {
+    dbMocks.first.mockResolvedValue({
+      id: 4,
+      orgId: 'org-1',
+      payload: 'encv1:prescription-draft',
+      createdAt: new Date('2026-04-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+    });
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:prescription-draft') return 'not-json';
+        return null;
+      },
+    );
+    const { result } = renderHook(() => usePrescriptionDraft('org-1'));
+
+    await expect(result.current.loadDraft()).resolves.toBeNull();
+  });
+
+  it('ignores malformed prescription lines while restoring valid draft sections', async () => {
+    const snapshot = makeSnapshot();
+    dbMocks.first.mockResolvedValue({
+      id: 5,
+      orgId: 'org-1',
+      payload: 'encv1:prescription-draft',
+      createdAt: new Date('2026-04-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+    });
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:prescription-draft') {
+          return JSON.stringify({
+            ...snapshot,
+            lines: [
+              ['unexpected'],
+              {
+                line_number: 1,
+                drug_name: '高血圧薬A',
+                dose: '1錠',
+                frequency: '朝食後',
+                days: 14,
+                is_generic: false,
+              },
+              {
+                line_number: 2,
+                drug_name: 'days missing',
+              },
+            ],
+          });
+        }
+        return null;
+      },
+    );
+    const { result } = renderHook(() => usePrescriptionDraft('org-1'));
+
+    const draft = await result.current.loadDraft();
+
+    expect(draft?.patientSelection.selectedPatientName).toBe('患者 山田太郎');
+    expect(draft?.lines).toEqual([
+      {
+        line_number: 1,
+        drug_name: '高血圧薬A',
+        dose: '1錠',
+        frequency: '朝食後',
+        days: 14,
+        drug_code: undefined,
+        dosage_form: undefined,
+        quantity: undefined,
+        unit: undefined,
+        is_generic: false,
+        is_generic_name_prescription: undefined,
+        route: undefined,
+        dispensing_method: undefined,
+        start_date: undefined,
+        end_date: undefined,
+        packaging_instructions: undefined,
+        notes: undefined,
+      },
+    ]);
+  });
 });

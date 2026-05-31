@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
@@ -59,12 +59,18 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 import { DELETE, GET, PATCH } from './route';
 
 function createRequest(headers?: Record<string, string>) {
-  return {
-    url: 'http://localhost/api/visit-schedules/schedule_1',
+  return new NextRequest('http://localhost/api/visit-schedules/schedule_1', { headers });
+}
+
+function createPatchRequest(body: unknown, headers: Record<string, string> = { 'x-org-id': 'org_1' }) {
+  return new NextRequest('http://localhost/api/visit-schedules/schedule_1', {
+    method: 'PATCH',
+    body: JSON.stringify(body),
     headers: {
-      get: (key: string) => headers?.[key] ?? null,
+      'content-type': 'application/json',
+      ...headers,
     },
-  } as unknown as NextRequest;
+  });
 }
 
 describe('/api/visit-schedules/[id] GET', () => {
@@ -162,13 +168,7 @@ describe('/api/visit-schedules/[id] GET', () => {
     });
 
     const response = await PATCH(
-      {
-        url: 'http://localhost/api/visit-schedules/schedule_1',
-        headers: {
-          get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
-        },
-        json: vi.fn().mockResolvedValue({ schedule_status: 'in_progress' }),
-      } as unknown as NextRequest,
+      createPatchRequest({ schedule_status: 'in_progress' }),
       {
         params: Promise.resolve({ id: 'schedule_1' }),
       },
@@ -182,13 +182,7 @@ describe('/api/visit-schedules/[id] GET', () => {
 
   it('allows an assigned pharmacist to patch a schedule', async () => {
     const response = await PATCH(
-      {
-        url: 'http://localhost/api/visit-schedules/schedule_1',
-        headers: {
-          get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
-        },
-        json: vi.fn().mockResolvedValue({ schedule_status: 'in_progress' }),
-      } as unknown as NextRequest,
+      createPatchRequest({ schedule_status: 'in_progress' }),
       {
         params: Promise.resolve({ id: 'schedule_1' }),
       },
@@ -220,13 +214,7 @@ describe('/api/visit-schedules/[id] GET', () => {
     });
 
     const response = await PATCH(
-      {
-        url: 'http://localhost/api/visit-schedules/schedule_1',
-        headers: {
-          get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
-        },
-        json: vi.fn().mockResolvedValue({ case_id: 'case_other', pharmacist_id: 'user_other' }),
-      } as unknown as NextRequest,
+      createPatchRequest({ case_id: 'case_other', pharmacist_id: 'user_other' }),
       {
         params: Promise.resolve({ id: 'schedule_1' }),
       },
@@ -240,16 +228,10 @@ describe('/api/visit-schedules/[id] GET', () => {
 
   it('rejects reversed time windows before loading or mutating the schedule', async () => {
     const response = await PATCH(
-      {
-        url: 'http://localhost/api/visit-schedules/schedule_1',
-        headers: {
-          get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
-        },
-        json: vi.fn().mockResolvedValue({
-          time_window_start: '11:00',
-          time_window_end: '10:00',
-        }),
-      } as unknown as NextRequest,
+      createPatchRequest({
+        time_window_start: '11:00',
+        time_window_end: '10:00',
+      }),
       {
         params: Promise.resolve({ id: 'schedule_1' }),
       },

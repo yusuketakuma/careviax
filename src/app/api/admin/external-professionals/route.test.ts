@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   externalProfessionalFindManyMock,
@@ -14,7 +14,9 @@ const {
 }));
 
 vi.mock('@/lib/auth/middleware', () => ({
-  withAuth: (handler: (req: NextRequest & { orgId: string; userId: string; role: string; nextUrl: URL }) => Promise<Response>) =>
+  withAuth: (
+    handler: (req: NextRequest & { orgId: string; userId: string; role: string }) => Promise<Response>,
+  ) =>
     handler,
 }));
 
@@ -37,17 +39,35 @@ vi.mock('@/lib/patient/facility-reference', () => ({
 
 import { GET, POST } from './route';
 
+function createAuthRequest(url: string, init?: ConstructorParameters<typeof NextRequest>[1]) {
+  return Object.assign(new NextRequest(url, init), {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'admin',
+  });
+}
+
+function createJsonAuthRequest(body: unknown) {
+  return createAuthRequest('http://localhost/api/admin/external-professionals', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+}
+
 describe('/api/admin/external-professionals', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     externalProfessionalFindManyMock.mockResolvedValue([
       {
         id: 'external_1',
-      profession_type: 'nurse',
-      name: '訪問 看護',
-      facility_id: 'facility_1',
-      facility: { name: 'さくら荘' },
-      organization_name: 'あおば訪看',
+        profession_type: 'nurse',
+        name: '訪問 看護',
+        facility_id: 'facility_1',
+        facility: { name: 'さくら荘' },
+        organization_name: 'あおば訪看',
         department: null,
         phone: null,
         email: null,
@@ -95,12 +115,11 @@ describe('/api/admin/external-professionals', () => {
   });
 
   it('lists external professionals with query filters', async () => {
-    const response = (await GET({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'pharmacist',
-      nextUrl: new URL('http://localhost/api/admin/external-professionals?q=訪看&profession_type=nurse&facility_id=facility_1'),
-    } as unknown as NextRequest & { orgId: string; userId: string; role: string; nextUrl: URL }))!;
+    const response = (await GET(
+      createAuthRequest(
+        'http://localhost/api/admin/external-professionals?q=訪看&profession_type=nurse&facility_id=facility_1',
+      ),
+    ))!;
 
     expect(response.status).toBe(200);
     expect(externalProfessionalFindManyMock).toHaveBeenCalledWith({
@@ -140,18 +159,15 @@ describe('/api/admin/external-professionals', () => {
   });
 
   it('creates an external professional master row', async () => {
-    const response = (await POST({
-      orgId: 'org_1',
-      userId: 'user_1',
-      role: 'admin',
-      json: async () => ({
+    const response = (await POST(
+      createJsonAuthRequest({
         profession_type: 'care_manager',
         name: '山田 ケアマネ',
         facility_id: 'facility_1',
         organization_name: '居宅支援A',
         phone: '03-1111-2222',
       }),
-    } as unknown as NextRequest & { orgId: string; userId: string; role: string }))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(assertFacilityReferenceMock).toHaveBeenCalledWith(

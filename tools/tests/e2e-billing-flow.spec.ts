@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { attachLocalSession, createInstrumentedPage, waitForStableUi } from './helpers/local-auth';
+import { attachLocalSession, createInstrumentedPage, openStableRoute } from './helpers/local-auth';
+import { apiPathPattern, fulfillCsv, fulfillJson, readRouteBody } from './helpers/route-mocks';
 
 type MockBillingCandidateStatus = 'candidate' | 'confirmed' | 'excluded' | 'exported';
 
@@ -64,6 +65,19 @@ type MockBillingCandidate = {
 };
 
 const BILLING_MONTH = '2026-04-01';
+
+test.use({ serviceWorkers: 'block' });
+
+async function openBillingRoute(page: Page, path: string) {
+  await openStableRoute(page, path);
+}
+
+function requestBodyIncludes(
+  request: { body: unknown },
+  expected: string,
+) {
+  return JSON.stringify(request.body).includes(expected);
+}
 
 function createMockCandidate(
   input: Pick<
@@ -200,14 +214,6 @@ function summarizeCandidates(candidates: MockBillingCandidate[]) {
   };
 }
 
-function readRouteBody(route: Route) {
-  try {
-    return route.request().postDataJSON();
-  } catch {
-    return null;
-  }
-}
-
 async function installBillingCandidateRouteMocks(page: Page) {
   const requests: Array<{ method: string; url: string; body: unknown }> = [];
   const candidates = [
@@ -250,74 +256,55 @@ async function installBillingCandidateRouteMocks(page: Page) {
     });
   }
 
-  await page.route('**/api/billing-candidates/export?**', async (route) => {
+  await page.route(apiPathPattern('/api/billing-candidates/export'), async (route) => {
     await recordRequest(route);
-    await route.fulfill({
-      status: 200,
-      headers: {
-        'content-type': 'text/csv;charset=utf-8',
-        'content-disposition': 'attachment; filename="billing_e2e.csv"',
-      },
-      body: 'billing_month,billing_code,billing_name\n2026-04,MED_HOME_VISIT_CONFIRMED,確定\n',
-    });
+    await fulfillCsv(
+      route,
+      'billing_month,billing_code,billing_name\n2026-04,MED_HOME_VISIT_CONFIRMED,確定\n',
+      'billing_e2e.csv',
+    );
   });
 
-  await page.route('**/api/billing-candidates/close', async (route) => {
+  await page.route(apiPathPattern('/api/billing-candidates/close'), async (route) => {
     await recordRequest(route);
     candidates.forEach((candidate) => {
       if (candidate.status === 'confirmed') {
         candidate.status = 'exported';
       }
     });
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        message: `${BILLING_MONTH} を月次締めしました`,
-        exported_count: candidates.filter((candidate) => candidate.status === 'exported').length,
-        summary: summarizeCandidates(candidates),
-      }),
+    await fulfillJson(route, {
+      message: `${BILLING_MONTH} を月次締めしました`,
+      exported_count: candidates.filter((candidate) => candidate.status === 'exported').length,
+      summary: summarizeCandidates(candidates),
     });
   });
 
-  await page.route('**/api/billing-candidates/billing_e2e_candidate_*', async (route) => {
+  await page.route(/\/api\/billing-candidates\/billing_e2e_candidate_[^/?]+$/, async (route) => {
     const request = route.request();
     await recordRequest(route);
     const candidateId = new URL(request.url()).pathname.split('/').pop();
     const candidate = candidates.find((item) => item.id === candidateId);
-    const body = readRouteBody(route) as { action?: string } | null;
+    const body = readRouteBody<{ action?: string }>(route);
     const action = body?.action;
     if (
       request.method() !== 'PATCH' ||
       !candidate ||
       !['confirm', 'exclude', 'reopen'].includes(action ?? '')
     ) {
-      await route.fulfill({
-        status: 404,
-        contentType: 'application/json',
-        body: JSON.stringify({ message: 'mock candidate not found' }),
-      });
+      await fulfillJson(route, { message: 'mock candidate not found' }, 404);
       return;
     }
 
     updateCandidateForAction(candidate, action as 'confirm' | 'exclude' | 'reopen');
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ data: candidate }),
-    });
+    await fulfillJson(route, { data: candidate });
   });
 
-  await page.route('**/api/billing-candidates?**', async (route) => {
+  await page.route(apiPathPattern('/api/billing-candidates'), async (route) => {
     await recordRequest(route);
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        data: candidates,
-        hasMore: false,
-        summary: summarizeCandidates(candidates),
-      }),
+    await fulfillJson(route, {
+      data: candidates,
+      hasMore: false,
+      summary: summarizeCandidates(candidates),
     });
   });
 
@@ -335,8 +322,7 @@ test.describe('billing: main page', () => {
 
   test('billing page loads with header', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/billing');
-    await waitForStableUi(page);
+    await openBillingRoute(page, '/billing');
 
     // Page heading should be visible
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
@@ -352,8 +338,7 @@ test.describe('billing: main page', () => {
 
   test('billing page has navigation to candidates', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/billing');
-    await waitForStableUi(page);
+    await openBillingRoute(page, '/billing');
 
     // Should have link to candidates page
     const candidatesLink = page.getByRole('link', {
@@ -383,8 +368,7 @@ test.describe('billing: candidates page', () => {
 
   test('billing candidates page loads', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/billing/candidates');
-    await waitForStableUi(page);
+    await openBillingRoute(page, '/billing/candidates');
 
     // Page should render main content
     const main = page.locator('main');
@@ -397,8 +381,7 @@ test.describe('billing: candidates page', () => {
 
   test('billing candidates page has month selector or filter controls', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/billing/candidates');
-    await waitForStableUi(page);
+    await openBillingRoute(page, '/billing/candidates');
 
     // Should have some form of filter / date control
     const hasSelect = await page
@@ -424,8 +407,7 @@ test.describe('billing: candidates page', () => {
 
   test('billing candidates shows candidate list or empty state', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/billing/candidates');
-    await waitForStableUi(page);
+    await openBillingRoute(page, '/billing/candidates');
 
     // Should show either a table/list of candidates or an empty state
     const hasTable = await page
@@ -454,8 +436,7 @@ test.describe('billing: candidates page', () => {
 
   test('billing candidates generate button or action is accessible', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/billing/candidates');
-    await waitForStableUi(page);
+    await openBillingRoute(page, '/billing/candidates');
 
     // Should have a generate / create candidates action somewhere, or a usable filter form.
     const generateButton = page.getByRole('button', {
@@ -487,8 +468,7 @@ test.describe('billing: candidates page', () => {
     await page.setViewportSize({ width: 1280, height: 900 });
     const { requests } = await installBillingCandidateRouteMocks(page);
 
-    await page.goto(`/billing/candidates?billing_month=${BILLING_MONTH}`);
-    await waitForStableUi(page);
+    await openBillingRoute(page, `/billing/candidates?billing_month=${BILLING_MONTH}`);
 
     await expect(page.getByRole('heading', { name: '月次請求候補' })).toBeVisible();
     await expect(candidateRow(page, '請求E2E 未確認')).toBeVisible();
@@ -513,7 +493,7 @@ test.describe('billing: candidates page', () => {
           (request) =>
             request.method === 'PATCH' &&
             request.url.includes('/api/billing-candidates/billing_e2e_candidate_pending') &&
-            JSON.stringify(request.body).includes('confirm'),
+            requestBodyIncludes(request, 'confirm'),
         ),
       )
       .toBe(true);
@@ -526,7 +506,7 @@ test.describe('billing: candidates page', () => {
           (request) =>
             request.method === 'PATCH' &&
             request.url.includes('/api/billing-candidates/billing_e2e_candidate_confirmed') &&
-            JSON.stringify(request.body).includes('reopen'),
+            requestBodyIncludes(request, 'reopen'),
         ),
       )
       .toBe(true);
@@ -541,7 +521,7 @@ test.describe('billing: candidates page', () => {
           (request) =>
             request.method === 'POST' &&
             request.url.endsWith('/api/billing-candidates/close') &&
-            JSON.stringify(request.body).includes(BILLING_MONTH),
+            requestBodyIncludes(request, BILLING_MONTH),
         ),
       )
       .toBe(true);
@@ -569,8 +549,7 @@ test.describe('billing: admin rules page', () => {
 
   test('billing admin rules page loads without errors', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await page.goto('/admin/billing-rules');
-    await waitForStableUi(page);
+    await openBillingRoute(page, '/admin/billing-rules');
 
     const main = page.locator('main');
     await expect(main).toBeVisible();

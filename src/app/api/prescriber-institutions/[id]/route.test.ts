@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -36,9 +36,17 @@ vi.mock('@/lib/db/rls', () => ({
 import { DELETE, GET, PATCH } from './route';
 
 function createRequest(body?: unknown) {
-  return {
-    json: async () => body,
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/prescriber-institutions/institution_1', {
+    method: body === undefined ? 'GET' : 'PATCH',
+    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+function createDeleteRequest() {
+  return new NextRequest('http://localhost/api/prescriber-institutions/institution_1', {
+    method: 'DELETE',
+  });
 }
 
 describe('/api/prescriber-institutions/[id]', () => {
@@ -145,7 +153,7 @@ describe('/api/prescriber-institutions/[id]', () => {
   });
 
   it('clears intake references before deleting an institution row', async () => {
-    const response = await DELETE(createRequest(), {
+    const response = await DELETE(createDeleteRequest(), {
       params: Promise.resolve({ id: 'institution_1' }),
     });
     if (!response) throw new Error('response is required');

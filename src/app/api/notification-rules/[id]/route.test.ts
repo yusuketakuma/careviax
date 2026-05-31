@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -24,6 +24,12 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { DELETE, GET, PATCH } from './route';
+
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
+function createRequest(init?: NextRequestInit) {
+  return new NextRequest('http://localhost/api/notification-rules/rule_1', init);
+}
 
 describe('/api/notification-rules/[id]', () => {
   beforeEach(() => {
@@ -55,7 +61,7 @@ describe('/api/notification-rules/[id]', () => {
   });
 
   it('returns a notification rule by id', async () => {
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createRequest(), {
       params: Promise.resolve({ id: 'rule_1' }),
     }))!;
 
@@ -63,20 +69,42 @@ describe('/api/notification-rules/[id]', () => {
   });
 
   it('updates a notification rule', async () => {
-    const response = (await PATCH({
-      json: async () => ({
-        enabled: false,
+    const response = (await PATCH(
+      createRequest({
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          enabled: false,
+          recipients: { roles: ['admin'], user_ids: ['user_1'] },
+          conditions: {
+            throttle_minutes: 30,
+            fallback: null,
+            levels: ['high', null],
+          },
+        }),
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'rule_1' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'rule_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(200);
-    expect(notificationRuleUpdateMock).toHaveBeenCalled();
+    expect(notificationRuleUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'rule_1' },
+      data: expect.objectContaining({
+        enabled: false,
+        recipients: { roles: ['admin'], user_ids: ['user_1'] },
+        conditions: {
+          throttle_minutes: 30,
+          fallback: null,
+          levels: ['high', null],
+        },
+      }),
+    });
   });
 
   it('deletes a notification rule', async () => {
-    const response = (await DELETE({} as NextRequest, {
+    const response = (await DELETE(createRequest(), {
       params: Promise.resolve({ id: 'rule_1' }),
     }))!;
 

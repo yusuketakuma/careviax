@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { requireAuthContextMock, patientFindFirstMock, getPatientMcsOverviewMock } = vi.hoisted(
   () => ({
@@ -27,15 +27,15 @@ vi.mock('@/server/services/patient-mcs', () => ({
 
 import { GET } from './route';
 
-function createRequest() {
-  return {
-    headers: {
-      get: (name: string) => (name === 'x-org-id' ? 'org_1' : null),
+function createRequest(patientId = 'patient_1', query = '') {
+  return new NextRequest(
+    `http://localhost/api/patients/${patientId}/mcs${query ? `?${query}` : ''}`,
+    {
+      headers: {
+        'x-org-id': 'org_1',
+      },
     },
-    method: 'GET',
-    url: 'http://localhost/api/patients/patient_1/mcs',
-    nextUrl: new URL('http://localhost/api/patients/patient_1/mcs'),
-  } as unknown as NextRequest;
+  );
 }
 
 describe('/api/patients/[id]/mcs GET', () => {
@@ -154,10 +154,7 @@ describe('/api/patients/[id]/mcs GET', () => {
 
   it('passes through a validated limit parameter', async () => {
     const response = await GET(
-      {
-        ...createRequest(),
-        nextUrl: new URL('http://localhost/api/patients/patient_1/mcs?limit=0'),
-      } as NextRequest,
+      createRequest('patient_1', 'limit=0'),
       {
         params: Promise.resolve({ id: 'patient_1' }),
       },
@@ -192,10 +189,7 @@ describe('/api/patients/[id]/mcs GET', () => {
 
   it('rejects invalid limit values', async () => {
     const response = await GET(
-      {
-        ...createRequest(),
-        nextUrl: new URL('http://localhost/api/patients/patient_1/mcs?limit=200'),
-      } as NextRequest,
+      createRequest('patient_1', 'limit=200'),
       {
         params: Promise.resolve({ id: 'patient_1' }),
       },

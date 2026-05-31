@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   setBatchFindFirstMock,
@@ -41,6 +41,14 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 }));
 
 import { DELETE, GET, PATCH } from './route';
+
+function createRequest(method: 'DELETE' | 'GET' | 'PATCH' = 'GET', body?: unknown) {
+  return new NextRequest('http://localhost/api/set-batches/batch_1', {
+    method,
+    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
 
 describe('/api/set-batches/[id]', () => {
   beforeEach(() => {
@@ -88,7 +96,7 @@ describe('/api/set-batches/[id]', () => {
   });
 
   it('returns a set batch with line detail', async () => {
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createRequest(), {
       params: Promise.resolve({ id: 'batch_1' }),
     }))!;
 
@@ -98,7 +106,7 @@ describe('/api/set-batches/[id]', () => {
   it('returns 404 for unassigned pharmacist set-batch detail', async () => {
     setBatchFindFirstMock.mockResolvedValue(null);
 
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createRequest(), {
       params: Promise.resolve({ id: 'batch_1' }),
     }))!;
 
@@ -129,12 +137,10 @@ describe('/api/set-batches/[id]', () => {
 
   it('updates a set batch with optimistic locking', async () => {
     const response = (await PATCH(
-      {
-        json: async () => ({
-          quantity: 3,
-          version: 2,
-        }),
-      } as NextRequest,
+      createRequest('PATCH', {
+        quantity: 3,
+        version: 2,
+      }),
       {
         params: Promise.resolve({ id: 'batch_1' }),
       },
@@ -159,12 +165,10 @@ describe('/api/set-batches/[id]', () => {
     setBatchFindFirstMock.mockResolvedValue(null);
 
     const response = (await PATCH(
-      {
-        json: async () => ({
-          quantity: 3,
-          version: 2,
-        }),
-      } as NextRequest,
+      createRequest('PATCH', {
+        quantity: 3,
+        version: 2,
+      }),
       {
         params: Promise.resolve({ id: 'batch_1' }),
       },
@@ -177,7 +181,7 @@ describe('/api/set-batches/[id]', () => {
   });
 
   it('deletes a set batch', async () => {
-    const response = (await DELETE({} as NextRequest, {
+    const response = (await DELETE(createRequest('DELETE'), {
       params: Promise.resolve({ id: 'batch_1' }),
     }))!;
 
@@ -194,7 +198,7 @@ describe('/api/set-batches/[id]', () => {
   it('returns 404 for unassigned pharmacist set-batch deletes before side effects', async () => {
     setBatchFindFirstMock.mockResolvedValue(null);
 
-    const response = (await DELETE({} as NextRequest, {
+    const response = (await DELETE(createRequest('DELETE'), {
       params: Promise.resolve({ id: 'batch_1' }),
     }))!;
 

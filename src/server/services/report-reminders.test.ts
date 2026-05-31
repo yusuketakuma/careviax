@@ -141,16 +141,17 @@ describe('report-reminders service', () => {
           },
         ]),
       },
+      task: {
+        create: vi.fn(),
+        updateMany: vi.fn(),
+        upsert: vi.fn(),
+      },
     } as const;
 
-    const result = await queueOverdueReportResponseReminders(
-      tx as never,
-      'org_1',
-      {
-        overdueDays: 7,
-        now: new Date('2026-03-12T00:00:00.000Z'),
-      }
-    );
+    const result = await queueOverdueReportResponseReminders(tx, 'org_1', {
+      overdueDays: 7,
+      now: new Date('2026-03-12T00:00:00.000Z'),
+    });
 
     expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
       tx,

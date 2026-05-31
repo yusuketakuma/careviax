@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { authMock, membershipFindFirstMock, facilityStandardFindManyMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
@@ -25,11 +25,7 @@ vi.mock('@/lib/db/client', () => ({
 import { GET } from './route';
 
 function createRequest(headers?: Record<string, string>) {
-  return {
-    headers: {
-      get: (key: string) => headers?.[key] ?? null,
-    },
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/admin/facility-standards', { headers });
 }
 
 describe('/api/admin/facility-standards GET', () => {
@@ -70,6 +66,19 @@ describe('/api/admin/facility-standards GET', () => {
           name: '本店',
         },
       },
+      {
+        id: 'std_2',
+        standard_type: '無菌製剤処理加算',
+        filed_date: new Date('2026-02-01T00:00:00Z'),
+        effective_date: null,
+        expiry_date: null,
+        renewal_alert_date: null,
+        requirements_status: ['unexpected'],
+        site: {
+          id: 'site_1',
+          name: '本店',
+        },
+      },
     ]);
 
     const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
@@ -88,6 +97,11 @@ describe('/api/admin/facility-standards GET', () => {
             training: true,
             staffing: false,
           },
+        }),
+        expect.objectContaining({
+          id: 'std_2',
+          claim_status: 'unknown',
+          requirements_status: null,
         }),
       ],
     });

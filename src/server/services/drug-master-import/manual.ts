@@ -1,6 +1,16 @@
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { DrugMasterImportDbClient, withImportLog } from './shared';
+import { toPrismaJsonInput } from '@/lib/db/json';
+import { type DrugMasterImportLogDbClient, withImportLog } from './shared';
+
+type ManualClinicalRulesDbClient = DrugMasterImportLogDbClient & {
+  drugAlertRule: Pick<Prisma.TransactionClient['drugAlertRule'], 'createMany' | 'deleteMany'>;
+  drugMaster: Pick<Prisma.TransactionClient['drugMaster'], 'findFirst' | 'update'>;
+  drugPackageInsert: Pick<
+    Prisma.TransactionClient['drugPackageInsert'],
+    'create' | 'findFirst' | 'update'
+  >;
+};
 
 const alertRuleConditionSchema = z
   .object({
@@ -62,7 +72,7 @@ export type ManualClinicalRuleBundle = z.input<typeof manualClinicalRuleBundleSc
 type ParsedManualClinicalRuleBundle = z.output<typeof manualClinicalRuleBundleSchema>;
 
 async function upsertRenalAdjustment(
-  db: DrugMasterImportDbClient,
+  db: ManualClinicalRulesDbClient,
   entry: ParsedManualClinicalRuleBundle['renal_adjustments'][number],
 ) {
   const drug = await db.drugMaster.findFirst({
@@ -96,9 +106,9 @@ async function upsertRenalAdjustment(
     await db.drugPackageInsert.update({
       where: { id: existing.id },
       data: {
-        dosage_adjustment_renal: entry.dosage_adjustment_renal as Prisma.InputJsonValue,
+        dosage_adjustment_renal: toPrismaJsonInput(entry.dosage_adjustment_renal),
         ...(entry.precautions_elderly !== undefined
-          ? { precautions_elderly: entry.precautions_elderly as Prisma.InputJsonValue }
+          ? { precautions_elderly: toPrismaJsonInput(entry.precautions_elderly) }
           : {}),
       },
     });
@@ -108,10 +118,10 @@ async function upsertRenalAdjustment(
   await db.drugPackageInsert.create({
     data: {
       drug_master_id: drug.id,
-      dosage_adjustment_renal: entry.dosage_adjustment_renal as Prisma.InputJsonValue,
+      dosage_adjustment_renal: toPrismaJsonInput(entry.dosage_adjustment_renal),
       precautions_elderly:
         entry.precautions_elderly !== undefined
-          ? (entry.precautions_elderly as Prisma.InputJsonValue)
+          ? toPrismaJsonInput(entry.precautions_elderly)
           : Prisma.JsonNull,
       source_format: 'pdf',
     },
@@ -120,7 +130,7 @@ async function upsertRenalAdjustment(
 }
 
 async function replaceAlertRules(
-  db: DrugMasterImportDbClient,
+  db: ManualClinicalRulesDbClient,
   alertType: 'pim_elderly' | 'high_risk',
   rules:
     | ParsedManualClinicalRuleBundle['pim_rules']
@@ -137,7 +147,7 @@ async function replaceAlertRules(
   await db.drugAlertRule.createMany({
     data: rules.map((rule) => ({
       alert_type: alertType,
-      condition: rule.condition as Prisma.InputJsonValue,
+      condition: toPrismaJsonInput(rule.condition),
       severity: rule.severity,
       message: rule.message,
       is_active: rule.is_active,
@@ -148,7 +158,7 @@ async function replaceAlertRules(
 }
 
 async function applyDrugSafetyOverride(
-  db: DrugMasterImportDbClient,
+  db: ManualClinicalRulesDbClient,
   override: ParsedManualClinicalRuleBundle['drug_safety_overrides'][number],
 ) {
   const drug = await db.drugMaster.findFirst({
@@ -181,7 +191,7 @@ async function applyDrugSafetyOverride(
 }
 
 export async function importManualClinicalRules(
-  db: DrugMasterImportDbClient,
+  db: ManualClinicalRulesDbClient,
   bundle: ManualClinicalRuleBundle,
 ) {
   return withImportLog(db, 'manual_clinical', async () => {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -37,6 +37,10 @@ vi.mock('@/server/services/export-audit', () => ({
 
 import { GET } from './route';
 
+function createRequest() {
+  return new NextRequest('http://localhost/api/care-reports/report_1/pdf');
+}
+
 describe('/api/care-reports/[id]/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -53,7 +57,7 @@ describe('/api/care-reports/[id]/pdf', () => {
       fileName: 'care-report.pdf',
     });
 
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createRequest(), {
       params: Promise.resolve({ id: 'report_1' }),
     }))!;
 
@@ -72,7 +76,7 @@ describe('/api/care-reports/[id]/pdf', () => {
   it('returns 404 when the care report does not exist', async () => {
     buildCareReportPdfMock.mockRejectedValue(new Error('報告書が見つかりません'));
 
-    const response = (await GET({} as NextRequest, {
+    const response = (await GET(createRequest(), {
       params: Promise.resolve({ id: 'report_1' }),
     }))!;
 

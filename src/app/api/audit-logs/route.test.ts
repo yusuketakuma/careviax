@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const { authMock, membershipFindFirstMock, findManyMock, countMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
@@ -30,15 +30,9 @@ function createRequest(
   headers?: Record<string, string>,
   search = 'limit=10'
 ) {
-  const url = new URL(`http://localhost/api/audit-logs?${search}`);
-  return {
-    headers: {
-      get: (key: string) => headers?.[key] ?? null,
-    },
-    nextUrl: {
-      searchParams: url.searchParams,
-    },
-  } as unknown as NextRequest;
+  return new NextRequest(`http://localhost/api/audit-logs?${search}`, {
+    headers,
+  });
 }
 
 describe('/api/audit-logs GET', () => {

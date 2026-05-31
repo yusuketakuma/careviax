@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { success, validationError } from '@/lib/api/response';
 
 const createRuleSchema = z.object({
@@ -50,10 +51,10 @@ export async function POST(req: NextRequest) {
         org_id: ctx.orgId,
         event_type: parsed.data.event_type,
         channel: parsed.data.channel,
-        recipients: parsed.data.recipients as Prisma.InputJsonValue,
+        recipients: toPrismaJsonInput(parsed.data.recipients),
         enabled: parsed.data.enabled,
         conditions: parsed.data.conditions
-          ? (parsed.data.conditions as Prisma.InputJsonValue)
+          ? toPrismaJsonInput(parsed.data.conditions)
           : Prisma.JsonNull,
       },
     })

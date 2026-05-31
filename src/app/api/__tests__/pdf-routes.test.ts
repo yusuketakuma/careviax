@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -54,12 +54,9 @@ import { GET as tracingReportPdfGet } from '../tracing-reports/[id]/pdf/route';
 import { GET as visitRecordPdfGet } from '../visit-records/[id]/pdf/route';
 
 function createRequest(url: string) {
-  return {
-    url,
-    headers: {
-      get: (key: string) => ({ 'x-org-id': 'org_1' })[key] ?? null,
-    },
-  } as unknown as NextRequest;
+  return new NextRequest(url, {
+    headers: { 'x-org-id': 'org_1' },
+  });
 }
 
 describe('PDF routes', () => {

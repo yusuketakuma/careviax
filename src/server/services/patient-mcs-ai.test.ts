@@ -227,7 +227,7 @@ describe('patient-mcs-ai', () => {
       vi.fn().mockResolvedValue({
         ok: false,
         status: 503,
-      })
+      }),
     );
 
     const summary = await generatePatientMcsAiSummary({
@@ -250,6 +250,97 @@ describe('patient-mcs-ai', () => {
     expect(summary.model).toBe('gpt-5-mini');
     expect(summary.fallback_reason).toBe('upstream_error');
     expect(summary.duration_ms).not.toBeNull();
+  });
+
+  it('falls back when the AI response content is not a JSON object', async () => {
+    process.env.PATIENT_MCS_AI_API_KEY = 'test-key';
+    process.env.PATIENT_MCS_AI_PROVIDER = 'openai';
+    process.env.PATIENT_MCS_AI_ALLOW_EXTERNAL = 'true';
+    process.env.PATIENT_MCS_AI_MODEL = 'gpt-5-mini';
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify(['unexpected']),
+              },
+            },
+          ],
+        }),
+      }),
+    );
+
+    const summary = await generatePatientMcsAiSummary({
+      patientName: '青葉 花子',
+      projectTitle: '青葉 花子：年長者の里',
+      messages: [
+        {
+          sourceMessageId: 'message_1',
+          authorName: '篠原 陽子',
+          authorRole: '看護師',
+          authorOrganization: '訪問看護',
+          postedAt: new Date('2026-04-02T08:00:00.000Z'),
+          postedAtLabel: '4/2 17:00',
+          body: '食欲低下が続いています。',
+        },
+      ],
+    });
+
+    expect(summary.provider).toBe('rule');
+    expect(summary.model).toBe('gpt-5-mini');
+    expect(summary.fallback_reason).toBe('invalid_response');
+    expect(summary.headline).toContain('1件の共有を取り込みました');
+  });
+
+  it('falls back with invalid_response when the AI response envelope is malformed', async () => {
+    process.env.PATIENT_MCS_AI_API_KEY = 'test-key';
+    process.env.PATIENT_MCS_AI_PROVIDER = 'openai';
+    process.env.PATIENT_MCS_AI_ALLOW_EXTERNAL = 'true';
+    process.env.PATIENT_MCS_AI_MODEL = 'gpt-5-mini';
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: {
+            message: {
+              content: JSON.stringify({
+                headline: 'bad envelope',
+                bullets: [],
+                must_check_today: [],
+                suggested_actions: [],
+              }),
+            },
+          },
+        }),
+      }),
+    );
+
+    const summary = await generatePatientMcsAiSummary({
+      patientName: '青葉 花子',
+      projectTitle: '青葉 花子：年長者の里',
+      messages: [
+        {
+          sourceMessageId: 'message_1',
+          authorName: '篠原 陽子',
+          authorRole: '看護師',
+          authorOrganization: '訪問看護',
+          postedAt: new Date('2026-04-02T08:00:00.000Z'),
+          postedAtLabel: '4/2 17:00',
+          body: '食欲低下が続いています。',
+        },
+      ],
+    });
+
+    expect(summary.provider).toBe('rule');
+    expect(summary.model).toBe('gpt-5-mini');
+    expect(summary.fallback_reason).toBe('invalid_response');
+    expect(summary.headline).toContain('1件の共有を取り込みました');
   });
 
   it('keeps external AI disabled unless explicit opt-in is enabled', async () => {

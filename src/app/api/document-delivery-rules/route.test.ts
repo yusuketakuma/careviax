@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -22,6 +22,19 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { GET, POST } from './route';
+
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
+function createRequest(body?: unknown) {
+  const init: NextRequestInit = {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+  };
+  if (body !== undefined) {
+    init.body = JSON.stringify(body);
+  }
+  return new NextRequest('http://localhost/api/document-delivery-rules', init);
+}
 
 describe('/api/document-delivery-rules', () => {
   beforeEach(() => {
@@ -46,23 +59,21 @@ describe('/api/document-delivery-rules', () => {
   });
 
   it('lists document delivery rules', async () => {
-    const response = (await GET({
-      url: 'http://localhost/api/document-delivery-rules',
-    } as NextRequest))!;
+    const response = (await GET(createRequest()))!;
 
     expect(response.status).toBe(200);
     expect(documentDeliveryRuleFindManyMock).toHaveBeenCalled();
   });
 
   it('creates a document delivery rule', async () => {
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createRequest({
         document_type: 'care_report',
         target_role: 'physician',
         channel: 'fax',
         fallback_channels: ['email'],
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(documentDeliveryRuleCreateMock).toHaveBeenCalledWith({

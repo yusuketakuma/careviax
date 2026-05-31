@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -22,6 +22,20 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { GET, POST } from './route';
+
+type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
+
+function createGetRequest(search = '') {
+  return new NextRequest(`http://localhost/api/drug-alert-rules${search}`);
+}
+
+function createPostRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/drug-alert-rules', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  } satisfies NextRequestInit);
+}
 
 describe('/api/drug-alert-rules', () => {
   beforeEach(() => {
@@ -46,28 +60,42 @@ describe('/api/drug-alert-rules', () => {
   });
 
   it('lists alert rules', async () => {
-    const response = (await GET({
-      url: 'http://localhost/api/drug-alert-rules',
-    } as NextRequest))!;
+    const response = (await GET(createGetRequest()))!;
 
     expect(response.status).toBe(200);
     expect(drugAlertRuleFindManyMock).toHaveBeenCalled();
   });
 
+  it('rejects unsupported alert_type filters before querying rules', async () => {
+    const response = (await GET(createGetRequest('?alert_type=unsupported')))!;
+
+    expect(response.status).toBe(400);
+    expect(drugAlertRuleFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('creates an alert rule', async () => {
-    const response = (await POST({
-      json: async () => ({
+    const response = (await POST(
+      createPostRequest({
         alert_type: 'interaction',
-        condition: {},
+        condition: {
+          severity_floor: 'warning',
+          fallback: null,
+          thresholds: [1, null],
+        },
         severity: 'warning',
         message: '併用禁忌を確認',
       }),
-    } as NextRequest))!;
+    ))!;
 
     expect(response.status).toBe(201);
     expect(drugAlertRuleCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         alert_type: 'interaction',
+        condition: {
+          severity_floor: 'warning',
+          fallback: null,
+          thresholds: [1, null],
+        },
         severity: 'warning',
         message: '併用禁忌を確認',
         is_active: true,

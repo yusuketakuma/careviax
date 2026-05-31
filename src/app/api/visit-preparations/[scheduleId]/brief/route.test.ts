@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -36,11 +36,9 @@ vi.mock('@/server/services/visit-brief', () => ({
 import { GET } from './route';
 
 function createRequest(headers?: Record<string, string>) {
-  return {
-    headers: {
-      get: (key: string) => headers?.[key] ?? null,
-    },
-  } as unknown as NextRequest;
+  return new NextRequest('http://localhost/api/visit-preparations/schedule_1/brief', {
+    headers,
+  });
 }
 
 describe('/api/visit-preparations/[scheduleId]/brief', () => {

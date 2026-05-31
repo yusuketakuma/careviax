@@ -1,5 +1,6 @@
-import { Prisma, type NotificationType } from '@prisma/client';
+import { Prisma, type MemberRole, type NotificationType } from '@prisma/client';
 import webpush from 'web-push';
+import { isMemberRole } from '@/lib/auth/member-roles';
 import { LineNotificationAdapter } from '@/server/adapters/line';
 import { SmsNotificationAdapter } from '@/server/adapters/sms';
 
@@ -15,7 +16,13 @@ if (getWebPushEnabled()) {
   webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY!, VAPID_PRIVATE_KEY!);
 }
 
-type Tx = Prisma.TransactionClient;
+type Tx = {
+  membership: Pick<Prisma.TransactionClient['membership'], 'findMany'>;
+  notification: Pick<Prisma.TransactionClient['notification'], 'create' | 'upsert'>;
+  notificationRule: Pick<Prisma.TransactionClient['notificationRule'], 'findMany'>;
+  pushSubscription: Pick<Prisma.TransactionClient['pushSubscription'], 'findMany'>;
+  user: Pick<Prisma.TransactionClient['user'], 'findMany'>;
+};
 type NotificationChannel = 'in_app' | 'sms' | 'line' | 'email' | 'fax' | 'mcs';
 
 type DispatchNotificationEventInput = {
@@ -32,6 +39,27 @@ type DispatchNotificationEventInput = {
 
 function uniqueStrings(values: Array<string | null | undefined>) {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
+}
+
+function uniqueMemberRoles(values: MemberRole[]) {
+  return Array.from(new Set(values));
+}
+
+function getRecipientConfig(recipients: Prisma.JsonValue) {
+  if (!recipients || typeof recipients !== 'object' || Array.isArray(recipients)) {
+    return {};
+  }
+  return recipients as Record<string, Prisma.JsonValue>;
+}
+
+function readRecipientRoles(recipients: Prisma.JsonValue) {
+  const roles = getRecipientConfig(recipients).roles;
+  return Array.isArray(roles) ? roles.filter(isMemberRole) : [];
+}
+
+function readRecipientUserIds(recipients: Prisma.JsonValue) {
+  const userIds = getRecipientConfig(recipients).user_ids;
+  return Array.isArray(userIds) ? userIds.filter((userId): userId is string => typeof userId === 'string') : [];
 }
 
 const smsAdapter = new SmsNotificationAdapter();
@@ -64,20 +92,12 @@ async function resolveTargetUserIds(
     return [];
   }
 
-  const roleRecipients = enabledRules.flatMap((rule) => {
-    const recipients = rule.recipients as {
-      roles?: string[];
-      user_ids?: string[];
-    } | null;
-    return recipients?.roles ?? [];
-  });
-  const userRecipients = enabledRules.flatMap((rule) => {
-    const recipients = rule.recipients as {
-      roles?: string[];
-      user_ids?: string[];
-    } | null;
-    return recipients?.user_ids ?? [];
-  });
+  const roleRecipients = uniqueMemberRoles(
+    enabledRules.flatMap((rule) => readRecipientRoles(rule.recipients))
+  );
+  const userRecipients = uniqueStrings(
+    enabledRules.flatMap((rule) => readRecipientUserIds(rule.recipients))
+  );
 
   const membershipRecipients =
     roleRecipients.length === 0
@@ -86,7 +106,7 @@ async function resolveTargetUserIds(
           where: {
             org_id: input.orgId,
             is_active: true,
-            role: { in: roleRecipients as never[] },
+            role: { in: roleRecipients },
             user: {
               is_active: true,
             },

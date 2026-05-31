@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
@@ -31,6 +31,12 @@ vi.mock('@/lib/db/client', () => ({
 
 import { GET } from './route';
 
+function createRequest() {
+  return new NextRequest('http://localhost/api/dashboard/dispensing-stats', {
+    headers: { 'x-org-id': 'org_1' },
+  });
+}
+
 describe('/api/dashboard/dispensing-stats', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -47,14 +53,7 @@ describe('/api/dashboard/dispensing-stats', () => {
   });
 
   it('returns dispensing dashboard metrics', async () => {
-    const response = (await GET({
-      url: 'http://localhost/api/dashboard/dispensing-stats',
-      method: 'GET',
-      headers: {
-        get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
-      },
-      nextUrl: new URL('http://localhost/api/dashboard/dispensing-stats'),
-    } as NextRequest))!;
+    const response = (await GET(createRequest()))!;
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({

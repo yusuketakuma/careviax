@@ -3,6 +3,26 @@ import { prisma } from '@/lib/db/client';
 import type { CareTrend, CareTrendEntry } from '@/types/visit-brief';
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
+type CareTrendReader = {
+  visitRecord: {
+    findMany(args: unknown): Promise<Array<{ id: string; visit_date: Date }>>;
+  };
+  medicationIssue: {
+    findMany(args: unknown): Promise<Array<{
+      id: string;
+      title: string;
+      status: string;
+      identified_at: Date;
+      resolved_at: Date | null;
+    }>>;
+  };
+  residualMedication: {
+    findMany(args: unknown): Promise<Array<{
+      visit_record_id: string;
+      excess_days: number | null;
+    }>>;
+  };
+};
 
 const DEFAULT_VISIT_LIMIT = 5;
 const ISSUE_WINDOW_DAYS = 90;
@@ -15,7 +35,24 @@ export async function computeCareTrend(
     patientId: string;
     visitLimit?: number;
   }
+): Promise<CareTrend>;
+export async function computeCareTrend(
+  db: CareTrendReader,
+  args: {
+    orgId: string;
+    patientId: string;
+    visitLimit?: number;
+  }
+): Promise<CareTrend>;
+export async function computeCareTrend(
+  db: DbClient | CareTrendReader,
+  args: {
+    orgId: string;
+    patientId: string;
+    visitLimit?: number;
+  }
 ): Promise<CareTrend> {
+  const reader = db as CareTrendReader;
   const visitLimit = args.visitLimit ?? DEFAULT_VISIT_LIMIT;
   const issueWindowStart = new Date();
   issueWindowStart.setDate(issueWindowStart.getDate() - ISSUE_WINDOW_DAYS);
@@ -23,7 +60,7 @@ export async function computeCareTrend(
   // Single DB round-trip per sub-query (no N+1): fetch visits + residuals in one query,
   // and issues in a separate query — both run in parallel.
   const [visitRecords, medicationIssues] = await Promise.all([
-    db.visitRecord.findMany({
+    reader.visitRecord.findMany({
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
@@ -35,7 +72,7 @@ export async function computeCareTrend(
         visit_date: true,
       },
     }),
-    db.medicationIssue.findMany({
+    reader.medicationIssue.findMany({
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
@@ -71,7 +108,7 @@ export async function computeCareTrend(
   const visitIds = visitRecords.map((v) => v.id);
   const residuals =
     visitIds.length > 0
-      ? await db.residualMedication.findMany({
+      ? await reader.residualMedication.findMany({
           where: {
             org_id: args.orgId,
             visit_record_id: { in: visitIds },

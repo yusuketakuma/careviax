@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
-import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import {
@@ -133,8 +133,8 @@ export async function POST(req: NextRequest) {
           max_weekly_visits: null,
           max_travel_minutes: null,
           can_accept_emergency: isOperational,
-          visit_specialties: [] as Prisma.InputJsonValue,
-          coverage_area: [] as Prisma.InputJsonValue,
+          visit_specialties: toPrismaJsonInput([]),
+          coverage_area: toPrismaJsonInput([]),
           account_status: 'invited',
           invited_at: invitedAt,
           invited_by: ctx.userId,

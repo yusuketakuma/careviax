@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
@@ -47,6 +47,20 @@ vi.mock('@/lib/pharmacy/barcode', () => ({
 
 import { POST } from './route';
 
+function createVerifyBarcodeRequest(
+  taskId: string,
+  body: { barcode: string; line_id: string },
+) {
+  return new NextRequest(`http://localhost/api/dispense-tasks/${taskId}/verify-barcode`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+    body: JSON.stringify(body),
+  });
+}
+
 describe('/api/dispense-tasks/[id]/verify-barcode', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -68,20 +82,15 @@ describe('/api/dispense-tasks/[id]/verify-barcode', () => {
   });
 
   it('verifies a matching barcode without warnings', async () => {
-    const response = (await POST({
-      url: 'http://localhost/api/dispense-tasks/task_1/verify-barcode',
-      method: 'POST',
-      headers: {
-        get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
-      },
-      nextUrl: new URL('http://localhost/api/dispense-tasks/task_1/verify-barcode'),
-      json: async () => ({
+    const response = (await POST(
+      createVerifyBarcodeRequest('task_1', {
         barcode: '0101234567890123',
         line_id: 'line_1',
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'task_1' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'task_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(200);
     expect(dispenseTaskFindFirstMock).toHaveBeenCalledWith({
@@ -123,20 +132,15 @@ describe('/api/dispense-tasks/[id]/verify-barcode', () => {
   it('requires dispense permission before task lookup', async () => {
     membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
 
-    const response = (await POST({
-      url: 'http://localhost/api/dispense-tasks/task_1/verify-barcode',
-      method: 'POST',
-      headers: {
-        get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
-      },
-      nextUrl: new URL('http://localhost/api/dispense-tasks/task_1/verify-barcode'),
-      json: async () => ({
+    const response = (await POST(
+      createVerifyBarcodeRequest('task_1', {
         barcode: '0101234567890123',
         line_id: 'line_1',
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'task_1' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'task_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(403);
     expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
@@ -147,20 +151,15 @@ describe('/api/dispense-tasks/[id]/verify-barcode', () => {
   it('does not parse barcode or disclose expected drug data when the task is outside assignment scope', async () => {
     dispenseTaskFindFirstMock.mockResolvedValue(null);
 
-    const response = (await POST({
-      url: 'http://localhost/api/dispense-tasks/task_unassigned/verify-barcode',
-      method: 'POST',
-      headers: {
-        get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
-      },
-      nextUrl: new URL('http://localhost/api/dispense-tasks/task_unassigned/verify-barcode'),
-      json: async () => ({
+    const response = (await POST(
+      createVerifyBarcodeRequest('task_unassigned', {
         barcode: '0101234567890123',
         line_id: 'line_1',
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'task_unassigned' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'task_unassigned' }),
+      },
+    ))!;
 
     expect(response.status).toBe(404);
     expect(prescriptionLineFindFirstMock).not.toHaveBeenCalled();
@@ -170,20 +169,15 @@ describe('/api/dispense-tasks/[id]/verify-barcode', () => {
   it('does not parse barcode or disclose expected drug data when the line is not in the task cycle', async () => {
     prescriptionLineFindFirstMock.mockResolvedValue(null);
 
-    const response = (await POST({
-      url: 'http://localhost/api/dispense-tasks/task_1/verify-barcode',
-      method: 'POST',
-      headers: {
-        get: (key: string) => ({ 'x-org-id': 'org_1' }[key] ?? null),
-      },
-      nextUrl: new URL('http://localhost/api/dispense-tasks/task_1/verify-barcode'),
-      json: async () => ({
+    const response = (await POST(
+      createVerifyBarcodeRequest('task_1', {
         barcode: '0101234567890123',
         line_id: 'line_other_cycle',
       }),
-    } as NextRequest, {
-      params: Promise.resolve({ id: 'task_1' }),
-    }))!;
+      {
+        params: Promise.resolve({ id: 'task_1' }),
+      },
+    ))!;
 
     expect(response.status).toBe(404);
     expect(prescriptionLineFindFirstMock).toHaveBeenCalledWith(

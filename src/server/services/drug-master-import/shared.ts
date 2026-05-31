@@ -13,6 +13,9 @@ export type DrugMasterImportDbClient = Pick<
   | 'drugAlertRule'
   | 'drugMasterChangeEvent'
 >;
+export type DrugMasterImportLogDbClient = {
+  drugMasterImportLog: Pick<PrismaClient['drugMasterImportLog'], 'create' | 'update'>;
+};
 
 export type DrugMasterImportSource =
   | 'ssk'
@@ -608,7 +611,7 @@ type LoggedImportResult<T> = {
 };
 
 export async function withImportLog<T>(
-  db: DrugMasterImportDbClient,
+  db: DrugMasterImportLogDbClient,
   source: DrugMasterImportSource,
   fn: (log: { id: string }) => Promise<LoggedImportResult<T>>,
 ) {

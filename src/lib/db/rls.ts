@@ -6,17 +6,29 @@ import {
 import { prisma } from './client';
 import { logSecurityEvent } from '@/lib/auth/security-events';
 
-// cuid v2 format: starts with 'c', 24-28 alphanumeric chars
-// cuid v1 format: starts with 'c', followed by 24 lowercase alphanumeric chars
-const CUID_PATTERN = /^c[a-z0-9]{20,30}$/;
+const SAFE_APP_ID_PATTERN = /^[a-z][a-z0-9_-]{2,63}$/;
+const RLS_CONTEXT_SETTINGS = [
+  ['app.current_org_id', (context: AppliedRlsContext) => context.orgId],
+  ['app.rls_context_applied', () => 'true'],
+  ['app.current_actor_id', (context: AppliedRlsContext) => context.requestContext?.userId],
+  ['app.current_member_role', (context: AppliedRlsContext) => context.requestContext?.role],
+  ['app.current_ip_address', (context: AppliedRlsContext) => context.requestContext?.ipAddress],
+  ['app.current_user_agent', (context: AppliedRlsContext) => context.requestContext?.userAgent],
+] as const;
+
+type AppliedRlsContext = {
+  orgId: string;
+  requestContext: RequestAuthContext | undefined;
+};
 
 /**
- * Validates that the given string is a safe cuid to prevent SQL injection.
- * RLS helper uses $executeRawUnsafe, so org_id must be validated before use.
+ * Validates app-generated IDs before placing them in PostgreSQL session config.
+ * The query is parameterized, but keeping the value to a narrow ID alphabet
+ * prevents unsafe IDs from reaching RLS/audit context.
  */
 function validateOrgId(orgId: string): void {
-  if (!CUID_PATTERN.test(orgId)) {
-    throw new Error(`Invalid orgId format: must be a valid cuid`);
+  if (!SAFE_APP_ID_PATTERN.test(orgId)) {
+    throw new Error(`Invalid orgId format: must be a safe app id`);
   }
 }
 
@@ -26,6 +38,12 @@ async function setLocalConfig(
   value?: string
 ) {
   await tx.$executeRaw(Prisma.sql`SELECT set_config(${key}, ${value ?? ''}, true)`);
+}
+
+async function applyRlsContext(tx: Prisma.TransactionClient, context: AppliedRlsContext) {
+  for (const [key, resolveValue] of RLS_CONTEXT_SETTINGS) {
+    await setLocalConfig(tx, key, resolveValue(context));
+  }
 }
 
 /**
@@ -56,12 +74,7 @@ export async function withOrgContext<T>(
   }
 
   return prisma.$transaction(async (tx) => {
-    await setLocalConfig(tx, 'app.current_org_id', orgId);
-    await setLocalConfig(tx, 'app.rls_context_applied', 'true');
-    await setLocalConfig(tx, 'app.current_actor_id', requestContext?.userId);
-    await setLocalConfig(tx, 'app.current_member_role', requestContext?.role);
-    await setLocalConfig(tx, 'app.current_ip_address', requestContext?.ipAddress);
-    await setLocalConfig(tx, 'app.current_user_agent', requestContext?.userAgent);
+    await applyRlsContext(tx, { orgId, requestContext });
     return fn(tx);
   });
 }

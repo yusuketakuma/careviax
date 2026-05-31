@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { readJsonObject } from '@/lib/db/json';
 
 const RECOVERY_CODE_SETTING_KEY = 'mfa_recovery_codes';
 const RECOVERY_CODE_COUNT = 8;
@@ -33,9 +34,7 @@ function normalizeRecoveryCode(code: string) {
 
 function hashRecoveryCode(code: string) {
   const secret =
-    process.env.MFA_RECOVERY_SECRET ??
-    process.env.AUTH_SECRET ??
-    process.env.NEXTAUTH_SECRET;
+    process.env.MFA_RECOVERY_SECRET ?? process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
   if (!secret) {
     throw new MfaRecoveryConfigError();
   }
@@ -61,17 +60,19 @@ function createRecoveryCode() {
 }
 
 function parseStoredRecoveryCodes(value: unknown): StoredRecoveryCodes | null {
-  if (!value || typeof value !== 'object') return null;
+  const record = readJsonObject(value);
+  if (!record) return null;
 
-  const record = value as Record<string, unknown>;
-  if (record.version !== 1 || !Array.isArray(record.hashes)) return null;
+  if (
+    record.version !== 1 ||
+    !Array.isArray(record.hashes) ||
+    record.hashes.some((item) => typeof item !== 'string') ||
+    typeof record.generatedAt !== 'string'
+  ) {
+    return null;
+  }
 
-  const hashes = record.hashes.filter((item): item is string => typeof item === 'string');
-  const generatedAt = typeof record.generatedAt === 'string' ? record.generatedAt : new Date().toISOString();
-  const recoveryLockRecord =
-    record.recoveryLock && typeof record.recoveryLock === 'object'
-      ? (record.recoveryLock as Record<string, unknown>)
-      : null;
+  const recoveryLockRecord = readJsonObject(record.recoveryLock);
   const recoveryLock =
     typeof recoveryLockRecord?.startedAt === 'string' &&
     typeof recoveryLockRecord?.expiresAt === 'string'
@@ -83,8 +84,8 @@ function parseStoredRecoveryCodes(value: unknown): StoredRecoveryCodes | null {
 
   return {
     version: 1,
-    hashes,
-    generatedAt,
+    hashes: record.hashes,
+    generatedAt: record.generatedAt,
     recoveryLock,
   };
 }
@@ -116,8 +117,7 @@ async function withSerializableRetry<TValue>(
       });
     } catch (cause) {
       const isRetryableConflict =
-        cause instanceof Prisma.PrismaClientKnownRequestError &&
-        cause.code === 'P2034';
+        cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
 
       if (!isRetryableConflict || attempt === SERIALIZABLE_RETRY_LIMIT - 1) {
         throw cause;
@@ -261,7 +261,11 @@ export async function takeMfaRecoveryCodesForRecovery(
     if (!setting) return null;
 
     const parsed = parseStoredRecoveryCodes(setting.value);
-    if (!parsed || hasActiveRecoveryLock(parsed.recoveryLock) || !parsed.hashes.includes(targetHash)) {
+    if (
+      !parsed ||
+      hasActiveRecoveryLock(parsed.recoveryLock) ||
+      !parsed.hashes.includes(targetHash)
+    ) {
       return null;
     }
 
@@ -282,7 +286,10 @@ export async function takeMfaRecoveryCodesForRecovery(
   });
 }
 
-export async function restoreMfaRecoveryCodes(userId: string, snapshot: StoredRecoveryCodes | null) {
+export async function restoreMfaRecoveryCodes(
+  userId: string,
+  snapshot: StoredRecoveryCodes | null,
+) {
   if (!snapshot || snapshot.hashes.length === 0) {
     return;
   }

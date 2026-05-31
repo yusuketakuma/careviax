@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   taskCommentFindManyMock,
@@ -41,6 +41,28 @@ vi.mock('@/server/services/notifications', () => ({
 
 import { GET, POST } from './route';
 
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+function createGetRequest(query = '') {
+  return new NextRequest(`http://localhost/api/comments${query ? `?${query}` : ''}`);
+}
+
+function createPostRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/comments', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+function createInvalidJsonPostRequest() {
+  return new NextRequest('http://localhost/api/comments', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{',
+  });
+}
+
 describe('/api/comments', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -64,8 +86,8 @@ describe('/api/comments', () => {
   describe('GET', () => {
     it('returns 200 with comments for entity', async () => {
       const response = (await GET(
-        { url: 'http://localhost/api/comments?entity_type=dispense_task&entity_id=dt_1' } as NextRequest,
-        { params: Promise.resolve({}) },
+        createGetRequest('entity_type=dispense_task&entity_id=dt_1'),
+        emptyRouteContext,
       ))!;
 
       expect(response.status).toBe(200);
@@ -76,8 +98,8 @@ describe('/api/comments', () => {
 
     it('returns 400 when entity_type or entity_id is missing', async () => {
       const response = (await GET(
-        { url: 'http://localhost/api/comments' } as NextRequest,
-        { params: Promise.resolve({}) },
+        createGetRequest(),
+        emptyRouteContext,
       ))!;
 
       expect(response.status).toBe(400);
@@ -87,16 +109,13 @@ describe('/api/comments', () => {
   describe('POST', () => {
     it('returns 201 when creating a comment', async () => {
       const response = (await POST(
-        {
-          url: 'http://localhost/api/comments',
-          json: async () => ({
-            entity_type: 'dispense_task',
-            entity_id: 'dt_1',
-            content: 'new comment',
-            mentions: [],
-          }),
-        } as unknown as NextRequest,
-        { params: Promise.resolve({}) },
+        createPostRequest({
+          entity_type: 'dispense_task',
+          entity_id: 'dt_1',
+          content: 'new comment',
+          mentions: [],
+        }),
+        emptyRouteContext,
       ))!;
 
       expect(response.status).toBe(201);
@@ -104,11 +123,8 @@ describe('/api/comments', () => {
 
     it('returns 400 with invalid body', async () => {
       const response = (await POST(
-        {
-          url: 'http://localhost/api/comments',
-          json: async () => { throw new Error('bad json'); },
-        } as unknown as NextRequest,
-        { params: Promise.resolve({}) },
+        createInvalidJsonPostRequest(),
+        emptyRouteContext,
       ))!;
 
       expect(response.status).toBe(400);

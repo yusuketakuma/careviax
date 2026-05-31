@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 import { recordRoutePerformance, resetPerformanceMetrics } from '@/lib/utils/performance';
 
 const {
@@ -26,14 +26,10 @@ import { GET } from './route';
 
 function createRequest(headers?: Record<string, string>) {
   const url = 'http://localhost/api/admin/performance-metrics?top=2';
-  return {
-    url,
+  return new NextRequest(url, {
     method: 'GET',
-    nextUrl: new URL(url),
-    headers: {
-      get: (key: string) => headers?.[key] ?? null,
-    },
-  } as unknown as NextRequest;
+    headers,
+  });
 }
 
 describe('/api/admin/performance-metrics GET', () => {

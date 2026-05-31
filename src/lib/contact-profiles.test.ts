@@ -35,11 +35,9 @@ describe('findExternalProfessionalSuggestions', () => {
       },
     };
 
-    const suggestions = await findExternalProfessionalSuggestions(
-      db as unknown as Parameters<typeof findExternalProfessionalSuggestions>[0],
-      'org_1',
-      { patientId: 'patient_1' },
-    );
+    const suggestions = await findExternalProfessionalSuggestions(db, 'org_1', {
+      patientId: 'patient_1',
+    });
 
     expect(suggestions).toEqual([
       expect.objectContaining({

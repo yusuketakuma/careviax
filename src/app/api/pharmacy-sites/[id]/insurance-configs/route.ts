@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server';
-import type { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { success, validationError, notFound } from '@/lib/api/response';
+import { toPrismaJsonInput } from '@/lib/db/json';
 import {
   pharmacySiteInsuranceConfigCreateSchema,
   rangesOverlap,
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         revision_label: parsed.data.revision_label ?? null,
         effective_from: nextStart,
         effective_to: nextEnd,
-        config: parsed.data.config as Prisma.InputJsonValue,
+        config: toPrismaJsonInput(parsed.data.config),
       },
     });
 

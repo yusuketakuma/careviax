@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   authMock,
@@ -32,13 +32,14 @@ vi.mock('@/lib/db/client', () => ({
 import { GET, POST } from './route';
 
 function createRequest(method: 'GET' | 'POST', headers?: Record<string, string>, body?: unknown) {
-  return {
+  return new NextRequest('http://localhost/api/admin/escalation-rules', {
     method,
     headers: {
-      get: (key: string) => headers?.[key] ?? null,
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      ...headers,
     },
-    json: async () => body,
-  } as unknown as NextRequest;
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
 }
 
 describe('/api/admin/escalation-rules', () => {
@@ -99,12 +100,12 @@ describe('/api/admin/escalation-rules', () => {
         { 'x-org-id': 'org_1' },
         {
           trigger_type: 'billing_review_stalled',
-          condition: { threshold_hours: 24, severity: 'high' },
+          condition: { threshold_hours: '24', severity: 'high', status_in: ['pending'] },
           action: 'conference_task',
           notify_role: 'manager',
           is_active: true,
-        }
-      )
+        },
+      ),
     );
 
     if (!response) throw new Error('response is required');
@@ -113,6 +114,7 @@ describe('/api/admin/escalation-rules', () => {
       data: expect.objectContaining({
         org_id: 'org_1',
         trigger_type: 'billing_review_stalled',
+        condition: { threshold_hours: 24, severity: 'high', status_in: ['pending'] },
         action: 'conference_task',
         notify_role: 'manager',
       }),

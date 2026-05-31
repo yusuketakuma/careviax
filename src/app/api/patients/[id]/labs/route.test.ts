@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 
 const {
   patientFindFirstMock,
@@ -49,7 +49,7 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
-import { POST } from './route';
+import { GET, POST } from './route';
 
 const baseLabBody = {
   analyte_code: 'egfr',
@@ -69,11 +69,51 @@ const expectedVisitRecordAssignmentWhere = {
 };
 
 function createPostRequest(body: Record<string, unknown>) {
-  return {
-    json: async () => body,
-    url: 'http://localhost/api/patients/patient_1/labs',
-  } as NextRequest;
+  return new NextRequest('http://localhost/api/patients/patient_1/labs', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
 }
+
+function createGetRequest(url = 'http://localhost/api/patients/patient_1/labs') {
+  return new NextRequest(url);
+}
+
+describe('/api/patients/[id]/labs GET', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+    patientLabObservationFindManyMock.mockResolvedValue([]);
+  });
+
+  it('rejects unsupported analyte_code query values before reading labs', async () => {
+    const response = (await GET(
+      createGetRequest('http://localhost/api/patients/patient_1/labs?analyte_code=bad_code'),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(patientLabObservationFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('filters labs by a supported analyte_code query value', async () => {
+    const response = (await GET(
+      createGetRequest('http://localhost/api/patients/patient_1/labs?analyte_code=egfr'),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(patientLabObservationFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          analyte_code: 'egfr',
+        }),
+      }),
+    );
+  });
+});
 
 describe('/api/patients/[id]/labs POST', () => {
   beforeEach(() => {
