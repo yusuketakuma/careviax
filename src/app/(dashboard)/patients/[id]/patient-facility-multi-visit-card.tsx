@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Building2, CalendarDays, CheckCircle2, CircleAlert, UsersRound } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { PatientOverview } from './patient-detail.types';
@@ -52,7 +52,8 @@ function StatusItem({
 export function PatientFacilityMultiVisitCard({ patient }: { patient: PatientOverview }) {
   const primaryResidence = patient.residences.find((item) => item.is_primary) ?? null;
   const pref = patient.scheduling_preference;
-  const activeCase = patient.cases.find((item) => item.status === 'active') ?? patient.cases[0] ?? null;
+  const activeCase =
+    patient.cases.find((item) => item.status === 'active') ?? patient.cases[0] ?? null;
   const facilityTimeFrom = formatTime(pref?.facility_time_from);
   const facilityTimeTo = formatTime(pref?.facility_time_to);
   const preferredWeekdays = pref?.preferred_weekdays ?? [];
@@ -63,10 +64,14 @@ export function PatientFacilityMultiVisitCard({ patient }: { patient: PatientOve
   const visitGroupReady = hasFacility || hasHomeAddress || hasHomeGroup;
   const locationDetailReady = hasFacility
     ? Boolean(primaryResidence?.facility_unit_id || primaryResidence?.unit_name)
-    : Boolean(primaryResidence?.building_id || primaryResidence?.unit_name || primaryResidence?.address);
+    : Boolean(
+        primaryResidence?.building_id || primaryResidence?.unit_name || primaryResidence?.address,
+      );
   const facilityTimeReady = Boolean(facilityTimeFrom || facilityTimeTo);
   const careTeamReady =
-    careTeamRoles.has('physician') || careTeamRoles.has('nurse') || careTeamRoles.has('care_manager');
+    careTeamRoles.has('physician') ||
+    careTeamRoles.has('nurse') ||
+    careTeamRoles.has('care_manager');
   const locationModeLabel = hasFacility ? '施設' : '個人宅';
   const residenceAddress = primaryResidence?.address?.trim() || '住所未登録';
 
@@ -78,10 +83,10 @@ export function PatientFacilityMultiVisitCard({ patient }: { patient: PatientOve
             <p className="inline-flex items-center rounded-full border border-sky-200 bg-white/70 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-800">
               Facility Multi-Visit
             </p>
-            <CardTitle className="flex items-center gap-2 text-base text-sky-950">
+            <h2 className="flex items-center gap-2 font-heading text-base leading-snug font-medium text-sky-950">
               <UsersRound className="size-4" aria-hidden="true" />
               施設・個人宅の複数名同時訪問設定
-            </CardTitle>
+            </h2>
             <p className="max-w-3xl text-sm leading-6 text-sky-900/80">
               施設とユニット、または個人宅の同一住所・同居グループを患者情報に登録しておくと、同日訪問がスケジュール上でまとまり、現地では患者をスワイプで切り替えられます。
             </p>
@@ -91,7 +96,8 @@ export function PatientFacilityMultiVisitCard({ patient }: { patient: PatientOve
               {locationModeLabel} {visitGroupReady ? '登録済み' : '未設定'}
             </Badge>
             <Badge variant={locationDetailReady ? 'default' : 'outline'}>
-              {hasFacility ? 'ユニット' : '同居グループ'} {locationDetailReady ? '登録済み' : '未設定'}
+              {hasFacility ? 'ユニット' : '同居グループ'}{' '}
+              {locationDetailReady ? '登録済み' : '未設定'}
             </Badge>
           </div>
         </div>
@@ -108,7 +114,7 @@ export function PatientFacilityMultiVisitCard({ patient }: { patient: PatientOve
                   ? '個人宅は同一住所の夫婦・同居人を同時訪問グループとして扱います。'
                   : hasHomeGroup
                     ? '個人宅は同居グループIDで夫婦・同居人を同時訪問グループとして扱います。'
-                  : '施設または個人宅の住所を登録してください。'
+                    : '施設または個人宅の住所を登録してください。'
             }
           />
           <StatusItem
@@ -153,7 +159,9 @@ export function PatientFacilityMultiVisitCard({ patient }: { patient: PatientOve
             <p className="mt-2 text-muted-foreground">
               {hasFacility ? '施設' : '個人宅'} / {residenceAddress}
               {primaryResidence?.unit_name ? ` / ${primaryResidence.unit_name}` : ''}
-              {!hasFacility && primaryResidence?.building_id ? ` / ${primaryResidence.building_id}` : ''}
+              {!hasFacility && primaryResidence?.building_id
+                ? ` / ${primaryResidence.building_id}`
+                : ''}
             </p>
           </div>
           <div className="rounded-xl border border-sky-200 bg-white/80 px-3 py-3">
@@ -179,13 +187,22 @@ export function PatientFacilityMultiVisitCard({ patient }: { patient: PatientOve
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <a href="#patient-facility-section" className={buttonVariants({ size: 'sm', variant: 'outline' })}>
+          <a
+            href="#patient-facility-section"
+            className={buttonVariants({ size: 'sm', variant: 'outline' })}
+          >
             施設・ユニットを編集
           </a>
-          <a href="#patient-visit-constraints-section" className={buttonVariants({ size: 'sm', variant: 'outline' })}>
+          <a
+            href="#patient-visit-constraints-section"
+            className={buttonVariants({ size: 'sm', variant: 'outline' })}
+          >
             訪問条件を編集
           </a>
-          <Link href="?tab=communications" className={buttonVariants({ size: 'sm', variant: 'outline' })}>
+          <Link
+            href="?tab=communications"
+            className={buttonVariants({ size: 'sm', variant: 'outline' })}
+          >
             連携タブで編集
           </Link>
           <Link href="/schedules" className={buttonVariants({ size: 'sm' })}>
