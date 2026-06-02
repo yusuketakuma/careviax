@@ -10316,6 +10316,19 @@ Backup directory:
 - remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining surfaces include schedule proposal action/header extraction if worthwhile, deeper drug-master safety/detail sections, final workflow table/board judgment, and DB-backed browser proof
 - next action: run post-append whitespace/status checks, commit this slice, then inspect deeper drug-master safety/detail sections or attempt browser proof if the local e2e DB is available
 
+### 20260602-161146
+
+- current task: align workflow refill-upcoming table with shared PageSection boundary
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/(dashboard)/workflow/workflow-dashboard-view.tsx`, workflow focused tests
+- files changed: `src/app/(dashboard)/workflow/workflow-dashboard-view.tsx`, `.codex/ralph-state.md`
+- bugs found: no workflow API, refill proposal generation, table row, or refresh behavior bug was targeted. The refill-upcoming table was the last raw titled workflow section not already owning its own heading component
+- security risks found: no patient names, refill/split dispense data, route candidate generation payload, or rendered data source changed
+- performance issues found: no query or table rendering behavior changed. The refactor only moves the titled group shell to `PageSection`
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/workflow/workflow-dashboard-view.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx' 'src/app/(dashboard)/workflow/workflow-query-state.test.ts' src/components/layout/page-section.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/workflow/workflow-dashboard-view.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx' src/components/layout/page-section.tsx src/components/layout/page-section.test.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/workflow/workflow-dashboard-view.tsx'`; `rg -n "<section>|<h2 className=\"mb-3 text-base font-semibold text-foreground\"" 'src/app/(dashboard)/workflow/workflow-dashboard-view.tsx'`
+- validation results: target Prettier passed unchanged; focused Vitest passed with 3 files / 5 tests; targeted ESLint passed with no output; TypeScript passed with no output; target whitespace check passed before this Ralph-state append and is rerun after the append; workflow raw sections are now limited to the HomeCareFeatureBoard wrapper, which already owns its visible heading and description
+- remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining surfaces include deeper drug-master safety/detail sections, optional schedule proposal header/action extraction, and DB-backed browser proof
+- next action: run post-append whitespace/status checks, commit this slice, then inspect drug-master safety/detail sections or retry browser proof when the local e2e DB is available
+
 ### 20260601-114653
 
 - current task: harden residual-medication and drug-master import-log query limit normalization before Prisma reads

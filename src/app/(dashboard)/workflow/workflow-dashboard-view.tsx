@@ -1326,8 +1326,10 @@ export function WorkflowDashboardView({
         </div>
       </PageSection>
 
-      <section>
-        <h2 className="mb-3 text-base font-semibold text-foreground">継続調剤 — 次回対応</h2>
+      <PageSection
+        title="継続調剤 - 次回対応"
+        description="リフィル・分割調剤の次回対応と、再訪候補生成の状態を確認します。"
+      >
         {(workflow?.refill_upcoming.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">継続調剤の予定はありません</p>
         ) : (
@@ -1394,7 +1396,7 @@ export function WorkflowDashboardView({
             </table>
           </div>
         )}
-      </section>
+      </PageSection>
 
       <div className="flex justify-end">
         <button
