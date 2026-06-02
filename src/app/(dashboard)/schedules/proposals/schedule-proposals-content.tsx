@@ -22,11 +22,14 @@ import {
   type ProposalGenerationDiagnosticsCardData,
 } from '@/components/features/visits/visit-proposal-diagnostics-card';
 import { VisitRoutePreviewPanel } from '@/components/features/visits/visit-route-preview-panel';
+import { PageSection } from '@/components/layout/page-section';
+import { ActionRail } from '@/components/ui/action-rail';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -994,14 +997,12 @@ export function ScheduleProposalsContent({
   return (
     <div className="space-y-6">
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <Card className="border-border/70 bg-card/95">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">提案フィルタ</CardTitle>
-            <CardDescription>
-              ケース検索、即時対応 preset、日付帯で候補を絞り込みます。
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <PageSection
+          title="提案フィルタ"
+          description="ケース検索、即時対応 preset、日付帯で候補を絞り込みます。"
+          tone="subtle"
+        >
+          <div className="space-y-4">
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1.3fr)_repeat(2,minmax(0,0.7fr))]">
               <div className="space-y-1.5">
                 <Label htmlFor="proposal-case-search">ケース/患者検索</Label>
@@ -1139,33 +1140,33 @@ export function ScheduleProposalsContent({
                 </Button>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </PageSection>
 
-        <Card className="border-border/70 bg-card/95">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">次の操作</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Link
-              href="/schedules"
-              className="flex min-h-[44px] items-center justify-between rounded-xl border border-border/70 px-3 py-2 text-sm hover:bg-muted/40"
-            >
-              本日の訪問予定へ
-              <ChevronRight className="size-4 text-muted-foreground" />
-            </Link>
-            <Link
-              href="/workflow"
-              className="flex min-h-[44px] items-center justify-between rounded-xl border border-border/70 px-3 py-2 text-sm hover:bg-muted/40"
-            >
-              例外・未接続案件を確認
-              <ChevronRight className="size-4 text-muted-foreground" />
-            </Link>
-            <div className="rounded-xl border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
-              差替済み / 期限切れ: {tabCounts.stale} 件
-            </div>
-          </CardContent>
-        </Card>
+        <PageSection
+          title="次の操作"
+          description="候補確認の前後に使う関連画面へ移動します。"
+          tone="subtle"
+          contentClassName="space-y-3"
+        >
+          <Link
+            href="/schedules"
+            className="flex min-h-[44px] items-center justify-between rounded-xl border border-border/70 px-3 py-2 text-sm hover:bg-muted/40"
+          >
+            本日の訪問予定へ
+            <ChevronRight className="size-4 text-muted-foreground" />
+          </Link>
+          <Link
+            href="/workflow"
+            className="flex min-h-[44px] items-center justify-between rounded-xl border border-border/70 px-3 py-2 text-sm hover:bg-muted/40"
+          >
+            例外・未接続案件を確認
+            <ChevronRight className="size-4 text-muted-foreground" />
+          </Link>
+          <div className="rounded-xl border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
+            差替済み / 期限切れ: {tabCounts.stale} 件
+          </div>
+        </PageSection>
       </div>
 
       {presetBanner ? (
@@ -1178,68 +1179,93 @@ export function ScheduleProposalsContent({
         </Alert>
       ) : null}
 
-      <Tabs
-        value={activeTab}
-        onValueChange={(value) => {
-          const nextTab = value as DashboardTab;
-          setActiveTab(nextTab);
-          replaceDashboardUrl({
-            status:
-              nextTab === 'patient_contact_pending'
-                ? 'patient_contact_pending'
-                : nextTab === 'confirmed'
-                  ? 'confirmed'
-                  : nextTab === 'rejected'
-                    ? 'rejected'
-                    : 'proposed',
-          });
-        }}
-        className="space-y-4"
+      <PageSection
+        title="対象候補と一括操作"
+        description="表示タブ、候補件数、選択数を確認し、表示中の候補に対する一括承認・却下を行います。"
+        tone="subtle"
+        actions={
+          <ActionRail>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => bulkActionMutation.mutate('reject')}
+              disabled={selectedIds.length === 0 || bulkActionMutation.isPending}
+            >
+              <XCircle className="mr-1.5 size-4" />
+              一括却下
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => bulkActionMutation.mutate('approve')}
+              disabled={selectedIds.length === 0 || bulkActionMutation.isPending}
+            >
+              <CheckCircle2 className="mr-1.5 size-4" />
+              一括承認
+            </Button>
+          </ActionRail>
+        }
+        contentClassName="space-y-4"
       >
-        <TabsList variant="line" className="flex w-full flex-wrap justify-start gap-2">
-          {(Object.keys(TAB_LABELS) as DashboardTab[]).map((tab) => (
-            <TabsTrigger key={tab} value={tab} className="gap-2">
-              {TAB_LABELS[tab]}
-              <Badge variant="outline">{tabCounts[tab]}</Badge>
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => {
+            const nextTab = value as DashboardTab;
+            setActiveTab(nextTab);
+            replaceDashboardUrl({
+              status:
+                nextTab === 'patient_contact_pending'
+                  ? 'patient_contact_pending'
+                  : nextTab === 'confirmed'
+                    ? 'confirmed'
+                    : nextTab === 'rejected'
+                      ? 'rejected'
+                      : 'proposed',
+            });
+          }}
+          className="space-y-4"
+        >
+          <TabsList variant="line" className="flex w-full flex-wrap justify-start gap-2">
+            {(Object.keys(TAB_LABELS) as DashboardTab[]).map((tab) => (
+              <TabsTrigger key={tab} value={tab} className="gap-2">
+                {TAB_LABELS[tab]}
+                <Badge variant="outline">{tabCounts[tab]}</Badge>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card/95 px-4 py-3">
-        <div className="flex items-center gap-3">
-          <Checkbox
-            checked={allVisibleSelected}
-            onCheckedChange={(checked) =>
-              setSelectedIds(checked ? visibleProposals.map((proposal) => proposal.id) : [])
-            }
-            aria-label="表示中の候補をすべて選択"
-          />
-          <div>
-            <p className="text-sm font-medium text-foreground">一括操作</p>
-            <p className="text-xs text-muted-foreground">選択中 {selectedIds.length} 件</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <label className="flex min-h-[44px] items-center gap-3 text-sm sm:min-h-0">
+            <Checkbox
+              checked={allVisibleSelected}
+              onCheckedChange={(checked) =>
+                setSelectedIds(checked ? visibleProposals.map((proposal) => proposal.id) : [])
+              }
+              aria-label="表示中の候補をすべて選択"
+            />
+            表示中の候補をすべて選択
+          </label>
+          <div className="min-w-0 flex-1">
+            <FilterSummaryBar
+              items={[
+                { label: '表示候補', value: `${visibleProposals.length}件` },
+                { label: '選択中', value: `${selectedIds.length}件` },
+                { label: '本日候補', value: `${todayFilterCount}件` },
+                {
+                  label: '患者連絡中',
+                  value: `${tabCounts.patient_contact_pending}件`,
+                  tone: tabCounts.patient_contact_pending > 0 ? 'warning' : 'default',
+                },
+                {
+                  label: '差替/期限切れ',
+                  value: `${tabCounts.stale}件`,
+                  tone: tabCounts.stale > 0 ? 'warning' : 'default',
+                },
+              ]}
+            />
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => bulkActionMutation.mutate('reject')}
-            disabled={selectedIds.length === 0 || bulkActionMutation.isPending}
-          >
-            <XCircle className="mr-1.5 size-4" />
-            一括却下
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => bulkActionMutation.mutate('approve')}
-            disabled={selectedIds.length === 0 || bulkActionMutation.isPending}
-          >
-            <CheckCircle2 className="mr-1.5 size-4" />
-            一括承認
-          </Button>
-        </div>
-      </div>
+      </PageSection>
 
       <div className="grid gap-4">
         {visibleDiagnostics ? (

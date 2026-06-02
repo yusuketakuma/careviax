@@ -10160,6 +10160,19 @@ Backup directory:
 - remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining high-priority dense surfaces include schedule proposals, prescription workspace, workflow dashboard, visits, and deeper drug-master/formulary subcomponent extraction
 - next action: run post-append whitespace/status checks, commit this slice, then continue with schedule proposals as the next high-impact operational surface
 
+### 20260602-154348
+
+- current task: organize schedule proposal filters and bulk-action controls with shared section primitives
+- files inspected: `git status --short`, `.codex/ralph-state.md`, `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`, `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx`, `src/app/(dashboard)/schedules/proposals/proposal-query-state.test.ts`, `src/app/(dashboard)/schedules/proposals/page.test.tsx`, shared `PageSection`, `ActionRail`, and `FilterSummaryBar`
+- files changed: `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`, `.codex/ralph-state.md`
+- bugs found: no schedule proposal API or mutation bug was targeted. The proposal page top controls had separate filter and next-action cards plus a standalone tab/bulk-action bar, so the operator's flow from narrowing candidates to bulk approving/rejecting was visually fragmented
+- security risks found: no proposal query params, bulk mutation payloads, route draft behavior, patient/contact status semantics, or candidate/detail data changed. Candidate cards, diagnostics, and detail panels were intentionally left unchanged in this slice
+- performance issues found: no query behavior changed. The refactor adds only already-derived summary counts to the bulk-action section
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' 'src/app/(dashboard)/schedules/proposals/proposal-query-state.test.ts' 'src/app/(dashboard)/schedules/proposals/page.test.tsx' src/components/layout/page-section.test.tsx src/components/ui/filter-summary-bar.test.tsx src/components/ui/action-rail.test.tsx`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx' 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' 'src/app/(dashboard)/schedules/proposals/proposal-query-state.ts' 'src/app/(dashboard)/schedules/proposals/proposal-query-state.test.ts' src/components/layout/page-section.tsx src/components/ui/filter-summary-bar.tsx src/components/ui/action-rail.tsx --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx'`
+- validation results: target Prettier passed and formatted the top controls; focused Vitest passed with 6 files / 13 tests; targeted ESLint passed with no output; TypeScript passed with no output; target whitespace check passed before this Ralph-state append and is rerun after the append
+- remaining work: broad UI/UX cleanup and refactoring goal remains active. Remaining high-priority surfaces include prescription workspace, workflow dashboard, visits, and deeper drug-master/formulary or schedule-proposal card extraction. Browser proof for the changed schedule proposal route remains pending
+- next action: run post-append whitespace/status checks, commit this slice, then continue with prescription workspace or workflow dashboard
+
 ### 20260601-114653
 
 - current task: harden residual-medication and drug-master import-log query limit normalization before Prisma reads
