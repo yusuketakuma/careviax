@@ -3,9 +3,10 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { ActionRail } from '@/components/ui/action-rail';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -68,13 +69,7 @@ function isMedicationBoxMethod(value: PackagingFormState['default_packaging_meth
   return value === 'medication_box';
 }
 
-export function PatientPackagingCard({
-  patientId,
-  orgId,
-}: {
-  patientId: string;
-  orgId: string;
-}) {
+export function PatientPackagingCard({ patientId, orgId }: { patientId: string; orgId: string }) {
   const queryClient = useQueryClient();
   const [draftForm, setDraftForm] = useState<PackagingFormState | null>(null);
 
@@ -111,7 +106,9 @@ export function PatientPackagingCard({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error((json as { message?: string }).message ?? '患者配薬設定の保存に失敗しました');
+        throw new Error(
+          (json as { message?: string }).message ?? '患者配薬設定の保存に失敗しました',
+        );
       }
       return json;
     },
@@ -131,23 +128,21 @@ export function PatientPackagingCard({
   return (
     <Card id="patient-packaging-card">
       <CardHeader>
-        <CardTitle className="text-base">配薬設定</CardTitle>
+        <h2 className="font-heading text-base leading-snug font-medium">配薬設定</h2>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
           {data?.data.packaging_profile?.default_packaging_method ? (
             <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">
-              {
-                PACKAGING_METHOD_LABELS[
-                  data.data.packaging_profile.default_packaging_method
-                ]
-              }
+              {PACKAGING_METHOD_LABELS[data.data.packaging_profile.default_packaging_method]}
             </Badge>
           ) : (
             <span className="text-sm text-muted-foreground">既定の配薬方法は未設定です</span>
           )}
           {data?.data.packaging_profile?.medication_box_color ? (
-            <Badge variant="outline">BOX色 {data.data.packaging_profile.medication_box_color}</Badge>
+            <Badge variant="outline">
+              BOX色 {data.data.packaging_profile.medication_box_color}
+            </Badge>
           ) : null}
         </div>
 
@@ -183,11 +178,13 @@ export function PatientPackagingCard({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">指定なし</SelectItem>
-                  {PACKAGING_METHOD_OPTIONS.filter((option) => option.value !== 'none').map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
+                  {PACKAGING_METHOD_OPTIONS.filter((option) => option.value !== 'none').map(
+                    (option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ),
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -251,15 +248,17 @@ export function PatientPackagingCard({
                     medication_box_color: event.target.value,
                   }))
                 }
-                placeholder={isMedicationBoxMethod(form.default_packaging_method) ? '赤 / 青 / 緑' : '任意'}
+                placeholder={
+                  isMedicationBoxMethod(form.default_packaging_method) ? '赤 / 青 / 緑' : '任意'
+                }
               />
             </div>
 
-            <div className="flex items-end justify-end">
+            <ActionRail align="end" className="items-end">
               <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
                 保存
               </Button>
-            </div>
+            </ActionRail>
           </div>
         )}
       </CardContent>
