@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-180702
+
+- current task: improve patient timeline panel error heading and add focused coverage
+- files inspected: `git status --short`, `git log --oneline -8`, `.codex/ralph-state.md`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md`, `src/app/(dashboard)/patients/[id]/patient-timeline-panel.tsx`, `src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx`, and test search results
+- files changed: `src/app/(dashboard)/patients/[id]/patient-timeline-panel.tsx`, `src/app/(dashboard)/patients/[id]/patient-timeline-panel.test.tsx`, `.codex/ralph-state.md`
+- bugs found: the timeline panel error state used a decorative `CardTitle` for the timeline group. This made the fallback state less consistent with the semantic section hierarchy used by the surrounding patient detail panels
+- security risks found: no patient timeline API path, org header, query key, fetch behavior, activity timeline rendering, auth, authorization, or patient data handling changed
+- performance issues found: no query function, enabled condition, loading branch, error branch behavior, timeline event rendering, self report rendering, or render-loop behavior changed. The slice only changes heading markup and adds focused error-state coverage
+- validation commands: `pnpm --config.verify-deps-before-run=false exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-timeline-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-timeline-panel.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec vitest run 'src/app/(dashboard)/patients/[id]/patient-timeline-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-activity-timeline.test.tsx'`; `pnpm --config.verify-deps-before-run=false exec eslint 'src/app/(dashboard)/patients/[id]/patient-timeline-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-timeline-panel.test.tsx' --max-warnings=0`; `pnpm --config.verify-deps-before-run=false exec tsc --noEmit --pretty false`; `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-timeline-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-timeline-panel.test.tsx'`
+- validation results: Prettier completed successfully; focused timeline panel/activity timeline Vitest passed with 2 files / 5 tests; targeted ESLint passed with zero warnings; TypeScript passed without output; whitespace diff check passed
+- remaining work: broader UI/refactor goal remains active. Other patient detail panels, medication/prescription/detail surfaces, workflow sections, schedule proposal details, and DB-backed browser proof remain incomplete while local app `localhost:3012` and DB `localhost:5433` are unavailable
+- next action: commit this patient timeline panel group, then retry runtime proof or continue another static UI/refactor slice
+
 ### 20260602-180508
 
 - current task: post-patient-risk runtime/browser preflight audit

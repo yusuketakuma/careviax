@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PatientActivityTimeline } from './patient-activity-timeline';
@@ -41,7 +41,7 @@ export function PatientTimelinePanel({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">タイムライン</CardTitle>
+          <h2 className="font-heading text-base leading-snug font-medium">タイムライン</h2>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-destructive">
