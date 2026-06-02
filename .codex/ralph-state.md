@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260602-172757
+
+- current task: post-settings and billing UI/refactor runtime preflight audit
+- files inspected: `git status --short`, `git log --oneline -10`, `package.json` E2E/DB scripts, `docker-compose.yml`, command availability for `docker`, `podman`, `psql`, and `pnpm medical-ui:e2e:preflight` output
+- files changed: `.codex/ralph-state.md`
+- bugs found: no new code bug found in this audit. Runtime E2E/browser proof remains unavailable because the local app and database listeners are absent
+- security risks found: no code, API, auth, authorization, DB, migration, mutation, session, or notification behavior changed in this audit
+- performance issues found: no performance-sensitive code path changed in this audit
+- validation commands: `git status --short`; `git log --oneline -10`; `jq '.scripts | to_entries[] | select(.key|test("e2e|db|dev|start"))' package.json`; `rg -n "5433|ph_os_e2e|docker|compose|dev:e2e|start:e2e|db:e2e" . -g '!*node_modules*' -g '!*.next*'`; `docker ps --format '{{.Names}} {{.Ports}}'`; `sed -n '1,220p' docker-compose.yml`; `command -v psql || true`; `command -v podman || true`; `command -v colima || true`; `pnpm --config.verify-deps-before-run=false medical-ui:e2e:preflight`
+- validation results: worktree was clean before this audit entry; recent grouped commits were present through `8dd27f2`; E2E scripts pin local `ph_os_e2e` on `localhost:5433` and app on `localhost:3012`; `docker-compose.yml` defines a Postgres service but the environment has no `docker`, `podman`, `colima`, or `psql` command; medical UI preflight passed script/package/spec checks but failed `port:app-3012` with `ECONNREFUSED` and `port:db-5433` with `ECONNREFUSED`
+- remaining work: start local PostgreSQL for `ph_os_e2e` on `localhost:5433` using an available local runtime, run `pnpm --config.verify-deps-before-run=false db:e2e:prepare`, start the app with `pnpm --config.verify-deps-before-run=false dev:e2e:local`, then run `pnpm --config.verify-deps-before-run=false db:e2e:check-care-report-duplicates` and `pnpm --config.verify-deps-before-run=false medical-ui:e2e:targeted`. Larger dense UI/refactor surfaces remain, especially schedule proposals, visit record/detail forms, patient detail panels, and medication set edit/audit pages
+- next action: commit this audit note, then continue future UI/refactor work once another bounded surface is selected or the local E2E runtime is available
+
 ### 20260602-172723
 
 - current task: improve billing candidates KPI semantic headings
